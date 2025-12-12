@@ -11,6 +11,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -245,7 +246,7 @@ func (dc *DiskCollector) collectDiskStorage(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(dc.reservationMetric.Desc, dc.reservationMetric.Type, float64(storageReservation), dc.currentNodeID, diskName)
 
 		if diskServiceClient != nil && disk.Spec.Type == longhorn.DiskTypeBlock {
-			diskMetrics, err := diskServiceClient.MetricsGet(string(disk.Spec.Type), diskName, diskPath, diskDriver)
+			diskMetrics, err := diskServiceClient.MetricsGet(string(disk.Spec.Type), diskName, diskDriver, util.SplitPaths(diskPath))
 			if err == nil {
 				// Collect disk performance metrics if available
 				if diskMetrics != nil {

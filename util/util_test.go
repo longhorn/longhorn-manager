@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -210,5 +211,95 @@ func TestTimestampAfterTimestamp(t *testing.T) {
 				assert.NoError(err)
 			}
 		})
+	}
+}
+
+func TestPathSplitJoin(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []string
+	}{
+		// Basic
+		{"a", []string{"a"}},
+		{" a ", []string{"a"}},
+
+		// Multi entries
+		{"b;a;c", []string{"a", "b", "c"}},
+
+		// Whitespace around entries
+		{" b ;   a ;  c  ", []string{"a", "b", "c"}},
+
+		// Empty segments
+		{"a;;b", []string{"a", "b"}},
+		{"a; ;b", []string{"a", "b"}},
+
+		// All empty
+		{";;  ;", nil},
+
+		// PCI BDF formats
+		{"0000:00:1e.0", []string{"0000:00:1e.0"}},
+		{"0000:5a:04.7", []string{"0000:5a:04.7"}},
+
+		// NVMe controller paths
+		{"nvme0n1", []string{"nvme0n1"}},
+		{"nvme1c2n1", []string{"nvme1c2n1"}},
+		{"nvme-subsys1", []string{"nvme-subsys1"}},
+
+		// /dev paths
+		{"/dev/loop14", []string{"/dev/loop14"}},
+		{"/dev/sda", []string{"/dev/sda"}},
+		{"/dev/nvme0n1p1", []string{"/dev/nvme0n1p1"}},
+
+		// Device mapper
+		{"/dev/mapper/vg0-lv_home", []string{"/dev/mapper/vg0-lv_home"}},
+		{"/dev/dm-12", []string{"/dev/dm-12"}},
+
+		// by-path / by-id
+		{"/dev/disk/by-path/pci-0000:00:1e.0-nvme-1",
+			[]string{"/dev/disk/by-path/pci-0000:00:1e.0-nvme-1"}},
+		{"/dev/disk/by-id/ata-Samsung_SSD_850",
+			[]string{"/dev/disk/by-id/ata-Samsung_SSD_850"}},
+
+		// Weird characters
+		{"weird#name?with$bad@chars", []string{"weird#name?with$bad@chars"}},
+
+		// Multiple invalid chars
+		{"--abc..def//ghi__", []string{"--abc..def//ghi__"}},
+
+		// Spaces inside path
+		{"name with space", []string{"name with space"}},
+
+		// Complex mixed case
+		{"/complex/path/0000:00:1f.0/nvme#n1",
+			[]string{"/complex/path/0000:00:1f.0/nvme#n1"}},
+
+		// Multiple real paths
+		{
+			"0000:00:1e.0;   0000:00:1f.0",
+			[]string{"0000:00:1e.0", "0000:00:1f.0"},
+		},
+		// Duplicate paths
+		{
+			"nvme0n1; nvme0n1; /dev/nvme0n1p1; /dev/nvme0n1p1",
+			[]string{"/dev/nvme0n1p1", "nvme0n1"},
+		},
+	}
+
+	for _, tt := range tests {
+		split := SplitPaths(tt.input)
+		if !reflect.DeepEqual(split, tt.want) {
+			t.Errorf("SplitPaths(%q) = %#v, want %#v", tt.input, split, tt.want)
+		}
+
+		// Round-trip test only when expected output non-nil
+		if tt.want != nil {
+			joined := JoinPaths(split)
+			split2 := SplitPaths(joined)
+
+			if !reflect.DeepEqual(split2, tt.want) {
+				t.Errorf("RoundTrip mismatch: input=%q split=%#v joined=%q split2=%#v",
+					tt.input, split, joined, split2)
+			}
+		}
 	}
 }

@@ -339,7 +339,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 		return err
 	}
 	noReadyDisk := node == nil
-	diskMigrated := node != nil && (node.Name != bids.Spec.NodeID || node.Spec.Disks[diskName].Path != bids.Spec.DiskPath)
+	diskMigrated := node != nil && (node.Name != bids.Spec.NodeID || !util.PathEqual(node.Spec.Disks[diskName].Path, bids.Spec.DiskPath))
 	if noReadyDisk || diskMigrated {
 		if bids.Status.CurrentState != longhorn.BackingImageStateUnknown {
 			bids.Status.CurrentState = longhorn.BackingImageStateUnknown

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -913,4 +914,60 @@ func IsHigherPriorityVATicketExisting(va *longhorn.VolumeAttachment, ticketType 
 		}
 	}
 	return false
+}
+
+func PathEqual(path1, path2 string) bool {
+	return slices.Equal(SplitPaths(path1), SplitPaths(path2))
+}
+
+func SplitPaths(input string) []string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil
+	}
+
+	rawParts := strings.Split(input, ";")
+	parts := make([]string, 0, len(rawParts))
+
+	for _, p := range rawParts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+
+	if len(parts) == 0 {
+		return nil
+	}
+	if len(parts) == 1 {
+		return parts
+	}
+
+	slices.Sort(parts)
+	return slices.Compact(parts) // deuplicat paths
+}
+func JoinPaths(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(paths))
+	for _, p := range paths {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+
+	slices.Sort(parts)
+	parts = slices.Compact(parts) // deuplicat paths
+
+	return strings.Join(parts, ";")
 }

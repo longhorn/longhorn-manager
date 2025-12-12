@@ -1806,7 +1806,7 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 	if exists {
 		if disk.State == DiskStateReady {
 			s.Unlock()
-			return disk.DiskGet(spdkClient, req.DiskName, req.DiskPath, req.DiskDriver)
+			return disk.DiskGet(spdkClient, req.DiskName, req.DiskDriver, req.DiskPath)
 		}
 		s.Unlock()
 
@@ -1815,7 +1815,7 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 		}, nil
 	}
 
-	disk = NewDisk(req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver, req.BlockSize)
+	disk = NewDisk(req.DiskName, req.DiskUuid, req.DiskDriver, req.DiskPath, req.BlockSize)
 	s.diskMap[req.DiskName] = disk
 	s.Unlock()
 
@@ -1830,7 +1830,7 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 		s.diskCreateLock.Lock()
 		defer s.diskCreateLock.Unlock()
 
-		if err := d.DiskCreate(spdkClient, req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver, req.BlockSize); err != nil {
+		if err := d.DiskCreate(spdkClient, req.DiskName, req.DiskUuid, req.DiskDriver, req.DiskPath, req.BlockSize); err != nil {
 			logrus.WithError(err).Errorf("Failed to create disk %s(%s) path %s", req.DiskName, req.DiskUuid, req.DiskPath)
 			return
 		}
@@ -1887,7 +1887,7 @@ func (s *Server) DiskDelete(ctx context.Context, req *spdkrpc.DiskDeleteRequest)
 		return &emptypb.Empty{}, nil
 	}
 
-	return disk.DiskDelete(spdkClient, req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver)
+	return disk.DiskDelete(spdkClient, req.DiskName, req.DiskUuid, req.DiskDriver, req.DiskPath)
 }
 
 func (s *Server) DiskGet(ctx context.Context, req *spdkrpc.DiskGetRequest) (ret *spdkrpc.Disk, err error) {
@@ -1900,7 +1900,7 @@ func (s *Server) DiskGet(ctx context.Context, req *spdkrpc.DiskGetRequest) (ret 
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find disk %v", req.DiskName)
 	}
 
-	return disk.DiskGet(spdkClient, req.DiskName, req.DiskPath, req.DiskDriver)
+	return disk.DiskGet(spdkClient, req.DiskName, req.DiskDriver, req.DiskPath)
 }
 
 func (s *Server) DiskHealthGet(ctx context.Context, req *spdkrpc.DiskHealthGetRequest) (ret *spdkrpc.DiskHealthGetResponse, err error) {
@@ -1913,7 +1913,7 @@ func (s *Server) DiskHealthGet(ctx context.Context, req *spdkrpc.DiskHealthGetRe
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "disk %q not found", req.DiskName)
 	}
 
-	diskHealth, err := disk.diskHealthGet(spdkClient, req.DiskName, req.DiskDriver)
+	diskHealth, err := disk.diskHealthGet(spdkClient, req.DiskName, req.DiskPath, req.DiskDriver)
 	if err != nil {
 		return nil, err
 	}

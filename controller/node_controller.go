@@ -836,7 +836,10 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			diskStatus.InstanceManagerName = diskInfoMap[diskName].InstanceManagerName
 
 			if len(info.HealthData) > 0 {
-				diskStatus.HealthData = info.HealthData
+				for _, diskPathHealthData := range info.HealthData {
+					diskStatus.HealthData = diskPathHealthData
+				}
+
 				diskStatus.HealthDataLastCollectedAt = metav1.NewTime(info.HealthDataLastCollectedAt)
 			}
 
@@ -894,7 +897,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				return err
 			}
 			for _, bim := range list {
-				if bim.Spec.NodeID != node.Name || bim.Spec.DiskPath != disk.Path {
+				if bim.Spec.NodeID != node.Name || !util.PathEqual(bim.Spec.DiskPath, disk.Path) {
 					log.Infof("Node Controller: updating Node & disk info in backing image manager %v", bim.Name)
 					bim.Spec.NodeID = node.Name
 					bim.Spec.DiskPath = disk.Path
@@ -915,7 +918,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 			scheduledBackingImage := map[string]int64{}
 			storageScheduled := int64(0)
 			for _, replica := range replicas {
-				if replica.Spec.NodeID != node.Name || replica.Spec.DiskPath != disk.Path {
+				if replica.Spec.NodeID != node.Name || !util.PathEqual(replica.Spec.DiskPath, disk.Path) {
 					replica.Spec.NodeID = node.Name
 					replica.Spec.DiskPath = disk.Path
 					if _, err := nc.ds.UpdateReplica(replica); err != nil {
@@ -1646,7 +1649,8 @@ func (nc *NodeController) deleteDisk(nodeName string, diskType longhorn.DiskType
 	}
 	defer diskServiceClient.Close()
 
-	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskPath, diskDriver, diskServiceClient); err != nil {
+	paths := util.SplitPaths(diskPath)
+	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, paths, diskDriver, diskServiceClient); err != nil {
 		return errors.Wrapf(err, "failed to delete disk %v", diskName)
 	}
 
@@ -1721,7 +1725,7 @@ func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.Co
 
 		nodeOrDiskEvicted := node.Spec.EvictionRequested || disk.EvictionRequested
 		if nodeOrDiskEvicted != diskInfo.NodeOrDiskEvicted ||
-			disk.Path != diskInfo.Path {
+			!util.PathEqual(disk.Path, diskInfo.Path) {
 			logrus.Warnf("Disk data %v is mismatched with collected data %v for disk %v", disk, diskInfo, diskName)
 			return false
 		}

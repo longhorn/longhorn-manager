@@ -4,7 +4,7 @@ type DiskInfo struct {
 	ID          string
 	Name        string
 	UUID        string
-	Path        string
+	Path        []string
 	Type        string
 	Driver      string
 	TotalSize   int64

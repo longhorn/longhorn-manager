@@ -217,3 +217,9 @@ require (
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/longhorn/longhorn-spdk-engine => github.com/davidcheng0922/longhorn-spdk-engine v0.0.0-20251215055257-9de4057e1f46
+
+replace github.com/longhorn/longhorn-instance-manager => github.com/davidcheng0922/longhorn-instance-manager v0.0.0-20251215055441-137cb18e3dfc
+
+replace github.com/longhorn/types => github.com/davidcheng0922/types v0.0.0-20251128084033-ecdadc496e56

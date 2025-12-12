@@ -61,16 +61,16 @@ func (s *DiskService) Close() {
 	}
 }
 
-func (s *DiskService) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*imapi.DiskInfo, error) {
-	return s.grpcClient.DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver, blockSize)
+func (s *DiskService) DiskCreate(diskType, diskName, diskUUID, diskDriver string, diskPath []string, blockSize int64) (*imapi.DiskInfo, error) {
+	return s.grpcClient.DiskCreate(diskType, diskName, diskUUID, diskDriver, diskPath, blockSize)
 }
 
-func (s *DiskService) DiskGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskInfo, error) {
-	return s.grpcClient.DiskGet(diskType, diskName, diskPath, diskDriver)
+func (s *DiskService) DiskGet(diskType, diskName, diskDriver string, diskPath []string) (*imapi.DiskInfo, error) {
+	return s.grpcClient.DiskGet(diskType, diskName, diskDriver, diskPath)
 }
 
-func (s *DiskService) DiskDelete(diskType, diskName, diskUUID, diskPath, diskDriver string) error {
-	return s.grpcClient.DiskDelete(diskType, diskName, diskUUID, diskPath, diskDriver)
+func (s *DiskService) DiskDelete(diskType, diskName, diskUUID, diskDriver string, diskPath []string) error {
+	return s.grpcClient.DiskDelete(diskType, diskName, diskUUID, diskDriver, diskPath)
 }
 
 func (s *DiskService) DiskHealthGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskHealth, error) {
@@ -89,6 +89,6 @@ func (s *DiskService) GetInstanceManagerName() string {
 	return s.instanceManagerName
 }
 
-func (s *DiskService) MetricsGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskMetrics, error) {
-	return s.grpcClient.MetricsGet(diskType, diskName, diskPath, diskDriver)
+func (s *DiskService) MetricsGet(diskType, diskName, diskDriver string, diskPath []string) (*imapi.DiskMetrics, error) {
+	return s.grpcClient.MetricsGet(diskType, diskName, diskDriver, diskPath)
 }

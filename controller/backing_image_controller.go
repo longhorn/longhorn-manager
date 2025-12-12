@@ -1020,6 +1020,13 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 					}
 					continue
 				}
+
+				paths := util.SplitPaths(node.Spec.Disks[diskName].Path)
+				if types.IsDataEngineV1(bi.Spec.DataEngine) && len(paths) > 1 {
+					log.Warnf("V1 backing image data source creation found disk %v on node %v has multiple paths %v, skip it", diskUUID, node.Name, paths)
+					continue
+				}
+
 				foundReadyDisk = true
 				readyNodeID = node.Name
 				readyDiskUUID = diskUUID
@@ -1046,6 +1053,11 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				if err != nil {
 					return err
 				}
+			}
+
+			paths := util.SplitPaths(readyNode.Spec.Disks[readyDiskName].Path)
+			if types.IsDataEngineV1(bi.Spec.DataEngine) && len(paths) > 1 {
+				return fmt.Errorf("v1 backing image data source creation found disk %v on node %v has multiple paths %v, cannot create backing image data source", readyNode.Status.DiskStatus[readyDiskName].DiskUUID, readyNode.Name, paths)
 			}
 
 			foundReadyDisk = true

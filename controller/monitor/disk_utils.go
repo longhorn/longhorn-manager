@@ -12,6 +12,7 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
+	"github.com/longhorn/go-common-libs/multierr"
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
@@ -32,22 +33,28 @@ const (
 
 // GetDiskStat returns the disk stat of the given directory
 func getDiskStat(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (stat *lhtypes.DiskStat, err error) {
+	paths := util.SplitPaths(diskPath)
+
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
+		if len(paths) != 1 {
+			return nil, fmt.Errorf("filesystem type disk should have only one path, got %v", paths)
+		}
+
 		return lhns.GetDiskStat(diskPath)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskStat(client, diskName, diskPath, diskDriver)
+		return getBlockTypeDiskStat(client, diskName, paths, diskDriver)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
 }
 
-func getBlockTypeDiskStat(client *DiskServiceClient, diskName, diskPath string, diskDriver longhorn.DiskDriver) (stat *lhtypes.DiskStat, err error) {
+func getBlockTypeDiskStat(client *DiskServiceClient, diskName string, diskPath []string, diskDriver longhorn.DiskDriver) (stat *lhtypes.DiskStat, err error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(diskDriver))
+	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), diskName, string(diskDriver), diskPath)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +62,7 @@ func getBlockTypeDiskStat(client *DiskServiceClient, diskName, diskPath string, 
 	return &lhtypes.DiskStat{
 		DiskID:           info.ID,
 		Name:             info.Name,
-		Path:             info.Path,
+		Path:             util.JoinPaths(info.Path),
 		Type:             info.Type,
 		Driver:           lhtypes.DiskDriver(info.Driver),
 		TotalBlocks:      info.TotalBlocks,
@@ -66,45 +73,84 @@ func getBlockTypeDiskStat(client *DiskServiceClient, diskName, diskPath string, 
 	}, nil
 }
 
-func getDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+func getDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]map[string]longhorn.HealthData, time.Time, error) {
 	// Skip if health data was collected recently.
 	if time.Since(lastCollectedAt) < HealthDataUpdateInterval {
 		return nil, lastCollectedAt, nil
 	}
 
+	paths := util.SplitPaths(diskPath)
+
 	logger.WithField("diskType", diskType).Debugf("Collecting health data for disk %s", diskName)
 
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
+		if len(paths) != 1 {
+			return nil, lastCollectedAt, fmt.Errorf("filesystem type disk should have only one path, got %v", paths)
+		}
+
 		return getHealthDataFromMountPath(diskName, diskPath, lastCollectedAt, logger)
 	case longhorn.DiskTypeBlock:
-		return getBlockDiskHealth(diskName, diskPath, diskDriver, lastCollectedAt, client, logger)
+		return getBlockDiskHealth(diskName, paths, diskDriver, lastCollectedAt, client, logger)
 	default:
 		return nil, lastCollectedAt, fmt.Errorf("unknown disk type %v", diskType)
 	}
 }
 
-func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
-	switch diskDriver {
-	case longhorn.DiskDriverAio:
-		// AIO driver doesn't claim device exclusively, so smartctl can access it directly
-		return getHealthDataFromBlockDevice(diskName, diskPath, lastCollectedAt, logger)
-	case longhorn.DiskDriverNvme:
-		// NVME driver claims device exclusively, use SPDK health info instead
-		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client, lastCollectedAt, logger)
-	default:
-		return nil, lastCollectedAt, fmt.Errorf("unknown block disk driver %v", diskDriver)
+func getBlockDiskHealth(diskName string, diskPaths []string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]map[string]longhorn.HealthData, time.Time, error) {
+	// diskHealthData -> disk Name -> disk Path -> HealthData
+	diskHealthData := map[string]map[string]longhorn.HealthData{
+		diskName: {},
 	}
+
+	errs := multierr.NewMultiError()
+	collectAt := lastCollectedAt
+	for _, diskPath := range diskPaths {
+		var (
+			healthData map[string]longhorn.HealthData
+			err        error
+		)
+
+		switch diskDriver {
+		case longhorn.DiskDriverAio:
+			// AIO driver doesn't claim device exclusively, so smartctl can access it directly
+			healthData, collectAt, err = getHealthDataFromBlockDevice(diskName, diskPath, lastCollectedAt, logger)
+		case longhorn.DiskDriverNvme:
+			// NVME driver claims device exclusively, use SPDK health info instead
+			healthData, collectAt, err = getHealthDataFromControllerHealthInfo(diskName, diskPath, client, lastCollectedAt, logger)
+		default:
+			return nil, lastCollectedAt, fmt.Errorf("unknown block disk driver %v", diskDriver)
+		}
+
+		if err != nil {
+			errs.Append("errors", errors.Wrap(err, fmt.Sprintf("failed to get health data for disk %s at path %s", diskName, diskPath)))
+			continue
+		}
+
+		diskHealthData[diskName][diskPath] = healthData[diskName]
+	}
+
+	if len(errs) > 0 {
+		return diskHealthData, collectAt, errs
+	}
+
+	return diskHealthData, collectAt, nil
 }
 
-func getHealthDataFromMountPath(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+func getHealthDataFromMountPath(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]map[string]longhorn.HealthData, time.Time, error) {
 	// Collect SMART data - resolves mount path to physical device(s)
 	healthData, err := util.CollectHealthDataFromMountPath(diskPath, diskName, logger)
 	if err != nil {
 		return nil, lastCollectedAt, err
 	}
 
-	return healthData, time.Now(), nil
+	diskHealthData := map[string]map[string]longhorn.HealthData{
+		diskName: {
+			diskPath: healthData[diskName],
+		},
+	}
+
+	return diskHealthData, time.Now(), nil
 }
 
 func getHealthDataFromBlockDevice(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
@@ -275,12 +321,18 @@ func convertNvmeHealthToAttributes(health *imapi.DiskHealth) []*longhorn.HealthA
 }
 
 // getDiskConfig returns the disk config of the given directory
-func getDiskConfig(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+func getDiskConfig(diskType longhorn.DiskType, diskName string, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+	paths := util.SplitPaths(diskPath)
+
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
+		if len(paths) != 1 {
+			return nil, fmt.Errorf("filesystem type disk should have only one path, got %v", paths)
+		}
+
 		return getFilesystemTypeDiskConfig(diskPath)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskConfig(client, diskName, diskPath, diskDriver)
+		return getBlockTypeDiskConfig(client, diskName, paths, diskDriver)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -309,12 +361,12 @@ func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func getBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskPath string, diskDriver longhorn.DiskDriver) (config *util.DiskConfig, err error) {
+func getBlockTypeDiskConfig(client *DiskServiceClient, diskName string, diskPath []string, diskDriver longhorn.DiskDriver) (config *util.DiskConfig, err error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(diskDriver))
+	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), diskName, string(diskDriver), diskPath)
 	if err != nil {
 		if grpcstatus.Code(err) == grpccodes.NotFound {
 			return nil, errors.Wrapf(err, "cannot find disk info")
@@ -339,11 +391,17 @@ func getBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskPath string
 
 // GenerateDiskConfig generates a disk config for the given directory
 func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+	paths := util.SplitPaths(diskPath)
+
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
+		if len(paths) != 1 {
+			return nil, fmt.Errorf("filesystem type disk should have only one path, got %v", paths)
+		}
+
 		return generateFilesystemTypeDiskConfig(diskName, diskPath, ds)
 	case longhorn.DiskTypeBlock:
-		return generateBlockTypeDiskConfig(client, diskName, diskUUID, diskPath, diskDriver, defaultBlockSize)
+		return generateBlockTypeDiskConfig(client, diskName, diskUUID, paths, diskDriver, defaultBlockSize)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -403,12 +461,12 @@ func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.D
 	return cfg, nil
 }
 
-func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*util.DiskConfig, error) {
+func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID string, diskPath []string, diskDriver string, blockSize int64) (*util.DiskConfig, error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.c.DiskCreate(string(longhorn.DiskTypeBlock), diskName, diskUUID, diskPath, diskDriver, blockSize)
+	info, err := client.c.DiskCreate(string(longhorn.DiskTypeBlock), diskName, diskUUID, diskDriver, diskPath, blockSize)
 	if err != nil {
 		return nil, err
 	}
@@ -429,12 +487,12 @@ func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, 
 }
 
 // DeleteDisk deletes the disk with the given name, uuid, path and driver
-func DeleteDisk(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *engineapi.DiskService) error {
+func DeleteDisk(diskType longhorn.DiskType, diskName, diskUUID string, diskPath []string, diskDriver string, client *engineapi.DiskService) error {
 	if client == nil {
 		return errors.New("disk service client is nil")
 	}
 
-	return client.DiskDelete(string(diskType), diskName, diskUUID, diskPath, diskDriver)
+	return client.DiskDelete(string(diskType), diskName, diskUUID, diskDriver, diskPath)
 }
 
 // getSpdkReplicaInstanceNames returns the replica lvol names of the given disk
