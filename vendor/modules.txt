@@ -299,7 +299,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20251208054837-305e6396f6a7
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20251211073105-08609c16d3d1
 ## explicit; go 1.25.3
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
