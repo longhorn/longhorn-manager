@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -958,6 +959,35 @@ func ValidateCNINetwork(value string) (err error) {
 	if len(parts) != 2 {
 		return errors.Errorf("cni network must be in <NAMESPACE>/<NETWORK-ATTACHMENT-DEFINITION> format: %v", value)
 	}
+	return nil
+}
+
+func ValidateManagerURL(value string) error {
+	if value == "" {
+		return nil // Empty is valid (disabled)
+	}
+
+	u, err := url.Parse(value)
+	if err != nil {
+		return errors.Wrapf(err, "invalid URL format")
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errors.Errorf("scheme must be http or https, got: %s", u.Scheme)
+	}
+
+	if u.Host == "" {
+		return errors.New("host is required")
+	}
+
+	if u.Path != "" && u.Path != "/" {
+		return errors.New("URL must not contain path")
+	}
+
+	if u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("URL must not contain query or fragment")
+	}
+
 	return nil
 }
 
