@@ -33,6 +33,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -54,6 +55,9 @@ type ReplicaController struct {
 
 	instanceHandler *InstanceHandler
 
+	engines          engineapi.EngineClientCollection
+	proxyConnCounter util.Counter
+
 	rebuildingLock          *sync.Mutex
 	inProgressRebuildingMap map[string]struct{}
 }
@@ -63,7 +67,9 @@ func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID string) (*ReplicaController, error) {
+	engines engineapi.EngineClientCollection,
+	namespace string, controllerID string,
+	proxyConnCounter util.Counter) (*ReplicaController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -80,6 +86,9 @@ func NewReplicaController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-replica-controller"}),
 
 		ds: ds,
+
+		engines:          engines,
+		proxyConnCounter: proxyConnCounter,
 
 		rebuildingLock:          &sync.Mutex{},
 		inProgressRebuildingMap: map[string]struct{}{},
@@ -605,6 +614,15 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 
 	log.WithField("cleanupRequired", cleanupRequired).Infof("Deleting replica instance on disk %v", r.Spec.DiskPath)
 
+	if types.IsDataEngineV1(r.Spec.DataEngine) {
+		// remove replica from controller in v1
+		// for v2, ReplicaRemove() equals to InstanceDelete()
+		// ReplicaRemove() will also cancel the related snapshot hash
+		if err := rc.ReplicaRemove(r); err != nil {
+			rc.logger.WithError(err).Warn("Failed to remove the replica")
+		}
+	}
+
 	err = c.InstanceDelete(r.Spec.DataEngine, r.Name, "", string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
@@ -623,6 +641,36 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 	}
 
 	return nil
+}
+
+func (rc *ReplicaController) ReplicaRemove(replica *longhorn.Replica) error {
+	engine, err := rc.ds.GetEngine(replica.Spec.EngineName)
+	if err != nil {
+		return err
+	}
+
+	addr, ok := engine.Status.CurrentReplicaAddressMap[replica.Name]
+	if !ok {
+		rc.logger.Warnf("replica %s is not found in engine %s replica address map", replica.Name, engine.Name)
+		return nil
+	}
+
+	engineClientProxy, err := rc.getEngineClientProxy(engine, engine.Status.CurrentImage)
+	if err != nil {
+		return err
+	}
+	defer engineClientProxy.Close()
+
+	return engineClientProxy.ReplicaRemove(engine, engineapi.GetBackendReplicaURL(addr), replica.Name)
+}
+
+func (rc *ReplicaController) getEngineClientProxy(e *longhorn.Engine, image string) (engineapi.EngineClientProxy, error) {
+	engineCliClient, err := GetBinaryClientForEngine(e, rc.engines, image)
+	if err != nil {
+		return nil, err
+	}
+
+	return engineapi.GetCompatibleClient(e, engineCliClient, rc.ds, rc.logger, rc.proxyConnCounter)
 }
 
 func canDeleteInstance(r *longhorn.Replica) bool {
