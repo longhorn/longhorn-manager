@@ -369,6 +369,24 @@ func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
 	return isMnt, err
 }
 
+// recreateBindMountPoint recreate the mount point for bind mount.
+// In case the path does not exist, it will create a regular file for bind mount.
+// In case where the mount point exists, the mount point will be cleared and replaced by a new regular file.
+func recreateBindMountPoint(path string, mounter mount.Interface) error {
+	logrus.Infof("Recreating ensure bind mount point %v", path)
+
+	// blindly clean up the target mount point for recreation
+	if cleanupErr := unmountAndCleanupMountPoint(path, mounter); cleanupErr != nil {
+		return errors.Wrapf(cleanupErr, "failed to remove corrupt bind mount point at %s", path)
+	}
+
+	// create regular file for bind mount
+	if makeFileErr := makeFile(path); makeFileErr != nil {
+		return errors.Wrapf(makeFileErr, "failed to create regular file for bind mount at %s", path)
+	}
+	return nil
+}
+
 // ensureDirectory checks if a folder exists at the specified path.
 // If not, it creates the folder and returns true, otherwise returns false.
 // If the path exists but is not a folder, it returns an error.
@@ -392,6 +410,15 @@ func ensureDirectory(path string) (bool, error) {
 	return false, fmt.Errorf("path %v exists but is not a folder", path)
 }
 
+func lazyUnmount(path string, exec utilexec.Interface) (err error) {
+	lazyUnmountCmd := exec.Command("umount", "-l", path)
+	output, err := lazyUnmountCmd.CombinedOutput()
+	if isNotMountedError(err) {
+		return nil
+	}
+	return errors.Wrapf(err, "failed to lazy unmount a mount point %v, output: %s", path, output)
+}
+
 func unmount(path string, mounter mount.Interface) (err error) {
 	forceUnmounter, ok := mounter.(mount.MounterForceUnmounter)
 	if ok {
@@ -401,20 +428,14 @@ func unmount(path string, mounter mount.Interface) (err error) {
 		logrus.Infof("Trying to unmount potential mount point %v", path)
 		err = mounter.Unmount(path)
 	}
-	if err == nil {
+	if err == nil || isNotMountedError(err) {
 		return nil
 	}
-
-	if strings.Contains(err.Error(), "not mounted") ||
-		strings.Contains(err.Error(), "no mount point specified") {
-		logrus.Infof("No need for unmount not a mount point %v", path)
-		return nil
-	}
-
-	return err
+	logrus.WithError(err).Warnf("Failed to unmount %v, attempting lazy unmount to release mount point", path)
+	return lazyUnmount(path, utilexec.New())
 }
 
-// unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
+// unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount point is removed
 func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
 	logrus.Infof("Trying to umount mount point %v", path)
@@ -423,8 +444,20 @@ func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 		return err
 	}
 
+	// ensure the file is removed even when it is a broken symbolic link
 	logrus.Infof("Trying to clean up mount point %v", path)
-	return mount.CleanupMountPoint(path, mounter, true)
+	info, statErr := os.Lstat(path)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		return errors.Wrapf(statErr, "failed to stat mount point %v", path)
+	}
+	logrus.WithField("fileMode", info.Mode().String()).Debugf("Mount point %v exists, removing the file", path)
+	if rmErr := os.Remove(path); rmErr != nil {
+		return errors.Wrapf(rmErr, "failed to remove mount point %v", path)
+	}
+	return nil
 }
 
 // isBlockDevice return true if volumePath file is a block device, false otherwise.
@@ -470,7 +503,7 @@ func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, er
 	return volStats, nil
 }
 
-// makeFile creates an empty file.
+// makeFile creates an empty regular file.
 // If pathname already exists, whether a file or directory, no error is returned.
 func makeFile(pathname string) error {
 	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
@@ -533,4 +566,12 @@ func parseNodeID(topology *csi.Topology) (string, error) {
 		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
 	}
 	return nodeId, nil
+}
+
+func isNotMountedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "not mounted") ||
+		strings.Contains(err.Error(), "no mount point specified")
 }
