@@ -185,7 +185,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20251207100523-1140ccc38333
+# github.com/longhorn/backupstore v0.0.0-20251213143132-51fdc08d1cd9
 ## explicit; go 1.24.0
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -194,7 +194,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20251130104056-3332521977c9
+# github.com/longhorn/go-common-libs v0.0.0-20251213114131-1a1ec1f0270e
 ## explicit; go 1.24.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -209,7 +209,7 @@ github.com/longhorn/go-common-libs/sync
 github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20251130062153-44edbb497d99
+# github.com/longhorn/go-iscsi-helper v0.0.0-20251213143157-4a906cc17806
 ## explicit; go 1.24.0
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/iscsidev
@@ -237,7 +237,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20251130061042-fc15b4776c60
+# github.com/longhorn/types v0.0.0-20251207085945-9c40bd62daff
 ## explicit; go 1.24.0
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -439,10 +439,10 @@ go.yaml.in/yaml/v2
 ## explicit; go 1.24.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
-# golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
+# golang.org/x/exp v0.0.0-20251209150349-8475f28825e9
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints
-# golang.org/x/mod v0.30.0
+# golang.org/x/mod v0.31.0
 ## explicit; go 1.24.0
 golang.org/x/mod/semver
 # golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82
@@ -461,7 +461,7 @@ golang.org/x/net/trace
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.18.0
+# golang.org/x/sync v0.19.0
 ## explicit; go 1.24.0
 golang.org/x/sync/errgroup
 # golang.org/x/sys v0.37.0
@@ -555,7 +555,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.10
+# google.golang.org/protobuf v1.36.11
 ## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
