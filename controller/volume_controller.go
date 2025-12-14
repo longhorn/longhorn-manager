@@ -665,6 +665,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 		return nil
 	}
+
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		// If a replica failed at attaching stage before engine become running,
 		// there is no record in e.Status.ReplicaModeMap
@@ -881,6 +882,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			)
 		}
 	}
+
 	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy &&
 		v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
 		v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
