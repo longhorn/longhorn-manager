@@ -511,27 +511,13 @@ func (sc *SettingController) updateCSISidecarComponentTaintToleration() error {
 		if err != nil {
 			return err
 		}
-		switch objType := obj.(type) {
-		case *appsv1.DaemonSet:
-			ds := obj.(*appsv1.DaemonSet)
-			sc.logger.Infof("Deleting daemonset %v to update tolerations from %v to %v", ds.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
-			if err := sc.updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
-				return err
-			}
-		case *appsv1.Deployment:
-			dp := obj.(*appsv1.Deployment)
+		if dp, ok := obj.(*appsv1.Deployment); ok {
 			sc.logger.Infof("Updating deployment %v to update tolerations from %v to %v", dp.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
 			if err := sc.updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
 				return err
 			}
-		case *corev1.Pod:
-			pod := obj.(*corev1.Pod)
-			sc.logger.Infof("Deleting pod %v to update tolerations from %v to %v", pod.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
-			if err := sc.ds.DeletePod(pod.Name); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameCSISidecarComponentTaintToleration)
+		} else {
+			return fmt.Errorf("object type is not Deployment when updating %v setting", types.SettingNameCSISidecarComponentTaintToleration)
 		}
 	}
 
@@ -566,7 +552,7 @@ func (sc *SettingController) collectRuntimeObjects() (returnCollectRuntimeObject
 
 	for _, dp := range dpList {
 		// Exclude Kubernetes CSI deployments
-		if _, ok := types.KubernetesCSISidecarList[dp.Labels["app"]]; ok {
+		if types.IsKubernetesCSISidecar(dp.Labels["app"]) {
 			continue
 		}
 		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
@@ -589,7 +575,7 @@ func (sc *SettingController) collectRuntimeObjectsKubernetesCSI() (returnCollect
 
 	for _, dp := range dpList {
 		// Include only Kubernetes CSI deployments
-		if _, ok := types.KubernetesCSISidecarList[dp.Labels["app"]]; ok {
+		if types.IsKubernetesCSISidecar(dp.Labels["app"]) {
 			returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
 		}
 	}
@@ -1165,31 +1151,14 @@ func (sc *SettingController) updateCSISidecarComponentsNodeSelector() error {
 	}
 
 	for _, obj := range notUpdatedNodeSelectorObjs {
-		switch objType := obj.(type) {
-		case *appsv1.DaemonSet:
-			ds := obj.(*appsv1.DaemonSet)
-			sc.logger.Infof("Updating the node selector from %v to %v for %v", ds.Spec.Template.Spec.NodeSelector, newNodeSelector, ds.Name)
-			ds.Spec.Template.Spec.NodeSelector = newNodeSelector
-			if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
-				return err
-			}
-		case *appsv1.Deployment:
-			dp := obj.(*appsv1.Deployment)
+		if dp, ok := obj.(*appsv1.Deployment); ok {
 			sc.logger.Infof("Updating the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
 			dp.Spec.Template.Spec.NodeSelector = newNodeSelector
 			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
 				return err
 			}
-		case *corev1.Pod:
-			pod := obj.(*corev1.Pod)
-			if pod.DeletionTimestamp == nil {
-				sc.logger.Infof("Deleting pod %v to update the node selector from %v to %v", pod.Name, pod.Spec.NodeSelector, newNodeSelector)
-				if err := sc.ds.DeletePod(pod.Name); err != nil {
-					return err
-				}
-			}
-		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
+		} else {
+			return fmt.Errorf("object type is not Deployment when updating %v setting", types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
 		}
 	}
 

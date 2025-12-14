@@ -245,11 +245,16 @@ const (
 	CSISidecarPortNameSnapshotter = "csi-snapshotter"
 )
 
-var KubernetesCSISidecarList = map[string]struct{}{
-	CSISidecarPortNameAttacher:    {},
-	CSISidecarPortNameProvisioner: {},
-	CSISidecarPortNameResizer:     {},
-	CSISidecarPortNameSnapshotter: {},
+func IsKubernetesCSISidecar(appName string) bool {
+	switch appName {
+	case CSISidecarPortNameAttacher,
+		CSISidecarPortNameProvisioner,
+		CSISidecarPortNameResizer,
+		CSISidecarPortNameSnapshotter:
+		return true
+	default:
+		return false
+	}
 }
 
 const (

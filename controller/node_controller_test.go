@@ -2333,7 +2333,7 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
-	nc, err := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	nc, err := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestInstanceManagerImage)
 	if err != nil {
 		return nil, err
 	}

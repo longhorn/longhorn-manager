@@ -2591,7 +2591,39 @@ func (c *VolumeController) checkDiskPressuredReplicaIsFirstCandidate(replica *lo
 		return errors.Errorf("replica %v is not scheduled on any disk", replica.Name)
 	}
 
-	scheduledReplicasSorted, err := util.SortKeys(replicaScheduledDiskStatus.ScheduledReplica)
+	log := getLoggerForReplica(c.logger, replica)
+
+	logSkip := func(replicaName string, err error) {
+		log.WithError(err).Tracef(
+			"Skipping replica %q during disk-pressure first-candidate check", replicaName,
+		)
+	}
+
+	// isVolumeHealthy checks if the volume associated with the replica is healthy.
+	isVolumeHealthy := func(replicaName string) bool {
+		scheduledReplica, err := c.ds.GetReplicaRO(replicaName)
+		if err != nil {
+			logSkip(replicaName, err)
+			return false
+		}
+
+		replicaVolume, err := c.ds.GetVolumeRO(scheduledReplica.Spec.VolumeName)
+		if err != nil {
+			logSkip(replicaName, err)
+			return false
+		}
+
+		return replicaVolume.Status.Robustness == longhorn.VolumeRobustnessHealthy
+	}
+
+	healthyVolumeReplicas := make(map[string]struct{})
+	for replicaName := range replicaScheduledDiskStatus.ScheduledReplica {
+		if isVolumeHealthy(replicaName) {
+			healthyVolumeReplicas[replicaName] = struct{}{}
+		}
+	}
+
+	scheduledReplicasSorted, err := util.SortKeys(healthyVolumeReplicas)
 	if err != nil {
 		return err
 	}
@@ -2600,7 +2632,6 @@ func (c *VolumeController) checkDiskPressuredReplicaIsFirstCandidate(replica *lo
 		return errors.Errorf("replica %v is not the first candidate for disk pressure rescheduling: %v", replica.Name, scheduledReplicasSorted)
 	}
 
-	log := getLoggerForReplica(c.logger, replica)
 	log.Tracef("Replica %v is the first candidate for disk pressure rescheduling: %v", replica.Name, scheduledReplicasSorted)
 
 	return nil
@@ -4133,7 +4164,16 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		if pathToNewRs[path] != nil {
 			continue
 		}
+		if r.Spec.FailedAt != "" {
+			log.Infof("skip duplicating failed replica %v for migration", r.Name)
+			continue
+		}
 		clone := c.duplicateReplica(r, v)
+
+		// the chosen old replicas are confirmed to be healthy, hence reset the failure timestamps
+		clone.Spec.FailedAt = ""
+		clone.Spec.LastFailedAt = ""
+
 		clone.Spec.DesireState = longhorn.InstanceStateRunning
 		clone.Spec.Active = false
 		fixupFunc(clone, obj)
@@ -4148,11 +4188,11 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	return nil
 }
 
-// deleteInvalidMigrationReplicas selects one replica for each path and delete the rests.
+// deleteExtraInvalidMigrationReplicas selects one replica for each path and delete the rests.
 //
 //	Notice that the selected replica may not be valid.
 //	Returning invalid replicas (with deletion timestamp set) for some paths helps inform the caller that it should wait for the existing invalid replicas completely disappearing before creating a new one.
-func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs map[string]*longhorn.Replica, pathToNewRLists map[string][]*longhorn.Replica, v *longhorn.Volume) (map[string]*longhorn.Replica, error) {
+func (c *VolumeController) deleteExtraInvalidMigrationReplicas(rs, pathToOldRs map[string]*longhorn.Replica, pathToNewRLists map[string][]*longhorn.Replica, v *longhorn.Volume) (map[string]*longhorn.Replica, error) {
 	migrationReplicas := make(map[string]*longhorn.Replica)
 	for path, rList := range pathToNewRLists {
 		sort.Slice(rList, func(i, j int) bool {
@@ -4212,13 +4252,13 @@ func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs map[st
 // isReplicaValidForMigration checks whether a new replica is considered valid if:
 //  1. it is not being deleted;
 //  2. its desired state is `running`;
-//  3. it has never failed to start. During migration, we always delete failed replicas and create new ones, rather than rebuilding them.
+//  3. it has not failed to start. During migration, we always delete failed replicas and create new ones, rather than rebuilding them.
 func isReplicaValidForMigration(oldR, newR *longhorn.Replica) bool {
 	matchTheOldReplica := oldR != nil && newR.Spec.DesireState == oldR.Spec.DesireState
 	return matchTheOldReplica &&
 		newR.DeletionTimestamp == nil && newR.Spec.DesireState == longhorn.InstanceStateRunning &&
 		newR.Status.CurrentState != longhorn.InstanceStateError && newR.Status.CurrentState != longhorn.InstanceStateUnknown && newR.Status.CurrentState != longhorn.InstanceStateStopping &&
-		newR.Spec.LastFailedAt == ""
+		newR.Spec.FailedAt == ""
 }
 
 func (c *VolumeController) migrationReplicaCleanup(r *longhorn.Replica, rs map[string]*longhorn.Replica, dataEngineType longhorn.DataEngineType) error {
@@ -4496,7 +4536,7 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 		}
 	}
 
-	migrationReplicas, err := c.deleteInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicaLists, v)
+	migrationReplicas, err := c.deleteExtraInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicaLists, v)
 	if err != nil {
 		return false, false, err
 	}
@@ -5074,6 +5114,8 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 	}()
 
 	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal && volume.Spec.NodeID != "" {
+		// PV nodeAffinity may already be set via CSI accessibleTopology and is immutable.
+		// Ref: https://github.com/longhorn/longhorn/issues/12261
 		pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
 			Required: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{
 				util.GetNodeSelectorTermMatchExpressionNodeName(volume.Spec.NodeID),

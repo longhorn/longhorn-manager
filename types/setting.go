@@ -85,8 +85,8 @@ const (
 	SettingNameDefaultDataLocality                                      = SettingName("default-data-locality")
 	SettingNameDefaultLonghornStaticStorageClass                        = SettingName("default-longhorn-static-storage-class")
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
-	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
 	SettingNameCSISidecarComponentTaintToleration                       = SettingName("csi-sidecar-taint-toleration")
+	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
 	SettingNameSystemManagedCSISidecarComponentsNodeSelector            = SettingName("system-managed-csi-sidecar-components-node-selector")
 	SettingNameSystemManagedCSIComponentsResourceLimits                 = SettingName("system-managed-csi-components-resource-limits")
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
@@ -204,8 +204,8 @@ var (
 		SettingNameDefaultDataLocality,
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameTaintToleration,
-		SettingNameSystemManagedComponentsNodeSelector,
 		SettingNameCSISidecarComponentTaintToleration,
+		SettingNameSystemManagedComponentsNodeSelector,
 		SettingNameSystemManagedCSISidecarComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits,
 		SettingNameCRDAPIVersion,
@@ -358,8 +358,8 @@ var (
 		SettingNameDefaultDataLocality:                                      SettingDefinitionDefaultDataLocality,
 		SettingNameDefaultLonghornStaticStorageClass:                        SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
-		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
 		SettingNameCSISidecarComponentTaintToleration:                       SettingDefinitionCSISidecarComponentTaintToleration,
+		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
 		SettingNameSystemManagedCSISidecarComponentsNodeSelector:            SettingDefinitionSystemManagedCSISidecarComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits:                 SettingDefinitionSystemManagedCSIComponentsResourceLimits,
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
@@ -808,25 +808,6 @@ var (
 		DataEngineSpecific: false,
 	}
 
-	SettingDefinitionSystemManagedComponentsNodeSelector = SettingDefinition{
-		DisplayName: "System Managed Components Node Selector",
-		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components except for . " +
-			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
-			"You must follow the below order when set the node selector:\n\n" +
-			"1. Set node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
-			"2. Set node selector for system managed Kubernetes CSI components in system-managed-csi-sidecar-components-node-selector. \n\n" +
-			"3. Set node selector for other system managed components in here.\n\n" +
-			"All Longhorn volumes should be detached before modifying node selector settings. " +
-			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
-			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
-			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
-			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
-		Category:           SettingCategoryDangerZone,
-		Type:               SettingTypeString,
-		Required:           false,
-		ReadOnly:           false,
-		DataEngineSpecific: false,
-	}
 	SettingDefinitionCSISidecarComponentTaintToleration = SettingDefinition{
 		DisplayName: "Kubernetes Taint Toleration for Kubernetes CSI sidecar components",
 		Description: "If you want to dedicate nodes to just store Longhorn replicas and reject other general workloads, you can set tolerations for **all** Longhorn components and add taints to the nodes dedicated for storage. " +
@@ -846,6 +827,25 @@ var (
 		DataEngineSpecific: false,
 	}
 
+	SettingDefinitionSystemManagedComponentsNodeSelector = SettingDefinition{
+		DisplayName: "System Managed Components Node Selector",
+		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components except for . " +
+			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
+			"You must follow the below order when set the node selector:\n\n" +
+			"1. Set node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
+			"2. Set node selector for system managed Kubernetes CSI components in system-managed-csi-sidecar-components-node-selector. \n\n" +
+			"3. Set node selector for other system managed components in here.\n\n" +
+			"All Longhorn volumes should be detached before modifying node selector settings. " +
+			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
+			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
+			"* `label-key1=label-value1; label-key2=label-value2` \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+
 	SettingDefinitionSystemManagedCSISidecarComponentsNodeSelector = SettingDefinition{
 		DisplayName: "System Managed Components Node Selector for Kubernetes CSI sidecar components",
 		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components. " +
@@ -857,8 +857,7 @@ var (
 			"All Longhorn volumes should be detached before modifying node selector settings. " +
 			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
 			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
-			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
-			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
+			"* `label-key1=label-value1; label-key2=label-value2` \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -868,10 +867,16 @@ var (
 
 	SettingDefinitionSystemManagedCSIComponentsResourceLimits = SettingDefinition{
 		DisplayName: "System Managed CSI Components Resource Limits",
-		Description: "Resource limits for system managed CSI components. " +
-			"This setting allows you to configure CPU and memory requests/limits for CSI attacher, provisioner, resizer, snapshotter, and plugin components. " +
-			"Changing resource limits will cause CSI components to restart, which may temporarily affect volume provisioning and attach/detach operations until the components are ready. " +
-			"The value should be a JSON object with component names as keys and ResourceRequirements as values. For example: \n\n" +
+		Description: "This setting allows you to configure CPU and memory requests/limits for system-managed CSI components. " +
+			"Supported components include: csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter, " +
+			"longhorn-csi-plugin, node-driver-registrar, and longhorn-liveness-probe. " +
+			"The value must be a JSON object with component names as keys and Kubernetes ResourceRequirements " +
+			"(requests and limits) as values. Only the components defined in the JSON object will have their " +
+			"resource requirements overridden; all others will continue using Longhorn's defaults. " +
+			"Updating resource limits will restart the affected CSI components. During this period, new volume " +
+			"provisioning, expansion, snapshot, or attach/detach operations may be temporarily delayed. Existing " +
+			"mounted volumes remain usable.\n\n" +
+			"Example:\n\n" +
 			"```json\n" +
 			"{\n" +
 			"  \"csi-attacher\": {\n" +
