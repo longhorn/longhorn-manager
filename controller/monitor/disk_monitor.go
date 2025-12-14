@@ -236,6 +236,13 @@ func (m *DiskMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineTyp
 func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
+	monitorDiskHealth := true
+	if enabled, err := m.ds.GetSettingAsBool(types.SettingNameNodeDiskHealthMonitoring); err != nil {
+		m.logger.WithError(err).Warn("Failed to get node disk health monitoring setting, defaulting to enabled")
+	} else {
+		monitorDiskHealth = enabled
+	}
+
 	diskServiceClients := m.newDiskServiceClients()
 	defer func() {
 		m.closeDiskServiceClients(diskServiceClients)
@@ -355,12 +362,14 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			}
 		}
 
-		healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
-		if err != nil {
-			m.logger.WithError(err).Warnf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
-		} else if healthData != nil {
-			diskInfoMap[diskName].HealthData = healthData
-			diskInfoMap[diskName].HealthDataLastCollectedAt = collectedAt
+		if monitorDiskHealth {
+			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
+			if err != nil {
+				m.logger.WithError(err).Warnf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
+			} else if healthData != nil {
+				diskInfoMap[diskName].HealthData = healthData
+				diskInfoMap[diskName].HealthDataLastCollectedAt = collectedAt
+			}
 		}
 	}
 

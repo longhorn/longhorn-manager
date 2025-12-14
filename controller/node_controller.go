@@ -658,6 +658,13 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo map[string]*monitor.CollectedDiskInfo) error {
 	nc.alignDiskSpecAndStatus(node)
 
+	monitorDiskHealth := true
+	if enabled, err := nc.ds.GetSettingAsBool(types.SettingNameNodeDiskHealthMonitoring); err != nil {
+		nc.logger.WithError(err).Warn("Failed to get node disk health monitoring setting, defaulting to enabled")
+	} else {
+		monitorDiskHealth = enabled
+	}
+
 	notReadyDiskInfoMap, readyDiskInfoMap := nc.findNotReadyAndReadyDiskMaps(node, collectedDataInfo)
 
 	for _, diskInfoMap := range notReadyDiskInfoMap {
@@ -665,8 +672,16 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 	}
 
 	for _, diskInfoMap := range readyDiskInfoMap {
-		nc.updateReadyDiskStatusReadyCondition(node, diskInfoMap)
+		nc.updateReadyDiskStatusReadyCondition(node, diskInfoMap, monitorDiskHealth)
 		nc.updateDiskStatusFileSystemType(node, diskInfoMap)
+	}
+
+	if !monitorDiskHealth {
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskStatus.HealthData = nil
+			diskStatus.HealthDataLastCollectedAt = metav1.Time{}
+			node.Status.DiskStatus[diskName] = diskStatus
+		}
 	}
 
 	return nc.updateDiskStatusSchedulableCondition(node)
@@ -802,7 +817,7 @@ func (nc *NodeController) updateNotReadyDiskStatusReadyCondition(node *longhorn.
 	}
 }
 
-func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Node, diskInfoMap map[string]*monitor.CollectedDiskInfo) {
+func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Node, diskInfoMap map[string]*monitor.CollectedDiskInfo, monitorDiskHealth bool) {
 	diskStatusMap := node.Status.DiskStatus
 
 	for diskName, info := range diskInfoMap {
@@ -823,6 +838,11 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			if len(info.HealthData) > 0 {
 				diskStatus.HealthData = info.HealthData
 				diskStatus.HealthDataLastCollectedAt = metav1.NewTime(info.HealthDataLastCollectedAt)
+			}
+
+			if !monitorDiskHealth {
+				diskStatus.HealthData = nil
+				diskStatus.HealthDataLastCollectedAt = metav1.Time{}
 			}
 
 			diskStatusMap[diskName].Conditions = types.SetConditionAndRecord(diskStatusMap[diskName].Conditions,
