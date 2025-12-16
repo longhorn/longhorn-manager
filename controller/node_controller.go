@@ -1097,8 +1097,8 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				cleanupRequired := true
 
-				if im.Spec.Image == defaultInstanceManagerImage && im.Spec.DataEngine == dataEngine {
-					// Create default instance manager if needed.
+				if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
+					// Keep default instance manager or instance manager matching argument image (during rolling update)
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
 
