@@ -93,6 +93,7 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) (*Nod
 				csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 				csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 				csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+				csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 			}),
 		log:         logrus.StandardLogger().WithField("component", "csi-node-server"),
 		lhNamespace: lhNamespace,
