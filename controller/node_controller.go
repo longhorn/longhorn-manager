@@ -835,12 +835,10 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			diskStatus.StorageMaximum = diskInfoMap[diskName].DiskStat.StorageMaximum
 			diskStatus.InstanceManagerName = diskInfoMap[diskName].InstanceManagerName
 
-			if len(info.HealthData) > 0 {
+			if monitorDiskHealth {
 				diskStatus.HealthData = info.HealthData
 				diskStatus.HealthDataLastCollectedAt = metav1.NewTime(info.HealthDataLastCollectedAt)
-			}
-
-			if !monitorDiskHealth {
+			} else {
 				diskStatus.HealthData = nil
 				diskStatus.HealthDataLastCollectedAt = metav1.Time{}
 			}
