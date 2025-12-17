@@ -63,11 +63,14 @@ func injectForwardedHeaders(r *http.Request, managerURL string) error {
 	// Set host (without port)
 	r.Header.Set("X-Forwarded-Host", host)
 
-	// Set port if non-default
-	if port != "" && port != "80" && port != "443" {
-		r.Header.Set("X-Forwarded-Port", port)
+	// Only omit port if it matches the default for the scheme
+	if port != "" {
+		if (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
+			r.Header.Del("X-Forwarded-Port")
+		} else {
+			r.Header.Set("X-Forwarded-Port", port)
+		}
 	} else {
-		// Remove port header if default port or not specified
 		r.Header.Del("X-Forwarded-Port")
 	}
 
