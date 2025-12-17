@@ -365,7 +365,7 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		if monitorDiskHealth {
 			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
 			if err != nil {
-				m.logger.WithError(err).Warnf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
+				m.logger.WithError(err).Debugf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
 			} else if healthData != nil {
 				diskInfoMap[diskName].HealthData = healthData
 			}
