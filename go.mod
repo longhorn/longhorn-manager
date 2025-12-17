@@ -20,6 +20,12 @@ toolchain go1.25.5
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
+	github.com/longhorn/longhorn-engine => github.com/shuo-wu/longhorn-engine v0.4.1-0.20251219234052-f16b3b5f06f0
+	github.com/longhorn/longhorn-instance-manager => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20251219235028-45a47ec68182
+	github.com/longhorn/types => github.com/shuo-wu/types v0.0.0-20251219233510-8f4cdd1482eb
+)
+
+replace (
 	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20251125001235-162c548010d6
 	k8s.io/api => k8s.io/api v0.34.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.3
@@ -75,7 +81,7 @@ require (
 	github.com/longhorn/longhorn-engine v1.11.0-dev-20251130.0.20251207134944-819147eb34d2
 	github.com/longhorn/longhorn-instance-manager v1.11.0-dev-20251130.0.20251209091223-c9c9640f1991
 	github.com/longhorn/longhorn-share-manager v1.9.2
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20251211073105-08609c16d3d1
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20251217153732-58e01286ab16
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.7.3
