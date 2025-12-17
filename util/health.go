@@ -6,6 +6,7 @@ import (
 	"github.com/henrygd/beszel/agent"
 	"github.com/sirupsen/logrus"
 
+	commonns "github.com/longhorn/go-common-libs/ns"
 	commonsys "github.com/longhorn/go-common-libs/sys"
 	commonutils "github.com/longhorn/go-common-libs/utils"
 
@@ -16,7 +17,7 @@ import (
 // This is used for V1 filesystem-type disks where the disk path is a mount point.
 // Returns nil if health data cannot be collected (e.g., device doesn't support health monitoring)
 func CollectHealthDataFromMountPath(mountPath, diskName string, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
-	physicalDevice, err := commonsys.ResolveMountPathToPhysicalDevice(mountPath)
+	physicalDevice, err := resolveMountPathToPhysicalDeviceWithDeps(mountPath)
 	if err != nil {
 		return nil, err
 	}
@@ -125,4 +126,16 @@ func collectSmartDataForDevice(devicePath, diskName string, logger logrus.FieldL
 	}
 
 	return result, nil
+}
+
+// resolveMountPathToPhysicalDeviceWithDeps returns the top-level physical device
+// (e.g., /dev/nvme0 for NVMe, /dev/sda for SATA) corresponding to the given
+// mount path (e.g., /var/lib/longhorn).
+func resolveMountPathToPhysicalDeviceWithDeps(mountPath string) (string, error) {
+	blockDevice, err := commonsys.FindBlockDeviceForMount(mountPath)
+	if err != nil {
+		return "", err
+	}
+
+	return commonns.ResolveBlockDeviceToPhysicalDevice(blockDevice)
 }
