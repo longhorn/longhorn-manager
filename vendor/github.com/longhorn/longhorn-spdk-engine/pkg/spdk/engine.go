@@ -607,7 +607,21 @@ func (e *Engine) handleNvmeTcpFrontend(spdkClient *spdkclient.Client, superiorPo
 		return nil
 	}
 
-	dmDeviceIsBusy, err = i.StartNvmeTCPInitiator(targetIP, portStr, true)
+	// In the expansion flow we MUST NOT disconnect the NVMe target.
+	//
+	// Technical Reason:
+	// 1. If we disconnect while the dm-linear device is still active (suspended but open),
+	//    the Linux kernel cannot fully release the /dev/nvmeXnX resource, leading to
+	//    a "zombie" device node.
+	// 2. When we reconnect later, the kernel will detect a naming conflict and assign
+	//    a new, non-healthy device name (e.g., nvme3n2) instead of reusing nvme1n1.
+	// 3. By skipping disconnect, the kernel keeps the existing controller session in
+	//    a "reconnecting" state. Once SPDK re-exposes the resized RAID, the kernel
+	//    automatically recovers the original path (nvme1n1) and perceives the new size,
+	//    allowing a successful 'dmsetup reload' without breaking the mount point.
+	disconnectTarget := !e.isExpanding
+
+	dmDeviceIsBusy, err = i.StartNvmeTCPInitiator(targetIP, portStr, true, disconnectTarget)
 	if err != nil {
 		return errors.Wrapf(err, "failed to start initiator for engine %v", e.Name)
 	}
@@ -1423,6 +1437,12 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64, superiorPort
 	if err := e.reconnectFrontend(spdkClient, bdevRaidUUID, superiorPortAllocator); err != nil {
 		return errors.Wrap(err, "failed to reconnect frontend")
 	}
+
+	// It waits for the kernel to recognize the new physical NVMe capacity
+	// and then reloads the dm table to propagate the size change up to the volume.
+	if err := e.initiator.SyncDmDeviceSize(size); err != nil {
+		e.log.WithError(err).Warnf("failed to reload dm device during engine %s expansion", e.Name)
+	}
 	e.log.Info("Expanding engine completed")
 
 	expanded = true // which could be true even in partial success
@@ -1553,11 +1573,6 @@ func (e *Engine) prepareRaidForExpansion(spdkClient *spdkclient.Client) (suspend
 	}
 
 	if e.Frontend != types.FrontendEmpty {
-		currentTargetAddress := net.JoinHostPort(e.initiator.NVMeTCPInfo.TransportAddress, e.initiator.NVMeTCPInfo.TransportServiceID)
-		if err := e.disconnectTarget(currentTargetAddress); err != nil {
-			return suspendFrontend, "", errors.Wrapf(err, "failed to disconnect target %s for engine %s", currentTargetAddress, e.Name)
-		}
-
 		if err := spdkClient.StopExposeBdev(e.NvmeTcpFrontend.Nqn); err != nil {
 			return suspendFrontend, bdevUUID, errors.Wrapf(err, "failed to stop exposing bdev for engine %s", e.Name)
 		}

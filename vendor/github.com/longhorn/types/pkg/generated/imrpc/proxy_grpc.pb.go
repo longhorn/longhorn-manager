@@ -20,44 +20,46 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ProxyEngineService_ServerVersionGet_FullMethodName                   = "/imrpc.ProxyEngineService/ServerVersionGet"
-	ProxyEngineService_VolumeGet_FullMethodName                          = "/imrpc.ProxyEngineService/VolumeGet"
-	ProxyEngineService_VolumeExpand_FullMethodName                       = "/imrpc.ProxyEngineService/VolumeExpand"
-	ProxyEngineService_VolumeFrontendStart_FullMethodName                = "/imrpc.ProxyEngineService/VolumeFrontendStart"
-	ProxyEngineService_VolumeFrontendShutdown_FullMethodName             = "/imrpc.ProxyEngineService/VolumeFrontendShutdown"
-	ProxyEngineService_VolumeUnmapMarkSnapChainRemovedSet_FullMethodName = "/imrpc.ProxyEngineService/VolumeUnmapMarkSnapChainRemovedSet"
-	ProxyEngineService_VolumeSnapshotMaxCountSet_FullMethodName          = "/imrpc.ProxyEngineService/VolumeSnapshotMaxCountSet"
-	ProxyEngineService_VolumeSnapshotMaxSizeSet_FullMethodName           = "/imrpc.ProxyEngineService/VolumeSnapshotMaxSizeSet"
-	ProxyEngineService_VolumeSnapshot_FullMethodName                     = "/imrpc.ProxyEngineService/VolumeSnapshot"
-	ProxyEngineService_SnapshotList_FullMethodName                       = "/imrpc.ProxyEngineService/SnapshotList"
-	ProxyEngineService_SnapshotRevert_FullMethodName                     = "/imrpc.ProxyEngineService/SnapshotRevert"
-	ProxyEngineService_SnapshotPurge_FullMethodName                      = "/imrpc.ProxyEngineService/SnapshotPurge"
-	ProxyEngineService_SnapshotPurgeStatus_FullMethodName                = "/imrpc.ProxyEngineService/SnapshotPurgeStatus"
-	ProxyEngineService_SnapshotClone_FullMethodName                      = "/imrpc.ProxyEngineService/SnapshotClone"
-	ProxyEngineService_SnapshotCloneStatus_FullMethodName                = "/imrpc.ProxyEngineService/SnapshotCloneStatus"
-	ProxyEngineService_SnapshotRemove_FullMethodName                     = "/imrpc.ProxyEngineService/SnapshotRemove"
-	ProxyEngineService_SnapshotHash_FullMethodName                       = "/imrpc.ProxyEngineService/SnapshotHash"
-	ProxyEngineService_SnapshotHashStatus_FullMethodName                 = "/imrpc.ProxyEngineService/SnapshotHashStatus"
-	ProxyEngineService_SnapshotBackup_FullMethodName                     = "/imrpc.ProxyEngineService/SnapshotBackup"
-	ProxyEngineService_SnapshotBackupStatus_FullMethodName               = "/imrpc.ProxyEngineService/SnapshotBackupStatus"
-	ProxyEngineService_BackupRestore_FullMethodName                      = "/imrpc.ProxyEngineService/BackupRestore"
-	ProxyEngineService_BackupRestoreStatus_FullMethodName                = "/imrpc.ProxyEngineService/BackupRestoreStatus"
-	ProxyEngineService_BackupRestoreFinish_FullMethodName                = "/imrpc.ProxyEngineService/BackupRestoreFinish"
-	ProxyEngineService_CleanupBackupMountPoints_FullMethodName           = "/imrpc.ProxyEngineService/CleanupBackupMountPoints"
-	ProxyEngineService_ReplicaAdd_FullMethodName                         = "/imrpc.ProxyEngineService/ReplicaAdd"
-	ProxyEngineService_ReplicaList_FullMethodName                        = "/imrpc.ProxyEngineService/ReplicaList"
-	ProxyEngineService_ReplicaRebuildingStatus_FullMethodName            = "/imrpc.ProxyEngineService/ReplicaRebuildingStatus"
-	ProxyEngineService_ReplicaRebuildingQosSet_FullMethodName            = "/imrpc.ProxyEngineService/ReplicaRebuildingQosSet"
-	ProxyEngineService_ReplicaVerifyRebuild_FullMethodName               = "/imrpc.ProxyEngineService/ReplicaVerifyRebuild"
-	ProxyEngineService_ReplicaRemove_FullMethodName                      = "/imrpc.ProxyEngineService/ReplicaRemove"
-	ProxyEngineService_ReplicaModeUpdate_FullMethodName                  = "/imrpc.ProxyEngineService/ReplicaModeUpdate"
-	ProxyEngineService_SPDKBackingImageCreate_FullMethodName             = "/imrpc.ProxyEngineService/SPDKBackingImageCreate"
-	ProxyEngineService_SPDKBackingImageDelete_FullMethodName             = "/imrpc.ProxyEngineService/SPDKBackingImageDelete"
-	ProxyEngineService_SPDKBackingImageGet_FullMethodName                = "/imrpc.ProxyEngineService/SPDKBackingImageGet"
-	ProxyEngineService_SPDKBackingImageList_FullMethodName               = "/imrpc.ProxyEngineService/SPDKBackingImageList"
-	ProxyEngineService_SPDKBackingImageWatch_FullMethodName              = "/imrpc.ProxyEngineService/SPDKBackingImageWatch"
-	ProxyEngineService_MetricsGet_FullMethodName                         = "/imrpc.ProxyEngineService/MetricsGet"
-	ProxyEngineService_RemountReadOnlyVolume_FullMethodName              = "/imrpc.ProxyEngineService/RemountReadOnlyVolume"
+	ProxyEngineService_ServerVersionGet_FullMethodName                     = "/imrpc.ProxyEngineService/ServerVersionGet"
+	ProxyEngineService_VolumeGet_FullMethodName                            = "/imrpc.ProxyEngineService/VolumeGet"
+	ProxyEngineService_VolumeExpand_FullMethodName                         = "/imrpc.ProxyEngineService/VolumeExpand"
+	ProxyEngineService_VolumeFrontendStart_FullMethodName                  = "/imrpc.ProxyEngineService/VolumeFrontendStart"
+	ProxyEngineService_VolumeFrontendShutdown_FullMethodName               = "/imrpc.ProxyEngineService/VolumeFrontendShutdown"
+	ProxyEngineService_VolumeUnmapMarkSnapChainRemovedSet_FullMethodName   = "/imrpc.ProxyEngineService/VolumeUnmapMarkSnapChainRemovedSet"
+	ProxyEngineService_VolumeSnapshotMaxCountSet_FullMethodName            = "/imrpc.ProxyEngineService/VolumeSnapshotMaxCountSet"
+	ProxyEngineService_VolumeSnapshotMaxSizeSet_FullMethodName             = "/imrpc.ProxyEngineService/VolumeSnapshotMaxSizeSet"
+	ProxyEngineService_VolumeSnapshot_FullMethodName                       = "/imrpc.ProxyEngineService/VolumeSnapshot"
+	ProxyEngineService_SnapshotList_FullMethodName                         = "/imrpc.ProxyEngineService/SnapshotList"
+	ProxyEngineService_SnapshotRevert_FullMethodName                       = "/imrpc.ProxyEngineService/SnapshotRevert"
+	ProxyEngineService_SnapshotPurge_FullMethodName                        = "/imrpc.ProxyEngineService/SnapshotPurge"
+	ProxyEngineService_SnapshotPurgeStatus_FullMethodName                  = "/imrpc.ProxyEngineService/SnapshotPurgeStatus"
+	ProxyEngineService_SnapshotClone_FullMethodName                        = "/imrpc.ProxyEngineService/SnapshotClone"
+	ProxyEngineService_SnapshotCloneStatus_FullMethodName                  = "/imrpc.ProxyEngineService/SnapshotCloneStatus"
+	ProxyEngineService_SnapshotRemove_FullMethodName                       = "/imrpc.ProxyEngineService/SnapshotRemove"
+	ProxyEngineService_SnapshotHash_FullMethodName                         = "/imrpc.ProxyEngineService/SnapshotHash"
+	ProxyEngineService_SnapshotHashStatus_FullMethodName                   = "/imrpc.ProxyEngineService/SnapshotHashStatus"
+	ProxyEngineService_SnapshotBackup_FullMethodName                       = "/imrpc.ProxyEngineService/SnapshotBackup"
+	ProxyEngineService_SnapshotBackupStatus_FullMethodName                 = "/imrpc.ProxyEngineService/SnapshotBackupStatus"
+	ProxyEngineService_BackupRestore_FullMethodName                        = "/imrpc.ProxyEngineService/BackupRestore"
+	ProxyEngineService_BackupRestoreStatus_FullMethodName                  = "/imrpc.ProxyEngineService/BackupRestoreStatus"
+	ProxyEngineService_BackupRestoreFinish_FullMethodName                  = "/imrpc.ProxyEngineService/BackupRestoreFinish"
+	ProxyEngineService_CleanupBackupMountPoints_FullMethodName             = "/imrpc.ProxyEngineService/CleanupBackupMountPoints"
+	ProxyEngineService_ReplicaAdd_FullMethodName                           = "/imrpc.ProxyEngineService/ReplicaAdd"
+	ProxyEngineService_ReplicaList_FullMethodName                          = "/imrpc.ProxyEngineService/ReplicaList"
+	ProxyEngineService_ReplicaRebuildingStatus_FullMethodName              = "/imrpc.ProxyEngineService/ReplicaRebuildingStatus"
+	ProxyEngineService_ReplicaRebuildingQosSet_FullMethodName              = "/imrpc.ProxyEngineService/ReplicaRebuildingQosSet"
+	ProxyEngineService_ReplicaVerifyRebuild_FullMethodName                 = "/imrpc.ProxyEngineService/ReplicaVerifyRebuild"
+	ProxyEngineService_ReplicaRemove_FullMethodName                        = "/imrpc.ProxyEngineService/ReplicaRemove"
+	ProxyEngineService_ReplicaModeUpdate_FullMethodName                    = "/imrpc.ProxyEngineService/ReplicaModeUpdate"
+	ProxyEngineService_ReplicaRebuildConcurrentSyncLimitSet_FullMethodName = "/imrpc.ProxyEngineService/ReplicaRebuildConcurrentSyncLimitSet"
+	ProxyEngineService_ReplicaRebuildConcurrentSyncLimitGet_FullMethodName = "/imrpc.ProxyEngineService/ReplicaRebuildConcurrentSyncLimitGet"
+	ProxyEngineService_SPDKBackingImageCreate_FullMethodName               = "/imrpc.ProxyEngineService/SPDKBackingImageCreate"
+	ProxyEngineService_SPDKBackingImageDelete_FullMethodName               = "/imrpc.ProxyEngineService/SPDKBackingImageDelete"
+	ProxyEngineService_SPDKBackingImageGet_FullMethodName                  = "/imrpc.ProxyEngineService/SPDKBackingImageGet"
+	ProxyEngineService_SPDKBackingImageList_FullMethodName                 = "/imrpc.ProxyEngineService/SPDKBackingImageList"
+	ProxyEngineService_SPDKBackingImageWatch_FullMethodName                = "/imrpc.ProxyEngineService/SPDKBackingImageWatch"
+	ProxyEngineService_MetricsGet_FullMethodName                           = "/imrpc.ProxyEngineService/MetricsGet"
+	ProxyEngineService_RemountReadOnlyVolume_FullMethodName                = "/imrpc.ProxyEngineService/RemountReadOnlyVolume"
 )
 
 // ProxyEngineServiceClient is the client API for ProxyEngineService service.
@@ -95,6 +97,8 @@ type ProxyEngineServiceClient interface {
 	ReplicaVerifyRebuild(ctx context.Context, in *EngineReplicaVerifyRebuildRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaRemove(ctx context.Context, in *EngineReplicaRemoveRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaModeUpdate(ctx context.Context, in *EngineReplicaModeUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ReplicaRebuildConcurrentSyncLimitSet(ctx context.Context, in *EngineReplicaRebuildConcurrentSyncLimitSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ReplicaRebuildConcurrentSyncLimitGet(ctx context.Context, in *ProxyEngineRequest, opts ...grpc.CallOption) (*EngineReplicaRebuildConcurrentSyncLimitGetResponse, error)
 	SPDKBackingImageCreate(ctx context.Context, in *SPDKBackingImageCreateRequest, opts ...grpc.CallOption) (*SPDKBackingImageResponse, error)
 	SPDKBackingImageDelete(ctx context.Context, in *SPDKBackingImageDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SPDKBackingImageGet(ctx context.Context, in *SPDKBackingImageGetRequest, opts ...grpc.CallOption) (*SPDKBackingImageResponse, error)
@@ -391,6 +395,24 @@ func (c *proxyEngineServiceClient) ReplicaModeUpdate(ctx context.Context, in *En
 	return out, nil
 }
 
+func (c *proxyEngineServiceClient) ReplicaRebuildConcurrentSyncLimitSet(ctx context.Context, in *EngineReplicaRebuildConcurrentSyncLimitSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ProxyEngineService_ReplicaRebuildConcurrentSyncLimitSet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *proxyEngineServiceClient) ReplicaRebuildConcurrentSyncLimitGet(ctx context.Context, in *ProxyEngineRequest, opts ...grpc.CallOption) (*EngineReplicaRebuildConcurrentSyncLimitGetResponse, error) {
+	out := new(EngineReplicaRebuildConcurrentSyncLimitGetResponse)
+	err := c.cc.Invoke(ctx, ProxyEngineService_ReplicaRebuildConcurrentSyncLimitGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyEngineServiceClient) SPDKBackingImageCreate(ctx context.Context, in *SPDKBackingImageCreateRequest, opts ...grpc.CallOption) (*SPDKBackingImageResponse, error) {
 	out := new(SPDKBackingImageResponse)
 	err := c.cc.Invoke(ctx, ProxyEngineService_SPDKBackingImageCreate_FullMethodName, in, out, opts...)
@@ -512,6 +534,8 @@ type ProxyEngineServiceServer interface {
 	ReplicaVerifyRebuild(context.Context, *EngineReplicaVerifyRebuildRequest) (*emptypb.Empty, error)
 	ReplicaRemove(context.Context, *EngineReplicaRemoveRequest) (*emptypb.Empty, error)
 	ReplicaModeUpdate(context.Context, *EngineReplicaModeUpdateRequest) (*emptypb.Empty, error)
+	ReplicaRebuildConcurrentSyncLimitSet(context.Context, *EngineReplicaRebuildConcurrentSyncLimitSetRequest) (*emptypb.Empty, error)
+	ReplicaRebuildConcurrentSyncLimitGet(context.Context, *ProxyEngineRequest) (*EngineReplicaRebuildConcurrentSyncLimitGetResponse, error)
 	SPDKBackingImageCreate(context.Context, *SPDKBackingImageCreateRequest) (*SPDKBackingImageResponse, error)
 	SPDKBackingImageDelete(context.Context, *SPDKBackingImageDeleteRequest) (*emptypb.Empty, error)
 	SPDKBackingImageGet(context.Context, *SPDKBackingImageGetRequest) (*SPDKBackingImageResponse, error)
@@ -618,6 +642,12 @@ func (UnimplementedProxyEngineServiceServer) ReplicaRemove(context.Context, *Eng
 }
 func (UnimplementedProxyEngineServiceServer) ReplicaModeUpdate(context.Context, *EngineReplicaModeUpdateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaModeUpdate not implemented")
+}
+func (UnimplementedProxyEngineServiceServer) ReplicaRebuildConcurrentSyncLimitSet(context.Context, *EngineReplicaRebuildConcurrentSyncLimitSetRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRebuildConcurrentSyncLimitSet not implemented")
+}
+func (UnimplementedProxyEngineServiceServer) ReplicaRebuildConcurrentSyncLimitGet(context.Context, *ProxyEngineRequest) (*EngineReplicaRebuildConcurrentSyncLimitGetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRebuildConcurrentSyncLimitGet not implemented")
 }
 func (UnimplementedProxyEngineServiceServer) SPDKBackingImageCreate(context.Context, *SPDKBackingImageCreateRequest) (*SPDKBackingImageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SPDKBackingImageCreate not implemented")
@@ -1211,6 +1241,42 @@ func _ProxyEngineService_ReplicaModeUpdate_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyEngineService_ReplicaRebuildConcurrentSyncLimitSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineReplicaRebuildConcurrentSyncLimitSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyEngineServiceServer).ReplicaRebuildConcurrentSyncLimitSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyEngineService_ReplicaRebuildConcurrentSyncLimitSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyEngineServiceServer).ReplicaRebuildConcurrentSyncLimitSet(ctx, req.(*EngineReplicaRebuildConcurrentSyncLimitSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProxyEngineService_ReplicaRebuildConcurrentSyncLimitGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyEngineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyEngineServiceServer).ReplicaRebuildConcurrentSyncLimitGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyEngineService_ReplicaRebuildConcurrentSyncLimitGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyEngineServiceServer).ReplicaRebuildConcurrentSyncLimitGet(ctx, req.(*ProxyEngineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyEngineService_SPDKBackingImageCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SPDKBackingImageCreateRequest)
 	if err := dec(in); err != nil {
@@ -1470,6 +1536,14 @@ var ProxyEngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplicaModeUpdate",
 			Handler:    _ProxyEngineService_ReplicaModeUpdate_Handler,
+		},
+		{
+			MethodName: "ReplicaRebuildConcurrentSyncLimitSet",
+			Handler:    _ProxyEngineService_ReplicaRebuildConcurrentSyncLimitSet_Handler,
+		},
+		{
+			MethodName: "ReplicaRebuildConcurrentSyncLimitGet",
+			Handler:    _ProxyEngineService_ReplicaRebuildConcurrentSyncLimitGet_Handler,
 		},
 		{
 			MethodName: "SPDKBackingImageCreate",
