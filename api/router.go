@@ -55,7 +55,7 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/").Handler(versionsHandler)
 	r.Methods("GET").Path("/metrics").Handler(registry.Handler())
 
-	// Apply manager-url middleware to all subsequent API routes
+	// Apply manager-url middleware to all API routes (including previously registered routes)
 	r.Use(ManagerURLMiddleware(s))
 
 	r.Methods("GET").Path("/v1").Handler(versionHandler)

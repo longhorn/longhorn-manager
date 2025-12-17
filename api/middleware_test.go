@@ -1,7 +1,6 @@
 package api
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -80,6 +79,22 @@ func TestInjectForwardedHeaders(t *testing.T) {
 			expectedHost:       "longhorn.example.com",
 			expectedPort:       "",
 			expectedPortExists: false,
+		},
+		{
+			name:               "http with non-default port 443",
+			managerURL:         "http://longhorn.example.com:443",
+			expectedProto:      "http",
+			expectedHost:       "longhorn.example.com",
+			expectedPort:       "443",
+			expectedPortExists: true,
+		},
+		{
+			name:               "https with non-default port 80",
+			managerURL:         "https://longhorn.example.com:80",
+			expectedProto:      "https",
+			expectedHost:       "longhorn.example.com",
+			expectedPort:       "80",
+			expectedPortExists: true,
 		},
 	}
 
