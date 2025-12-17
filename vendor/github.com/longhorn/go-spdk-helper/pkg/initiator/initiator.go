@@ -32,6 +32,17 @@ const (
 	MaxUblkId                = 65535
 	DefaultUblkQueueDepth    = 128
 	DefaultUblkNumberOfQueue = 1
+
+	// LinuxKernelSectorSize is the fixed sector size (512 bytes) used by the
+	// Linux kernel for all block layer and Device Mapper table calculations.
+	// As defined in the kernel source (include/linux/types.h), "Linux always
+	// considers sectors to be 512 bytes long independently of the devices
+	// real block size."
+	//
+	// Refs:
+	// - https://github.com/torvalds/linux/blob/master/include/linux/types.h#L130-L138
+	// - https://android.googlesource.com/platform/external/lvm2/+/refs/heads/main/tools/dmsetup.c#103
+	DmSectorSize = 512
 )
 
 const (
@@ -292,7 +303,7 @@ func (i *Initiator) replaceDmDeviceTarget() error {
 }
 
 // StartNvmeTCPInitiator starts the NVMe-oF initiator with the given transportAddress and transportServiceID
-func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID string, dmDeviceAndEndpointCleanupRequired bool) (dmDeviceIsBusy bool, err error) {
+func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID string, dmDeviceAndEndpointCleanupRequired bool, stop bool) (dmDeviceIsBusy bool, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "failed to start NVMe-oF initiator %s", i.Name)
@@ -327,6 +338,12 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 			err = i.LoadEndpointForNvmeTcpFrontend(false)
 			if err == nil {
 				i.logger.Info("NVMe-oF initiator is already launched with correct params")
+
+				// also load device source
+				err = i.waitAndLoadNVMeDeviceInfoWithoutLock(transportAddress, transportServiceID)
+				if err != nil {
+					i.logger.WithError(err).Warnf("Failed to load device info for NVMe-oF initiator %s", i.Name)
+				}
 				return false, nil
 			}
 			i.logger.WithError(err).Warnf("NVMe-oF initiator is launched with failed to load the endpoint")
@@ -335,10 +352,14 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 		}
 	}
 
-	i.logger.Info("Stopping NVMe-oF initiator blindly before starting")
-	dmDeviceIsBusy, err = i.stopWithoutLock(nil, dmDeviceAndEndpointCleanupRequired, false, false)
-	if err != nil {
-		return dmDeviceIsBusy, errors.Wrapf(err, "failed to stop the mismatching NVMe-oF initiator %s before starting", i.Name)
+	if stop {
+		i.logger.Info("Stopping NVMe-oF initiator blindly before starting")
+		dmDeviceIsBusy, err = i.stopWithoutLock(nil, dmDeviceAndEndpointCleanupRequired, false, false)
+		if err != nil {
+			return dmDeviceIsBusy, errors.Wrapf(err, "failed to stop the mismatching NVMe-oF initiator %s before starting", i.Name)
+		}
+	} else {
+		dmDeviceIsBusy = true
 	}
 
 	i.logger.Info("Launching NVMe-oF initiator")
@@ -873,6 +894,35 @@ func (i *Initiator) ReloadDmDevice() (err error) {
 		defer lock.Unlock()
 	}
 
+	return i.reloadLinearDmDevice()
+}
+
+func (i *Initiator) SyncDmDeviceSize(expectedSize uint64) error {
+	if i.dev == nil || i.dev.Source.Name == "" {
+		return fmt.Errorf("initiator device source is not initialized")
+	}
+
+	devPath := fmt.Sprintf("/dev/%s", i.dev.Source.Name)
+	expectedSectors := int64(expectedSize / DmSectorSize)
+
+	i.logger.Infof("Start reloading DM device %v to expected size %v bytes (%v sectors)", i.Name, expectedSize, expectedSectors)
+
+	var sectors int64
+	for retry := 0; retry < maxWaitDeviceRetries; retry++ {
+		output, err := i.executor.Execute(nil, util.BlockdevBinary, []string{"--getsize", devPath}, types.ExecuteTimeout)
+		if err == nil {
+			sectors, _ = strconv.ParseInt(strings.TrimSpace(output), 10, 64)
+			if sectors >= expectedSectors {
+				i.logger.Infof("Kernel updated device %v capacity to %v sectors", devPath, sectors)
+				break
+			}
+		}
+		time.Sleep(waitDeviceInterval)
+	}
+
+	if sectors < expectedSectors {
+		return fmt.Errorf("timeout waiting for device %v to reach expected size %v", devPath, expectedSectors)
+	}
 	return i.reloadLinearDmDevice()
 }
 

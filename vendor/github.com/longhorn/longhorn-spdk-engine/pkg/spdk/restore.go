@@ -148,7 +148,7 @@ func (r *Restore) OpenVolumeDev(volDevName string) (*os.File, string, error) {
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to create NVMe initiator for lvol bdev %v", lvolName)
 	}
-	if _, err := i.StartNvmeTCPInitiator(r.ip, strconv.Itoa(int(r.port)), true); err != nil {
+	if _, err := i.StartNvmeTCPInitiator(r.ip, strconv.Itoa(int(r.port)), true, true); err != nil {
 		return nil, "", errors.Wrapf(err, "failed to start NVMe initiator for lvol bdev %v", lvolName)
 	}
 	r.initiator = i
