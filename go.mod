@@ -55,6 +55,8 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.34.3
 )
 
+replace github.com/longhorn/go-common-libs => github.com/c3y1huang/go-common-libs v0.0.0-20251218045004-326105bf40af
+
 require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/container-storage-interface/spec v1.12.0
