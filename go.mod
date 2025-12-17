@@ -105,6 +105,8 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1
 )
 
+require github.com/kubernetes-csi/external-snapshot-metadata/client v0.2.0
+
 require (
 	github.com/0xPolygon/polygon-edge v1.3.3 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect

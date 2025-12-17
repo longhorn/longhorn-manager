@@ -13,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	snapshotmeta "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
+	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -150,11 +152,11 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 	return commonDeploymentSpec
 }
 
-type resourceCreateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
-type resourceDeleteFunc func(kubeClient *clientset.Clientset, name, namespace string) error
+type resourceCreateFunc[ClientT any] func(client ClientT, obj runtime.Object) error
+type resourceDeleteFunc[ClientT any] func(client ClientT, name, namespace string) error
 
-func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
-	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
+func deploy[ClientT any](client ClientT, obj runtime.Object, resource string,
+	createFunc resourceCreateFunc[ClientT], deleteFunc resourceDeleteFunc[ClientT], getFunc util.ResourceGetFunc[ClientT]) (err error) {
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
@@ -174,7 +176,7 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		err = errors.Wrapf(err, "failed to deploy %v %v", resource, name)
 	}()
 
-	existing, err := getFunc(kubeClient, name, namespace)
+	existing, err := getFunc(client, name, namespace)
 	if err == nil {
 		existingMeta, err := meta.Accessor(existing)
 		if err != nil {
@@ -193,7 +195,7 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 			return nil
 		}
 		// otherwise clean up the old deployment
-		if err := cleanup(kubeClient, obj, resource, deleteFunc, getFunc); err != nil {
+		if err := cleanup(client, obj, resource, deleteFunc, getFunc); err != nil {
 			return err
 		}
 	} else if !apierrors.IsNotFound(err) {
@@ -201,7 +203,7 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 	}
 
 	logrus.Infof("Creating %s %s", resource, name)
-	err = createFunc(kubeClient, obj)
+	err = createFunc(client, obj)
 	return err
 }
 
@@ -302,8 +304,8 @@ func needToUpdatePodAntiAffinity(existingObj, newObj runtime.Object) bool {
 	return existingPreset != newPreset
 }
 
-func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
-	deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
+func cleanup[ClientT any](client ClientT, obj runtime.Object, resource string,
+	deleteFunc resourceDeleteFunc[ClientT], getFunc util.ResourceGetFunc[ClientT]) (err error) {
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
@@ -316,7 +318,7 @@ func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource strin
 		err = errors.Wrapf(err, "failed to cleanup %v %v", resource, name)
 	}()
 
-	existing, err := getFunc(kubeClient, name, namespace)
+	existing, err := getFunc(client, name, namespace)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -328,13 +330,13 @@ func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource strin
 		return err
 	}
 	if existingMeta.GetDeletionTimestamp() != nil {
-		return util.WaitForResourceDeletion(kubeClient, name, namespace, resource, maxRetryForDeletion, getFunc)
+		return util.WaitForResourceDeletion(client, name, namespace, resource, maxRetryForDeletion, getFunc)
 	}
 	logrus.Infof("Deleting existing %s %s", resource, name)
-	if err := deleteFunc(kubeClient, name, namespace); err != nil {
+	if err := deleteFunc(client, name, namespace); err != nil {
 		return err
 	}
-	return util.WaitForResourceDeletion(kubeClient, name, namespace, resource, maxRetryForDeletion, getFunc)
+	return util.WaitForResourceDeletion(client, name, namespace, resource, maxRetryForDeletion, getFunc)
 }
 
 func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
@@ -381,6 +383,28 @@ func daemonSetGetFunc(kubeClient *clientset.Clientset, name, namespace string) (
 	return kubeClient.AppsV1().DaemonSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
+func serviceCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
+	o, ok := obj.(*corev1.Service)
+	if !ok {
+		return fmt.Errorf("failed to convert back the object")
+	}
+	_, err := kubeClient.CoreV1().Services(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
+	return err
+}
+
+func serviceDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
+	propagation := metav1.DeletePropagationForeground
+	return kubeClient.CoreV1().Services(namespace).Delete(
+		context.TODO(),
+		name,
+		metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
+}
+
+func serviceGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
+	return kubeClient.CoreV1().Services(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
 func csiDriverObjectCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
 	o, ok := obj.(*storagev1.CSIDriver)
 	if !ok {
@@ -396,6 +420,28 @@ func csiDriverObjectDeleteFunc(kubeClient *clientset.Clientset, name, namespace 
 
 func csiDriverObjectGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
 	return kubeClient.StorageV1().CSIDrivers().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func snapshotMetadataServiceCreateFunc(cbtClient *cbt.Clientset, obj runtime.Object) error {
+	o, ok := obj.(*snapshotmeta.SnapshotMetadataService)
+	if !ok {
+		return fmt.Errorf("failed to convert back the object")
+	}
+	_, err := cbtClient.CbtV1alpha1().SnapshotMetadataServices().Create(context.TODO(), o, metav1.CreateOptions{})
+	return err
+}
+
+func snapshotMetadataServiceDeleteFunc(cbtClient *cbt.Clientset, name, namespace string) error {
+	propagation := metav1.DeletePropagationForeground
+	return cbtClient.CbtV1alpha1().SnapshotMetadataServices().Delete(
+		context.TODO(),
+		name,
+		metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
+}
+
+func snapshotMetadataServiceGetFunc(cbtClient *cbt.Clientset, name, namespace string) (runtime.Object, error) {
+	return cbtClient.CbtV1alpha1().SnapshotMetadataServices().Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 // CheckMountPropagationWithNode https://github.com/kubernetes/kubernetes/issues/66086#issuecomment-404346854

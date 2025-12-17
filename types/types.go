@@ -117,11 +117,12 @@ const (
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
 
-	TLSDirectoryInContainer = "/tls-files/"
-	TLSSecretName           = "longhorn-grpc-tls"
-	TLSCAFile               = "ca.crt"
-	TLSCertFile             = "tls.crt"
-	TLSKeyFile              = "tls.key"
+	TLSDirectoryInContainer              = "/tls-files/"
+	TLSSecretName                        = "longhorn-grpc-tls"
+	TLSSnapshotMetadataServiceSecretName = "longhorn-csi-snapshot-metadata-tls"
+	TLSCAFile                            = "ca.crt"
+	TLSCertFile                          = "tls.crt"
+	TLSKeyFile                           = "tls.key"
 
 	DefaultBackupTargetName = "default"
 
@@ -238,11 +239,12 @@ const (
 	KubeAPIQPS   = 50
 	KubeAPIBurst = 100
 
-	CSISidecarMetricsPort         = 8000
-	CSISidecarPortNameAttacher    = "csi-attacher"
-	CSISidecarPortNameProvisioner = "csi-provisioner"
-	CSISidecarPortNameResizer     = "csi-resizer"
-	CSISidecarPortNameSnapshotter = "csi-snapshotter"
+	CSISidecarMetricsPort              = 8000
+	CSISidecarPortNameAttacher         = "csi-attacher"
+	CSISidecarPortNameProvisioner      = "csi-provisioner"
+	CSISidecarPortNameResizer          = "csi-resizer"
+	CSISidecarPortNameSnapshotter      = "csi-snapshotter"
+	CSISidecarPortNameSnapshotMetadata = "csi-snapshot-metadata"
 )
 
 const (
