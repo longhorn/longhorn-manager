@@ -379,3 +379,11 @@ func (e *EngineBinary) addFlags(args []string) ([]string, error) {
 	}
 	return append(argsToAdd, args...), nil
 }
+
+func (e *EngineBinary) ReplicaRebuildConcurrentSyncLimitSet(*longhorn.Engine, int) (err error) {
+	return errors.New(ErrNotImplement)
+}
+
+func (e *EngineBinary) ReplicaRebuildConcurrentSyncLimitGet(*longhorn.Engine) (limit int, err error) {
+	return 0, errors.New(ErrNotImplement)
+}
