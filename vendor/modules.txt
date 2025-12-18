@@ -248,7 +248,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20251213114131-1a1ec1f0270e => github.com/c3y1huang/go-common-libs v0.0.0-20251218045004-326105bf40af
+# github.com/longhorn/go-common-libs v0.0.0-20251218054725-dbe74d5605de
 ## explicit; go 1.24.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -1373,4 +1373,3 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.34.3
 # k8s.io/sample-controller => k8s.io/sample-controller v0.34.3
-# github.com/longhorn/go-common-libs => github.com/c3y1huang/go-common-libs v0.0.0-20251218045004-326105bf40af
