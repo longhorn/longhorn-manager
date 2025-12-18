@@ -19,13 +19,14 @@ import (
 func ManagerURLMiddleware(s *Server) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			managerURL, err := s.m.GetSettingValueExisted(types.SettingNameManagerURL)
+			setting, err := s.m.GetSetting(types.SettingNameManagerURL)
 			if err != nil {
-				logrus.WithError(err).Warn("Failed to get manager-url setting, using default behavior")
+				logrus.WithError(err).Trace("Failed to get manager-url setting, using default behavior")
 				next.ServeHTTP(w, r)
 				return
 			}
 
+			managerURL := setting.Value
 			if managerURL == "" {
 				// Setting not configured, use default behavior
 				next.ServeHTTP(w, r)
