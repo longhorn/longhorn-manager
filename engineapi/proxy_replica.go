@@ -71,3 +71,13 @@ func (p *Proxy) ReplicaModeUpdate(e *longhorn.Engine, url, mode string) (err err
 
 	return p.grpcClient.ReplicaModeUpdate(string(e.Spec.DataEngine), p.DirectToURL(e), url, mode)
 }
+
+func (p *Proxy) ReplicaRebuildConcurrentSyncLimitSet(e *longhorn.Engine, limit int) (err error) {
+	return p.grpcClient.ReplicaRebuildConcurrentSyncLimitSet(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
+		p.DirectToURL(e), limit)
+}
+
+func (p *Proxy) ReplicaRebuildConcurrentSyncLimitGet(e *longhorn.Engine) (limit int, err error) {
+	return p.grpcClient.ReplicaRebuildConcurrentSyncLimitGet(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
+		p.DirectToURL(e))
+}

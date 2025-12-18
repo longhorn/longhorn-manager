@@ -245,6 +245,14 @@ func (e *EngineSimulator) ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimit
 	return errors.New(ErrNotImplement)
 }
 
+func (e *EngineSimulator) ReplicaRebuildConcurrentSyncLimitSet(*longhorn.Engine, int) error {
+	return errors.New(ErrNotImplement)
+}
+
+func (e *EngineSimulator) ReplicaRebuildConcurrentSyncLimitGet(*longhorn.Engine) (int, error) {
+	return 0, errors.New(ErrNotImplement)
+}
+
 func (e *EngineSimulator) VolumeFrontendStart(*longhorn.Engine) error {
 	return errors.New(ErrNotImplement)
 }

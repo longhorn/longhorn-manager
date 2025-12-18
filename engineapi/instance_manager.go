@@ -397,6 +397,10 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 		args = append(args, "--snapshot-max-size", strconv.FormatInt(e.Spec.SnapshotMaxSize, 10))
 	}
 
+	if engineCLIAPIVersion >= 11 {
+		args = append(args, "--rebuild-sync-concurrent-limit", strconv.Itoa(e.Spec.RebuildConcurrentSyncLimit))
+	}
+
 	for _, addr := range e.Status.CurrentReplicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
 	}
