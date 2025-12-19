@@ -187,7 +187,11 @@ func (ec *EngineCollector) collectRebuildProgress(ch chan<- prometheus.Metric, e
 	for addr, rs := range e.Status.RebuildStatus {
 		if rs.IsRebuilding {
 			replicaAddress := strings.TrimPrefix(addr, "tcp://")
-			srcAddress := strings.TrimPrefix(rs.FromReplicaAddress, "tcp://")
+			srcAddressList := make([]string, 0, len(rs.FromReplicaAddressList))
+			for _, tcpAddr := range rs.FromReplicaAddressList {
+				srcAddressList = append(srcAddressList, strings.TrimPrefix(tcpAddr, "tcp://"))
+			}
+			srcAddressListStr := strings.Join(srcAddressList, ",")
 
 			replicaName := ec.getReplicaNameByAddress(e, replicaAddress)
 			if replicaName == "" {
@@ -200,7 +204,7 @@ func (ec *EngineCollector) collectRebuildProgress(ch chan<- prometheus.Metric, e
 				float64(rs.Progress),
 				ec.currentNodeID,
 				e.Name,
-				srcAddress,
+				srcAddressListStr,
 				replicaAddress,
 				v.Status.KubernetesStatus.PVCName,
 				v.Status.KubernetesStatus.Namespace,
@@ -212,7 +216,7 @@ func (ec *EngineCollector) collectRebuildProgress(ch chan<- prometheus.Metric, e
 				100.0,
 				ec.currentNodeID,
 				e.Name,
-				srcAddress,
+				srcAddressListStr,
 				replicaAddress,
 				v.Status.KubernetesStatus.PVCName,
 				v.Status.KubernetesStatus.Namespace,

@@ -597,12 +597,12 @@ type PurgeStatus struct {
 
 type RebuildStatus struct {
 	client.Resource
-	Error        string `json:"error"`
-	IsRebuilding bool   `json:"isRebuilding"`
-	Progress     int    `json:"progress"`
-	Replica      string `json:"replica"`
-	State        string `json:"state"`
-	FromReplica  string `json:"fromReplica"`
+	Error           string   `json:"error"`
+	IsRebuilding    bool     `json:"isRebuilding"`
+	Progress        int      `json:"progress"`
+	Replica         string   `json:"replica"`
+	State           string   `json:"state"`
+	FromReplicaList []string `json:"fromReplicaList"`
 }
 
 type InstanceManager struct {
@@ -1547,15 +1547,20 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		if rebuildStatus != nil {
 			replicas := util.GetSortedKeysFromMap(rebuildStatus)
 			for _, replica := range replicas {
-				rebuildStatuses = append(rebuildStatuses, RebuildStatus{
-					Resource:     client.Resource{},
-					Replica:      datastore.ReplicaAddressToReplicaName(replica, vrs),
-					Error:        rebuildStatus[replica].Error,
-					IsRebuilding: rebuildStatus[replica].IsRebuilding,
-					Progress:     rebuildStatus[replica].Progress,
-					State:        rebuildStatus[replica].State,
-					FromReplica:  datastore.ReplicaAddressToReplicaName(rebuildStatus[replica].FromReplicaAddress, vrs),
-				})
+				status := RebuildStatus{
+					Resource:        client.Resource{},
+					Replica:         datastore.ReplicaAddressToReplicaName(replica, vrs),
+					Error:           rebuildStatus[replica].Error,
+					IsRebuilding:    rebuildStatus[replica].IsRebuilding,
+					Progress:        rebuildStatus[replica].Progress,
+					State:           rebuildStatus[replica].State,
+					FromReplicaList: datastore.ReplicaAddressListToReplicaNameList(rebuildStatus[replica].FromReplicaAddressList, vrs),
+				}
+				// For backward compatibility
+				if len(rebuildStatus[replica].FromReplicaAddressList) == 0 && rebuildStatus[replica].FromReplicaAddress != "" {
+					status.FromReplicaList = []string{datastore.ReplicaAddressToReplicaName(rebuildStatus[replica].FromReplicaAddress, vrs)}
+				}
+				rebuildStatuses = append(rebuildStatuses, status)
 			}
 		}
 	}

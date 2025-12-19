@@ -9,7 +9,7 @@ type RebuildStatus struct {
 
 	Error string `json:"error,omitempty" yaml:"error,omitempty"`
 
-	FromReplica string `json:"fromReplica,omitempty" yaml:"from_replica,omitempty"`
+	FromReplicaList []string `json:"fromReplicaList,omitempty" yaml:"from_replica_list,omitempty"`
 
 	IsRebuilding bool `json:"isRebuilding,omitempty" yaml:"is_rebuilding,omitempty"`
 
