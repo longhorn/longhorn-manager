@@ -1,6 +1,8 @@
 package metricscollector
 
 import (
+	"time"
+
 	"github.com/cockroachdb/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -26,6 +28,7 @@ type VolumeCollector struct {
 	stateMetric              metricInfo
 	robustnessMetric         metricInfo
 	fileSystemReadOnlyMetric metricInfo
+	lastBackupAtMetric       metricInfo
 
 	volumePerfMetrics
 }
@@ -75,6 +78,16 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "actual_size_bytes"),
 			"Actual space used by each replica of the volume on the corresponding node",
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
+	vc.lastBackupAtMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemVolume, "last_backup_at"),
+			"Unix timestamp of the last successful backup of this volume, or 0 if no such backup exists",
 			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
@@ -167,6 +180,7 @@ func NewVolumeCollector(
 func (vc *VolumeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- vc.capacityMetric.Desc
 	ch <- vc.sizeMetric.Desc
+	ch <- vc.lastBackupAtMetric.Desc
 	ch <- vc.stateMetric.Desc
 	ch <- vc.robustnessMetric.Desc
 	ch <- vc.fileSystemReadOnlyMetric.Desc
@@ -201,6 +215,7 @@ func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longho
 
 	ch <- prometheus.MustNewConstMetric(vc.capacityMetric.Desc, vc.capacityMetric.Type, float64(v.Spec.Size), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
 	ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, float64(v.Status.ActualSize), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.lastBackupAtMetric.Desc, vc.lastBackupAtMetric.Type, float64(getLastBackupAtValue(v.Status.LastBackupAt, vc.logger)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
 
 	vc.collectVolumeState(ch, v)
 	vc.collectVolumeRobustness(ch, v)
@@ -271,6 +286,20 @@ func (vc *VolumeCollector) collectVolumeState(ch chan<- prometheus.Metric, v *lo
 			string(s),
 		)
 	}
+}
+
+func getLastBackupAtValue(lastBackupAt string, logger logrus.FieldLogger) int64 {
+	if lastBackupAt == "" {
+		return 0
+	}
+
+	parsed, err := time.Parse(time.RFC3339, lastBackupAt)
+	if err != nil {
+		logger.WithError(err).Warnf("Failed to parse lastBackupAt timestamp '%v'", lastBackupAt)
+		return 0
+	}
+
+	return parsed.Unix()
 }
 
 // collectVolumeRobustness emits label-based robustness metrics - one metric per robustness state with value 1 for current state, 0 for others
