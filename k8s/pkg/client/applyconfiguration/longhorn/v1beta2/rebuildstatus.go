@@ -21,12 +21,13 @@ package v1beta2
 // RebuildStatusApplyConfiguration represents a declarative configuration of the RebuildStatus type for use
 // with apply.
 type RebuildStatusApplyConfiguration struct {
-	Error                 *string `json:"error,omitempty"`
-	IsRebuilding          *bool   `json:"isRebuilding,omitempty"`
-	Progress              *int    `json:"progress,omitempty"`
-	State                 *string `json:"state,omitempty"`
-	FromReplicaAddress    *string `json:"fromReplicaAddress,omitempty"`
-	AppliedRebuildingMBps *int64  `json:"appliedRebuildingMBps,omitempty"`
+	Error                  *string  `json:"error,omitempty"`
+	IsRebuilding           *bool    `json:"isRebuilding,omitempty"`
+	Progress               *int     `json:"progress,omitempty"`
+	State                  *string  `json:"state,omitempty"`
+	FromReplicaAddress     *string  `json:"fromReplicaAddress,omitempty"`
+	FromReplicaAddressList []string `json:"fromReplicaAddressList,omitempty"`
+	AppliedRebuildingMBps  *int64   `json:"appliedRebuildingMBps,omitempty"`
 }
 
 // RebuildStatusApplyConfiguration constructs a declarative configuration of the RebuildStatus type for use with
@@ -72,6 +73,16 @@ func (b *RebuildStatusApplyConfiguration) WithState(value string) *RebuildStatus
 // If called multiple times, the FromReplicaAddress field is set to the value of the last call.
 func (b *RebuildStatusApplyConfiguration) WithFromReplicaAddress(value string) *RebuildStatusApplyConfiguration {
 	b.FromReplicaAddress = &value
+	return b
+}
+
+// WithFromReplicaAddressList adds the given value to the FromReplicaAddressList field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the FromReplicaAddressList field.
+func (b *RebuildStatusApplyConfiguration) WithFromReplicaAddressList(values ...string) *RebuildStatusApplyConfiguration {
+	for i := range values {
+		b.FromReplicaAddressList = append(b.FromReplicaAddressList, values[i])
+	}
 	return b
 }
 
