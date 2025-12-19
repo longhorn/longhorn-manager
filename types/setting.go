@@ -102,6 +102,7 @@ const (
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
+	SettingNameReplicaRebuildConcurrentSyncLimit                        = SettingName("replica-rebuild-concurrent-sync-limit")
 	SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit          = SettingName("concurrent-backing-image-replenish-per-node-limit")
 	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
 	SettingNameSystemManagedPodsImagePullPolicy                         = SettingName("system-managed-pods-image-pull-policy")
@@ -221,6 +222,7 @@ var (
 		SettingNameDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameReplicaRebuildConcurrentSyncLimit,
 		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy,
@@ -375,6 +377,7 @@ var (
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameReplicaRebuildConcurrentSyncLimit:                        SettingDefinitionReplicaRebuildConcurrentSyncLimit,
 		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit:          SettingDefinitionConcurrentBackingImageCopyReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy:                         SettingDefinitionSystemManagedPodsImagePullPolicy,
@@ -1069,6 +1072,22 @@ var (
 		Default:            "5",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
+		},
+	}
+
+	SettingDefinitionReplicaRebuildConcurrentSyncLimit = SettingDefinition{
+		DisplayName: "Replica Rebuild Concurrent Sync Limit",
+		Description: "This setting controls the maximum number of file synchronization operations that can run concurrently during a single replica rebuild. \n\n" +
+			"Right now, it's for v1 data engine only.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"1\"}", longhorn.DataEngineTypeV1),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 5,
 		},
 	}
 
