@@ -1009,6 +1009,20 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.RebuildStatus = map[string]*longhorn.RebuildStatus{}
 	}
 
+	if cliAPIVersion >= 11 && im.Status.APIVersion >= 6 && engine.Spec.DataEngine == longhorn.DataEngineTypeV1 {
+		limit, err := engineClientProxy.ReplicaRebuildConcurrentSyncLimitGet(engine)
+		if err != nil {
+			return err
+		}
+		engine.Status.RebuildConcurrentSyncLimit = limit
+		if engine.Spec.RebuildConcurrentSyncLimit != limit {
+			if err := engineClientProxy.ReplicaRebuildConcurrentSyncLimitSet(engine, engine.Spec.RebuildConcurrentSyncLimit); err != nil {
+				return errors.Wrapf(err, "failed to correct flag RebuildConcurrentSyncLimit from %v to %v",
+					limit, engine.Spec.RebuildConcurrentSyncLimit)
+			}
+		}
+	}
+
 	// TODO: Check if the purge failure is handled somewhere else
 	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(engine)
 	if err != nil {

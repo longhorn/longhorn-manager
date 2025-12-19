@@ -1323,6 +1323,13 @@ spec:
                 type: boolean
               nodeID:
                 type: string
+              rebuildConcurrentSyncLimit:
+                description: |-
+                  RebuildConcurrentSyncLimit controls the max number of concurrent file syncing during a rebuild.
+                  When set to 0, it means following the global setting.
+                maximum: 5
+                minimum: 0
+                type: integer
               replicaAddressMap:
                 additionalProperties:
                   type: string
@@ -1474,6 +1481,12 @@ spec:
                   type: object
                 nullable: true
                 type: object
+              rebuildConcurrentSyncLimit:
+                description: |-
+                  RebuildConcurrentSyncLimit controls the max number of concurrent file syncing during a rebuild.
+                  When set to 0, it means following the global setting.
+                minimum: 0
+                type: integer
               rebuildStatus:
                 additionalProperties:
                   properties:
@@ -3598,6 +3611,13 @@ spec:
                 - disabled
                 - enabled
                 type: string
+              rebuildConcurrentSyncLimit:
+                description: |-
+                  RebuildConcurrentSyncLimit controls the max number of concurrent file syncing during a rebuild.
+                  When set to 0, it means following the global setting.
+                maximum: 5
+                minimum: 0
+                type: integer
               replicaAutoBalance:
                 enum:
                 - ignored

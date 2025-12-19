@@ -154,6 +154,12 @@ type EngineSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=5
+	// RebuildConcurrentSyncLimit controls the max number of concurrent file syncing during a rebuild.
+	// When set to 0, it means following the global setting.
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit,omitempty"`
 }
 
 // EngineStatus defines the observed state of the Longhorn engine
@@ -210,6 +216,11 @@ type EngineStatus struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// RebuildConcurrentSyncLimit controls the max number of concurrent file syncing during a rebuild.
+	// When set to 0, it means following the global setting.
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit,omitempty"`
 }
 
 // +genclient

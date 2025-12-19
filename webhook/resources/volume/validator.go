@@ -364,6 +364,11 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			return err
 		}
 	}
+
+	if err := validateRebuildConcurrentSyncLimit(newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.rebuildConcurrentSyncLimit")
+	}
+
 	if err := validateRecurringJobLabels(newVolume); err != nil {
 		return err
 	}
@@ -679,5 +684,15 @@ func validateRecurringJobLabels(vol *longhorn.Volume) error {
 		return werror.NewInvalidError(fmt.Sprintf("cannot add recurring jobs to linked-clone volume: %+v ", jobLabels), ".metadata.label")
 	}
 
+	return nil
+}
+
+func validateRebuildConcurrentSyncLimit(vol *longhorn.Volume) error {
+	if vol.Spec.RebuildConcurrentSyncLimit < 0 {
+		return fmt.Errorf("rebuildConcurrentSyncLimit cannot be negative")
+	}
+	if vol.Spec.RebuildConcurrentSyncLimit > 5 {
+		return fmt.Errorf("rebuildConcurrentSyncLimit cannot be greater than 5")
+	}
 	return nil
 }
