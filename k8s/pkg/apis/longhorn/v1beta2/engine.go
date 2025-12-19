@@ -75,8 +75,11 @@ type RebuildStatus struct {
 	Progress int `json:"progress"`
 	// +optional
 	State string `json:"state"`
+	// Deprecated. We are now using FromReplicaAddressList to list all source replicas.
 	// +optional
 	FromReplicaAddress string `json:"fromReplicaAddress"`
+	// +optional
+	FromReplicaAddressList []string `json:"fromReplicaAddressList"`
 	// +optional
 	AppliedRebuildingMBps int64 `json:"appliedRebuildingMBps"`
 }
