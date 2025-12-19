@@ -700,7 +700,7 @@ var (
 
 	SettingDefinitionManagerURL = SettingDefinition{
 		DisplayName:        "Manager URL",
-		Description:        "The external URL to access Longhorn Manager API. When set, this URL will be used in API responses (actions and links fields) instead of the internal pod IP. This is useful when accessing the API through Ingress or Gateway API HTTPRoute. Format: scheme://host[:port] (e.g., https://longhorn.example.com or https://longhorn.example.com:8443). Leave empty to use default behavior.",
+		Description:        "The external URL used to access the Longhorn Manager API. When set, this URL is returned in API responses (the actions and links fields) instead of the internal pod IP. This is useful when accessing the API through Ingress or Gateway API HTTPRoute. Format: scheme://host[:port] (for example, https://longhorn.example.com or https://longhorn.example.com:8443). Leave it empty to use the default behavior.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           false,
