@@ -504,6 +504,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.syncVolumeRebuildConcurrentSyncLimitSetting(volume, engines); err != nil {
+		return err
+	}
+
 	if err := c.syncVolumeSnapshotSetting(volume, engines, replicas); err != nil {
 		return err
 	}
@@ -1280,6 +1284,30 @@ func (c *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longhor
 	}
 	for _, r := range rs {
 		r.Spec.UnmapMarkDiskChainRemovedEnabled = unmapMarkEnabled
+	}
+
+	return nil
+}
+
+func (c *VolumeController) syncVolumeRebuildConcurrentSyncLimitSetting(v *longhorn.Volume, es map[string]*longhorn.Engine) error {
+	if es == nil {
+		return nil
+	}
+	if !types.IsDataEngineV1(v.Spec.DataEngine) {
+		return nil
+	}
+
+	limit := v.Spec.RebuildConcurrentSyncLimit
+	if limit < 1 {
+		val, err := c.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaRebuildConcurrentSyncLimit, v.Spec.DataEngine)
+		if err != nil {
+			return err
+		}
+		limit = int(val)
+	}
+
+	for _, e := range es {
+		e.Spec.RebuildConcurrentSyncLimit = limit
 	}
 
 	return nil

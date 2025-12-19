@@ -1175,10 +1175,11 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 				Image:       TestEngineImage,
 				DesireState: longhorn.InstanceStateStopped,
 			},
-			Frontend:                  longhorn.VolumeFrontendBlockDev,
-			ReplicaAddressMap:         map[string]string{},
-			UpgradedReplicaAddressMap: map[string]string{},
-			Active:                    true,
+			Frontend:                   longhorn.VolumeFrontendBlockDev,
+			ReplicaAddressMap:          map[string]string{},
+			UpgradedReplicaAddressMap:  map[string]string{},
+			Active:                     true,
+			RebuildConcurrentSyncLimit: 1,
 		},
 	}
 }

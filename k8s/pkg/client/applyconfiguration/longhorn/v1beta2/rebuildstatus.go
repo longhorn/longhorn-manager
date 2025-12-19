@@ -21,10 +21,11 @@ package v1beta2
 // RebuildStatusApplyConfiguration represents a declarative configuration of the RebuildStatus type for use
 // with apply.
 type RebuildStatusApplyConfiguration struct {
-	Error                  *string  `json:"error,omitempty"`
-	IsRebuilding           *bool    `json:"isRebuilding,omitempty"`
-	Progress               *int     `json:"progress,omitempty"`
-	State                  *string  `json:"state,omitempty"`
+	Error        *string `json:"error,omitempty"`
+	IsRebuilding *bool   `json:"isRebuilding,omitempty"`
+	Progress     *int    `json:"progress,omitempty"`
+	State        *string `json:"state,omitempty"`
+	// Deprecated. We are now using FromReplicaAddressList to list all source replicas.
 	FromReplicaAddress     *string  `json:"fromReplicaAddress,omitempty"`
 	FromReplicaAddressList []string `json:"fromReplicaAddressList,omitempty"`
 	AppliedRebuildingMBps  *int64   `json:"appliedRebuildingMBps,omitempty"`
