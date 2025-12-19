@@ -338,6 +338,13 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	ReplicaRebuildingBandwidthLimit int64 `json:"replicaRebuildingBandwidthLimit"`
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=5
+	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
+	// concurrently during a single replica rebuild.
+	// When set to 0, it means following the global setting.
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit,omitempty"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

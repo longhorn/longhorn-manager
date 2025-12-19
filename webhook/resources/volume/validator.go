@@ -364,6 +364,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			return err
 		}
 	}
+
 	if err := validateRecurringJobLabels(newVolume); err != nil {
 		return err
 	}

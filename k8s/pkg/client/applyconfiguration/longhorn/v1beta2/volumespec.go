@@ -79,6 +79,10 @@ type VolumeSpecApplyConfiguration struct {
 	OfflineRebuilding *longhornv1beta2.VolumeOfflineRebuilding `json:"offlineRebuilding,omitempty"`
 	// ReplicaRebuildingBandwidthLimit controls the maximum write bandwidth (in megabytes per second) allowed on the destination replica during the rebuilding process. Set this value to 0 to disable bandwidth limiting.
 	ReplicaRebuildingBandwidthLimit *int64 `json:"replicaRebuildingBandwidthLimit,omitempty"`
+	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
+	// concurrently during a single replica rebuild.
+	// When set to 0, it means following the global setting.
+	RebuildConcurrentSyncLimit *int `json:"rebuildConcurrentSyncLimit,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with
@@ -400,5 +404,13 @@ func (b *VolumeSpecApplyConfiguration) WithOfflineRebuilding(value longhornv1bet
 // If called multiple times, the ReplicaRebuildingBandwidthLimit field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithReplicaRebuildingBandwidthLimit(value int64) *VolumeSpecApplyConfiguration {
 	b.ReplicaRebuildingBandwidthLimit = &value
+	return b
+}
+
+// WithRebuildConcurrentSyncLimit sets the RebuildConcurrentSyncLimit field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RebuildConcurrentSyncLimit field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithRebuildConcurrentSyncLimit(value int) *VolumeSpecApplyConfiguration {
+	b.RebuildConcurrentSyncLimit = &value
 	return b
 }
