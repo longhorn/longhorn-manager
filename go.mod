@@ -66,9 +66,9 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.10.1
-	github.com/longhorn/backupstore v0.0.0-20251213143132-51fdc08d1cd9
-	github.com/longhorn/go-common-libs v0.0.0-20251213114131-1a1ec1f0270e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20251213143157-4a906cc17806
+	github.com/longhorn/backupstore v0.0.0-20251220100905-806bfd28ecb6
+	github.com/longhorn/go-common-libs v0.0.0-20251220083855-f666c812e595
+	github.com/longhorn/go-iscsi-helper v0.0.0-20251220102922-df1ba3dff946
 	github.com/longhorn/go-spdk-helper v0.2.0
 	github.com/longhorn/longhorn-engine v1.10.1
 	github.com/longhorn/longhorn-instance-manager v1.10.1
@@ -99,7 +99,7 @@ require (
 	k8s.io/kubernetes v1.34.3
 	k8s.io/metrics v0.34.3
 	k8s.io/mount-utils v0.34.3
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20251220205832-9d40a56c1308
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1
 )
@@ -117,7 +117,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/longhorn/types v0.0.0-20251207085945-9c40bd62daff // indirect
+	github.com/longhorn/types v0.0.0-20251218094636-43d032f49660 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
@@ -127,7 +127,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
+	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -167,7 +167,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+	github.com/pierrec/lz4/v4 v4.1.23 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
