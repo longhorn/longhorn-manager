@@ -196,6 +196,7 @@ var (
 		SettingNameStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker,
 		SettingNameUpgradeResponderURL,
+		SettingNameManagerURL,
 		SettingNameAllowCollectingLonghornUsage,
 		SettingNameCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion,
