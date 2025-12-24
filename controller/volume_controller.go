@@ -1124,8 +1124,14 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 		return nil
 	}
 
+	c.logger.Info("Cleaning up extra healthy replicas")
+
 	var cleaned bool
 	if cleaned, err = c.cleanupEvictionRequestedReplicas(v, rs); err != nil || cleaned {
+		return err
+	}
+
+	if cleaned, err = c.cleanupReplicaInNotReadyEnv(v, rs); err != nil || cleaned {
 		return err
 	}
 
@@ -1183,6 +1189,41 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 			return false, err
 		}
 		log.Infof("Evicted replica %v in disk %v of node %v ", r.Name, r.Spec.DiskID, r.Spec.NodeID)
+		return true, nil
+	}
+	return false, nil
+}
+
+func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	log := getLoggerForVolume(c.logger, v)
+
+	// Pick up the replicas in not-ready nodes or in not-running instance manager first
+	var chosenReplica *longhorn.Replica
+	for _, r := range rs {
+		isNotReady, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+		if err != nil {
+			return false, err
+		}
+		if isNotReady {
+			log.Infof("Deleting replica %v on down or deleted node %v", r.Name, r.Spec.NodeID)
+			chosenReplica = rs[r.Name]
+			break
+		}
+		im, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
+		if err != nil {
+			return false, err
+		}
+		if im == nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			log.Infof("Deleting replica %v in not-running instance manager %v", r.Name, r.Status.InstanceManagerName)
+			chosenReplica = rs[r.Name]
+			break
+		}
+	}
+
+	if chosenReplica != nil {
+		if err := c.deleteReplica(chosenReplica, rs); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	return false, nil
