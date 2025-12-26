@@ -2124,14 +2124,22 @@ func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) 
 	}
 	// Replica already had IM
 	if r.Status.InstanceManagerName != "" {
-		return true, nil
+		replicaIM, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to find instance manager %v for replica %v", r.Status.InstanceManagerName, r.Name)
+		}
+		return imInStartingOrRunningState(replicaIM), nil
 	}
 	defaultIM, err := c.ds.GetInstanceManagerByInstanceRO(r)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to find instance manager for replica %v", r.Name)
 	}
-	return defaultIM.Status.CurrentState == longhorn.InstanceManagerStateRunning ||
-		defaultIM.Status.CurrentState == longhorn.InstanceManagerStateStarting, nil
+	return imInStartingOrRunningState(defaultIM), nil
+}
+
+func imInStartingOrRunningState(im *longhorn.InstanceManager) bool {
+	return im.Status.CurrentState == longhorn.InstanceManagerStateStarting ||
+		im.Status.CurrentState == longhorn.InstanceManagerStateRunning
 }
 
 func (c *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) ([]string, error) {
