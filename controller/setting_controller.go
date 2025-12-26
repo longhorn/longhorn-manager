@@ -1681,6 +1681,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:             true,
 		types.SettingNameConcurrentBackupRestorePerNodeLimit:                      true,
 		types.SettingNameConcurrentReplicaRebuildPerNodeLimit:                     true,
+		types.SettingNameReplicaRebuildConcurrentSyncLimit:                        true,
 		types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit:          true,
 		types.SettingNameCRDAPIVersion:                                            true,
 		types.SettingNameCreateDefaultDiskLabeledNodes:                            true,

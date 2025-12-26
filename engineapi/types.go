@@ -95,6 +95,8 @@ type EngineClient interface {
 	ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimitMbps int64) error
 	ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error
 	ReplicaModeUpdate(engine *longhorn.Engine, url string, mode string) error
+	ReplicaRebuildConcurrentSyncLimitSet(engine *longhorn.Engine, limit int) error
+	ReplicaRebuildConcurrentSyncLimitGet(engine *longhorn.Engine) (int, error)
 
 	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string, freezeFilesystem bool) (string, error)
 	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.SnapshotInfo, error)

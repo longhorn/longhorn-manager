@@ -2104,6 +2104,38 @@ func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string 
 	return address
 }
 
+// ReplicaAddressListToReplicaNameList will directly return the address list if the format
+// is invalid or the replicas are not found.
+func ReplicaAddressListToReplicaNameList(addresses []string, rs []*longhorn.Replica) (replicaNames []string) {
+	replicaNames = make([]string, 0, len(addresses))
+	for _, address := range addresses {
+		// Remove the "tcp://" prefix if it exists
+		addr := strings.TrimPrefix(address, "tcp://")
+
+		var host, port string
+		var err error
+
+		// Handle both IPv4 and IPv6 formats
+		host, port, err = net.SplitHostPort(addr)
+		if err != nil {
+			// If one address parsing fails, directly return the original address
+			return addresses
+		}
+
+		for _, r := range rs {
+			if host == r.Status.StorageIP && port == strconv.Itoa(r.Status.Port) {
+				replicaNames = append(replicaNames, r.Name)
+			}
+		}
+	}
+
+	if len(replicaNames) == 0 {
+		// Cannot find matching replica by the address, replica may be removed already. Use address instead.
+		return addresses
+	}
+	return replicaNames
+}
+
 // IsAvailableHealthyReplica returns if the specified replica is a healthy one
 func IsAvailableHealthyReplica(r *longhorn.Replica) bool {
 	if r == nil {

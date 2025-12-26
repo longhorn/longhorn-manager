@@ -312,13 +312,17 @@ func (b *Backup) overlayFragmaps(lvol *Lvol) error {
 	// Process 256 bytes at a time to reduce the number of calls.
 	batchSize := 256 * (8 * b.fragmap.ClusterSize)
 
+	// Old snapshots remain smaller after expansion; cap fragmap to the lvol size.
+	// E.g. a 1Gi snapshot stays 1Gi after expanding the volume to 2Gi.
+	effectiveSize := min(b.replica.SpecSize, lvol.SpecSize)
+
 	offset := uint64(0)
 	for {
-		if offset >= b.replica.SpecSize {
+		if offset >= effectiveSize {
 			return nil
 		}
 
-		size := util.Min(batchSize, b.replica.SpecSize-offset)
+		size := util.Min(batchSize, effectiveSize-offset)
 
 		result, err := b.spdkClient.BdevLvolGetFragmap(lvol.UUID, uint64(offset), size)
 		if err != nil {
