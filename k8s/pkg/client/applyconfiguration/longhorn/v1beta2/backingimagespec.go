@@ -24,7 +24,10 @@ import (
 
 // BackingImageSpecApplyConfiguration represents a declarative configuration of the BackingImageSpec type for use
 // with apply.
+//
+// BackingImageSpec defines the desired state of the Longhorn backing image
 type BackingImageSpecApplyConfiguration struct {
+	// Deprecated. We are now using DiskFileSpecMap to assign different spec to the file on different disks.
 	Disks             map[string]string                                    `json:"disks,omitempty"`
 	DiskFileSpecMap   map[string]*longhornv1beta2.BackingImageDiskFileSpec `json:"diskFileSpecMap,omitempty"`
 	Checksum          *string                                              `json:"checksum,omitempty"`

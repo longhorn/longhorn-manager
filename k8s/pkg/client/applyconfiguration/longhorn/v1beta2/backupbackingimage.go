@@ -26,6 +26,8 @@ import (
 
 // BackupBackingImageApplyConfiguration represents a declarative configuration of the BackupBackingImage type for use
 // with apply.
+//
+// BackupBackingImage is where Longhorn stores backing image backup object.
 type BackupBackingImageApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func BackupBackingImage(name, namespace string) *BackupBackingImageApplyConfigur
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b BackupBackingImageApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

@@ -24,10 +24,15 @@ import (
 
 // ShareManagerStatusApplyConfiguration represents a declarative configuration of the ShareManagerStatus type for use
 // with apply.
+//
+// ShareManagerStatus defines the observed state of the Longhorn share manager
 type ShareManagerStatusApplyConfiguration struct {
-	OwnerID  *string                            `json:"ownerID,omitempty"`
-	State    *longhornv1beta2.ShareManagerState `json:"state,omitempty"`
-	Endpoint *string                            `json:"endpoint,omitempty"`
+	// The node ID on which the controller is responsible to reconcile this share manager resource
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The state of the share manager resource
+	State *longhornv1beta2.ShareManagerState `json:"state,omitempty"`
+	// NFS endpoint that can access the mounted filesystem of the volume
+	Endpoint *string `json:"endpoint,omitempty"`
 }
 
 // ShareManagerStatusApplyConfiguration constructs a declarative configuration of the ShareManagerStatus type for use with

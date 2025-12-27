@@ -21,11 +21,13 @@ package v1beta2
 // KubernetesStatusApplyConfiguration represents a declarative configuration of the KubernetesStatus type for use
 // with apply.
 type KubernetesStatusApplyConfiguration struct {
-	PVName          *string                            `json:"pvName,omitempty"`
-	PVStatus        *string                            `json:"pvStatus,omitempty"`
-	Namespace       *string                            `json:"namespace,omitempty"`
-	PVCName         *string                            `json:"pvcName,omitempty"`
-	LastPVCRefAt    *string                            `json:"lastPVCRefAt,omitempty"`
+	PVName   *string `json:"pvName,omitempty"`
+	PVStatus *string `json:"pvStatus,omitempty"`
+	// determine if PVC/Namespace is history or not
+	Namespace    *string `json:"namespace,omitempty"`
+	PVCName      *string `json:"pvcName,omitempty"`
+	LastPVCRefAt *string `json:"lastPVCRefAt,omitempty"`
+	// determine if Pod/Workload is history or not
 	WorkloadsStatus []WorkloadStatusApplyConfiguration `json:"workloadsStatus,omitempty"`
 	LastPodRefAt    *string                            `json:"lastPodRefAt,omitempty"`
 }

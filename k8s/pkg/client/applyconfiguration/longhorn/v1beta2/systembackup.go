@@ -26,6 +26,8 @@ import (
 
 // SystemBackupApplyConfiguration represents a declarative configuration of the SystemBackup type for use
 // with apply.
+//
+// SystemBackup is where Longhorn stores system backup object
 type SystemBackupApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func SystemBackup(name, namespace string) *SystemBackupApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b SystemBackupApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

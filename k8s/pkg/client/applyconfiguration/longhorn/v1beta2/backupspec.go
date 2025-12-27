@@ -25,12 +25,20 @@ import (
 
 // BackupSpecApplyConfiguration represents a declarative configuration of the BackupSpec type for use
 // with apply.
+//
+// BackupSpec defines the desired state of the Longhorn backup
 type BackupSpecApplyConfiguration struct {
-	SyncRequestedAt *v1.Time                    `json:"syncRequestedAt,omitempty"`
-	SnapshotName    *string                     `json:"snapshotName,omitempty"`
-	Labels          map[string]string           `json:"labels,omitempty"`
-	BackupMode      *longhornv1beta2.BackupMode `json:"backupMode,omitempty"`
-	BackupBlockSize *int64                      `json:"backupBlockSize,omitempty"`
+	// The time to request run sync the remote backup.
+	SyncRequestedAt *v1.Time `json:"syncRequestedAt,omitempty"`
+	// The snapshot name.
+	SnapshotName *string `json:"snapshotName,omitempty"`
+	// The labels of snapshot backup.
+	Labels map[string]string `json:"labels,omitempty"`
+	// The backup mode of this backup.
+	// Can be "full" or "incremental"
+	BackupMode *longhornv1beta2.BackupMode `json:"backupMode,omitempty"`
+	// The backup block size. 0 means the legacy default size 2MiB, and -1 indicate the block size is invalid.
+	BackupBlockSize *int64 `json:"backupBlockSize,omitempty"`
 }
 
 // BackupSpecApplyConfiguration constructs a declarative configuration of the BackupSpec type for use with

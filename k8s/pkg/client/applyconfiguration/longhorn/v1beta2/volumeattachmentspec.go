@@ -24,9 +24,12 @@ import (
 
 // VolumeAttachmentSpecApplyConfiguration represents a declarative configuration of the VolumeAttachmentSpec type for use
 // with apply.
+//
+// VolumeAttachmentSpec defines the desired state of Longhorn VolumeAttachment
 type VolumeAttachmentSpecApplyConfiguration struct {
 	AttachmentTickets map[string]*longhornv1beta2.AttachmentTicket `json:"attachmentTickets,omitempty"`
-	Volume            *string                                      `json:"volume,omitempty"`
+	// The name of Longhorn volume of this VolumeAttachment
+	Volume *string `json:"volume,omitempty"`
 }
 
 // VolumeAttachmentSpecApplyConfiguration constructs a declarative configuration of the VolumeAttachmentSpec type for use with

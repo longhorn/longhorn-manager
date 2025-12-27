@@ -24,10 +24,15 @@ import (
 
 // EngineStatusApplyConfiguration represents a declarative configuration of the EngineStatus type for use
 // with apply.
+//
+// EngineStatus defines the observed state of the Longhorn engine
 type EngineStatusApplyConfiguration struct {
-	CurrentSize                      *int64                                          `json:"currentSize,omitempty"`
-	CurrentReplicaAddressMap         map[string]string                               `json:"currentReplicaAddressMap,omitempty"`
-	ReplicaModeMap                   map[string]longhornv1beta2.ReplicaMode          `json:"replicaModeMap,omitempty"`
+	CurrentSize              *int64                                 `json:"currentSize,omitempty"`
+	CurrentReplicaAddressMap map[string]string                      `json:"currentReplicaAddressMap,omitempty"`
+	ReplicaModeMap           map[string]longhornv1beta2.ReplicaMode `json:"replicaModeMap,omitempty"`
+	// ReplicaTransitionTimeMap records the time a replica in ReplicaModeMap transitions from one mode to another (or
+	// from not being in the ReplicaModeMap to being in it). This information is sometimes required by other controllers
+	// (e.g. the volume controller uses it to determine the correct value for replica.Spec.lastHealthyAt).
 	ReplicaTransitionTimeMap         map[string]string                               `json:"replicaTransitionTimeMap,omitempty"`
 	Endpoint                         *string                                         `json:"endpoint,omitempty"`
 	LastRestoredBackup               *string                                         `json:"lastRestoredBackup,omitempty"`

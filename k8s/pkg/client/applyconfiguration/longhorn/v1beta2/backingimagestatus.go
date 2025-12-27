@@ -24,17 +24,22 @@ import (
 
 // BackingImageStatusApplyConfiguration represents a declarative configuration of the BackingImageStatus type for use
 // with apply.
+//
+// BackingImageStatus defines the observed state of the Longhorn backing image status
 type BackingImageStatusApplyConfiguration struct {
-	OwnerID           *string                                                `json:"ownerID,omitempty"`
-	UUID              *string                                                `json:"uuid,omitempty"`
-	Size              *int64                                                 `json:"size,omitempty"`
-	VirtualSize       *int64                                                 `json:"virtualSize,omitempty"`
+	OwnerID *string `json:"ownerID,omitempty"`
+	UUID    *string `json:"uuid,omitempty"`
+	Size    *int64  `json:"size,omitempty"`
+	// Virtual size of image in bytes, which may be larger than physical size. Will be zero until known (e.g. while a backing image is uploading)
+	VirtualSize *int64 `json:"virtualSize,omitempty"`
+	// Real size of image in bytes, which may be smaller than the size when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
 	RealSize          *int64                                                 `json:"realSize,omitempty"`
 	Checksum          *string                                                `json:"checksum,omitempty"`
 	DiskFileStatusMap map[string]*longhornv1beta2.BackingImageDiskFileStatus `json:"diskFileStatusMap,omitempty"`
 	DiskLastRefAtMap  map[string]string                                      `json:"diskLastRefAtMap,omitempty"`
-	V2FirstCopyStatus *longhornv1beta2.BackingImageState                     `json:"v2FirstCopyStatus,omitempty"`
-	V2FirstCopyDisk   *string                                                `json:"v2FirstCopyDisk,omitempty"`
+	// It is pending -> in-progress -> ready/failed
+	V2FirstCopyStatus *longhornv1beta2.BackingImageState `json:"v2FirstCopyStatus,omitempty"`
+	V2FirstCopyDisk   *string                            `json:"v2FirstCopyDisk,omitempty"`
 }
 
 // BackingImageStatusApplyConfiguration constructs a declarative configuration of the BackingImageStatus type for use with

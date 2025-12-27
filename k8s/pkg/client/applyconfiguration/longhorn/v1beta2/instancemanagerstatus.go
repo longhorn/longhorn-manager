@@ -24,6 +24,8 @@ import (
 
 // InstanceManagerStatusApplyConfiguration represents a declarative configuration of the InstanceManagerStatus type for use
 // with apply.
+//
+// InstanceManagerStatus defines the observed state of the Longhorn instance manager
 type InstanceManagerStatusApplyConfiguration struct {
 	OwnerID            *string                                             `json:"ownerID,omitempty"`
 	CurrentState       *longhornv1beta2.InstanceManagerState               `json:"currentState,omitempty"`

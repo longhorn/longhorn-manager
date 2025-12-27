@@ -20,7 +20,10 @@ package v1beta2
 
 // ShareManagerSpecApplyConfiguration represents a declarative configuration of the ShareManagerSpec type for use
 // with apply.
+//
+// ShareManagerSpec defines the desired state of the Longhorn share manager
 type ShareManagerSpecApplyConfiguration struct {
+	// Share manager image used for creating a share manager pod
 	Image *string `json:"image,omitempty"`
 }
 

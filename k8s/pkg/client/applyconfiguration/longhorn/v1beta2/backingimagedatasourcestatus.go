@@ -24,6 +24,8 @@ import (
 
 // BackingImageDataSourceStatusApplyConfiguration represents a declarative configuration of the BackingImageDataSourceStatus type for use
 // with apply.
+//
+// BackingImageDataSourceStatus defines the observed state of the Longhorn backing image data source
 type BackingImageDataSourceStatusApplyConfiguration struct {
 	OwnerID           *string                            `json:"ownerID,omitempty"`
 	RunningParameters map[string]string                  `json:"runningParameters,omitempty"`

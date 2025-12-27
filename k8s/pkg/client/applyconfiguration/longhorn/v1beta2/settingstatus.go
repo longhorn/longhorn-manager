@@ -20,7 +20,10 @@ package v1beta2
 
 // SettingStatusApplyConfiguration represents a declarative configuration of the SettingStatus type for use
 // with apply.
+//
+// SettingStatus defines the observed state of the Longhorn setting
 type SettingStatusApplyConfiguration struct {
+	// The setting is applied.
 	Applied *bool `json:"applied,omitempty"`
 }
 

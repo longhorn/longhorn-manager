@@ -24,15 +24,27 @@ import (
 
 // RecurringJobSpecApplyConfiguration represents a declarative configuration of the RecurringJobSpec type for use
 // with apply.
+//
+// RecurringJobSpec defines the desired state of the Longhorn recurring job
 type RecurringJobSpecApplyConfiguration struct {
-	Name        *string                           `json:"name,omitempty"`
-	Groups      []string                          `json:"groups,omitempty"`
-	Task        *longhornv1beta2.RecurringJobType `json:"task,omitempty"`
-	Cron        *string                           `json:"cron,omitempty"`
-	Retain      *int                              `json:"retain,omitempty"`
-	Concurrency *int                              `json:"concurrency,omitempty"`
-	Labels      map[string]string                 `json:"labels,omitempty"`
-	Parameters  map[string]string                 `json:"parameters,omitempty"`
+	// The recurring job name.
+	Name *string `json:"name,omitempty"`
+	// The recurring job group.
+	Groups []string `json:"groups,omitempty"`
+	// The recurring job task.
+	// Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create", "filesystem-trim" or "system-backup".
+	Task *longhornv1beta2.RecurringJobType `json:"task,omitempty"`
+	// The cron setting.
+	Cron *string `json:"cron,omitempty"`
+	// The retain count of the snapshot/backup.
+	Retain *int `json:"retain,omitempty"`
+	// The concurrency of taking the snapshot/backup.
+	Concurrency *int `json:"concurrency,omitempty"`
+	// The label of the snapshot/backup.
+	Labels map[string]string `json:"labels,omitempty"`
+	// The parameters of the snapshot/backup.
+	// Support parameters: "full-backup-interval", "volume-backup-policy".
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // RecurringJobSpecApplyConfiguration constructs a declarative configuration of the RecurringJobSpec type for use with

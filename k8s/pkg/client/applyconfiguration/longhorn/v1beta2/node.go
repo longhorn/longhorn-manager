@@ -26,6 +26,8 @@ import (
 
 // NodeApplyConfiguration represents a declarative configuration of the Node type for use
 // with apply.
+//
+// Node is where Longhorn stores Longhorn node object.
 type NodeApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func Node(name, namespace string) *NodeApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b NodeApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

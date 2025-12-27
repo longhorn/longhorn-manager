@@ -21,7 +21,10 @@ package v1beta2
 // V2DataEngineStatusApplyConfiguration represents a declarative configuration of the V2DataEngineStatus type for use
 // with apply.
 type V2DataEngineStatusApplyConfiguration struct {
-	CPUMask              *string `json:"cpuMask,omitempty"`
+	CPUMask *string `json:"cpuMask,omitempty"`
+	// InterruptModeEnabled indicates whether the V2 data engine is running in
+	// interrupt mode (true) or polling mode (false). Set by Longhorn manager;
+	// read-only to users.
 	InterruptModeEnabled *string `json:"interruptModeEnabled,omitempty"`
 }
 

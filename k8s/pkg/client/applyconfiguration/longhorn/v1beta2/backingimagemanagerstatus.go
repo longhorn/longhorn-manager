@@ -24,6 +24,8 @@ import (
 
 // BackingImageManagerStatusApplyConfiguration represents a declarative configuration of the BackingImageManagerStatus type for use
 // with apply.
+//
+// BackingImageManagerStatus defines the observed state of the Longhorn backing image manager
 type BackingImageManagerStatusApplyConfiguration struct {
 	OwnerID             *string                                           `json:"ownerID,omitempty"`
 	CurrentState        *longhornv1beta2.BackingImageManagerState         `json:"currentState,omitempty"`

@@ -20,7 +20,10 @@ package v1beta2
 
 // SystemRestoreSpecApplyConfiguration represents a declarative configuration of the SystemRestoreSpec type for use
 // with apply.
+//
+// SystemRestoreSpec defines the desired state of the Longhorn SystemRestore
 type SystemRestoreSpecApplyConfiguration struct {
+	// The system backup name in the object store.
 	SystemBackup *string `json:"systemBackup,omitempty"`
 }
 

@@ -20,6 +20,8 @@ package v1beta2
 
 // NodeSpecApplyConfiguration represents a declarative configuration of the NodeSpec type for use
 // with apply.
+//
+// NodeSpec defines the desired state of the Longhorn node
 type NodeSpecApplyConfiguration struct {
 	Name                      *string                               `json:"name,omitempty"`
 	Disks                     map[string]DiskSpecApplyConfiguration `json:"disks,omitempty"`
