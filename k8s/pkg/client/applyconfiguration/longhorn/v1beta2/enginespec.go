@@ -24,9 +24,13 @@ import (
 
 // EngineSpecApplyConfiguration represents a declarative configuration of the EngineSpec type for use
 // with apply.
+//
+// EngineSpec defines the desired state of the Longhorn engine
 type EngineSpecApplyConfiguration struct {
-	Frontend                         *longhornv1beta2.VolumeFrontend   `json:"frontend,omitempty"`
-	UblkQueueDepth                   *int                              `json:"ublkQueueDepth,omitempty"`
+	Frontend *longhornv1beta2.VolumeFrontend `json:"frontend,omitempty"`
+	// ublkQueueDepth controls the depth of each queue for ublk frontend.
+	UblkQueueDepth *int `json:"ublkQueueDepth,omitempty"`
+	// ublkNumberOfQueue controls the number of queues for ublk frontend.
 	UblkNumberOfQueue                *int                              `json:"ublkNumberOfQueue,omitempty"`
 	ReplicaAddressMap                map[string]string                 `json:"replicaAddressMap,omitempty"`
 	UpgradedReplicaAddressMap        map[string]string                 `json:"upgradedReplicaAddressMap,omitempty"`

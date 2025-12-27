@@ -20,6 +20,8 @@ package v1beta2
 
 // OrphanStatusApplyConfiguration represents a declarative configuration of the OrphanStatus type for use
 // with apply.
+//
+// OrphanStatus defines the observed state of the Longhorn orphaned data
 type OrphanStatusApplyConfiguration struct {
 	OwnerID    *string                       `json:"ownerID,omitempty"`
 	Conditions []ConditionApplyConfiguration `json:"conditions,omitempty"`

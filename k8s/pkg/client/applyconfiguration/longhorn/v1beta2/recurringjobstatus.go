@@ -20,9 +20,13 @@ package v1beta2
 
 // RecurringJobStatusApplyConfiguration represents a declarative configuration of the RecurringJobStatus type for use
 // with apply.
+//
+// RecurringJobStatus defines the observed state of the Longhorn recurring job
 type RecurringJobStatusApplyConfiguration struct {
-	OwnerID        *string `json:"ownerID,omitempty"`
-	ExecutionCount *int    `json:"executionCount,omitempty"`
+	// The owner ID which is responsible to reconcile this recurring job CR.
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The number of jobs that have been triggered.
+	ExecutionCount *int `json:"executionCount,omitempty"`
 }
 
 // RecurringJobStatusApplyConfiguration constructs a declarative configuration of the RecurringJobStatus type for use with

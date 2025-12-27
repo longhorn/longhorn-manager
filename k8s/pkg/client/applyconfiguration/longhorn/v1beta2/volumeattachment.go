@@ -26,6 +26,8 @@ import (
 
 // VolumeAttachmentApplyConfiguration represents a declarative configuration of the VolumeAttachment type for use
 // with apply.
+//
+// VolumeAttachment stores attachment information of a Longhorn volume
 type VolumeAttachmentApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func VolumeAttachment(name, namespace string) *VolumeAttachmentApplyConfiguratio
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b VolumeAttachmentApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

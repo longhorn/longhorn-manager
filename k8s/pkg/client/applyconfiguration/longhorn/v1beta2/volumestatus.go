@@ -24,16 +24,19 @@ import (
 
 // VolumeStatusApplyConfiguration represents a declarative configuration of the VolumeStatus type for use
 // with apply.
+//
+// VolumeStatus defines the observed state of the Longhorn volume
 type VolumeStatusApplyConfiguration struct {
-	OwnerID                *string                              `json:"ownerID,omitempty"`
-	State                  *longhornv1beta2.VolumeState         `json:"state,omitempty"`
-	Robustness             *longhornv1beta2.VolumeRobustness    `json:"robustness,omitempty"`
-	CurrentNodeID          *string                              `json:"currentNodeID,omitempty"`
-	CurrentImage           *string                              `json:"currentImage,omitempty"`
-	KubernetesStatus       *KubernetesStatusApplyConfiguration  `json:"kubernetesStatus,omitempty"`
-	Conditions             []ConditionApplyConfiguration        `json:"conditions,omitempty"`
-	LastBackup             *string                              `json:"lastBackup,omitempty"`
-	LastBackupAt           *string                              `json:"lastBackupAt,omitempty"`
+	OwnerID          *string                             `json:"ownerID,omitempty"`
+	State            *longhornv1beta2.VolumeState        `json:"state,omitempty"`
+	Robustness       *longhornv1beta2.VolumeRobustness   `json:"robustness,omitempty"`
+	CurrentNodeID    *string                             `json:"currentNodeID,omitempty"`
+	CurrentImage     *string                             `json:"currentImage,omitempty"`
+	KubernetesStatus *KubernetesStatusApplyConfiguration `json:"kubernetesStatus,omitempty"`
+	Conditions       []ConditionApplyConfiguration       `json:"conditions,omitempty"`
+	LastBackup       *string                             `json:"lastBackup,omitempty"`
+	LastBackupAt     *string                             `json:"lastBackupAt,omitempty"`
+	// the node that this volume is currently migrating to
 	CurrentMigrationNodeID *string                              `json:"currentMigrationNodeID,omitempty"`
 	FrontendDisabled       *bool                                `json:"frontendDisabled,omitempty"`
 	RestoreRequired        *bool                                `json:"restoreRequired,omitempty"`

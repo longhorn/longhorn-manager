@@ -20,9 +20,14 @@ package v1beta2
 
 // SupportBundleSpecApplyConfiguration represents a declarative configuration of the SupportBundleSpec type for use
 // with apply.
+//
+// SupportBundleSpec defines the desired state of the Longhorn SupportBundle
 type SupportBundleSpecApplyConfiguration struct {
-	NodeID      *string `json:"nodeID,omitempty"`
-	IssueURL    *string `json:"issueURL,omitempty"`
+	// The preferred responsible controller node ID.
+	NodeID *string `json:"nodeID,omitempty"`
+	// The issue URL
+	IssueURL *string `json:"issueURL,omitempty"`
+	// A brief description of the issue
 	Description *string `json:"description,omitempty"`
 }
 

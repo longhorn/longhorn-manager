@@ -20,10 +20,16 @@ package v1beta2
 
 // SnapshotSpecApplyConfiguration represents a declarative configuration of the SnapshotSpec type for use
 // with apply.
+//
+// SnapshotSpec defines the desired state of Longhorn Snapshot
 type SnapshotSpecApplyConfiguration struct {
-	Volume         *string           `json:"volume,omitempty"`
-	CreateSnapshot *bool             `json:"createSnapshot,omitempty"`
-	Labels         map[string]string `json:"labels,omitempty"`
+	// the volume that this snapshot belongs to.
+	// This field is immutable after creation.
+	Volume *string `json:"volume,omitempty"`
+	// require creating a new snapshot
+	CreateSnapshot *bool `json:"createSnapshot,omitempty"`
+	// The labels of snapshot
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // SnapshotSpecApplyConfiguration constructs a declarative configuration of the SnapshotSpec type for use with

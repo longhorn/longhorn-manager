@@ -24,6 +24,8 @@ import (
 
 // BackingImageDataSourceSpecApplyConfiguration represents a declarative configuration of the BackingImageDataSourceSpec type for use
 // with apply.
+//
+// BackingImageDataSourceSpec defines the desired state of the Longhorn backing image data source
 type BackingImageDataSourceSpecApplyConfiguration struct {
 	NodeID          *string                                     `json:"nodeID,omitempty"`
 	UUID            *string                                     `json:"uuid,omitempty"`

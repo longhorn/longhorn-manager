@@ -26,6 +26,8 @@ import (
 
 // EngineImageApplyConfiguration represents a declarative configuration of the EngineImage type for use
 // with apply.
+//
+// EngineImage is where Longhorn stores engine image object.
 type EngineImageApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func EngineImage(name, namespace string) *EngineImageApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b EngineImageApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

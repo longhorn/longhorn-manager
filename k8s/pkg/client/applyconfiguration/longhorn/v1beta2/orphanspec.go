@@ -24,11 +24,19 @@ import (
 
 // OrphanSpecApplyConfiguration represents a declarative configuration of the OrphanSpec type for use
 // with apply.
+//
+// OrphanSpec defines the desired state of the Longhorn orphaned data
 type OrphanSpecApplyConfiguration struct {
-	NodeID     *string                         `json:"nodeID,omitempty"`
-	Type       *longhornv1beta2.OrphanType     `json:"orphanType,omitempty"`
+	// The node ID on which the controller is responsible to reconcile this orphan CR.
+	NodeID *string `json:"nodeID,omitempty"`
+	// The type of the orphaned data.
+	// Can be "replica".
+	Type *longhornv1beta2.OrphanType `json:"orphanType,omitempty"`
+	// The type of data engine for instance orphan.
+	// Can be "v1", "v2".
 	DataEngine *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
-	Parameters map[string]string               `json:"parameters,omitempty"`
+	// The parameters of the orphaned data
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // OrphanSpecApplyConfiguration constructs a declarative configuration of the OrphanSpec type for use with

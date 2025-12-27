@@ -24,6 +24,8 @@ import (
 
 // InstanceManagerSpecApplyConfiguration represents a declarative configuration of the InstanceManagerSpec type for use
 // with apply.
+//
+// InstanceManagerSpec defines the desired state of the Longhorn instance manager
 type InstanceManagerSpecApplyConfiguration struct {
 	Image          *string                              `json:"image,omitempty"`
 	NodeID         *string                              `json:"nodeID,omitempty"`

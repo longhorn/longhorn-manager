@@ -24,6 +24,8 @@ import (
 
 // NodeStatusApplyConfiguration represents a declarative configuration of the NodeStatus type for use
 // with apply.
+//
+// NodeStatus defines the observed state of the Longhorn node
 type NodeStatusApplyConfiguration struct {
 	Conditions          []ConditionApplyConfiguration          `json:"conditions,omitempty"`
 	DiskStatus          map[string]*longhornv1beta2.DiskStatus `json:"diskStatus,omitempty"`
