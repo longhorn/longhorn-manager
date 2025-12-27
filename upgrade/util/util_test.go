@@ -163,7 +163,7 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		lhClient := lhfake.NewSimpleClientset()
+		lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
 		setting := &longhorn.Setting{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: string(types.SettingNameCurrentLonghornVersion),
@@ -275,7 +275,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 
 	for testName, testCase := range testCases {
 		c.Logf("testing upgrade.util.%v", testName)
-		lhClient := lhfake.NewSimpleClientset()
+		lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
 
 		for i, version := range testCase.currentVersions {
 			engineImage := &longhorn.EngineImage{

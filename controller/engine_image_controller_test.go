@@ -200,9 +200,9 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		var err error
 		logrus.Debugf("Testing engine image controller: %v", name)
 
-		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewSimpleClientset()
-		extentionClient := apiextensionsfake.NewSimpleClientset()
+		kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+		extentionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 

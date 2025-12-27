@@ -117,9 +117,9 @@ var _ = Suite(&NodeControllerSuite{})
 // This is setting up the NodeControllerSuite datastructure as a fixture. It is
 // executed once before each test
 func (s *NodeControllerSuite) SetUpTest(c *C) {
-	s.kubeClient = fake.NewSimpleClientset()
-	s.lhClient = lhfake.NewSimpleClientset()
-	s.extensionsClient = apiextensionsfake.NewSimpleClientset()
+	s.kubeClient = fake.NewSimpleClientset()                    // nolint: staticcheck
+	s.lhClient = lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	s.extensionsClient = apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 	s.informerFactories = util.NewInformerFactories(TestNamespace, s.kubeClient, s.lhClient, controller.NoResyncPeriodFunc())
 
