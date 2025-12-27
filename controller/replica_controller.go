@@ -415,6 +415,9 @@ func (rc *ReplicaController) getDiskNameFromUUID(r *longhorn.Replica) (string, e
 		return "", err
 	}
 	for _, disk := range node.Status.DiskStatus {
+		if disk == nil {
+			continue
+		}
 		if disk.DiskUUID == r.Spec.DiskID {
 			return disk.DiskName, nil
 		}
