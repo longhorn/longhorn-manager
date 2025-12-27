@@ -21,6 +21,7 @@ import (
 
 const (
 	lsblkBinary    = "lsblk"
+	blkidBinary    = "blkid"
 	BlockdevBinary = "blockdev"
 )
 
@@ -273,4 +274,13 @@ func IsBlockDevice(path string) (bool, error) {
 	}
 
 	return (st.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
+}
+
+// IsBlockDeviceInUse returns true if the given block device has a filesystem
+// or partition table detected by blkid, indicating that the device is already
+// in use or contains existing data.
+func IsBlockDeviceInUse(devPath string, executor *commonns.Executor) bool {
+	opts := []string{devPath}
+	_, err := executor.Execute(nil, blkidBinary, opts, types.ExecuteTimeout)
+	return err == nil
 }
