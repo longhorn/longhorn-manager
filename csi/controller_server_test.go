@@ -227,7 +227,7 @@ func TestGetCapacity(t *testing.T) {
 		},
 	} {
 		t.Run(test.testName, func(t *testing.T) {
-			cs.lhClient = lhfake.NewSimpleClientset()
+			cs.lhClient = lhfake.NewSimpleClientset() // nolint: staticcheck
 			if !test.skipNodeCreation {
 				addDisksToNode(test.node, test.disks)
 				_, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), test.node, metav1.CreateOptions{})

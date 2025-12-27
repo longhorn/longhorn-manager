@@ -307,9 +307,9 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 
 		fmt.Printf("testing %v\n", name)
 
-		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewSimpleClientset()
-		extensionsClient := apiextensionsfake.NewSimpleClientset()
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 

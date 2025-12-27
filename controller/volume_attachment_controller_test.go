@@ -421,9 +421,9 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 }
 
 func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCase) {
-	kubeClient := fake.NewSimpleClientset()
-	lhClient := lhfake.NewSimpleClientset()
-	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
 
