@@ -20,6 +20,19 @@ const (
 	InstanceManagerStateUnknown  = InstanceManagerState("unknown")
 )
 
+const (
+	InstanceManagerConditionTypeRunning = "Running"
+
+	InstanceManagerConditionReasonNodeDown          = "NodeDown"
+	InstanceManagerConditionReasonNodeUnschedulable = "NodeUnschedulable"
+	InstanceManagerConditionReasonPodDeleting       = "PodDeleting"
+	InstanceManagerConditionReasonPodFailed         = "PodFailed"
+	InstanceManagerConditionReasonPodNotFound       = "PodNotFound"
+	InstanceManagerConditionReasonPodRestart        = "PodRestart"
+	InstanceManagerConditionReasonSettingNotSynced  = "SettingNotSynced"
+	InstanceManagerConditionReasonStarting          = "Starting"
+)
+
 // +kubebuilder:validation:Enum=aio;engine;replica
 type InstanceManagerType string
 
@@ -195,6 +208,9 @@ type InstanceManagerStatus struct {
 	OwnerID string `json:"ownerID"`
 	// +optional
 	CurrentState InstanceManagerState `json:"currentState"`
+	// +optional
+	// +nullable
+	Conditions []Condition `json:"conditions"`
 	// +optional
 	// +nullable
 	InstanceEngines map[string]InstanceProcess `json:"instanceEngines,omitempty"`

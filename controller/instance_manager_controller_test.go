@@ -51,6 +51,87 @@ func newTolerationSetting() *longhorn.Setting {
 	}
 }
 
+func newSystemManagedComponentsNodeSelectorSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameSystemManagedComponentsNodeSelector),
+		},
+		Value: "",
+	}
+}
+
+func newGuaranteedInstanceManagerCPUSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameGuaranteedInstanceManagerCPU),
+		},
+		Value: "{\"v1\":\"12\",\"v2\":\"12\"}",
+	}
+}
+
+func newPriorityClassSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNamePriorityClass),
+		},
+		Value: "",
+	}
+}
+
+func newStorageNetworkSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameStorageNetwork),
+		},
+		Value: "",
+	}
+}
+
+func newV1DataEngineSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameV1DataEngine),
+		},
+		Value: "true",
+	}
+}
+
+func newV2DataEngineSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameV2DataEngine),
+		},
+		Value: "false",
+	}
+}
+
+func newInstanceManagerPodLivenessProbeTimeoutSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameInstanceManagerPodLivenessProbeTimeout),
+		},
+		Value: "0",
+	}
+}
+
+func newLogPathSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameLogPath),
+		},
+		Value: "/var/lib/longhorn/logs/",
+	}
+}
+
+func newDataEngineInterruptModeEnabledSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameDataEngineInterruptModeEnabled),
+		},
+		Value: "{\"v2\":\"false\"}",
+	}
+}
+
 func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
 	im.Status.APIMinVersion = engineapi.MinInstanceManagerAPIVersion
 	im.Status.APIVersion = engineapi.CurrentInstanceManagerAPIVersion
@@ -92,6 +173,12 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				IP:            TestIP1,
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypeRunning,
+						Status: longhorn.ConditionStatusTrue,
+					},
+				},
 			},
 		},
 		"instance manager error then restart immediately": {
@@ -129,6 +216,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIVersion:       0,
 				InstanceEngines:  nil, // Transition to InstanceManagerStateError erases process information.
 				InstanceReplicas: nil, // Transition to InstanceManagerStateError erases process information.
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypeRunning,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonPodRestart,
+					},
+				},
 			},
 		},
 		"instance manager node down": {
@@ -141,6 +235,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				IP:            TestIP1,
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypeRunning,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonNodeDown,
+					},
+				},
 			},
 		},
 		"instance manager restarting after error": {
@@ -164,6 +265,12 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				IP:            TestIP1,
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypeRunning,
+						Status: longhorn.ConditionStatusTrue,
+					},
+				},
 			},
 		},
 		"instance manager starting engine": {
@@ -175,6 +282,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
 				APIMinVersion: 0,
 				APIVersion:    0,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypeRunning,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonPodRestart,
+					},
+				},
 			},
 		},
 		"instance manager starting replica": {
@@ -186,6 +300,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
 				APIMinVersion: 0,
 				APIVersion:    0,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypeRunning,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonPodRestart,
+					},
+				},
 			},
 		},
 		"instance manager sync IP": {
@@ -198,6 +319,12 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				IP:            TestIP2,
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypeRunning,
+						Status: longhorn.ConditionStatusTrue,
+					},
+				},
 			},
 		},
 	}
@@ -221,12 +348,60 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		imc, error := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
 		c.Assert(error, IsNil)
 
-		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
+		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Danger Zone Settings.
 		tolerationSetting := newTolerationSetting()
 		tolerationSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), tolerationSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(tolerationSetting)
 		c.Assert(err, IsNil)
+
+		guaranteedInstanceManagerCPUSetting := newGuaranteedInstanceManagerCPUSetting()
+		guaranteedInstanceManagerCPUSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), guaranteedInstanceManagerCPUSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(guaranteedInstanceManagerCPUSetting)
+		c.Assert(err, IsNil)
+		storageNetworkSetting := newStorageNetworkSetting()
+		storageNetworkSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), storageNetworkSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(storageNetworkSetting)
+		c.Assert(err, IsNil)
+		priorityClassSetting := newPriorityClassSetting()
+		priorityClassSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), priorityClassSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(priorityClassSetting)
+		c.Assert(err, IsNil)
+		v1DataEngineSetting := newV1DataEngineSetting()
+		v1DataEngineSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), v1DataEngineSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(v1DataEngineSetting)
+		c.Assert(err, IsNil)
+		v2DataEngineSetting := newV2DataEngineSetting()
+		v2DataEngineSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), v2DataEngineSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(v2DataEngineSetting)
+		c.Assert(err, IsNil)
+		instanceManagerPodLivenessProbeTimeoutSetting := newInstanceManagerPodLivenessProbeTimeoutSetting()
+		instanceManagerPodLivenessProbeTimeoutSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), instanceManagerPodLivenessProbeTimeoutSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(instanceManagerPodLivenessProbeTimeoutSetting)
+		c.Assert(err, IsNil)
+		logPathSetting := newLogPathSetting()
+		logPathSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), logPathSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(logPathSetting)
+		c.Assert(err, IsNil)
+		dataEngineInterruptModeEnabledSetting := newDataEngineInterruptModeEnabledSetting()
+		dataEngineInterruptModeEnabledSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), dataEngineInterruptModeEnabledSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(dataEngineInterruptModeEnabledSetting)
+		c.Assert(err, IsNil)
+
+		systemManagedComponentsNodeSelectorSetting := newSystemManagedComponentsNodeSelectorSetting()
+		systemManagedComponentsNodeSelectorSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), systemManagedComponentsNodeSelectorSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(systemManagedComponentsNodeSelectorSetting)
+		c.Assert(err, IsNil)
+
 		imImageSetting := newDefaultInstanceManagerImageSetting()
 		imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -236,6 +411,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		// Create Nodes for test. Conditionally add the first Node.
 		if !tc.nodeDown {
 			kubeNode1 := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+			kubeNode1.Status.Allocatable = corev1.ResourceList{"cpu": resource.MustParse("4")}
 			err = kubeNodeIndexer.Add(kubeNode1)
 			c.Assert(err, IsNil)
 			_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode1, metav1.CreateOptions{})
@@ -249,6 +425,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		}
 
 		kubeNode2 := newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode2.Status.Allocatable = corev1.ResourceList{"cpu": resource.MustParse("4")}
 		err = kubeNodeIndexer.Add(kubeNode2)
 		c.Assert(err, IsNil)
 		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})
@@ -308,6 +485,11 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		updatedIM, err := lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
+		if len(updatedIM.Status.Conditions) > 0 {
+			tc.expectedStatus.Conditions[0].LastTransitionTime = updatedIM.Status.Conditions[0].LastTransitionTime
+			tc.expectedStatus.Conditions[0].LastProbeTime = updatedIM.Status.Conditions[0].LastProbeTime
+			tc.expectedStatus.Conditions[0].Message = updatedIM.Status.Conditions[0].Message
+		}
 		c.Assert(updatedIM.Status, DeepEquals, tc.expectedStatus)
 	}
 }
