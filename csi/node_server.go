@@ -800,11 +800,6 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
-	if req.VolumeCapability.GetBlock() != nil {
-		log.Infof("Volume %v on node %v does not require filesystem resize/node expansion since it is access mode Block", volumeID, ns.nodeID)
-		return &csi.NodeExpandVolumeResponse{}, nil
-	}
-
 	volume, err := ns.apiClient.Volume.ById(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%v", err)
@@ -824,6 +819,9 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 			return nil, status.Errorf(codes.FailedPrecondition, "volume %s requires shared access but is not marked for shared use", volumeID)
 		}
 
+		// Regular (Non-migratable) Longhorn RWX volumes will not have the `Block` volume mode.
+		// Therefore, we do not need to check `req.VolumeCapability.GetBlock()` here.
+		log.Infof("Expanding shared volume %v on node %v via share manager", volumeID, ns.nodeID)
 		if err := ns.NodeExpandSharedVolume(volumeID); err != nil {
 			log.WithError(err).Errorf("failed to expand shared volume %v", volumeID)
 			return nil, err
@@ -832,53 +830,34 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return &csi.NodeExpandVolumeResponse{CapacityBytes: requestedSize}, nil
 	}
 
+	isBlockVolume := volumeCapability.GetBlock() != nil
 	devicePath := volume.Controllers[0].Endpoint
-
-	mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
-	diskFormat, err := mounter.GetDiskFormat(devicePath)
+	diskFormat, err := getDiskFormat(devicePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem format for volume %v node expansion", volumeID)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to evaluate device disk format for device %v node expansion: %v", devicePath, err.Error()))
 	}
+
 	if diskFormat == "" {
-		return nil, fmt.Errorf("unknown filesystem type for volume %v node expansion", volumeID)
+		// if the volume is in block mode, and it might has no filesystem yet.
+		// if not block mode, and no filesystem detected, we cannot proceed.
+		if !isBlockVolume {
+			return nil, fmt.Errorf("unknown filesystem type for volume %v node expansion", volumeID)
+		}
 	}
 
-	dataEngine := volume.DataEngine
-	devicePath, err = func() (string, error) {
-		if !volume.Encrypted {
-			return devicePath, nil
-		}
+	if volume.Encrypted {
 		if diskFormat != "crypto_LUKS" {
-			return "", status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("unsupported disk encryption format %v for device %v node expansion", diskFormat, devicePath))
 		}
-		devicePath = crypto.VolumeMapper(volumeID, dataEngine)
+		devicePath, err = ns.expandEncryptedVolume(req, volume, volumeID)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
 
-		// Need to enable feature gate in v1.25:
-		// https://github.com/kubernetes/enhancements/issues/3107
-		// https://kubernetes.io/blog/2022/09/21/kubernetes-1-25-use-secrets-while-expanding-csi-volumes-on-node-alpha/
-		secrets := req.GetSecrets()
-		if len(secrets) == 0 {
-			log.Infof("Skip encrypto device resizing for volume %v node expansion since the secret empty, maybe the related feature gate is not enabled", volumeID)
-			return devicePath, nil
-		}
-		keyProvider := secrets[types.CryptoKeyProvider]
-		passphrase := secrets[types.CryptoKeyValue]
-		if keyProvider != "" && keyProvider != "secret" {
-			return "", status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
-		}
-		if len(passphrase) == 0 {
-			return "", status.Errorf(codes.InvalidArgument, "missing passphrase for encrypted volume %v", volumeID)
-		}
-
-		// blindly resize the encrypto device
-		if err := crypto.ResizeEncryptoDevice(volumeID, dataEngine, passphrase); err != nil {
-			return "", status.Errorf(codes.InvalidArgument, "failed to resize crypto device %v for volume %v node expansion: %v", devicePath, volumeID, err)
-		}
-
-		return devicePath, nil
-	}()
-	if err != nil {
-		return nil, err
+	if isBlockVolume {
+		log.Infof("Volume %v on node %v does not require filesystem resize", volumeID, ns.nodeID)
+		return &csi.NodeExpandVolumeResponse{CapacityBytes: requestedSize}, nil
 	}
 
 	resizer := mount.NewResizeFs(utilexec.New())
@@ -897,6 +876,48 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	}
 
 	return &csi.NodeExpandVolumeResponse{CapacityBytes: requestedSize}, nil
+}
+
+// expandEncryptedVolume handles the expansion of encrypted volumes and
+// returns updated device path, and error if any.
+func (ns *NodeServer) expandEncryptedVolume(req *csi.NodeExpandVolumeRequest, volume *longhornclient.Volume, volumeID string) (string, error) {
+	log := ns.log.WithFields(logrus.Fields{"function": "expandEncryptedVolume"})
+	dataEngine := volume.DataEngine
+	encryptedDevicePath := crypto.VolumeMapper(volumeID, dataEngine)
+
+	// Need to enable feature gate in v1.25:
+	// https://github.com/kubernetes/enhancements/issues/3107
+	// https://kubernetes.io/blog/2022/09/21/kubernetes-1-25-use-secrets-while-expanding-csi-volumes-on-node-alpha/
+	secrets := req.GetSecrets()
+	if len(secrets) == 0 {
+		log.Infof("Skip encrypted device resizing for volume %v node expansion since the secret is empty, maybe the related feature gate is not enabled", volumeID)
+		return encryptedDevicePath, nil
+	}
+	passphrase, err := ns.getEncryptionPassphrase(secrets, volumeID)
+	if err != nil {
+		return encryptedDevicePath, err
+	}
+
+	// blindly resize the crypto device
+	if err := crypto.ResizeEncryptoDevice(volumeID, dataEngine, passphrase); err != nil {
+		return encryptedDevicePath, fmt.Errorf("failed to resize crypto device %v for volume %v node expansion: %v", encryptedDevicePath, volumeID, err)
+	}
+
+	return encryptedDevicePath, nil
+}
+
+// getEncryptionPassphrase checks the encryption secrets and returns the passphrase if valid
+func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeID string) (string, error) {
+	keyProvider := secrets[types.CryptoKeyProvider]
+	passphrase := secrets[types.CryptoKeyValue]
+	if keyProvider != "" && keyProvider != "secret" {
+		return "", fmt.Errorf("unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
+	}
+	if len(passphrase) == 0 {
+		return "", fmt.Errorf("missing passphrase for encrypted volume %v", volumeID)
+	}
+
+	return passphrase, nil
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
