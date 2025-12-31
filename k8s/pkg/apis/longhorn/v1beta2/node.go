@@ -46,6 +46,7 @@ const (
 	DiskConditionReasonNoDiskInfo             = "NoDiskInfo"
 	DiskConditionReasonDiskNotReady           = "DiskNotReady"
 	DiskConditionReasonDiskServiceUnreachable = "DiskServiceUnreachable"
+	DiskConditionReasonNodeNotReady           = "NodeNotReady"
 )
 
 const (
