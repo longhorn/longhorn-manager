@@ -415,6 +415,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	// Explicitly mark all disk on this node as not ready and not schedulable when
+	// node is not ready. This ensures auto-salvage is gated during node recovery.
+	// Ref: https://github.com/longhorn/longhorn/issues/12406
+	nc.markAllDisksNotReadyWhenNodeNotReady(node)
+
 	// Set any RWX leases to non-delinquent if owned by not-ready node.
 	// Usefulness of delinquent state has passed.
 	if err = nc.clearDelinquentLeasesIfNodeNotReady(node); err != nil {
@@ -1993,6 +1998,47 @@ func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node, ma
 			nc.eventRecorder, node, corev1.EventTypeWarning)
 	}
 	return nodeReady
+}
+
+func (nc *NodeController) markAllDisksNotReadyWhenNodeNotReady(node *longhorn.Node) {
+	nodeReady := true
+	for _, con := range node.Status.Conditions {
+		if con.Type == longhorn.NodeConditionTypeReady {
+			nodeReady = con.Status == longhorn.ConditionStatusTrue
+			break
+		}
+	}
+
+	if nodeReady {
+		return
+	}
+
+	reason := string(longhorn.DiskConditionReasonNodeNotReady)
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		diskStatus.Conditions = types.SetConditionAndRecord(
+			diskStatus.Conditions,
+			longhorn.DiskConditionTypeReady,
+			longhorn.ConditionStatusFalse,
+			reason,
+			fmt.Sprintf(
+				"Waiting for disk %v (%v) on node %v to be ready",
+				diskName, diskStatus.DiskPath, node.Name,
+			),
+			nc.eventRecorder, node, corev1.EventTypeWarning)
+
+		diskStatus.Conditions = types.SetConditionAndRecord(
+			diskStatus.Conditions,
+			longhorn.DiskConditionTypeSchedulable,
+			longhorn.ConditionStatusFalse,
+			reason,
+			fmt.Sprintf(
+				"Waiting for disk %v (%v) on node %v to be schedulable",
+				diskName, diskStatus.DiskPath, node.Name,
+			),
+			nc.eventRecorder, node, corev1.EventTypeWarning)
+
+		node.Status.DiskStatus[diskName] = diskStatus
+	}
 }
 
 func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kubeNode *corev1.Node, nodeReady bool) bool {
