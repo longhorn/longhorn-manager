@@ -358,6 +358,8 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		if node.Status.DiskStatus != nil {
 			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
+				// Preserve existing health data to avoid losing it between collection intervals
+				diskInfoMap[diskName].HealthData = diskStatus.HealthData
 				diskInfoMap[diskName].HealthDataLastCollectedAt = diskStatus.HealthDataLastCollectedAt.Time
 			}
 		}
