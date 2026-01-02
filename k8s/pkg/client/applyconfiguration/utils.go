@@ -92,6 +92,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.DataEngineSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("DataEngineStatus"):
 		return &longhornv1beta2.DataEngineStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("DiskSchedule"):
+		return &longhornv1beta2.DiskScheduleApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("DiskScheduledResourcesStatus"):
+		return &longhornv1beta2.DiskScheduledResourcesStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("DiskScheduleSpec"):
+		return &longhornv1beta2.DiskScheduleSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("DiskScheduleStatus"):
+		return &longhornv1beta2.DiskScheduleStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("DiskSpec"):
 		return &longhornv1beta2.DiskSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("DiskStatus"):
