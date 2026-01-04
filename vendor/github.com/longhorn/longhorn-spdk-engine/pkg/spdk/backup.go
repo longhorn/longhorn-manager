@@ -163,7 +163,7 @@ func (b *Backup) OpenSnapshot(snapshotName, volumeName string) error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to create NVMe initiator for snapshot lvol bdev %v", lvolName)
 	}
-	if _, err := i.StartNvmeTCPInitiator(b.IP, strconv.Itoa(int(b.Port)), false); err != nil {
+	if _, err := i.StartNvmeTCPInitiator(b.IP, strconv.Itoa(int(b.Port)), false, true); err != nil {
 		return errors.Wrapf(err, "failed to start NVMe initiator for snapshot lvol bdev %v", lvolName)
 	}
 	b.initiator = i
