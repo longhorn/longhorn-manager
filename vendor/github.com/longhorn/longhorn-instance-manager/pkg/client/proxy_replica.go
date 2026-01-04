@@ -155,11 +155,11 @@ func (c *ProxyClient) ReplicaRebuildingStatus(dataEngine, engineName, volumeName
 	status = make(map[string]*ReplicaRebuildStatus)
 	for k, v := range recv.Status {
 		status[k] = &ReplicaRebuildStatus{
-			Error:              v.Error,
-			IsRebuilding:       v.IsRebuilding,
-			Progress:           int(v.Progress),
-			State:              v.State,
-			FromReplicaAddress: v.FromReplicaAddress,
+			Error:                  v.Error,
+			IsRebuilding:           v.IsRebuilding,
+			Progress:               int(v.Progress),
+			State:                  v.State,
+			FromReplicaAddressList: v.FromReplicaAddressList,
 		}
 	}
 	return status, nil
@@ -325,4 +325,78 @@ func (c *ProxyClient) ReplicaModeUpdate(dataEngine, serviceAddress, replicaAddre
 	}
 
 	return nil
+}
+
+func (c *ProxyClient) ReplicaRebuildConcurrentSyncLimitSet(dataEngine, engineName, volumeName, serviceAddress string,
+	limit int) (err error) {
+	input := map[string]string{
+		"engineName":     engineName,
+		"volumeName":     volumeName,
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to set replica rebuilding concurrent sync limit")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to set replica rebuilding concurrent sync limit: invalid data engine %v", dataEngine)
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to set replica rebuilding concurrent sync limit", c.getProxyErrorPrefix(serviceAddress))
+	}()
+
+	req := &rpc.EngineReplicaRebuildConcurrentSyncLimitSetRequest{
+		ProxyEngineRequest: &rpc.ProxyEngineRequest{
+			Address:    serviceAddress,
+			EngineName: engineName,
+			DataEngine: rpc.DataEngine(driver),
+			VolumeName: volumeName,
+		},
+		Limit: int32(limit),
+	}
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	if _, err = c.service.ReplicaRebuildConcurrentSyncLimitSet(ctx, req); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *ProxyClient) ReplicaRebuildConcurrentSyncLimitGet(dataEngine, engineName, volumeName,
+	serviceAddress string) (limit int, err error) {
+	input := map[string]string{
+		"engineName":     engineName,
+		"volumeName":     volumeName,
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return 0, errors.Wrap(err, "failed to get replica rebuilding concurrent sync limit")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return 0, fmt.Errorf("failed to get replica rebuilding concurrent sync limit: invalid data engine %v", dataEngine)
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get replica rebuilding concurrent sync limit", c.getProxyErrorPrefix(serviceAddress))
+	}()
+	req := &rpc.ProxyEngineRequest{
+		Address:    serviceAddress,
+		EngineName: engineName,
+		DataEngine: rpc.DataEngine(driver),
+		VolumeName: volumeName,
+	}
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	resp, err := c.service.ReplicaRebuildConcurrentSyncLimitGet(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+
+	limit = int(resp.Limit)
+	return limit, nil
 }
