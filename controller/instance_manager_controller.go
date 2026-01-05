@@ -466,6 +466,8 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 	}
 
 	if pod == nil {
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodNotFound, "")
 		if im.Status.CurrentState == "" || im.Status.CurrentState == longhorn.InstanceManagerStateStopped {
 			// This state is for newly created InstanceManagers only.
 			im.Status.CurrentState = longhorn.InstanceManagerStateStopped
@@ -480,6 +482,8 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 	if pod.DeletionTimestamp != nil {
 		imc.logger.Warnf("Instance manager pod %v is being deleted, updating the instance manager state from %s to error", im.Name, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodDeleting, "")
 		return nil
 	}
 
@@ -497,12 +501,18 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 		if isReady {
 			im.Status.CurrentState = longhorn.InstanceManagerStateRunning
 			im.Status.IP = pod.Status.PodIP
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusTrue, longhorn.InstanceManagerConditionReasonPodRunning, "")
 		} else {
 			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodStarting, "")
 		}
 	default:
 		imc.logger.Warnf("Instance manager pod %v is in phase %s, updating the instance manager state from %s to error", im.Name, pod.Status.Phase, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodFailed, fmt.Sprintf("Instance manager pod is in phase %s", pod.Status.Phase))
 	}
 
 	return nil
@@ -519,7 +529,12 @@ func (imc *InstanceManagerController) syncStatusWithNode(im *longhorn.InstanceMa
 		if im.Status.CurrentState != longhorn.InstanceManagerStateError && im.Status.CurrentState != longhorn.InstanceManagerStateUnknown {
 			im.Status.CurrentState = longhorn.InstanceManagerStateUnknown
 			log.Infof("Updated the non-error instance manager to state %v due to node down or deleted", longhorn.InstanceManagerStateUnknown)
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeNodeReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonNodeDown, "Instance manager node is down or deleted")
 		}
+	} else {
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeNodeReady,
+			longhorn.ConditionStatusTrue, "", "")
 	}
 
 	return nil
@@ -652,13 +667,17 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return nil
 	}
 
-	log.Warnf("Deleting instance manager pod %v since one of the following conditions is met: "+
+	warnMsg := fmt.Sprintf("Deleting instance manager pod %v since one of the following conditions is met: "+
 		"setting is not synced (%v) or data engine CPU mask is not applied (%v), instances are running in the pod (%v), "+
 		"or the pod is deleted or not running (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied, areInstancesRunningInPod, isPodDeletedOrNotRunning)
+	log.Warn(warnMsg)
 
 	if err := imc.cleanupInstanceManagerPod(im.Name); err != nil {
 		return err
 	}
+	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+		longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodRestarting, warnMsg)
+
 	// The instance manager pod should be created on the preferred node only.
 	if imc.controllerID != im.Spec.NodeID {
 		return nil
@@ -667,6 +686,10 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 	// Since `spec.nodeName` is specified during the pod creation,
 	// the node cordon cannot prevent the pod being launched.
 	if unscheduled, err := imc.ds.IsKubeNodeUnschedulable(im.Spec.NodeID); unscheduled || err != nil {
+		if unscheduled {
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeNodeReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonNodeUnschedulable, fmt.Sprintf("Instance manager node %v is unschedulable", im.Spec.NodeID))
+		}
 		return err
 	}
 
@@ -740,6 +763,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		return false, true, false, nil
 	}
 
+	unSyncedDangerSettings := []types.SettingName{}
 	for settingName := range types.GetDangerZoneSettings() {
 		isSettingSynced := true
 		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
@@ -773,10 +797,17 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			return false, false, false, err
 		}
 		if !isSettingSynced {
-			return false, false, false, nil
+			unSyncedDangerSettings = append(unSyncedDangerSettings, settingName)
 		}
 	}
+	if len(unSyncedDangerSettings) > 0 {
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, fmt.Sprintf("Settings %v are not synced", unSyncedDangerSettings))
+		return false, false, false, nil
+	}
 
+	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
+		longhorn.ConditionStatusTrue, "", "")
 	return true, false, false, nil
 }
 
@@ -984,6 +1015,9 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 	// means CA already decided that this node is not blocked by any pod PDB limit.
 	// Hence there is no need to check when Cluster Autoscaler is enabled.
 	if unschedulable {
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeNodeReady,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonNodeUnschedulable, fmt.Sprintf("Instance manager node %v is unschedulable", im.Spec.NodeID))
+
 		if imPDB == nil {
 			return nil
 		}
@@ -1001,6 +1035,8 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 		imc.logger.Infof("Removing %v PDB since Node %v is marked unschedulable", im.Name, imc.controllerID)
 		return imc.deleteInstanceManagerPDB(im)
 	}
+	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeNodeReady,
+		longhorn.ConditionStatusTrue, "", "")
 
 	// If the setting is enabled, Longhorn needs to retain the least IM PDBs as
 	// possible. Each volume will have at least one replica under the protection
