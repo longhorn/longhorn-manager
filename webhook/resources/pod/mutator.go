@@ -68,7 +68,7 @@ func (p *podMutator) Create(request *admission.Request, newObj runtime.Object) (
 		return nil, nil
 	}
 
-	// Collect nodes with replicas and nodes with capacity
+	// Collect nodes with replicas and nodes with max
 	volumeCountToNodes, err := p.collectSchedulableNodes(longhornVolumes)
 	if err != nil {
 		logrus.WithError(err).Warnf("Failed to collect schedulable nodes for pod %s/%s, skipping mutation", request.Namespace, pod.Name)
@@ -171,6 +171,18 @@ func (p *podMutator) collectSchedulableNodes(volumes []*longhorn.Volume) (map[in
 	if err != nil {
 		return nil, err
 	}
+	allowEmptyNodeSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return nil, err
+	}
+	allowEmptyDiskSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return nil, err
+	}
+	overProvisioningPercentage, err := p.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
+	if err != nil {
+		return nil, err
+	}
 	for _, node := range nodes {
 		if !node.Spec.AllowScheduling || node.Spec.EvictionRequested {
 			continue
@@ -193,7 +205,7 @@ func (p *podMutator) collectSchedulableNodes(volumes []*longhorn.Volume) (map[in
 			}
 		}
 		// Only include node if it can fit the volumes that need to be moved
-		if p.canFitVolumes(node, volumesToMove) {
+		if p.canFitVolumes(node, volumesToMove, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume, overProvisioningPercentage) {
 			volumeCount := len(nodeVolumeMap[node.Name])
 			volumeCountToNodes[volumeCount] = append(volumeCountToNodes[volumeCount], node.Name)
 		}
@@ -203,33 +215,16 @@ func (p *podMutator) collectSchedulableNodes(volumes []*longhorn.Volume) (map[in
 }
 
 // canFitVolumes checks if the given volumes can be scheduled on the node.
-func (p *podMutator) canFitVolumes(node *longhorn.Node, volumes []*longhorn.Volume) bool {
+func (p *podMutator) canFitVolumes(node *longhorn.Node, volumes []*longhorn.Volume, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume bool, overProvisioningPercentage int64) bool {
 	if len(volumes) == 0 {
 		return true
 	}
 
 	// Check node selector constraints
-	allowEmptyNodeSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
-	if err != nil {
-		logrus.WithError(err).Debugf("Failed to get setting %s", types.SettingNameAllowEmptyNodeSelectorVolume)
-		return false
-	}
 	for _, vol := range volumes {
 		if !types.IsSelectorsInTags(node.Spec.Tags, vol.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
 			return false
 		}
-	}
-
-	// Get disk scheduling settings
-	allowEmptyDiskSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
-	if err != nil {
-		logrus.WithError(err).Debugf("Failed to get setting %s", types.SettingNameAllowEmptyDiskSelectorVolume)
-		return false
-	}
-	overProvisioningPercentage, err := p.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
-	if err != nil {
-		logrus.WithError(err).Debugf("Failed to get setting %s", types.SettingNameStorageOverProvisioningPercentage)
-		return false
 	}
 
 	// Sort volumes by size (largest first) for better backtracking pruning
@@ -237,7 +232,7 @@ func (p *podMutator) canFitVolumes(node *longhorn.Node, volumes []*longhorn.Volu
 		return volumes[i].Spec.Size > volumes[j].Spec.Size
 	})
 
-	// Solve bin packing: can we assign each volume to a disk without exceeding capacity?
+	// Solve bin packing: can we assign each volume to a disk without exceeding max?
 	diskScheduled := make(map[string]int64)
 	var backtrack func(int) bool
 	backtrack = func(index int) bool {
@@ -286,7 +281,7 @@ func (p *podMutator) generateAffinityPatch(pod *corev1.Pod, volumeCountToNodes m
 	// Build preferred scheduling terms (higher volume count = higher weight)
 	var preferredTerms []corev1.PreferredSchedulingTerm
 	for volumeCount, nodes := range volumeCountToNodes {
-		weight := int32((volumeCount + 1) * 10)
+		weight := int32((volumeCount + 1) * 25)
 		if weight > 100 {
 			weight = 100
 		}
