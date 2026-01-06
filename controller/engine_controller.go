@@ -1807,18 +1807,17 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 }
 
 func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
-	rebuildingInProgress := false
 	replicaExists := make(map[string]bool)
+	replicaRebuildingInProgress := make(map[string]bool)
 	for replica, mode := range e.Status.ReplicaModeMap {
 		replicaExists[replica] = true
 		if mode == longhorn.ReplicaModeWO {
-			rebuildingInProgress = true
-			break
+			replicaRebuildingInProgress[replica] = true
 		}
 	}
 	// We cannot rebuild more than one replica at one time
-	if rebuildingInProgress {
-		ec.logger.WithField("volume", e.Spec.VolumeName).Info("Skipped rebuilding of replica because there is another rebuild in progress")
+	if len(replicaRebuildingInProgress) > 0 {
+		ec.logger.WithField("volume", e.Spec.VolumeName).Infof("Skipped rebuilding of replica because there is another rebuild in progress: %v, since we only rebuild one replica at a time", replicaRebuildingInProgress)
 		return nil
 	}
 	for replica, addr := range e.Status.CurrentReplicaAddressMap {
