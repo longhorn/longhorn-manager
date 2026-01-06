@@ -42,19 +42,17 @@ func (p *podMutator) Resource() admission.Resource {
 }
 
 // Create injects node affinity into pods to prefer nodes with existing volume replicas
-func (p *podMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+func (p *podMutator) Create(request *admission.Request, newObj runtime.Object) (patchOps admission.PatchOps, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logrus.Errorf("Panic in pod scheduling mutator: %v, skipping mutation", r)
+			patchOps = nil
+			err = nil
+		}
+	}()
+
 	pod, ok := newObj.(*corev1.Pod)
 	if !ok {
-		return nil, nil
-	}
-
-	// Check if storage-aware pod scheduling is enabled
-	enabled, err := p.ds.GetSettingAsBool(types.SettingNameStorageAwarePodScheduling)
-	if err != nil {
-		logrus.WithError(err).Warn("Failed to get storage-aware pod scheduling setting, skipping mutation")
-		return nil, nil
-	}
-	if !enabled {
 		return nil, nil
 	}
 
@@ -80,7 +78,7 @@ func (p *podMutator) Create(request *admission.Request, newObj runtime.Object) (
 	}
 
 	// Generate patch operations to inject node affinity
-	patchOps, err := p.generateAffinityPatch(pod, volumeCountToNodes)
+	patchOps, err = p.generateAffinityPatch(pod, volumeCountToNodes)
 	if err != nil {
 		logrus.WithError(err).Warnf("Failed to generate affinity patch for pod %s/%s, skipping mutation", request.Namespace, pod.Name)
 		return nil, nil
@@ -309,7 +307,8 @@ func (p *podMutator) generateAffinityPatch(pod *corev1.Pod, volumeCountToNodes m
 		}
 		affinityBytes, err := json.Marshal(affinity)
 		if err != nil {
-			return nil, err
+			logrus.WithError(err).Warn("Failed to marshal affinity, skipping mutation")
+			return nil, nil
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/affinity", "value": %s}`, string(affinityBytes)))
 	} else if pod.Spec.Affinity.NodeAffinity == nil {
@@ -319,7 +318,8 @@ func (p *podMutator) generateAffinityPatch(pod *corev1.Pod, volumeCountToNodes m
 		}
 		nodeAffinityBytes, err := json.Marshal(nodeAffinity)
 		if err != nil {
-			return nil, err
+			logrus.WithError(err).Warn("Failed to marshal node affinity, skipping mutation")
+			return nil, nil
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/affinity/nodeAffinity", "value": %s}`, string(nodeAffinityBytes)))
 	} else {
@@ -328,7 +328,8 @@ func (p *podMutator) generateAffinityPatch(pod *corev1.Pod, volumeCountToNodes m
 		newTerms := append(existingTerms, preferredTerms...)
 		newTermsBytes, err := json.Marshal(newTerms)
 		if err != nil {
-			return nil, err
+			logrus.WithError(err).Warn("Failed to marshal preferred terms, skipping mutation")
+			return nil, nil
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/affinity/nodeAffinity/preferredDuringSchedulingIgnoredDuringExecution", "value": %s}`, string(newTermsBytes)))
 	}

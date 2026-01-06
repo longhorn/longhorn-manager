@@ -1918,14 +1918,10 @@ var (
 
 	SettingDefinitionStorageAwarePodScheduling = SettingDefinition{
 		DisplayName: "Storage-Aware Pod Scheduling",
-		Description: "When enabled, Longhorn injects soft node affinity into pods that use Longhorn volumes with data locality set to `best-effort`. " +
-			"This helps the Kubernetes scheduler prefer nodes where volume replicas already exist or where sufficient storage capacity is available.\n\n" +
-			"The injected affinity uses `preferredDuringSchedulingIgnoredDuringExecution` with:\n" +
-			"- Weight 100: Nodes that have existing replicas for the volume (data locality, no rebuild needed)\n" +
-			"- Weight 50: Nodes that have enough storage capacity (will need rebuild)\n\n" +
-			"This is useful when pods with already-bound PVCs need to be rescheduled (e.g., during node maintenance), " +
-			"as the default kube-scheduler does not consider CSIStorageCapacity for already-bound volumes.\n\n" +
-			"Note: This may slightly increase pod scheduling latency in clusters with many Longhorn nodes.",
+		Description: "When enabled, Longhorn adds node affinity to pods so they prefer nodes that already have their volume replicas. " +
+			"This improves data locality for volumes with `best-effort` data locality during pod rescheduling (e.g., node maintenance).\n\n" +
+			"Only applies to pods with the `longhorn.io/storage-aware-pod` label.\n\n" +
+			"**Note:** Changes to this setting take effect only after restarting at least one longhorn-manager pod.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,

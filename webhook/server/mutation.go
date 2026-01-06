@@ -55,7 +55,6 @@ func Mutation(ds *datastore.DataStore) (http.Handler, []admission.Resource, erro
 		instancemanager.NewMutator(ds),
 		backupbackingimage.NewMutator(ds),
 		setting.NewMutator(ds),
-		pod.NewMutator(ds),
 	}
 
 	router := webhook.NewRouter()
@@ -63,6 +62,10 @@ func Mutation(ds *datastore.DataStore) (http.Handler, []admission.Resource, erro
 		addHandler(router, admission.AdmissionTypeMutation, m)
 		resources = append(resources, m.Resource())
 	}
+
+	// Pod mutator's handler must be always registered to avoid issues when webhook is enabled but handler is missing
+	podMutator := pod.NewMutator(ds)
+	addHandler(router, admission.AdmissionTypeMutation, podMutator)
 
 	return router, resources, nil
 }
