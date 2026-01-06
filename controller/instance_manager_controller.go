@@ -667,16 +667,16 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return nil
 	}
 
-	warnMsg := fmt.Sprintf("Deleting instance manager pod %v since one of the following conditions is met: "+
-		"setting is not synced (%v) or data engine CPU mask is not applied (%v), instances are running in the pod (%v), "+
-		"or the pod is deleted or not running (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied, areInstancesRunningInPod, isPodDeletedOrNotRunning)
-	log.Warn(warnMsg)
+	if isPodDeletedOrNotRunning {
+		log.Warnf("Instance manager pod %v is deleted or not running, recreating the pod", im.Name)
+	} else {
+		log.Warnf("Deleting instance manager pod %v because some danger zone settings are not synced since no instances are running and the following conditions are met: "+
+			"setting is not synced (%v) or data engine CPU mask is not applied (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied)
+	}
 
 	if err := imc.cleanupInstanceManagerPod(im.Name); err != nil {
 		return err
 	}
-	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
-		longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodRestarting, warnMsg)
 
 	// The instance manager pod should be created on the preferred node only.
 	if imc.controllerID != im.Spec.NodeID {

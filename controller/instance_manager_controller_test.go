@@ -229,7 +229,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 					{
 						Type:   longhorn.InstanceManagerConditionTypePodReady,
 						Status: longhorn.ConditionStatusFalse,
-						Reason: longhorn.InstanceManagerConditionReasonPodRestarting,
+						Reason: longhorn.InstanceManagerConditionReasonPodFailed,
 					},
 					{
 						Type:   longhorn.InstanceManagerConditionTypeNodeReady,
@@ -319,7 +319,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 					{
 						Type:   longhorn.InstanceManagerConditionTypePodReady,
 						Status: longhorn.ConditionStatusFalse,
-						Reason: longhorn.InstanceManagerConditionReasonPodRestarting,
+						Reason: longhorn.InstanceManagerConditionReasonPodNotFound,
 					},
 					{
 						Type:   longhorn.InstanceManagerConditionTypeNodeReady,
@@ -341,7 +341,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 					{
 						Type:   longhorn.InstanceManagerConditionTypePodReady,
 						Status: longhorn.ConditionStatusFalse,
-						Reason: longhorn.InstanceManagerConditionReasonPodRestarting,
+						Reason: longhorn.InstanceManagerConditionReasonPodNotFound,
 					},
 					{
 						Type:   longhorn.InstanceManagerConditionTypeNodeReady,

@@ -28,12 +28,11 @@ const (
 	InstanceManagerConditionReasonNodeDown          = "Down"
 	InstanceManagerConditionReasonNodeUnschedulable = "Unschedulable"
 
-	InstanceManagerConditionReasonPodDeleting   = "Deleting"
-	InstanceManagerConditionReasonPodFailed     = "Failed"
-	InstanceManagerConditionReasonPodNotFound   = "NotFound"
-	InstanceManagerConditionReasonPodRestarting = "Restarting"
-	InstanceManagerConditionReasonPodRunning    = "Running"
-	InstanceManagerConditionReasonPodStarting   = "Starting"
+	InstanceManagerConditionReasonPodDeleting = "Deleting"
+	InstanceManagerConditionReasonPodFailed   = "Failed"
+	InstanceManagerConditionReasonPodNotFound = "NotFound"
+	InstanceManagerConditionReasonPodRunning  = "Running"
+	InstanceManagerConditionReasonPodStarting = "Starting"
 
 	InstanceManagerConditionReasonSettingNotSynced = "SettingNotSynced"
 )
