@@ -167,6 +167,7 @@ const (
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
+	SettingNameStorageAwarePodScheduling                                = SettingName("storage-aware-pod-scheduling")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -287,6 +288,7 @@ var (
 		SettingNameLogPath,
 		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
+		SettingNameStorageAwarePodScheduling,
 	}
 )
 
@@ -441,6 +443,7 @@ var (
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
 		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
+		SettingNameStorageAwarePodScheduling:                                SettingDefinitionStorageAwarePodScheduling,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1911,6 +1914,24 @@ var (
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
+	}
+
+	SettingDefinitionStorageAwarePodScheduling = SettingDefinition{
+		DisplayName: "Storage-Aware Pod Scheduling",
+		Description: "When enabled, Longhorn injects soft node affinity into pods that use Longhorn volumes with data locality set to `best-effort`. " +
+			"This helps the Kubernetes scheduler prefer nodes where volume replicas already exist or where sufficient storage capacity is available.\n\n" +
+			"The injected affinity uses `preferredDuringSchedulingIgnoredDuringExecution` with:\n" +
+			"- Weight 100: Nodes that have existing replicas for the volume (data locality, no rebuild needed)\n" +
+			"- Weight 50: Nodes that have enough storage capacity (will need rebuild)\n\n" +
+			"This is useful when pods with already-bound PVCs need to be rescheduled (e.g., during node maintenance), " +
+			"as the default kube-scheduler does not consider CSIStorageCapacity for already-bound volumes.\n\n" +
+			"Note: This may slightly increase pod scheduling latency in clusters with many Longhorn nodes.",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 )
 
