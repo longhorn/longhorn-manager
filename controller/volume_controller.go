@@ -3845,8 +3845,6 @@ func (c *VolumeController) createReplica(replica *longhorn.Replica, v *longhorn.
 	log := getLoggerForVolume(c.logger, v)
 
 	if isRebuildingReplica {
-		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-
 		log.Infof("A new replica %v will be replenished during rebuilding", replica.Name)
 		// Prevent this new replica from being reused after rebuilding failure.
 		replica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
