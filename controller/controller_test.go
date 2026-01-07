@@ -2,6 +2,8 @@ package controller
 
 import (
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -110,14 +112,15 @@ const (
 
 	TestDiskPathFSType = "ext4"
 
-	TestKernelVersion        = "6.2.0-32-generic"
-	TestKernelConfigDIR      = "/host/boot"
-	TestKernelConfigFilePath = TestKernelConfigDIR + "/config-" + TestKernelVersion
-	TestSystemEtcDIR         = "/host/etc"
-	TestNFSMountConfigPath   = TestSystemEtcDIR + "/nfsmount.conf"
+	TestKernelVersion = "6.2.0-32-generic"
 )
 
 var (
+	TestKernelConfigDIR      = filepath.Join(os.TempDir(), "longhorn-test-host", "boot")
+	TestKernelConfigFilePath = filepath.Join(TestKernelConfigDIR, "config-"+TestKernelVersion)
+	TestSystemEtcDIR         = filepath.Join(os.TempDir(), "longhorn-test-host", "etc")
+	TestNFSMountConfigPath   = filepath.Join(TestSystemEtcDIR, "nfsmount.conf")
+
 	alwaysReady = func() bool { return true }
 )
 
