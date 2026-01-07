@@ -568,7 +568,6 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageAvailable: TestDiskAvailableSize,
-					StorageScheduled: 0,
 					StorageMaximum:   TestDiskSize,
 					Conditions: []longhorn.Condition{
 						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
@@ -580,6 +579,22 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 					DiskPath: TestDefaultDataPath,
 				},
 			},
+		},
+	}
+}
+
+func newDiskSchedule(diskUUID, namespace, nodeName, diskName string) *longhorn.DiskSchedule {
+	return &longhorn.DiskSchedule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      diskUUID,
+			Namespace: namespace,
+		},
+		Spec: longhorn.DiskScheduleSpec{
+			NodeID: nodeName,
+			Name:   diskName,
+		},
+		Status: longhorn.DiskScheduleStatus{
+			StorageScheduled: 0,
 		},
 	}
 }

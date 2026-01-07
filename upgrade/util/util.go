@@ -437,6 +437,26 @@ func ListAndUpdateNodesInProvidedCache(namespace string, lhClient *lhclientset.C
 	return nodes, nil
 }
 
+// ListAndUpdateDiskSchedulesInProvidedCache list all disk schedules and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateDiskSchedulesInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.DiskSchedule, error) {
+	if resources, ok := resourceMaps[types.LonghornKindDiskSchedule]; ok {
+		return resources.(map[string]*longhorn.DiskSchedule), nil
+	}
+
+	diskSchedules := map[string]*longhorn.DiskSchedule{}
+	resourceList, err := lhClient.LonghornV1beta2().DiskSchedules(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, node := range resourceList.Items {
+		diskSchedules[node.Name] = &resourceList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindDiskSchedule] = diskSchedules
+
+	return diskSchedules, nil
+}
+
 // ListAndUpdateOrphansInProvidedCache list all orphans and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateOrphansInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.Orphan, error) {
 	if v, ok := resourceMaps[types.LonghornKindOrphan]; ok {

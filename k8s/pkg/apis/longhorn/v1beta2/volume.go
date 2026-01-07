@@ -128,6 +128,7 @@ const (
 	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
 	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
 	VolumeConditionTypeOfflineRebuilding   = "OfflineRebuilding"
+	VolumeConditionTypeDiskAllocation      = "DiskAllocation"
 )
 
 const (
@@ -138,6 +139,7 @@ const (
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
 	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
 	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
+	VolumeConditionReasonWaitForDiskScheduling         = "Waiting"
 	VolumeConditionReasonOfflineRebuildingInProgress   = "OfflineRebuildingInProgress"
 )
 
