@@ -1009,7 +1009,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.RebuildStatus = map[string]*longhorn.RebuildStatus{}
 	}
 
-	if cliAPIVersion >= 11 && im.Status.APIVersion >= 6 && engine.Spec.DataEngine == longhorn.DataEngineTypeV1 {
+	if cliAPIVersion >= 11 && im.Status.APIVersion >= 7 && engine.Spec.DataEngine == longhorn.DataEngineTypeV1 {
 		limit, err := engineClientProxy.ReplicaRebuildConcurrentSyncLimitGet(engine)
 		if err != nil {
 			return err
