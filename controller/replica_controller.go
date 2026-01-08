@@ -298,7 +298,59 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
+	if err := rc.handleV2DRReplicaRecovery(replica, log); err != nil {
+		return err
+	}
+
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
+}
+
+// handleV2DRReplicaRecovery handles recovery of a V2 data engine replica that
+// belongs to a disaster recovery (DR) volume after an instance manager restart.
+//
+// Scenario:
+// - The node reboots or instance manager pod restarts.
+// - SPDK detects an existing replica on disk but doesn't restart it.
+//
+// For DR volumes, replicas stay logically attached across instance manager restarts.
+// Once a healthy instance manager is available again, this function clears the replicas's
+// failed state and requests it to start.
+//
+// Ref: https://github.com/longhorn/longhorn/issues/12412
+func (rc *ReplicaController) handleV2DRReplicaRecovery(replica *longhorn.Replica, log *logrus.Entry) error {
+	if !types.IsDataEngineV2(replica.Spec.DataEngine) ||
+		replica.Status.CurrentState != longhorn.InstanceStateStopped ||
+		replica.Spec.FailedAt == "" {
+		return nil
+	}
+
+	// Check if this replica belongs to a DR volume.
+	volume, err := rc.ds.GetVolumeRO(replica.Spec.VolumeName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if volume == nil || !volume.Status.IsStandby {
+		return nil
+	}
+
+	// Instance manager must be available for recovery.
+	instanceManager, err := rc.ds.GetInstanceManagerByInstanceRO(replica)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	if instanceManager == nil ||
+		(instanceManager.Status.CurrentState != longhorn.InstanceManagerStateRunning &&
+			instanceManager.Status.CurrentState != longhorn.InstanceManagerStateStarting) {
+		return nil
+	}
+
+	log.Info("Recovering V2 DR replica after instance manager restart/recovery")
+	replica.Spec.FailedAt = ""
+	replica.Spec.LastFailedAt = ""
+	replica.Spec.DesireState = longhorn.InstanceStateRunning
+
+	return nil
 }
 
 func (rc *ReplicaController) enqueueReplica(obj interface{}) {
