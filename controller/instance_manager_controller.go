@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -1787,7 +1788,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	}
 
 	// Set environment variables
-	podSpec.Spec.Containers[0].Env = []corev1.EnvVar{
+	podEnv := []corev1.EnvVar{
 		{
 			Name:  "TLS_DIR",
 			Value: types.TLSDirectoryInContainer,
@@ -1805,6 +1806,13 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Value: string(dataEngine),
 		},
 	}
+	if tz := os.Getenv(types.EnvTZ); tz != "" {
+		podEnv = append(podEnv, corev1.EnvVar{
+			Name:  types.EnvTZ,
+			Value: tz,
+		})
+	}
+	podSpec.Spec.Containers[0].Env = podEnv
 
 	// Set volume mounts
 	podSpec.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{

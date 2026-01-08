@@ -352,12 +352,12 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								"--csi-address=$(ADDRESS)",
 								"--kubelet-registration-path=" + GetCSISocketFilePath(rootDir),
 							},
-							Env: []corev1.EnvVar{
+							Env: appendTimezoneEnv([]corev1.EnvVar{
 								{
 									Name:  "ADDRESS",
 									Value: GetInContainerCSISocketFilePath(),
 								},
-							},
+							}),
 							ImagePullPolicy: imagePullPolicy,
 							VolumeMounts: []corev1.VolumeMount{
 								{
@@ -378,6 +378,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								"--v=4",
 								fmt.Sprintf("--csi-address=%s", GetInContainerCSISocketFilePath()),
 							},
+							Env: appendTimezoneEnv(nil),
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "socket-dir",
@@ -447,7 +448,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								fmt.Sprintf("--drivername=%s", types.LonghornDriverName),
 								"--manager-url=" + managerURL,
 							},
-							Env: []corev1.EnvVar{
+							Env: appendTimezoneEnv([]corev1.EnvVar{
 								{
 									Name: "NODE_ID",
 									ValueFrom: &corev1.EnvVarSource{
@@ -468,7 +469,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 										},
 									},
 								},
-							},
+							}),
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "socket-dir",
