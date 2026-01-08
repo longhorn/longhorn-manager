@@ -262,6 +262,7 @@ const (
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
 	EnvDataEngine     = "DATA_ENGINE"
+	EnvTZ             = "TZ"
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
