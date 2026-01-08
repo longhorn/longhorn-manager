@@ -29,8 +29,7 @@ var (
 	mutationPath   = "/v1/webhook/" + admission.AdmissionTypeMutation
 	conversionPath = "/v1/webhook/conversion"
 
-	failPolicyFail   = admissionregv1.Fail
-	failPolicyIgnore = admissionregv1.Ignore
+	failPolicyFail = admissionregv1.Fail
 
 	matchPolicyExact = admissionregv1.Exact // nolint: unused
 
@@ -169,34 +168,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(handler http.Handler, 
 
 		if storageAwarePodSchedulingEnabled, _ := s.clients.Datastore.GetSettingAsBool(types.SettingNameStorageAwarePodScheduling); storageAwarePodSchedulingEnabled {
 			logrus.Info("Storage-aware pod scheduling is enabled, registering pod mutator")
-			podMutator := pod.NewMutator(s.clients.Datastore)
-			podMutationRules := s.buildRules([]admission.Resource{podMutator.Resource()})
-			podMutatorWebhook := admissionregv1.MutatingWebhook{
-				Name: "pod.mutator.longhorn.io",
-				ClientConfig: admissionregv1.WebhookClientConfig{
-					Service: &admissionregv1.ServiceReference{
-						Namespace: s.namespace,
-						Name:      types.AdmissionWebhookServiceName,
-						Path:      &mutationPath,
-						Port:      &port,
-					},
-					CABundle: secret.Data[corev1.TLSCertKey],
-				},
-				Rules:                   podMutationRules,
-				FailurePolicy:           &failPolicyIgnore,
-				MatchPolicy:             &matchPolicyExact,
-				SideEffects:             &sideEffectClassNone,
-				AdmissionReviewVersions: []string{"v1"},
-				ObjectSelector: &metav1.LabelSelector{
-					MatchExpressions: []metav1.LabelSelectorRequirement{
-						{
-							Key:      types.GetStorageAwarePodLabelKey(),
-							Operator: metav1.LabelSelectorOpExists,
-						},
-					},
-				},
-			}
-			mutatingWebhookConfiguration.Webhooks = append(mutatingWebhookConfiguration.Webhooks, podMutatorWebhook)
+			mutatingWebhookConfiguration.Webhooks = append(mutatingWebhookConfiguration.Webhooks, pod.MutatorWebhook(secret, s.namespace))
 		} else {
 			logrus.Info("Storage-aware pod scheduling is disabled, pod mutator will not be registered")
 		}

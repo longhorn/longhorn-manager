@@ -1920,8 +1920,7 @@ var (
 		DisplayName: "Storage-Aware Pod Scheduling",
 		Description: "When enabled, Longhorn adds node affinity to pods so they prefer nodes that already have their volume replicas. " +
 			"This improves data locality for volumes with `best-effort` data locality during pod rescheduling (e.g., node maintenance).\n\n" +
-			"Only applies to pods with the `longhorn.io/storage-aware-pod` label.\n\n" +
-			"**Note:** Changes to this setting take effect only after restarting at least one longhorn-manager pod.",
+			"**Note:** Only applies to pods with the `longhorn.io/storage-aware-pod` label.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,

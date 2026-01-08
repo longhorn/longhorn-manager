@@ -28,7 +28,7 @@ func NewMutator(ds *datastore.DataStore) admission.Mutator {
 	return &podMutator{ds: ds}
 }
 
-func (p *podMutator) Resource() admission.Resource {
+func resource() admission.Resource {
 	return admission.Resource{
 		Name:       "pods",
 		Scope:      admissionregv1.NamespacedScope,
@@ -39,6 +39,10 @@ func (p *podMutator) Resource() admission.Resource {
 			admissionregv1.Create,
 		},
 	}
+}
+
+func (p *podMutator) Resource() admission.Resource {
+	return resource()
 }
 
 // Create injects node affinity into pods to prefer nodes with existing volume replicas
