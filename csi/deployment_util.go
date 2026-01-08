@@ -3,6 +3,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"time"
@@ -40,6 +41,40 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 
 	deploymentLabels := types.GetBaseLabelsForSystemManagedComponent()
 	deploymentLabels["app"] = commonName
+
+	envVars := []corev1.EnvVar{
+		{
+			Name:  "ADDRESS",
+			Value: GetInContainerCSISocketFilePath(),
+		},
+		{
+			Name: "POD_NAMESPACE",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.namespace",
+				},
+			},
+		},
+		{
+			// required by external-provisioner to set owner references for CSIStorageCapacity objects
+			Name: "NAMESPACE",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.namespace",
+				},
+			},
+		},
+		{
+			// required by external-provisioner to set owner references for CSIStorageCapacity objects
+			Name: "POD_NAME",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.name",
+				},
+			},
+		},
+	}
+	envVars = appendTimezoneEnv(envVars)
 
 	commonDeploymentSpec := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -84,38 +119,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							Args:            args,
 							ImagePullPolicy: imagePullPolicy,
 							Ports:           ports,
-							Env: []corev1.EnvVar{
-								{
-									Name:  "ADDRESS",
-									Value: GetInContainerCSISocketFilePath(),
-								},
-								{
-									Name: "POD_NAMESPACE",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.namespace",
-										},
-									},
-								},
-								{
-									// required by external-provisioner to set owner references for CSIStorageCapacity objects
-									Name: "NAMESPACE",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.namespace",
-										},
-									},
-								},
-								{
-									// required by external-provisioner to set owner references for CSIStorageCapacity objects
-									Name: "POD_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
-										},
-									},
-								},
-							},
+							Env:             envVars,
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "socket-dir",
@@ -367,6 +371,17 @@ func deploymentDeleteFunc(kubeClient *clientset.Clientset, name, namespace strin
 
 func deploymentGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
 	return kubeClient.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func appendTimezoneEnv(envs []corev1.EnvVar) []corev1.EnvVar {
+	if tz, ok := os.LookupEnv(types.EnvTZ); ok && tz != "" {
+		return append(envs, corev1.EnvVar{
+			Name:  types.EnvTZ,
+			Value: tz,
+		})
+	}
+
+	return envs
 }
 
 func daemonSetCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
