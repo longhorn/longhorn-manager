@@ -205,6 +205,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			BackupTargetName:                backupTargetName,
 			OfflineRebuilding:               spec.OfflineRebuilding,
 			ReplicaRebuildingBandwidthLimit: spec.ReplicaRebuildingBandwidthLimit,
+			RebuildConcurrentSyncLimit:      spec.RebuildConcurrentSyncLimit,
 			UblkQueueDepth:                  spec.UblkQueueDepth,
 			UblkNumberOfQueue:               spec.UblkNumberOfQueue,
 		},
@@ -972,6 +973,32 @@ func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec longhorn
 	}
 
 	logrus.Infof("Updated volume %v replica auto-balance spec from %v to %v", v.Name, oldSpec, v.Spec.ReplicaAutoBalance)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateRebuildConcurrentSyncLimit(name string, value int) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update rebuild concurrent sync limit for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.RebuildConcurrentSyncLimit == value {
+		logrus.Debugf("Volume %v already has rebuild concurrent sync limit set to %v", v.Name, value)
+		return v, nil
+	}
+
+	oldSpec := v.Spec.RebuildConcurrentSyncLimit
+	v.Spec.RebuildConcurrentSyncLimit = value
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v rebuild concurrent sync limit spec from %v to %v", v.Name, oldSpec, v.Spec.RebuildConcurrentSyncLimit)
 	return v, nil
 }
 
