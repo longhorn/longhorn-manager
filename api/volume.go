@@ -189,6 +189,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		CloneMode:                       volume.CloneMode,
 		NumberOfReplicas:                volume.NumberOfReplicas,
 		ReplicaAutoBalance:              volume.ReplicaAutoBalance,
+		RebuildConcurrentSyncLimit:      volume.RebuildConcurrentSyncLimit,
 		DataLocality:                    volume.DataLocality,
 		StaleReplicaTimeout:             volume.StaleReplicaTimeout,
 		BackingImage:                    volume.BackingImage,
@@ -442,6 +443,29 @@ func (s *Server) VolumeUpdateReplicaAutoBalance(rw http.ResponseWriter, req *htt
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateReplicaAutoBalance(id, longhorn.ReplicaAutoBalance(input.ReplicaAutoBalance))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateRebuildConcurrentSyncLimit(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateRebuildConcurrentSyncLimitInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read rebuildConcurrentSyncLimit")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateRebuildConcurrentSyncLimit(id, input.RebuildConcurrentSyncLimit)
 	})
 	if err != nil {
 		return err
