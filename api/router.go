@@ -94,6 +94,7 @@ func NewRouter(s *Server) *mux.Router {
 
 		"updateReplicaCount":                s.VolumeUpdateReplicaCount,
 		"updateReplicaAutoBalance":          s.VolumeUpdateReplicaAutoBalance,
+		"updateRebuildConcurrentSyncLimit":  s.VolumeUpdateRebuildConcurrentSyncLimit,
 		"updateSnapshotDataIntegrity":       s.VolumeUpdateSnapshotDataIntegrity,
 		"updateBackupCompressionMethod":     s.VolumeUpdateBackupCompressionMethod,
 		"updateFreezeFilesystemForSnapshot": s.VolumeUpdateFreezeFilesystemForSnapshot,

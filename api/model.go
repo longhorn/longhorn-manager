@@ -72,8 +72,9 @@ type Volume struct {
 	NodeSelector         []string                      `json:"nodeSelector"`
 	RecurringJobSelector []longhorn.VolumeRecurringJob `json:"recurringJobSelector"`
 
-	NumberOfReplicas   int                         `json:"numberOfReplicas"`
-	ReplicaAutoBalance longhorn.ReplicaAutoBalance `json:"replicaAutoBalance"`
+	NumberOfReplicas           int                         `json:"numberOfReplicas"`
+	ReplicaAutoBalance         longhorn.ReplicaAutoBalance `json:"replicaAutoBalance"`
+	RebuildConcurrentSyncLimit int                         `json:"rebuildConcurrentSyncLimit"`
 
 	Conditions       map[string]longhorn.Condition `json:"conditions"`
 	KubernetesStatus longhorn.KubernetesStatus     `json:"kubernetesStatus"`
@@ -355,6 +356,10 @@ type UpdateReplicaCountInput struct {
 
 type UpdateReplicaAutoBalanceInput struct {
 	ReplicaAutoBalance string `json:"replicaAutoBalance"`
+}
+
+type UpdateRebuildConcurrentSyncLimitInput struct {
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit"`
 }
 
 type UpdateDataLocalityInput struct {
@@ -694,6 +699,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskUpdate", longhorn.DiskSpec{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
 	schemas.AddType("UpdateReplicaAutoBalanceInput", UpdateReplicaAutoBalanceInput{})
+	schemas.AddType("UpdateRebuildConcurrentSyncLimitInput", UpdateRebuildConcurrentSyncLimitInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("UpdateSnapshotDataIntegrityInput", UpdateSnapshotDataIntegrityInput{})
@@ -1112,6 +1118,10 @@ func volumeSchema(volume *client.Schema) {
 			Input: "ReplicaAutoBalance",
 		},
 
+		"updateRebuildConcurrentSyncLimit": {
+			Input: "UpdateRebuildConcurrentSyncLimitInput",
+		},
+
 		"updateDataLocality": {
 			Input: "UpdateDataLocalityInput",
 		},
@@ -1305,6 +1315,11 @@ func volumeSchema(volume *client.Schema) {
 	replicaDiskSoftAntiAffinity.Create = true
 	replicaDiskSoftAntiAffinity.Default = longhorn.ReplicaDiskSoftAntiAffinityDefault
 	volume.ResourceFields["replicaDiskSoftAntiAffinity"] = replicaDiskSoftAntiAffinity
+
+	rebuildConcurrentSyncLimit := volume.ResourceFields["rebuildConcurrentSyncLimit"]
+	rebuildConcurrentSyncLimit.Create = true
+	rebuildConcurrentSyncLimit.Default = 0
+	volume.ResourceFields["rebuildConcurrentSyncLimit"] = rebuildConcurrentSyncLimit
 
 	dataEngine := volume.ResourceFields["dataEngine"]
 	dataEngine.Required = true
@@ -1656,6 +1671,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		CloneMode:                       v.Spec.CloneMode,
 		NumberOfReplicas:                v.Spec.NumberOfReplicas,
 		ReplicaAutoBalance:              v.Spec.ReplicaAutoBalance,
+		RebuildConcurrentSyncLimit:      v.Spec.RebuildConcurrentSyncLimit,
 		DataLocality:                    v.Spec.DataLocality,
 		SnapshotDataIntegrity:           v.Spec.SnapshotDataIntegrity,
 		SnapshotMaxCount:                v.Spec.SnapshotMaxCount,
@@ -1743,6 +1759,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateAccessMode"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["updateRebuildConcurrentSyncLimit"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateSnapshotMaxCount"] = struct{}{}
@@ -1780,6 +1797,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaCount"] = struct{}{}
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["updateRebuildConcurrentSyncLimit"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateSnapshotMaxCount"] = struct{}{}
