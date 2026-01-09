@@ -43,7 +43,7 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted,omitempty" yaml:"encrypted,omitempty"`
 
-	FreezeFilesystemForSnapshot string `json:"freezeFSForSnapshot,omitempty" yaml:"freeze_fsfor_snapshot,omitempty"`
+	FreezeFilesystemForSnapshot string `json:"freezeFilesystemForSnapshot,omitempty" yaml:"freeze_filesystem_for_snapshot,omitempty"`
 
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
 
@@ -73,6 +73,8 @@ type Volume struct {
 
 	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
 
+	RebuildConcurrentSyncLimit int64 `json:"rebuildConcurrentSyncLimit,omitempty" yaml:"rebuild_concurrent_sync_limit,omitempty"`
+
 	RebuildStatus []RebuildStatus `json:"rebuildStatus,omitempty" yaml:"rebuild_status,omitempty"`
 
 	RecurringJobSelector []VolumeRecurringJob `json:"recurringJobSelector,omitempty" yaml:"recurring_job_selector,omitempty"`
@@ -80,6 +82,8 @@ type Volume struct {
 	ReplicaAutoBalance string `json:"replicaAutoBalance,omitempty" yaml:"replica_auto_balance,omitempty"`
 
 	ReplicaDiskSoftAntiAffinity string `json:"replicaDiskSoftAntiAffinity,omitempty" yaml:"replica_disk_soft_anti_affinity,omitempty"`
+
+	ReplicaRebuildingBandwidthLimit int64 `json:"replicaRebuildingBandwidthLimit,omitempty" yaml:"replica_rebuilding_bandwidth_limit,omitempty"`
 
 	ReplicaSoftAntiAffinity string `json:"replicaSoftAntiAffinity,omitempty" yaml:"replica_soft_anti_affinity,omitempty"`
 
