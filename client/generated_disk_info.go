@@ -19,6 +19,10 @@ type DiskInfo struct {
 
 	EvictionRequested bool `json:"evictionRequested,omitempty" yaml:"eviction_requested,omitempty"`
 
+	HealthData map[string]interface{} `json:"healthData,omitempty" yaml:"health_data,omitempty"`
+
+	HealthDataLastCollectedAt string `json:"healthDataLastCollectedAt,omitempty" yaml:"health_data_last_collected_at,omitempty"`
+
 	Path string `json:"path,omitempty" yaml:"path,omitempty"`
 
 	ScheduledBackingImage map[string]string `json:"scheduledBackingImage,omitempty" yaml:"scheduled_backing_image,omitempty"`

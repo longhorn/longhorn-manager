@@ -9,13 +9,19 @@ type SettingDefinition struct {
 
 	Category string `json:"category,omitempty" yaml:"category,omitempty"`
 
+	DataEngineSpecific bool `json:"dataEngineSpecific,omitempty" yaml:"data_engine_specific,omitempty"`
+
 	Default string `json:"default,omitempty" yaml:"default,omitempty"`
 
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	DisplayName string `json:"displayName,omitempty" yaml:"display_name,omitempty"`
 
+	FloatRange map[string]float64 `json:"floatRange,omitempty" yaml:"float_range,omitempty"`
+
 	Options []string `json:"options,omitempty" yaml:"options,omitempty"`
+
+	Range map[string]int `json:"range,omitempty" yaml:"range,omitempty"`
 
 	ReadOnly bool `json:"readOnly,omitempty" yaml:"read_only,omitempty"`
 
