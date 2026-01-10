@@ -1776,12 +1776,12 @@ func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string
 func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
 	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 	numSnapshots := len(e.Status.Snapshots) - 1 // Counting volume-head here would be confusing.
-	snapshotMaxCount:= v.Spec.SnapshotMaxCount
+	snapshotMaxCount := v.Spec.SnapshotMaxCount
 	if numSnapshots > snapshotMaxCount {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
 			longhorn.VolumeConditionReasonTooManySnapshots,
-			fmt.Sprintf("Snapshots count is %v over the snapshots maximum count %v", numSnapshots,
+			fmt.Sprintf("Snapshots count is %v over the snapshots max count %v", numSnapshots,
 				snapshotMaxCount))
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
