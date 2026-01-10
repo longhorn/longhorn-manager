@@ -55,9 +55,7 @@ var (
 
 const (
 	CronJobBackoffLimit             = 3
-
 	LastAppliedCronJobSpecAnnotationKeySuffix = "last-applied-cronjob-spec"
-
 	initialCloneRetryInterval = 30 * time.Second
 	maxCloneRetry             = 10
 )
