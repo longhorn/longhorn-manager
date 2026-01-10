@@ -55,7 +55,6 @@ var (
 
 const (
 	CronJobBackoffLimit             = 3
-	VolumeSnapshotsWarningThreshold = 100
 
 	LastAppliedCronJobSpecAnnotationKeySuffix = "last-applied-cronjob-spec"
 
@@ -1777,12 +1776,13 @@ func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string
 func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
 	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 	numSnapshots := len(e.Status.Snapshots) - 1 // Counting volume-head here would be confusing.
-	if numSnapshots > VolumeSnapshotsWarningThreshold {
+	snapshotMaxCount := v.Spec.SnapshotMaxCount
+	if numSnapshots > snapshotMaxCount {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
 			longhorn.VolumeConditionReasonTooManySnapshots,
 			fmt.Sprintf("Snapshots count is %v over the warning threshold %v", numSnapshots,
-				VolumeSnapshotsWarningThreshold))
+				snapshotMaxCount))
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
