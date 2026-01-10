@@ -1781,7 +1781,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
 			longhorn.VolumeConditionReasonTooManySnapshots,
-			fmt.Sprintf("Snapshots count is %v over the snapshots max count %v", numSnapshots,
+			fmt.Sprintf("Snapshots count is %v over the snapshots maximum count %v", numSnapshots,
 				snapshotMaxCount))
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
