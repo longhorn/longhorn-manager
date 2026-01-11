@@ -272,7 +272,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.2.1-0.20260103045327-83565dbc3907
+# github.com/longhorn/go-spdk-helper v0.3.0
 ## explicit; go 1.25.3
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
