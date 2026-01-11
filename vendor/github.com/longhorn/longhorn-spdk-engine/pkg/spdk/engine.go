@@ -2489,8 +2489,16 @@ func (e *Engine) snapshotOperationWithoutLock(spdkClient *spdkclient.Client, rep
 			}
 			replicaBdevList = append(replicaBdevList, replicaStatus.BdevName)
 		}
-		if _, raidErr := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, ""); raidErr != nil {
+
+		for r := 0; r < maxNumRetries; r++ {
+			_, raidErr := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, "")
+			if raidErr == nil {
+				engineErr = nil
+				break
+			}
+
 			engineErr = errors.Wrapf(raidErr, "engine %s failed to re-create RAID after snapshot %s revert", e.Name, snapshotName)
+			time.Sleep(retryInterval)
 		}
 	}
 
