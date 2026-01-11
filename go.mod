@@ -55,6 +55,7 @@ replace (
 )
 
 require (
+	github.com/cockroachdb/errors v1.12.0
 	github.com/container-storage-interface/spec v1.11.0
 	github.com/docker/go-connections v0.5.0
 	github.com/go-co-op/gocron v1.37.0
@@ -82,7 +83,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.31.0
-	golang.org/x/net v0.47.0
 	golang.org/x/sys v0.38.0
 	golang.org/x/time v0.11.0
 	google.golang.org/grpc v1.78.0
@@ -96,14 +96,13 @@ require (
 	k8s.io/kubernetes v1.33.4
 	k8s.io/metrics v0.33.4
 	k8s.io/mount-utils v0.33.4
-	k8s.io/utils v0.0.0-20260106112306-0fe9cd71b2f8
+	k8s.io/utils v0.0.0-20260108192941-914a6e750570
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1
 )
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
-	github.com/cockroachdb/errors v1.12.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
@@ -120,6 +119,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
+	golang.org/x/net v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
