@@ -167,6 +167,7 @@ const (
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
+	SettingNameStorageAwarePodScheduling                                = SettingName("storage-aware-pod-scheduling")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -287,6 +288,7 @@ var (
 		SettingNameLogPath,
 		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
+		SettingNameStorageAwarePodScheduling,
 	}
 )
 
@@ -441,6 +443,7 @@ var (
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
 		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
+		SettingNameStorageAwarePodScheduling:                                SettingDefinitionStorageAwarePodScheduling,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1911,6 +1914,19 @@ var (
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
+	}
+
+	SettingDefinitionStorageAwarePodScheduling = SettingDefinition{
+		DisplayName: "Storage-Aware Pod Scheduling",
+		Description: "When enabled, Longhorn adds node affinity to pods so they prefer nodes that already have their volume replicas. " +
+			"This improves data locality for volumes with `best-effort` data locality during pod rescheduling (e.g., node maintenance).\n\n" +
+			"**Note:** Only applies to pods with the `longhorn.io/storage-aware-pod` label.",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 )
 

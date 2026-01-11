@@ -22,6 +22,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -41,6 +42,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/webhook/resources/pod"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -254,6 +256,10 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		}
 	case types.SettingNameDefaultLonghornStaticStorageClass:
 		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
+			return err
+		}
+	case types.SettingNameStorageAwarePodScheduling:
+		if err := sc.updatePodMutatorWebhook(); err != nil {
 			return err
 		}
 	}
@@ -1423,6 +1429,71 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 		message := fmt.Sprintf("Purging failed SupportBundle %v", supportBundle.Name)
 		sc.logger.Info(message)
 		sc.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, constant.EventReasonDeleting, message)
+	}
+
+	return nil
+}
+
+func (sc *SettingController) updatePodMutatorWebhook() error {
+	storageAwarePodSchedulingEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameStorageAwarePodScheduling)
+	if err != nil {
+		return err
+	}
+
+	mutatingWebhookConfig, err := sc.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.Background(), types.MutatingWebhookName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			sc.logger.Warnf("MutatingWebhookConfiguration %v not found, skipping pod mutator webhook update", types.MutatingWebhookName)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get MutatingWebhookConfiguration %v", types.MutatingWebhookName)
+	}
+
+	podMutatorWebhookIndex := -1
+	for i, webhook := range mutatingWebhookConfig.Webhooks {
+		if webhook.Name == pod.MutatorWebhookName {
+			podMutatorWebhookIndex = i
+			break
+		}
+	}
+
+	needsPatch := false
+	if storageAwarePodSchedulingEnabled && podMutatorWebhookIndex == -1 {
+		secret, err := sc.kubeClient.CoreV1().Secrets(sc.namespace).Get(context.Background(), types.CaName, metav1.GetOptions{})
+		if err != nil {
+			return errors.Wrapf(err, "failed to get secret %v", types.CaName)
+		}
+		podMutatorWebhook := pod.MutatorWebhook(secret, sc.namespace)
+		mutatingWebhookConfig.Webhooks = append(mutatingWebhookConfig.Webhooks, podMutatorWebhook)
+		logrus.Info("Storage-aware pod scheduling is enabled, registering pod mutator")
+		needsPatch = true
+	} else if !storageAwarePodSchedulingEnabled && podMutatorWebhookIndex >= 0 {
+		mutatingWebhookConfig.Webhooks = append(mutatingWebhookConfig.Webhooks[:podMutatorWebhookIndex], mutatingWebhookConfig.Webhooks[podMutatorWebhookIndex+1:]...)
+		logrus.Info("Storage-aware pod scheduling is disabled, pod mutator will not be registered")
+		needsPatch = true
+	}
+
+	if needsPatch {
+		// Create a patch to update the webhooks array
+		patchData := map[string]interface{}{
+			"webhooks": mutatingWebhookConfig.Webhooks,
+		}
+		patchBytes, err := json.Marshal(patchData)
+		if err != nil {
+			return errors.Wrapf(err, "failed to marshal patch data for %s", types.MutatingWebhookName)
+		}
+
+		_, err = sc.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Patch(
+			context.Background(),
+			types.MutatingWebhookName,
+			k8stypes.MergePatchType,
+			patchBytes,
+			metav1.PatchOptions{},
+		)
+		if err != nil {
+			return errors.Wrapf(err, "failed to patch %s", types.MutatingWebhookName)
+		}
+		sc.logger.Infof("Successfully patched %s based on %v setting", types.MutatingWebhookName, types.SettingNameStorageAwarePodScheduling)
 	}
 
 	return nil
