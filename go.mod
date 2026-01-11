@@ -85,7 +85,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.31.0
-	golang.org/x/net v0.47.0
+	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.38.0
 	golang.org/x/time v0.12.0
 	google.golang.org/grpc v1.78.0
@@ -99,7 +99,7 @@ require (
 	k8s.io/kubernetes v1.34.3
 	k8s.io/metrics v0.34.3
 	k8s.io/mount-utils v0.34.3
-	k8s.io/utils v0.0.0-20260106112306-0fe9cd71b2f8
+	k8s.io/utils v0.0.0-20260108192941-914a6e750570
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1
 )

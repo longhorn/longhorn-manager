@@ -1221,7 +1221,7 @@ k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
 # k8s.io/mount-utils v0.34.3 => k8s.io/mount-utils v0.34.3
 ## explicit; go 1.24.0
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20260106112306-0fe9cd71b2f8
+# k8s.io/utils v0.0.0-20260108192941-914a6e750570
 ## explicit; go 1.23
 k8s.io/utils/buffer
 k8s.io/utils/clock
