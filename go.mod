@@ -71,7 +71,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260103122000-395c8e4b093d
 	github.com/longhorn/go-common-libs v0.0.0-20260103034008-119bdcf1b2d6
 	github.com/longhorn/go-iscsi-helper v0.0.0-20251220102922-df1ba3dff946
-	github.com/longhorn/go-spdk-helper v0.2.1-0.20260103045327-83565dbc3907
+	github.com/longhorn/go-spdk-helper v0.3.0
 	github.com/longhorn/longhorn-engine v1.11.0-dev-20251228.0.20260104095616-29a5f4ebde6b
 	github.com/longhorn/longhorn-instance-manager v1.11.0-dev-20251228.0.20260104095742-9cc302c88446
 	github.com/longhorn/longhorn-share-manager v1.9.2
@@ -85,9 +85,9 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.31.0
+	golang.org/x/mod v0.32.0
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sys v0.39.0
+	golang.org/x/sys v0.40.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.78.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -203,7 +203,7 @@ require (
 	golang.org/x/oauth2 v0.33.0 // indirect
 	golang.org/x/sync v0.19.0
 	golang.org/x/term v0.37.0 // indirect
-	golang.org/x/text v0.32.0
+	golang.org/x/text v0.33.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.35.0 // indirect
