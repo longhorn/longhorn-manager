@@ -130,6 +130,16 @@ func (sc *SnapshotController) enqueueSnapshot(obj interface{}) {
 	sc.queue.Add(key)
 }
 
+func (sc *SnapshotController) enqueueSnapshotAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueSnapshotAfter: failed to get key for object %#v: %v", obj, err))
+		return
+	}
+
+	sc.queue.AddAfter(key, duration)
+}
+
 func (sc *SnapshotController) enqueueEngineChange(oldObj, curObj interface{}) {
 	curEngine, ok := curObj.(*longhorn.Engine)
 	if !ok {
@@ -540,6 +550,13 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			snapshot.Status.Error = fmt.Sprintf("failed to take snapshot because the volume engine %v is not running. Waiting for the volume to be attached", engine.Name)
 			return nil
 		}
+
+		if engine.Status.CurrentImage != engine.Spec.Image {
+			// requeue the snapshot to wait for upgrading engine after 10 seconds
+			sc.enqueueSnapshotAfter(snapshot, 10*time.Second)
+			return nil
+		}
+
 		err = sc.handleSnapshotCreate(snapshot, engine)
 		if err != nil {
 			snapshot.Status.Error = err.Error()
