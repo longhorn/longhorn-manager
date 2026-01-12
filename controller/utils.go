@@ -61,6 +61,10 @@ func isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.Image
 }
 
+func isEngineUpgrading(e *longhorn.Engine) bool {
+	return e.Status.CurrentImage != e.Spec.Image
+}
+
 // The flow is: VolumeCloneStateEmpty => VolumeCloneStateInitiated => VolumeCloneStateCopyCompletedAwaitingHealthy => VolumeCloneStateFailed or VolumeCloneStateCompleted
 // isCloneTargetCopyInProgress returns true if the volume is a clone target and has not reached copy-complete yet
 func isCloneTargetCopyInProgress(v *longhorn.Volume) bool {
