@@ -243,16 +243,24 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
-func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
+func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter, dataEngine longhorn.DataEngineType) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
 	var instanceManager *longhorn.InstanceManager
 	errs := multierr.NewMultiError()
-	dataEngines := ds.GetDataEngines()
-	for dataEngine := range dataEngines {
-		instanceManager, err = ds.GetRunningInstanceManagerByNodeRO(nodeID, dataEngine)
-		if err == nil {
-			break
+
+	if dataEngine == longhorn.DataEngineTypeAll {
+		dataEngines := ds.GetDataEngines()
+		for dataEngine := range dataEngines {
+			instanceManager, err = ds.GetRunningInstanceManagerByNodeRO(nodeID, dataEngine)
+			if err == nil {
+				break
+			}
+			errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
 		}
-		errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
+	} else {
+		instanceManager, err = ds.GetRunningInstanceManagerByNodeRO(nodeID, dataEngine)
+		if err != nil {
+			errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
+		}
 	}
 	if instanceManager == nil {
 		return nil, nil, fmt.Errorf("failed to find a running instance manager for node %v: %v", nodeID, errs.Error())
@@ -508,7 +516,8 @@ func (btc *BackupTargetController) cleanUpAllBackupRelatedResources(backupTarget
 
 func (btc *BackupTargetController) cleanUpAllMounts(backupTarget *longhorn.BackupTarget) (err error) {
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
-	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter)
+	// The request can be executed by any instance manager since it is to clean up mount points.
+	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter, longhorn.DataEngineTypeAll)
 	if err != nil {
 		return err
 	}
@@ -532,7 +541,8 @@ func (btc *BackupTargetController) getInfoFromBackupStore(backupTarget *longhorn
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
 
 	// Initialize a backup target client
-	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter)
+	// The request can be executed by any instance manager since it is to get info from backupstore regardless of data engine.
+	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter, longhorn.DataEngineTypeAll)
 	if err != nil {
 		return backupStoreInfo{}, errors.Wrap(err, "failed to init backup target clients")
 	}
