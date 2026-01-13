@@ -232,7 +232,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		}
 		// Delete the backup volume from the remote backup target
 		if needsCleanupRemoteData {
-			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
+			// The request can be executed by any instance manager regardless of data engine.
+			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter, longhorn.DataEngineTypeAll)
 			if err != nil || engineClientProxy == nil {
 				log.WithError(err).Error("Failed to init backup target clients")
 				return nil // Ignore error to prevent enqueue
@@ -268,7 +269,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
+	// The request can be executed by any instance manager regardless of data engine.
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter, longhorn.DataEngineTypeAll)
 	if err != nil {
 		log.WithError(err).Error("Failed to init backup target clients")
 		return nil // Ignore error to prevent enqueue
