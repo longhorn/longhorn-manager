@@ -20,7 +20,7 @@ toolchain go1.25.5
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
-	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f
+	github.com/henrygd/beszel => github.com/longhorn/beszel 162c548010d6
 	k8s.io/api => k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/apimachinery => k8s.io/apimachinery v0.35.0
@@ -66,11 +66,11 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/henrygd/beszel v0.17.0
 	github.com/jinzhu/copier v0.4.0
-	github.com/kubernetes-csi/csi-lib-utils v0.23.0
+	github.com/kubernetes-csi/csi-lib-utils v0.23.1
 	github.com/longhorn/backing-image-manager v1.9.2
 	github.com/longhorn/backupstore v0.0.0-20260103122000-395c8e4b093d
 	github.com/longhorn/go-common-libs v0.0.0-20260103034008-119bdcf1b2d6
-	github.com/longhorn/go-iscsi-helper v0.0.0-20251220102922-df1ba3dff946
+	github.com/longhorn/go-iscsi-helper 9935215aed14
 	github.com/longhorn/go-spdk-helper v0.3.0
 	github.com/longhorn/longhorn-engine v1.11.0-rc1
 	github.com/longhorn/longhorn-instance-manager v1.11.0-rc1
@@ -100,7 +100,7 @@ require (
 	k8s.io/kubernetes v1.35.0
 	k8s.io/metrics v0.35.0
 	k8s.io/mount-utils v0.35.0
-	k8s.io/utils v0.0.0-20251222233032-718f0e51e6d2
+	k8s.io/utils 914a6e750570
 	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1
 )
