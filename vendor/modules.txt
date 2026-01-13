@@ -226,7 +226,7 @@ github.com/kr/pretty
 # github.com/kr/text v0.2.0
 ## explicit
 github.com/kr/text
-# github.com/kubernetes-csi/csi-lib-utils v0.23.0
+# github.com/kubernetes-csi/csi-lib-utils v0.23.1
 ## explicit; go 1.24.6
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
@@ -265,7 +265,7 @@ github.com/longhorn/go-common-libs/sync
 github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20251220102922-df1ba3dff946
+# github.com/longhorn/go-iscsi-helper v0.0.0-20260112070330-9935215aed14
 ## explicit; go 1.24.0
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/iscsidev
@@ -1308,7 +1308,7 @@ k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
 # k8s.io/mount-utils v0.35.0 => k8s.io/mount-utils v0.35.0
 ## explicit; go 1.25.0
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20251222233032-718f0e51e6d2
+# k8s.io/utils v0.0.0-20260108192941-914a6e750570
 ## explicit; go 1.23
 k8s.io/utils/buffer
 k8s.io/utils/clock
