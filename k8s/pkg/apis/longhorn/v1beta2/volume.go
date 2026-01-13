@@ -344,7 +344,7 @@ type VolumeSpec struct {
 	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
 	// concurrently during a single replica rebuild.
 	// When set to 0, it means following the global setting.
-	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit,omitempty"`
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
