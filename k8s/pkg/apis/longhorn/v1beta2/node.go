@@ -174,13 +174,16 @@ type DiskStatus struct {
 	Conditions []Condition `json:"conditions"`
 	// +optional
 	StorageAvailable int64 `json:"storageAvailable"`
+	// StorageScheduled is moved to DiskSchedule
 	// +optional
 	StorageScheduled int64 `json:"storageScheduled"`
 	// +optional
 	StorageMaximum int64 `json:"storageMaximum"`
+	// ScheduledReplica is moved to DiskSchedule
 	// +optional
 	// +nullable
 	ScheduledReplica map[string]int64 `json:"scheduledReplica"`
+	// ScheduledBackingImage is moved to DiskSchedule
 	// +optional
 	// +nullable
 	ScheduledBackingImage map[string]int64 `json:"scheduledBackingImage"`

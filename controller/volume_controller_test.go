@@ -32,6 +32,8 @@ import (
 	. "gopkg.in/check.v1"
 )
 
+const Dummy = ""
+
 func getVolumeLabelSelector(volumeName string) string {
 	return "longhornvolume=" + volumeName
 }
@@ -79,6 +81,7 @@ type VolumeTestCase struct {
 	replicas      map[string]*longhorn.Replica
 	nodes         []*longhorn.Node
 	backingImages map[string]*longhorn.BackingImage
+	diskSchedules []*longhorn.DiskSchedule
 	engineImage   *longhorn.EngineImage
 
 	expectVolume   *longhorn.Volume
@@ -1178,6 +1181,10 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			OwnerID: TestOwnerID1,
 			Conditions: []longhorn.Condition{
 				{
+					Type:   string(longhorn.VolumeConditionTypeDiskAllocation),
+					Status: longhorn.ConditionStatusTrue,
+				},
+				{
 					Type:   string(longhorn.VolumeConditionTypeWaitForBackingImage),
 					Status: longhorn.ConditionStatusFalse,
 				},
@@ -1299,6 +1306,7 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 	engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	node2 := newNode(TestNode2, TestNamespace, false, longhorn.ConditionStatusTrue, "")
+	diskSchedule := newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1)
 	engineImage.Status.NodeDeploymentMap[node2.Name] = true
 
 	return &VolumeTestCase{
@@ -1314,6 +1322,9 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 		nodes: []*longhorn.Node{
 			node1,
 			node2,
+		},
+		diskSchedules: []*longhorn.DiskSchedule{
+			diskSchedule,
 		},
 
 		expectVolume:   nil,
@@ -1351,6 +1362,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 		biIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImages().Informer().GetIndexer()
+		dsIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().DiskSchedules().Informer().GetIndexer()
 
 		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
@@ -1529,6 +1541,15 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = knIndexer.Add(kn)
+			c.Assert(err, IsNil)
+		}
+
+		// need to create default disk schedule
+		for _, diskSchedule := range tc.diskSchedules {
+			ds, err := lhClient.LonghornV1beta2().DiskSchedules(TestNamespace).Create(context.TODO(), diskSchedule, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(ds, NotNil)
+			err = dsIndexer.Add(ds)
 			c.Assert(err, IsNil)
 		}
 
