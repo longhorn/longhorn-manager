@@ -802,7 +802,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
