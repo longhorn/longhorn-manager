@@ -307,16 +307,25 @@ func (nc *NodeCollector) collectNodeStorage(ch chan<- prometheus.Metric) {
 		return
 	}
 
+	diskSchedules, err := nc.ds.ListDiskSchedulesOnNode(node.Name)
+	if err != nil {
+		nc.logger.WithError(err).Warn("Error during scrape")
+		return
+	}
+
 	disks := getDiskListFromNode(node)
 	var storageCapacity int64 = 0
 	var storageUsage int64 = 0
 	var storageReservation int64 = 0
 	var storageScheduled int64 = 0
 	for _, disk := range disks {
+		diskSchedule := diskSchedules[disk.Status.DiskUUID]
 		storageCapacity += disk.Status.StorageMaximum
 		storageUsage += disk.Status.StorageMaximum - disk.Status.StorageAvailable
 		storageReservation += disk.Spec.StorageReserved
-		storageScheduled += disk.Status.StorageScheduled
+		if diskSchedule != nil {
+			storageScheduled += diskSchedule.Status.StorageScheduled
+		}
 	}
 
 	ch <- prometheus.MustNewConstMetric(nc.storageCapacityMetric.Desc, nc.storageCapacityMetric.Type, float64(storageCapacity), nc.currentNodeID)

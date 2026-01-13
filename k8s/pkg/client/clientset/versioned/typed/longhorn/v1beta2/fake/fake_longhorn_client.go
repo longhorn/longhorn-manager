@@ -56,6 +56,10 @@ func (c *FakeLonghornV1beta2) BackupVolumes(namespace string) v1beta2.BackupVolu
 	return newFakeBackupVolumes(c, namespace)
 }
 
+func (c *FakeLonghornV1beta2) DiskSchedules(namespace string) v1beta2.DiskScheduleInterface {
+	return newFakeDiskSchedules(c, namespace)
+}
+
 func (c *FakeLonghornV1beta2) Engines(namespace string) v1beta2.EngineInterface {
 	return newFakeEngines(c, namespace)
 }

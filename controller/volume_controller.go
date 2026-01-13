@@ -190,6 +190,13 @@ func NewVolumeController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
+	if _, err = ds.DiskScheduleInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.enqueueDiskScheduleChange,
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.DiskScheduleInformer.HasSynced)
+
 	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isSettingRelatedToVolume,
 		Handler: cache.ResourceEventHandlerFuncs{
@@ -1546,6 +1553,10 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
+	if err := c.reconcileVolumeDiskAllocation(v, rs, log); err != nil {
+		return err
+	}
+
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
 
 	// Clear SalvageRequested flag if SalvageExecuted flag has been set.
@@ -2069,6 +2080,13 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if r.Spec.NodeID == "" {
 			continue
 		}
+		isReplicaDiskAllocated, err := c.isDiskAllocatedForReplica(r)
+		if err != nil {
+			return err
+		}
+		if !isReplicaDiskAllocated {
+			continue
+		}
 		canIMLaunchReplica, err := c.canInstanceManagerLaunchReplica(r)
 		if err != nil {
 			return err
@@ -2302,6 +2320,114 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	}
 
 	return nil
+}
+
+func (c *VolumeController) reconcileVolumeDiskAllocation(v *longhorn.Volume, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
+	rejectedRs := make(map[string]*longhorn.Replica)
+
+	// allocate disk for scheduled replicas
+	for rName, r := range rs {
+		if r.Spec.DiskID == "" {
+			continue
+		}
+
+		if err := c.syncReplicaDiskAllocation(r); err != nil {
+			log.WithError(err).Errorf("Failed to sync disk allocation for replica %v", r.Name)
+			return err
+		}
+
+		isRejected, err := c.isDiskAllocationRejectedForReplica(r)
+		if err != nil {
+			return err
+		}
+		if isRejected {
+			rejectedRs[rName] = r
+			// for failed replica creation, mark rejected replicas as failed and will be cleared later
+			// for failed replica expansion, keep the replica unchanged and the expansion might be canceled later
+			if r.Spec.FailedAt != "" && !v.Status.ExpansionRequired {
+				setReplicaFailedAt(r, c.nowHandler())
+			}
+		}
+	}
+
+	if len(rejectedRs) > 0 {
+		items := make([]string, 0, len(rejectedRs))
+		for _, r := range rejectedRs {
+			items = append(items, fmt.Sprintf("%v (disk %v)", r.Name, r.Spec.DiskID))
+		}
+		failureMessage := strings.Join(items, ", ")
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeDiskAllocation,
+			longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonReplicaDiskAllocationFailure, failureMessage)
+	} else {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeDiskAllocation,
+			longhorn.ConditionStatusTrue, "", "")
+	}
+
+	return nil
+}
+
+func (c *VolumeController) syncReplicaDiskAllocation(r *longhorn.Replica) error {
+	diskSchedule, err := c.ds.GetDiskSchedule(r.Spec.DiskID)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			// DiskSchedule not found means disk is not initialized or removed.
+			// Nothing to sync; the replica controller will handle the rejection.
+			return nil
+		}
+		return err
+	}
+	if diskSchedule.GetReplicaRequirement(r.Name) == r.Spec.VolumeSize {
+		return nil
+	}
+	diskSchedule.SetReplicaRequirement(r.Name, r.Spec.VolumeSize)
+	_, err = c.ds.UpdateDiskSchedule(diskSchedule)
+	return err
+}
+
+func (c *VolumeController) isDiskAllocationRejectedForReplica(r *longhorn.Replica) (bool, error) {
+	diskSchedule, err := c.ds.GetDiskScheduleRO(r.Spec.DiskID)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	requiredSize := diskSchedule.GetReplicaRequirement(r.Name)
+	status := diskSchedule.GetReplicaScheduledStatus(r.Name)
+	if requiredSize == 0 || requiredSize != r.Spec.VolumeSize {
+		// requirement is outdated
+		return false, nil
+	}
+	if requiredSize <= status.Size {
+		// canceling expansion and waiting for disk scheduler update
+		return false, nil
+	}
+	return status.State == longhorn.DiskScheduledStateRejected, nil
+}
+
+func (c *VolumeController) isDiskAllocationAcceptedForReplica(r *longhorn.Replica) (bool, error) {
+	diskSchedule, err := c.ds.GetDiskScheduleRO(r.Spec.DiskID)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	requiredSize := diskSchedule.GetReplicaRequirement(r.Name)
+	status := diskSchedule.GetReplicaScheduledStatus(r.Name)
+	if requiredSize == 0 || requiredSize != r.Spec.VolumeSize {
+		// requirement is outdated
+		return false, nil
+	}
+	if status.Size != requiredSize {
+		// disk allocation for size change is in progress or rejected
+		return false, nil
+	}
+	return status.State == longhorn.DiskScheduledStateScheduled, nil
+}
+
+func (c *VolumeController) isDiskAllocatedForReplica(r *longhorn.Replica) (bool, error) {
+	return c.isDiskAllocationAcceptedForReplica(r)
 }
 
 func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {
@@ -2755,13 +2881,22 @@ func (c *VolumeController) getReplicasUnderDiskPressure() (map[string]bool, erro
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			diskSpec := node.Spec.Disks[diskName]
 
-			diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
-			if err != nil {
-				return nil, err
+			diskSchedule, diskScheduleErr := c.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+			if diskScheduleErr != nil {
+				return nil, diskScheduleErr
+			}
+
+			diskInfo, diskInfoErr := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus, diskSchedule)
+			if diskInfoErr != nil {
+				return nil, diskInfoErr
 			}
 
 			if c.scheduler.IsDiskUnderPressure(settingDiskPressurePercentage, diskInfo) {
-				for replicaName := range diskStatus.ScheduledReplica {
+				replicaList, listErr := c.ds.ListReplicasByDiskUUID(node.Status.DiskStatus[diskName].DiskUUID)
+				if listErr != nil && !datastore.ErrorIsNotFound(listErr) {
+					return nil, listErr
+				}
+				for replicaName := range replicaList {
 					replicasInPressure[replicaName] = true
 				}
 			}
@@ -2775,15 +2910,18 @@ func (c *VolumeController) checkDiskPressuredReplicaIsFirstCandidate(replica *lo
 		return errors.New("node is nil in checkDiskPressuredReplicaIsFirstCandidate")
 	}
 
-	var replicaScheduledDiskStatus *longhorn.DiskStatus
-	for _, diskStatus := range node.Status.DiskStatus {
-		if _, exist := diskStatus.ScheduledReplica[replica.Name]; exist {
-			replicaScheduledDiskStatus = diskStatus
-			break
+	var scheduledReplicas map[string]*longhorn.DiskScheduledResourcesStatus
+	if diskSchedule, diskScheduleErr := c.ds.GetDiskScheduleRO(replica.Spec.DiskID); diskScheduleErr != nil {
+		if !datastore.ErrorIsNotFound(diskScheduleErr) {
+			return errors.Wrapf(diskScheduleErr, "cannot list disk schedules on node %v", node.Name)
+		}
+	} else {
+		if nil != diskSchedule.GetReplicaScheduledStatus(replica.Name) {
+			scheduledReplicas = diskSchedule.Status.Replicas
 		}
 	}
 
-	if replicaScheduledDiskStatus == nil {
+	if len(scheduledReplicas) == 0 {
 		return errors.Errorf("replica %v is not scheduled on any disk", replica.Name)
 	}
 
@@ -2813,7 +2951,7 @@ func (c *VolumeController) checkDiskPressuredReplicaIsFirstCandidate(replica *lo
 	}
 
 	healthyVolumeReplicas := make(map[string]struct{})
-	for replicaName := range replicaScheduledDiskStatus.ScheduledReplica {
+	for replicaName := range scheduledReplicas {
 		if isVolumeHealthy(replicaName) {
 			healthyVolumeReplicas[replicaName] = struct{}{}
 		}
@@ -2873,10 +3011,6 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 
 	schedulableDisks := make(map[string]bool)
 	for diskName, diskStatus := range nodeCandidate.Status.DiskStatus {
-		if _, exist := diskStatus.ScheduledReplica[replica.Name]; exist {
-			continue
-		}
-
 		diskSpec, exist := nodeCandidate.Spec.Disks[diskName]
 		if !exist {
 			continue
@@ -2890,9 +3024,18 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 			continue
 		}
 
-		diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
-		if err != nil {
-			log.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, nodeCandidate.Name)
+		diskSchedule, diskScheduleErr := c.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+		if diskSchedule == nil {
+			log.WithError(diskScheduleErr).Debugf("Failed to get disk schedule CR %v for disk %v on node %v", diskStatus.DiskUUID, diskName, nodeCandidate.Name)
+			continue
+		}
+		if _, exist := diskSchedule.Status.Replicas[replica.Name]; exist {
+			continue
+		}
+
+		diskInfo, diskInfoErr := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus, diskSchedule)
+		if diskInfoErr != nil {
+			log.WithError(diskInfoErr).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, nodeCandidate.Name)
 			continue
 		}
 
@@ -5123,6 +5266,37 @@ func (c *VolumeController) enqueueNodeChange(obj interface{}) {
 		if r.Spec.NodeID == "" || r.Spec.FailedAt != "" || replicaAutoBalance != longhorn.ReplicaAutoBalanceDisabled {
 			c.enqueueVolume(vol)
 		}
+	}
+}
+
+func (c *VolumeController) enqueueDiskScheduleChange(oldObj, curObj interface{}) {
+	oldDs, err := eventObjToTypedObj[longhorn.DiskSchedule](oldObj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	curDs, err := eventObjToTypedObj[longhorn.DiskSchedule](curObj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	for rName, curStatus := range curDs.Status.Replicas {
+		oldStatus := oldDs.Status.Replicas[rName]
+		if oldStatus == nil || *curStatus == *oldStatus {
+			continue
+		}
+		replica, err := c.ds.GetReplicaRO(rName)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				continue
+			} else {
+				utilruntime.HandleError(fmt.Errorf("failed to get replica %v for disk schedule %v update: %v ", rName, curDs.Name, err))
+				return
+			}
+		}
+		c.enqueueControlleeChange(replica)
 	}
 }
 

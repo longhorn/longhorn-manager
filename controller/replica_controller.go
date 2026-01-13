@@ -281,6 +281,20 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			}
 		}
 
+		// Release disk allocation before removing finalizer
+		if replica.Spec.DiskID != "" {
+			diskSchedule, err := rc.ds.GetDiskSchedule(replica.Spec.DiskID)
+			if err != nil && !datastore.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "failed to get disk schedule %v for cleanup", replica.Spec.DiskID)
+			}
+			if diskSchedule != nil && diskSchedule.GetReplicaRequirement(replica.Name) > 0 {
+				diskSchedule.SetReplicaRequirement(replica.Name, 0)
+				if _, err := rc.ds.UpdateDiskSchedule(diskSchedule); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+					return errors.Wrapf(err, "failed to release disk allocation on disk schedule %v", replica.Spec.DiskID)
+				}
+			}
+		}
+
 		return rc.ds.RemoveFinalizerForReplica(replica)
 	}
 
@@ -804,14 +818,16 @@ func (rc *ReplicaController) enqueueNodeChange(oldObj, currObj interface{}) {
 		oldDiskSpec, ok := oldNode.Spec.Disks[diskName]
 		evictionRequestedChangeOnDiskLevel := !ok || (newDiskSpec.EvictionRequested != oldDiskSpec.EvictionRequested)
 		if diskStatus, existed := currNode.Status.DiskStatus[diskName]; existed && (evictionRequestedChangeOnNodeLevel || evictionRequestedChangeOnDiskLevel) {
-			for replicaName := range diskStatus.ScheduledReplica {
-				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
-					rc.enqueueReplica(replica)
-				}
+			replicaList, listErr := rc.ds.ListReplicasByDiskUUID(diskStatus.DiskUUID)
+			if listErr != nil && !datastore.ErrorIsNotFound(listErr) {
+				getLoggerForNode(rc.logger, currNode).Warnf("Failed to list replicas on disk %v of node %v", diskName, currNode.Name)
+				return
+			}
+			for _, replica := range replicaList {
+				rc.enqueueReplica(replica)
 			}
 		}
 	}
-
 }
 
 func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {

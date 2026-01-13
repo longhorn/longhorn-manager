@@ -2,12 +2,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
@@ -241,4 +243,26 @@ func getAwsIAMRoleArnFromSecret(ds *datastore.DataStore, namespace, secretName s
 	}
 	// Key not found; clear the annotation if needed.
 	return "", nil
+}
+
+func eventObjToTypedObj[T any](obj any) (*T, error) {
+	if obj == nil {
+		return nil, nil
+	}
+
+	if typedObj, ok := obj.(*T); ok {
+		return typedObj, nil
+	}
+
+	deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+	if !ok {
+		return nil, fmt.Errorf("received unexpected obj: %#v", obj)
+	}
+
+	typedObj, ok := deletedState.Obj.(*T)
+	if !ok {
+		return nil, fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj)
+	}
+
+	return typedObj, nil
 }
