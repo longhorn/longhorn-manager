@@ -442,6 +442,13 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return err
 		}
 
+		if isEngineUpgrading(engine) {
+			// requeue the snapshot to wait for upgrading engine after 3 seconds
+			snapshot.Status.Error = fmt.Sprintf("snapshot deletion delayed: volume engine %v is upgrading from image %v to %v", engine.Name, engine.Status.CurrentImage, engine.Spec.Image)
+			sc.enqueueSnapshotAfter(snapshot, 3*time.Second)
+			return nil
+		}
+
 		defer func() {
 			engine, err = sc.ds.GetEngineRO(engine.Name)
 			if err != nil {
