@@ -149,8 +149,8 @@ github.com/longhorn/backing-image-manager v1.9.2 h1:AsYh72QQETPs0SsMR20Y/7N4b/mG
 github.com/longhorn/backing-image-manager v1.9.2/go.mod h1:+HqlUUZk+jUMLuY+vvu3lZVyGk4LY3Q76yVXmz1o258=
 github.com/longhorn/backupstore v0.0.0-20260103122000-395c8e4b093d h1:lDZzq4t74jTx/44/cKsmNJu0FE+9uut3IaOg+VVxRLw=
 github.com/longhorn/backupstore v0.0.0-20260103122000-395c8e4b093d/go.mod h1:rb0880jw15YImUdvdooDePgoeRIw2Pun+dYtL1K+5wg=
-github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f h1:r3veZKzFruPXT93aYrEYijs6qunhHuEsEUZ/M0Vdc6Y=
-github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
+github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=
+github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
 github.com/longhorn/go-common-libs v0.0.0-20260103034008-119bdcf1b2d6 h1:5UCypDzny0CYu4ZvKBR6kAN6uPAXSvtS29XF9nzSnV8=
 github.com/longhorn/go-common-libs v0.0.0-20260103034008-119bdcf1b2d6/go.mod h1:iywtr93iKehrS6w2K2arGY4j5y5FT9jVe4I43I0JWac=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260112070330-9935215aed14 h1:iifhMGlOeItuCj5QdPr/Wnn1vi8b86TLMkliVMzoTKA=
