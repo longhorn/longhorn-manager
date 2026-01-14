@@ -49,7 +49,7 @@ func collectSmartDataForDevice(devicePath, diskName string, logger logrus.FieldL
 		return nil, err
 	}
 
-	err = smartMgr.Refresh(false)
+	err = smartMgr.RefreshDevice(false, devicePath)
 	if err != nil {
 		return nil, err
 	}
