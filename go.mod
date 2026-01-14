@@ -20,7 +20,7 @@ toolchain go1.25.5
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
-	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f
+	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
 	k8s.io/api => k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/apimachinery => k8s.io/apimachinery v0.35.0
