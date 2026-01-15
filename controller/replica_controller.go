@@ -599,7 +599,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 
 	// No need to delete the instance if the replica is backed by a SPDK lvol
 	var cleanupRequired = false
-	if canDeleteInstance(r) {
+	if canDeleteInstance(r, im) {
 		cleanupRequired = true
 	}
 
@@ -625,9 +625,9 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 	return nil
 }
 
-func canDeleteInstance(r *longhorn.Replica) bool {
+func canDeleteInstance(r *longhorn.Replica, im *longhorn.InstanceManager) bool {
 	return types.IsDataEngineV1(r.Spec.DataEngine) ||
-		(types.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
+		(types.IsDataEngineV2(r.Spec.DataEngine) && im.Status.CurrentState == longhorn.InstanceManagerStateRunning && r.DeletionTimestamp != nil)
 }
 
 func deleteUnixSocketFile(volumeName string) error {
