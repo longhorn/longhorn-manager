@@ -3397,7 +3397,7 @@ func (s *DataStore) IsNodeDownOrDeletedOrDelinquent(nodeName string, volumeName 
 // IsNodeDeleted checks whether the node does not exist by passing in the node name
 func (s *DataStore) IsNodeDeleted(name string) (bool, error) {
 	if name == "" {
-		return false, errors.New("no node name provided to check node down or deleted")
+		return false, errors.New("no node name provided to check node deleted")
 	}
 
 	node, err := s.GetNodeRO(name)

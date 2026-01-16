@@ -1206,9 +1206,12 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 	// Pick up the replicas in not-ready nodes or in not-running instance manager first
 	var chosenReplica *longhorn.Replica
 	for _, r := range rs {
+		if r.Spec.NodeID == "" {
+			continue
+		}
 		isNotReady, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
 		if err != nil {
-			return false, err
+			return false, errors.Wrapf(err, "failed to check if node %v is down or deleted during replica cleanup in not-ready env", r.Spec.NodeID)
 		}
 		if isNotReady {
 			log.Infof("Deleting replica %v on down or deleted node %v", r.Name, r.Spec.NodeID)
