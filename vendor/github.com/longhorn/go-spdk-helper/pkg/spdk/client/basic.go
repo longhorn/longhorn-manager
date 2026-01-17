@@ -1587,3 +1587,27 @@ func (c *Client) SpdkKillInstance(sig string) (result bool, err error) {
 
 	return result, json.Unmarshal(cmdOutput, &result)
 }
+
+// BdevNvmeSetHotplug enables or disables the NVMe hotplug poller.
+//
+// "enable": true to enable hotplug, false to disable.
+//
+// "periodUs": Polling period in microseconds.
+func (c *Client) BdevNvmeSetHotplug(enable bool, periodUs uint64) (bool, error) {
+	params := map[string]interface{}{
+		"enable":    enable,
+		"period_us": periodUs,
+	}
+
+	var result bool
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_nvme_set_hotplug", params)
+	if err != nil {
+		return false, err
+	}
+
+	if err := json.Unmarshal(cmdOutput, &result); err != nil {
+		return false, err
+	}
+
+	return result, nil
+}
