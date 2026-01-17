@@ -441,6 +441,15 @@ func (r *Replica) validateAndUpdate(bdevLvolMap map[string]*spdktypes.BdevInfo, 
 	if err != nil {
 		return err
 	}
+
+	// If SnapshotLvolMap is empty but we have snapshots in SPDK, the replica needs reconstruction
+	// This can happen after a reboot if construct() wasn't called or failed
+	if len(r.SnapshotLvolMap) == 0 && len(newSnapshotLvolMap) > 0 {
+		r.log.Warnf("Replica snapshot lvol map is empty but SPDK has %d snapshots, marking for reconstruction", len(newSnapshotLvolMap))
+		r.State = types.InstanceStatePending
+		return nil
+	}
+
 	if len(r.SnapshotLvolMap) != len(newSnapshotLvolMap) {
 		return fmt.Errorf("replica current active snapshot lvol map length %d is not the same as the latest snapshot lvol map length %d", len(r.SnapshotLvolMap), len(newSnapshotLvolMap))
 	}
@@ -920,7 +929,8 @@ func (r *Replica) Create(spdkClient *spdkclient.Client, portCount int32, superio
 	}
 
 	// In case of failed replica reuse/restart being errored by r.validateAndUpdate(), we should make sure the caches are correct.
-	if r.State == types.InstanceStatePending && r.reconstructRequired {
+	// Also handle the case where an existing replica was discovered after reboot but construct() wasn't called yet.
+	if r.State == types.InstanceStatePending && (r.reconstructRequired || len(r.SnapshotLvolMap) == 0) {
 		bdevLvolMap, err := GetBdevLvolMapWithFilter(spdkClient, r.replicaLvolFilter)
 		if err != nil {
 			return nil, err
@@ -1559,21 +1569,22 @@ func (r *Replica) SnapshotPurge(spdkClient *spdkclient.Client) (err error) {
 	// delete all non-user-created snapshots
 	var purgeList []string
 	for snapshotLvolName, snapSvcLvol := range r.SnapshotLvolMap {
+		logrus.Infof("Considering snapshot lvol %s for purge: %+v", snapshotLvolName, snapSvcLvol)
 		if snapSvcLvol.UserCreated {
+			logrus.Infof("Skipping user created snapshot lvol %s for purge", snapshotLvolName)
 			continue
 		}
 		if len(snapSvcLvol.Children) > 1 {
-			continue
-		}
-		if snapSvcLvol.Children[r.Name] != nil {
+			logrus.Infof("Skipping snapshot lvol %s for purge since it has %d children", snapshotLvolName, len(snapSvcLvol.Children))
 			continue
 		}
 
 		if err := r.stopSnapshotHash(spdkClient, snapSvcLvol); err != nil {
+			logrus.Infof("Failed to stop snapshot lvol %s checksum hashing before snapshot purge: %v", snapshotLvolName, err)
 			return errors.Wrapf(err, "failed to stop snapshot lvol %s checksum hashing before snapshot purge", snapshotLvolName)
 		}
 		if _, err := spdkClient.BdevLvolDelete(snapSvcLvol.UUID); err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-			return err
+			return errors.Wrapf(err, "failed to delete snapshot lvol %s before snapshot purge", snapshotLvolName)
 		}
 		purgeList = append(purgeList, snapshotLvolName)
 
@@ -1590,7 +1601,7 @@ func (r *Replica) SnapshotPurge(spdkClient *spdkclient.Client) (err error) {
 		for _, childSvcLvol := range snapSvcLvol.Children {
 			bdevLvol, err := spdkClient.BdevLvolGetByName(childSvcLvol.UUID, 0)
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "failed to get child snapshot lvol %s after snapshot lvol %s purge", childSvcLvol.Name, snapshotLvolName)
 			}
 			childSvcLvol.ActualSize = bdevLvol.DriverSpecific.Lvol.NumAllocatedClusters * defaultClusterSize
 		}

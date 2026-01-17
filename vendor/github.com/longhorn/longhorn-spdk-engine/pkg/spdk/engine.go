@@ -1440,8 +1440,10 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64, superiorPort
 
 	// It waits for the kernel to recognize the new physical NVMe capacity
 	// and then reloads the dm table to propagate the size change up to the volume.
-	if err := e.initiator.SyncDmDeviceSize(size); err != nil {
-		e.log.WithError(err).Warnf("failed to reload dm device during engine %s expansion", e.Name)
+	if e.Frontend != types.FrontendEmpty && e.initiator != nil {
+		if err := e.initiator.SyncDmDeviceSize(size); err != nil {
+			e.log.WithError(err).Warnf("failed to reload dm device during engine %s expansion", e.Name)
+		}
 	}
 	e.log.Info("Expanding engine completed")
 

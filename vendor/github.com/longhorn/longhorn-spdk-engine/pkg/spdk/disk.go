@@ -497,3 +497,17 @@ func (d *Disk) diskHealthGet(spdkClient *spdkclient.Client, diskName, diskDriver
 
 	return &healthInfo, nil
 }
+
+func isNvmeDriver(diskDriver, diskPath string) bool {
+	if diskDriver == string(commontypes.DiskDriverNvme) {
+		return true
+	}
+
+	exactDiskDriver, err := spdkdisk.GetDiskDriver(commontypes.DiskDriver(diskDriver), diskPath)
+	if err != nil {
+		logrus.WithError(err).Warnf("failed to get disk driver for driver %v and path %s", diskDriver, diskPath)
+		return false
+	}
+
+	return exactDiskDriver == commontypes.DiskDriverNvme
+}
