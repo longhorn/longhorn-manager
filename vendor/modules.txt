@@ -194,7 +194,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 ## explicit; go 1.20
 github.com/gorilla/websocket
-# github.com/henrygd/beszel v0.17.0 => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
+# github.com/henrygd/beszel v0.18.2 => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
 ## explicit; go 1.25.3
 github.com/henrygd/beszel
 github.com/henrygd/beszel/agent
@@ -272,7 +272,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.3.0
+# github.com/longhorn/go-spdk-helper v0.4.0
 ## explicit; go 1.25.3
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
