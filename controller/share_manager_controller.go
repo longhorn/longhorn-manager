@@ -833,6 +833,20 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	return nil
 }
 
+func setShareManagerCurrentImage(sm *longhorn.ShareManager, pod *corev1.Pod) {
+	sm.Status.CurrentImage = ""
+	if pod == nil {
+		return
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name == types.LonghornLabelShareManager {
+			sm.Status.CurrentImage = container.Image
+			return
+		}
+	}
+}
+
 // syncShareManagerPod controls pod existence and provides the following state transitions
 // stopping -> stopped (no more pod)
 // stopped -> stopped (rest state)
@@ -844,6 +858,8 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	defer func() {
 		err = errors.Wrapf(err, "failed to syncShareManagerPod")
 	}()
+
+	setShareManagerCurrentImage(sm, nil)
 
 	defer func() {
 		if sm.Status.State == longhorn.ShareManagerStateStopping ||
@@ -863,7 +879,8 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	}
 
 	log := getLoggerForShareManager(c.logger, sm)
-	pod, err := c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
+	var pod *corev1.Pod
+	pod, err = c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrap(err, "failed to retrieve pod for share manager from datastore")
 	} else if pod == nil {
@@ -893,6 +910,8 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 			return errors.Wrap(err, "failed to create pod for share manager")
 		}
 	}
+
+	setShareManagerCurrentImage(sm, pod)
 
 	// If the node where the pod is running on become defective, we clean up the pod by setting sm.Status.State to STOPPED or ERROR
 	// A new pod will be recreated by the share manager controller.  We might get an early warning of that by the pod going stale.

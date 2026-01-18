@@ -28,6 +28,9 @@ type ShareManagerStatus struct {
 	// The state of the share manager resource
 	// +optional
 	State ShareManagerState `json:"state"`
+	// The image currently used by the share manager pod
+	// +optional
+	CurrentImage string `json:"currentImage"`
 	// NFS endpoint that can access the mounted filesystem of the volume
 	// +optional
 	Endpoint string `json:"endpoint"`
@@ -40,6 +43,7 @@ type ShareManagerStatus struct {
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The state of the share manager"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.ownerID`,description="The node that the share manager is owned by"
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.status.currentImage`,description="The current image of the share manager"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ShareManager is where Longhorn stores share manager object.

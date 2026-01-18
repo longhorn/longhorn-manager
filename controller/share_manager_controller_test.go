@@ -1,10 +1,15 @@
 package controller
 
 import (
-	"github.com/sirupsen/logrus"
-	storagev1 "k8s.io/api/storage/v1"
 	"reflect"
 	"testing"
+
+	"github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func TestShareManagerController_splitFormatOptions(t *testing.T) {
@@ -144,5 +149,34 @@ func TestShareManagerController_splitFormatOptions(t *testing.T) {
 					got, len(got), tt.want, len(tt.want))
 			}
 		})
+	}
+}
+
+func TestSetShareManagerCurrentImage(t *testing.T) {
+	sm := &longhorn.ShareManager{}
+	pod := &corev1.Pod{
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  "sidecar",
+					Image: "sidecar:latest",
+				},
+				{
+					Name:  types.LonghornLabelShareManager,
+					Image: "share-manager:image",
+				},
+			},
+		},
+	}
+
+	setShareManagerCurrentImage(sm, pod)
+	if sm.Status.CurrentImage != "share-manager:image" {
+		t.Fatalf("expected current image to be %q, got %q", "share-manager:image", sm.Status.CurrentImage)
+	}
+
+	sm.Status.CurrentImage = "previous-image"
+	setShareManagerCurrentImage(sm, nil)
+	if sm.Status.CurrentImage != "" {
+		t.Fatalf("expected current image to be cleared when pod is nil, got %q", sm.Status.CurrentImage)
 	}
 }
