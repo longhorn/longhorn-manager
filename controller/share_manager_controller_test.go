@@ -152,7 +152,7 @@ func TestShareManagerController_splitFormatOptions(t *testing.T) {
 	}
 }
 
-func TestSetShareManagerCurrentImage(t *testing.T) {
+func TestSyncShareManagerCurrentImage(t *testing.T) {
 	sm := &longhorn.ShareManager{
 		Status: longhorn.ShareManagerStatus{
 			CurrentImage: "previous-image",
@@ -173,13 +173,13 @@ func TestSetShareManagerCurrentImage(t *testing.T) {
 		},
 	}
 
-	setShareManagerCurrentImage(sm, pod)
+	syncShareManagerCurrentImage(sm, pod)
 	if sm.Status.CurrentImage != "share-manager:image" {
 		t.Fatalf("expected current image to be %q, got %q", "share-manager:image", sm.Status.CurrentImage)
 	}
 
 	sm.Status.CurrentImage = "should-be-cleared"
-	setShareManagerCurrentImage(sm, nil)
+	syncShareManagerCurrentImage(sm, nil)
 	if sm.Status.CurrentImage != "" {
 		t.Fatalf("expected current image to be cleared when pod is nil, got %q", sm.Status.CurrentImage)
 	}

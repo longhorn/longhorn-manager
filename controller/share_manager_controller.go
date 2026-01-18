@@ -833,7 +833,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	return nil
 }
 
-func setShareManagerCurrentImage(sm *longhorn.ShareManager, pod *corev1.Pod) {
+func syncShareManagerCurrentImage(sm *longhorn.ShareManager, pod *corev1.Pod) {
 	if pod == nil {
 		sm.Status.CurrentImage = ""
 		return
@@ -914,7 +914,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		}
 	}
 
-	setShareManagerCurrentImage(sm, pod)
+	syncShareManagerCurrentImage(sm, pod)
 
 	// If the node where the pod is running on become defective, we clean up the pod by setting sm.Status.State to STOPPED or ERROR
 	// A new pod will be recreated by the share manager controller.  We might get an early warning of that by the pod going stale.
