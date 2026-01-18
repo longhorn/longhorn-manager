@@ -31,6 +31,8 @@ type ShareManagerStatusApplyConfiguration struct {
 	OwnerID *string `json:"ownerID,omitempty"`
 	// The state of the share manager resource
 	State *longhornv1beta2.ShareManagerState `json:"state,omitempty"`
+	// The image currently used by the share manager pod
+	CurrentImage *string `json:"currentImage,omitempty"`
 	// NFS endpoint that can access the mounted filesystem of the volume
 	Endpoint *string `json:"endpoint,omitempty"`
 }
@@ -54,6 +56,14 @@ func (b *ShareManagerStatusApplyConfiguration) WithOwnerID(value string) *ShareM
 // If called multiple times, the State field is set to the value of the last call.
 func (b *ShareManagerStatusApplyConfiguration) WithState(value longhornv1beta2.ShareManagerState) *ShareManagerStatusApplyConfiguration {
 	b.State = &value
+	return b
+}
+
+// WithCurrentImage sets the CurrentImage field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CurrentImage field is set to the value of the last call.
+func (b *ShareManagerStatusApplyConfiguration) WithCurrentImage(value string) *ShareManagerStatusApplyConfiguration {
+	b.CurrentImage = &value
 	return b
 }
 

@@ -833,6 +833,25 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	return nil
 }
 
+func syncShareManagerCurrentImage(sm *longhorn.ShareManager, pod *corev1.Pod) {
+	sm.Status.CurrentImage = ""
+
+	if pod == nil {
+		return
+	}
+
+	if sm.Status.State == longhorn.ShareManagerStateStopped {
+		return
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name == types.LonghornLabelShareManager {
+			sm.Status.CurrentImage = container.Image
+			return
+		}
+	}
+}
+
 // syncShareManagerPod controls pod existence and provides the following state transitions
 // stopping -> stopped (no more pod)
 // stopped -> stopped (rest state)
@@ -843,6 +862,11 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to syncShareManagerPod")
+	}()
+
+	var pod *corev1.Pod
+	defer func() {
+		syncShareManagerCurrentImage(sm, pod)
 	}()
 
 	defer func() {
@@ -863,10 +887,12 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	}
 
 	log := getLoggerForShareManager(c.logger, sm)
-	pod, err := c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
+	pod, err = c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrap(err, "failed to retrieve pod for share manager from datastore")
-	} else if pod == nil {
+	}
+
+	if pod == nil {
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
 			log.Info("Updating share manager to stopped state before starting since share manager pod is gone")
 			sm.Status.State = longhorn.ShareManagerStateStopped
