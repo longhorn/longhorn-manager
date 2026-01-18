@@ -73,4 +73,6 @@ const (
 	EventReasonMigrationFailed = "MigrationFailed"
 
 	EventReasonOrphanCleanupCompleted = "OrphanCleanupCompleted"
+
+	EventReasonOrphanedDiskFound = "OrphanedDiskFound"
 )

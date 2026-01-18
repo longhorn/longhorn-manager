@@ -1259,6 +1259,8 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 					return err
 				}
 				log.WithField("diskUUID", diskUUID).WithError(err).Warn("Disk is not ready hence backing image manager can not be created")
+				bic.eventRecorder.Eventf(bi, corev1.EventTypeWarning, constant.EventReasonOrphanedDiskFound,
+					"Disk %v is not found or not ready. If this disk is gone permanently, consider cleaning it up from the backing image spec using the 'Clean Up' operation in the backing image page", diskUUID)
 				continue
 			}
 			requiredBIs[bi.Name] = bi.Status.UUID
