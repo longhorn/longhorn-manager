@@ -1871,8 +1871,8 @@ var (
 		Type:               SettingTypeBool,
 		Required:           true,
 		ReadOnly:           false,
-		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"false\",%q:\"false\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionLogPath = SettingDefinition{
