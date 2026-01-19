@@ -30,3 +30,4 @@ jobs:
         uses: fossas/fossa-action@v1.1.0 # Use a specific version if locking is preferred
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
+          project: longhorn-manager
