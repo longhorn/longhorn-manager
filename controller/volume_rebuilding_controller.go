@@ -467,7 +467,7 @@ func (vbc *VolumeRebuildingController) isVolumeOfflineRebuildEnabled(vol *longho
 		return true, nil
 	}
 
-	globalOfflineRebuildingEnabled, err := vbc.ds.GetSettingAsBoolByDataEngine(types.SettingNameOfflineReplicaRebuilding, vol.Spec.DataEngine)
+	globalOfflineRebuildingEnabled, err := vbc.ds.GetSettingAsBool(types.SettingNameOfflineReplicaRebuilding)
 	if err != nil {
 		return false, err
 	}
