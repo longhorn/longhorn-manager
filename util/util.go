@@ -828,6 +828,53 @@ func SortKeys(mapObj interface{}) ([]string, error) {
 	return keys, nil
 }
 
+// SortKeysByValueLen accepts a map where values are maps, slices, or arrays,
+// and returns keys sorted by the length of their values. Set ascending to true for ascending order,
+// false for descending order.
+func SortKeysByValueLen(mapObj interface{}, ascending bool) ([]string, error) {
+	if mapObj == nil {
+		return []string{}, fmt.Errorf("BUG: mapObj was nil")
+	}
+	m := reflect.ValueOf(mapObj)
+	if m.Kind() != reflect.Map {
+		return []string{}, fmt.Errorf("BUG: expected map, got %v", m.Kind())
+	}
+
+	type kv struct {
+		key   string
+		count int
+	}
+
+	pairs := make([]kv, 0, m.Len())
+	for _, key := range m.MapKeys() {
+		if key.Kind() != reflect.String {
+			return []string{}, fmt.Errorf("BUG: expected string key, got %v", key.Kind())
+		}
+		count := 0
+		val := m.MapIndex(key)
+		switch val.Kind() {
+		case reflect.Map, reflect.Slice, reflect.Array:
+			count = val.Len()
+		default:
+			return []string{}, fmt.Errorf("BUG: expected map/slice/array value, got %v", val.Kind())
+		}
+		pairs = append(pairs, kv{key: key.String(), count: count})
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		if ascending {
+			return pairs[i].count < pairs[j].count
+		}
+		return pairs[i].count > pairs[j].count
+	})
+
+	keys := make([]string, len(pairs))
+	for i, p := range pairs {
+		keys[i] = p.key
+	}
+	return keys, nil
+}
+
 func EncodeToYAMLFile(obj interface{}, path string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to generate %v", path)

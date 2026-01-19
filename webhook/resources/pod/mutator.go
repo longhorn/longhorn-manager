@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -18,6 +19,8 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+const AnnSelectedNode = "volume.kubernetes.io/selected-node"
 
 type podMutator struct {
 	admission.DefaultMutator
@@ -61,7 +64,7 @@ func (p *podMutator) Create(request *admission.Request, newObj runtime.Object) (
 	}
 
 	// Get Longhorn volumes with best-effort data locality used by this pod
-	longhornVolumes, err := p.getLonghornVolumesForPod(pod, request.Namespace)
+	longhornVolumes, selectedNode, err := p.getLonghornVolumesForPod(pod, request.Namespace)
 	if err != nil {
 		logrus.WithError(err).Warnf("Failed to get Longhorn volumes for pod %s/%s, skipping mutation", request.Namespace, pod.Name)
 		return nil, nil
@@ -70,32 +73,34 @@ func (p *podMutator) Create(request *admission.Request, newObj runtime.Object) (
 		return nil, nil
 	}
 
-	// Collect nodes with replicas and nodes with max
-	volumeCountToNodes, err := p.collectSchedulableNodes(longhornVolumes)
+	// Find the best node for scheduling this pod based on volume replica locations
+	zone := p.getNodeZone(selectedNode)
+	targetNode, err := p.findNodeForVolumes(longhornVolumes, zone)
 	if err != nil {
-		logrus.WithError(err).Warnf("Failed to collect schedulable nodes for pod %s/%s, skipping mutation", request.Namespace, pod.Name)
+		logrus.WithError(err).Warnf("Failed to find best node for pod %s/%s, skipping mutation", request.Namespace, pod.Name)
+		return nil, nil
+	}
+	if targetNode == "" {
 		return nil, nil
 	}
 
-	if len(volumeCountToNodes) == 0 {
-		return nil, nil
-	}
-
-	// Generate patch operations to inject node affinity
-	patchOps, err = p.generateAffinityPatch(pod, volumeCountToNodes)
+	// Generate patch operations to inject required node affinity
+	patchOps, err = p.generateAffinityPatch(pod, targetNode)
 	if err != nil {
 		logrus.WithError(err).Warnf("Failed to generate affinity patch for pod %s/%s, skipping mutation", request.Namespace, pod.Name)
 		return nil, nil
 	}
-	logrus.Infof("Injecting storage-aware node affinity into pod %s/%s (nodes by volume count: %v)",
-		request.Namespace, pod.Name, volumeCountToNodes)
+	logrus.Infof("Injecting required node affinity for pod %s/%s to node %s",
+		request.Namespace, pod.Name, targetNode)
 
 	return patchOps, nil
 }
 
-// getLonghornVolumesForPod returns Longhorn volumes with best-effort data locality referenced by the pod's PVCs
-func (p *podMutator) getLonghornVolumesForPod(pod *corev1.Pod, namespace string) ([]*longhorn.Volume, error) {
+// getLonghornVolumesForPod returns Longhorn volumes with best-effort data locality referenced by the pod's PVCs,
+// along with the node name from the PVC's selected-node annotation (used for zone-aware scheduling).
+func (p *podMutator) getLonghornVolumesForPod(pod *corev1.Pod, namespace string) ([]*longhorn.Volume, string, error) {
 	var longhornVolumes []*longhorn.Volume
+	var selectedNodeName string
 
 	for _, podVolume := range pod.Spec.Volumes {
 		if podVolume.PersistentVolumeClaim == nil {
@@ -125,6 +130,12 @@ func (p *podMutator) getLonghornVolumesForPod(pod *corev1.Pod, namespace string)
 			continue
 		}
 
+		// Get node where pod was originally scheduled
+		pvcSelectedNode, ok := pvc.Annotations[AnnSelectedNode]
+		if ok {
+			selectedNodeName = pvcSelectedNode
+		}
+
 		volume, err := p.ds.GetVolumeRO(pv.Spec.CSI.VolumeHandle)
 		if err != nil {
 			logrus.WithError(err).Debugf("Failed to get Longhorn volume %s", pv.Spec.CSI.VolumeHandle)
@@ -139,20 +150,46 @@ func (p *podMutator) getLonghornVolumesForPod(pod *corev1.Pod, namespace string)
 		longhornVolumes = append(longhornVolumes, volume)
 	}
 
-	return longhornVolumes, nil
+	return longhornVolumes, selectedNodeName, nil
 }
 
-// collectSchedulableNodes collects nodes grouped by how many volumes have replicas on them.
-// Returns a map where the key is the volume count and value is the list of nodes with that many volumes.
-func (p *podMutator) collectSchedulableNodes(volumes []*longhorn.Volume) (map[int][]string, error) {
-	volumeCountToNodes := make(map[int][]string)
+// getNodeZone returns the zone label of the given node, or empty string if not found.
+func (p *podMutator) getNodeZone(nodeName string) string {
+	if nodeName == "" {
+		return ""
+	}
+	kubeNode, err := p.ds.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		logrus.WithError(err).Debugf("Failed to get Kubernetes node %s for zone lookup", nodeName)
+		return ""
+	}
+	return kubeNode.Labels[corev1.LabelTopologyZone]
+}
+
+// findNodeForVolumes finds a suitable node for scheduling a pod with the given volumes.
+// It prioritizes nodes that already have replicas for the volumes (sorted by replica count descending),
+// then falls back to any schedulable node in the same zone.
+// Returns the node name or empty string if no suitable node is found.
+func (p *podMutator) findNodeForVolumes(volumes []*longhorn.Volume, zone string) (string, error) {
+	allowEmptyNodeSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return "", err
+	}
+	allowEmptyDiskSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return "", err
+	}
+	overProvisioningPercentage, err := p.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
+	if err != nil {
+		return "", err
+	}
 
 	// Build map of which volumes have replicas on which nodes
 	nodeVolumeMap := make(map[string]map[string]bool)
-	for _, vol := range volumes {
-		replicas, err := p.ds.ListVolumeReplicasRO(vol.Name)
+	for _, volume := range volumes {
+		replicas, err := p.ds.ListVolumeReplicasRO(volume.Name)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to list replicas for volume %s", vol.Name)
+			logrus.WithError(err).Warnf("Failed to list replicas for volume %s", volume.Name)
 			continue
 		}
 
@@ -163,68 +200,66 @@ func (p *podMutator) collectSchedulableNodes(volumes []*longhorn.Volume) (map[in
 				if nodeVolumeMap[nodeId] == nil {
 					nodeVolumeMap[nodeId] = make(map[string]bool)
 				}
-				nodeVolumeMap[nodeId][vol.Name] = true
+				nodeVolumeMap[nodeId][volume.Name] = true
 			}
 		}
 	}
+	nodesSortedByVolumeCount, err := util.SortKeysByValueLen(nodeVolumeMap, false)
+	if err != nil {
+		return "", err
+	}
+	for _, nodeName := range nodesSortedByVolumeCount {
+		var volumesToMove []*longhorn.Volume
+		for _, volume := range volumes {
+			if !nodeVolumeMap[nodeName][volume.Name] {
+				volumesToMove = append(volumesToMove, volume)
+			}
+		}
+		node, err := p.ds.GetNodeRO(nodeName)
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to get node %s", nodeName)
+			continue
+		}
+		if p.canScheduleVolumesOnNode(node, volumesToMove, zone, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume, overProvisioningPercentage) {
+			return nodeName, nil
+		}
+	}
 
-	// Check each schedulable node to see if it can accommodate the volumes
+	// Fall back to any schedulable node in this zone
 	nodes, err := p.ds.ListNodesRO()
 	if err != nil {
-		return nil, err
-	}
-	allowEmptyNodeSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
-	if err != nil {
-		return nil, err
-	}
-	allowEmptyDiskSelectorVolume, err := p.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
-	if err != nil {
-		return nil, err
-	}
-	overProvisioningPercentage, err := p.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
-	if err != nil {
-		return nil, err
+		return "", err
 	}
 	for _, node := range nodes {
-		if !node.Spec.AllowScheduling || node.Spec.EvictionRequested {
+		if _, ok := nodeVolumeMap[node.Name]; ok {
 			continue
 		}
-		if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
-			continue
-		}
-		if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-			continue
-		}
-
-		if nodeVolumeMap[node.Name] == nil {
-			nodeVolumeMap[node.Name] = make(map[string]bool)
-		}
-		// Determine which volumes would need to be moved to this node
-		var volumesToMove []*longhorn.Volume
-		for _, vol := range volumes {
-			if !nodeVolumeMap[node.Name][vol.Name] {
-				volumesToMove = append(volumesToMove, vol)
-			}
-		}
-		// Only include node if it can fit the volumes that need to be moved
-		if p.canFitVolumes(node, volumesToMove, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume, overProvisioningPercentage) {
-			volumeCount := len(nodeVolumeMap[node.Name])
-			volumeCountToNodes[volumeCount] = append(volumeCountToNodes[volumeCount], node.Name)
+		if p.canScheduleVolumesOnNode(node, volumes, zone, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume, overProvisioningPercentage) {
+			return node.Name, nil
 		}
 	}
 
-	return volumeCountToNodes, nil
+	return "", nil
 }
 
-// canFitVolumes checks if the given volumes can be scheduled on the node.
-func (p *podMutator) canFitVolumes(node *longhorn.Node, volumes []*longhorn.Volume, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume bool, overProvisioningPercentage int64) bool {
-	if len(volumes) == 0 {
-		return true
+// canScheduleVolumesOnNode checks if the given volumes can be scheduled on the node.
+func (p *podMutator) canScheduleVolumesOnNode(node *longhorn.Node, volumes []*longhorn.Volume, zone string, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume bool, overProvisioningPercentage int64) bool {
+	if !node.Spec.AllowScheduling || node.Spec.EvictionRequested {
+		return false
+	}
+	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+		return false
+	}
+	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+		return false
+	}
+	if node.Status.Zone != zone {
+		return false
 	}
 
 	// Check node selector constraints
-	for _, vol := range volumes {
-		if !types.IsSelectorsInTags(node.Spec.Tags, vol.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
+	for _, volume := range volumes {
+		if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
 			return false
 		}
 	}
@@ -272,70 +307,71 @@ func (p *podMutator) canFitVolumes(node *longhorn.Node, volumes []*longhorn.Volu
 	return backtrack(0)
 }
 
-// generateAffinityPatch generates JSON patch operations to inject node affinity
-func (p *podMutator) generateAffinityPatch(pod *corev1.Pod, volumeCountToNodes map[int][]string) (admission.PatchOps, error) {
+// generateAffinityPatch generates JSON patch operations to inject required node affinity
+// that pins the pod to the specified target node.
+func (p *podMutator) generateAffinityPatch(pod *corev1.Pod, targetNode string) (admission.PatchOps, error) {
 	var patchOps admission.PatchOps
 
-	if len(volumeCountToNodes) == 0 {
+	if targetNode == "" {
 		return nil, nil
 	}
 
-	// Build preferred scheduling terms (higher volume count = higher weight)
-	var preferredTerms []corev1.PreferredSchedulingTerm
-	for volumeCount, nodes := range volumeCountToNodes {
-		weight := int32((volumeCount + 1) * 25)
-		if weight > 100 {
-			weight = 100
-		}
-		preferredTerms = append(preferredTerms, corev1.PreferredSchedulingTerm{
-			Weight: weight,
-			Preference: corev1.NodeSelectorTerm{
-				MatchExpressions: []corev1.NodeSelectorRequirement{
-					{
-						Key:      "kubernetes.io/hostname",
-						Operator: corev1.NodeSelectorOpIn,
-						Values:   nodes,
-					},
-				},
+	// Build required node selector term for the target node
+	requiredTerm := corev1.NodeSelectorTerm{
+		MatchExpressions: []corev1.NodeSelectorRequirement{
+			{
+				Key:      corev1.LabelHostname,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{targetNode},
 			},
-		})
+		},
 	}
 
-	// Build the affinity object
 	if pod.Spec.Affinity == nil {
-		// No existing affinity, create new one
+		// No existing affinity, create new one with required node affinity
 		affinity := &corev1.Affinity{
 			NodeAffinity: &corev1.NodeAffinity{
-				PreferredDuringSchedulingIgnoredDuringExecution: preferredTerms,
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{requiredTerm},
+				},
 			},
 		}
 		affinityBytes, err := json.Marshal(affinity)
 		if err != nil {
-			logrus.WithError(err).Warn("Failed to marshal affinity, skipping mutation")
-			return nil, nil
+			return nil, fmt.Errorf("failed to marshal affinity: %v", err)
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/affinity", "value": %s}`, string(affinityBytes)))
 	} else if pod.Spec.Affinity.NodeAffinity == nil {
 		// Has affinity but no node affinity
 		nodeAffinity := &corev1.NodeAffinity{
-			PreferredDuringSchedulingIgnoredDuringExecution: preferredTerms,
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{requiredTerm},
+			},
 		}
 		nodeAffinityBytes, err := json.Marshal(nodeAffinity)
 		if err != nil {
-			logrus.WithError(err).Warn("Failed to marshal node affinity, skipping mutation")
-			return nil, nil
+			return nil, fmt.Errorf("failed to marshal node affinity: %v", err)
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/affinity/nodeAffinity", "value": %s}`, string(nodeAffinityBytes)))
+	} else if pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		// Has node affinity but no required terms
+		nodeSelector := &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{requiredTerm},
+		}
+		nodeSelectorBytes, err := json.Marshal(nodeSelector)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal node selector: %v", err)
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution", "value": %s}`, string(nodeSelectorBytes)))
 	} else {
-		// Has node affinity, append to existing preferred terms
-		existingTerms := pod.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution
-		newTerms := append(existingTerms, preferredTerms...)
+		// Has required terms, append our term
+		existingTerms := pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+		newTerms := append(existingTerms, requiredTerm)
 		newTermsBytes, err := json.Marshal(newTerms)
 		if err != nil {
-			logrus.WithError(err).Warn("Failed to marshal preferred terms, skipping mutation")
-			return nil, nil
+			return nil, fmt.Errorf("failed to marshal node selector terms: %v", err)
 		}
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/affinity/nodeAffinity/preferredDuringSchedulingIgnoredDuringExecution", "value": %s}`, string(newTermsBytes)))
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution/nodeSelectorTerms", "value": %s}`, string(newTermsBytes)))
 	}
 
 	return patchOps, nil
