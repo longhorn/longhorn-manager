@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 
-	"github.com/longhorn/longhorn-manager/types"
-
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func TestShareManagerController_splitFormatOptions(t *testing.T) {
