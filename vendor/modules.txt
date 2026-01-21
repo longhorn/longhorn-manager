@@ -232,7 +232,7 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.9.2
+# github.com/longhorn/backing-image-manager v1.12.0-dev-20251228.0.20260121131122-76516fe6dc10
 ## explicit; go 1.24.0
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
@@ -281,25 +281,25 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.11.0-rc2
+# github.com/longhorn/longhorn-engine v1.12.0-dev-20251228.0.20260121135150-2cecf5da324c
 ## explicit; go 1.25.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.11.0-rc2
+# github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20251228.0.20260121161259-c5aad56a41a7
 ## explicit; go 1.25.3
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.9.2
-## explicit; go 1.24.0
+# github.com/longhorn/longhorn-share-manager v1.12.0-dev-20251228.0.20260121131143-1f9bb24af60c
+## explicit; go 1.25.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20260113094106-e6d061d3b530
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20260121154139-6a289a0eee79
 ## explicit; go 1.25.3
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -564,7 +564,6 @@ golang.org/x/exp/slog/internal/buffer
 golang.org/x/mod/semver
 # golang.org/x/net v0.49.0
 ## explicit; go 1.24.0
-golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack

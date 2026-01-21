@@ -1,6 +1,7 @@
 package spdk
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"regexp"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
@@ -29,8 +32,6 @@ const (
 	RebuildingSnapshotNamePrefix = "rebuild"
 
 	SyncTimeout = 60 * time.Minute
-
-	nvmeNguidLength = 32
 
 	maxNumRetries = 15
 	retryInterval = 1 * time.Second
@@ -327,4 +328,10 @@ type BackupCreateInfo struct {
 	BackupName     string
 	IsIncremental  bool
 	ReplicaAddress string
+}
+
+func generateNGUID(name string) string {
+	nguid := uuid.NewSHA1(uuid.NameSpaceOID, []byte(name))
+	return hex.EncodeToString(nguid[:]) // 32-char hex
+
 }
