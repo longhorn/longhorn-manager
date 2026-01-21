@@ -1133,14 +1133,6 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 		return err
 	}
 
-	if cleaned, err = c.cleanupReplicaInNotReadyEnv(v, rs); err != nil || cleaned {
-		return err
-	}
-
-	if cleaned, err = c.cleanupReplicaInUnstableEnv(v, rs); err != nil || cleaned {
-		return err
-	}
-
 	if cleaned, err = c.cleanupDataLocalityReplicas(v, e, rs); err != nil || cleaned {
 		return err
 	}
@@ -1314,6 +1306,17 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 	setting := c.ds.GetAutoBalancedReplicasSetting(v, log)
 	if setting == longhorn.ReplicaAutoBalanceDisabled {
 		return false, nil
+	}
+
+	// In case of potential regressions or unexpected behavior changes, these cleanups are available only when
+	// the auto balance setting is enabled.
+	// See https://github.com/longhorn/longhorn/issues/11730 and https://github.com/longhorn/longhorn/issues/12511
+	if cleaned, err := c.cleanupReplicaInNotReadyEnv(v, rs); err != nil || cleaned {
+		return cleaned, err
+	}
+
+	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, rs); err != nil || cleaned {
+		return cleaned, err
 	}
 
 	var rNames []string
