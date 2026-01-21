@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -257,7 +258,7 @@ func TestGetCapacity(t *testing.T) {
 			req := &csi.GetCapacityRequest{
 				AccessibleTopology: &csi.Topology{
 					Segments: map[string]string{
-						nodeTopologyKey: test.node.Name,
+						corev1.LabelHostname: test.node.Name,
 					},
 				},
 				Parameters: map[string]string{},
@@ -309,7 +310,7 @@ func TestParseNodeID(t *testing.T) {
 		{
 			topology: &csi.Topology{
 				Segments: map[string]string{
-					nodeTopologyKey: "node-0",
+					corev1.LabelHostname: "node-0",
 				},
 			},
 			nodeID: "node-0",

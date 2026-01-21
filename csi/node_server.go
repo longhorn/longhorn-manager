@@ -923,7 +923,7 @@ func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeI
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	// Default topology with hostname (fallback if node labels cannot be retrieved)
 	topologySegments := map[string]string{
-		nodeTopologyKey: ns.nodeID,
+		corev1.LabelHostname: ns.nodeID,
 	}
 
 	// Get Kubernetes node labels and add them to topology segments
@@ -935,9 +935,7 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		// Only include well-known topology labels to avoid exposing sensitive info and exceeding CSI limits
 		// Note: If kubernetes.io/hostname exists in node labels, it will replace the default ns.nodeID value
 		for key, value := range kubeNode.Labels {
-			if key == nodeTopologyKey ||
-				strings.HasPrefix(key, "topology.kubernetes.io/") ||
-				strings.Contains(key, "longhorn") {
+			if isTopologyKey(key) {
 				topologySegments[key] = value
 			}
 		}
