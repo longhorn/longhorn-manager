@@ -31,7 +31,11 @@ func (c *SPDKClient) getSPDKServiceClient() spdkrpc.SPDKServiceClient {
 
 func NewSPDKClient(serviceURL string) (*SPDKClient, error) {
 	getSPDKServiceContext := func(serviceUrl string) (SPDKServiceContext, error) {
-		connection, err := grpc.NewClient(serviceUrl, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		connection, err := grpc.NewClient(
+			serviceUrl,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithNoProxy(),
+		)
 		if err != nil {
 			return SPDKServiceContext{}, errors.Wrapf(err, "cannot connect to SPDKService %v", serviceUrl)
 		}

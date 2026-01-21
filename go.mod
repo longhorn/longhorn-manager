@@ -67,15 +67,15 @@ require (
 	github.com/henrygd/beszel v0.18.2
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.1
-	github.com/longhorn/backing-image-manager v1.9.2
+	github.com/longhorn/backing-image-manager v1.12.0-dev-20260111.0.20260121124932-2d5be060ca76
 	github.com/longhorn/backupstore v0.0.0-20260120061542-61f6a1bcd863
 	github.com/longhorn/go-common-libs v0.0.0-20260120075236-9a9dafa0a7ea
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260117042347-da1af2aab3fc
 	github.com/longhorn/go-spdk-helper v0.4.0
-	github.com/longhorn/longhorn-engine v1.11.0-dev-20251228.0.20260104095616-29a5f4ebde6b
-	github.com/longhorn/longhorn-instance-manager v1.11.0-dev-20251228.0.20260104095742-9cc302c88446
-	github.com/longhorn/longhorn-share-manager v1.9.2
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260102030926-560dc3ecb625
+	github.com/longhorn/longhorn-engine v1.12.0-dev-20260111.0.20260121124918-eaf1ebe95167
+	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260111.0.20260121155938-47de1bf4d47c
+	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260111.0.20260121124945-ff0e4857661c
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260121154139-6a289a0eee79
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.7.3
