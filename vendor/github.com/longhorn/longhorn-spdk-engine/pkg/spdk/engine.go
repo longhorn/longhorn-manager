@@ -640,7 +640,7 @@ func (e *Engine) configureNvmeTcpFrontend(initiatorCreationRequired, targetCreat
 	}
 
 	e.NvmeTcpFrontend.Nqn = helpertypes.GetNQN(e.Name)
-	e.NvmeTcpFrontend.Nguid = commonutils.RandomID(nvmeNguidLength)
+	e.NvmeTcpFrontend.Nguid = generateNGUID(e.Name)
 
 	nvmeTCPInfo := &initiator.NVMeTCPInfo{
 		SubsystemNQN: e.NvmeTcpFrontend.Nqn,
@@ -1440,8 +1440,10 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64, superiorPort
 
 	// It waits for the kernel to recognize the new physical NVMe capacity
 	// and then reloads the dm table to propagate the size change up to the volume.
-	if err := e.initiator.SyncDmDeviceSize(size); err != nil {
-		e.log.WithError(err).Warnf("failed to reload dm device during engine %s expansion", e.Name)
+	if e.Frontend != types.FrontendEmpty && e.initiator != nil {
+		if err := e.initiator.SyncDmDeviceSize(size); err != nil {
+			e.log.WithError(err).Warnf("failed to reload dm device during engine %s expansion", e.Name)
+		}
 	}
 	e.log.Info("Expanding engine completed")
 
@@ -2489,8 +2491,16 @@ func (e *Engine) snapshotOperationWithoutLock(spdkClient *spdkclient.Client, rep
 			}
 			replicaBdevList = append(replicaBdevList, replicaStatus.BdevName)
 		}
-		if _, raidErr := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, ""); raidErr != nil {
+
+		for r := 0; r < maxNumRetries; r++ {
+			_, raidErr := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, "")
+			if raidErr == nil {
+				engineErr = nil
+				break
+			}
+
 			engineErr = errors.Wrapf(raidErr, "engine %s failed to re-create RAID after snapshot %s revert", e.Name, snapshotName)
+			time.Sleep(retryInterval)
 		}
 	}
 

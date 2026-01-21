@@ -7,6 +7,9 @@ import (
 )
 
 const (
+	EnvPodName      = "POD_NAME"
+	EnvPodNamespace = "POD_NAMESPACE"
+
 	GRPCServiceTimeout = 1 * time.Minute
 
 	DevPath       = "/dev"
