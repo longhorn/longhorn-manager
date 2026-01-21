@@ -232,6 +232,8 @@ func (c *ProcessManagerClient) VersionGet() (*meta.VersionOutput, error) {
 
 func (c *ProcessManagerClient) CheckConnection() error {
 	req := &healthpb.HealthCheckRequest{}
-	_, err := c.health.Check(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err := c.health.Check(ctx, req)
 	return err
 }

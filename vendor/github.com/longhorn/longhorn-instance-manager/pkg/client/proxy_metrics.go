@@ -34,7 +34,10 @@ func (c *ProxyClient) MetricsGet(dataEngine, engineName, volumeName, serviceAddr
 		VolumeName: volumeName,
 		DataEngine: rpc.DataEngine(driver),
 	}
-	resp, err := c.service.MetricsGet(getContextWithGRPCTimeout(c.ctx), req)
+
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	resp, err := c.service.MetricsGet(ctx, req)
 	if err != nil {
 		return nil, err
 	}

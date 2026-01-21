@@ -188,7 +188,7 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.10.1
+# github.com/longhorn/backing-image-manager v1.10.2-dev-20260111.0.20260121131107-2e273a5ade11
 ## explicit; go 1.24.0
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
@@ -228,8 +228,8 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.2.0
-## explicit; go 1.24.0
+# github.com/longhorn/go-spdk-helper v0.4.0
+## explicit; go 1.25.3
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
 github.com/longhorn/go-spdk-helper/pkg/spdk/client
@@ -237,26 +237,26 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.10.1
+# github.com/longhorn/longhorn-engine v1.10.2-dev-20260111.0.20260121134251-d778c09d2026
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.10.1
-## explicit; go 1.24.0
+# github.com/longhorn/longhorn-instance-manager v1.10.2-dev-20260111.0.20260121161031-0aa2717229cb
+## explicit; go 1.25.3
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.10.1
+# github.com/longhorn/longhorn-share-manager v1.10.2-dev-20260111.0.20260121131150-315500f716d1
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20251023092409-3c3113c50437
-## explicit; go 1.24.0
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20260121154139-6a289a0eee79
+## explicit; go 1.25.3
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
 github.com/longhorn/longhorn-spdk-engine/pkg/log
@@ -412,8 +412,8 @@ github.com/robfig/cron
 # github.com/robfig/cron/v3 v3.0.1
 ## explicit; go 1.12
 github.com/robfig/cron/v3
-# github.com/rogpeppe/go-internal v1.13.1
-## explicit; go 1.22
+# github.com/rogpeppe/go-internal v1.14.1
+## explicit; go 1.23
 github.com/rogpeppe/go-internal/fmtsort
 # github.com/russross/blackfriday/v2 v2.1.0
 ## explicit
@@ -466,7 +466,7 @@ go.uber.org/atomic
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
-# go.yaml.in/yaml/v2 v2.4.2
+# go.yaml.in/yaml/v2 v2.4.3
 ## explicit; go 1.15
 go.yaml.in/yaml/v2
 # go.yaml.in/yaml/v3 v3.0.4
@@ -484,7 +484,6 @@ golang.org/x/exp/constraints
 golang.org/x/mod/semver
 # golang.org/x/net v0.49.0
 ## explicit; go 1.24.0
-golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
@@ -634,7 +633,7 @@ google.golang.org/protobuf/types/known/wrapperspb
 # gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 ## explicit; go 1.11
 gopkg.in/check.v1
-# gopkg.in/evanphx/json-patch.v4 v4.12.0
+# gopkg.in/evanphx/json-patch.v4 v4.13.0
 ## explicit
 gopkg.in/evanphx/json-patch.v4
 # gopkg.in/inf.v0 v0.9.1
@@ -646,7 +645,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.34.3 => k8s.io/api v0.34.3
+# k8s.io/api v0.35.0 => k8s.io/api v0.34.3
 ## explicit; go 1.24.0
 k8s.io/api/admission/v1
 k8s.io/api/admissionregistration/v1
@@ -731,7 +730,7 @@ k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/internalint
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1beta1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.34.3 => k8s.io/apimachinery v0.34.3
+# k8s.io/apimachinery v0.35.0 => k8s.io/apimachinery v0.34.3
 ## explicit; go 1.24.0
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -801,7 +800,7 @@ k8s.io/apiserver/pkg/util/feature
 # k8s.io/cli-runtime v0.34.3 => k8s.io/cli-runtime v0.34.3
 ## explicit; go 1.24.0
 k8s.io/cli-runtime/pkg/printers
-# k8s.io/client-go v0.34.3 => k8s.io/client-go v0.34.3
+# k8s.io/client-go v0.35.0 => k8s.io/client-go v0.34.3
 ## explicit; go 1.24.0
 k8s.io/client-go/applyconfigurations
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
@@ -1171,8 +1170,8 @@ k8s.io/klog/v2/internal/sloghandler
 ## explicit; go 1.24.0
 k8s.io/kube-aggregator/pkg/apis/apiregistration
 k8s.io/kube-aggregator/pkg/apis/apiregistration/v1
-# k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b
-## explicit; go 1.23
+# k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912
+## explicit; go 1.23.0
 k8s.io/kube-openapi/pkg/cached
 k8s.io/kube-openapi/pkg/common
 k8s.io/kube-openapi/pkg/handler3
@@ -1237,7 +1236,7 @@ k8s.io/utils/trace
 # sigs.k8s.io/controller-runtime v0.21.0
 ## explicit; go 1.24.0
 sigs.k8s.io/controller-runtime/pkg/conversion
-# sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8
+# sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730
 ## explicit; go 1.23
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json

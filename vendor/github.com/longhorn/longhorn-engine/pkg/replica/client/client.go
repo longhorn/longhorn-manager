@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/longhorn/types/pkg/generated/enginerpc"
 	"github.com/pkg/errors"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -92,8 +92,12 @@ func NewReplicaClient(address, volumeName, instanceName string) (*ReplicaClient,
 // for the longhorn-manager which executes these command as binaries invocations
 func (c *ReplicaClient) getReplicaServiceClient() (enginerpc.ReplicaServiceClient, error) {
 	err := c.replicaServiceContext.once.Do(func() error {
-		cc, err := grpc.NewClient(c.replicaServiceURL, grpc.WithTransportCredentials(insecure.NewCredentials()),
-			interceptor.WithIdentityValidationClientInterceptor(c.volumeName, c.instanceName))
+		cc, err := grpc.NewClient(
+			c.replicaServiceURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithNoProxy(),
+			interceptor.WithIdentityValidationClientInterceptor(c.volumeName, c.instanceName),
+		)
 		if err != nil {
 			return err
 		}
@@ -113,8 +117,15 @@ func (c *ReplicaClient) getReplicaServiceClient() (enginerpc.ReplicaServiceClien
 // for the longhorn-manager which executes these command as binaries invocations
 func (c *ReplicaClient) getSyncServiceClient() (enginerpc.SyncAgentServiceClient, error) {
 	err := c.syncServiceContext.once.Do(func() error {
-		cc, err := grpc.NewClient(c.syncAgentServiceURL, grpc.WithTransportCredentials(insecure.NewCredentials()),
-			interceptor.WithIdentityValidationClientInterceptor(c.volumeName, c.instanceName))
+		cc, err := grpc.NewClient(
+			c.syncAgentServiceURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithNoProxy(),
+			interceptor.WithIdentityValidationClientInterceptor(
+				c.volumeName,
+				c.instanceName,
+			),
+		)
 		if err != nil {
 			return err
 		}

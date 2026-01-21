@@ -76,7 +76,7 @@ func NewDisk(diskName, diskUUID, diskPath, diskDriver string, blockSize int64) *
 	}
 }
 
-func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) error {
+func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (err error) {
 	log := logrus.WithFields(logrus.Fields{
 		"diskName":   diskName,
 		"diskUUID":   diskUUID,
@@ -87,6 +87,18 @@ func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 
 	log.Info("Creating disk")
 
+	d.Lock()
+	defer func() {
+		if err != nil {
+			d.State = DiskStateError
+			log.WithError(err).Error("Failed to create disk")
+		} else {
+			d.State = DiskStateReady
+			log.Info("Created disk successfully")
+		}
+		d.Unlock()
+	}()
+
 	if diskName == "" || diskPath == "" {
 		return grpcstatus.Error(grpccodes.InvalidArgument, "disk name and disk path are required")
 	}
@@ -96,6 +108,7 @@ func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 		log.WithError(err).Error("Failed to determine disk driver")
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "failed to get disk driver for disk %q: %v", diskName, err)
 	}
+	d.DiskDriver = string(exactDiskDriver)
 
 	lvstoreUUID, err := addBlockDevice(spdkClient, diskName, diskUUID, diskPath, exactDiskDriver, blockSize)
 	if err != nil {
@@ -108,21 +121,13 @@ func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 		log.WithError(err).Error("Failed to get disk ID")
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to get disk ID for %q: %v", diskName, err)
 	}
-
-	d.Lock()
-	defer d.Unlock()
-
-	d.DiskDriver = string(exactDiskDriver)
 	d.DiskID = diskID
 
 	if err := d.lvstoreToDisk(spdkClient, "", lvstoreUUID); err != nil {
-		d.State = DiskStateError
 		log.WithError(err).Error("Failed to update disk from lvstore")
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to update disk from lvstore: %v", err)
 	}
 
-	d.State = DiskStateReady
-	log.Info("Created disk successfully")
 	return nil
 }
 
@@ -170,6 +175,9 @@ func (d *Disk) DiskDelete(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 		log.Warn("Disk UUID is not provided, blindly delete the disk")
 	}
 
+	if diskDriver == "" {
+		diskDriver = d.DiskDriver
+	}
 	if _, err := spdkdisk.DiskDelete(spdkClient, diskName, diskPath, diskDriver); err != nil {
 		return nil, errors.Wrapf(err, "failed to delete disk %v", diskName)
 	}
@@ -258,8 +266,8 @@ func (d *Disk) DiskGet(spdkClient *spdkclient.Client, diskName, diskPath, diskDr
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "disk name is required")
 	}
 
-	if d.State == DiskStateCreating {
-		d.RLock()
+	d.RLock()
+	if d.State == DiskStateCreating || d.State == DiskStateError {
 		defer d.RUnlock()
 		return &spdkrpc.Disk{
 			Id:          d.DiskID,
@@ -277,6 +285,7 @@ func (d *Disk) DiskGet(spdkClient *spdkclient.Client, diskName, diskPath, diskDr
 			State:       string(d.State),
 		}, nil
 	}
+	d.RUnlock()
 
 	d.Lock()
 	diskBdevName, err := d.updateDiskFromLvstoreNoLock(spdkClient, diskName, diskPath, diskDriver)
@@ -466,4 +475,39 @@ func (d *Disk) lvstoreToDisk(spdkClient *spdkclient.Client, lvstoreName, lvstore
 	d.ClusterSize = int64(lvstore.ClusterSize)
 
 	return nil
+}
+
+func (d *Disk) diskHealthGet(spdkClient *spdkclient.Client, diskName, diskDriver string) (*spdktypes.BdevNvmeControllerHealthInfo, error) {
+	if diskName == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "disk name is required")
+	}
+
+	// Currently, SPDK health info is only available for NVMe bdev controllers.
+	if diskDriver != "" && diskDriver != string(commontypes.DiskDriverNvme) {
+		return nil, grpcstatus.Errorf(grpccodes.Unimplemented, "disk driver %q does not support health info", diskDriver)
+	}
+
+	d.Lock()
+	defer d.Unlock()
+
+	healthInfo, err := spdkClient.BdevNvmeGetControllerHealthInfo(diskName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get NVMe bdev controller health info for disk %q", diskName)
+	}
+
+	return &healthInfo, nil
+}
+
+func isNvmeDriver(diskDriver, diskPath string) bool {
+	if diskDriver == string(commontypes.DiskDriverNvme) {
+		return true
+	}
+
+	exactDiskDriver, err := spdkdisk.GetDiskDriver(commontypes.DiskDriver(diskDriver), diskPath)
+	if err != nil {
+		logrus.WithError(err).Warnf("failed to get disk driver for driver %v and path %s", diskDriver, diskPath)
+		return false
+	}
+
+	return exactDiskDriver == commontypes.DiskDriverNvme
 }

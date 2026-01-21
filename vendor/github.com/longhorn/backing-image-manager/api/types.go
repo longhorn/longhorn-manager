@@ -4,7 +4,8 @@ import (
 	"context"
 
 	rpc "github.com/longhorn/types/pkg/generated/bimrpc"
-	"github.com/pkg/errors"
+
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
 )
 

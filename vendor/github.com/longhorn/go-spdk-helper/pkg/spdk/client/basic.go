@@ -1015,6 +1015,35 @@ func (c *Client) BdevNvmeGetControllers(name string) (controllerInfoList []spdkt
 	return controllerInfoList, json.Unmarshal(cmdOutput, &controllerInfoList)
 }
 
+// BdevNvmeGetControllerHealthInfo retrieves health information for a specified
+// NVMe bdev controller.
+//
+//	"name": Name of the NVMe controller
+func (c *Client) BdevNvmeGetControllerHealthInfo(name string) (healthInfo spdktypes.BdevNvmeControllerHealthInfo, err error) {
+	req := spdktypes.BdevNvmeGetControllerHealthInfoRequest{
+		Name: name,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_nvme_get_controller_health_info", req)
+	if err != nil {
+		return healthInfo, err
+	}
+
+	if err := json.Unmarshal(cmdOutput, &healthInfo); err != nil {
+		return healthInfo, err
+	}
+
+	// Normalize temperature: SPDK writes temperature as unsigned (Kelvin-273).
+	// When controller reports invalid/0 temperature in Kelvin, subtracting 273
+	// on uint64 underflows and produces a huge number (~2^64 - 273), which is
+	// meaningless in Celsius. Clamp such outliers to -1 to indicate unknown.
+	if healthInfo.TemperatureCelsius > 255 { // Values >255°C are invalid for a uint8 S.M.A.R.T. temperature.
+		healthInfo.TemperatureCelsius = spdktypes.UnknownTemperature
+	}
+
+	return healthInfo, nil
+}
+
 // BdevNvmeSetOptions sets global parameters for all bdev NVMe.
 // This RPC may only be called before SPDK subsystems have been initialized or any bdev NVMe
 // has been created.
@@ -1557,4 +1586,28 @@ func (c *Client) SpdkKillInstance(sig string) (result bool, err error) {
 	}
 
 	return result, json.Unmarshal(cmdOutput, &result)
+}
+
+// BdevNvmeSetHotplug enables or disables the NVMe hotplug poller.
+//
+// "enable": true to enable hotplug, false to disable.
+//
+// "periodUs": Polling period in microseconds.
+func (c *Client) BdevNvmeSetHotplug(enable bool, periodUs uint64) (bool, error) {
+	params := map[string]interface{}{
+		"enable":    enable,
+		"period_us": periodUs,
+	}
+
+	var result bool
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_nvme_set_hotplug", params)
+	if err != nil {
+		return false, err
+	}
+
+	if err := json.Unmarshal(cmdOutput, &result); err != nil {
+		return false, err
+	}
+
+	return result, nil
 }

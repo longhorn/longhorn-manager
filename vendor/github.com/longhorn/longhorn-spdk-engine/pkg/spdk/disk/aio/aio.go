@@ -13,6 +13,8 @@ import (
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 	spdkutil "github.com/longhorn/go-spdk-helper/pkg/util"
 
+	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
+
 	"github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk"
 )
 
@@ -33,7 +35,12 @@ func (d *DiskDriverAio) DiskCreate(spdkClient *spdkclient.Client, diskName, disk
 }
 
 func (d *DiskDriverAio) DiskDelete(spdkClient *spdkclient.Client, diskName, diskPath string) (deleted bool, err error) {
-	return spdkClient.BdevAioDelete(diskName)
+	if _, err = spdkClient.BdevAioDelete(diskName); err != nil {
+		if !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 func (d *DiskDriverAio) DiskGet(spdkClient *spdkclient.Client, diskName, diskPath string, timeout uint64) ([]spdktypes.BdevInfo, error) {
@@ -56,6 +63,15 @@ func validateDiskCreation(spdkClient *spdkclient.Client, diskPath string) error 
 	if size == 0 {
 		return fmt.Errorf("disk %v size is 0", diskPath)
 	}
+
+	executor, err := spdkutil.NewExecutor(commontypes.ProcDirectory)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the executor for AIO disk %v", diskPath)
+	}
+	if spdkutil.IsBlockDeviceInUse(diskPath, executor) {
+		return fmt.Errorf("disk %v is in use (filesystem or partition table is detected). Wipe all data on the disk and repeat create request", diskPath)
+	}
+
 	return nil
 }
 
