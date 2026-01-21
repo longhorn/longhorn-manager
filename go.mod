@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.24.0
+go 1.25.3
 
 toolchain go1.25.6
 
@@ -65,15 +65,15 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
-	github.com/longhorn/backing-image-manager v1.10.1
+	github.com/longhorn/backing-image-manager v1.10.2-dev-20260111.0.20260121131107-2e273a5ade11
 	github.com/longhorn/backupstore v0.0.0-20260120061542-61f6a1bcd863
 	github.com/longhorn/go-common-libs v0.0.0-20260120075236-9a9dafa0a7ea
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260117042347-da1af2aab3fc
-	github.com/longhorn/go-spdk-helper v0.2.0
-	github.com/longhorn/longhorn-engine v1.10.1
-	github.com/longhorn/longhorn-instance-manager v1.10.1
-	github.com/longhorn/longhorn-share-manager v1.10.1
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20251023092409-3c3113c50437
+	github.com/longhorn/go-spdk-helper v0.4.0
+	github.com/longhorn/longhorn-engine v1.10.2-dev-20260111.0.20260121134251-d778c09d2026
+	github.com/longhorn/longhorn-instance-manager v1.10.2-dev-20260111.0.20260121161031-0aa2717229cb
+	github.com/longhorn/longhorn-share-manager v1.10.2-dev-20260111.0.20260121131150-315500f716d1
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260121154139-6a289a0eee79
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
@@ -91,11 +91,11 @@ require (
 	google.golang.org/grpc v1.78.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.34.3
+	k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver v0.34.3
-	k8s.io/apimachinery v0.34.3
+	k8s.io/apimachinery v0.35.0
 	k8s.io/cli-runtime v0.34.3
-	k8s.io/client-go v0.34.3
+	k8s.io/client-go v0.35.0
 	k8s.io/kubernetes v1.34.3
 	k8s.io/metrics v0.34.3
 	k8s.io/mount-utils v0.34.3
@@ -125,11 +125,11 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.yaml.in/yaml/v2 v2.4.2 // indirect
+	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
-	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
+	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 )
@@ -174,7 +174,7 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/rancher/lasso v0.2.5 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
-	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/slok/goresilience v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
@@ -195,8 +195,8 @@ require (
 	k8s.io/controller-manager v0.33.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-aggregator v0.34.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect
+	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
-	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
+	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )

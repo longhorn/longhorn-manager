@@ -60,11 +60,12 @@ func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, service
 			FreezeFilesystem: freezeFilesystem,
 		},
 	}
-	recv, err := c.service.VolumeSnapshot(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	recv, err := c.service.VolumeSnapshot(ctx, req)
 	if err != nil {
 		return "", err
 	}
-
 	return recv.Snapshot.Name, nil
 }
 
@@ -96,7 +97,9 @@ func (c *ProxyClient) SnapshotList(dataEngine, engineName, volumeName,
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
 	}
-	resp, err := c.service.SnapshotList(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	resp, err := c.service.SnapshotList(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +170,9 @@ func (c *ProxyClient) SnapshotClone(dataEngine, engineName, volumeName, serviceA
 		GrpcTimeoutSeconds:        grpcTimeoutSeconds,
 		CloneMode:                 getCloneMode(cloneMode),
 	}
-	_, err = c.service.SnapshotClone(getContextWithGRPCLongTimeout(c.ctx, grpcTimeoutSeconds), req)
+	ctx, cancel := getContextWithGRPCLongTimeout(c.ctx, grpcTimeoutSeconds)
+	defer cancel()
+	_, err = c.service.SnapshotClone(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -202,7 +207,9 @@ func (c *ProxyClient) SnapshotCloneStatus(dataEngine, engineName, volumeName, se
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
 	}
-	recv, err := c.service.SnapshotCloneStatus(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	recv, err := c.service.SnapshotCloneStatus(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +265,9 @@ func (c *ProxyClient) SnapshotRevert(dataEngine, engineName, volumeName, service
 		},
 		Name: name,
 	}
-	_, err = c.service.SnapshotRevert(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.SnapshotRevert(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -297,7 +306,9 @@ func (c *ProxyClient) SnapshotPurge(dataEngine, engineName, volumeName, serviceA
 		},
 		SkipIfInProgress: skipIfInProgress,
 	}
-	_, err = c.service.SnapshotPurge(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.SnapshotPurge(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -333,7 +344,9 @@ func (c *ProxyClient) SnapshotPurgeStatus(dataEngine, engineName, volumeName, se
 		VolumeName:         volumeName,
 	}
 
-	recv, err := c.service.SnapshotPurgeStatus(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	recv, err := c.service.SnapshotPurgeStatus(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +394,9 @@ func (c *ProxyClient) SnapshotRemove(dataEngine, engineName, volumeName, service
 		},
 		Names: names,
 	}
-	_, err = c.service.SnapshotRemove(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.SnapshotRemove(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -421,11 +436,12 @@ func (c *ProxyClient) SnapshotHash(dataEngine, engineName, volumeName, serviceAd
 		SnapshotName: snapshotName,
 		Rehash:       rehash,
 	}
-	_, err = c.service.SnapshotHash(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.SnapshotHash(ctx, req)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -461,7 +477,9 @@ func (c *ProxyClient) SnapshotHashStatus(dataEngine, engineName, volumeName, ser
 		SnapshotName: snapshotName,
 	}
 
-	recv, err := c.service.SnapshotHashStatus(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	recv, err := c.service.SnapshotHashStatus(ctx, req)
 	if err != nil {
 		return nil, err
 	}

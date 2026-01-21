@@ -555,6 +555,8 @@ func (c *InstanceServiceClient) LogGetFlags(dataEngine, service string) (string,
 
 func (c *InstanceServiceClient) CheckConnection() error {
 	req := &healthpb.HealthCheckRequest{}
-	_, err := c.health.Check(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err := c.health.Check(ctx, req)
 	return err
 }

@@ -1,15 +1,16 @@
 package spdk
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/net/context"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -40,6 +41,7 @@ type Server struct {
 	sync.RWMutex
 
 	diskCreateLock sync.Mutex
+	hotplugActive  atomic.Bool // use atomic.Bool to avoid data races across goroutines.
 
 	ctx context.Context
 
@@ -95,6 +97,8 @@ func NewServer(ctx context.Context, portStart, portEnd int32) (*Server, error) {
 	s := &Server{
 		ctx: ctx,
 
+		hotplugActive: atomic.Bool{},
+
 		spdkClient:    cli,
 		portAllocator: bitmap,
 
@@ -111,6 +115,7 @@ func NewServer(ctx context.Context, portStart, portEnd int32) (*Server, error) {
 		broadcastChs: broadcastChs,
 		updateChs:    updateChs,
 	}
+	s.hotplugActive.Store(true)
 
 	if _, err := s.broadcasters[types.InstanceTypeReplica].Subscribe(ctx, s.replicaBroadcastConnector); err != nil {
 		return nil, err
@@ -230,6 +235,20 @@ func (s *Server) verify() (err error) {
 		}
 	}()
 
+	// Self-heal: re-enable hotplug only if no disks are being created and the last enablement failed.
+	isDiskCreating := false
+	for _, disk := range s.diskMap {
+		if disk.State == DiskStateCreating {
+			isDiskCreating = true
+			break
+		}
+	}
+	if !isDiskCreating && !s.hotplugActive.Load() {
+		if success := setNvmeHotPlug(spdkClient, true); success {
+			s.hotplugActive.Store(true)
+		}
+	}
+
 	// Detect if the lvol bdev is an uncached replica or backing image.
 	// But cannot detect if a RAID bdev is an engine since:
 	//   1. we don't know the frontend
@@ -321,7 +340,7 @@ func (s *Server) verify() (err error) {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
 			actualSize := bdevLvol.DriverSpecific.Lvol.NumAllocatedClusters * uint64(defaultClusterSize)
-			replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize, s.updateChs[types.InstanceTypeReplica])
+			replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica])
 			replicaMapForSync[lvolName] = replicaMap[lvolName]
 			logrus.Infof("Detected one possible existing replica %s(%s) with disk %s(%s), spec size %d, actual size %d", bdevLvol.Aliases[0], bdevLvol.UUID, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize)
 		}
@@ -427,21 +446,27 @@ func (s *Server) backingImageBroadcastConnector() (chan interface{}, error) {
 	return s.broadcastChs[types.InstanceTypeBackingImage], nil
 }
 
-func (s *Server) checkLvsReadiness(lvsUUID, lvsName string) (bool, error) {
-	var err error
-	var lvsList []spdktypes.LvstoreInfo
+func (s *Server) isLvsExist(lvsUUID, lvsName string) (bool, error) {
+	if lvsUUID == "" && lvsName == "" {
+		return false, fmt.Errorf("either lvstore UUID or name must be provided")
+	}
+
+	name := ""
+	uuid := ""
 
 	if lvsUUID != "" {
-		lvsList, err = s.spdkClient.BdevLvolGetLvstore("", lvsUUID)
-	} else if lvsName != "" {
-		lvsList, err = s.spdkClient.BdevLvolGetLvstore(lvsName, "")
+		uuid = lvsUUID
+	} else {
+		name = lvsName
 	}
+
+	lvsList, err := s.spdkClient.BdevLvolGetLvstore(name, uuid)
 	if err != nil {
 		return false, err
 	}
 
 	if len(lvsList) == 0 {
-		return false, fmt.Errorf("found zero lvstore with name %v and UUID %v", lvsName, lvsUUID)
+		return false, fmt.Errorf("found zero lvstore with name %q and UUID %q", lvsName, lvsUUID)
 	}
 
 	return true, nil
@@ -451,15 +476,19 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 	s.Lock()
 	defer s.Unlock()
 
-	if _, ok := s.replicaMap[req.Name]; !ok {
-		ready, err := s.checkLvsReadiness(req.LvsUuid, req.LvsName)
-		if err != nil || !ready {
-			return nil, err
-		}
-		return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, 0, s.updateChs[types.InstanceTypeReplica]), nil
+	r, ok := s.replicaMap[req.Name]
+	if ok {
+		return r, nil
 	}
 
-	return s.replicaMap[req.Name], nil
+	exists, err := s.isLvsExist(req.LvsUuid, req.LvsName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to check lvstore %v(%v) existence for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
+	}
+	if !exists {
+		return nil, fmt.Errorf("lvstore %v(%v) does not exist for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
+	}
+	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica]), nil
 }
 
 func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRequest) (ret *spdkrpc.Replica, err error) {
@@ -467,7 +496,7 @@ func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRe
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name is required")
 	}
 	if req.LvsName == "" && req.LvsUuid == "" {
-		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "lvs name or lvs UUID are required")
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "either lvstore name or UUID is required")
 	}
 
 	r, err := s.newReplica(req)
@@ -614,8 +643,11 @@ func (s *Server) ReplicaWatch(req *emptypb.Empty, srv spdkrpc.SPDKService_Replic
 }
 
 func (s *Server) ReplicaSnapshotCreate(ctx context.Context, req *spdkrpc.SnapshotRequest) (ret *spdkrpc.Replica, err error) {
-	if req.Name == "" || req.SnapshotName == "" {
-		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name and snapshot name are required")
+	if req.Name == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name is required")
+	}
+	if req.SnapshotName == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "snapshot name is required")
 	}
 
 	s.RLock()
@@ -636,8 +668,11 @@ func (s *Server) ReplicaSnapshotCreate(ctx context.Context, req *spdkrpc.Snapsho
 }
 
 func (s *Server) ReplicaSnapshotDelete(ctx context.Context, req *spdkrpc.SnapshotRequest) (ret *emptypb.Empty, err error) {
-	if req.Name == "" || req.SnapshotName == "" {
-		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name and snapshot name are required")
+	if req.Name == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name is required")
+	}
+	if req.SnapshotName == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "snapshot name is required")
 	}
 
 	s.RLock()
@@ -1155,7 +1190,7 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine])
+		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.UblkQueueDepth, req.UblkNumberOfQueue)
 		e = s.engineMap[req.Name]
 	}
 
@@ -1830,6 +1865,19 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 		s.diskCreateLock.Lock()
 		defer s.diskCreateLock.Unlock()
 
+		// Disabling hotplug is a best-effort guard to improve stability; creation continues even if this call fails.
+		// TODO: If virtio-blk requires the same handling, add similar guards to the virtio-blk path.
+		if isNvmeDriver(req.DiskDriver, req.DiskPath) {
+			_ = setNvmeHotPlug(spdkClient, false)
+			defer func() {
+				if success := setNvmeHotPlug(spdkClient, true); success {
+					s.hotplugActive.Store(true)
+				} else {
+					s.hotplugActive.Store(false)
+				}
+			}()
+		}
+
 		if err := d.DiskCreate(spdkClient, req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver, req.BlockSize); err != nil {
 			logrus.WithError(err).Errorf("Failed to create disk %s(%s) path %s", req.DiskName, req.DiskUuid, req.DiskPath)
 			return
@@ -1903,6 +1951,46 @@ func (s *Server) DiskGet(ctx context.Context, req *spdkrpc.DiskGetRequest) (ret 
 	return disk.DiskGet(spdkClient, req.DiskName, req.DiskPath, req.DiskDriver)
 }
 
+func (s *Server) DiskHealthGet(ctx context.Context, req *spdkrpc.DiskHealthGetRequest) (ret *spdkrpc.DiskHealthGetResponse, err error) {
+	s.RLock()
+	disk := s.diskMap[req.DiskName]
+	spdkClient := s.spdkClient
+	s.RUnlock()
+
+	if disk == nil {
+		return nil, grpcstatus.Errorf(grpccodes.NotFound, "disk %q not found", req.DiskName)
+	}
+
+	diskHealth, err := disk.diskHealthGet(spdkClient, req.DiskName, req.DiskDriver)
+	if err != nil {
+		return nil, err
+	}
+
+	return &spdkrpc.DiskHealthGetResponse{
+		ModelNumber:                             diskHealth.ModelNumber,
+		SerialNumber:                            diskHealth.SerialNumber,
+		FirmwareRevision:                        diskHealth.FirmwareRevision,
+		Traddr:                                  diskHealth.Traddr,
+		CriticalWarning:                         diskHealth.CriticalWarning,
+		TemperatureCelsius:                      diskHealth.TemperatureCelsius,
+		AvailableSparePercentage:                diskHealth.AvailableSparePercentage,
+		AvailableSpareThresholdPercentage:       diskHealth.AvailableSpareThresholdPercentage,
+		PercentageUsed:                          diskHealth.PercentageUsed,
+		DataUnitsRead:                           diskHealth.DataUnitsRead,
+		DataUnitsWritten:                        diskHealth.DataUnitsWritten,
+		HostReadCommands:                        diskHealth.HostReadCommands,
+		HostWriteCommands:                       diskHealth.HostWriteCommands,
+		ControllerBusyTime:                      diskHealth.ControllerBusyTime,
+		PowerCycles:                             diskHealth.PowerCycles,
+		PowerOnHours:                            diskHealth.PowerOnHours,
+		UnsafeShutdowns:                         diskHealth.UnsafeShutdowns,
+		MediaErrors:                             diskHealth.MediaErrors,
+		NumErrLogEntries:                        diskHealth.NumErrLogEntries,
+		WarningTemperatureTimeMinutes:           diskHealth.WarningTemperatureTimeMinutes,
+		CriticalCompositeTemperatureTimeMinutes: diskHealth.CriticalCompositeTemperatureTimeMinutes,
+	}, nil
+}
+
 func (s *Server) LogSetLevel(ctx context.Context, req *spdkrpc.LogSetLevelRequest) (ret *emptypb.Empty, err error) {
 	s.RLock()
 	spdkClient := s.spdkClient
@@ -1971,8 +2059,8 @@ func (s *Server) newBackingImage(req *spdkrpc.BackingImageCreateRequest) (*Backi
 	// The backing image key is in this form "bi-%s-disk-%s" to distinguish different disks.
 	backingImageSnapLvolName := GetBackingImageSnapLvolName(req.Name, req.LvsUuid)
 	if _, ok := s.backingImageMap[backingImageSnapLvolName]; !ok {
-		ready, err := s.checkLvsReadiness(req.LvsUuid, "")
-		if err != nil || !ready {
+		exists, err := s.isLvsExist(req.LvsUuid, "")
+		if err != nil || !exists {
 			return nil, err
 		}
 		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum, s.updateChs[types.InstanceTypeBackingImage])
@@ -2268,4 +2356,14 @@ func (s *Server) MetricsGet(ctx context.Context, req *spdkrpc.MetricsRequest) (r
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine metrics: %s", req.Name)
 	}
 	return m, nil
+}
+
+func setNvmeHotPlug(spdkClient *spdkclient.Client, enable bool) (success bool) {
+	// default value: 100000 microseconds = 0.1 seconds
+	_, hotPlugErr := spdkClient.BdevNvmeSetHotplug(enable, 100000)
+	if hotPlugErr != nil {
+		logrus.WithError(hotPlugErr).Warnf("Failed to set nvme hotplug to %v", enable)
+		return false
+	}
+	return true
 }

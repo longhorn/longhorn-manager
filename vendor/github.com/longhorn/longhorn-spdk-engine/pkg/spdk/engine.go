@@ -95,10 +95,15 @@ type NvmeTcpFrontend struct {
 }
 
 type UblkFrontend struct {
+	// spec
+	UblkQueueDepth    int32
+	UblkNumberOfQueue int32
+
+	// status
 	UblkID int32
 }
 
-func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}) *Engine {
+func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, ublkQueueDepth, ublkNumberOfQueue int32) *Engine {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"engineName": engineName,
 		"volumeName": volumeName,
@@ -114,7 +119,10 @@ func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineU
 	var nvmeTcpFrontend *NvmeTcpFrontend
 	var ublkFrontend *UblkFrontend
 	if types.IsUblkFrontend(frontend) {
-		ublkFrontend = &UblkFrontend{}
+		ublkFrontend = &UblkFrontend{
+			UblkQueueDepth:    ublkQueueDepth,
+			UblkNumberOfQueue: ublkNumberOfQueue,
+		}
 	} else {
 		nvmeTcpFrontend = &NvmeTcpFrontend{}
 	}
@@ -599,7 +607,21 @@ func (e *Engine) handleNvmeTcpFrontend(spdkClient *spdkclient.Client, superiorPo
 		return nil
 	}
 
-	dmDeviceIsBusy, err = i.StartNvmeTCPInitiator(targetIP, portStr, true)
+	// In the expansion flow we MUST NOT disconnect the NVMe target.
+	//
+	// Technical Reason:
+	// 1. If we disconnect while the dm-linear device is still active (suspended but open),
+	//    the Linux kernel cannot fully release the /dev/nvmeXnX resource, leading to
+	//    a "zombie" device node.
+	// 2. When we reconnect later, the kernel will detect a naming conflict and assign
+	//    a new, non-healthy device name (e.g., nvme3n2) instead of reusing nvme1n1.
+	// 3. By skipping disconnect, the kernel keeps the existing controller session in
+	//    a "reconnecting" state. Once SPDK re-exposes the resized RAID, the kernel
+	//    automatically recovers the original path (nvme1n1) and perceives the new size,
+	//    allowing a successful 'dmsetup reload' without breaking the mount point.
+	disconnectTarget := !e.isExpanding
+
+	dmDeviceIsBusy, err = i.StartNvmeTCPInitiator(targetIP, portStr, true, disconnectTarget)
 	if err != nil {
 		return errors.Wrapf(err, "failed to start initiator for engine %v", e.Name)
 	}
@@ -618,7 +640,7 @@ func (e *Engine) configureNvmeTcpFrontend(initiatorCreationRequired, targetCreat
 	}
 
 	e.NvmeTcpFrontend.Nqn = helpertypes.GetNQN(e.Name)
-	e.NvmeTcpFrontend.Nguid = commonutils.RandomID(nvmeNguidLength)
+	e.NvmeTcpFrontend.Nguid = generateNGUID(e.Name)
 
 	nvmeTCPInfo := &initiator.NVMeTCPInfo{
 		SubsystemNQN: e.NvmeTcpFrontend.Nqn,
@@ -701,8 +723,11 @@ func (e *Engine) handleUblkFrontend(spdkClient *spdkclient.Client) (err error) {
 	}
 	dmDeviceIsBusy := false
 	ublkInfo := &initiator.UblkInfo{
-		BdevName: e.Name,
-		UblkID:   initiator.UnInitializedUblkId,
+		BdevName:          e.Name,
+		UblkQueueDepth:    e.UblkFrontend.UblkQueueDepth,
+		UblkNumberOfQueue: e.UblkFrontend.UblkNumberOfQueue,
+
+		UblkID: initiator.UnInitializedUblkId,
 	}
 	i, err := initiator.NewInitiator(e.VolumeName, initiator.HostProc, nil, ublkInfo)
 	if err != nil {
@@ -1412,6 +1437,14 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64, superiorPort
 	if err := e.reconnectFrontend(spdkClient, bdevRaidUUID, superiorPortAllocator); err != nil {
 		return errors.Wrap(err, "failed to reconnect frontend")
 	}
+
+	// It waits for the kernel to recognize the new physical NVMe capacity
+	// and then reloads the dm table to propagate the size change up to the volume.
+	if e.Frontend != types.FrontendEmpty && e.initiator != nil {
+		if err := e.initiator.SyncDmDeviceSize(size); err != nil {
+			e.log.WithError(err).Warnf("failed to reload dm device during engine %s expansion", e.Name)
+		}
+	}
 	e.log.Info("Expanding engine completed")
 
 	expanded = true // which could be true even in partial success
@@ -1542,11 +1575,6 @@ func (e *Engine) prepareRaidForExpansion(spdkClient *spdkclient.Client) (suspend
 	}
 
 	if e.Frontend != types.FrontendEmpty {
-		currentTargetAddress := net.JoinHostPort(e.initiator.NVMeTCPInfo.TransportAddress, e.initiator.NVMeTCPInfo.TransportServiceID)
-		if err := e.disconnectTarget(currentTargetAddress); err != nil {
-			return suspendFrontend, "", errors.Wrapf(err, "failed to disconnect target %s for engine %s", currentTargetAddress, e.Name)
-		}
-
 		if err := spdkClient.StopExposeBdev(e.NvmeTcpFrontend.Nqn); err != nil {
 			return suspendFrontend, bdevUUID, errors.Wrapf(err, "failed to stop exposing bdev for engine %s", e.Name)
 		}
@@ -2392,12 +2420,6 @@ func (e *Engine) snapshotOperationPreCheckWithoutLock(replicaClients map[string]
 			if len(e.SnapshotMap[snapshotName].Children) > 1 {
 				return "", fmt.Errorf("engine %s cannot delete snapshot %s since it contains multiple children %+v", e.Name, snapshotName, e.SnapshotMap[snapshotName].Children)
 			}
-			// TODO: SPDK allows deleting the parent of the volume head. To make the behavior consistent between v1 and v2 engines, we manually disable if for now.
-			for childName := range e.SnapshotMap[snapshotName].Children {
-				if childName == types.VolumeHead {
-					return "", fmt.Errorf("engine %s cannot delete snapshot %s since it is the parent of volume head", e.Name, snapshotName)
-				}
-			}
 		case SnapshotOperationRevert:
 			if snapshotName == "" {
 				return "", fmt.Errorf("empty snapshot name for engine %s snapshot deletion", e.Name)
@@ -2469,8 +2491,16 @@ func (e *Engine) snapshotOperationWithoutLock(spdkClient *spdkclient.Client, rep
 			}
 			replicaBdevList = append(replicaBdevList, replicaStatus.BdevName)
 		}
-		if _, raidErr := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, ""); raidErr != nil {
+
+		for r := 0; r < maxNumRetries; r++ {
+			_, raidErr := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, "")
+			if raidErr == nil {
+				engineErr = nil
+				break
+			}
+
 			engineErr = errors.Wrapf(raidErr, "engine %s failed to re-create RAID after snapshot %s revert", e.Name, snapshotName)
+			time.Sleep(retryInterval)
 		}
 	}
 
@@ -2826,9 +2856,16 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, engineN
 	e.Lock()
 	defer e.Unlock()
 
+	resp := &spdkrpc.EngineBackupRestoreResponse{
+		Errors: map[string]string{},
+	}
+
 	backupInfo, err := backupstore.InspectBackup(backupUrl)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to inspect backup %s", backupUrl)
+		for _, replicaStatus := range e.ReplicaStatusMap {
+			resp.Errors[replicaStatus.Address] = err.Error()
+		}
+		return resp, nil
 	}
 
 	if backupInfo.VolumeSize != int64(e.SpecSize) {
@@ -2873,9 +2910,6 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, engineN
 		}()
 	}()
 
-	resp := &spdkrpc.EngineBackupRestoreResponse{
-		Errors: map[string]string{},
-	}
 	for replicaName, replicaStatus := range e.ReplicaStatusMap {
 		e.log.Infof("Restoring backup on replica %s address %s", replicaName, replicaStatus.Address)
 

@@ -38,7 +38,9 @@ func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddre
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
 	}
-	resp, err := c.service.VolumeGet(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	resp, err := c.service.VolumeGet(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +95,9 @@ func (c *ProxyClient) VolumeExpand(dataEngine, engineName, volumeName, serviceAd
 			Size: size,
 		},
 	}
-	_, err = c.service.VolumeExpand(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.VolumeExpand(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -134,7 +138,9 @@ func (c *ProxyClient) VolumeFrontendStart(dataEngine, engineName, volumeName, se
 			Frontend: frontendName,
 		},
 	}
-	_, err = c.service.VolumeFrontendStart(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.VolumeFrontendStart(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -169,7 +175,9 @@ func (c *ProxyClient) VolumeFrontendShutdown(dataEngine, engineName, volumeName,
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
 	}
-	_, err = c.service.VolumeFrontendShutdown(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.VolumeFrontendShutdown(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -208,7 +216,9 @@ func (c *ProxyClient) VolumeUnmapMarkSnapChainRemovedSet(dataEngine, engineName,
 		},
 		UnmapMarkSnap: &enginerpc.VolumeUnmapMarkSnapChainRemovedSetRequest{Enabled: enabled},
 	}
-	_, err = c.service.VolumeUnmapMarkSnapChainRemovedSet(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.VolumeUnmapMarkSnapChainRemovedSet(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -248,7 +258,9 @@ func (c *ProxyClient) VolumeSnapshotMaxCountSet(dataEngine, engineName, volumeNa
 		},
 		Count: &enginerpc.VolumeSnapshotMaxCountSetRequest{Count: int32(count)},
 	}
-	_, err = c.service.VolumeSnapshotMaxCountSet(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.VolumeSnapshotMaxCountSet(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -288,7 +300,9 @@ func (c *ProxyClient) VolumeSnapshotMaxSizeSet(dataEngine, engineName, volumeNam
 		},
 		Size: &enginerpc.VolumeSnapshotMaxSizeSetRequest{Size: size},
 	}
-	_, err = c.service.VolumeSnapshotMaxSizeSet(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.VolumeSnapshotMaxSizeSet(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -305,9 +319,12 @@ func (c *ProxyClient) RemountReadOnlyVolume(volumeName string) (err error) {
 		VolumeName: volumeName,
 	}
 
-	_, err = c.service.RemountReadOnlyVolume(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.RemountReadOnlyVolume(ctx, req)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }

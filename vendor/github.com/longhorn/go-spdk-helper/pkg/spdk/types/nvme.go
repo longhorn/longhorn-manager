@@ -132,29 +132,42 @@ type BdevNvmeGetControllersRequest struct {
 	Name string `json:"name,omitempty"`
 }
 
-// type BdevNvmeControllerHealthInfo struct {
-//	ModelNumber                             string  `json:"model_number"`
-//	SerialNumber                            string  `json:"serial_number"`
-//	FirmwareRevision                        string  `json:"firmware_revision"`
-//	Traddr                                  string  `json:"traddr"`
-//	TemperatureCelsius                      uint64  `json:"temperature_celsius"`
-//	AvailableSparePercentage                uint64  `json:"available_spare_percentage"`
-//	AvailableSpareThresholdPercentage       uint64  `json:"available_spare_threshold_percentage"`
-//	PercentageUsed                          uint64  `json:"percentage_used"`
-//	DataUnitsRead                           uint128 `json:"data_units_read"`
-//	DataUnitsWritten                        uint128 `json:"data_units_written"`
-//	HostReadCommands                        uint128 `json:"host_read_commands"`
-//	HostWriteCommands                       uint128 `json:"host_write_commands"`
-//	ControllerBusyTime                      uint128 `json:"controller_busy_time"`
-//	PowerCycles                             uint128 `json:"power_cycles"`
-//	PowerOnHours                            uint128 `json:"power_on_hours"`
-//	UnsafeShutdowns                         uint128 `json:"unsafe_shutdowns"`
-//	MediaErrors                             uint128 `json:"media_errors"`
-//	NumErrLogEntries                        uint128 `json:"num_err_log_entries"`
-//	WarningTemperatureTimeMinutes           uint64  `json:"warning_temperature_time_minutes"`
-//	CriticalCompositeTemperatureTimeMinutes uint64  `json:"critical_composite_temperature_time_minutes"`
-// }
-//
-// type BdevNvmeGetControllerHealthInfoRequest struct {
-//	Name string `json:"name"`
-// }
+// UnknownTemperature represents an unknown/invalid NVMe temperature reading (in Celsius).
+// SPDK may emit an underflowed unsigned value when converting Kelvin to Celsius; map such
+// outliers to this sentinel at the client layer.
+const UnknownTemperature float64 = -1
+
+// BdevNvmeControllerHealthInfo represents the response of bdev_nvme_get_controller_health_info.
+type BdevNvmeControllerHealthInfo struct {
+	ModelNumber      string `json:"model_number"`
+	SerialNumber     string `json:"serial_number"`
+	FirmwareRevision string `json:"firmware_revision"`
+	Traddr           string `json:"traddr"`
+	CriticalWarning  uint32 `json:"critical_warning"`
+
+	// TemperatureCelsius can sometimes be reported by SPDK as a wrapped 64-bit sentinel
+	// value (e.g., 2^64 - 273) when temperature is invalid. Use float64 to avoid
+	// unmarshal errors on oversized integers and let callers interpret outliers.
+	TemperatureCelsius float64 `json:"temperature_celsius"`
+
+	AvailableSparePercentage                uint32 `json:"available_spare_percentage"`
+	AvailableSpareThresholdPercentage       uint32 `json:"available_spare_threshold_percentage"`
+	PercentageUsed                          uint32 `json:"percentage_used"`
+	DataUnitsRead                           uint64 `json:"data_units_read"`
+	DataUnitsWritten                        uint64 `json:"data_units_written"`
+	HostReadCommands                        uint64 `json:"host_read_commands"`
+	HostWriteCommands                       uint64 `json:"host_write_commands"`
+	ControllerBusyTime                      uint64 `json:"controller_busy_time"`
+	PowerCycles                             uint64 `json:"power_cycles"`
+	PowerOnHours                            uint64 `json:"power_on_hours"`
+	UnsafeShutdowns                         uint64 `json:"unsafe_shutdowns"`
+	MediaErrors                             uint64 `json:"media_errors"`
+	NumErrLogEntries                        uint64 `json:"num_err_log_entries"`
+	WarningTemperatureTimeMinutes           uint64 `json:"warning_temperature_time_minutes"`
+	CriticalCompositeTemperatureTimeMinutes uint64 `json:"critical_composite_temperature_time_minutes"`
+}
+
+// BdevNvmeGetControllerHealthInfoRequest is the request for fetching controller health.
+type BdevNvmeGetControllerHealthInfoRequest struct {
+	Name string `json:"name"`
+}

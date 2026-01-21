@@ -9,11 +9,11 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/backing-image-manager/api"
 	"github.com/longhorn/backing-image-manager/pkg/util"
-	"github.com/pkg/errors"
 )
 
 type DataSourceClient struct {
