@@ -640,7 +640,7 @@ func (e *Engine) configureNvmeTcpFrontend(initiatorCreationRequired, targetCreat
 	}
 
 	e.NvmeTcpFrontend.Nqn = helpertypes.GetNQN(e.Name)
-	e.NvmeTcpFrontend.Nguid = commonutils.RandomID(nvmeNguidLength)
+	e.NvmeTcpFrontend.Nguid = generateNGUID(e.Name)
 
 	nvmeTCPInfo := &initiator.NVMeTCPInfo{
 		SubsystemNQN: e.NvmeTcpFrontend.Nqn,

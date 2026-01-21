@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -20,7 +20,11 @@ type ShareManagerClient struct {
 }
 
 func NewShareManagerClient(address string) (*ShareManagerClient, error) {
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithNoProxy(),
+	)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to connect share manager service to %v", address)
 	}

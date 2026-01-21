@@ -340,7 +340,7 @@ func (s *Server) verify() (err error) {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
 			actualSize := bdevLvol.DriverSpecific.Lvol.NumAllocatedClusters * uint64(defaultClusterSize)
-			replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize, s.updateChs[types.InstanceTypeReplica])
+			replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica])
 			replicaMapForSync[lvolName] = replicaMap[lvolName]
 			logrus.Infof("Detected one possible existing replica %s(%s) with disk %s(%s), spec size %d, actual size %d", bdevLvol.Aliases[0], bdevLvol.UUID, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize)
 		}
@@ -446,21 +446,27 @@ func (s *Server) backingImageBroadcastConnector() (chan interface{}, error) {
 	return s.broadcastChs[types.InstanceTypeBackingImage], nil
 }
 
-func (s *Server) checkLvsReadiness(lvsUUID, lvsName string) (bool, error) {
-	var err error
-	var lvsList []spdktypes.LvstoreInfo
+func (s *Server) isLvsExist(lvsUUID, lvsName string) (bool, error) {
+	if lvsUUID == "" && lvsName == "" {
+		return false, fmt.Errorf("either lvstore UUID or name must be provided")
+	}
+
+	name := ""
+	uuid := ""
 
 	if lvsUUID != "" {
-		lvsList, err = s.spdkClient.BdevLvolGetLvstore("", lvsUUID)
-	} else if lvsName != "" {
-		lvsList, err = s.spdkClient.BdevLvolGetLvstore(lvsName, "")
+		uuid = lvsUUID
+	} else {
+		name = lvsName
 	}
+
+	lvsList, err := s.spdkClient.BdevLvolGetLvstore(name, uuid)
 	if err != nil {
 		return false, err
 	}
 
 	if len(lvsList) == 0 {
-		return false, fmt.Errorf("found zero lvstore with name %v and UUID %v", lvsName, lvsUUID)
+		return false, fmt.Errorf("found zero lvstore with name %q and UUID %q", lvsName, lvsUUID)
 	}
 
 	return true, nil
@@ -470,15 +476,19 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 	s.Lock()
 	defer s.Unlock()
 
-	if _, ok := s.replicaMap[req.Name]; !ok {
-		ready, err := s.checkLvsReadiness(req.LvsUuid, req.LvsName)
-		if err != nil || !ready {
-			return nil, err
-		}
-		return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, 0, s.updateChs[types.InstanceTypeReplica]), nil
+	r, ok := s.replicaMap[req.Name]
+	if ok {
+		return r, nil
 	}
 
-	return s.replicaMap[req.Name], nil
+	exists, err := s.isLvsExist(req.LvsUuid, req.LvsName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to check lvstore %v(%v) existence for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
+	}
+	if !exists {
+		return nil, fmt.Errorf("lvstore %v(%v) does not exist for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
+	}
+	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica]), nil
 }
 
 func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRequest) (ret *spdkrpc.Replica, err error) {
@@ -486,7 +496,7 @@ func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRe
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name is required")
 	}
 	if req.LvsName == "" && req.LvsUuid == "" {
-		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "lvs name or lvs UUID are required")
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "either lvstore name or UUID is required")
 	}
 
 	r, err := s.newReplica(req)
@@ -633,8 +643,11 @@ func (s *Server) ReplicaWatch(req *emptypb.Empty, srv spdkrpc.SPDKService_Replic
 }
 
 func (s *Server) ReplicaSnapshotCreate(ctx context.Context, req *spdkrpc.SnapshotRequest) (ret *spdkrpc.Replica, err error) {
-	if req.Name == "" || req.SnapshotName == "" {
-		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name and snapshot name are required")
+	if req.Name == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name is required")
+	}
+	if req.SnapshotName == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "snapshot name is required")
 	}
 
 	s.RLock()
@@ -655,8 +668,11 @@ func (s *Server) ReplicaSnapshotCreate(ctx context.Context, req *spdkrpc.Snapsho
 }
 
 func (s *Server) ReplicaSnapshotDelete(ctx context.Context, req *spdkrpc.SnapshotRequest) (ret *emptypb.Empty, err error) {
-	if req.Name == "" || req.SnapshotName == "" {
-		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name and snapshot name are required")
+	if req.Name == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name is required")
+	}
+	if req.SnapshotName == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "snapshot name is required")
 	}
 
 	s.RLock()
@@ -2043,8 +2059,8 @@ func (s *Server) newBackingImage(req *spdkrpc.BackingImageCreateRequest) (*Backi
 	// The backing image key is in this form "bi-%s-disk-%s" to distinguish different disks.
 	backingImageSnapLvolName := GetBackingImageSnapLvolName(req.Name, req.LvsUuid)
 	if _, ok := s.backingImageMap[backingImageSnapLvolName]; !ok {
-		ready, err := s.checkLvsReadiness(req.LvsUuid, "")
-		if err != nil || !ready {
+		exists, err := s.isLvsExist(req.LvsUuid, "")
+		if err != nil || !exists {
 			return nil, err
 		}
 		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum, s.updateChs[types.InstanceTypeBackingImage])
