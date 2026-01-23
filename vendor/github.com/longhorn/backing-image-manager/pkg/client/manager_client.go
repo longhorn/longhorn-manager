@@ -36,6 +36,7 @@ func (cli *BackingImageManagerClient) Sync(name, uuid, checksum, fromAddress str
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -74,6 +75,7 @@ func (cli *BackingImageManagerClient) Send(name, uuid, toAddress string) error {
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -105,6 +107,7 @@ func (cli *BackingImageManagerClient) Delete(name, uuid string) error {
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -135,6 +138,7 @@ func (cli *BackingImageManagerClient) Get(name, uuid string) (*api.BackingImage,
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -164,6 +168,7 @@ func (cli *BackingImageManagerClient) List() (map[string]*api.BackingImage, erro
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -194,6 +199,7 @@ func (cli *BackingImageManagerClient) Fetch(name, uuid, checksum, dataSourceAddr
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -232,6 +238,7 @@ func (cli *BackingImageManagerClient) PrepareDownload(name, uuid string) (string
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -261,6 +268,7 @@ func (cli *BackingImageManagerClient) VersionGet() (*meta.VersionOutput, error) 
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -294,6 +302,7 @@ func (cli *BackingImageManagerClient) Watch() (*api.BackingImageStream, error) {
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
@@ -321,6 +330,7 @@ func (cli *BackingImageManagerClient) BackupCreate(name, uuid, checksum, backupT
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to connect backing image manager service to %v: %v", cli.Address, err)
@@ -363,6 +373,7 @@ func (cli *BackingImageManagerClient) BackupStatus(name string) (*api.BackupStat
 		cli.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect backing image manager service to %v: %v", cli.Address, err)

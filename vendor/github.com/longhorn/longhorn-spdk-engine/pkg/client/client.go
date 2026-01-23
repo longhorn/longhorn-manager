@@ -31,10 +31,12 @@ func (c *SPDKClient) getSPDKServiceClient() spdkrpc.SPDKServiceClient {
 
 func NewSPDKClient(serviceURL string) (*SPDKClient, error) {
 	getSPDKServiceContext := func(serviceUrl string) (SPDKServiceContext, error) {
+		// Disable gRPC service config discovery to prevent DNS flooding in Kubernetes
 		connection, err := grpc.NewClient(
 			serviceUrl,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithNoProxy(),
+			grpc.WithDisableServiceConfig(),
 		)
 		if err != nil {
 			return SPDKServiceContext{}, errors.Wrapf(err, "cannot connect to SPDKService %v", serviceUrl)

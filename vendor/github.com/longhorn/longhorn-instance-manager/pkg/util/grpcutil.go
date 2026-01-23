@@ -57,6 +57,9 @@ func Connect(endpoint string, tlsConfig *tls.Config, dialOptions ...grpc.DialOpt
 		PermitWithoutStream: true,
 	}))
 
+	// Disable gRPC service config discovery to prevent DNS flooding in Kubernetes
+	dialOptions = append(dialOptions, grpc.WithDisableServiceConfig())
+
 	return grpc.NewClient(address, dialOptions...)
 }
 
