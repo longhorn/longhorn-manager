@@ -20,11 +20,14 @@ type ShareManagerClient struct {
 }
 
 func NewShareManagerClient(address string) (*ShareManagerClient, error) {
+	// Disable gRPC service config discovery to prevent DNS flooding in Kubernetes
 	conn, err := grpc.NewClient(
 		address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
 	)
+
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to connect share manager service to %v", address)
 	}

@@ -65,15 +65,15 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
-	github.com/longhorn/backing-image-manager v1.10.2-rc1
+	github.com/longhorn/backing-image-manager v1.10.2-rc1.0.20260125135237-808430761de3
 	github.com/longhorn/backupstore v0.0.0-20260125095146-1a9767525bb7
 	github.com/longhorn/go-common-libs v0.0.0-20260120075236-9a9dafa0a7ea
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260125095104-688e170e56e5
 	github.com/longhorn/go-spdk-helper v0.4.0
-	github.com/longhorn/longhorn-engine v1.10.2-rc1
-	github.com/longhorn/longhorn-instance-manager v1.10.2-rc1
-	github.com/longhorn/longhorn-share-manager v1.10.2-rc1
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260121154139-6a289a0eee79
+	github.com/longhorn/longhorn-engine v1.10.2-rc1.0.20260125094716-4cafd1670329
+	github.com/longhorn/longhorn-instance-manager v1.10.2-rc1.0.20260125151422-d408fe11038b
+	github.com/longhorn/longhorn-share-manager v1.10.2-rc1.0.20260125094622-331fb8cdfc08
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260123081911-460b2e7c5437
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
