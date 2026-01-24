@@ -123,22 +123,24 @@ type VolumeCloneStatus struct {
 }
 
 const (
-	VolumeConditionTypeScheduled           = "Scheduled"
-	VolumeConditionTypeRestore             = "Restore"
-	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
-	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
-	VolumeConditionTypeOfflineRebuilding   = "OfflineRebuilding"
+	VolumeConditionTypeScheduled                = "Scheduled"
+	VolumeConditionTypeRestore                  = "Restore"
+	VolumeConditionTypeTooManySnapshots         = "TooManySnapshots"
+	VolumeConditionTypeWaitForBackingImage      = "WaitForBackingImage"
+	VolumeConditionTypeBackingImageIncompatible = "BackingImageIncompatible"
+	VolumeConditionTypeOfflineRebuilding        = "OfflineRebuilding"
 )
 
 const (
-	VolumeConditionReasonReplicaSchedulingFailure      = "ReplicaSchedulingFailure"
-	VolumeConditionReasonLocalReplicaSchedulingFailure = "LocalReplicaSchedulingFailure"
-	VolumeConditionReasonRestoreInProgress             = "RestoreInProgress"
-	VolumeConditionReasonRestoreFailure                = "RestoreFailure"
-	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
-	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
-	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
-	VolumeConditionReasonOfflineRebuildingInProgress   = "OfflineRebuildingInProgress"
+	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
+	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
+	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
+	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
+	VolumeConditionReasonWaitForBackingImageFailed       = "GetBackingImageFailed"
+	VolumeConditionReasonWaitForBackingImageWaiting      = "Waiting"
+	VolumeConditionReasonBackingImageVirtualSizeTooLarge = "BackingImageVirtualSizeTooLarge"
+	VolumeConditionReasonOfflineRebuildingInProgress     = "OfflineRebuildingInProgress"
 )
 
 type SnapshotDataIntegrity string

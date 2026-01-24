@@ -652,6 +652,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
 			longhorn.ConditionStatusFalse, "", "")
+		if err := c.reconcileBackingImageCompatibilityCondition(v); err != nil {
+			return err
+		}
 	}
 
 	e, err := c.ds.PickVolumeCurrentEngine(v, es)
@@ -1455,6 +1458,38 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 		r.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
 		r.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
 	}
+
+	return nil
+}
+
+func (c *VolumeController) reconcileBackingImageCompatibilityCondition(v *longhorn.Volume) error {
+	if v.Spec.BackingImage == "" {
+		return nil
+	}
+
+	backingImage, err := c.ds.GetBackingImageRO(v.Spec.BackingImage)
+	if err != nil {
+		return err
+	}
+
+	virtualSize := backingImage.Status.VirtualSize
+	if virtualSize == 0 {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeBackingImageIncompatible,
+			longhorn.ConditionStatusFalse, "", "")
+		return nil
+	}
+
+	if v.Spec.Size < virtualSize {
+		message := fmt.Sprintf("backing image virtual size %v is larger than volume size %v", virtualSize, v.Spec.Size)
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeBackingImageIncompatible,
+			longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonBackingImageVirtualSizeTooLarge, message)
+		return nil
+	}
+
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeBackingImageIncompatible,
+		longhorn.ConditionStatusFalse, "", "")
 
 	return nil
 }
