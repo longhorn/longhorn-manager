@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.20.0
+# syntax=docker/dockerfile:1.21.0
 FROM registry.suse.com/bci/golang:1.25 AS builder
 
 WORKDIR /app
