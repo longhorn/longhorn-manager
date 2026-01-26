@@ -388,7 +388,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return
 		}
 
-		if bc.backupInFinalState(backup) && (!backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "") {
+		// Delete the backup volume attachment ticket after the backup status is set to the final state.
+		if bc.backupInFinalState(existingBackup) && (!existingBackup.Status.LastSyncedAt.IsZero() || existingBackup.Spec.SnapshotName == "") {
 			err = bc.handleAttachmentTicketDeletion(backup, canonicalBackupVolumeName)
 		}
 		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
