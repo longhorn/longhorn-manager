@@ -526,7 +526,20 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.LastSyncedAt = syncTime
 	backup.Status.NewlyUploadedDataSize = backupInfo.NewlyUploadedDataSize
 	backup.Status.ReUploadedDataSize = backupInfo.ReUploadedDataSize
+	backup.Status.BlockCount = deriveBackupBlockCount(backup)
 	return err
+}
+
+func deriveBackupBlockCount(backup *longhorn.Backup) int64 {
+	blockSizeBytes := backup.Spec.BackupBlockSize
+	if blockSizeBytes <= 0 {
+		return 0
+	}
+	sizeBytes, err := util.ConvertSize(backup.Status.Size)
+	if err != nil || sizeBytes <= 0 {
+		return 0
+	}
+	return sizeBytes / blockSizeBytes
 }
 
 // handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed

@@ -126,6 +126,9 @@ type BackupStatus struct {
 	// The backup target name.
 	// +optional
 	BackupTargetName string `json:"backupTargetName"`
+	// The backup block count.
+	// +optional
+	BlockCount int64 `json:"blockCount,omitempty"`
 }
 
 // +genclient
