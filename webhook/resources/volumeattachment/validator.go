@@ -88,6 +88,10 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 		return err
 	}
 
+	if err := v.verifyStrictLocalVolumeAttachment(newVA); err != nil {
+		return err
+	}
+
 	return verifyAttachmentTicketIDConsistency(newVA.Spec.AttachmentTickets)
 }
 
@@ -132,4 +136,51 @@ func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *lon
 		msg := fmt.Sprintf("cannot have more than 2 CSI tickets for migratable volume %v: %s", vol.Name, ticketsJson)
 		return werror.NewInvalidError(msg, "spec.attachmentTickets")
 	}
+}
+
+func (v *volumeAttachmentValidator) verifyStrictLocalVolumeAttachment(va *longhorn.VolumeAttachment) error {
+	vol, err := v.ds.GetVolumeRO(va.Spec.Volume)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get volume %v for attachment", va.Spec.Volume)
+		return werror.NewInvalidError(err.Error(), "spec.volume")
+	}
+
+	if vol.Spec.DataLocality != longhorn.DataLocalityStrictLocal {
+		return nil
+	}
+
+	replicas, err := v.ds.ListVolumeReplicas(vol.Name)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get replicas for volume %v", vol.Name)
+		return werror.NewInvalidError(err.Error(), "spec.volume")
+	}
+
+	if len(replicas) != 1 {
+		err := fmt.Errorf("BUG: replica should be 1 for %v volume %v", longhorn.DataLocalityStrictLocal, vol.Name)
+		return werror.NewInvalidError(err.Error(), "spec.volume")
+	}
+
+	var replica *longhorn.Replica
+	for _, replica = range replicas {
+		break
+	}
+
+	// Allow initial attachment when replica is not yet bound to a node.
+	if replica.Spec.NodeID == "" {
+		return nil
+	}
+
+	if vol.Spec.NodeID != "" && replica.Spec.NodeID != vol.Spec.NodeID {
+		err := fmt.Errorf("moving a %v volume %v to another node is not supported", longhorn.DataLocalityStrictLocal, vol.Name)
+		return werror.NewInvalidError(err.Error(), "spec.nodeID")
+	}
+
+	for ticketID, ticket := range va.Spec.AttachmentTickets {
+		if ticket.NodeID != "" && ticket.NodeID != replica.Spec.NodeID {
+			err := fmt.Errorf("moving a %v volume %v to another node is not supported", longhorn.DataLocalityStrictLocal, vol.Name)
+			return werror.NewInvalidError(err.Error(), fmt.Sprintf("spec.attachmentTickets[%s].nodeID", ticketID))
+		}
+	}
+
+	return nil
 }
