@@ -1391,7 +1391,7 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 	if rsMap == nil {
 		return false, nil
 	}
-	if cliAPIVersion < engineapi.CLIVersionFour {
+	if types.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion < engineapi.CLIVersionFour {
 		isRestoring, isConsensual := syncWithRestoreStatusForCompatibleEngine(log, engine, rsMap)
 		if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
 			return false, nil
@@ -1580,7 +1580,7 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 	mlog.Info("Restoring backup")
 	lastRestoredBackup := ""
 	restoreErrorHandler := handleRestoreError
-	if cliAPIVersion < engineapi.CLIVersionFour {
+	if types.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion < engineapi.CLIVersionFour {
 		lastRestoredBackup = engine.Status.LastRestoredBackup
 		restoreErrorHandler = handleRestoreErrorForCompatibleEngine
 	}
