@@ -15,8 +15,9 @@ import (
 type BackupCollector struct {
 	*baseCollector
 
-	sizeMetric  metricInfo
-	stateMetric metricInfo
+	sizeMetric       metricInfo
+	stateMetric      metricInfo
+	blockCountMetric metricInfo
 }
 
 func NewBackupCollector(
@@ -48,12 +49,23 @@ func NewBackupCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	bc.blockCountMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemBackup, "block_count"),
+			"Total blocks in this backup",
+			[]string{volumeLabel, backupLabel, recurringJobLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return bc
 }
 
 func (bc *BackupCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- bc.sizeMetric.Desc
 	ch <- bc.stateMetric.Desc
+	ch <- bc.blockCountMetric.Desc
 }
 
 func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
@@ -82,8 +94,10 @@ func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 				bc.logger.WithError(err).Warn("Error get backup volume label")
 			}
 			backupRecurringJobName := backup.Status.Labels[types.RecurringJobLabel]
+			blockCountVal := float64(backup.Status.BlockCount)
 			ch <- prometheus.MustNewConstMetric(bc.sizeMetric.Desc, bc.sizeMetric.Type, size, backupVolumeName, backup.Name, backupRecurringJobName)
 			ch <- prometheus.MustNewConstMetric(bc.stateMetric.Desc, bc.stateMetric.Type, float64(getBackupStateValue(backup)), backupVolumeName, backup.Name, backupRecurringJobName)
+			ch <- prometheus.MustNewConstMetric(bc.blockCountMetric.Desc, bc.blockCountMetric.Type, blockCountVal, backupVolumeName, backup.Name, backupRecurringJobName)
 		}
 	}
 }

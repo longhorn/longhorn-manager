@@ -71,6 +71,8 @@ type BackupStatusApplyConfiguration struct {
 	ReUploadedDataSize *string `json:"reUploadedDataSize,omitempty"`
 	// The backup target name.
 	BackupTargetName *string `json:"backupTargetName,omitempty"`
+	// The backup block count.
+	BlockCount *int64 `json:"blockCount,omitempty"`
 }
 
 // BackupStatusApplyConfiguration constructs a declarative configuration of the BackupStatus type for use with
@@ -256,5 +258,13 @@ func (b *BackupStatusApplyConfiguration) WithReUploadedDataSize(value string) *B
 // If called multiple times, the BackupTargetName field is set to the value of the last call.
 func (b *BackupStatusApplyConfiguration) WithBackupTargetName(value string) *BackupStatusApplyConfiguration {
 	b.BackupTargetName = &value
+	return b
+}
+
+// WithBlockCount sets the BlockCount field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BlockCount field is set to the value of the last call.
+func (b *BackupStatusApplyConfiguration) WithBlockCount(value int64) *BackupStatusApplyConfiguration {
+	b.BlockCount = &value
 	return b
 }

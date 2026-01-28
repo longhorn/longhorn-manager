@@ -199,6 +199,7 @@ type Backup struct {
 	NewlyUploadedDataSize  string               `json:"newlyUploadedDataSize"`
 	ReUploadedDataSize     string               `json:"reUploadedDataSize"`
 	BackupTargetName       string               `json:"backupTargetName"`
+	BlockCount             int64                `json:"blockCount"`
 }
 
 type ConfigMetadata struct {

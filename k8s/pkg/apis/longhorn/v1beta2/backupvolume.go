@@ -62,6 +62,9 @@ type BackupVolumeStatus struct {
 	// +optional
 	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
+	// The count of backups that belong to this backup volume.
+	// +optional
+	BackupCount int `json:"backupCount,omitempty"`
 }
 
 // +genclient

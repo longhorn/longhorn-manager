@@ -81,6 +81,7 @@ if ! command -v controller-gen > /dev/null; then
   echo "controller-gen is missing"
   echo "Prepare to install controller-gen"
   GOFLAGS= go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_TOOLS_VERSION}
+  export PATH=$(go env GOPATH)/bin:${PATH}
 else
   # Execute `controller-gen` to ensure the version is correct
   CONTROLLER_GEN_VERSION_OUTPUT=$(controller-gen --version 2>&1 | awk '{print $2}')

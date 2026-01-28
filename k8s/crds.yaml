@@ -724,6 +724,10 @@ spec:
               backupTargetName:
                 description: The backup target name.
                 type: string
+              blockCount:
+                description: The backup block count.
+                format: int64
+                type: integer
               compressionMethod:
                 description: Compression method
                 type: string
@@ -891,6 +895,9 @@ spec:
                 description: Available indicates if the remote backup target is available
                   or not.
                 type: boolean
+              backupVolumeCount:
+                description: The count of backup volumes on the target.
+                type: integer
               conditions:
                 description: Records the reason on why the backup target is unavailable.
                 items:
@@ -1027,6 +1034,9 @@ spec:
               backingImageName:
                 description: The backing image name.
                 type: string
+              backupCount:
+                description: The count of backups that belong to this backup volume.
+                type: integer
               createdAt:
                 description: The backup volume creation time.
                 type: string
