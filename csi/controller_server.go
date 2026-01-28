@@ -144,7 +144,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			volumeID,
 		)
 	} else {
-		accessibleTopology = cs.getAccessibleTopologyFromRequirements(req.GetAccessibilityRequirements())
+		accessibleTopology = cs.getAccessibleTopologyFromRequirements(req.GetAccessibilityRequirements(), volumeParameters["keepSelectedTopology"])
 	}
 
 	volumeSource := req.GetVolumeContentSource()
@@ -1642,7 +1642,7 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 // to AccessibleTopology for CreateVolumeResponse. This enables PV nodeAffinity to be set
 // based on StorageClass allowedTopologies.
 // According to CSI spec, Preferred topology takes precedence over Requisite topology.
-func (cs *ControllerServer) getAccessibleTopologyFromRequirements(accessibilityReqs *csi.TopologyRequirement) []*csi.Topology {
+func (cs *ControllerServer) getAccessibleTopologyFromRequirements(accessibilityReqs *csi.TopologyRequirement, keepSelectedTopology string) []*csi.Topology {
 	if accessibilityReqs == nil {
 		return nil
 	}
@@ -1659,6 +1659,26 @@ func (cs *ControllerServer) getAccessibleTopologyFromRequirements(accessibilityR
 		// If no Preferred topology, use Requisite topology
 		accessibleTopology = accessibilityReqs.Requisite
 		log.Debugf("Using Requisite topology from AccessibilityRequirements: %+v", accessibleTopology)
+	}
+
+	// keepSelectedTopology pins PV (and pod) to the topology selected by kube-scheduler. In combination
+	// with StorageClass allowedTopologies this can be used to prevent workload pod being moved to other
+	// zones/regions when it's recreated. Be aware that omitting allowedTopologies or including
+	// kubernetes.io/hostname in it will hard-pin the volume and workload pod to the selected node.
+	//
+	// The first topology is used because for delayed binding volumes it represents the topology selected
+	// by kube-scheduler. See: https://github.com/kubernetes-csi/external-provisioner#topology-support
+	//
+	// Note: Only use with delayed binding (WaitForFirstConsumer) volumes. For immediate binding, kube-scheduler
+	// hasn't yet selected a node, so pinning to a specific topology would unnecessarily limit scheduling options.
+	keepSelectedTopology = strings.TrimSpace(keepSelectedTopology)
+	if keepSelectedTopology != "" {
+		keepTopology, err := strconv.ParseBool(keepSelectedTopology)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to parse keepSelectedTopology volume parameter: %q", keepSelectedTopology)
+		} else if keepTopology && len(accessibleTopology) > 0 {
+			accessibleTopology = accessibleTopology[:1]
+		}
 	}
 
 	return accessibleTopology
