@@ -21,6 +21,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	"github.com/longhorn/longhorn-manager/webhook/resources/pod"
 )
 
 var (
@@ -163,6 +164,13 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(handler http.Handler, 
 					AdmissionReviewVersions: []string{"v1"},
 				},
 			},
+		}
+
+		if storageAwarePodSchedulingEnabled, _ := s.clients.Datastore.GetSettingAsBool(types.SettingNameStorageAwarePodScheduling); storageAwarePodSchedulingEnabled {
+			logrus.Info("Storage-aware pod scheduling is enabled, registering pod mutator")
+			mutatingWebhookConfiguration.Webhooks = append(mutatingWebhookConfiguration.Webhooks, pod.MutatorWebhook(secret, s.namespace))
+		} else {
+			logrus.Info("Storage-aware pod scheduling is disabled, pod mutator will not be registered")
 		}
 
 		// Retry apply

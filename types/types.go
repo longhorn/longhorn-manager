@@ -200,6 +200,7 @@ const (
 	LonghornLabelVersion                    = "version"
 	LonghornLabelAdmissionWebhook           = "admission-webhook"
 	LonghornLabelConversionWebhook          = "conversion-webhook"
+	LonghornLabelStorageAwarePod            = "storage-aware-pod"
 
 	LonghornRecoveryBackendServiceName = "longhorn-recovery-backend"
 
@@ -738,6 +739,10 @@ func GetLastSystemRestoreBackupLabelKey() string {
 
 func GetVersionLabelKey() string {
 	return GetLonghornLabelKey(LonghornLabelVersion)
+}
+
+func GetStorageAwarePodLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelStorageAwarePod)
 }
 
 func GetRegionAndZone(labels map[string]string) (string, string) {

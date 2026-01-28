@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
+	"github.com/longhorn/longhorn-manager/webhook/resources/pod"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
 	"github.com/longhorn/longhorn-manager/webhook/resources/replica"
 	"github.com/longhorn/longhorn-manager/webhook/resources/setting"
@@ -61,6 +62,10 @@ func Mutation(ds *datastore.DataStore) (http.Handler, []admission.Resource, erro
 		addHandler(router, admission.AdmissionTypeMutation, m)
 		resources = append(resources, m.Resource())
 	}
+
+	// Pod mutator's handler must be always registered to avoid issues when webhook is enabled but handler is missing
+	podMutator := pod.NewMutator(ds)
+	addHandler(router, admission.AdmissionTypeMutation, podMutator)
 
 	return router, resources, nil
 }

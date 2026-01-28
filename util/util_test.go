@@ -212,3 +212,72 @@ func TestTimestampAfterTimestamp(t *testing.T) {
 		})
 	}
 }
+
+func TestSortKeysByValueLen(t *testing.T) {
+	assert := assert.New(t)
+
+	t.Run("ascending with maps", func(t *testing.T) {
+		m := map[string]map[string]bool{
+			"zone-a": {"r1": true, "r2": true, "r3": true},
+			"zone-b": {"r4": true},
+			"zone-c": {"r5": true, "r6": true},
+		}
+		got, err := SortKeysByValueLen(m, true)
+		assert.NoError(err)
+		assert.Equal(3, len(got))
+		assert.Equal("zone-b", got[0])
+		assert.Equal("zone-c", got[1])
+		assert.Equal("zone-a", got[2])
+	})
+
+	t.Run("descending with maps", func(t *testing.T) {
+		m := map[string]map[string]bool{
+			"zone-a": {"r1": true, "r2": true, "r3": true},
+			"zone-b": {"r4": true},
+			"zone-c": {"r5": true, "r6": true},
+		}
+		got, err := SortKeysByValueLen(m, false)
+		assert.NoError(err)
+		assert.Equal(3, len(got))
+		assert.Equal("zone-a", got[0])
+		assert.Equal("zone-c", got[1])
+		assert.Equal("zone-b", got[2])
+	})
+
+	t.Run("ascending with slices", func(t *testing.T) {
+		m := map[string][]string{
+			"node-1": {"v1", "v2"},
+			"node-2": {"v3"},
+			"node-3": {"v4", "v5", "v6"},
+		}
+		got, err := SortKeysByValueLen(m, true)
+		assert.NoError(err)
+		assert.Equal(3, len(got))
+		assert.Equal("node-2", got[0])
+		assert.Equal("node-1", got[1])
+		assert.Equal("node-3", got[2])
+	})
+
+	t.Run("empty map", func(t *testing.T) {
+		m := map[string]interface{}{}
+		got, err := SortKeysByValueLen(m, true)
+		assert.NoError(err)
+		assert.Equal(0, len(got))
+	})
+
+	t.Run("nil map", func(t *testing.T) {
+		_, err := SortKeysByValueLen(nil, true)
+		assert.Error(err)
+	})
+
+	t.Run("not a map", func(t *testing.T) {
+		_, err := SortKeysByValueLen("not a map", true)
+		assert.Error(err)
+	})
+
+	t.Run("invalid value type", func(t *testing.T) {
+		m := map[string]int{"a": 1, "b": 2}
+		_, err := SortKeysByValueLen(m, true)
+		assert.Error(err)
+	})
+}
