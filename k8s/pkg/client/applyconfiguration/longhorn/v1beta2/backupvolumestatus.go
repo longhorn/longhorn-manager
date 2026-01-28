@@ -53,6 +53,8 @@ type BackupVolumeStatusApplyConfiguration struct {
 	StorageClassName *string `json:"storageClassName,omitempty"`
 	// The last time that the backup volume was synced into the cluster.
 	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
+	// The count of backups that belong to this backup volume.
+	BackupCount *int `json:"backupCount,omitempty"`
 }
 
 // BackupVolumeStatusApplyConfiguration constructs a declarative configuration of the BackupVolumeStatus type for use with
@@ -174,5 +176,13 @@ func (b *BackupVolumeStatusApplyConfiguration) WithStorageClassName(value string
 // If called multiple times, the LastSyncedAt field is set to the value of the last call.
 func (b *BackupVolumeStatusApplyConfiguration) WithLastSyncedAt(value v1.Time) *BackupVolumeStatusApplyConfiguration {
 	b.LastSyncedAt = &value
+	return b
+}
+
+// WithBackupCount sets the BackupCount field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BackupCount field is set to the value of the last call.
+func (b *BackupVolumeStatusApplyConfiguration) WithBackupCount(value int) *BackupVolumeStatusApplyConfiguration {
+	b.BackupCount = &value
 	return b
 }

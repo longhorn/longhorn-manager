@@ -35,6 +35,8 @@ type BackupTargetStatusApplyConfiguration struct {
 	Conditions []ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// The last time that the controller synced with the remote backup target.
 	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
+	// The count of backup volumes on the target.
+	BackupVolumeCount *int `json:"backupVolumeCount,omitempty"`
 }
 
 // BackupTargetStatusApplyConfiguration constructs a declarative configuration of the BackupTargetStatus type for use with
@@ -77,5 +79,13 @@ func (b *BackupTargetStatusApplyConfiguration) WithConditions(values ...*Conditi
 // If called multiple times, the LastSyncedAt field is set to the value of the last call.
 func (b *BackupTargetStatusApplyConfiguration) WithLastSyncedAt(value v1.Time) *BackupTargetStatusApplyConfiguration {
 	b.LastSyncedAt = &value
+	return b
+}
+
+// WithBackupVolumeCount sets the BackupVolumeCount field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BackupVolumeCount field is set to the value of the last call.
+func (b *BackupTargetStatusApplyConfiguration) WithBackupVolumeCount(value int) *BackupTargetStatusApplyConfiguration {
+	b.BackupVolumeCount = &value
 	return b
 }
