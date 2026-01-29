@@ -464,6 +464,9 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err := nc.syncDiskStatus(node, collectedDiskInfo); err != nil {
 		return err
 	}
+	if err := nc.syncDiskSchedule(node); err != nil {
+		return err
+	}
 
 	collectedEnvironmentCheckConditions, err := nc.syncWithEnvironmentCheckMonitor()
 	if err == nil {
@@ -692,6 +695,113 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 	return nc.updateDiskStatusSchedulableCondition(node)
 }
 
+func (nc *NodeController) syncDiskSchedule(node *longhorn.Node) error {
+	if err := nc.cleanupDiskSchedule(node); err != nil {
+		return err
+	}
+
+	if err := nc.syncDiskScheduleSpec(node); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (nc *NodeController) cleanupDiskSchedule(node *longhorn.Node) error {
+	diskScheduleMap, err := nc.ds.ListDiskSchedulesOnNode(node.Name)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return errors.Wrapf(err, "failed to list DiskSchedules on node %v for cleanup", node.Name)
+	}
+
+	deleteErrs := multierr.NewMultiError()
+	for _, diskSchedule := range diskScheduleMap {
+		diskExist := false
+		status := node.Status.DiskStatus[diskSchedule.Spec.Name]
+		if status != nil && status.DiskUUID == diskSchedule.Name {
+			diskExist = true
+		}
+		if !diskExist {
+			nc.logger.Infof("Deleting DiskDchedule %v (%q) from Node %v", diskSchedule.Name, diskSchedule.Spec.Name, node.Name)
+			diskSchedule.Annotations[types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn)] = ""
+			if _, err := nc.ds.UpdateDiskSchedule(diskSchedule); err != nil {
+				return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+			}
+			if err := nc.ds.DeleteDiskSchedule(diskSchedule.Name); err != nil {
+				deleteErrs.Append(fmt.Sprintf("%v (%v)", diskSchedule.Name, diskSchedule.Spec.Name), err)
+			}
+		}
+	}
+
+	if len(deleteErrs) > 0 {
+		return fmt.Errorf("failed to delete DiskSchedules on node %v: %v", node.Name, deleteErrs.ErrorByReason("errors"))
+	}
+	return nil
+}
+
+func (nc *NodeController) syncDiskScheduleSpec(node *longhorn.Node) error {
+	logger := nc.logger.WithFields(logrus.Fields{
+		"function": "syncDiskScheduleSpec",
+		"node":     node.Name,
+	})
+
+	createErrs := multierr.NewMultiError()
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == "" {
+			logger.Infof("Disk %v does not have a disk UUID, skip handling disk scheduler", diskName)
+			continue
+		}
+
+		logger := logger.WithFields(logrus.Fields{
+			"diskName": diskName,
+			"diskUUID": diskStatus.DiskUUID,
+		})
+
+		_, diskDefined := node.Spec.Disks[diskName]
+		if !diskDefined {
+			logger.Infof("Disk %v does not exist in node spec, skip handling disk scheduler", diskName)
+			continue
+		}
+		if err := nc.createDiskScheduleIfNeed(logger, node, diskStatus); err != nil {
+			createErrs.Append(fmt.Sprintf("%q (%v)", diskName, diskStatus.DiskUUID), err)
+		}
+	}
+
+	if len(createErrs) > 0 {
+		return fmt.Errorf("failed to create disk schedule on node %v: %v", node.Name, createErrs.Error())
+	}
+	return nil
+}
+
+func (nc *NodeController) createDiskScheduleIfNeed(logger *logrus.Entry, node *longhorn.Node, diskStatus *longhorn.DiskStatus) error {
+	diskUUID := diskStatus.DiskUUID
+
+	diskSchedule, err := nc.ds.GetDiskSchedule(diskUUID)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+	}
+
+	if diskSchedule != nil {
+		return nil
+	}
+
+	logger.Infof("Creating disk schedule for node %v disk %v", node.Name, diskStatus.DiskName)
+	diskSchedule = &longhorn.DiskSchedule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            diskUUID,
+			Namespace:       node.Namespace,
+			OwnerReferences: datastore.GetOwnerReferencesForNode(node),
+		},
+		Spec: longhorn.DiskScheduleSpec{
+			Name:   diskStatus.DiskName,
+			NodeID: node.Name,
+		},
+	}
+	_, err = nc.ds.CreateDiskSchedule(diskSchedule)
+	return err
+}
+
 func (nc *NodeController) syncEnvironmentCheckConditions(node *longhorn.Node, conditions []longhorn.Condition) {
 	// Add condition to node.status.conditions if it is not already there
 	// Update the condition status and reason if it is already in the node.status.conditions
@@ -874,17 +984,10 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 	diskStatusMap := node.Status.DiskStatus
 
 	// update Schedulable condition
-	backingImages, err := nc.ds.ListBackingImagesRO()
-	if err != nil {
-		return err
-	}
-
 	for diskName, disk := range node.Spec.Disks {
 		diskStatus := diskStatusMap[diskName]
 
 		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status != longhorn.ConditionStatusTrue {
-			diskStatus.StorageScheduled = 0
-			diskStatus.ScheduledReplica = map[string]int64{}
 			diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
 				longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse,
 				string(longhorn.DiskConditionReasonDiskNotReady),
@@ -909,41 +1012,13 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				}
 			}
 
-			// sync replicas as well as calculate storage scheduled
-			replicas, err := nc.ds.ListReplicasByDiskUUID(diskStatus.DiskUUID)
-			if err != nil {
-				return err
-			}
-			scheduledReplica := map[string]int64{}
-			scheduledBackingImage := map[string]int64{}
-			storageScheduled := int64(0)
-			for _, replica := range replicas {
-				if replica.Spec.NodeID != node.Name || replica.Spec.DiskPath != disk.Path {
-					replica.Spec.NodeID = node.Name
-					replica.Spec.DiskPath = disk.Path
-					if _, err := nc.ds.UpdateReplica(replica); err != nil {
-						log.Warnf("Failed to update node & disk info for replica %v when syncing disk %v(%v), will enqueue then resync node", replica.Name, diskName, diskStatus.DiskUUID)
-						nc.enqueueNode(node)
-						continue
-					}
-				}
-				storageScheduled += replica.Spec.VolumeSize
-				scheduledReplica[replica.Name] = replica.Spec.VolumeSize
-			}
-
-			for _, backingImage := range backingImages {
-				if _, exists := backingImage.Spec.DiskFileSpecMap[diskStatus.DiskUUID]; exists {
-					storageScheduled += backingImage.Status.RealSize
-					scheduledBackingImage[backingImage.Name] = backingImage.Status.RealSize
-				}
-			}
-
-			diskStatus.StorageScheduled = storageScheduled
-			diskStatus.ScheduledReplica = scheduledReplica
-			diskStatus.ScheduledBackingImage = scheduledBackingImage
-
 			// check disk pressure
-			info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
+			diskSchedule, diskScheduleErr := nc.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+			if diskScheduleErr != nil {
+				log.WithError(diskScheduleErr).Warnf("Failed to check disk schedule when syncing disk %v(%v), skip update disk pressure", diskName, diskStatus.DiskUUID)
+				continue
+			}
+			info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus, diskSchedule)
 			if err != nil {
 				return err
 			}
@@ -1603,12 +1678,6 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 		if diskStatus.Conditions == nil {
 			diskStatus.Conditions = []longhorn.Condition{}
 		}
-		if diskStatus.ScheduledReplica == nil {
-			diskStatus.ScheduledReplica = map[string]int64{}
-		}
-		if diskStatus.ScheduledBackingImage == nil {
-			diskStatus.ScheduledBackingImage = map[string]int64{}
-		}
 		// When condition are not ready, the old storage data should be cleaned.
 		diskStatus.StorageMaximum = 0
 		diskStatus.StorageAvailable = 0
@@ -1623,9 +1692,12 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 				continue
 			}
 
-			if err := nc.deleteDisk(node.Name, diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
-				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
+			if diskStatus.DiskUUID != "" {
+				if err := nc.deleteDisk(node.Name, diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+					nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
+				}
 			}
+
 			delete(node.Status.DiskStatus, diskName)
 		}
 	}
@@ -1633,6 +1705,20 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 
 func (nc *NodeController) deleteDisk(nodeName string, diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	nc.logger.Infof("Deleting disk %v with diskUUID %v", diskName, diskUUID)
+
+	diskSchedule, err := nc.ds.GetDiskSchedule(diskUUID)
+	if err != nil {
+		return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+	}
+	diskSchedule.Annotations[types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn)] = ""
+	if _, err := nc.ds.UpdateDiskSchedule(diskSchedule); err != nil {
+		return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+	}
+	if deleteDiskScheduleErr := nc.ds.DeleteDiskSchedule(diskUUID); deleteDiskScheduleErr != nil {
+		if !datastore.ErrorIsNotFound(deleteDiskScheduleErr) {
+			return errors.Wrap(deleteDiskScheduleErr, fmt.Sprintf("failed to delete disk schedule %v", diskUUID))
+		}
+	}
 
 	dataEngine := util.GetDataEngineForDiskType(diskType)
 
@@ -1832,12 +1918,12 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 	replicasToSync := []replicaToSync{}
 
 	for diskName, diskSpec := range node.Spec.Disks {
-		diskStatus := node.Status.DiskStatus[diskName]
-		for replicaName := range diskStatus.ScheduledReplica {
-			replica, err := nc.ds.GetReplica(replicaName)
-			if err != nil {
-				return err
-			}
+		diskReplicas, listReplicasErr := nc.ds.ListReplicasByDiskUUID(node.Status.DiskStatus[diskName].DiskUUID)
+		if listReplicasErr != nil {
+			log.WithError(listReplicasErr).Errorf("Failed to list replicas by disk %v to check eviction", diskName)
+			return listReplicasErr
+		}
+		for _, replica := range diskReplicas {
 			shouldEvictReplica, reason, err := nc.shouldEvictReplica(node, kubeNode, &diskSpec, replica,
 				nodeDrainPolicy)
 			if err != nil {

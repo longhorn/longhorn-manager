@@ -779,8 +779,13 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 			continue
 		}
 
+		diskSchedule, diskScheduleErr := cs.lhClient.LonghornV1beta2().DiskSchedules(cs.lhNamespace).Get(ctx, diskStatus.DiskUUID, metav1.GetOptions{})
+		if diskScheduleErr != nil {
+			continue
+		}
+
 		overProvisionLimit := ((diskStatus.StorageMaximum - diskSpec.StorageReserved) * overProvisioningPercentage) / 100
-		storageSchedulable := overProvisionLimit - diskStatus.StorageScheduled
+		storageSchedulable := overProvisionLimit - diskSchedule.Status.StorageScheduled
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
 			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
 		}

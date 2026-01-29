@@ -2218,7 +2218,7 @@ func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *S
 	return s
 }
 
-func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiContext) *Node {
+func toNodeResource(node *longhorn.Node, diskScheduleMap map[string]*longhorn.DiskSchedule, address string, apiContext *api.ApiContext) *Node {
 	n := &Node{
 		Resource: client.Resource{
 			Id:      node.Name,
@@ -2238,8 +2238,24 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		AutoEvicting:              node.Status.AutoEvicting,
 	}
 
+	toDiskScheduledResource := func(statusMap map[string]*longhorn.DiskScheduledResourcesStatus) map[string]int64 {
+		resourceMap := map[string]int64{}
+		for name, status := range statusMap {
+			resourceMap[name] = status.Size
+		}
+		return resourceMap
+	}
+
 	disks := map[string]DiskInfo{}
 	for name, disk := range node.Spec.Disks {
+		var scheduledReplicas, scheduledBackingImages map[string]*longhorn.DiskScheduledResourcesStatus
+		var storageScheduled int64 = 0
+		if diskSchedule := diskScheduleMap[node.Status.DiskStatus[name].DiskUUID]; diskSchedule != nil {
+			scheduledReplicas = diskSchedule.Status.Replicas
+			scheduledBackingImages = diskSchedule.Status.BackingImages
+			storageScheduled = diskSchedule.Status.StorageScheduled
+		}
+
 		di := DiskInfo{
 			DiskSpec: disk,
 		}
@@ -2247,10 +2263,10 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 			di.DiskStatus = DiskStatus{
 				Conditions:                sliceToMap(node.Status.DiskStatus[name].Conditions),
 				StorageAvailable:          node.Status.DiskStatus[name].StorageAvailable,
-				StorageScheduled:          node.Status.DiskStatus[name].StorageScheduled,
+				StorageScheduled:          storageScheduled,
 				StorageMaximum:            node.Status.DiskStatus[name].StorageMaximum,
-				ScheduledReplica:          node.Status.DiskStatus[name].ScheduledReplica,
-				ScheduledBackingImage:     node.Status.DiskStatus[name].ScheduledBackingImage,
+				ScheduledReplica:          toDiskScheduledResource(scheduledReplicas),
+				ScheduledBackingImage:     toDiskScheduledResource(scheduledBackingImages),
 				DiskUUID:                  node.Status.DiskStatus[name].DiskUUID,
 				HealthData:                node.Status.DiskStatus[name].HealthData,
 				HealthDataLastCollectedAt: node.Status.DiskStatus[name].HealthDataLastCollectedAt.String(),
@@ -2267,10 +2283,10 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 	return n
 }
 
-func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, apiContext *api.ApiContext) *client.GenericCollection {
+func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, diskScheduleMap map[string]*longhorn.DiskSchedule, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 	for _, node := range nodeList {
-		data = append(data, toNodeResource(node, nodeIPMap[node.Name], apiContext))
+		data = append(data, toNodeResource(node, diskScheduleMap, nodeIPMap[node.Name], apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
 }
