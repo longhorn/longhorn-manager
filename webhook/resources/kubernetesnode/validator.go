@@ -90,7 +90,42 @@ func (v *kubeNodeValidator) canNodeDisableV2DataEngine(oldNode, newNode *corev1.
 		if len(im.Status.InstanceEngines)+len(im.Status.InstanceReplicas) > 0 {
 			return false, nil
 		}
+
+	}
+
+	if exist, err := v.hasV2EnginesOnNode(newNode.Name); err != nil || exist {
+		return !exist, err
+	}
+	if exist, err := v.hasV2ReplicasOnNode(newNode.Name); err != nil || exist {
+		return !exist, err
 	}
 
 	return true, nil
+}
+
+func (v *kubeNodeValidator) hasV2EnginesOnNode(nodeName string) (bool, error) {
+	engines, err := v.ds.ListEnginesByNodeRO(nodeName)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range engines {
+		if types.IsDataEngineV2(e.Spec.DataEngine) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (v *kubeNodeValidator) hasV2ReplicasOnNode(nodeName string) (bool, error) {
+	replicas, err := v.ds.ListReplicasByNodeRO(nodeName)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range replicas {
+		if types.IsDataEngineV2(r.Spec.DataEngine) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
