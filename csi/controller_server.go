@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +92,8 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 				csi.ControllerServiceCapability_RPC_GET_CAPACITY,
 				csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
+				csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+				csi.ControllerServiceCapability_RPC_VOLUME_CONDITION,
 			}),
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
@@ -695,8 +698,86 @@ func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeI
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
-func (cs *ControllerServer) ListVolumes(context.Context, *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
+	log := cs.log.WithFields(logrus.Fields{"function": "ListVolumes"})
+
+	maxEntries := req.GetMaxEntries()
+	startingToken := req.GetStartingToken()
+
+	volumeCollection, err := cs.apiClient.Volume.List(&longhornclient.ListOpts{})
+	if err != nil {
+		return nil, status.Error(codes.Internal,
+			errors.Wrap(err, "failed to list volumes").Error())
+	}
+
+	volumes := volumeCollection.Data
+
+	// sort volumes by name to ensure consistent ordering across paginated requests
+	sort.Slice(volumes, func(i, j int) bool {
+		return volumes[i].Name < volumes[j].Name
+	})
+
+	totalVolumes := len(volumes)
+
+	log.Infof("ListVolumes: total volumes=%d, maxEntries=%d, startingToken=%s",
+		totalVolumes, maxEntries, startingToken)
+
+	// handle pagination using offset-based tokens
+	startIndex := 0
+	if startingToken != "" {
+		offset, err := strconv.Atoi(startingToken)
+		if err != nil || offset < 0 || offset >= totalVolumes {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token: %s", startingToken)
+		}
+		startIndex = offset
+	}
+
+	endIndex := totalVolumes
+	nextToken := ""
+
+	if maxEntries > 0 && startIndex+int(maxEntries) < totalVolumes {
+		endIndex = startIndex + int(maxEntries)
+		nextToken = strconv.Itoa(endIndex)
+	}
+
+	entries := []*csi.ListVolumesResponse_Entry{}
+	for i := startIndex; i < endIndex; i++ {
+		vol := volumes[i]
+
+		volSize, err := util.ConvertSize(vol.Size)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to convert volume size %s for volume %s, using 0",
+				vol.Size, vol.Name)
+			volSize = 0
+		}
+
+		csiVolume := &csi.Volume{
+			VolumeId:      vol.Name,
+			CapacityBytes: volSize,
+		}
+
+		volumeCondition := volumeConditionFromRobustness(vol.Robustness)
+
+		publishedNodeIds := extractPublishedNodeIds(&vol)
+
+		volumeStatus := &csi.ListVolumesResponse_VolumeStatus{
+			PublishedNodeIds: publishedNodeIds,
+			VolumeCondition:  volumeCondition,
+		}
+
+		entries = append(entries, &csi.ListVolumesResponse_Entry{
+			Volume: csiVolume,
+			Status: volumeStatus,
+		})
+	}
+
+	log.Infof("ListVolumes: returning %d entries (from %d to %d), nextToken=%s",
+		len(entries), startIndex, endIndex, nextToken)
+
+	return &csi.ListVolumesResponse{
+		Entries:   entries,
+		NextToken: nextToken,
+	}, nil
 }
 
 func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
@@ -1391,8 +1472,65 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}, nil
 }
 
-func (cs *ControllerServer) ControllerGetVolume(context.Context, *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func extractPublishedNodeIds(vol *longhornclient.Volume) []string {
+	publishedNodeIds := []string{}
+	for _, attachment := range vol.VolumeAttachment.Attachments {
+		if attachment.Satisfied {
+			publishedNodeIds = append(publishedNodeIds, attachment.NodeID)
+		}
+	}
+	return publishedNodeIds
+}
+
+func (cs *ControllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
+	}
+
+	log := cs.log.WithFields(logrus.Fields{
+		"function": "ControllerGetVolume",
+		"volumeID": volumeID,
+	})
+
+	vol, err := cs.apiClient.Volume.ById(volumeID)
+	if err != nil {
+		return nil, status.Error(codes.Internal,
+			errors.Wrapf(err, "failed to get volume %s", volumeID).Error())
+	}
+	if vol == nil {
+		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
+	}
+
+	volSize, err := util.ConvertSize(vol.Size)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to convert volume size %s, using 0", vol.Size)
+		volSize = 0
+	}
+
+	csiVolume := &csi.Volume{
+		VolumeId:      volumeID,
+		CapacityBytes: volSize,
+	}
+
+	// convert Longhorn volume robustness to CSI VolumeCondition for health monitoring
+	volumeCondition := volumeConditionFromRobustness(vol.Robustness)
+
+	// extract node IDs from satisfied volume attachments
+	publishedNodeIds := extractPublishedNodeIds(vol)
+
+	volumeStatus := &csi.ControllerGetVolumeResponse_VolumeStatus{
+		PublishedNodeIds: publishedNodeIds,
+		VolumeCondition:  volumeCondition,
+	}
+
+	log.Infof("ControllerGetVolume: volume=%s, robustness=%s, state=%s, publishedNodes=%v",
+		volumeID, vol.Robustness, vol.State, publishedNodeIds)
+
+	return &csi.ControllerGetVolumeResponse{
+		Volume: csiVolume,
+		Status: volumeStatus,
+	}, nil
 }
 
 // isVolumeAvailableOn checks that the volume is attached and that an engine is running on the requested node
