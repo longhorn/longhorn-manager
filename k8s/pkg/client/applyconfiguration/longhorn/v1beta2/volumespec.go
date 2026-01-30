@@ -83,6 +83,10 @@ type VolumeSpecApplyConfiguration struct {
 	// concurrently during a single replica rebuild.
 	// When set to 0, it means following the global setting.
 	RebuildConcurrentSyncLimit *int `json:"rebuildConcurrentSyncLimit,omitempty"`
+	// PinToZone pins workload pods to the zone where the volume was provisioned.
+	// When enabled, Longhorn adds the zone label to the PV, which works with the Kubernetes VolumeZone scheduler
+	// plugin to ensure pods using this volume are scheduled to nodes in the same zone.
+	PinToZone *bool `json:"pinToZone,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with
@@ -412,5 +416,13 @@ func (b *VolumeSpecApplyConfiguration) WithReplicaRebuildingBandwidthLimit(value
 // If called multiple times, the RebuildConcurrentSyncLimit field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithRebuildConcurrentSyncLimit(value int) *VolumeSpecApplyConfiguration {
 	b.RebuildConcurrentSyncLimit = &value
+	return b
+}
+
+// WithPinToZone sets the PinToZone field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PinToZone field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithPinToZone(value bool) *VolumeSpecApplyConfiguration {
+	b.PinToZone = &value
 	return b
 }

@@ -3642,6 +3642,12 @@ spec:
                 - disabled
                 - enabled
                 type: string
+              pinToZone:
+                description: |-
+                  PinToZone pins workload pods to the zone where the volume was provisioned.
+                  When enabled, Longhorn adds the zone label to the PV, which works with the Kubernetes VolumeZone scheduler
+                  plugin to ensure pods using this volume are scheduled to nodes in the same zone.
+                type: boolean
               rebuildConcurrentSyncLimit:
                 description: |-
                   RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run

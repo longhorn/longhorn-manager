@@ -293,6 +293,14 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 
 	vol.Frontend = volOptions["frontend"]
 
+	if pinToZone, ok := volOptions["pinToZone"]; ok {
+		isPinToZone, err := strconv.ParseBool(pinToZone)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter pinToZone")
+		}
+		vol.PinToZone = isPinToZone
+	}
+
 	return vol, nil
 }
 

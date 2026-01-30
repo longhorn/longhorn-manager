@@ -88,7 +88,8 @@ type Volume struct {
 
 	Migratable bool `json:"migratable"`
 
-	Encrypted bool `json:"encrypted"`
+	Encrypted  bool `json:"encrypted"`
+	PinToZone  bool `json:"pinToZone"`
 
 	Replicas         []Replica        `json:"replicas"`
 	Controllers      []Controller     `json:"controllers"`
