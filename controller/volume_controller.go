@@ -6,6 +6,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -1935,12 +1936,48 @@ func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string
 func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
 	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 	numSnapshots := len(e.Status.Snapshots) - 1 // Counting volume-head here would be confusing.
-	if numSnapshots > VolumeSnapshotsWarningThreshold {
+
+	// Determine snapshot count threshold: prefer per-volume spec if set (>0), otherwise fall back to global setting.
+	snapshotCountThreshold := v.Spec.SnapshotMaxCount
+	if snapshotCountThreshold <= 0 {
+		if val, err := c.ds.GetSettingAsInt(types.SettingNameSnapshotMaxCount); err != nil {
+			// On error reading datastore, fallback to VolumeSnapshotsWarningThreshold
+			log.WithError(err).Warnf("Failed to get global %v setting, fallback to %v", types.SettingNameSnapshotMaxCount, VolumeSnapshotsWarningThreshold)
+			snapshotCountThreshold = VolumeSnapshotsWarningThreshold
+		} else {
+			snapshotCountThreshold = int(val)
+		}
+	}
+
+	countExceededThreshold := numSnapshots > snapshotCountThreshold
+	snapshotTotalSize := int64(0)
+	if v.Spec.SnapshotMaxSize != 0 {
+		for _, snapshotInfo := range e.Status.Snapshots {
+			if snapshotInfo == nil || snapshotInfo.Removed || snapshotInfo.Name == "volume-head" {
+				continue
+			}
+			snapshotSize, err := strconv.ParseInt(snapshotInfo.Size, 10, 64)
+			if err != nil {
+				log.WithField("snapshot", snapshotInfo.Name).WithError(err).Warnf("Failed to parse snapshot size %v", snapshotInfo.Size)
+				continue
+			}
+			snapshotTotalSize += snapshotSize
+		}
+	}
+	sizeExceededThreshold := v.Spec.SnapshotMaxSize != 0 && snapshotTotalSize >= v.Spec.SnapshotMaxSize
+
+	if countExceededThreshold || sizeExceededThreshold {
+		warningMessages := []string{}
+		if countExceededThreshold {
+			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots count is %v over the warning threshold %v", numSnapshots, snapshotCountThreshold))
+		}
+		if sizeExceededThreshold {
+			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots total size is %v at or over the warning threshold %v", snapshotTotalSize, v.Spec.SnapshotMaxSize))
+		}
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
 			longhorn.VolumeConditionReasonTooManySnapshots,
-			fmt.Sprintf("Snapshots count is %v over the warning threshold %v", numSnapshots,
-				VolumeSnapshotsWarningThreshold))
+			strings.Join(warningMessages, "; "))
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
