@@ -89,6 +89,8 @@ type VolumeTestCase struct {
 	volumeAutoSalvage                           string
 	replicaReplenishmentWaitInterval            string
 	allowVolumeCreationWithDegradedAvailability string
+	// optional global setting to inject into fake client during test
+	snapshotGlobalSetting *longhorn.Setting
 }
 
 func (s *TestSuite) TestVolumeLifeCycle(c *C) {
@@ -1123,6 +1125,177 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	s.runTestCases(c, testCases)
 }
 
+func (s *TestSuite) TestTooManySnapshotsThresholdBehavior(c *C) {
+	// Ensure lister skip for unit tests
+	datastore.SkipListerCheck = true
+
+	makeSnapshotsMap := func(snapshotCount int, snapshotSizes []int64) (map[string]*longhorn.SnapshotInfo, int64) {
+		snapshots := map[string]*longhorn.SnapshotInfo{
+			"volume-head": &longhorn.SnapshotInfo{Name: "volume-head", Size: "0"},
+		}
+
+		totalSize := int64(0)
+		for i := 0; i < snapshotCount; i++ {
+			snapshotSize := int64(0)
+			if i < len(snapshotSizes) {
+				snapshotSize = snapshotSizes[i]
+			}
+
+			snapshotName := fmt.Sprintf("s%d", i)
+			snapshots[snapshotName] = &longhorn.SnapshotInfo{
+				Name: snapshotName,
+				Size: strconv.FormatInt(snapshotSize, 10),
+			}
+			totalSize += snapshotSize
+		}
+
+		return snapshots, totalSize
+	}
+
+	tests := map[string]struct {
+		snapshotCount      int
+		snapshotSizes      []int64
+		specThreshold      int
+		specSizeThreshold  int64
+		globalSettingValue string
+		expectStatus       longhorn.ConditionStatus
+		expectMessage      string
+	}{
+		"below threshold": {
+			snapshotCount: 4,
+			specThreshold: 10,
+			expectStatus:  longhorn.ConditionStatusFalse,
+		},
+		"equal threshold": {
+			snapshotCount: 5,
+			specThreshold: 5,
+			expectStatus:  longhorn.ConditionStatusFalse,
+		},
+		"above threshold": {
+			snapshotCount: 6,
+			specThreshold: 5,
+			expectStatus:  longhorn.ConditionStatusTrue,
+			expectMessage: "Snapshots count is 6 over the warning threshold 5",
+		},
+		"fallback to global": {
+			snapshotCount:      types.MaxSnapshotNum + 1,
+			specThreshold:      0,
+			globalSettingValue: strconv.Itoa(types.MaxSnapshotNum),
+			expectStatus:       longhorn.ConditionStatusTrue,
+			expectMessage:      fmt.Sprintf("Snapshots count is %v over the warning threshold %v", types.MaxSnapshotNum+1, types.MaxSnapshotNum),
+		},
+		"global setting parse error fallback": {
+			snapshotCount:      types.MaxSnapshotNum + 1,
+			specThreshold:      0,
+			globalSettingValue: "invalid",
+			expectStatus:       longhorn.ConditionStatusTrue,
+			expectMessage:      fmt.Sprintf("Snapshots count is %v over the warning threshold %v", types.MaxSnapshotNum+1, VolumeSnapshotsWarningThreshold),
+		},
+		"size below threshold": {
+			snapshotCount:     2,
+			snapshotSizes:     []int64{20, 30},
+			specThreshold:     10,
+			specSizeThreshold: 60,
+			expectStatus:      longhorn.ConditionStatusFalse,
+		},
+		"size equal threshold": {
+			snapshotCount:     2,
+			snapshotSizes:     []int64{20, 30},
+			specThreshold:     10,
+			specSizeThreshold: 50,
+			expectStatus:      longhorn.ConditionStatusTrue,
+			expectMessage:     "Snapshots total size is 50 at or over the warning threshold 50",
+		},
+		"size above threshold": {
+			snapshotCount:     3,
+			snapshotSizes:     []int64{20, 20, 20},
+			specThreshold:     10,
+			specSizeThreshold: 50,
+			expectStatus:      longhorn.ConditionStatusTrue,
+			expectMessage:     "Snapshots total size is 60 at or over the warning threshold 50",
+		},
+		"count and size exceed threshold": {
+			snapshotCount:     6,
+			snapshotSizes:     []int64{10, 10, 10, 10, 10, 10},
+			specThreshold:     5,
+			specSizeThreshold: 50,
+			expectStatus:      longhorn.ConditionStatusTrue,
+			expectMessage:     "Snapshots count is 6 over the warning threshold 5; Snapshots total size is 60 at or over the warning threshold 50",
+		},
+	}
+
+	for name, tt := range tests {
+		tcase := generateVolumeTestCaseTemplate()
+		tcase.volume.Spec.SnapshotMaxCount = tt.specThreshold
+		tcase.volume.Spec.SnapshotMaxSize = tt.specSizeThreshold
+
+		expectedActualSize := int64(0)
+
+		for _, eng := range tcase.engines {
+			eng.Status.Snapshots, expectedActualSize = makeSnapshotsMap(tt.snapshotCount, tt.snapshotSizes)
+			break
+		}
+
+		tcase.copyCurrentToExpect()
+
+		if tt.specThreshold > 0 {
+			tcase.expectVolume.Spec.SnapshotMaxCount = tt.specThreshold
+			for _, ee := range tcase.expectEngines {
+				ee.Spec.SnapshotMaxCount = tt.specThreshold
+			}
+			for _, er := range tcase.expectReplicas {
+				er.Spec.SnapshotMaxCount = tt.specThreshold
+			}
+		}
+
+		if tt.specSizeThreshold > 0 {
+			tcase.expectVolume.Spec.SnapshotMaxSize = tt.specSizeThreshold
+			for _, ee := range tcase.expectEngines {
+				ee.Spec.SnapshotMaxSize = tt.specSizeThreshold
+			}
+			for _, er := range tcase.expectReplicas {
+				er.Spec.SnapshotMaxSize = tt.specSizeThreshold
+			}
+		}
+
+		if tt.globalSettingValue != "" {
+			tcase.snapshotGlobalSetting = initSettingsNameValue(string(types.SettingNameSnapshotMaxCount), tt.globalSettingValue)
+		}
+
+		effectiveThreshold := tt.specThreshold
+		if effectiveThreshold <= 0 {
+			if tt.globalSettingValue != "" {
+				if value, err := strconv.Atoi(tt.globalSettingValue); err == nil {
+					effectiveThreshold = value
+				} else {
+					effectiveThreshold = VolumeSnapshotsWarningThreshold
+				}
+			} else {
+				effectiveThreshold = VolumeSnapshotsWarningThreshold
+			}
+		}
+
+		tcase.expectVolume.Status.State = longhorn.VolumeStateCreating
+		tcase.expectVolume.Status.CurrentImage = tcase.volume.Spec.Image
+		tcase.expectVolume.Status.ActualSize = expectedActualSize
+
+		if tt.expectStatus == longhorn.ConditionStatusTrue {
+			conditionMessage := tt.expectMessage
+			if conditionMessage == "" {
+				conditionMessage = fmt.Sprintf("Snapshots count is %v over the warning threshold %v", tt.snapshotCount, effectiveThreshold)
+			}
+			tcase.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tcase.expectVolume.Status.Conditions,
+				longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonTooManySnapshots,
+				conditionMessage)
+		} else {
+			tcase.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tcase.expectVolume.Status.Conditions,
+				longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse, "", "")
+		}
+
+		s.runTestCases(c, map[string]*VolumeTestCase{name: tcase})
+	}
+}
+
 func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
 	// We have to skip lister check for unit tests
 	// Because the changes written through the API won't be reflected in the listers
@@ -1502,6 +1675,13 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = sIndexer.Add(setting)
 		c.Assert(err, IsNil)
 
+		// Optional: Set snapshot global setting if provided by test case
+		if tc.snapshotGlobalSetting != nil {
+			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), tc.snapshotGlobalSetting, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
 		if tc.backingImages != nil {
 			for _, bi := range tc.backingImages {
 				bi, err := lhClient.LonghornV1beta2().BackingImages(TestNamespace).Create(context.TODO(), bi, metav1.CreateOptions{})
