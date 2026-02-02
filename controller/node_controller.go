@@ -1304,7 +1304,13 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 			handlingDiskFileCount--
 		}
 
-		logrus.Infof("Cleaning up the unused file in disk %v for backing image %v", diskUUID, bi.Name)
+		logrus.WithFields(logrus.Fields{
+			"minNumberOfCopies":     minNumberOfCopies,
+			"readyDiskFileCount":    readyDiskFileCount,
+			"handlingDiskFileCount": handlingDiskFileCount,
+			"failedDiskFileCount":   failedDiskFileCount,
+			"fileState":             fileStatus.State,
+		}).Infof("Cleaning up the unused file in disk %v for backing image %v", diskUUID, bi.Name)
 		delete(bi.Spec.DiskFileSpecMap, diskUUID)
 	}
 }
