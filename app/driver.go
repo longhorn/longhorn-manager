@@ -35,26 +35,30 @@ const (
 	FlagCSIProvisionerImage         = "csi-provisioner-image"
 	FlagCSIResizerImage             = "csi-resizer-image"
 	FlagCSISnapshotterImage         = "csi-snapshotter-image"
+	FlagCSIHealthMonitorImage       = "csi-health-monitor-image"
 	FlagCSINodeDriverRegistrarImage = "csi-node-driver-registrar-image"
 	FlagCSILivenessProbeImage       = "csi-liveness-probe-image"
 	EnvCSIAttacherImage             = "CSI_ATTACHER_IMAGE"
 	EnvCSIProvisionerImage          = "CSI_PROVISIONER_IMAGE"
 	EnvCSIResizerImage              = "CSI_RESIZER_IMAGE"
 	EnvCSISnapshotterImage          = "CSI_SNAPSHOTTER_IMAGE"
+	EnvCSIHealthMonitorImage        = "CSI_HEALTH_MONITOR_IMAGE"
 	EnvCSINodeDriverRegistrarImage  = "CSI_NODE_DRIVER_REGISTRAR_IMAGE"
 	EnvCSILivenessProbeImage        = "CSI_LIVENESS_PROBE_IMAGE"
 
 	FlagCSIPodAntiAffinityPreset = "csi-pod-anti-affinity-preset"
 	EnvCSIPodAntiAffinityPreset  = "CSI_POD_ANTI_AFFINITY_PRESET"
 
-	FlagCSIAttacherReplicaCount    = "csi-attacher-replica-count"
-	FlagCSIProvisionerReplicaCount = "csi-provisioner-replica-count"
-	FlagCSIResizerReplicaCount     = "csi-resizer-replica-count"
-	FlagCSISnapshotterReplicaCount = "csi-snapshotter-replica-count"
-	EnvCSIAttacherReplicaCount     = "CSI_ATTACHER_REPLICA_COUNT"
-	EnvCSIProvisionerReplicaCount  = "CSI_PROVISIONER_REPLICA_COUNT"
-	EnvCSIResizerReplicaCount      = "CSI_RESIZER_REPLICA_COUNT"
-	EnvCSISnapshotterReplicaCount  = "CSI_SNAPSHOTTER_REPLICA_COUNT"
+	FlagCSIAttacherReplicaCount      = "csi-attacher-replica-count"
+	FlagCSIProvisionerReplicaCount   = "csi-provisioner-replica-count"
+	FlagCSIResizerReplicaCount       = "csi-resizer-replica-count"
+	FlagCSISnapshotterReplicaCount   = "csi-snapshotter-replica-count"
+	FlagCSIHealthMonitorReplicaCount = "csi-health-monitor-replica-count"
+	EnvCSIAttacherReplicaCount       = "CSI_ATTACHER_REPLICA_COUNT"
+	EnvCSIProvisionerReplicaCount    = "CSI_PROVISIONER_REPLICA_COUNT"
+	EnvCSIResizerReplicaCount        = "CSI_RESIZER_REPLICA_COUNT"
+	EnvCSISnapshotterReplicaCount    = "CSI_SNAPSHOTTER_REPLICA_COUNT"
+	EnvCSIHealthMonitorReplicaCount  = "CSI_HEALTH_MONITOR_REPLICA_COUNT"
 )
 
 func DeployDriverCmd() cli.Command {
@@ -119,6 +123,17 @@ func DeployDriverCmd() cli.Command {
 				Value:  csi.DefaultCSISnapshotterReplicaCount,
 			},
 			cli.StringFlag{
+				Name:   FlagCSIHealthMonitorImage,
+				Usage:  "Specify CSI health monitor image",
+				EnvVar: EnvCSIHealthMonitorImage,
+			},
+			cli.IntFlag{
+				Name:   FlagCSIHealthMonitorReplicaCount,
+				Usage:  "Specify number of CSI health monitor replicas",
+				EnvVar: EnvCSIHealthMonitorReplicaCount,
+				Value:  csi.DefaultCSIHealthMonitorReplicaCount,
+			},
+			cli.StringFlag{
 				Name:   FlagCSIPodAntiAffinityPreset,
 				Usage:  "Specify CSI deployment podAntiAffinity",
 				EnvVar: EnvCSIPodAntiAffinityPreset,
@@ -159,6 +174,7 @@ func validateFlags(c *cli.Context) error {
 		FlagCSIProvisionerImage,
 		FlagCSIResizerImage,
 		FlagCSISnapshotterImage,
+		FlagCSIHealthMonitorImage,
 		FlagCSINodeDriverRegistrarImage,
 		FlagCSILivenessProbeImage,
 	} {
@@ -223,12 +239,14 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiResizerImage := c.String(FlagCSIResizerImage)
 	csiSnapshotterImage := c.String(FlagCSISnapshotterImage)
+	csiHealthMonitorImage := c.String(FlagCSIHealthMonitorImage)
 	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
 	csiLivenessProbeImage := c.String(FlagCSILivenessProbeImage)
 	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
 	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
 	csiSnapshotterReplicaCount := c.Int(FlagCSISnapshotterReplicaCount)
 	csiResizerReplicaCount := c.Int(FlagCSIResizerReplicaCount)
+	csiHealthMonitorReplicaCount := c.Int(FlagCSIHealthMonitorReplicaCount)
 	csiPodAntiAffinityPreset := c.String(FlagCSIPodAntiAffinityPreset)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
@@ -341,6 +359,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 
 	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSISnapshotter)
 	if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
+		return err
+	}
+
+	healthMonitorDeployment := csi.NewHealthMonitorDeployment(namespace, serviceAccountName, csiHealthMonitorImage, rootDir, csiHealthMonitorReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
+	if err := healthMonitorDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
