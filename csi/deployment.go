@@ -20,10 +20,11 @@ import (
 )
 
 const (
-	DefaultCSIAttacherReplicaCount    = 3
-	DefaultCSIProvisionerReplicaCount = 3
-	DefaultCSIResizerReplicaCount     = 3
-	DefaultCSISnapshotterReplicaCount = 3
+	DefaultCSIAttacherReplicaCount      = 3
+	DefaultCSIProvisionerReplicaCount   = 3
+	DefaultCSIResizerReplicaCount       = 3
+	DefaultCSISnapshotterReplicaCount   = 3
+	DefaultCSIHealthMonitorReplicaCount = 3
 
 	DefaultCSIPodAntiAffinityPreset      = CSIPodAntiAffinityPresetSoft
 	DefaultCSISocketFileName             = "csi.sock"
@@ -285,6 +286,60 @@ func (p *SnapshotterDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	if err := cleanup(kubeClient, p.deployment, "deployment",
 		deploymentDeleteFunc, deploymentGetFunc); err != nil {
 		logrus.WithError(err).Warn("Failed to cleanup deployment in snapshotter deployment")
+	}
+}
+
+type HealthMonitorDeployment struct {
+	deployment *appsv1.Deployment
+}
+
+func NewHealthMonitorDeployment(namespace, serviceAccount, healthMonitorImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *HealthMonitorDeployment {
+
+	deployment := getCommonDeployment(
+		types.CSIHealthMonitorName,
+		namespace,
+		serviceAccount,
+		healthMonitorImage,
+		rootDir,
+		[]string{
+			"--v=5",
+			"--csi-address=$(ADDRESS)",
+			"--leader-election",
+			"--leader-election-namespace=$(POD_NAMESPACE)",
+			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
+		},
+		int32(replicaCount),
+		podAntiAffinityPreset,
+		tolerations,
+		tolerationsString,
+		priorityClass,
+		registrySecret,
+		imagePullPolicy,
+		nodeSelector,
+		[]corev1.ContainerPort{
+			{
+				Name:          types.CSISidecarPortNameHealthMonitor,
+				ContainerPort: types.CSISidecarMetricsPort,
+			},
+		},
+		nil,
+	)
+
+	return &HealthMonitorDeployment{
+		deployment: deployment,
+	}
+}
+
+func (h *HealthMonitorDeployment) Deploy(kubeClient *clientset.Clientset) error {
+	return deploy(kubeClient, h.deployment, "deployment",
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+}
+
+func (h *HealthMonitorDeployment) Cleanup(kubeClient *clientset.Clientset) {
+	if err := cleanup(kubeClient, h.deployment, "deployment",
+		deploymentDeleteFunc, deploymentGetFunc); err != nil {
+		logrus.WithError(err).Warn("Failed to cleanup deployment in health monitor deployment")
 	}
 }
 
