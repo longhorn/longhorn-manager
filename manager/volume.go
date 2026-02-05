@@ -486,8 +486,12 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, fmt.Errorf("invalid volume state to expand: %v", v.Status.State)
 	}
 
-	if types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Status != longhorn.ConditionStatusTrue {
-		return nil, fmt.Errorf("cannot expand volume before replica scheduling success")
+	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
+		return nil, fmt.Errorf("invalid volume clone state to expand: %v", v.Status.CloneStatus.State)
+	}
+
+	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		return nil, fmt.Errorf("cannot expand volume when it is in faulted state")
 	}
 
 	size = util.RoundUpSize(size)
