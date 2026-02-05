@@ -77,6 +77,7 @@ const (
 	SettingNameStorageReservedPercentageForDefaultDisk                  = SettingName("storage-reserved-percentage-for-default-disk")
 	SettingNameUpgradeChecker                                           = SettingName("upgrade-checker")
 	SettingNameUpgradeResponderURL                                      = SettingName("upgrade-responder-url")
+	SettingNameManagerURL                                               = SettingName("manager-url")
 	SettingNameAllowCollectingLonghornUsage                             = SettingName("allow-collecting-longhorn-usage-metrics")
 	SettingNameCurrentLonghornVersion                                   = SettingName("current-longhorn-version")
 	SettingNameLatestLonghornVersion                                    = SettingName("latest-longhorn-version")
@@ -103,6 +104,7 @@ const (
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
+	SettingNameReplicaRebuildConcurrentSyncLimit                        = SettingName("replica-rebuild-concurrent-sync-limit")
 	SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit          = SettingName("concurrent-backing-image-replenish-per-node-limit")
 	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
 	SettingNameSystemManagedPodsImagePullPolicy                         = SettingName("system-managed-pods-image-pull-policy")
@@ -166,6 +168,7 @@ const (
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
+	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -196,6 +199,7 @@ var (
 		SettingNameStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker,
 		SettingNameUpgradeResponderURL,
+		SettingNameManagerURL,
 		SettingNameAllowCollectingLonghornUsage,
 		SettingNameCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion,
@@ -222,6 +226,7 @@ var (
 		SettingNameDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameReplicaRebuildConcurrentSyncLimit,
 		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy,
@@ -284,6 +289,7 @@ var (
 		SettingNameDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath,
+		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
 	}
 )
@@ -350,6 +356,7 @@ var (
 		SettingNameStorageReservedPercentageForDefaultDisk:                  SettingDefinitionStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker:                                           SettingDefinitionUpgradeChecker,
 		SettingNameUpgradeResponderURL:                                      SettingDefinitionUpgradeResponderURL,
+		SettingNameManagerURL:                                               SettingDefinitionManagerURL,
 		SettingNameAllowCollectingLonghornUsage:                             SettingDefinitionAllowCollectingLonghornUsageMetrics,
 		SettingNameCurrentLonghornVersion:                                   SettingDefinitionCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion:                                    SettingDefinitionLatestLonghornVersion,
@@ -376,6 +383,7 @@ var (
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameReplicaRebuildConcurrentSyncLimit:                        SettingDefinitionReplicaRebuildConcurrentSyncLimit,
 		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit:          SettingDefinitionConcurrentBackingImageCopyReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy:                         SettingDefinitionSystemManagedPodsImagePullPolicy,
@@ -437,6 +445,7 @@ var (
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
+		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
 	}
 
@@ -697,6 +706,17 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade",
+	}
+
+	SettingDefinitionManagerURL = SettingDefinition{
+		DisplayName:        "Manager URL",
+		Description:        "The external URL used to access the Longhorn Manager API. When set, this URL is returned in API responses (the actions and links fields) instead of the internal pod IP. This is useful when accessing the API through Ingress or Gateway API HTTPRoute. Format: scheme://host[:port] (for example, https://longhorn.example.com or https://longhorn.example.com:8443). Leave it empty to use the default behavior.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
 	}
 
 	SettingDefinitionAllowCollectingLonghornUsageMetrics = SettingDefinition{
@@ -1096,6 +1116,22 @@ var (
 		Default:            "5",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
+		},
+	}
+
+	SettingDefinitionReplicaRebuildConcurrentSyncLimit = SettingDefinition{
+		DisplayName: "Replica Rebuild Concurrent Sync Limit",
+		Description: "This setting controls the maximum number of file synchronization operations that can run concurrently during a single replica rebuild. \n\n" +
+			"Right now, it's for v1 data engine only.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"1\"}", longhorn.DataEngineTypeV1),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 5,
 		},
 	}
 
@@ -1651,7 +1687,7 @@ var (
 
 	SettingDefinitionV2DataEngine = SettingDefinition{
 		DisplayName: "V2 Data Engine",
-		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the experimental phase and should not be utilized in a production environment.\n\n" +
+		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the Technical Preview phase and should be explored extensively before being used in production environments.\n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
 			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the Storage Performance Development Kit (SPDK) target daemon running within each instance-manager pod. The the SPDK target daemon is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
 		Category:           SettingCategoryDangerZone,
@@ -1879,8 +1915,8 @@ var (
 		Type:               SettingTypeBool,
 		Required:           true,
 		ReadOnly:           false,
-		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"false\",%q:\"false\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionLogPath = SettingDefinition{
@@ -1892,6 +1928,17 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            DefaultLogDirectoryOnHost,
+	}
+
+	SettingDefinitionNodeDiskHealthMonitoring = SettingDefinition{
+		DisplayName:        "Node Disk Health Monitoring",
+		Description:        "Controls whether Longhorn monitors and records health information for node disks. When disabled, disk health checks and status updates are skipped.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionSnapshotHeavyTaskConcurrentLimit = SettingDefinition{
@@ -2662,6 +2709,11 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 			fallthrough
 		case SettingNameEndpointNetworkForRWXVolume:
 			if err := ValidateCNINetwork(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+
+		case SettingNameManagerURL:
+			if err := ValidateManagerURL(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
 

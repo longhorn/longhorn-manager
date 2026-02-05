@@ -25,28 +25,52 @@ import (
 
 // BackupStatusApplyConfiguration represents a declarative configuration of the BackupStatus type for use
 // with apply.
+//
+// BackupStatus defines the observed state of the Longhorn backup
 type BackupStatusApplyConfiguration struct {
-	OwnerID                *string                                  `json:"ownerID,omitempty"`
-	State                  *longhornv1beta2.BackupState             `json:"state,omitempty"`
-	Progress               *int                                     `json:"progress,omitempty"`
-	ReplicaAddress         *string                                  `json:"replicaAddress,omitempty"`
-	Error                  *string                                  `json:"error,omitempty"`
-	URL                    *string                                  `json:"url,omitempty"`
-	SnapshotName           *string                                  `json:"snapshotName,omitempty"`
-	SnapshotCreatedAt      *string                                  `json:"snapshotCreatedAt,omitempty"`
-	BackupCreatedAt        *string                                  `json:"backupCreatedAt,omitempty"`
-	Size                   *string                                  `json:"size,omitempty"`
-	Labels                 map[string]string                        `json:"labels,omitempty"`
-	Messages               map[string]string                        `json:"messages,omitempty"`
-	VolumeName             *string                                  `json:"volumeName,omitempty"`
-	VolumeSize             *string                                  `json:"volumeSize,omitempty"`
-	VolumeCreated          *string                                  `json:"volumeCreated,omitempty"`
-	VolumeBackingImageName *string                                  `json:"volumeBackingImageName,omitempty"`
-	LastSyncedAt           *v1.Time                                 `json:"lastSyncedAt,omitempty"`
-	CompressionMethod      *longhornv1beta2.BackupCompressionMethod `json:"compressionMethod,omitempty"`
-	NewlyUploadedDataSize  *string                                  `json:"newlyUploadDataSize,omitempty"`
-	ReUploadedDataSize     *string                                  `json:"reUploadedDataSize,omitempty"`
-	BackupTargetName       *string                                  `json:"backupTargetName,omitempty"`
+	// The node ID on which the controller is responsible to reconcile this backup CR.
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The backup creation state.
+	// Can be "", "InProgress", "Completed", "Error", "Unknown".
+	State *longhornv1beta2.BackupState `json:"state,omitempty"`
+	// The snapshot backup progress.
+	Progress *int `json:"progress,omitempty"`
+	// The address of the replica that runs snapshot backup.
+	ReplicaAddress *string `json:"replicaAddress,omitempty"`
+	// The error message when taking the snapshot backup.
+	Error *string `json:"error,omitempty"`
+	// The snapshot backup URL.
+	URL *string `json:"url,omitempty"`
+	// The snapshot name.
+	SnapshotName *string `json:"snapshotName,omitempty"`
+	// The snapshot creation time.
+	SnapshotCreatedAt *string `json:"snapshotCreatedAt,omitempty"`
+	// The snapshot backup upload finished time.
+	BackupCreatedAt *string `json:"backupCreatedAt,omitempty"`
+	// The snapshot size.
+	Size *string `json:"size,omitempty"`
+	// The labels of snapshot backup.
+	Labels map[string]string `json:"labels,omitempty"`
+	// The error messages when calling longhorn engine on listing or inspecting backups.
+	Messages map[string]string `json:"messages,omitempty"`
+	// The volume name.
+	VolumeName *string `json:"volumeName,omitempty"`
+	// The volume size.
+	VolumeSize *string `json:"volumeSize,omitempty"`
+	// The volume creation time.
+	VolumeCreated *string `json:"volumeCreated,omitempty"`
+	// The volume's backing image name.
+	VolumeBackingImageName *string `json:"volumeBackingImageName,omitempty"`
+	// The last time that the backup was synced with the remote backup target.
+	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
+	// Compression method
+	CompressionMethod *longhornv1beta2.BackupCompressionMethod `json:"compressionMethod,omitempty"`
+	// Size in bytes of newly uploaded data
+	NewlyUploadedDataSize *string `json:"newlyUploadDataSize,omitempty"`
+	// Size in bytes of reuploaded data
+	ReUploadedDataSize *string `json:"reUploadedDataSize,omitempty"`
+	// The backup target name.
+	BackupTargetName *string `json:"backupTargetName,omitempty"`
 }
 
 // BackupStatusApplyConfiguration constructs a declarative configuration of the BackupStatus type for use with

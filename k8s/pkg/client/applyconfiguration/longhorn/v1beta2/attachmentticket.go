@@ -25,11 +25,16 @@ import (
 // AttachmentTicketApplyConfiguration represents a declarative configuration of the AttachmentTicket type for use
 // with apply.
 type AttachmentTicketApplyConfiguration struct {
-	ID         *string                       `json:"id,omitempty"`
-	Type       *longhornv1beta2.AttacherType `json:"type,omitempty"`
-	NodeID     *string                       `json:"nodeID,omitempty"`
-	Parameters map[string]string             `json:"parameters,omitempty"`
-	Generation *int64                        `json:"generation,omitempty"`
+	// The unique ID of this attachment. Used to differentiate different attachments of the same volume.
+	ID   *string                       `json:"id,omitempty"`
+	Type *longhornv1beta2.AttacherType `json:"type,omitempty"`
+	// The node that this attachment is requesting
+	NodeID *string `json:"nodeID,omitempty"`
+	// Optional additional parameter for this attachment
+	Parameters map[string]string `json:"parameters,omitempty"`
+	// A sequence number representing a specific generation of the desired state.
+	// Populated by the system. Read-only.
+	Generation *int64 `json:"generation,omitempty"`
 }
 
 // AttachmentTicketApplyConfiguration constructs a declarative configuration of the AttachmentTicket type for use with

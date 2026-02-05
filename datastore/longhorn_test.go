@@ -28,7 +28,7 @@ func TestCreateReplica(t *testing.T) {
 	)
 
 	newTestDataStore := func(objects []runtime.Object) *DataStore {
-		lhClient := lhfake.NewSimpleClientset(objects...)
+		lhClient := lhfake.NewSimpleClientset(objects...) // nolint: staticcheck
 		informerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, 0)
 
 		replicaInformer := informerFactory.Longhorn().V1beta2().Replicas()

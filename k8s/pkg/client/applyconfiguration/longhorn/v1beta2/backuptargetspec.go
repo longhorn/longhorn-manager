@@ -24,11 +24,17 @@ import (
 
 // BackupTargetSpecApplyConfiguration represents a declarative configuration of the BackupTargetSpec type for use
 // with apply.
+//
+// BackupTargetSpec defines the desired state of the Longhorn backup target
 type BackupTargetSpecApplyConfiguration struct {
-	BackupTargetURL  *string      `json:"backupTargetURL,omitempty"`
-	CredentialSecret *string      `json:"credentialSecret,omitempty"`
-	PollInterval     *v1.Duration `json:"pollInterval,omitempty"`
-	SyncRequestedAt  *v1.Time     `json:"syncRequestedAt,omitempty"`
+	// The backup target URL.
+	BackupTargetURL *string `json:"backupTargetURL,omitempty"`
+	// The backup target credential secret.
+	CredentialSecret *string `json:"credentialSecret,omitempty"`
+	// The interval that the cluster needs to run sync with the backup target.
+	PollInterval *v1.Duration `json:"pollInterval,omitempty"`
+	// The time to request run sync the remote backup target.
+	SyncRequestedAt *v1.Time `json:"syncRequestedAt,omitempty"`
 }
 
 // BackupTargetSpecApplyConfiguration constructs a declarative configuration of the BackupTargetSpec type for use with

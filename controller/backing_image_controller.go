@@ -1258,7 +1258,15 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 				if !types.ErrorIsNotFound(err) {
 					return err
 				}
-				log.WithField("diskUUID", diskUUID).WithError(err).Warn("Disk is not ready hence backing image manager can not be created")
+				msg := fmt.Sprintf("Disk %v is not ready or does not exist. If the disk will not come back, remove it from the BackingImage spec to stop reconciliation attempts", diskUUID)
+				log.WithField("diskUUID", diskUUID).WithError(err).Warn(msg)
+				dataEngine := fileSpec.DataEngine
+				if dataEngine == "" {
+					dataEngine = bi.Spec.DataEngine
+				}
+				if err := bic.updateStatusWithFileInfo(bi, diskUUID, msg, "", longhorn.BackingImageStateUnknown, 0, dataEngine); err != nil {
+					return err
+				}
 				continue
 			}
 			requiredBIs[bi.Name] = bi.Status.UUID

@@ -337,6 +337,17 @@ func syncMountPointDirectory(targetPath string) error {
 	return nil
 }
 
+func checkBindMountFileAccessible(targetPath string) error {
+	d, openErr := os.OpenFile(targetPath, os.O_RDONLY|unix.O_NONBLOCK, 0750)
+	if openErr != nil {
+		return openErr
+	}
+	if closeErr := d.Close(); closeErr != nil {
+		logrus.WithError(closeErr).Warnf("Failed to close bind mount point %v", targetPath)
+	}
+	return nil
+}
+
 // ensureMountPoint evaluates whether a path is a valid mountPoint
 // in case the path does not exists it will create a path and return false
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
@@ -369,6 +380,64 @@ func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
 	return isMnt, err
 }
 
+// ensureBindMountPoint evaluates whether a path is a valid mount point for bind mount.
+// In case the path is not exist, a regular file will be created, and returns false.
+// In case the path exists, but is not an unmounted regular file, it will clean up the path and recreate a new regular file, and returns false.
+// In case the path is a healthy mount, nothing happens and returns true.
+func ensureBindMountPoint(path string, mounter mount.Interface) (bool, error) {
+	logrus.Infof("Trying to ensure bind mount point %v", path)
+
+	checkMountPointIsValid := func(path string, mounter mount.Interface) (isValid, isMounted bool, err error) {
+		// check the mount status first to avoid busy device blocking
+		isMounted, checkMountErr := mounter.IsMountPoint(path)
+		if os.IsNotExist(checkMountErr) {
+			return false, false, nil
+		}
+		if mount.IsCorruptedMnt(checkMountErr) {
+			return false, isMounted, nil
+		}
+		if checkMountErr != nil {
+			return false, isMounted, errors.Wrapf(checkMountErr, "failed to check mounting status of bind mount point %v", path)
+		}
+		if isMounted {
+			logrus.Infof("Bind mount point %v try opening to make sure it's healthy", path)
+			if err := checkBindMountFileAccessible(path); err != nil {
+				logrus.WithError(err).Warnf("Bind mount point %v is identified as corrupt", path)
+				return false, true, nil
+			}
+			return true, true, nil
+		}
+
+		// file is exist and is not mounted, check the file type
+		info, statErr := os.Lstat(path)
+		if statErr != nil {
+			return false, false, errors.Wrapf(statErr, "failed to check file type of bind mount point %v", path)
+		}
+		return info.Mode().IsRegular(), false, nil
+	}
+
+	isValidBindMountPoint, isMounted, checkErr := checkMountPointIsValid(path, mounter)
+	if checkErr != nil {
+		return isMounted, checkErr
+	} else if isValidBindMountPoint {
+		return isMounted, nil
+	}
+
+	// invalid mounted target
+	logrus.Infof("Recreating bind mount point %v", path)
+
+	// clean up the target mount point for recreation
+	if cleanupErr := unmountAndCleanupMountPoint(path, mounter); cleanupErr != nil {
+		return true, errors.Wrapf(cleanupErr, "failed to remove corrupt bind mount point at %s", path)
+	}
+
+	// create regular file for bind mount
+	if makeFileErr := makeFile(path); makeFileErr != nil {
+		return false, errors.Wrapf(makeFileErr, "failed to create regular file for bind mount at %s", path)
+	}
+	return false, nil
+}
+
 // ensureDirectory checks if a folder exists at the specified path.
 // If not, it creates the folder and returns true, otherwise returns false.
 // If the path exists but is not a folder, it returns an error.
@@ -392,6 +461,16 @@ func ensureDirectory(path string) (bool, error) {
 	return false, fmt.Errorf("path %v exists but is not a folder", path)
 }
 
+func lazyUnmount(path string, exec utilexec.Interface) (err error) {
+	lazyUnmountCmd := exec.Command("umount", "-l", path)
+	output, err := lazyUnmountCmd.CombinedOutput()
+	if isFileNotExistError(err) || isNotMountedError(err) {
+		logrus.WithError(err).Infof("No need for lazy unmount: not a mount point %v", path)
+		return nil
+	}
+	return errors.Wrapf(err, "failed to lazy unmount a mount point %v, output: %s", path, output)
+}
+
 func unmount(path string, mounter mount.Interface) (err error) {
 	forceUnmounter, ok := mounter.(mount.MounterForceUnmounter)
 	if ok {
@@ -403,18 +482,15 @@ func unmount(path string, mounter mount.Interface) (err error) {
 	}
 	if err == nil {
 		return nil
-	}
-
-	if strings.Contains(err.Error(), "not mounted") ||
-		strings.Contains(err.Error(), "no mount point specified") {
-		logrus.Infof("No need for unmount not a mount point %v", path)
+	} else if isFileNotExistError(err) || isNotMountedError(err) {
+		logrus.WithError(err).Infof("No need for unmount not a mount point %v", path)
 		return nil
 	}
-
-	return err
+	logrus.WithError(err).Warnf("Failed to unmount %v, attempting lazy unmount to release mount point", path)
+	return lazyUnmount(path, utilexec.New())
 }
 
-// unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
+// unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount point is removed
 func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
 	logrus.Infof("Trying to umount mount point %v", path)
@@ -423,8 +499,20 @@ func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 		return err
 	}
 
+	// ensure the file is removed even when it is a broken symbolic link
 	logrus.Infof("Trying to clean up mount point %v", path)
-	return mount.CleanupMountPoint(path, mounter, true)
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to stat mount point %v", path)
+	}
+	logrus.WithField("fileMode", info.Mode().String()).Debugf("Mount point %v exists, removing the file", path)
+	if err := os.Remove(path); err != nil {
+		return errors.Wrapf(err, "failed to remove mount point %v", path)
+	}
+	return nil
 }
 
 // isBlockDevice return true if volumePath file is a block device, false otherwise.
@@ -470,7 +558,7 @@ func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, er
 	return volStats, nil
 }
 
-// makeFile creates an empty file.
+// makeFile creates an empty regular file.
 // If pathname already exists, whether a file or directory, no error is returned.
 func makeFile(pathname string) error {
 	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
@@ -533,4 +621,23 @@ func parseNodeID(topology *csi.Topology) (string, error) {
 		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
 	}
 	return nodeId, nil
+}
+
+func isFileNotExistError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if os.IsNotExist(err) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such file")
+}
+
+func isNotMountedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "not mounted") ||
+		strings.Contains(err.Error(), "no mount point specified")
 }

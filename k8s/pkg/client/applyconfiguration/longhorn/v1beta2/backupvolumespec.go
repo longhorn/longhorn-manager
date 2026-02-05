@@ -24,10 +24,15 @@ import (
 
 // BackupVolumeSpecApplyConfiguration represents a declarative configuration of the BackupVolumeSpec type for use
 // with apply.
+//
+// BackupVolumeSpec defines the desired state of the Longhorn backup volume
 type BackupVolumeSpecApplyConfiguration struct {
-	BackupTargetName *string  `json:"backupTargetName,omitempty"`
-	SyncRequestedAt  *v1.Time `json:"syncRequestedAt,omitempty"`
-	VolumeName       *string  `json:"volumeName,omitempty"`
+	// The backup target name that the backup volume was synced.
+	BackupTargetName *string `json:"backupTargetName,omitempty"`
+	// The time to request run sync the remote backup volume.
+	SyncRequestedAt *v1.Time `json:"syncRequestedAt,omitempty"`
+	// The volume name that the backup volume was used to backup.
+	VolumeName *string `json:"volumeName,omitempty"`
 }
 
 // BackupVolumeSpecApplyConfiguration constructs a declarative configuration of the BackupVolumeSpec type for use with

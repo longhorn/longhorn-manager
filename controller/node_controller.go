@@ -415,6 +415,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	// Explicitly mark all disk on this node as not ready and not schedulable when
+	// node is not ready. This ensures auto-salvage is gated during node recovery.
+	// Ref: https://github.com/longhorn/longhorn/issues/12406
+	nc.markAllDisksNotReadyWhenNodeNotReady(node)
+
 	// Set any RWX leases to non-delinquent if owned by not-ready node.
 	// Usefulness of delinquent state has passed.
 	if err = nc.clearDelinquentLeasesIfNodeNotReady(node); err != nil {
@@ -658,6 +663,13 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo map[string]*monitor.CollectedDiskInfo) error {
 	nc.alignDiskSpecAndStatus(node)
 
+	monitorDiskHealth := true
+	if enabled, err := nc.ds.GetSettingAsBool(types.SettingNameNodeDiskHealthMonitoring); err != nil {
+		nc.logger.WithError(err).Warn("Failed to get node disk health monitoring setting, defaulting to enabled")
+	} else {
+		monitorDiskHealth = enabled
+	}
+
 	notReadyDiskInfoMap, readyDiskInfoMap := nc.findNotReadyAndReadyDiskMaps(node, collectedDataInfo)
 
 	for _, diskInfoMap := range notReadyDiskInfoMap {
@@ -665,8 +677,16 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 	}
 
 	for _, diskInfoMap := range readyDiskInfoMap {
-		nc.updateReadyDiskStatusReadyCondition(node, diskInfoMap)
+		nc.updateReadyDiskStatusReadyCondition(node, diskInfoMap, monitorDiskHealth)
 		nc.updateDiskStatusFileSystemType(node, diskInfoMap)
+	}
+
+	if !monitorDiskHealth {
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskStatus.HealthData = nil
+			diskStatus.HealthDataLastCollectedAt = metav1.Time{}
+			node.Status.DiskStatus[diskName] = diskStatus
+		}
 	}
 
 	return nc.updateDiskStatusSchedulableCondition(node)
@@ -802,7 +822,7 @@ func (nc *NodeController) updateNotReadyDiskStatusReadyCondition(node *longhorn.
 	}
 }
 
-func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Node, diskInfoMap map[string]*monitor.CollectedDiskInfo) {
+func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Node, diskInfoMap map[string]*monitor.CollectedDiskInfo, monitorDiskHealth bool) {
 	diskStatusMap := node.Status.DiskStatus
 
 	for diskName, info := range diskInfoMap {
@@ -820,9 +840,12 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			diskStatus.StorageMaximum = diskInfoMap[diskName].DiskStat.StorageMaximum
 			diskStatus.InstanceManagerName = diskInfoMap[diskName].InstanceManagerName
 
-			if len(info.HealthData) > 0 {
+			if monitorDiskHealth {
 				diskStatus.HealthData = info.HealthData
 				diskStatus.HealthDataLastCollectedAt = metav1.NewTime(info.HealthDataLastCollectedAt)
+			} else {
+				diskStatus.HealthData = nil
+				diskStatus.HealthDataLastCollectedAt = metav1.Time{}
 			}
 
 			diskStatusMap[diskName].Conditions = types.SetConditionAndRecord(diskStatusMap[diskName].Conditions,
@@ -1077,8 +1100,8 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				cleanupRequired := true
 
-				if im.Spec.Image == defaultInstanceManagerImage && im.Spec.DataEngine == dataEngine {
-					// Create default instance manager if needed.
+				if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
+					// Keep default instance manager or instance manager matching argument image (during rolling update)
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
 
@@ -1281,7 +1304,13 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 			handlingDiskFileCount--
 		}
 
-		logrus.Infof("Cleaning up the unused file in disk %v for backing image %v", diskUUID, bi.Name)
+		logrus.WithFields(logrus.Fields{
+			"minNumberOfCopies":     minNumberOfCopies,
+			"readyDiskFileCount":    readyDiskFileCount,
+			"handlingDiskFileCount": handlingDiskFileCount,
+			"failedDiskFileCount":   failedDiskFileCount,
+			"fileState":             fileStatus.State,
+		}).Infof("Cleaning up the unused file in disk %v for backing image %v", diskUUID, bi.Name)
 		delete(bi.Spec.DiskFileSpecMap, diskUUID)
 	}
 }
@@ -1975,6 +2004,47 @@ func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node, ma
 			nc.eventRecorder, node, corev1.EventTypeWarning)
 	}
 	return nodeReady
+}
+
+func (nc *NodeController) markAllDisksNotReadyWhenNodeNotReady(node *longhorn.Node) {
+	nodeReady := true
+	for _, con := range node.Status.Conditions {
+		if con.Type == longhorn.NodeConditionTypeReady {
+			nodeReady = con.Status == longhorn.ConditionStatusTrue
+			break
+		}
+	}
+
+	if nodeReady {
+		return
+	}
+
+	reason := string(longhorn.DiskConditionReasonNodeNotReady)
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		diskStatus.Conditions = types.SetConditionAndRecord(
+			diskStatus.Conditions,
+			longhorn.DiskConditionTypeReady,
+			longhorn.ConditionStatusFalse,
+			reason,
+			fmt.Sprintf(
+				"Waiting for disk %v (%v) on node %v to be ready",
+				diskName, diskStatus.DiskPath, node.Name,
+			),
+			nc.eventRecorder, node, corev1.EventTypeWarning)
+
+		diskStatus.Conditions = types.SetConditionAndRecord(
+			diskStatus.Conditions,
+			longhorn.DiskConditionTypeSchedulable,
+			longhorn.ConditionStatusFalse,
+			reason,
+			fmt.Sprintf(
+				"Waiting for disk %v (%v) on node %v to be schedulable",
+				diskName, diskStatus.DiskPath, node.Name,
+			),
+			nc.eventRecorder, node, corev1.EventTypeWarning)
+
+		node.Status.DiskStatus[diskName] = diskStatus
+	}
 }
 
 func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kubeNode *corev1.Node, nodeReady bool) bool {

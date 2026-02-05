@@ -24,11 +24,17 @@ import (
 
 // BackupTargetStatusApplyConfiguration represents a declarative configuration of the BackupTargetStatus type for use
 // with apply.
+//
+// BackupTargetStatus defines the observed state of the Longhorn backup target
 type BackupTargetStatusApplyConfiguration struct {
-	OwnerID      *string                       `json:"ownerID,omitempty"`
-	Available    *bool                         `json:"available,omitempty"`
-	Conditions   []ConditionApplyConfiguration `json:"conditions,omitempty"`
-	LastSyncedAt *v1.Time                      `json:"lastSyncedAt,omitempty"`
+	// The node ID on which the controller is responsible to reconcile this backup target CR.
+	OwnerID *string `json:"ownerID,omitempty"`
+	// Available indicates if the remote backup target is available or not.
+	Available *bool `json:"available,omitempty"`
+	// Records the reason on why the backup target is unavailable.
+	Conditions []ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// The last time that the controller synced with the remote backup target.
+	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
 }
 
 // BackupTargetStatusApplyConfiguration constructs a declarative configuration of the BackupTargetStatus type for use with

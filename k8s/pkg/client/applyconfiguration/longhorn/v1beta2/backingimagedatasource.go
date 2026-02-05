@@ -26,6 +26,8 @@ import (
 
 // BackingImageDataSourceApplyConfiguration represents a declarative configuration of the BackingImageDataSource type for use
 // with apply.
+//
+// BackingImageDataSource is where Longhorn stores backing image data source object.
 type BackingImageDataSourceApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func BackingImageDataSource(name, namespace string) *BackingImageDataSourceApply
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b BackingImageDataSourceApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

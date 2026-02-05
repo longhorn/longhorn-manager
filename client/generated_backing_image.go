@@ -36,6 +36,8 @@ type BackingImage struct {
 	SourceType string `json:"sourceType,omitempty" yaml:"source_type,omitempty"`
 
 	Uuid string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+
+	VirtualSize int64 `json:"virtualSize,omitempty" yaml:"virtual_size,omitempty"`
 }
 
 type BackingImageCollection struct {

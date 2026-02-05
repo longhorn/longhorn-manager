@@ -25,23 +25,42 @@ import (
 
 // BackupBackingImageStatusApplyConfiguration represents a declarative configuration of the BackupBackingImageStatus type for use
 // with apply.
+//
+// BackupBackingImageStatus defines the observed state of the Longhorn backing image backup
 type BackupBackingImageStatusApplyConfiguration struct {
-	BackingImage      *string                                  `json:"backingImage,omitempty"`
-	OwnerID           *string                                  `json:"ownerID,omitempty"`
-	Checksum          *string                                  `json:"checksum,omitempty"`
-	URL               *string                                  `json:"url,omitempty"`
-	Size              *int64                                   `json:"size,omitempty"`
-	Labels            map[string]string                        `json:"labels,omitempty"`
-	State             *longhornv1beta2.BackupState             `json:"state,omitempty"`
-	Progress          *int                                     `json:"progress,omitempty"`
-	Error             *string                                  `json:"error,omitempty"`
-	Messages          map[string]string                        `json:"messages,omitempty"`
-	ManagerAddress    *string                                  `json:"managerAddress,omitempty"`
-	BackupCreatedAt   *string                                  `json:"backupCreatedAt,omitempty"`
-	LastSyncedAt      *v1.Time                                 `json:"lastSyncedAt,omitempty"`
+	// The backing image name.
+	BackingImage *string `json:"backingImage,omitempty"`
+	// The node ID on which the controller is responsible to reconcile this CR.
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The checksum of the backing image.
+	Checksum *string `json:"checksum,omitempty"`
+	// The backing image backup URL.
+	URL *string `json:"url,omitempty"`
+	// The backing image size.
+	Size *int64 `json:"size,omitempty"`
+	// The labels of backing image backup.
+	Labels map[string]string `json:"labels,omitempty"`
+	// The backing image backup creation state.
+	// Can be "", "InProgress", "Completed", "Error", "Unknown".
+	State *longhornv1beta2.BackupState `json:"state,omitempty"`
+	// The backing image backup progress.
+	Progress *int `json:"progress,omitempty"`
+	// The error message when taking the backing image backup.
+	Error *string `json:"error,omitempty"`
+	// The error messages when listing or inspecting backing image backup.
+	Messages map[string]string `json:"messages,omitempty"`
+	// The address of the backing image manager that runs backing image backup.
+	ManagerAddress *string `json:"managerAddress,omitempty"`
+	// The backing image backup upload finished time.
+	BackupCreatedAt *string `json:"backupCreatedAt,omitempty"`
+	// The last time that the backing image backup was synced with the remote backup target.
+	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
+	// Compression method
 	CompressionMethod *longhornv1beta2.BackupCompressionMethod `json:"compressionMethod,omitempty"`
-	Secret            *string                                  `json:"secret,omitempty"`
-	SecretNamespace   *string                                  `json:"secretNamespace,omitempty"`
+	// Record the secret if this backup backing image is encrypted
+	Secret *string `json:"secret,omitempty"`
+	// Record the secret namespace if this backup backing image is encrypted
+	SecretNamespace *string `json:"secretNamespace,omitempty"`
 }
 
 // BackupBackingImageStatusApplyConfiguration constructs a declarative configuration of the BackupBackingImageStatus type for use with

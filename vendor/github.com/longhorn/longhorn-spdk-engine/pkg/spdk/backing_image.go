@@ -552,7 +552,7 @@ func (bi *BackingImage) prepareBackingImageSnapshot(spdkClient *spdkclient.Clien
 	if err != nil {
 		return errors.Wrapf(err, "failed to create NVMe initiator for head lvol %v", backingImageTempHeadName)
 	}
-	if _, err := headInitiator.StartNvmeTCPInitiator(podIP, strconv.Itoa(int(port)), true); err != nil {
+	if _, err := headInitiator.StartNvmeTCPInitiator(podIP, strconv.Itoa(int(port)), true, true); err != nil {
 		return errors.Wrapf(err, "failed to start NVMe initiator for head lvol %v", backingImageTempHeadName)
 	}
 	bi.log.Infof("Created NVMe initiator for head lvol %v", backingImageTempHeadName)
@@ -722,7 +722,7 @@ func (bi *BackingImage) prepareFromSync(targetFh *os.File, fromAddress, srcLvsUU
 	if err != nil {
 		return errors.Wrapf(err, "failed to create NVMe initiator for source backing image %v in lvsUUID %v with address %v", bi.Name, srcLvsUUID, exposedSnapshotLvolAddress)
 	}
-	if _, err := i.StartNvmeTCPInitiator(srcIP, strconv.Itoa(int(srcPort)), true); err != nil {
+	if _, err := i.StartNvmeTCPInitiator(srcIP, strconv.Itoa(int(srcPort)), true, true); err != nil {
 		return errors.Wrapf(err, "failed to start NVMe initiator for source backing image %v in lvsUUID %v with address %v", bi.Name, srcLvsUUID, exposedSnapshotLvolAddress)
 	}
 

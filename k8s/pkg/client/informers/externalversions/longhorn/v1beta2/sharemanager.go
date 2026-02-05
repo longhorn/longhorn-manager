@@ -57,7 +57,7 @@ func NewShareManagerInformer(client versioned.Interface, namespace string, resyn
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredShareManagerInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
@@ -82,7 +82,7 @@ func NewFilteredShareManagerInformer(client versioned.Interface, namespace strin
 				}
 				return client.LonghornV1beta2().ShareManagers(namespace).Watch(ctx, options)
 			},
-		},
+		}, client),
 		&apislonghornv1beta2.ShareManager{},
 		resyncPeriod,
 		indexers,

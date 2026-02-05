@@ -25,15 +25,24 @@ import (
 
 // SystemBackupStatusApplyConfiguration represents a declarative configuration of the SystemBackupStatus type for use
 // with apply.
+//
+// SystemBackupStatus defines the observed state of the Longhorn SystemBackup
 type SystemBackupStatusApplyConfiguration struct {
-	OwnerID      *string                            `json:"ownerID,omitempty"`
-	Version      *string                            `json:"version,omitempty"`
-	GitCommit    *string                            `json:"gitCommit,omitempty"`
-	ManagerImage *string                            `json:"managerImage,omitempty"`
-	State        *longhornv1beta2.SystemBackupState `json:"state,omitempty"`
-	Conditions   []ConditionApplyConfiguration      `json:"conditions,omitempty"`
-	CreatedAt    *v1.Time                           `json:"createdAt,omitempty"`
-	LastSyncedAt *v1.Time                           `json:"lastSyncedAt,omitempty"`
+	// The node ID of the responsible controller to reconcile this SystemBackup.
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The saved Longhorn version.
+	Version *string `json:"version,omitempty"`
+	// The saved Longhorn manager git commit.
+	GitCommit *string `json:"gitCommit,omitempty"`
+	// The saved manager image.
+	ManagerImage *string `json:"managerImage,omitempty"`
+	// The system backup state.
+	State      *longhornv1beta2.SystemBackupState `json:"state,omitempty"`
+	Conditions []ConditionApplyConfiguration      `json:"conditions,omitempty"`
+	// The system backup creation time.
+	CreatedAt *v1.Time `json:"createdAt,omitempty"`
+	// The last time that the system backup was synced into the cluster.
+	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
 }
 
 // SystemBackupStatusApplyConfiguration constructs a declarative configuration of the SystemBackupStatus type for use with

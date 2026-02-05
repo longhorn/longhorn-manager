@@ -26,6 +26,8 @@ import (
 
 // EngineApplyConfiguration represents a declarative configuration of the Engine type for use
 // with apply.
+//
+// Engine is where Longhorn stores engine object.
 type EngineApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func Engine(name, namespace string) *EngineApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b EngineApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

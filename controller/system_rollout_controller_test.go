@@ -983,9 +983,9 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 
 		tc.initTestCase()
 
-		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewSimpleClientset()
-		extensionsClient := apiextensionsfake.NewSimpleClientset()
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 		extensionsInformerFactory := apiextensionsinformers.NewSharedInformerFactory(extensionsClient, controller.NoResyncPeriodFunc())
 

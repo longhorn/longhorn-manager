@@ -18,6 +18,7 @@ import (
 
 	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
 
+	"github.com/longhorn/go-common-libs/multierr"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -236,6 +237,13 @@ func (m *DiskMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineTyp
 func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
+	monitorDiskHealth := true
+	if enabled, err := m.ds.GetSettingAsBool(types.SettingNameNodeDiskHealthMonitoring); err != nil {
+		m.logger.WithError(err).Warn("Failed to get node disk health monitoring setting, defaulting to enabled")
+	} else {
+		monitorDiskHealth = enabled
+	}
+
 	diskServiceClients := m.newDiskServiceClients()
 	defer func() {
 		m.closeDiskServiceClients(diskServiceClients)
@@ -255,39 +263,40 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		}
 
 		instanceManagerName := ""
-		errMsg := ""
+		errs := multierr.NewMultiError()
 		errReason := ""
 
 		if diskServiceClient == nil {
 			if types.IsDataEngineV2(dataEngine) {
-				errMsg = fmt.Sprintf("Disk %v (%v) on node %v is not ready: data engine is disabled", diskName, disk.Path, node.Name)
+				errs.Append("errors", fmt.Errorf("data engine is disabled"))
 				errReason = string(longhorn.DiskConditionReasonDiskServiceUnreachable)
 			} else {
 				// TODO: disk service is currently not used by filesystem-type disk for v1 data engine.
 				if im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine); err != nil {
-					errMsg = fmt.Sprintf("Disk %v (%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, err.Error())
+					errs.Append("errors", err)
 					errReason = string(longhorn.DiskConditionReasonDiskServiceUnreachable)
 				} else {
 					instanceManagerName = im.Name
 				}
 			}
 		} else if diskServiceClient.err != nil {
-			errMsg = fmt.Sprintf("Disk %v (%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, diskServiceClient.err.Error())
+			errs.Append("errors", diskServiceClient.err)
 			errReason = string(longhorn.DiskConditionReasonDiskServiceUnreachable)
 		} else {
 			instanceManagerName = diskServiceClient.c.GetInstanceManagerName()
 		}
 
 		diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
-			orphanedReplicaDataStores, instanceManagerName, errReason, errMsg)
+			orphanedReplicaDataStores, instanceManagerName, errReason, errs.Error())
 
 		diskConfig, err := m.getDiskConfigHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
 		if err != nil {
 			if !types.ErrorIsNotFound(err) {
+				errs.Append("errors", errors.Wrap(err, "failed to get disk config"))
+
 				diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
 					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
-					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to get disk config: error: %v",
-						diskName, disk.Path, node.Name, err))
+					fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 				continue
 			}
 
@@ -309,28 +318,31 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			//   Create a bdev lvstore
 			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), diskServiceClient, m.ds)
 			if err != nil {
+				errs.Append("errors", errors.Wrap(err, "failed to generate disk config"))
+
 				diskInfoMap[diskName] = NewDiskInfo(diskName, diskUUID, disk.Path, diskDriver, nodeOrDiskEvicted, nil,
 					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
-					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v",
-						diskName, disk.Path, node.Name, err))
+					fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 				continue
 			}
 		}
 
 		if diskConfig.State != string(spdkdisk.DiskStateReady) {
+			errs.Append("errors", fmt.Errorf("disk is not in ready state, current state: %v", diskConfig.State))
+
 			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
 				orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
-				fmt.Sprintf("Disk %v(%v) on node %v is not ready: current state: %v",
-					diskName, disk.Path, node.Name, diskConfig.State))
+				fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 			continue
 		}
 
 		stat, err := m.getDiskStatHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
 		if err != nil {
+			errs.Append("errors", errors.Wrap(err, "failed to get disk stat"))
+
 			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
 				orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
-				fmt.Sprintf("Disk %v(%v) on node %v is not ready: Get disk information error: %v",
-					diskName, node.Spec.Disks[diskName].Path, node.Name, err))
+				fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 			continue
 		}
 
@@ -351,15 +363,20 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		if node.Status.DiskStatus != nil {
 			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
+				// Preserve existing health data to avoid losing it between collection intervals
+				diskInfoMap[diskName].HealthData = diskStatus.HealthData
 				diskInfoMap[diskName].HealthDataLastCollectedAt = diskStatus.HealthDataLastCollectedAt.Time
 			}
 		}
 
-		healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
-		if err != nil {
-			m.logger.WithError(err).Warnf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
-		} else if healthData != nil {
-			diskInfoMap[diskName].HealthData = healthData
+		if monitorDiskHealth {
+			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
+			if err != nil {
+				m.logger.WithError(err).Debugf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
+			} else if healthData != nil {
+				diskInfoMap[diskName].HealthData = healthData
+			}
+
 			diskInfoMap[diskName].HealthDataLastCollectedAt = collectedAt
 		}
 	}

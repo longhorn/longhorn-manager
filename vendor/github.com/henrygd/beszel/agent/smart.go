@@ -57,6 +57,11 @@ var errNoValidSmartData = fmt.Errorf("no valid SMART data found") // Error for m
 
 // Refresh updates SMART data for all known devices
 func (sm *SmartManager) Refresh(forceScan bool) error {
+	return sm.RefreshDevice(forceScan, "")
+}
+
+// RefreshDevice updates SMART data for target device. If target is empty, refreshes all devices.
+func (sm *SmartManager) RefreshDevice(forceScan bool, target string) error {
 	sm.refreshMutex.Lock()
 	defer sm.refreshMutex.Unlock()
 
@@ -65,7 +70,17 @@ func (sm *SmartManager) Refresh(forceScan bool) error {
 		slog.Debug("smartctl scan failed", "err", scanErr)
 	}
 
-	devices := sm.devicesSnapshot()
+	var devices []*DeviceInfo
+	if target == "" {
+		devices = sm.devicesSnapshot()
+	} else {
+		for _, device := range sm.devicesSnapshot() {
+			if device.Name == target {
+				devices = append(devices, device)
+			}
+		}
+	}
+
 	var collectErr error
 	for _, deviceInfo := range devices {
 		if deviceInfo == nil {

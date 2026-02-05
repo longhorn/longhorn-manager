@@ -24,9 +24,12 @@ import (
 
 // InstanceManagerStatusApplyConfiguration represents a declarative configuration of the InstanceManagerStatus type for use
 // with apply.
+//
+// InstanceManagerStatus defines the observed state of the Longhorn instance manager
 type InstanceManagerStatusApplyConfiguration struct {
 	OwnerID            *string                                             `json:"ownerID,omitempty"`
 	CurrentState       *longhornv1beta2.InstanceManagerState               `json:"currentState,omitempty"`
+	Conditions         []ConditionApplyConfiguration                       `json:"conditions,omitempty"`
 	InstanceEngines    map[string]InstanceProcessApplyConfiguration        `json:"instanceEngines,omitempty"`
 	InstanceReplicas   map[string]InstanceProcessApplyConfiguration        `json:"instanceReplicas,omitempty"`
 	BackingImages      map[string]BackingImageV2CopyInfoApplyConfiguration `json:"backingImages,omitempty"`
@@ -57,6 +60,19 @@ func (b *InstanceManagerStatusApplyConfiguration) WithOwnerID(value string) *Ins
 // If called multiple times, the CurrentState field is set to the value of the last call.
 func (b *InstanceManagerStatusApplyConfiguration) WithCurrentState(value longhornv1beta2.InstanceManagerState) *InstanceManagerStatusApplyConfiguration {
 	b.CurrentState = &value
+	return b
+}
+
+// WithConditions adds the given value to the Conditions field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Conditions field.
+func (b *InstanceManagerStatusApplyConfiguration) WithConditions(values ...*ConditionApplyConfiguration) *InstanceManagerStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithConditions")
+		}
+		b.Conditions = append(b.Conditions, *values[i])
+	}
 	return b
 }
 

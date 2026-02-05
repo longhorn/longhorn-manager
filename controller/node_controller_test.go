@@ -117,9 +117,9 @@ var _ = Suite(&NodeControllerSuite{})
 // This is setting up the NodeControllerSuite datastructure as a fixture. It is
 // executed once before each test
 func (s *NodeControllerSuite) SetUpTest(c *C) {
-	s.kubeClient = fake.NewSimpleClientset()
-	s.lhClient = lhfake.NewSimpleClientset()
-	s.extensionsClient = apiextensionsfake.NewSimpleClientset()
+	s.kubeClient = fake.NewSimpleClientset()                    // nolint: staticcheck
+	s.lhClient = lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	s.extensionsClient = apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 	s.informerFactories = util.NewInformerFactories(TestNamespace, s.kubeClient, s.lhClient, controller.NoResyncPeriodFunc())
 
@@ -1361,10 +1361,20 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 				Reason:  "Schedulable",
 				Message: "",
 			},
-			"": {
+			"disk-wait-ready": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be ready",
+			},
+			"disk-wait-schedulable": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be schedulable",
+			},
+			"disk-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Disk fsid(/var/lib/longhorn) on node test-node-name-1 is ready",
 			},
 			"node1-not-ready": {
 				Type:    "Warning",
@@ -1450,10 +1460,20 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 				Reason:  "Schedulable",
 				Message: "",
 			},
-			"": {
+			"disk-wait-ready": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be ready",
+			},
+			"disk-wait-schedulable": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be schedulable",
+			},
+			"disk-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Disk fsid(/var/lib/longhorn) on node test-node-name-1 is ready",
 			},
 			"node1-disk-pressure": {
 				Type:    "Warning",
@@ -1539,10 +1559,20 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 				Reason:  "Schedulable",
 				Message: "",
 			},
-			"": {
+			"disk-wait-ready": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be ready",
+			},
+			"disk-wait-schedulable": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be schedulable",
+			},
+			"disk-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Disk fsid(/var/lib/longhorn) on node test-node-name-1 is ready",
 			},
 			"node1-memory-pressure": {
 				Type:    "Warning",
@@ -1628,10 +1658,20 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 				Reason:  "Schedulable",
 				Message: "",
 			},
-			"": {
+			"disk-wait-ready": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be ready",
+			},
+			"disk-wait-schedulable": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be schedulable",
+			},
+			"disk-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Disk fsid(/var/lib/longhorn) on node test-node-name-1 is ready",
 			},
 			"node1-pid-pressure": {
 				Type:    "Warning",
@@ -1717,10 +1757,20 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 				Reason:  "Schedulable",
 				Message: "",
 			},
-			"": {
+			"disk-wait-ready": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be ready",
+			},
+			"disk-wait-schedulable": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
+				Message: "Waiting for disk fsid (/var/lib/longhorn) on node test-node-name-1 to be schedulable",
+			},
+			"disk-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Disk fsid(/var/lib/longhorn) on node test-node-name-1 is ready",
 			},
 			"node1-network-pressure": {
 				Type:    "Warning",

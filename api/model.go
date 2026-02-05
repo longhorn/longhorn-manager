@@ -72,8 +72,9 @@ type Volume struct {
 	NodeSelector         []string                      `json:"nodeSelector"`
 	RecurringJobSelector []longhorn.VolumeRecurringJob `json:"recurringJobSelector"`
 
-	NumberOfReplicas   int                         `json:"numberOfReplicas"`
-	ReplicaAutoBalance longhorn.ReplicaAutoBalance `json:"replicaAutoBalance"`
+	NumberOfReplicas           int                         `json:"numberOfReplicas"`
+	ReplicaAutoBalance         longhorn.ReplicaAutoBalance `json:"replicaAutoBalance"`
+	RebuildConcurrentSyncLimit int                         `json:"rebuildConcurrentSyncLimit"`
 
 	Conditions       map[string]longhorn.Condition `json:"conditions"`
 	KubernetesStatus longhorn.KubernetesStatus     `json:"kubernetesStatus"`
@@ -357,6 +358,10 @@ type UpdateReplicaAutoBalanceInput struct {
 	ReplicaAutoBalance string `json:"replicaAutoBalance"`
 }
 
+type UpdateRebuildConcurrentSyncLimitInput struct {
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit"`
+}
+
 type UpdateDataLocalityInput struct {
 	DataLocality string `json:"dataLocality"`
 }
@@ -597,12 +602,12 @@ type PurgeStatus struct {
 
 type RebuildStatus struct {
 	client.Resource
-	Error        string `json:"error"`
-	IsRebuilding bool   `json:"isRebuilding"`
-	Progress     int    `json:"progress"`
-	Replica      string `json:"replica"`
-	State        string `json:"state"`
-	FromReplica  string `json:"fromReplica"`
+	Error           string   `json:"error"`
+	IsRebuilding    bool     `json:"isRebuilding"`
+	Progress        int      `json:"progress"`
+	Replica         string   `json:"replica"`
+	State           string   `json:"state"`
+	FromReplicaList []string `json:"fromReplicaList"`
 }
 
 type InstanceManager struct {
@@ -694,6 +699,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskUpdate", longhorn.DiskSpec{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
 	schemas.AddType("UpdateReplicaAutoBalanceInput", UpdateReplicaAutoBalanceInput{})
+	schemas.AddType("UpdateRebuildConcurrentSyncLimitInput", UpdateRebuildConcurrentSyncLimitInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("UpdateSnapshotDataIntegrityInput", UpdateSnapshotDataIntegrityInput{})
@@ -1112,6 +1118,10 @@ func volumeSchema(volume *client.Schema) {
 			Input: "ReplicaAutoBalance",
 		},
 
+		"updateRebuildConcurrentSyncLimit": {
+			Input: "UpdateRebuildConcurrentSyncLimitInput",
+		},
+
 		"updateDataLocality": {
 			Input: "UpdateDataLocalityInput",
 		},
@@ -1305,6 +1315,11 @@ func volumeSchema(volume *client.Schema) {
 	replicaDiskSoftAntiAffinity.Create = true
 	replicaDiskSoftAntiAffinity.Default = longhorn.ReplicaDiskSoftAntiAffinityDefault
 	volume.ResourceFields["replicaDiskSoftAntiAffinity"] = replicaDiskSoftAntiAffinity
+
+	rebuildConcurrentSyncLimit := volume.ResourceFields["rebuildConcurrentSyncLimit"]
+	rebuildConcurrentSyncLimit.Create = true
+	rebuildConcurrentSyncLimit.Default = 0
+	volume.ResourceFields["rebuildConcurrentSyncLimit"] = rebuildConcurrentSyncLimit
 
 	dataEngine := volume.ResourceFields["dataEngine"]
 	dataEngine.Required = true
@@ -1547,15 +1562,20 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		if rebuildStatus != nil {
 			replicas := util.GetSortedKeysFromMap(rebuildStatus)
 			for _, replica := range replicas {
-				rebuildStatuses = append(rebuildStatuses, RebuildStatus{
-					Resource:     client.Resource{},
-					Replica:      datastore.ReplicaAddressToReplicaName(replica, vrs),
-					Error:        rebuildStatus[replica].Error,
-					IsRebuilding: rebuildStatus[replica].IsRebuilding,
-					Progress:     rebuildStatus[replica].Progress,
-					State:        rebuildStatus[replica].State,
-					FromReplica:  datastore.ReplicaAddressToReplicaName(rebuildStatus[replica].FromReplicaAddress, vrs),
-				})
+				status := RebuildStatus{
+					Resource:        client.Resource{},
+					Replica:         datastore.ReplicaAddressToReplicaName(replica, vrs),
+					Error:           rebuildStatus[replica].Error,
+					IsRebuilding:    rebuildStatus[replica].IsRebuilding,
+					Progress:        rebuildStatus[replica].Progress,
+					State:           rebuildStatus[replica].State,
+					FromReplicaList: datastore.ReplicaAddressListToReplicaNameList(rebuildStatus[replica].FromReplicaAddressList, vrs),
+				}
+				// For backward compatibility
+				if len(rebuildStatus[replica].FromReplicaAddressList) == 0 && rebuildStatus[replica].FromReplicaAddress != "" {
+					status.FromReplicaList = []string{datastore.ReplicaAddressToReplicaName(rebuildStatus[replica].FromReplicaAddress, vrs)}
+				}
+				rebuildStatuses = append(rebuildStatuses, status)
 			}
 		}
 	}
@@ -1651,6 +1671,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		CloneMode:                       v.Spec.CloneMode,
 		NumberOfReplicas:                v.Spec.NumberOfReplicas,
 		ReplicaAutoBalance:              v.Spec.ReplicaAutoBalance,
+		RebuildConcurrentSyncLimit:      v.Spec.RebuildConcurrentSyncLimit,
 		DataLocality:                    v.Spec.DataLocality,
 		SnapshotDataIntegrity:           v.Spec.SnapshotDataIntegrity,
 		SnapshotMaxCount:                v.Spec.SnapshotMaxCount,
@@ -1738,6 +1759,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateAccessMode"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["updateRebuildConcurrentSyncLimit"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateSnapshotMaxCount"] = struct{}{}
@@ -1775,6 +1797,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaCount"] = struct{}{}
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["updateRebuildConcurrentSyncLimit"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateSnapshotMaxCount"] = struct{}{}

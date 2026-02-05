@@ -24,20 +24,35 @@ import (
 
 // BackupVolumeStatusApplyConfiguration represents a declarative configuration of the BackupVolumeStatus type for use
 // with apply.
+//
+// BackupVolumeStatus defines the observed state of the Longhorn backup volume
 type BackupVolumeStatusApplyConfiguration struct {
-	OwnerID              *string           `json:"ownerID,omitempty"`
-	LastModificationTime *v1.Time          `json:"lastModificationTime,omitempty"`
-	Size                 *string           `json:"size,omitempty"`
-	Labels               map[string]string `json:"labels,omitempty"`
-	CreatedAt            *string           `json:"createdAt,omitempty"`
-	LastBackupName       *string           `json:"lastBackupName,omitempty"`
-	LastBackupAt         *string           `json:"lastBackupAt,omitempty"`
-	DataStored           *string           `json:"dataStored,omitempty"`
-	Messages             map[string]string `json:"messages,omitempty"`
-	BackingImageName     *string           `json:"backingImageName,omitempty"`
-	BackingImageChecksum *string           `json:"backingImageChecksum,omitempty"`
-	StorageClassName     *string           `json:"storageClassName,omitempty"`
-	LastSyncedAt         *v1.Time          `json:"lastSyncedAt,omitempty"`
+	// The node ID on which the controller is responsible to reconcile this backup volume CR.
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The backup volume config last modification time.
+	LastModificationTime *v1.Time `json:"lastModificationTime,omitempty"`
+	// The backup volume size.
+	Size *string `json:"size,omitempty"`
+	// The backup volume labels.
+	Labels map[string]string `json:"labels,omitempty"`
+	// The backup volume creation time.
+	CreatedAt *string `json:"createdAt,omitempty"`
+	// The latest volume backup name.
+	LastBackupName *string `json:"lastBackupName,omitempty"`
+	// The latest volume backup time.
+	LastBackupAt *string `json:"lastBackupAt,omitempty"`
+	// The backup volume block count.
+	DataStored *string `json:"dataStored,omitempty"`
+	// The error messages when call longhorn engine on list or inspect backup volumes.
+	Messages map[string]string `json:"messages,omitempty"`
+	// The backing image name.
+	BackingImageName *string `json:"backingImageName,omitempty"`
+	// the backing image checksum.
+	BackingImageChecksum *string `json:"backingImageChecksum,omitempty"`
+	// the storage class name of pv/pvc binding with the volume.
+	StorageClassName *string `json:"storageClassName,omitempty"`
+	// The last time that the backup volume was synced into the cluster.
+	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
 }
 
 // BackupVolumeStatusApplyConfiguration constructs a declarative configuration of the BackupVolumeStatus type for use with

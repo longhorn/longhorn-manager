@@ -24,6 +24,8 @@ import (
 
 // EngineImageStatusApplyConfiguration represents a declarative configuration of the EngineImageStatus type for use
 // with apply.
+//
+// EngineImageStatus defines the observed state of the Longhorn engine image
 type EngineImageStatusApplyConfiguration struct {
 	OwnerID           *string                           `json:"ownerID,omitempty"`
 	State             *longhornv1beta2.EngineImageState `json:"state,omitempty"`

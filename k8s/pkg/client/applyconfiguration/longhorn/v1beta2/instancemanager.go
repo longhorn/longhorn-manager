@@ -26,6 +26,8 @@ import (
 
 // InstanceManagerApplyConfiguration represents a declarative configuration of the InstanceManager type for use
 // with apply.
+//
+// InstanceManager is where Longhorn stores instance manager object.
 type InstanceManagerApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func InstanceManager(name, namespace string) *InstanceManagerApplyConfiguration 
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b InstanceManagerApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

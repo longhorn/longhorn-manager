@@ -24,9 +24,14 @@ import (
 
 // SupportBundleStatusApplyConfiguration represents a declarative configuration of the SupportBundleStatus type for use
 // with apply.
+//
+// SupportBundleStatus defines the observed state of the Longhorn SupportBundle
 type SupportBundleStatusApplyConfiguration struct {
-	OwnerID    *string                             `json:"ownerID,omitempty"`
-	Image      *string                             `json:"image,omitempty"`
+	// The current responsible controller node ID
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The support bundle manager image
+	Image *string `json:"image,omitempty"`
+	// The support bundle manager IP
 	IP         *string                             `json:"managerIP,omitempty"`
 	State      *longhornv1beta2.SupportBundleState `json:"state,omitempty"`
 	Progress   *int                                `json:"progress,omitempty"`

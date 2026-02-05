@@ -388,7 +388,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return
 		}
 
-		if bc.backupInFinalState(backup) && (!backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "") {
+		// Delete the backup volume attachment ticket after the backup status is set to the final state.
+		if bc.backupInFinalState(existingBackup) && (!existingBackup.Status.LastSyncedAt.IsZero() || existingBackup.Spec.SnapshotName == "") {
 			err = bc.handleAttachmentTicketDeletion(backup, canonicalBackupVolumeName)
 		}
 		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
@@ -802,7 +803,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}

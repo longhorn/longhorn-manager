@@ -26,6 +26,8 @@ import (
 
 // VolumeApplyConfiguration represents a declarative configuration of the Volume type for use
 // with apply.
+//
+// Volume is where Longhorn stores volume object.
 type VolumeApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func Volume(name, namespace string) *VolumeApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b VolumeApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

@@ -243,16 +243,24 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
-func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
+func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter, dataEngine longhorn.DataEngineType) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
 	var instanceManager *longhorn.InstanceManager
 	errs := multierr.NewMultiError()
-	dataEngines := ds.GetDataEngines()
-	for dataEngine := range dataEngines {
-		instanceManager, err = ds.GetRunningInstanceManagerByNodeRO(nodeID, dataEngine)
-		if err == nil {
-			break
+
+	if dataEngine == longhorn.DataEngineTypeAll {
+		dataEngines := ds.GetDataEngines()
+		for dataEngine := range dataEngines {
+			instanceManager, err = ds.GetRunningInstanceManagerByNodeRO(nodeID, dataEngine)
+			if err == nil {
+				break
+			}
+			errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
 		}
-		errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
+	} else {
+		instanceManager, err = ds.GetRunningInstanceManagerByNodeRO(nodeID, dataEngine)
+		if err != nil {
+			errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
+		}
 	}
 	if instanceManager == nil {
 		return nil, nil, fmt.Errorf("failed to find a running instance manager for node %v: %v", nodeID, errs.Error())
@@ -450,12 +458,23 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		return nil
 	}
 
-	info, err := btc.getInfoFromBackupStore(backupTarget)
+	// Initialize a backup target client
+	// The request can be executed by any instance manager since it is to get info from backupstore regardless of data engine.
+	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter, longhorn.DataEngineTypeAll)
+	if err != nil {
+		return errors.Wrap(err, "failed to init backup target clients")
+	}
+	defer engineClientProxy.Close()
+
+	// Use a minimal, low-cost system-backup listing to determine backup target
+	// availability and update status first, so the controller can avoid triggering
+	// an expensive full S3 synchronization in the same reconcile cycle.
+	_, err = backupTargetClient.ListSystemBackup()
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
-			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
+			longhorn.BackupTargetConditionReasonUnavailable, errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error())
 		log.WithError(err).Error("Failed to get info from backup store")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
@@ -472,19 +491,20 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 	syncTimeRequired = true // Errors beyond this point are NOT backup target related.
 
-	if err = btc.syncBackupVolume(backupTarget, info.backupStoreBackupVolumeNames, clusterVolumeBVMap, syncTime, log); err != nil {
+	if err = btc.syncBackupVolume(backupTarget, backupTargetClient, clusterVolumeBVMap, syncTime, log); err != nil {
 		return err
 	}
 
-	if err = btc.syncBackupBackingImage(backupTarget, info.backupStoreBackingImageNames, syncTime, log); err != nil {
+	if err = btc.syncBackupBackingImage(backupTarget, backupTargetClient, syncTime, log); err != nil {
 		return err
 	}
 
 	if backupTarget.Name == types.DefaultBackupTargetName {
-		if err = btc.syncSystemBackup(backupTarget, info.backupStoreSystemBackups, log); err != nil {
+		if err = btc.syncSystemBackup(backupTarget, backupTargetClient, log); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -508,7 +528,8 @@ func (btc *BackupTargetController) cleanUpAllBackupRelatedResources(backupTarget
 
 func (btc *BackupTargetController) cleanUpAllMounts(backupTarget *longhorn.BackupTarget) (err error) {
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
-	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter)
+	// The request can be executed by any instance manager since it is to clean up mount points.
+	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter, longhorn.DataEngineTypeAll)
 	if err != nil {
 		return err
 	}
@@ -520,43 +541,6 @@ func (btc *BackupTargetController) cleanUpAllMounts(backupTarget *longhorn.Backu
 	// clean mount points in longhorn-manager
 	err = backupTargetClient.BackupCleanUpAllMounts()
 	return err
-}
-
-type backupStoreInfo struct {
-	backupStoreBackupVolumeNames []string
-	backupStoreBackingImageNames []string
-	backupStoreSystemBackups     systembackupstore.SystemBackups
-}
-
-func (btc *BackupTargetController) getInfoFromBackupStore(backupTarget *longhorn.BackupTarget) (info backupStoreInfo, err error) {
-	log := getLoggerForBackupTarget(btc.logger, backupTarget)
-
-	// Initialize a backup target client
-	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter)
-	if err != nil {
-		return backupStoreInfo{}, errors.Wrap(err, "failed to init backup target clients")
-	}
-	defer engineClientProxy.Close()
-
-	// Get required information using backup target client.
-	// Get SystemBackups first to update the backup target to `available` while minimizing requests to S3.
-	info.backupStoreSystemBackups, err = backupTargetClient.ListSystemBackup()
-	if err != nil {
-		return backupStoreInfo{}, errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL)
-	}
-	if !backupTarget.Status.Available {
-		return info, nil
-	}
-	info.backupStoreBackupVolumeNames, err = backupTargetClient.BackupVolumeNameList()
-	if err != nil {
-		return backupStoreInfo{}, errors.Wrapf(err, "failed to list BackupVolumes in %v", backupTargetClient.URL)
-	}
-	info.backupStoreBackingImageNames, err = backupTargetClient.BackupBackingImageNameList()
-	if err != nil {
-		return backupStoreInfo{}, errors.Wrapf(err, "failed to list backup backing images in %v", backupTargetClient.URL)
-	}
-
-	return info, nil
 }
 
 func (btc *BackupTargetController) getClusterBVsDuplicatedBVs(backupTarget *longhorn.BackupTarget) (map[string]*longhorn.BackupVolume, sets.Set[string], error) {
@@ -602,12 +586,17 @@ func (btc *BackupTargetController) getClusterBVsDuplicatedBVs(backupTarget *long
 	return volumeBVMap, duplicateBackupVolumeSet, nil
 }
 
-func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.BackupTarget, backupStoreBackupVolumeNames []string, clusterVolumeBVMap map[string]*longhorn.BackupVolume, syncTime metav1.Time, log logrus.FieldLogger) error {
-	backupStoreBackupVolumes := sets.New[string](backupStoreBackupVolumeNames...)
+func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, clusterVolumeBVMap map[string]*longhorn.BackupVolume, syncTime metav1.Time, log logrus.FieldLogger) error {
 	clusterBackupVolumesSet := sets.New[string]()
 	for _, bv := range clusterVolumeBVMap {
 		clusterBackupVolumesSet.Insert(bv.Spec.VolumeName)
 	}
+
+	backupStoreBackupVolumeNames, err := backupTargetClient.BackupVolumeNameList()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backup volumes in %v", backupTargetClient.URL)
+	}
+	backupStoreBackupVolumes := sets.New[string](backupStoreBackupVolumeNames...)
 
 	// TODO: add a unit test
 	// Get a list of BackupVolumes that *are* in the backup target and *aren't* in the cluster
@@ -735,9 +724,7 @@ func (btc *BackupTargetController) cleanupDuplicateBackupVolumeForBackupTarget(b
 	return nil
 }
 
-func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn.BackupTarget, backupStoreBackingImageNames []string, syncTime metav1.Time, log logrus.FieldLogger) error {
-	backupStoreBackupBackingImages := sets.New[string](backupStoreBackingImageNames...)
-
+func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, syncTime metav1.Time, log logrus.FieldLogger) error {
 	// Get a list of all the BackupVolumes that exist as custom resources in the cluster
 	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImagesWithBackupTargetNameRO(backupTarget.Name)
 	if err != nil {
@@ -750,6 +737,12 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn
 		clusterBackupBackingImagesSet.Insert(bbi.Spec.BackingImage)
 		clusterBackingImageBBIMap[bbi.Spec.BackingImage] = bbi
 	}
+
+	backupStoreBackingImageNames, err := backupTargetClient.BackupBackingImageNameList()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backup backing images in %v", backupTargetClient.URL)
+	}
+	backupStoreBackupBackingImages := sets.New[string](backupStoreBackingImageNames...)
 
 	backupBackingImagesToPull := backupStoreBackupBackingImages.Difference(clusterBackupBackingImagesSet)
 	if count := backupBackingImagesToPull.Len(); count > 0 {
@@ -801,7 +794,7 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn
 	return nil
 }
 
-func (btc *BackupTargetController) syncSystemBackup(backupTarget *longhorn.BackupTarget, backupStoreSystemBackups systembackupstore.SystemBackups, log logrus.FieldLogger) error {
+func (btc *BackupTargetController) syncSystemBackup(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, log logrus.FieldLogger) error {
 	clusterSystemBackups, err := btc.ds.ListSystemBackups()
 	if err != nil {
 		return errors.Wrap(err, "failed to list SystemBackups")
@@ -815,6 +808,10 @@ func (btc *BackupTargetController) syncSystemBackup(backupTarget *longhorn.Backu
 		clusterReadySystemBackupNames.Insert(systemBackup.Name)
 	}
 
+	backupStoreSystemBackups, err := backupTargetClient.ListSystemBackup()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL)
+	}
 	backupstoreSystemBackupNames := sets.New[string](util.GetSortedKeysFromMap(backupStoreSystemBackups)...)
 
 	// Create SystemBackup from the system backups in the backup store if not already exist in the cluster.

@@ -74,11 +74,12 @@ func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Client
 }
 
 type VolumeTestCase struct {
-	volume      *longhorn.Volume
-	engines     map[string]*longhorn.Engine
-	replicas    map[string]*longhorn.Replica
-	nodes       []*longhorn.Node
-	engineImage *longhorn.EngineImage
+	volume        *longhorn.Volume
+	engines       map[string]*longhorn.Engine
+	replicas      map[string]*longhorn.Replica
+	nodes         []*longhorn.Node
+	backingImages map[string]*longhorn.BackingImage
+	engineImage   *longhorn.EngineImage
 
 	expectVolume   *longhorn.Volume
 	expectEngines  map[string]*longhorn.Engine
@@ -1122,6 +1123,40 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	s.runTestCases(c, testCases)
 }
 
+func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
+	// We have to skip lister check for unit tests
+	// Because the changes written through the API won't be reflected in the listers
+	datastore.SkipListerCheck = true
+
+	tc := generateVolumeTestCaseTemplate()
+	tc.volume.Spec.BackingImage = TestBackingImage
+	tc.backingImages = map[string]*longhorn.BackingImage{
+		TestBackingImage: {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      TestBackingImage,
+				Namespace: TestNamespace,
+			},
+			Spec: longhorn.BackingImageSpec{
+				DataEngine: longhorn.DataEngineTypeV1,
+			},
+			Status: longhorn.BackingImageStatus{
+				VirtualSize: TestVolumeSize + 1,
+			},
+		},
+	}
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
+		longhorn.VolumeConditionTypeBackingImageIncompatible, longhorn.ConditionStatusTrue,
+		longhorn.VolumeConditionReasonBackingImageVirtualSizeTooLarge,
+		fmt.Sprintf("backing image virtual size %v is larger than volume size %v", tc.backingImages[TestBackingImage].Status.VirtualSize, tc.volume.Spec.Size))
+
+	s.runTestCases(c, map[string]*VolumeTestCase{
+		"backing image size incompatible after download": tc,
+	})
+}
+
 func newVolume(name string, replicaCount int) *longhorn.Volume {
 	return &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1175,10 +1210,11 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 				Image:       TestEngineImage,
 				DesireState: longhorn.InstanceStateStopped,
 			},
-			Frontend:                  longhorn.VolumeFrontendBlockDev,
-			ReplicaAddressMap:         map[string]string{},
-			UpgradedReplicaAddressMap: map[string]string{},
-			Active:                    true,
+			Frontend:                   longhorn.VolumeFrontendBlockDev,
+			ReplicaAddressMap:          map[string]string{},
+			UpgradedReplicaAddressMap:  map[string]string{},
+			Active:                     true,
+			RebuildConcurrentSyncLimit: 1,
 		},
 	}
 }
@@ -1304,9 +1340,9 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		var err error
 		fmt.Printf("testing %v\n", name)
 
-		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewSimpleClientset()
-		extensionsClient := apiextensionsfake.NewSimpleClientset()
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
@@ -1314,6 +1350,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
 		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		biIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImages().Informer().GetIndexer()
 
 		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
@@ -1464,6 +1501,15 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(setting)
 		c.Assert(err, IsNil)
+
+		if tc.backingImages != nil {
+			for _, bi := range tc.backingImages {
+				bi, err := lhClient.LonghornV1beta2().BackingImages(TestNamespace).Create(context.TODO(), bi, metav1.CreateOptions{})
+				c.Assert(err, IsNil)
+				err = biIndexer.Add(bi)
+				c.Assert(err, IsNil)
+			}
+		}
 
 		// need to create default node
 		for _, node := range tc.nodes {

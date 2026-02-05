@@ -20,6 +20,8 @@ package v1beta2
 
 // BackingImageManagerSpecApplyConfiguration represents a declarative configuration of the BackingImageManagerSpec type for use
 // with apply.
+//
+// BackingImageManagerSpec defines the desired state of the Longhorn backing image manager
 type BackingImageManagerSpecApplyConfiguration struct {
 	Image         *string           `json:"image,omitempty"`
 	NodeID        *string           `json:"nodeID,omitempty"`

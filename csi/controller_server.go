@@ -90,11 +90,13 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 				csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 				csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+				csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 			}),
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
 				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			}),
 		log:         logrus.StandardLogger().WithField("component", "csi-controller-server"),
@@ -133,12 +135,16 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// Extract AccessibleTopology from AccessibilityRequirements
 	// This will be used to set PV nodeAffinity via external-provisioner
-	accessibleTopology := cs.getAccessibleTopologyFromRequirements(req.GetAccessibilityRequirements())
 
-	// Warn when strict-local dataLocality is combined with accessibleTopology (PV nodeAffinity becomes immutable).
-	// Ref: https://github.com/longhorn/longhorn/issues/12261
-	if accessibleTopology != nil && volumeParameters["dataLocality"] == string(longhorn.DataLocalityStrictLocal) {
-		log.Warnf("CreateVolume for %s uses strict-local dataLocality with accessibleTopology; PV nodeAffinity will be immutable and may conflict with Longhorn strict-local behavior", volumeID)
+	var accessibleTopology []*csi.Topology
+
+	if volumeParameters["dataLocality"] == string(longhorn.DataLocalityStrictLocal) {
+		log.Infof(
+			"CreateVolume for %s ignores AccessibilityRequirements because dataLocality is strict-local; the volume will be created only on the requested node",
+			volumeID,
+		)
+	} else {
+		accessibleTopology = cs.getAccessibleTopologyFromRequirements(req.GetAccessibilityRequirements())
 	}
 
 	volumeSource := req.GetVolumeContentSource()

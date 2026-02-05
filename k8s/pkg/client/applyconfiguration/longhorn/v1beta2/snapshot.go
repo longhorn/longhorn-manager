@@ -26,6 +26,8 @@ import (
 
 // SnapshotApplyConfiguration represents a declarative configuration of the Snapshot type for use
 // with apply.
+//
+// Snapshot is the Schema for the snapshots API
 type SnapshotApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func Snapshot(name, namespace string) *SnapshotApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b SnapshotApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

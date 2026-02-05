@@ -48,6 +48,9 @@ const (
 	VolumeHeadName = "volume-head"
 
 	MaximumTotalSnapshotCount = 250
+
+	DefaultRebuildSyncConcurrentLimit = 1
+	SyncRetryCount                    = 3
 )
 
 type DataServerProtocol string

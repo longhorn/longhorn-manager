@@ -416,6 +416,15 @@ func GetChecksumSHA256(data []byte) string {
 	return hex.EncodeToString(checksum[:])
 }
 
+func GetStringChecksumSHA224(data string) string {
+	return GetChecksumSHA224([]byte(data))
+}
+
+func GetChecksumSHA224(data []byte) string {
+	checksum := sha256.Sum224(data)
+	return hex.EncodeToString(checksum[:])
+}
+
 func GetStringHash(data string) string {
 	hash := fnv.New32a()
 	hash.Write([]byte(data))

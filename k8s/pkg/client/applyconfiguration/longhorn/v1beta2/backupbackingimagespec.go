@@ -24,12 +24,19 @@ import (
 
 // BackupBackingImageSpecApplyConfiguration represents a declarative configuration of the BackupBackingImageSpec type for use
 // with apply.
+//
+// BackupBackingImageSpec defines the desired state of the Longhorn backing image backup
 type BackupBackingImageSpecApplyConfiguration struct {
-	BackingImage     *string           `json:"backingImage,omitempty"`
-	BackupTargetName *string           `json:"backupTargetName,omitempty"`
-	SyncRequestedAt  *v1.Time          `json:"syncRequestedAt,omitempty"`
-	UserCreated      *bool             `json:"userCreated,omitempty"`
-	Labels           map[string]string `json:"labels,omitempty"`
+	// The backing image name.
+	BackingImage *string `json:"backingImage,omitempty"`
+	// The backup target name.
+	BackupTargetName *string `json:"backupTargetName,omitempty"`
+	// The time to request run sync the remote backing image backup.
+	SyncRequestedAt *v1.Time `json:"syncRequestedAt,omitempty"`
+	// Is this CR created by user through API or UI.
+	UserCreated *bool `json:"userCreated,omitempty"`
+	// The labels of backing image backup.
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // BackupBackingImageSpecApplyConfiguration constructs a declarative configuration of the BackupBackingImageSpec type for use with

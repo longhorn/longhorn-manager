@@ -75,8 +75,11 @@ type RebuildStatus struct {
 	Progress int `json:"progress"`
 	// +optional
 	State string `json:"state"`
+	// Deprecated. We are now using FromReplicaAddressList to list all source replicas.
 	// +optional
 	FromReplicaAddress string `json:"fromReplicaAddress"`
+	// +optional
+	FromReplicaAddressList []string `json:"fromReplicaAddressList"`
 	// +optional
 	AppliedRebuildingMBps int64 `json:"appliedRebuildingMBps"`
 }
@@ -151,6 +154,13 @@ type EngineSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=5
+	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
+	// concurrently during a single replica rebuild.
+	// It is determined by the global setting or the volume spec field with the same name.
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit,omitempty"`
 }
 
 // EngineStatus defines the observed state of the Longhorn engine
@@ -207,6 +217,12 @@ type EngineStatus struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
+	// concurrently during a single replica rebuild.
+	// It is determined by the global setting or the volume spec field with the same name.
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit,omitempty"`
 }
 
 // +genclient

@@ -26,6 +26,8 @@ import (
 
 // BackupVolumeApplyConfiguration represents a declarative configuration of the BackupVolume type for use
 // with apply.
+//
+// BackupVolume is where Longhorn stores backup volume object.
 type BackupVolumeApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func BackupVolume(name, namespace string) *BackupVolumeApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b BackupVolumeApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

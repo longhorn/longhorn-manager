@@ -51,6 +51,8 @@ var (
 	RetryCounts   = 20
 
 	AutoSalvageTimeLimit = 1 * time.Minute
+
+	UnstableNodeReadyTimeThreshold = 30 * time.Minute
 )
 
 const (
@@ -504,6 +506,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.syncVolumeRebuildConcurrentSyncLimitSetting(volume, engines); err != nil {
+		return err
+	}
+
 	if err := c.syncVolumeSnapshotSetting(volume, engines, replicas); err != nil {
 		return err
 	}
@@ -646,6 +652,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
 			longhorn.ConditionStatusFalse, "", "")
+		if err := c.reconcileBackingImageCompatibilityCondition(v); err != nil {
+			return err
+		}
 	}
 
 	e, err := c.ds.PickVolumeCurrentEngine(v, es)
@@ -665,6 +674,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 		return nil
 	}
+
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		// If a replica failed at attaching stage before engine become running,
 		// there is no record in e.Status.ReplicaModeMap
@@ -881,6 +891,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			)
 		}
 	}
+
 	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy &&
 		v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
 		v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
@@ -1124,6 +1135,8 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 		return nil
 	}
 
+	c.logger.Info("Cleaning up extra healthy replicas")
+
 	var cleaned bool
 	if cleaned, err = c.cleanupEvictionRequestedReplicas(v, rs); err != nil || cleaned {
 		return err
@@ -1188,12 +1201,131 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 	return false, nil
 }
 
+func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	log := getLoggerForVolume(c.logger, v)
+
+	// Pick up the replicas in not-ready nodes or in not-running instance manager first
+	var chosenReplica *longhorn.Replica
+	for _, r := range rs {
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		isNotReady, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to check if node %v is down or deleted during replica cleanup in not-ready env", r.Spec.NodeID)
+		}
+		if isNotReady {
+			log.Infof("Deleting replica %v on down or deleted node %v", r.Name, r.Spec.NodeID)
+			chosenReplica = rs[r.Name]
+			break
+		}
+		im, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
+		if err != nil {
+			return false, err
+		}
+		if im == nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			log.Infof("Deleting replica %v in not-running instance manager %v", r.Name, r.Status.InstanceManagerName)
+			chosenReplica = rs[r.Name]
+			break
+		}
+	}
+
+	if chosenReplica != nil {
+		if err := c.deleteReplica(chosenReplica, rs); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+// cleanupReplicaInUnstableEnv uses kube node Ready transition time as a heuristic to identify replicas on recently recovered nodes, assuming the disk or node was unstable before recovery.
+func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	log := getLoggerForVolume(c.logger, v)
+
+	// Pick up the replicas on the node that becomes ready most recently.
+	// Here we use kube node rather than Longhorn node because Longhorn node's ready condition will be affected by
+	// the corresponding longhorn-manager pod.
+	var chosenReplica, lastReadyReplica *longhorn.Replica
+	var lastReadyTransitionTime, secondLastReadyTransitionTime metav1.Time
+	nodeReplicaMap := make(map[string]*longhorn.Replica, len(rs))
+	for _, r := range rs {
+		if isHealthyAndActiveReplica(r, false) {
+			nodeReplicaMap[r.Spec.NodeID] = r
+		}
+	}
+	nodes, err := c.ds.ListKubeNodesRO()
+	if err != nil {
+		return false, err
+	}
+	for _, node := range nodes {
+		if nodeReplicaMap[node.Name] == nil {
+			continue
+		}
+		var readyCondition corev1.NodeCondition
+		found := false
+		for _, condition := range node.Status.Conditions {
+			if condition.Type == corev1.NodeReady {
+				readyCondition = condition
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Warnf("Failed to find ready condition for node %v during the replica cleanup, will skip it", node.Name)
+			continue
+		}
+		// In case of a replica being on not-ready node, chose it first.
+		if readyCondition.Status != corev1.ConditionTrue {
+			chosenReplica = nodeReplicaMap[node.Name]
+			break
+		}
+
+		if readyCondition.LastTransitionTime.After(lastReadyTransitionTime.Time) {
+			lastReadyReplica = nodeReplicaMap[node.Name]
+			secondLastReadyTransitionTime = lastReadyTransitionTime
+			lastReadyTransitionTime = readyCondition.LastTransitionTime
+		} else if readyCondition.LastTransitionTime.After(secondLastReadyTransitionTime.Time) {
+			secondLastReadyTransitionTime = readyCondition.LastTransitionTime
+		}
+	}
+
+	// If there is a node being ready recently and the transition time is 30 minutes later than others,
+	// it is likely that the disk was having issues before and just got recovered.
+	// So choose the replica in that disk for deletion.
+	if chosenReplica == nil && !lastReadyTransitionTime.IsZero() && !secondLastReadyTransitionTime.IsZero() &&
+		lastReadyTransitionTime.After(secondLastReadyTransitionTime.Add(UnstableNodeReadyTimeThreshold)) {
+		log.Infof("Deleting replica %v on node %s disk %v since its kube node ready transition time %v is over %v minutes later than others",
+			lastReadyReplica.Name, lastReadyReplica.Spec.NodeID, lastReadyReplica.Spec.DiskID, lastReadyTransitionTime.Format(time.RFC3339), UnstableNodeReadyTimeThreshold.Minutes())
+		chosenReplica = lastReadyReplica
+	}
+
+	if chosenReplica != nil {
+		if err := c.deleteReplica(chosenReplica, rs); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "delete")
 
 	setting := c.ds.GetAutoBalancedReplicasSetting(v, log)
 	if setting == longhorn.ReplicaAutoBalanceDisabled {
 		return false, nil
+	}
+
+	// In case of potential regressions or unexpected behavior changes, these cleanups are available only when
+	// the auto balance setting is enabled.
+	// See https://github.com/longhorn/longhorn/issues/11730 and https://github.com/longhorn/longhorn/issues/12511
+	if cleaned, err := c.cleanupReplicaInNotReadyEnv(v, rs); err != nil || cleaned {
+		return cleaned, err
+	}
+
+	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, rs); err != nil || cleaned {
+		return cleaned, err
 	}
 
 	var rNames []string
@@ -1283,6 +1415,30 @@ func (c *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longhor
 	return nil
 }
 
+func (c *VolumeController) syncVolumeRebuildConcurrentSyncLimitSetting(v *longhorn.Volume, es map[string]*longhorn.Engine) error {
+	if es == nil {
+		return nil
+	}
+	if !types.IsDataEngineV1(v.Spec.DataEngine) {
+		return nil
+	}
+
+	limit := v.Spec.RebuildConcurrentSyncLimit
+	if limit < 1 {
+		val, err := c.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaRebuildConcurrentSyncLimit, v.Spec.DataEngine)
+		if err != nil {
+			return err
+		}
+		limit = int(val)
+	}
+
+	for _, e := range es {
+		e.Spec.RebuildConcurrentSyncLimit = limit
+	}
+
+	return nil
+}
+
 func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	if es == nil && rs == nil {
 		return nil
@@ -1302,6 +1458,38 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 		r.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
 		r.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
 	}
+
+	return nil
+}
+
+func (c *VolumeController) reconcileBackingImageCompatibilityCondition(v *longhorn.Volume) error {
+	if v.Spec.BackingImage == "" {
+		return nil
+	}
+
+	backingImage, err := c.ds.GetBackingImageRO(v.Spec.BackingImage)
+	if err != nil {
+		return err
+	}
+
+	virtualSize := backingImage.Status.VirtualSize
+	if virtualSize == 0 {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeBackingImageIncompatible,
+			longhorn.ConditionStatusFalse, "", "")
+		return nil
+	}
+
+	if v.Spec.Size < virtualSize {
+		message := fmt.Sprintf("backing image virtual size %v is larger than volume size %v", virtualSize, v.Spec.Size)
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeBackingImageIncompatible,
+			longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonBackingImageVirtualSizeTooLarge, message)
+		return nil
+	}
+
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeBackingImageIncompatible,
+		longhorn.ConditionStatusFalse, "", "")
 
 	return nil
 }
@@ -2126,14 +2314,22 @@ func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) 
 	}
 	// Replica already had IM
 	if r.Status.InstanceManagerName != "" {
-		return true, nil
+		replicaIM, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to find instance manager %v for replica %v", r.Status.InstanceManagerName, r.Name)
+		}
+		return imInStartingOrRunningState(replicaIM), nil
 	}
 	defaultIM, err := c.ds.GetInstanceManagerByInstanceRO(r)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to find instance manager for replica %v", r.Name)
 	}
-	return defaultIM.Status.CurrentState == longhorn.InstanceManagerStateRunning ||
-		defaultIM.Status.CurrentState == longhorn.InstanceManagerStateStarting, nil
+	return imInStartingOrRunningState(defaultIM), nil
+}
+
+func imInStartingOrRunningState(im *longhorn.InstanceManager) bool {
+	return im.Status.CurrentState == longhorn.InstanceManagerStateStarting ||
+		im.Status.CurrentState == longhorn.InstanceManagerStateRunning
 }
 
 func (c *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) ([]string, error) {
@@ -3807,8 +4003,6 @@ func (c *VolumeController) createReplica(replica *longhorn.Replica, v *longhorn.
 	log := getLoggerForVolume(c.logger, v)
 
 	if isRebuildingReplica {
-		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-
 		log.Infof("A new replica %v will be replenished during rebuilding", replica.Name)
 		// Prevent this new replica from being reused after rebuilding failure.
 		replica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount

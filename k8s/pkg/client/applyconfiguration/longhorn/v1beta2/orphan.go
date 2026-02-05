@@ -26,6 +26,8 @@ import (
 
 // OrphanApplyConfiguration represents a declarative configuration of the Orphan type for use
 // with apply.
+//
+// Orphan is where Longhorn stores orphan object.
 type OrphanApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func Orphan(name, namespace string) *OrphanApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b OrphanApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

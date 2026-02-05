@@ -54,6 +54,10 @@ func NewRouter(s *Server) *mux.Router {
 	versionHandler := api.VersionHandler(schemas, "v1")
 	r.Methods("GET").Path("/").Handler(versionsHandler)
 	r.Methods("GET").Path("/metrics").Handler(registry.Handler())
+
+	// Apply manager-url middleware to all API routes (including previously registered routes)
+	r.Use(ManagerURLMiddleware(s))
+
 	r.Methods("GET").Path("/v1").Handler(versionHandler)
 	r.Methods("GET").Path("/v1/apiversions").Handler(versionsHandler)
 	r.Methods("GET").Path("/v1/apiversions/v1").Handler(versionHandler)
@@ -90,6 +94,7 @@ func NewRouter(s *Server) *mux.Router {
 
 		"updateReplicaCount":                s.VolumeUpdateReplicaCount,
 		"updateReplicaAutoBalance":          s.VolumeUpdateReplicaAutoBalance,
+		"updateRebuildConcurrentSyncLimit":  s.VolumeUpdateRebuildConcurrentSyncLimit,
 		"updateSnapshotDataIntegrity":       s.VolumeUpdateSnapshotDataIntegrity,
 		"updateBackupCompressionMethod":     s.VolumeUpdateBackupCompressionMethod,
 		"updateFreezeFilesystemForSnapshot": s.VolumeUpdateFreezeFilesystemForSnapshot,

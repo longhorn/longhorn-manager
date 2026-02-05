@@ -20,6 +20,8 @@ package v1beta2
 
 // EngineImageSpecApplyConfiguration represents a declarative configuration of the EngineImageSpec type for use
 // with apply.
+//
+// EngineImageSpec defines the desired state of the Longhorn engine image
 type EngineImageSpecApplyConfiguration struct {
 	Image *string `json:"image,omitempty"`
 }

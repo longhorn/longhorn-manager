@@ -123,22 +123,24 @@ type VolumeCloneStatus struct {
 }
 
 const (
-	VolumeConditionTypeScheduled           = "Scheduled"
-	VolumeConditionTypeRestore             = "Restore"
-	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
-	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
-	VolumeConditionTypeOfflineRebuilding   = "OfflineRebuilding"
+	VolumeConditionTypeScheduled                = "Scheduled"
+	VolumeConditionTypeRestore                  = "Restore"
+	VolumeConditionTypeTooManySnapshots         = "TooManySnapshots"
+	VolumeConditionTypeWaitForBackingImage      = "WaitForBackingImage"
+	VolumeConditionTypeBackingImageIncompatible = "BackingImageIncompatible"
+	VolumeConditionTypeOfflineRebuilding        = "OfflineRebuilding"
 )
 
 const (
-	VolumeConditionReasonReplicaSchedulingFailure      = "ReplicaSchedulingFailure"
-	VolumeConditionReasonLocalReplicaSchedulingFailure = "LocalReplicaSchedulingFailure"
-	VolumeConditionReasonRestoreInProgress             = "RestoreInProgress"
-	VolumeConditionReasonRestoreFailure                = "RestoreFailure"
-	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
-	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
-	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
-	VolumeConditionReasonOfflineRebuildingInProgress   = "OfflineRebuildingInProgress"
+	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
+	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
+	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
+	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
+	VolumeConditionReasonWaitForBackingImageFailed       = "GetBackingImageFailed"
+	VolumeConditionReasonWaitForBackingImageWaiting      = "Waiting"
+	VolumeConditionReasonBackingImageVirtualSizeTooLarge = "BackingImageVirtualSizeTooLarge"
+	VolumeConditionReasonOfflineRebuildingInProgress     = "OfflineRebuildingInProgress"
 )
 
 type SnapshotDataIntegrity string
@@ -338,6 +340,13 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	ReplicaRebuildingBandwidthLimit int64 `json:"replicaRebuildingBandwidthLimit"`
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=5
+	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
+	// concurrently during a single replica rebuild.
+	// When set to 0, it means following the global setting.
+	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

@@ -25,12 +25,19 @@ import (
 // ConditionApplyConfiguration represents a declarative configuration of the Condition type for use
 // with apply.
 type ConditionApplyConfiguration struct {
-	Type               *string                          `json:"type,omitempty"`
-	Status             *longhornv1beta2.ConditionStatus `json:"status,omitempty"`
-	LastProbeTime      *string                          `json:"lastProbeTime,omitempty"`
-	LastTransitionTime *string                          `json:"lastTransitionTime,omitempty"`
-	Reason             *string                          `json:"reason,omitempty"`
-	Message            *string                          `json:"message,omitempty"`
+	// Type is the type of the condition.
+	Type *string `json:"type,omitempty"`
+	// Status is the status of the condition.
+	// Can be True, False, Unknown.
+	Status *longhornv1beta2.ConditionStatus `json:"status,omitempty"`
+	// Last time we probed the condition.
+	LastProbeTime *string `json:"lastProbeTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	LastTransitionTime *string `json:"lastTransitionTime,omitempty"`
+	// Unique, one-word, CamelCase reason for the condition's last transition.
+	Reason *string `json:"reason,omitempty"`
+	// Human-readable message indicating details about last transition.
+	Message *string `json:"message,omitempty"`
 }
 
 // ConditionApplyConfiguration constructs a declarative configuration of the Condition type for use with

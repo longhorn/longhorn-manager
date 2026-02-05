@@ -74,52 +74,58 @@ func getDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDr
 
 	logger.WithField("diskType", diskType).Debugf("Collecting health data for disk %s", diskName)
 
+	var err error
+	var healthData map[string]longhorn.HealthData
+
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return getHealthDataFromMountPath(diskName, diskPath, lastCollectedAt, logger)
+		healthData, err = getHealthDataFromMountPath(diskName, diskPath, logger)
 	case longhorn.DiskTypeBlock:
-		return getBlockDiskHealth(diskName, diskPath, diskDriver, lastCollectedAt, client, logger)
+		healthData, err = getBlockDiskHealth(diskName, diskPath, diskDriver, client, logger)
 	default:
-		return nil, lastCollectedAt, fmt.Errorf("unknown disk type %v", diskType)
+		healthData = nil
+		err = fmt.Errorf("unknown disk type %v", diskType)
 	}
+
+	return healthData, time.Now(), err
 }
 
-func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
 	switch diskDriver {
 	case longhorn.DiskDriverAio:
 		// AIO driver doesn't claim device exclusively, so smartctl can access it directly
-		return getHealthDataFromBlockDevice(diskName, diskPath, lastCollectedAt, logger)
+		return getHealthDataFromBlockDevice(diskName, diskPath, logger)
 	case longhorn.DiskDriverNvme:
 		// NVME driver claims device exclusively, use SPDK health info instead
-		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client, lastCollectedAt, logger)
+		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client, logger)
 	default:
-		return nil, lastCollectedAt, fmt.Errorf("unknown block disk driver %v", diskDriver)
+		return nil, fmt.Errorf("unknown block disk driver %v", diskDriver)
 	}
 }
 
-func getHealthDataFromMountPath(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+func getHealthDataFromMountPath(diskName, diskPath string, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
 	// Collect SMART data - resolves mount path to physical device(s)
 	healthData, err := util.CollectHealthDataFromMountPath(diskPath, diskName, logger)
 	if err != nil {
-		return nil, lastCollectedAt, err
+		return nil, err
 	}
 
-	return healthData, time.Now(), nil
+	return healthData, nil
 }
 
-func getHealthDataFromBlockDevice(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+func getHealthDataFromBlockDevice(diskName, diskPath string, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
 	// Collect health data directly from the block device without mount path resolution
 	healthData, err := util.CollectHealthDataForBlockDevice(diskPath, diskName, logger)
 	if err != nil {
-		return nil, lastCollectedAt, err
+		return nil, err
 	}
 
-	return healthData, time.Now(), nil
+	return healthData, nil
 }
 
-func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *DiskServiceClient, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
 	if client == nil || client.c == nil {
-		return nil, lastCollectedAt, errors.New("disk service client is nil")
+		return nil, errors.New("disk service client is nil")
 	}
 
 	log := logger.WithFields(logrus.Fields{
@@ -132,7 +138,7 @@ func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *Di
 	health, err := client.c.DiskHealthGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(longhorn.DiskDriverNvme))
 	if err != nil {
 		log.WithError(err).Warnf("Failed to get controller health info")
-		return nil, lastCollectedAt, err
+		return nil, err
 	}
 
 	// Map SPDK NVMe health data to SmartData format
@@ -155,7 +161,7 @@ func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *Di
 		},
 	}
 
-	return healthData, time.Now(), nil
+	return healthData, nil
 }
 
 // determineHealthStatus evaluates NVMe health data to determine overall health status

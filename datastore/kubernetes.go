@@ -1105,9 +1105,12 @@ func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType
 	}
 
 	accessMode := corev1.ReadWriteOnce
-	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
+	switch v.Spec.AccessMode {
+	case longhorn.AccessModeReadWriteMany:
 		accessMode = corev1.ReadWriteMany
 		volAttributes["migratable"] = strconv.FormatBool(v.Spec.Migratable)
+	case longhorn.AccessModeReadWriteOncePod:
+		accessMode = corev1.ReadWriteOncePod
 	}
 
 	return NewPVManifest(v.Spec.Size, pvName, v.Name, storageClassName, fsType, volAttributes, accessMode)

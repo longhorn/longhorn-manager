@@ -26,6 +26,8 @@ import (
 
 // SystemRestoreApplyConfiguration represents a declarative configuration of the SystemRestore type for use
 // with apply.
+//
+// SystemRestore is where Longhorn stores system restore object
 type SystemRestoreApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func SystemRestore(name, namespace string) *SystemRestoreApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b SystemRestoreApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

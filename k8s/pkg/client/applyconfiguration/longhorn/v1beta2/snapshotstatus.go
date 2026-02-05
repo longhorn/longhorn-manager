@@ -20,6 +20,8 @@ package v1beta2
 
 // SnapshotStatusApplyConfiguration represents a declarative configuration of the SnapshotStatus type for use
 // with apply.
+//
+// SnapshotStatus defines the observed state of Longhorn Snapshot
 type SnapshotStatusApplyConfiguration struct {
 	Parent       *string           `json:"parent,omitempty"`
 	Children     map[string]bool   `json:"children,omitempty"`

@@ -24,11 +24,16 @@ import (
 
 // SystemRestoreStatusApplyConfiguration represents a declarative configuration of the SystemRestoreStatus type for use
 // with apply.
+//
+// SystemRestoreStatus defines the observed state of the Longhorn SystemRestore
 type SystemRestoreStatusApplyConfiguration struct {
-	OwnerID    *string                             `json:"ownerID,omitempty"`
-	State      *longhornv1beta2.SystemRestoreState `json:"state,omitempty"`
-	SourceURL  *string                             `json:"sourceURL,omitempty"`
-	Conditions []ConditionApplyConfiguration       `json:"conditions,omitempty"`
+	// The node ID of the responsible controller to reconcile this SystemRestore.
+	OwnerID *string `json:"ownerID,omitempty"`
+	// The system restore state.
+	State *longhornv1beta2.SystemRestoreState `json:"state,omitempty"`
+	// The source system backup URL.
+	SourceURL  *string                       `json:"sourceURL,omitempty"`
+	Conditions []ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
 // SystemRestoreStatusApplyConfiguration constructs a declarative configuration of the SystemRestoreStatus type for use with

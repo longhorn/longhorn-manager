@@ -26,6 +26,8 @@ import (
 
 // ShareManagerApplyConfiguration represents a declarative configuration of the ShareManager type for use
 // with apply.
+//
+// ShareManager is where Longhorn stores share manager object.
 type ShareManagerApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func ShareManager(name, namespace string) *ShareManagerApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b ShareManagerApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

@@ -26,6 +26,8 @@ import (
 
 // RecurringJobApplyConfiguration represents a declarative configuration of the RecurringJob type for use
 // with apply.
+//
+// RecurringJob is where Longhorn stores recurring job object.
 type RecurringJobApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func RecurringJob(name, namespace string) *RecurringJobApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b RecurringJobApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

@@ -24,7 +24,11 @@ import (
 
 // SystemBackupSpecApplyConfiguration represents a declarative configuration of the SystemBackupSpec type for use
 // with apply.
+//
+// SystemBackupSpec defines the desired state of the Longhorn SystemBackup
 type SystemBackupSpecApplyConfiguration struct {
+	// The create volume backup policy
+	// Can be "if-not-present", "always" or "disabled"
 	VolumeBackupPolicy *longhornv1beta2.SystemBackupCreateVolumeBackupPolicy `json:"volumeBackupPolicy,omitempty"`
 }
 

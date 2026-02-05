@@ -94,8 +94,13 @@ func NewReplicaClient(address, volumeName, instanceName string) (*ReplicaClient,
 // for the longhorn-manager which executes these command as binaries invocations
 func (c *ReplicaClient) getReplicaServiceClient() (enginerpc.ReplicaServiceClient, error) {
 	err := c.replicaServiceContext.once.Do(func() error {
-		cc, err := grpc.NewClient(c.replicaServiceURL, grpc.WithTransportCredentials(insecure.NewCredentials()),
-			interceptor.WithIdentityValidationClientInterceptor(c.volumeName, c.instanceName))
+		cc, err := grpc.NewClient(
+			c.replicaServiceURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithNoProxy(),
+			grpc.WithDisableServiceConfig(),
+			interceptor.WithIdentityValidationClientInterceptor(c.volumeName, c.instanceName),
+		)
 		if err != nil {
 			return err
 		}
@@ -115,8 +120,16 @@ func (c *ReplicaClient) getReplicaServiceClient() (enginerpc.ReplicaServiceClien
 // for the longhorn-manager which executes these command as binaries invocations
 func (c *ReplicaClient) getSyncServiceClient() (enginerpc.SyncAgentServiceClient, error) {
 	err := c.syncServiceContext.once.Do(func() error {
-		cc, err := grpc.NewClient(c.syncAgentServiceURL, grpc.WithTransportCredentials(insecure.NewCredentials()),
-			interceptor.WithIdentityValidationClientInterceptor(c.volumeName, c.instanceName))
+		cc, err := grpc.NewClient(
+			c.syncAgentServiceURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithNoProxy(),
+			grpc.WithDisableServiceConfig(),
+			interceptor.WithIdentityValidationClientInterceptor(
+				c.volumeName,
+				c.instanceName,
+			),
+		)
 		if err != nil {
 			return err
 		}
@@ -509,7 +522,7 @@ func (c *ReplicaClient) LaunchReceiver(toFilePath string) (string, int32, error)
 	return c.host, reply.Port, nil
 }
 
-func (c *ReplicaClient) SyncFiles(fromAddress string, list []types.SyncFileInfo, fileSyncHTTPClientTimeout int, fastSync bool, grpcTimeoutSeconds int64, localSync *types.FileLocalSync) error {
+func (c *ReplicaClient) SyncFiles(fromAddressMap map[string]bool, list []types.SyncFileInfo, fileSyncHTTPClientTimeout int, fastSync bool, grpcTimeoutSeconds int64, localSync *types.FileLocalSync) error {
 	syncAgentServiceClient, err := c.getSyncServiceClient()
 	if err != nil {
 		return err
@@ -522,7 +535,7 @@ func (c *ReplicaClient) SyncFiles(fromAddress string, list []types.SyncFileInfo,
 	defer cancel()
 
 	fileSyncRequest := &enginerpc.FilesSyncRequest{
-		FromAddress:               fromAddress,
+		FromAddressMap:            fromAddressMap,
 		ToHost:                    c.host,
 		SyncFileInfoList:          syncFileInfoListToSyncAgentGRPCFormat(list),
 		FastSync:                  fastSync,
@@ -537,8 +550,15 @@ func (c *ReplicaClient) SyncFiles(fromAddress string, list []types.SyncFileInfo,
 		}
 	}
 
+	// For Backward compatibility.
+	// The proxy in new instance manager pods may use this client API to start a rebuild for an old replica
+	for addr := range fromAddressMap {
+		fileSyncRequest.FromAddress = addr // nolint: staticcheck
+		break
+	}
+
 	if _, err := syncAgentServiceClient.FilesSync(ctx, fileSyncRequest); err != nil {
-		return errors.Wrapf(err, "failed to sync files %+v from %v", list, fromAddress)
+		return errors.Wrapf(err, "failed to sync files %+v from %+v", list, fromAddressMap)
 	}
 
 	return nil

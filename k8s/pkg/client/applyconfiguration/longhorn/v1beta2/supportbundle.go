@@ -26,6 +26,8 @@ import (
 
 // SupportBundleApplyConfiguration represents a declarative configuration of the SupportBundle type for use
 // with apply.
+//
+// SupportBundle is where Longhorn stores support bundle object
 type SupportBundleApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func SupportBundle(name, namespace string) *SupportBundleApplyConfiguration {
 	b.WithAPIVersion("longhorn.io/v1beta2")
 	return b
 }
+
 func (b SupportBundleApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

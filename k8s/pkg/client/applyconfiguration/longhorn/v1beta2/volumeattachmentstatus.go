@@ -24,6 +24,8 @@ import (
 
 // VolumeAttachmentStatusApplyConfiguration represents a declarative configuration of the VolumeAttachmentStatus type for use
 // with apply.
+//
+// VolumeAttachmentStatus defines the observed state of Longhorn VolumeAttachment
 type VolumeAttachmentStatusApplyConfiguration struct {
 	AttachmentTicketStatuses map[string]*longhornv1beta2.AttachmentTicketStatus `json:"attachmentTicketStatuses,omitempty"`
 }

@@ -21,10 +21,15 @@ package v1beta2
 // AttachmentTicketStatusApplyConfiguration represents a declarative configuration of the AttachmentTicketStatus type for use
 // with apply.
 type AttachmentTicketStatusApplyConfiguration struct {
-	ID         *string                       `json:"id,omitempty"`
-	Satisfied  *bool                         `json:"satisfied,omitempty"`
+	// The unique ID of this attachment. Used to differentiate different attachments of the same volume.
+	ID *string `json:"id,omitempty"`
+	// Indicate whether this attachment ticket has been satisfied
+	Satisfied *bool `json:"satisfied,omitempty"`
+	// Record any error when trying to fulfill this attachment
 	Conditions []ConditionApplyConfiguration `json:"conditions,omitempty"`
-	Generation *int64                        `json:"generation,omitempty"`
+	// A sequence number representing a specific generation of the desired state.
+	// Populated by the system. Read-only.
+	Generation *int64 `json:"generation,omitempty"`
 }
 
 // AttachmentTicketStatusApplyConfiguration constructs a declarative configuration of the AttachmentTicketStatus type for use with
