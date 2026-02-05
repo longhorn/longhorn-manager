@@ -1450,13 +1450,22 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 		return nil
 	}
 
+	snapshotMaxSize := v.Spec.SnapshotMaxSize
+	if snapshotMaxSize == 0 {
+		var err error
+		snapshotMaxSize, err = c.ds.GetSettingAsInt(types.SettingNameSnapshotMaxSize)
+		if err != nil {
+			return err
+		}
+	}
+
 	for _, e := range es {
 		e.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
-		e.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
+		e.Spec.SnapshotMaxSize = snapshotMaxSize
 	}
 	for _, r := range rs {
 		r.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
-		r.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
+		r.Spec.SnapshotMaxSize = snapshotMaxSize
 	}
 
 	return nil

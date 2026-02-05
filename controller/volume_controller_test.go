@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -1155,6 +1156,104 @@ func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
 	s.runTestCases(c, map[string]*VolumeTestCase{
 		"backing image size incompatible after download": tc,
 	})
+}
+
+type snapshotMaxSizeTestEnv struct {
+	vc       *VolumeController
+	lhClient *lhfake.Clientset
+	vIndexer cache.Indexer
+	sIndexer cache.Indexer
+}
+
+func newSnapshotMaxSizeTestEnv(c *C) *snapshotMaxSizeTestEnv {
+	kubeClient := fake.NewSimpleClientset()                    //nolint:staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    //nolint:staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() //nolint:staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	return &snapshotMaxSizeTestEnv{
+		vc:       vc,
+		lhClient: lhClient,
+		vIndexer: informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer(),
+		sIndexer: informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer(),
+	}
+}
+
+func (env *snapshotMaxSizeTestEnv) addSnapshotMaxSizeSetting(c *C, value string) *longhorn.Setting {
+	setting := initSettingsNameValue(string(types.SettingNameSnapshotMaxSize), value)
+	created, err := env.lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(env.sIndexer.Add(created), IsNil)
+	return created
+}
+
+func (s *TestSuite) TestSyncVolumeSnapshotSetting(c *C) {
+	datastore.SkipListerCheck = true
+	defer func() { datastore.SkipListerCheck = false }()
+
+	snapshotSize1Gi := int64(1073741824)
+	snapshotSize5Gi := int64(5368709120)
+	snapshotSizeUnlimited := int64(0)
+
+	type snapshotTestCase struct {
+		name        string
+		description string
+		specValue   int64
+		globalValue string
+		expectValue int64
+	}
+
+	assertSnapshotSyncedToInstances := func(engine *longhorn.Engine, replica *longhorn.Replica, expected int64, msg string) {
+		c.Assert(engine.Spec.SnapshotMaxSize, Equals, expected, Commentf(msg))
+		c.Assert(replica.Spec.SnapshotMaxSize, Equals, expected, Commentf(msg))
+	}
+
+	cases := []snapshotTestCase{
+		{
+			name:        "spec=0 uses global",
+			description: "spec 0 follows global setting",
+			specValue:   snapshotSizeUnlimited,
+			globalValue: strconv.FormatInt(snapshotSize5Gi, 10),
+			expectValue: snapshotSize5Gi,
+		},
+		{
+			name:        "spec overrides global",
+			description: "spec overrides global setting",
+			specValue:   snapshotSize1Gi,
+			globalValue: strconv.FormatInt(snapshotSize5Gi, 10),
+			expectValue: snapshotSize1Gi,
+		},
+		{
+			name:        "global 0 means unlimited",
+			description: "global 0 and spec 0 means unlimited",
+			specValue:   snapshotSizeUnlimited,
+			globalValue: strconv.FormatInt(snapshotSizeUnlimited, 10),
+			expectValue: snapshotSizeUnlimited,
+		},
+	}
+
+	for _, tc := range cases {
+		c.Logf("case: %s", tc.name)
+
+		// setup
+		env := newSnapshotMaxSizeTestEnv(c)
+		env.addSnapshotMaxSizeSetting(c, tc.globalValue)
+
+		volume := newVolume("snapshot-max-size-test", 1)
+		volume.Spec.SnapshotMaxSize = tc.specValue
+		engine := newEngineForVolume(volume)
+		replica := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+
+		// exercise
+		err := env.vc.syncVolumeSnapshotSetting(volume, map[string]*longhorn.Engine{engine.Name: engine}, map[string]*longhorn.Replica{replica.Name: replica})
+		c.Assert(err, IsNil, Commentf(tc.description))
+
+		// assert
+		assertSnapshotSyncedToInstances(engine, replica, tc.expectValue, tc.description)
+	}
 }
 
 func newVolume(name string, replicaCount int) *longhorn.Volume {

@@ -3,6 +3,7 @@
 *.a
 *.so
 /coverage.out
+/.dapper.tmp
 
 # Folders
 _obj

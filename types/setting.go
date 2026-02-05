@@ -131,6 +131,7 @@ const (
 	SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingName("snapshot-data-integrity-immediate-check-after-snapshot-creation")
 	SettingNameSnapshotDataIntegrityCronJob                             = SettingName("snapshot-data-integrity-cronjob")
 	SettingNameSnapshotMaxCount                                         = SettingName("snapshot-max-count")
+	SettingNameSnapshotMaxSize                                          = SettingName("snapshot-max-size")
 	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
@@ -250,6 +251,7 @@ var (
 		SettingNameSnapshotDataIntegrityCronJob,
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameSnapshotMaxCount,
+		SettingNameSnapshotMaxSize,
 		SettingNameRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
@@ -405,6 +407,7 @@ var (
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameSnapshotDataIntegrityCronJob:                             SettingDefinitionSnapshotDataIntegrityCronJob,
 		SettingNameSnapshotMaxCount:                                         SettingDefinitionSnapshotMaxCount,
+		SettingNameSnapshotMaxSize:                                          SettingDefinitionSnapshotMaxSize,
 		SettingNameRestoreVolumeRecurringJobs:                               SettingDefinitionRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
@@ -1484,6 +1487,20 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            strconv.Itoa(MaxSnapshotNum),
+	}
+
+	SettingDefinitionSnapshotMaxSize = SettingDefinition{
+		DisplayName:        "Snapshot Max Size",
+		Description:        "Maximum total size (in bytes) of all snapshots for a volume. 0 means unlimited. Only non-negative integers are allowed.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "0",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{
