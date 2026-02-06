@@ -304,6 +304,12 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxSize", "value": "%s"}`, strconv.FormatInt(volume.Spec.Size*2, 10)))
 	}
 
+	// Workaround for unexpected clone mode changes during Harvester restores a VM from backup.
+	// The clone mode may be changed from "full-copy" to "" because Harvester v1.7 still uses the Longhorn v1.8 API, which doesn't have the clone mode field.
+	if oldVolume.Spec.CloneMode != volume.Spec.CloneMode {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, oldVolume.Spec.CloneMode))
+	}
+
 	moreLabels := map[string]string{}
 	if oldVolume.Spec.BackupTargetName != volume.Spec.BackupTargetName {
 		moreLabels[types.LonghornLabelBackupTarget] = volume.Spec.BackupTargetName
