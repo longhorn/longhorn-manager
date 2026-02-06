@@ -304,6 +304,14 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxSize", "value": "%s"}`, strconv.FormatInt(volume.Spec.Size*2, 10)))
 	}
 
+	if volume.Spec.DataSource != "" && volume.Spec.CloneMode == longhorn.CloneModeNone {
+		newCloneMode := longhorn.CloneModeFullCopy
+		if oldVolume.Spec.CloneMode != longhorn.CloneModeNone {
+			newCloneMode = oldVolume.Spec.CloneMode
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, newCloneMode))
+	}
+
 	moreLabels := map[string]string{}
 	if oldVolume.Spec.BackupTargetName != volume.Spec.BackupTargetName {
 		moreLabels[types.LonghornLabelBackupTarget] = volume.Spec.BackupTargetName
