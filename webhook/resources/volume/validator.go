@@ -257,8 +257,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
 	}
 
-	if err := validateImmutable(".spec.cloneMode", oldVolume.Spec.CloneMode, newVolume.Spec.CloneMode); err != nil {
-		return werror.NewInvalidError(err.Error(), ".spec.cloneMode")
+	if oldVolume.Spec.CloneMode != longhorn.CloneModeNone {
+		if err := validateImmutable(".spec.cloneMode", oldVolume.Spec.CloneMode, newVolume.Spec.CloneMode); err != nil {
+			return werror.NewInvalidError(err.Error(), ".spec.cloneMode")
+		}
 	}
 
 	if oldVolume.Spec.Image != newVolume.Spec.Image {
