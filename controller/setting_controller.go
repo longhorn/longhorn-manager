@@ -256,6 +256,14 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
 			return err
 		}
+	case types.SettingNameCSISidecarComponentTaintToleration:
+		if err := sc.updateCSISidecarComponentTaintToleration(); err != nil {
+			return err
+		}
+	case types.SettingNameSystemManagedCSISidecarComponentsNodeSelector:
+		if err := sc.updateCSISidecarComponentsNodeSelector(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -279,8 +287,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	dangerSettingsRequiringAllVolumesDetached := []types.SettingName{
 		types.SettingNameTaintToleration,
 		types.SettingNameSystemManagedComponentsNodeSelector,
-		types.SettingNameCSISidecarComponentTaintToleration,
-		types.SettingNameSystemManagedCSISidecarComponentsNodeSelector,
 		types.SettingNamePriorityClass,
 		types.SettingNameStorageNetwork,
 	}
@@ -293,14 +299,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 			}
 		case types.SettingNameSystemManagedComponentsNodeSelector:
 			if err := sc.updateNodeSelector(); err != nil {
-				return err
-			}
-		case types.SettingNameCSISidecarComponentTaintToleration:
-			if err := sc.updateCSISidecarComponentTaintToleration(); err != nil {
-				return err
-			}
-		case types.SettingNameSystemManagedCSISidecarComponentsNodeSelector:
-			if err := sc.updateCSISidecarComponentsNodeSelector(); err != nil {
 				return err
 			}
 		case types.SettingNamePriorityClass:
@@ -473,7 +471,7 @@ func (sc *SettingController) updateTaintToleration() error {
 	return nil
 }
 
-// updateCSISidecarComponentTaintToleration deletes all user-deployed and system-managed components immediately with the updated taint toleration.
+// updateCSISidecarComponentTaintToleration deletes system-managed Kubernetes CSI sidecar components immediately with the updated taint toleration.
 func (sc *SettingController) updateCSISidecarComponentTaintToleration() error {
 	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameCSISidecarComponentTaintToleration)
 	if err != nil {
@@ -496,14 +494,6 @@ func (sc *SettingController) updateCSISidecarComponentTaintToleration() error {
 	}
 	if len(notUpdatedTolerationObjs) == 0 {
 		return nil
-	}
-
-	detached, err := sc.ds.AreAllVolumesDetachedState()
-	if err != nil {
-		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameCSISidecarComponentTaintToleration)
-	}
-	if !detached {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameCSISidecarComponentTaintToleration)}
 	}
 
 	for _, obj := range notUpdatedTolerationObjs {
@@ -667,7 +657,6 @@ func (sc *SettingController) updatePriorityClass() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to collect runtime objects for priority class update")
 	}
-
 	updatingRuntimeObjectsKubernetesCSI, err := sc.collectRuntimeObjectsKubernetesCSI()
 	if err != nil {
 		return errors.Wrap(err, "failed to collect runtime Kubernetes CSI objects for priority class update")
@@ -1119,7 +1108,7 @@ func (sc *SettingController) updateNodeSelector() error {
 	return nil
 }
 
-// updateCSISidecarComponentsNodeSelector deletes all user-deployed and system-managed components immediately with the updated node selector.
+// updateCSISidecarComponentsNodeSelector deletes system-managed Kubernetes CSI sidecar components immediately with the updated node selector.
 func (sc *SettingController) updateCSISidecarComponentsNodeSelector() error {
 	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
 	if err != nil {
@@ -1140,14 +1129,6 @@ func (sc *SettingController) updateCSISidecarComponentsNodeSelector() error {
 	}
 	if len(notUpdatedNodeSelectorObjs) == 0 {
 		return nil
-	}
-
-	detached, err := sc.ds.AreAllVolumesDetachedState()
-	if err != nil {
-		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
-	}
-	if !detached {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)}
 	}
 
 	for _, obj := range notUpdatedNodeSelectorObjs {
