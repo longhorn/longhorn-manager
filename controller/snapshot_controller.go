@@ -480,12 +480,22 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.handleAttachmentTicketDeletion(snapshot)
 		}
 
-		if err := sc.handleAttachmentTicketCreation(snapshot, true); err != nil {
+		shouldAutoAttach, err := sc.ds.GetSettingAsBool(types.SettingNameAutoAttachVolumeForSnapshotCRCreationAndDeletion)
+		if err != nil {
 			return err
 		}
 
+		if shouldAutoAttach {
+			if err := sc.handleAttachmentTicketCreation(snapshot, true); err != nil {
+				return err
+			}
+		}
+
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
-			return fmt.Errorf("failed to delete snapshot because the volume engine %v is not running. Will reenqueue and retry later", engine.Name)
+			if shouldAutoAttach {
+				return fmt.Errorf("failed to delete snapshot because the volume engine %v is not running. Will reenqueue and retry later", engine.Name)
+			}
+			return nil
 		}
 		// Delete the snapshot from engine process
 		if err := sc.handleSnapshotDeletion(snapshot, engine); err != nil {
@@ -550,9 +560,17 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 
 	// Newly created snapshot CR by user
 	if requestCreateNewSnapshot && !alreadyCreatedBefore && !snapshotExistInEngine {
-		if err := sc.handleAttachmentTicketCreation(snapshot, false); err != nil {
+		shouldAutoAttach, err := sc.ds.GetSettingAsBool(types.SettingNameAutoAttachVolumeForSnapshotCRCreationAndDeletion)
+		if err != nil {
 			return err
 		}
+
+		if shouldAutoAttach {
+			if err := sc.handleAttachmentTicketCreation(snapshot, false); err != nil {
+				return err
+			}
+		}
+
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
 			snapshot.Status.Error = fmt.Sprintf("failed to take snapshot because the volume engine %v is not running. Waiting for the volume to be attached", engine.Name)
 			return nil
