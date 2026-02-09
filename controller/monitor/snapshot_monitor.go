@@ -541,6 +541,7 @@ func (m *SnapshotMonitor) syncHashStatusFromEngineReplicas(engine *longhorn.Engi
 	}
 
 	snapshot.Status.Checksum = checksum
+	snapshot.Status.ChecksumCalculatedAt = util.Now()
 
 	if !reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {
 		if _, err := m.ds.UpdateSnapshotStatus(snapshot); err != nil {

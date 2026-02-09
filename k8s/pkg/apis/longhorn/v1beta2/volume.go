@@ -347,6 +347,11 @@ type VolumeSpec struct {
 	// concurrently during a single replica rebuild.
 	// When set to 0, it means following the global setting.
 	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit"`
+
+	// OnDemandChecksumRequestedAt is the RFC3339 timestamp when an on-demand checksum calculation is requested.
+	// When this value differs from LastOnDemandChecksumCompletedAt, the system will attempt to calculate checksums for all snapshots
+	// that do not already have a checksum.
+	OnDemandChecksumRequestedAt string `json:"onDemandChecksumRequestedAt,omitempty"` // +optional
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -395,6 +400,8 @@ type VolumeStatus struct {
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
+	// +optional
+	LastOnDemandChecksumCompletedAt string `json:"lastOnDemandChecksumCompletedAt,omitempty"`
 }
 
 // +genclient
