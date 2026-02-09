@@ -177,6 +177,18 @@ func NewNodeController(
 	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: nc.isResponsibleForSnapshotHashing,
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    nc.enqueueVolume,
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueVolume(cur) },
+			},
+		}, 0); err != nil {
+		return nil, err
+	}
+	nc.cacheSyncs = append(nc.cacheSyncs, ds.VolumeInformer.HasSynced)
+
 	return nc, nil
 }
 
@@ -239,6 +251,28 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 
 	return nc.snapshotHashRequired(volume)
+}
+
+func (nc *NodeController) isResponsibleForSnapshotHashing(obj interface{}) bool {
+	volume, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return false
+	}
+
+	if volume.Status.OwnerID != nc.controllerID {
+		return false
+	}
+
+	if volume.Spec.SnapshotHashingRequestedAt == "" {
+		return false
+	}
+
+	dataIntegrity, err := nc.ds.GetVolumeSnapshotDataIntegrity(volume.Name)
+	if err != nil {
+		return false
+	}
+
+	return dataIntegrity != longhorn.SnapshotDataIntegrityDisabled
 }
 
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
@@ -607,10 +641,15 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 		return
 	}
 
+	nc.enqueueSnapshotHashEvent(currentSnapshot, volume)
+}
+
+func (nc *NodeController) enqueueSnapshotHashEvent(currentSnapshot *longhorn.Snapshot, volume *longhorn.Volume) {
 	nc.snapshotChangeEventQueueLock.Lock()
 	defer nc.snapshotChangeEventQueueLock.Unlock()
 	// To avoid the snapshot events run out of the system memory, just ignore
 	// the events. The events will be processed in following periodic rounds.
+
 	if nc.snapshotChangeEventQueue.Len() < snapshotChangeEventQueueMax {
 		nc.snapshotChangeEventQueue.Add(monitor.SnapshotChangeEvent{
 			VolumeName:   volume.Name,
@@ -2146,4 +2185,92 @@ func (nc *NodeController) clearDelinquentLeasesIfNodeNotReady(node *longhorn.Nod
 	}
 
 	return storedError
+}
+
+func (nc *NodeController) enqueueVolume(obj interface{}) {
+	volume, ok := obj.(*longhorn.Volume)
+	if !ok {
+		nc.logger.Warnf("Failed to convert object to Volume: %v", obj)
+		return
+	}
+
+	if volume.Status.OwnerID != nc.controllerID {
+		return
+	}
+
+	considerOnDemandChecksum, err := shouldConsiderOnDemandRequest(volume)
+	if err != nil {
+		nc.logger.WithError(err).Warnf("failed to determine volume %s for on-demand snapshot checksum calculation", volume.Name)
+	}
+
+	if !considerOnDemandChecksum {
+		return
+	}
+
+	if err := nc.enqueueOnDemandSnapshotChecksumEvents(volume); err != nil {
+		nc.logger.WithError(err).Warnf("failed to sync volume %s for on-demand checksum", volume.Name)
+	}
+}
+
+// enqueueOnDemandSnapshotChecksumEvents enqueues checksum-hash events for all
+// user-created snapshots when a new on-demand request is issued.
+func (nc *NodeController) enqueueOnDemandSnapshotChecksumEvents(v *longhorn.Volume) (err error) {
+	snapshots, err := nc.ds.ListVolumeSnapshotsRO(v.Name)
+	if err != nil {
+		nc.logger.WithError(err).Warnf("Failed to list volume snapshot for volume %s", v.Name)
+		return
+	}
+
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	for _, snapshot := range snapshots {
+		// Checksums are primarily used to speed up replica rebuilding.
+		// System snapshots are usually purged before rebuilding, so checksum calculation is skipped for non-user-created snapshots.
+		if !snapshot.Status.UserCreated {
+			continue
+		}
+
+		if snapshot.Status.Checksum != "" {
+			continue
+		}
+
+		nc.logger.Debugf("Enqueued on-demand snapshot hash event for volume %v, snapshot %v", v.Name, snapshot.Name)
+		nc.enqueueSnapshotHashEvent(snapshot, v)
+	}
+
+	return nil
+}
+
+// shouldConsiderOnDemandRequest returns true only when:
+//  1. Spec.SnapshotHashingRequestedAt is set, and
+//  2. Either this is the first checksum request or RequestedAt > LastCompletedAt (a newer request).
+func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
+	if v.Spec.SnapshotHashingRequestedAt == "" {
+		return false, nil
+	}
+
+	requestTime, err := util.ParseTime(v.Spec.SnapshotHashingRequestedAt)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse SnapshotHashingRequestedAt")
+	}
+
+	// Case 1: First-ever request → allow immediately
+	if v.Status.LastOnDemandSnapshotHashingCompleteAt == "" {
+		return true, nil
+	}
+
+	lastCompleted, err := util.ParseTime(v.Status.LastOnDemandSnapshotHashingCompleteAt)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse LastOnDemandSnapshotHashingCompleteAt")
+	}
+
+	// Case 2: Not a new request → reject
+	if !requestTime.After(lastCompleted) {
+		return false, nil
+	}
+
+	// Case 3: New request → allow
+	return true, nil
 }
