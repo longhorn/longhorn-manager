@@ -37,18 +37,19 @@ type VolumeStatusApplyConfiguration struct {
 	LastBackup       *string                             `json:"lastBackup,omitempty"`
 	LastBackupAt     *string                             `json:"lastBackupAt,omitempty"`
 	// the node that this volume is currently migrating to
-	CurrentMigrationNodeID *string                              `json:"currentMigrationNodeID,omitempty"`
-	FrontendDisabled       *bool                                `json:"frontendDisabled,omitempty"`
-	RestoreRequired        *bool                                `json:"restoreRequired,omitempty"`
-	RestoreInitiated       *bool                                `json:"restoreInitiated,omitempty"`
-	CloneStatus            *VolumeCloneStatusApplyConfiguration `json:"cloneStatus,omitempty"`
-	RemountRequestedAt     *string                              `json:"remountRequestedAt,omitempty"`
-	ExpansionRequired      *bool                                `json:"expansionRequired,omitempty"`
-	IsStandby              *bool                                `json:"isStandby,omitempty"`
-	ActualSize             *int64                               `json:"actualSize,omitempty"`
-	LastDegradedAt         *string                              `json:"lastDegradedAt,omitempty"`
-	ShareEndpoint          *string                              `json:"shareEndpoint,omitempty"`
-	ShareState             *longhornv1beta2.ShareManagerState   `json:"shareState,omitempty"`
+	CurrentMigrationNodeID          *string                              `json:"currentMigrationNodeID,omitempty"`
+	FrontendDisabled                *bool                                `json:"frontendDisabled,omitempty"`
+	RestoreRequired                 *bool                                `json:"restoreRequired,omitempty"`
+	RestoreInitiated                *bool                                `json:"restoreInitiated,omitempty"`
+	CloneStatus                     *VolumeCloneStatusApplyConfiguration `json:"cloneStatus,omitempty"`
+	RemountRequestedAt              *string                              `json:"remountRequestedAt,omitempty"`
+	ExpansionRequired               *bool                                `json:"expansionRequired,omitempty"`
+	IsStandby                       *bool                                `json:"isStandby,omitempty"`
+	ActualSize                      *int64                               `json:"actualSize,omitempty"`
+	LastDegradedAt                  *string                              `json:"lastDegradedAt,omitempty"`
+	ShareEndpoint                   *string                              `json:"shareEndpoint,omitempty"`
+	ShareState                      *longhornv1beta2.ShareManagerState   `json:"shareState,omitempty"`
+	LastOnDemandChecksumCompletedAt *string                              `json:"lastOnDemandChecksumCompletedAt,omitempty"`
 }
 
 // VolumeStatusApplyConfiguration constructs a declarative configuration of the VolumeStatus type for use with
@@ -227,5 +228,13 @@ func (b *VolumeStatusApplyConfiguration) WithShareEndpoint(value string) *Volume
 // If called multiple times, the ShareState field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithShareState(value longhornv1beta2.ShareManagerState) *VolumeStatusApplyConfiguration {
 	b.ShareState = &value
+	return b
+}
+
+// WithLastOnDemandChecksumCompletedAt sets the LastOnDemandChecksumCompletedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LastOnDemandChecksumCompletedAt field is set to the value of the last call.
+func (b *VolumeStatusApplyConfiguration) WithLastOnDemandChecksumCompletedAt(value string) *VolumeStatusApplyConfiguration {
+	b.LastOnDemandChecksumCompletedAt = &value
 	return b
 }
