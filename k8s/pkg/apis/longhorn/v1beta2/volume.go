@@ -347,6 +347,15 @@ type VolumeSpec struct {
 	// concurrently during a single replica rebuild.
 	// When set to 0, it means following the global setting.
 	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit"`
+
+	// +optional
+	// SnapshotHashingRequestedAt is the RFC3339 timestamp (e.g., "2026-03-16T10:30:00Z") when an on-demand snapshot checksum calculation is requested.
+	// When this value is set and is later than LastOnDemandSnapshotHashingCompleteAt, the system will calculate checksums
+	// for all user snapshots.
+	//
+	// If SnapshotHashingRequestedAt differs from LastOnDemandSnapshotHashingCompleteAt, it indicates that a hashing request
+	// is still in progress, and a new request will be rejected.
+	SnapshotHashingRequestedAt string `json:"snapshotHashingRequestedAt,omitempty"` // +optional
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -395,6 +404,11 @@ type VolumeStatus struct {
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
+	// +optional
+	// LastOnDemandSnapshotHashingCompleteAt is the RFC3339 timestamp (e.g., "2026-03-16T10:30:00Z") when the
+	// most recent on-demand snapshot checksum calculation completed.
+	// When this value matches SnapshotHashingRequestedAt, the requested on-demand checksum calculation is considered complete.
+	LastOnDemandSnapshotHashingCompleteAt string `json:"lastOnDemandSnapshotHashingCompleteAt,omitempty"`
 }
 
 // +genclient

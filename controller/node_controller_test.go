@@ -2206,6 +2206,89 @@ CONFIG_NFS_V4_2=y`
 	}
 }
 
+func (s *NodeControllerSuite) TestShouldConsiderOnDemandRequest(c *C) {
+	testCases := []struct {
+		name            string
+		requestedAt     string
+		lastCompletedAt string
+		expected        bool
+		expectErr       bool
+		errPattern      string
+	}{
+		{
+			name:            "no request",
+			requestedAt:     "",
+			lastCompletedAt: "2026-03-09T09:00:00Z",
+			expected:        false,
+		},
+		{
+			name:            "first request",
+			requestedAt:     "2026-03-09T10:00:00Z",
+			lastCompletedAt: "",
+			expected:        true,
+		},
+		{
+			name:            "new request",
+			requestedAt:     "2026-03-09T10:00:00Z",
+			lastCompletedAt: "2026-03-09T09:00:00Z",
+			expected:        true,
+		},
+		{
+			name:            "old request",
+			requestedAt:     "2026-03-09T08:00:00Z",
+			lastCompletedAt: "2026-03-09T09:00:00Z",
+			expected:        false,
+		},
+		{
+			name:            "equal request time",
+			requestedAt:     "2026-03-09T09:00:00Z",
+			lastCompletedAt: "2026-03-09T09:00:00Z",
+			expected:        false,
+		},
+		{
+			name:            "invalid requestedAt",
+			requestedAt:     "invalid-time",
+			lastCompletedAt: "2026-03-09T09:00:00Z",
+			expectErr:       true,
+			errPattern:      "failed to parse SnapshotHashingRequestedAt.*",
+		},
+		{
+			name:            "invalid lastCompletedAt",
+			requestedAt:     "2026-03-09T10:00:00Z",
+			lastCompletedAt: "invalid-time",
+			expectErr:       true,
+			errPattern:      "failed to parse LastOnDemandSnapshotHashingCompleteAt.*",
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Logf("testing case %q", tc.name)
+
+		v := &longhorn.Volume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "vol1",
+			},
+			Spec: longhorn.VolumeSpec{
+				SnapshotHashingRequestedAt: tc.requestedAt,
+			},
+			Status: longhorn.VolumeStatus{
+				LastOnDemandSnapshotHashingCompleteAt: tc.lastCompletedAt,
+			},
+		}
+
+		ok, err := shouldConsiderOnDemandRequest(v)
+		if tc.expectErr {
+			c.Assert(err, NotNil)
+			c.Assert(ok, Equals, false)
+			c.Assert(err.Error(), Matches, tc.errPattern)
+			continue
+		}
+
+		c.Assert(err, IsNil)
+		c.Assert(ok, Equals, tc.expected)
+	}
+}
+
 // -- Helpers --
 
 func (s *NodeControllerSuite) checkNodeConditions(c *C, expectation *NodeControllerExpectation, node *longhorn.Node) {

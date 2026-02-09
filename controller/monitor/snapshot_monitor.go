@@ -540,6 +540,10 @@ func (m *SnapshotMonitor) syncHashStatusFromEngineReplicas(engine *longhorn.Engi
 		return errors.Wrapf(err, "failed to determine checksum for snapshot %v", snapshotName)
 	}
 
+	// Only update the checksum timestamp when the checksum itself changes or is being set for the first time.
+	if snapshot.Status.Checksum != checksum || snapshot.Status.ChecksumCalculatedAt == "" {
+		snapshot.Status.ChecksumCalculatedAt = util.Now()
+	}
 	snapshot.Status.Checksum = checksum
 
 	if !reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {

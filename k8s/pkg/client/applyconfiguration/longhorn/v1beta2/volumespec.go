@@ -83,6 +83,13 @@ type VolumeSpecApplyConfiguration struct {
 	// concurrently during a single replica rebuild.
 	// When set to 0, it means following the global setting.
 	RebuildConcurrentSyncLimit *int `json:"rebuildConcurrentSyncLimit,omitempty"`
+	// SnapshotHashingRequestedAt is the RFC3339 timestamp (e.g., "2026-03-16T10:30:00Z") when an on-demand snapshot checksum calculation is requested.
+	// When this value is set and is later than LastOnDemandSnapshotHashingCompleteAt, the system will calculate checksums
+	// for all user snapshots.
+	//
+	// If SnapshotHashingRequestedAt differs from LastOnDemandSnapshotHashingCompleteAt, it indicates that a hashing request
+	// is still in progress, and a new request will be rejected.
+	SnapshotHashingRequestedAt *string `json:"snapshotHashingRequestedAt,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with
@@ -412,5 +419,13 @@ func (b *VolumeSpecApplyConfiguration) WithReplicaRebuildingBandwidthLimit(value
 // If called multiple times, the RebuildConcurrentSyncLimit field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithRebuildConcurrentSyncLimit(value int) *VolumeSpecApplyConfiguration {
 	b.RebuildConcurrentSyncLimit = &value
+	return b
+}
+
+// WithSnapshotHashingRequestedAt sets the SnapshotHashingRequestedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SnapshotHashingRequestedAt field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithSnapshotHashingRequestedAt(value string) *VolumeSpecApplyConfiguration {
+	b.SnapshotHashingRequestedAt = &value
 	return b
 }

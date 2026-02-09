@@ -514,6 +514,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.syncVolumeOnDemandSnapshotStatus(volume, snapshots); err != nil {
+		return err
+	}
+
 	if err := c.updateRecurringJobs(volume); err != nil {
 		return err
 	}
@@ -5346,4 +5350,48 @@ func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *lon
 		return true
 	}
 	return false
+}
+
+// syncVolumeOnDemandSnapshotStatus marks an on-demand checksum request as completed once all relevant user-created snapshots have a checksum.
+func (c *VolumeController) syncVolumeOnDemandSnapshotStatus(v *longhorn.Volume, snapshots map[string]*longhorn.Snapshot) error {
+	dataIntegrity, err := c.ds.GetVolumeSnapshotDataIntegrity(v.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get snapshot data integrity for volume %s", v.Name)
+	}
+	if dataIntegrity == longhorn.SnapshotDataIntegrityDisabled {
+		// No checksum is expected under this policy; ignore on-demand requests.
+		return nil
+	}
+
+	considerOnDemandChecksum, err := shouldConsiderOnDemandRequest(v)
+	if err != nil {
+		return errors.Wrapf(err, "failed to determine volume %s for on-demand snapshot checksum calculation", v.Name)
+	}
+	if !considerOnDemandChecksum {
+		return nil
+	}
+
+	requestedAt, err := util.ParseTime(v.Spec.SnapshotHashingRequestedAt)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse time for SnapshotHashingRequestedAt of volume %s", v.Name)
+	}
+
+	for _, snap := range snapshots {
+		// Only consider user-created snapshots that existed when the request was issued.
+		if snap.CreationTimestamp.After(requestedAt) {
+			continue
+		}
+		if !snap.Status.UserCreated {
+			continue
+		}
+
+		// Snapshot must have at least one checksum.
+		if snap.Status.Checksum == "" {
+			return nil
+		}
+	}
+
+	// All relevant snapshots have at least one checksum, and we have fresh results where possible. Acknowledge this request.
+	v.Status.LastOnDemandSnapshotHashingCompleteAt = v.Spec.SnapshotHashingRequestedAt
+	return nil
 }
