@@ -126,6 +126,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 			"--default-fstype=ext4",
 			"--enable-capacity",
 			"--capacity-ownerref-level=2",
+			"--immediate-topology=false",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
 			fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
 			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
