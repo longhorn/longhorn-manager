@@ -4116,8 +4116,32 @@ func (s *DataStore) GetSettingTaintToleration() ([]corev1.Toleration, error) {
 	return tolerationList, nil
 }
 
+func (s *DataStore) GetSettingCSISidecarComponentTaintToleration() ([]corev1.Toleration, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameCSISidecarComponentTaintToleration)
+	if err != nil {
+		return nil, err
+	}
+	tolerationList, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return tolerationList, nil
+}
+
 func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]string, error) {
 	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsNodeSelector)
+	if err != nil {
+		return nil, err
+	}
+	nodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return nodeSelector, nil
+}
+
+func (s *DataStore) GetSettingSystemManagedCSISidecarComponentsNodeSelector() (map[string]string, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
 	if err != nil {
 		return nil, err
 	}
