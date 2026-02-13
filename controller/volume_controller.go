@@ -5295,7 +5295,7 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 
 	existingPV := pv.DeepCopy()
 	defer func() {
-		if !reflect.DeepEqual(existingPV.Spec, pv.Spec) {
+		if !reflect.DeepEqual(existingPV.Spec, pv.Spec) || !reflect.DeepEqual(existingPV.Labels, pv.Labels) {
 			logrus.Infof("Updating PersistentVolume %v", pv.Name)
 			_, err = c.ds.UpdatePersistentVolume(pv)
 
@@ -5306,6 +5306,22 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 			}
 		}
 	}()
+
+	// Add zone label to PV if PinToZone is enabled and volume is attached
+	if volume.Spec.PinToZone && volume.Spec.NodeID != "" {
+		if pv.Labels == nil {
+			pv.Labels = make(map[string]string)
+		}
+		if _, exists := pv.Labels[corev1.LabelTopologyZone]; !exists {
+			kubeNode, err := c.ds.GetKubernetesNodeRO(volume.Spec.NodeID)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to get Kubernetes node %v for zone label", volume.Spec.NodeID)
+			} else if zone, ok := kubeNode.Labels[corev1.LabelTopologyZone]; ok {
+				pv.Labels[corev1.LabelTopologyZone] = zone
+				log.Infof("Added zone label %v=%v to PV %v", corev1.LabelTopologyZone, zone, pv.Name)
+			}
+		}
+	}
 
 	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal && volume.Spec.NodeID != "" {
 		// PV nodeAffinity may already be set via CSI accessibleTopology and is immutable.

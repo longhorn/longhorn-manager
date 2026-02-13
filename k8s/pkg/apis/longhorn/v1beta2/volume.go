@@ -347,6 +347,11 @@ type VolumeSpec struct {
 	// concurrently during a single replica rebuild.
 	// When set to 0, it means following the global setting.
 	RebuildConcurrentSyncLimit int `json:"rebuildConcurrentSyncLimit"`
+	// PinToZone pins workload pods to the zone where the volume was provisioned.
+	// When enabled, Longhorn adds the zone label to the PV, which works with the Kubernetes VolumeZone scheduler
+	// plugin to ensure pods using this volume are scheduled to nodes in the same zone.
+	// +optional
+	PinToZone bool `json:"pinToZone"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

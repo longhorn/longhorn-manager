@@ -19,6 +19,7 @@ import (
 
 	"k8s.io/mount-utils"
 
+	corev1 "k8s.io/api/core/v1"
 	utilexec "k8s.io/utils/exec"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -36,8 +37,6 @@ const (
 	defaultForceUmountTimeout = 30 * time.Second
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
-
-	nodeTopologyKey = "kubernetes.io/hostname"
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -293,6 +292,14 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 	}
 
 	vol.Frontend = volOptions["frontend"]
+
+	if pinToZone, ok := volOptions["pinToZone"]; ok {
+		isPinToZone, err := strconv.ParseBool(pinToZone)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter pinToZone")
+		}
+		vol.PinToZone = isPinToZone
+	}
 
 	return vol, nil
 }
@@ -616,9 +623,9 @@ func parseNodeID(topology *csi.Topology) (string, error) {
 	if topology == nil || topology.Segments == nil {
 		return "", fmt.Errorf("missing accessible topology request parameter")
 	}
-	nodeId, ok := topology.Segments[nodeTopologyKey]
+	nodeId, ok := topology.Segments[corev1.LabelHostname]
 	if !ok {
-		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
+		return "", fmt.Errorf("accessible topology request parameter is missing %s key", corev1.LabelHostname)
 	}
 	return nodeId, nil
 }
@@ -640,4 +647,8 @@ func isNotMountedError(err error) bool {
 	}
 	return strings.Contains(err.Error(), "not mounted") ||
 		strings.Contains(err.Error(), "no mount point specified")
+}
+
+func isTopologyKey(key string) bool {
+	return key == corev1.LabelHostname || key == corev1.LabelTopologyZone || key == corev1.LabelTopologyRegion || strings.Contains(key, "longhorn")
 }

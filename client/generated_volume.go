@@ -69,6 +69,8 @@ type Volume struct {
 
 	OfflineRebuilding string `json:"offlineRebuilding,omitempty" yaml:"offline_rebuilding,omitempty"`
 
+	PinToZone bool `json:"pinToZone,omitempty" yaml:"pin_to_zone,omitempty"`
+
 	PurgeStatus []PurgeStatus `json:"purgeStatus,omitempty" yaml:"purge_status,omitempty"`
 
 	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
