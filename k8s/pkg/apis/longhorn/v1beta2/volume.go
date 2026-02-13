@@ -129,10 +129,12 @@ const (
 	VolumeConditionTypeWaitForBackingImage      = "WaitForBackingImage"
 	VolumeConditionTypeBackingImageIncompatible = "BackingImageIncompatible"
 	VolumeConditionTypeOfflineRebuilding        = "OfflineRebuilding"
+	VolumeConditionTypeDiskAllocation           = "DiskAllocation"
 )
 
 const (
 	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
+	VolumeConditionReasonReplicaDiskAllocationFailure    = "ReplicaDiskAllocationFailure"
 	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
 	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
@@ -141,6 +143,7 @@ const (
 	VolumeConditionReasonWaitForBackingImageWaiting      = "Waiting"
 	VolumeConditionReasonBackingImageVirtualSizeTooLarge = "BackingImageVirtualSizeTooLarge"
 	VolumeConditionReasonOfflineRebuildingInProgress     = "OfflineRebuildingInProgress"
+	VolumeConditionReasonWaitForDiskScheduling           = "WaitForDiskScheduling"
 )
 
 type SnapshotDataIntegrity string

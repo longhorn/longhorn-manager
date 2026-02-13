@@ -38,6 +38,8 @@ type Interface interface {
 	BackupTargets() BackupTargetInformer
 	// BackupVolumes returns a BackupVolumeInformer.
 	BackupVolumes() BackupVolumeInformer
+	// DiskSchedules returns a DiskScheduleInformer.
+	DiskSchedules() DiskScheduleInformer
 	// Engines returns a EngineInformer.
 	Engines() EngineInformer
 	// EngineImages returns a EngineImageInformer.
@@ -114,6 +116,11 @@ func (v *version) BackupTargets() BackupTargetInformer {
 // BackupVolumes returns a BackupVolumeInformer.
 func (v *version) BackupVolumes() BackupVolumeInformer {
 	return &backupVolumeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// DiskSchedules returns a DiskScheduleInformer.
+func (v *version) DiskSchedules() DiskScheduleInformer {
+	return &diskScheduleInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Engines returns a EngineInformer.
