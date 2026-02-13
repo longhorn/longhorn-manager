@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -14,6 +15,11 @@ import (
 )
 
 type HandleFuncWithError func(http.ResponseWriter, *http.Request) error
+
+// SteveHandler is an optional Steve API handler
+type SteveHandler interface {
+	http.Handler
+}
 
 func HandleError(s *client.Schemas, t HandleFuncWithError) http.Handler {
 	return api.ApiHandler(s, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
@@ -46,6 +52,12 @@ func writeErr(rw http.ResponseWriter, req *http.Request, err error, statusCode i
 }
 
 func NewRouter(s *Server) *mux.Router {
+	return NewRouterWithSteve(s, nil)
+}
+
+// NewRouterWithSteve creates a new router with optional Steve API handler.
+// If steveHandler is provided, Steve API will be available at /v1/steve/* paths.
+func NewRouterWithSteve(s *Server, steveHandler SteveHandler) *mux.Router {
 	schemas := NewSchema()
 	r := mux.NewRouter().StrictSlash(true)
 	f := HandleError
@@ -54,6 +66,32 @@ func NewRouter(s *Server) *mux.Router {
 	versionHandler := api.VersionHandler(schemas, "v1")
 	r.Methods("GET").Path("/").Handler(versionsHandler)
 	r.Methods("GET").Path("/metrics").Handler(registry.Handler())
+
+	// Mount Steve API at /v1/longhorn/ if handler is provided
+	// Steve API provides endpoints like /v1/longhorn/longhorn.io.volumes
+	// This path is under /v1/ so it works with existing Nginx proxy rules
+	if steveHandler != nil {
+		// User requests /v1/longhorn/longhorn.io.volumes
+		// We need to transform it to /v1/longhorn.io.volumes for Steve
+		// steveHandler already includes SimplifiedHandler which rewrites response URLs
+		r.PathPrefix("/v1/longhorn/").Handler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			// /v1/longhorn/longhorn.io.volumes -> /v1/longhorn.io.volumes
+			originalPath := req.URL.Path
+			newPath := "/v1" + strings.TrimPrefix(req.URL.Path, "/v1/longhorn")
+
+			// Clear the mux route variables from Longhorn's router.
+			// Steve's mux router needs to set its own variables ({type}, {namespace}, {name})
+			// but gorilla/mux stores variables in the request context. If we don't clear them,
+			// Steve's router may not properly override the empty variables from Longhorn's
+			// PathPrefix route, causing schema lookup to fail and return 404.
+			newReq := mux.SetURLVars(req, nil)
+			newReq.URL.Path = newPath
+
+			logrus.Debugf("Steve API router: %s %s -> %s", req.Method, originalPath, newPath)
+			steveHandler.ServeHTTP(w, newReq)
+		}))
+		logrus.Info("Steve API mounted at /v1/longhorn/")
+	}
 
 	// Apply manager-url middleware to all API routes (including previously registered routes)
 	r.Use(ManagerURLMiddleware(s))
