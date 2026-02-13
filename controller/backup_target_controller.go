@@ -630,8 +630,6 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 		return fmt.Errorf("failed to update syncRequestedAt for BackupVolumes: %v", errs.ErrorByReason("errors"))
 	}
 
-	backupTarget.Status.BackupVolumeCount = len(backupStoreBackupVolumeNames)
-
 	return nil
 }
 
