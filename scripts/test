@@ -17,9 +17,59 @@ fi
 
 echo Packages: "${PACKAGES}"
 
-[ "${ARCH}" == "amd64" ] && RACE=-race
-if [ -n "${TESTS}" ]; then
-  go test -v "${RACE}" "${args[@]}" ${PACKAGES} -check.f "${TESTS}" -coverprofile=coverage.out
-else
-  go test -v "${RACE}" "${args[@]}" ${PACKAGES} -coverprofile=coverage.out
+TEST_FLAGS=('-v')
+[ "${ARCH}" == "amd64" ] && TEST_FLAGS+=('-race')
+COVERAGE_FILE='coverage.out'
+
+if [ -n "${PACKAGES}" ]; then
+  if [ -n "${TESTS}" ]; then
+    GOCHECK_PKGS=()
+    NORMAL_PKGS=()
+
+    ALL_INFO=$(go list -f '{{.ImportPath}}__DELIM__{{.TestImports}} {{.XTestImports}}' ${PACKAGES} 2>/dev/null)
+
+    while read -r line; do
+      if [ -z "$line" ]; then continue; fi
+
+      pkg="${line%%__DELIM__*}"
+      imports="${line##*__DELIM__}"
+
+      if echo "$imports" | grep -q "gopkg.in/check"; then
+        GOCHECK_PKGS+=("$pkg")
+      else
+        NORMAL_PKGS+=("$pkg")
+      fi
+    done <<< "$ALL_INFO"
+
+    COVERAGE_FILES=()
+
+    if [ ${#GOCHECK_PKGS[@]} -gt 0 ]; then
+      echo "------------------------------------------------"
+      echo "Running go-check tests (Filter via -check.f):"
+      printf '%s\n' "${GOCHECK_PKGS[@]}"
+      go test "${TEST_FLAGS[@]}" "${args[@]}" "${GOCHECK_PKGS[@]}" -coverprofile=coverage.gocheck.out -args -check.f "${TESTS}"
+      COVERAGE_FILES+=('coverage.gocheck.out')
+    fi
+
+    if [ ${#NORMAL_PKGS[@]} -gt 0 ]; then
+      echo "------------------------------------------------"
+      echo "Running standard tests (Filter via -run):"
+      printf '%s\n' "${NORMAL_PKGS[@]}"
+      go test "${TEST_FLAGS[@]}" "${args[@]}" -run "${TESTS}" "${NORMAL_PKGS[@]}" -coverprofile=coverage.std.out
+      COVERAGE_FILES+=('coverage.std.out')
+    fi
+
+    if [ ${#COVERAGE_FILES[@]} -gt 0 ]; then
+      MODE_LINE=$(grep -h "^mode:" "${COVERAGE_FILES[@]}" 2>/dev/null | head -n 1 || true)
+      if [ -n "$MODE_LINE" ]; then
+        printf '%s\n' "$MODE_LINE" > "$COVERAGE_FILE"
+        grep -h -v "^mode:" "${COVERAGE_FILES[@]}" 2>/dev/null >> "$COVERAGE_FILE"
+      else
+        echo "warning: no valid coverage data found in ${COVERAGE_FILES[*]}, skipping coverage merge" >&2
+      fi
+      rm -f "${COVERAGE_FILES[@]}" || true
+    fi
+  else
+    go test "${TEST_FLAGS[@]}" "${args[@]}" ${PACKAGES} -coverprofile="$COVERAGE_FILE"
+  fi
 fi
