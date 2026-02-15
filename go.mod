@@ -96,7 +96,7 @@ require (
 	k8s.io/kubernetes v1.33.4
 	k8s.io/metrics v0.33.4
 	k8s.io/mount-utils v0.33.4
-	k8s.io/utils v0.0.0-20260108192941-914a6e750570
+	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2
 )
