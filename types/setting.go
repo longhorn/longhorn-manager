@@ -155,6 +155,7 @@ const (
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
+	SettingNameAutoAttachVolumeForSnapshotCRCreationAndDeletion         = SettingName("auto-attach-volume-for-snapshot-cr-creation-and-deletion")
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
@@ -275,6 +276,7 @@ var (
 		SettingNameFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup,
 		SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted,
+		SettingNameAutoAttachVolumeForSnapshotCRCreationAndDeletion,
 		SettingNameDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
@@ -429,6 +431,7 @@ var (
 		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup:                      SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup,
 		SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted:          SettingDefinitionAutoCleanupSnapshotAfterOnDemandBackupCompleted,
+		SettingNameAutoAttachVolumeForSnapshotCRCreationAndDeletion:         SettingDefinitionAutoAttachVolumeForSnapshotCRCreationAndDeletion,
 		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
@@ -1833,6 +1836,17 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "false",
+	}
+
+	SettingDefinitionAutoAttachVolumeForSnapshotCRCreationAndDeletion = SettingDefinition{
+		DisplayName:        "Auto Attach Volume For Snapshot CR Creation And Deletion",
+		Description:        "When set to true, Longhorn will automatically attach the volume when user create or delete snapshot CR.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionDefaultMinNumberOfBackingImageCopies = SettingDefinition{
