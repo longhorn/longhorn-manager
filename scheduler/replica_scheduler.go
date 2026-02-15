@@ -572,10 +572,12 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 
 			scheduledReplica := diskStatus.ScheduledReplica
 
-			// check other replicas for the same volume has been accounted on current node
+			// account for replicas already assigned to this disk in the current
+			// scheduling cycle to prevent over-scheduling on the same disk.
 			var storageScheduled int64
 			for rName, r := range replicas {
-				if _, ok := scheduledReplica[rName]; !ok && r.Spec.NodeID != "" && r.Spec.NodeID == node.Name {
+				_, ok := scheduledReplica[rName]
+				if !ok && r.Spec.NodeID != "" && r.Spec.NodeID == node.Name && r.Spec.DiskID == diskUUID {
 					storageScheduled += r.Spec.VolumeSize
 				}
 			}
