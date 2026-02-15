@@ -23,18 +23,19 @@ package v1beta2
 //
 // SnapshotStatus defines the observed state of Longhorn Snapshot
 type SnapshotStatusApplyConfiguration struct {
-	Parent       *string           `json:"parent,omitempty"`
-	Children     map[string]bool   `json:"children,omitempty"`
-	MarkRemoved  *bool             `json:"markRemoved,omitempty"`
-	UserCreated  *bool             `json:"userCreated,omitempty"`
-	CreationTime *string           `json:"creationTime,omitempty"`
-	Size         *int64            `json:"size,omitempty"`
-	Labels       map[string]string `json:"labels,omitempty"`
-	OwnerID      *string           `json:"ownerID,omitempty"`
-	Error        *string           `json:"error,omitempty"`
-	RestoreSize  *int64            `json:"restoreSize,omitempty"`
-	ReadyToUse   *bool             `json:"readyToUse,omitempty"`
-	Checksum     *string           `json:"checksum,omitempty"`
+	Parent               *string           `json:"parent,omitempty"`
+	Children             map[string]bool   `json:"children,omitempty"`
+	MarkRemoved          *bool             `json:"markRemoved,omitempty"`
+	UserCreated          *bool             `json:"userCreated,omitempty"`
+	CreationTime         *string           `json:"creationTime,omitempty"`
+	Size                 *int64            `json:"size,omitempty"`
+	Labels               map[string]string `json:"labels,omitempty"`
+	OwnerID              *string           `json:"ownerID,omitempty"`
+	Error                *string           `json:"error,omitempty"`
+	RestoreSize          *int64            `json:"restoreSize,omitempty"`
+	ReadyToUse           *bool             `json:"readyToUse,omitempty"`
+	Checksum             *string           `json:"checksum,omitempty"`
+	ChecksumCalculatedAt *string           `json:"checksumCalculatedAt,omitempty"`
 }
 
 // SnapshotStatusApplyConfiguration constructs a declarative configuration of the SnapshotStatus type for use with
@@ -148,5 +149,13 @@ func (b *SnapshotStatusApplyConfiguration) WithReadyToUse(value bool) *SnapshotS
 // If called multiple times, the Checksum field is set to the value of the last call.
 func (b *SnapshotStatusApplyConfiguration) WithChecksum(value string) *SnapshotStatusApplyConfiguration {
 	b.Checksum = &value
+	return b
+}
+
+// WithChecksumCalculatedAt sets the ChecksumCalculatedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ChecksumCalculatedAt field is set to the value of the last call.
+func (b *SnapshotStatusApplyConfiguration) WithChecksumCalculatedAt(value string) *SnapshotStatusApplyConfiguration {
+	b.ChecksumCalculatedAt = &value
 	return b
 }

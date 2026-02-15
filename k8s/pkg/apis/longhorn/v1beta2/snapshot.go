@@ -55,6 +55,8 @@ type SnapshotStatus struct {
 	ReadyToUse bool `json:"readyToUse"`
 	// +optional
 	Checksum string `json:"checksum"`
+	// +optional
+	ChecksumCalculatedAt string `json:"checksumCalculatedAt,omitempty"`
 }
 
 // +genclient

@@ -514,6 +514,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.syncVolumeOnDemandSnapshotStatus(volume, snapshots); err != nil {
+		return err
+	}
+
 	if err := c.updateRecurringJobs(volume); err != nil {
 		return err
 	}
@@ -5346,4 +5350,43 @@ func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *lon
 		return true
 	}
 	return false
+}
+
+// syncVolumeOnDemandSnapshotStatus acknowledges an on-demand checksum request without waiting for snapshot rehash completion.
+func (c *VolumeController) syncVolumeOnDemandSnapshotStatus(v *longhorn.Volume, snapshots map[string]*longhorn.Snapshot) error {
+	considerOnDemandChecksum, err := shouldConsiderOnDemandRequest(v)
+	if err != nil {
+		return errors.Wrapf(err, "failed to determine volume %s for on-demand snapshot checksum calculation", v.Name)
+	}
+
+	if !considerOnDemandChecksum {
+		return nil
+	}
+
+	requestedAt, err := util.ParseTime(v.Spec.OnDemandChecksumRequestedAt)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse time v.Spec.OnDemandChecksumRequestedAt", v.Name)
+	}
+
+	for _, snap := range snapshots {
+		if !snap.Status.UserCreated {
+			continue
+		}
+
+		if snap.Status.ChecksumCalculatedAt == "" {
+			return nil
+		}
+
+		snapshotChecksumCompleteAt, err := util.ParseTime(snap.Status.ChecksumCalculatedAt)
+		if err != nil {
+			return err
+		}
+		if snapshotChecksumCompleteAt.Before(requestedAt) {
+			return nil // still not done
+		}
+	}
+
+	// now mark it completed
+	v.Status.LastOnDemandChecksumCompletedAt = v.Spec.OnDemandChecksumRequestedAt
+	return nil
 }

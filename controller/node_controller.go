@@ -177,6 +177,18 @@ func NewNodeController(
 	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: nc.isResponsibleForVolume,
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    nc.enqueueVolume,
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueVolume(cur) },
+			},
+		}, 0); err != nil {
+		return nil, err
+	}
+	nc.cacheSyncs = append(nc.cacheSyncs, ds.VolumeInformer.HasSynced)
+
 	return nc, nil
 }
 
@@ -239,6 +251,24 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 
 	return nc.snapshotHashRequired(volume)
+}
+
+func (nc *NodeController) isResponsibleForVolume(obj interface{}) bool {
+	volume, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return false
+	}
+
+	if volume.Status.OwnerID != nc.controllerID {
+		return false
+	}
+
+	dataIntegrity, err := nc.ds.GetVolumeSnapshotDataIntegrity(volume.Name)
+	if err != nil {
+		return false
+	}
+
+	return dataIntegrity != longhorn.SnapshotDataIntegrityDisabled
 }
 
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
@@ -607,10 +637,15 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 		return
 	}
 
+	nc.enqueueSnapshotHashEvent(currentSnapshot, volume)
+}
+
+func (nc *NodeController) enqueueSnapshotHashEvent(currentSnapshot *longhorn.Snapshot, volume *longhorn.Volume) {
 	nc.snapshotChangeEventQueueLock.Lock()
 	defer nc.snapshotChangeEventQueueLock.Unlock()
 	// To avoid the snapshot events run out of the system memory, just ignore
 	// the events. The events will be processed in following periodic rounds.
+
 	if nc.snapshotChangeEventQueue.Len() < snapshotChangeEventQueueMax {
 		nc.snapshotChangeEventQueue.Add(monitor.SnapshotChangeEvent{
 			VolumeName:   volume.Name,
@@ -2146,4 +2181,83 @@ func (nc *NodeController) clearDelinquentLeasesIfNodeNotReady(node *longhorn.Nod
 	}
 
 	return storedError
+}
+
+func (nc *NodeController) enqueueVolume(obj interface{}) {
+	volume := obj.(*longhorn.Volume)
+
+	if volume.Status.OwnerID != nc.controllerID {
+		return
+	}
+
+	considerOnDemandChecksum, err := shouldConsiderOnDemandRequest(volume)
+	if err != nil {
+		nc.logger.WithError(err).Warnf("failed to determine volume %s for on-demand snapshot checksum calculation", volume.Name)
+	}
+
+	if !considerOnDemandChecksum {
+		return
+	}
+
+	if err := nc.syncOnDemandChecksumCalculation(volume); err != nil {
+		nc.logger.WithError(err).Warnf("failed to sync volume for on-demand checksum")
+	}
+}
+
+// syncOnDemandChecksumCalculation enqueues checksum-hash events for all
+// user-created snapshots when a new on-demand request is issued.
+func (nc *NodeController) syncOnDemandChecksumCalculation(v *longhorn.Volume) (err error) {
+	snapshots, err := nc.ds.ListVolumeSnapshotsRO(v.Name)
+	if err != nil {
+		nc.logger.WithError(err).Warnf("Failed to list volume snapshot for volume %s", v.Name)
+		return
+	}
+
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	for _, snapshot := range snapshots {
+		if !snapshot.Status.UserCreated {
+			continue
+		}
+
+		nc.logger.Infof("Enqueued on-demand snapshot hash event for volume %v, snapshot %v", v.Name, snapshot.Name)
+		nc.enqueueSnapshotHashEvent(snapshot, v)
+	}
+
+	return nil
+}
+
+// shouldConsiderOnDemandRequest returns true only when:
+//  1. Spec.OnDemandChecksumRequestedAt is set, AND
+//  2. This is the first checksum request, OR
+//  3. RequestedAt > LastCompletedAt (a newer request), AND
+func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
+	if v.Spec.OnDemandChecksumRequestedAt == "" {
+		return false, nil
+	}
+
+	requestTime, err := util.ParseTime(v.Spec.OnDemandChecksumRequestedAt)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse OnDemandChecksumRequestedAt")
+	}
+
+	// Case 1: First-ever request → allow immediately
+	if v.Status.LastOnDemandChecksumCompletedAt == "" {
+		return true, nil
+	}
+
+	lastCompleted, err := util.ParseTime(v.Status.LastOnDemandChecksumCompletedAt)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse LastOnDemandChecksumCompletedAt")
+	}
+
+	// Case 2: Not a new request → reject
+	if !requestTime.After(lastCompleted) {
+		return false, nil
+	}
+
+	// Case 3: New request + not too recent → allow
+	return true, nil
 }
