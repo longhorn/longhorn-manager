@@ -20,6 +20,7 @@ get_pid() {
   local name
 
   for dir in $PROC_DIR/*/; do
+    name=""
     pid=$(basename "$dir")
     status_file="$PROC_DIR/$pid/status"
 
