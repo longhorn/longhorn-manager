@@ -144,7 +144,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			volumeID,
 		)
 	} else {
-		accessibleTopology = cs.getAccessibleTopologyFromRequirements(req.GetAccessibilityRequirements())
+		accessibleTopology = cs.getAccessibleTopologyFromRequirements(ctx, req.GetAccessibilityRequirements())
 	}
 
 	volumeSource := req.GetVolumeContentSource()
@@ -829,6 +829,14 @@ func (cs *ControllerServer) getSettingAsInt(ctx context.Context, name types.Sett
 		return -1, err
 	}
 	return value, nil
+}
+
+func (cs *ControllerServer) getSettingAsString(ctx context.Context, name types.SettingName) (string, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(ctx, string(name), metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	return obj.Value, nil
 }
 
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
@@ -1642,7 +1650,9 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 // to AccessibleTopology for CreateVolumeResponse. This enables PV nodeAffinity to be set
 // based on StorageClass allowedTopologies.
 // According to CSI spec, Preferred topology takes precedence over Requisite topology.
-func (cs *ControllerServer) getAccessibleTopologyFromRequirements(accessibilityReqs *csi.TopologyRequirement) []*csi.Topology {
+// The result is filtered by the CSI Allowed Topology Keys setting: only keys listed in the setting
+// are kept in topology segments. If the setting is empty, all topology keys are filtered out.
+func (cs *ControllerServer) getAccessibleTopologyFromRequirements(ctx context.Context, accessibilityReqs *csi.TopologyRequirement) []*csi.Topology {
 	if accessibilityReqs == nil {
 		return nil
 	}
@@ -1661,5 +1671,65 @@ func (cs *ControllerServer) getAccessibleTopologyFromRequirements(accessibilityR
 		log.Debugf("Using Requisite topology from AccessibilityRequirements: %+v", accessibleTopology)
 	}
 
-	return accessibleTopology
+	// Filter topology keys based on the CSI Allowed Topology Keys setting.
+	// Only keys listed in the setting are kept; if the setting is empty or missing,
+	// all topology keys are filtered out (no nodeAffinity on PV).
+	allowedKeysStr, err := cs.getSettingAsString(ctx, types.SettingNameCSIAllowedTopologyKeys)
+	if err != nil {
+		log.WithError(err).Warn("Failed to get CSI allowed topology keys setting, filtering all topology keys")
+	}
+
+	allowedKeys := make(map[string]bool)
+	for _, key := range strings.Split(allowedKeysStr, ",") {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			allowedKeys[key] = true
+		}
+	}
+
+	return cs.filterTopologyByAllowedKeys(accessibleTopology, allowedKeys)
+}
+
+// filterTopologyByAllowedKeys filters the segments of each topology entry,
+// keeping only the keys present in allowedKeys. If allowedKeys is empty,
+// nil is returned (no keys allowed means all topology is filtered out).
+// Topology entries whose segments become empty after filtering are dropped.
+func (cs *ControllerServer) filterTopologyByAllowedKeys(topologies []*csi.Topology, allowedKeys map[string]bool) []*csi.Topology {
+	if len(topologies) == 0 {
+		return topologies
+	}
+	if len(allowedKeys) == 0 {
+		return nil
+	}
+
+	log := cs.log.WithFields(logrus.Fields{"function": "filterTopologyByAllowedKeys"})
+
+	var filtered []*csi.Topology
+	seen := make(map[string]bool)
+	for _, topo := range topologies {
+		if topo == nil {
+			continue
+		}
+		newSegments := make(map[string]string)
+		for key, value := range topo.Segments {
+			if allowedKeys[key] {
+				newSegments[key] = value
+			}
+		}
+		if len(newSegments) == 0 {
+			log.Debugf("Topology entry dropped (no keys matched): original=%+v", topo.Segments)
+			continue
+		}
+		segKeyBytes, _ := json.Marshal(newSegments)
+		segKey := string(segKeyBytes)
+		if seen[segKey] {
+			log.Debugf("Topology entry dropped (duplicate): %+v", newSegments)
+			continue
+		}
+		seen[segKey] = true
+		filtered = append(filtered, &csi.Topology{Segments: newSegments})
+	}
+
+	log.Debugf("Filtered topology by allowed keys %v: %+v", allowedKeys, filtered)
+	return filtered
 }

@@ -401,3 +401,252 @@ func newSetting(name, value string) *longhorn.Setting {
 		Value: value,
 	}
 }
+
+func TestGetAccessibleTopologyFromRequirements(t *testing.T) {
+	cs := &ControllerServer{
+		lhNamespace: "longhorn-system-test",
+		log:         logrus.StandardLogger().WithField("component", "test-topology"),
+	}
+
+	for _, test := range []struct {
+		testName            string
+		allowedTopologyKeys string
+		skipSettingCreation bool
+		accessibilityReqs   *csi.TopologyRequirement
+		expectedTopology    []*csi.Topology
+	}{
+		{
+			testName:          "Nil accessibility requirements",
+			accessibilityReqs: nil,
+			expectedTopology:  nil,
+		},
+		{
+			testName:            "Empty setting filters all keys",
+			allowedTopologyKeys: "",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":        "node1",
+						"topology.kubernetes.io/zone":   "us-east-1a",
+						"topology.kubernetes.io/region": "us-east-1",
+					}},
+				},
+			},
+			expectedTopology: nil,
+		},
+		{
+			testName:            "Filter to zone only",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":        "node1",
+						"topology.kubernetes.io/zone":   "us-east-1a",
+						"topology.kubernetes.io/region": "us-east-1",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1a",
+				}},
+			},
+		},
+		{
+			testName:            "Filter to zone and region",
+			allowedTopologyKeys: "topology.kubernetes.io/zone,topology.kubernetes.io/region",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":        "node1",
+						"topology.kubernetes.io/zone":   "us-east-1a",
+						"topology.kubernetes.io/region": "us-east-1",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone":   "us-east-1a",
+					"topology.kubernetes.io/region": "us-east-1",
+				}},
+			},
+		},
+		{
+			testName:            "No matching keys results in nil",
+			allowedTopologyKeys: "nonexistent.key/something",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname": "node1",
+					}},
+				},
+			},
+			expectedTopology: nil,
+		},
+		{
+			testName:            "Setting CR not found - filters all keys",
+			skipSettingCreation: true,
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node1",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+				},
+			},
+			expectedTopology: nil,
+		},
+		{
+			testName:            "Requisite topology used when no Preferred",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node1",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1a",
+				}},
+			},
+		},
+		{
+			testName:            "Whitespace in setting value is trimmed",
+			allowedTopologyKeys: " topology.kubernetes.io/zone , topology.kubernetes.io/region ",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":        "node1",
+						"topology.kubernetes.io/zone":   "us-east-1a",
+						"topology.kubernetes.io/region": "us-east-1",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone":   "us-east-1a",
+					"topology.kubernetes.io/region": "us-east-1",
+				}},
+			},
+		},
+		{
+			testName:            "Multiple topology entries filtered independently",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node1",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node2",
+						"topology.kubernetes.io/zone": "us-east-1b",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1a",
+				}},
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1b",
+				}},
+			},
+		},
+		{
+			testName:            "Duplicate topology entries with multiple allowed keys are deduplicated",
+			allowedTopologyKeys: "topology.kubernetes.io/zone,topology.kubernetes.io/region",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":        "node1",
+						"topology.kubernetes.io/zone":   "us-east-1a",
+						"topology.kubernetes.io/region": "us-east-1",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":        "node2",
+						"topology.kubernetes.io/zone":   "us-east-1b",
+						"topology.kubernetes.io/region": "us-east-1",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":        "node3",
+						"topology.kubernetes.io/zone":   "us-east-1a",
+						"topology.kubernetes.io/region": "us-east-1",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone":   "us-east-1a",
+					"topology.kubernetes.io/region": "us-east-1",
+				}},
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone":   "us-east-1b",
+					"topology.kubernetes.io/region": "us-east-1",
+				}},
+			},
+		},
+		{
+			testName:            "Duplicate topology entries after filtering are deduplicated",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node1",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node2",
+						"topology.kubernetes.io/zone": "us-east-1b",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node3",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1a",
+				}},
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1b",
+				}},
+			},
+		},
+	} {
+		t.Run(test.testName, func(t *testing.T) {
+			cs.lhClient = lhfake.NewSimpleClientset() // nolint: staticcheck
+			if !test.skipSettingCreation {
+				_, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(
+					context.TODO(),
+					newSetting(string(types.SettingNameCSIAllowedTopologyKeys), test.allowedTopologyKeys),
+					metav1.CreateOptions{},
+				)
+				if err != nil {
+					t.Fatalf("failed to create setting: %v", err)
+				}
+			}
+
+			result := cs.getAccessibleTopologyFromRequirements(context.TODO(), test.accessibilityReqs)
+
+			if len(result) != len(test.expectedTopology) {
+				t.Fatalf("expected %d topology entries, got %d", len(test.expectedTopology), len(result))
+			}
+			for i, expected := range test.expectedTopology {
+				if len(expected.Segments) != len(result[i].Segments) {
+					t.Errorf("topology[%d] segments count mismatch: expected %v, got %v", i, expected.Segments, result[i].Segments)
+					continue
+				}
+				for key, expectedVal := range expected.Segments {
+					if gotVal, ok := result[i].Segments[key]; !ok || gotVal != expectedVal {
+						t.Errorf("topology[%d] segment %q: expected %q, got %q (exists=%v)", i, key, expectedVal, gotVal, ok)
+					}
+				}
+			}
+		})
+	}
+}
