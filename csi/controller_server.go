@@ -144,7 +144,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			volumeID,
 		)
 	} else {
-		accessibleTopology = cs.getAccessibleTopologyFromRequirements(ctx, req.GetAccessibilityRequirements())
+		strictTopology := volumeParameters["strictTopology"] == "true"
+		accessibleTopology = cs.getAccessibleTopologyFromRequirements(ctx, req.GetAccessibilityRequirements(), strictTopology)
 	}
 
 	volumeSource := req.GetVolumeContentSource()
@@ -1652,7 +1653,7 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 // According to CSI spec, Preferred topology takes precedence over Requisite topology.
 // The result is filtered by the CSI Allowed Topology Keys setting: only keys listed in the setting
 // are kept in topology segments. If the setting is empty, all topology keys are filtered out.
-func (cs *ControllerServer) getAccessibleTopologyFromRequirements(ctx context.Context, accessibilityReqs *csi.TopologyRequirement) []*csi.Topology {
+func (cs *ControllerServer) getAccessibleTopologyFromRequirements(ctx context.Context, accessibilityReqs *csi.TopologyRequirement, strictTopology bool) []*csi.Topology {
 	if accessibilityReqs == nil {
 		return nil
 	}
@@ -1661,7 +1662,8 @@ func (cs *ControllerServer) getAccessibleTopologyFromRequirements(ctx context.Co
 
 	var accessibleTopology []*csi.Topology
 
-	// Preferred topology takes precedence according to CSI spec
+	// Preferred topology takes precedence according to CSI spec.
+	// With delayed binding, the first element of Preferred is the selected node's topology.
 	if len(accessibilityReqs.Preferred) > 0 {
 		accessibleTopology = accessibilityReqs.Preferred
 		log.Debugf("Using Preferred topology from AccessibilityRequirements: %+v", accessibleTopology)
@@ -1669,6 +1671,13 @@ func (cs *ControllerServer) getAccessibleTopologyFromRequirements(ctx context.Co
 		// If no Preferred topology, use Requisite topology
 		accessibleTopology = accessibilityReqs.Requisite
 		log.Debugf("Using Requisite topology from AccessibilityRequirements: %+v", accessibleTopology)
+	}
+
+	// When strictTopology is enabled, only use the first element (selected node topology)
+	// to pin PV nodeAffinity to the specific node's topology.
+	if strictTopology && len(accessibleTopology) > 0 {
+		log.Debugf("strictTopology enabled, pinning to first topology element: %+v", accessibleTopology[0])
+		accessibleTopology = accessibleTopology[:1]
 	}
 
 	// Filter topology keys based on the CSI Allowed Topology Keys setting.
