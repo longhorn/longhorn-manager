@@ -167,6 +167,7 @@ const (
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
+	SettingNameCSIAllowedTopologyKeys                                   = SettingName("csi-allowed-topology-keys")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -287,6 +288,7 @@ var (
 		SettingNameLogPath,
 		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
+		SettingNameCSIAllowedTopologyKeys,
 	}
 )
 
@@ -441,6 +443,7 @@ var (
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
 		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
+		SettingNameCSIAllowedTopologyKeys:                                   SettingDefinitionCSIAllowedTopologyKeys,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1911,6 +1914,20 @@ var (
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
+	}
+
+	SettingDefinitionCSIAllowedTopologyKeys = SettingDefinition{
+		DisplayName: "CSI Allowed Topology Keys",
+		Description: "Comma-separated list of topology keys to keep in CreateVolumeResponse AccessibleTopology. " +
+			"Only the specified keys remain in topology segments and are used for PV nodeAffinity " +
+			"(e.g., \"topology.kubernetes.io/zone,topology.kubernetes.io/region\"). " +
+			"When empty (default), no topology keys are allowed and AccessibleTopology will be empty.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
 	}
 )
 
