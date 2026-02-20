@@ -921,23 +921,22 @@ func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeI
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	// Default topology with hostname (fallback if node labels cannot be retrieved)
+	// Default topology with hostname (required for CSI storage capacity calculation per node)
 	topologySegments := map[string]string{
 		nodeTopologyKey: ns.nodeID,
 	}
 
-	// Get Kubernetes node labels and add them to topology segments
+	// Get allowed topology keys from setting
+	allowedKeys := ns.getAllowedTopologyKeys(ctx)
+
+	// Get Kubernetes node labels and add allowed keys to topology segments
 	// This enables StorageClass allowedTopologies to match node labels
 	kubeNode, err := ns.kubeClient.CoreV1().Nodes().Get(ctx, ns.nodeID, metav1.GetOptions{})
 	if err != nil {
 		ns.log.WithError(err).Warnf("Failed to get Kubernetes node %s for topology labels, using hostname only", ns.nodeID)
 	} else {
-		// Only include well-known topology labels to avoid exposing sensitive info and exceeding CSI limits
-		// Note: If kubernetes.io/hostname exists in node labels, it will replace the default ns.nodeID value
 		for key, value := range kubeNode.Labels {
-			if key == nodeTopologyKey ||
-				strings.HasPrefix(key, "topology.kubernetes.io/") ||
-				strings.Contains(key, "longhorn") {
+			if key == nodeTopologyKey || allowedKeys[key] {
 				topologySegments[key] = value
 			}
 		}
@@ -950,6 +949,26 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 			Segments: topologySegments,
 		},
 	}, nil
+}
+
+// getAllowedTopologyKeys fetches the CSI Allowed Topology Keys setting and
+// returns a map of allowed keys. If the setting is empty or cannot be fetched,
+// an empty map is returned (only nodeTopologyKey will be used).
+func (ns *NodeServer) getAllowedTopologyKeys(ctx context.Context) map[string]bool {
+	obj, err := ns.lhClient.LonghornV1beta2().Settings(ns.lhNamespace).Get(ctx, string(types.SettingNameCSIAllowedTopologyKeys), metav1.GetOptions{})
+	if err != nil {
+		ns.log.WithError(err).Warn("Failed to get CSI allowed topology keys setting")
+		return nil
+	}
+
+	allowedKeys := make(map[string]bool)
+	for _, key := range strings.Split(obj.Value, ",") {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			allowedKeys[key] = true
+		}
+	}
+	return allowedKeys
 }
 
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
