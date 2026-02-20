@@ -631,7 +631,132 @@ func TestGetAccessibleTopologyFromRequirements(t *testing.T) {
 				}
 			}
 
-			result := cs.getAccessibleTopologyFromRequirements(context.TODO(), test.accessibilityReqs)
+			result := cs.getAccessibleTopologyFromRequirements(context.TODO(), test.accessibilityReqs, false)
+
+			if len(result) != len(test.expectedTopology) {
+				t.Fatalf("expected %d topology entries, got %d", len(test.expectedTopology), len(result))
+			}
+			for i, expected := range test.expectedTopology {
+				if len(expected.Segments) != len(result[i].Segments) {
+					t.Errorf("topology[%d] segments count mismatch: expected %v, got %v", i, expected.Segments, result[i].Segments)
+					continue
+				}
+				for key, expectedVal := range expected.Segments {
+					if gotVal, ok := result[i].Segments[key]; !ok || gotVal != expectedVal {
+						t.Errorf("topology[%d] segment %q: expected %q, got %q (exists=%v)", i, key, expectedVal, gotVal, ok)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGetAccessibleTopologyStrictTopology(t *testing.T) {
+	cs := &ControllerServer{
+		lhNamespace: "longhorn-system-test",
+		log:         logrus.StandardLogger().WithField("component", "test-strict-topology"),
+	}
+
+	for _, test := range []struct {
+		testName            string
+		allowedTopologyKeys string
+		strictTopology      bool
+		accessibilityReqs   *csi.TopologyRequirement
+		expectedTopology    []*csi.Topology
+	}{
+		{
+			testName:            "strictTopology pins to first Preferred element",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			strictTopology:      true,
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node1",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node2",
+						"topology.kubernetes.io/zone": "us-east-1b",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node3",
+						"topology.kubernetes.io/zone": "us-east-1c",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1a",
+				}},
+			},
+		},
+		{
+			testName:            "strictTopology disabled returns all elements",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			strictTopology:      false,
+			accessibilityReqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node1",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node2",
+						"topology.kubernetes.io/zone": "us-east-1b",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1a",
+				}},
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1b",
+				}},
+			},
+		},
+		{
+			testName:            "strictTopology with Requisite only pins to first element",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			strictTopology:      true,
+			accessibilityReqs: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node1",
+						"topology.kubernetes.io/zone": "us-east-1a",
+					}},
+					{Segments: map[string]string{
+						"kubernetes.io/hostname":      "node2",
+						"topology.kubernetes.io/zone": "us-east-1b",
+					}},
+				},
+			},
+			expectedTopology: []*csi.Topology{
+				{Segments: map[string]string{
+					"topology.kubernetes.io/zone": "us-east-1a",
+				}},
+			},
+		},
+		{
+			testName:            "strictTopology with nil requirements",
+			allowedTopologyKeys: "topology.kubernetes.io/zone",
+			strictTopology:      true,
+			accessibilityReqs:   nil,
+			expectedTopology:    nil,
+		},
+	} {
+		t.Run(test.testName, func(t *testing.T) {
+			cs.lhClient = lhfake.NewSimpleClientset() // nolint: staticcheck
+			_, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(
+				context.TODO(),
+				newSetting(string(types.SettingNameCSIAllowedTopologyKeys), test.allowedTopologyKeys),
+				metav1.CreateOptions{},
+			)
+			if err != nil {
+				t.Fatalf("failed to create setting: %v", err)
+			}
+
+			result := cs.getAccessibleTopologyFromRequirements(context.TODO(), test.accessibilityReqs, test.strictTopology)
 
 			if len(result) != len(test.expectedTopology) {
 				t.Fatalf("expected %d topology entries, got %d", len(test.expectedTopology), len(result))
