@@ -213,6 +213,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		FreezeFilesystemForSnapshot:     volume.FreezeFilesystemForSnapshot,
 		BackupTargetName:                volume.BackupTargetName,
 		OfflineRebuilding:               volume.OfflineRebuilding,
+		PinToZone:                       volume.PinToZone,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "failed to create volume")
