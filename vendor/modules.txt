@@ -400,7 +400,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/rancher/dynamiclistener v0.7.3
+# github.com/rancher/dynamiclistener v0.7.5
 ## explicit; go 1.24.0
 github.com/rancher/dynamiclistener
 github.com/rancher/dynamiclistener/cert
@@ -423,7 +423,7 @@ github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/metrics
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/wrangler/v3 v3.3.1
+# github.com/rancher/wrangler/v3 v3.3.4
 ## explicit; go 1.24.0
 github.com/rancher/wrangler/v3/pkg/apply
 github.com/rancher/wrangler/v3/pkg/apply/injectors
