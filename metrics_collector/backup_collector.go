@@ -8,12 +8,15 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 type BackupCollector struct {
 	*baseCollector
+
+	accumulatedPhysicalFileSize metricInfo
 
 	sizeMetric  metricInfo
 	stateMetric metricInfo
@@ -48,12 +51,23 @@ func NewBackupCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	bc.accumulatedPhysicalFileSize = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemBackup, "accumulated_physical_file_size_bytes"),
+			"Accumulated physical file size of this backup",
+			[]string{volumeLabel, backupLabel, recurringJobLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return bc
 }
 
 func (bc *BackupCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- bc.sizeMetric.Desc
 	ch <- bc.stateMetric.Desc
+	ch <- bc.accumulatedPhysicalFileSize.Desc
 }
 
 func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
@@ -82,8 +96,13 @@ func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 				bc.logger.WithError(err).Warn("Error get backup volume label")
 			}
 			backupRecurringJobName := backup.Status.Labels[types.RecurringJobLabel]
+			accumulatedPhysicalFileSize, err := util.ConvertSize(backup.Status.NewlyUploadedDataSize)
+			if err != nil {
+				bc.logger.WithError(err).Warn("Error convert size")
+			}
 			ch <- prometheus.MustNewConstMetric(bc.sizeMetric.Desc, bc.sizeMetric.Type, size, backupVolumeName, backup.Name, backupRecurringJobName)
 			ch <- prometheus.MustNewConstMetric(bc.stateMetric.Desc, bc.stateMetric.Type, float64(getBackupStateValue(backup)), backupVolumeName, backup.Name, backupRecurringJobName)
+			ch <- prometheus.MustNewConstMetric(bc.accumulatedPhysicalFileSize.Desc, bc.accumulatedPhysicalFileSize.Type, float64(accumulatedPhysicalFileSize), backupVolumeName, backup.Name, backupRecurringJobName)
 		}
 	}
 }
