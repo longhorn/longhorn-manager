@@ -86,7 +86,9 @@ const (
 	SettingNameDefaultDataLocality                                      = SettingName("default-data-locality")
 	SettingNameDefaultLonghornStaticStorageClass                        = SettingName("default-longhorn-static-storage-class")
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
+	SettingNameCSISidecarComponentTaintToleration                       = SettingName("csi-sidecar-taint-toleration")
 	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
+	SettingNameSystemManagedCSISidecarComponentsNodeSelector            = SettingName("system-managed-csi-sidecar-components-node-selector")
 	SettingNameSystemManagedCSIComponentsResourceLimits                 = SettingName("system-managed-csi-components-resource-limits")
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                              = SettingName("auto-salvage")
@@ -206,7 +208,9 @@ var (
 		SettingNameDefaultDataLocality,
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameTaintToleration,
+		SettingNameCSISidecarComponentTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector,
+		SettingNameSystemManagedCSISidecarComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
@@ -361,7 +365,9 @@ var (
 		SettingNameDefaultDataLocality:                                      SettingDefinitionDefaultDataLocality,
 		SettingNameDefaultLonghornStaticStorageClass:                        SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
+		SettingNameCSISidecarComponentTaintToleration:                       SettingDefinitionCSISidecarComponentTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
+		SettingNameSystemManagedCSISidecarComponentsNodeSelector:            SettingDefinitionSystemManagedCSISidecarComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits:                 SettingDefinitionSystemManagedCSIComponentsResourceLimits,
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                              SettingDefinitionAutoSalvage,
@@ -807,7 +813,7 @@ var (
 		DisplayName: "Kubernetes Taint Toleration",
 		Description: "If you want to dedicate nodes to just store Longhorn replicas and reject other general workloads, you can set tolerations for **all** Longhorn components and add taints to the nodes dedicated for storage. " +
 			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
-			"This setting only sets taint tolerations for system managed components. " +
+			"This setting only sets taint tolerations for all system managed components except for Kubernetes CSI sidecar components. " +
 			"Depending on how you deployed Longhorn, you need to set taint tolerations for user deployed components in Helm chart or deployment YAML file. " +
 			"All Longhorn volumes should be detached before modifying toleration settings. " +
 			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
@@ -822,19 +828,53 @@ var (
 		DataEngineSpecific: false,
 	}
 
+	SettingDefinitionCSISidecarComponentTaintToleration = SettingDefinition{
+		DisplayName: "Kubernetes Taint Toleration for Kubernetes CSI sidecar components",
+		Description: "This setting configures taint tolerations **only for system managed Kubernetes CSI sidecar components** (e.g., csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter). " +
+			"It is intended for environments where nodes are dedicated for Longhorn storage by applying taints. " +
+			"Multiple tolerations can be specified and separated by semicolons. For example:\n\n" +
+			"* `key1=value1:NoSchedule; key2:NoExecute:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values, and effects.\n\n" +
+			"* `key1=value1:` this toleration has an empty effect and matches all effects with key `key1`.\n\n" +
+			"Because `kubernetes.io` is used as the key for Kubernetes default tolerations, it should not be used in the toleration settings.\n\n",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+
 	SettingDefinitionSystemManagedComponentsNodeSelector = SettingDefinition{
 		DisplayName: "System Managed Components Node Selector",
-		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components. " +
+		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components except for Kubernetes CSI sidecar components. " +
 			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
 			"You must follow the below order when set the node selector:\n\n" +
-			"1. Set node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
-			"2. Set node selector for system managed components in here.\n\n" +
+			"1. Configure node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
+			"2. Configure node selector for system managed Kubernetes CSI components in system-managed-csi-sidecar-components-node-selector. \n\n" +
+			"3. Configure node selector for other system managed components using this setting.\n\n" +
 			"All Longhorn volumes should be detached before modifying node selector settings. " +
 			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
 			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
 			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
 			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
 		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+
+	SettingDefinitionSystemManagedCSISidecarComponentsNodeSelector = SettingDefinition{
+		DisplayName: "System Managed Components Node Selector for Kubernetes CSI sidecar components",
+		Description: "This setting configures the node selector **only for system managed Kubernetes CSI sidecar components** (e.g., csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter). " +
+			"It is used to restrict these CSI sidecar components to run on a specific set of nodes. " +
+			"Longhorn system contains user deployed components (e.g., Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g., instance manager, engine image, CSI driver, etc.). " +
+			"You must follow the order below when configuring node selectors:\n\n" +
+			"1. Configure node selector for user deployed components via the Helm chart or deployment YAML, depending on how Longhorn was deployed.\n\n" +
+			"2. Configure node selector for system managed Kubernetes CSI sidecar components using this setting.\n\n" +
+			"3. Configure node selector for other system managed components in system-managed-components-node-selector.\n\n" +
+			"Multiple label key-value pairs can be specified and separated by semicolons. For example:\n\n" +
+			"* `label-key1=label-value1; label-key2=label-value2`\n\n",
+		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           false,
 		ReadOnly:           false,
@@ -2641,7 +2681,15 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 			if _, err := UnmarshalTolerations(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
+		case SettingNameCSISidecarComponentTaintToleration:
+			if _, err := UnmarshalTolerations(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
 		case SettingNameSystemManagedComponentsNodeSelector:
+			if _, err := UnmarshalNodeSelector(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+		case SettingNameSystemManagedCSISidecarComponentsNodeSelector:
 			if _, err := UnmarshalNodeSelector(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}

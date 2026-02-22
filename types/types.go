@@ -246,6 +246,18 @@ const (
 	CSISidecarPortNameSnapshotter = "csi-snapshotter"
 )
 
+func IsKubernetesCSISidecar(appName string) bool {
+	switch appName {
+	case CSISidecarPortNameAttacher,
+		CSISidecarPortNameProvisioner,
+		CSISidecarPortNameResizer,
+		CSISidecarPortNameSnapshotter:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	RecurringJobParameterFullBackupInterval = "full-backup-interval"
 	RecurringJobParameterVolumeBackupPolicy = "volume-backup-policy"

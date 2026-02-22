@@ -256,6 +256,14 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
 			return err
 		}
+	case types.SettingNameCSISidecarComponentTaintToleration:
+		if err := sc.updateCSISidecarComponentTaintToleration(); err != nil {
+			return err
+		}
+	case types.SettingNameSystemManagedCSISidecarComponentsNodeSelector:
+		if err := sc.updateCSISidecarComponentsNodeSelector(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -463,13 +471,56 @@ func (sc *SettingController) updateTaintToleration() error {
 	return nil
 }
 
+// updateCSISidecarComponentTaintToleration deletes system-managed Kubernetes CSI sidecar components immediately with the updated taint toleration.
+func (sc *SettingController) updateCSISidecarComponentTaintToleration() error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameCSISidecarComponentTaintToleration)
+	if err != nil {
+		return err
+	}
+	newTolerations := setting.Value
+	newTolerationsList, err := types.UnmarshalTolerations(newTolerations)
+	if err != nil {
+		return err
+	}
+	newTolerationsMap := util.TolerationListToMap(newTolerationsList)
+
+	updatingRuntimeObjects, err := sc.collectRuntimeObjectsKubernetesCSI()
+	if err != nil {
+		return errors.Wrap(err, "failed to collect runtime objects for toleration update")
+	}
+	notUpdatedTolerationObjs, err := getNotUpdatedTolerationList(newTolerationsMap, updatingRuntimeObjects...)
+	if err != nil {
+		return err
+	}
+	if len(notUpdatedTolerationObjs) == 0 {
+		return nil
+	}
+
+	for _, obj := range notUpdatedTolerationObjs {
+		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(obj)
+		if err != nil {
+			return err
+		}
+		if dp, ok := obj.(*appsv1.Deployment); ok {
+			sc.logger.Infof("Updating deployment %v to update tolerations from %v to %v", dp.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("object type is not Deployment when updating %v setting", types.SettingNameCSISidecarComponentTaintToleration)
+		}
+	}
+
+	return nil
+}
+
 func (sc *SettingController) collectRuntimeObjects() (returnCollectRuntimeObjects []runtime.Object, err error) {
-	dsList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	dpList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list Longhorn deployments for collecting runtime objects")
 	}
 
-	dpList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	dsList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list Longhorn daemonsets for collecting runtime objects")
 	}
@@ -489,14 +540,34 @@ func (sc *SettingController) collectRuntimeObjects() (returnCollectRuntimeObject
 	podList := append(imPodList, smPodList...)
 	podList = append(podList, bimPodList...)
 
+	for _, dp := range dpList {
+		// Exclude Kubernetes CSI deployments
+		if types.IsKubernetesCSISidecar(dp.Labels["app"]) {
+			continue
+		}
+		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
+	}
 	for _, ds := range dsList {
 		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(ds))
 	}
-	for _, dp := range dpList {
-		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
-	}
 	for _, pod := range podList {
 		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(pod))
+	}
+
+	return returnCollectRuntimeObjects, nil
+}
+
+func (sc *SettingController) collectRuntimeObjectsKubernetesCSI() (returnCollectRuntimeObjects []runtime.Object, err error) {
+	dpList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list Longhorn deployments for collecting runtime objects")
+	}
+
+	for _, dp := range dpList {
+		// Include only Kubernetes CSI deployments
+		if types.IsKubernetesCSISidecar(dp.Labels["app"]) {
+			returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
+		}
 	}
 
 	return returnCollectRuntimeObjects, nil
@@ -586,6 +657,13 @@ func (sc *SettingController) updatePriorityClass() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to collect runtime objects for priority class update")
 	}
+	updatingRuntimeObjectsKubernetesCSI, err := sc.collectRuntimeObjectsKubernetesCSI()
+	if err != nil {
+		return errors.Wrap(err, "failed to collect runtime Kubernetes CSI objects for priority class update")
+	}
+
+	updatingRuntimeObjects = append(updatingRuntimeObjects, updatingRuntimeObjectsKubernetesCSI...)
+
 	notUpdatedPriorityClassObjs, err := getNotUpdatedPriorityClassList(newPriorityClass, updatingRuntimeObjects...)
 	if err != nil {
 		return err
@@ -1023,7 +1101,45 @@ func (sc *SettingController) updateNodeSelector() error {
 				}
 			}
 		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
+			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameSystemManagedComponentsNodeSelector)
+		}
+	}
+
+	return nil
+}
+
+// updateCSISidecarComponentsNodeSelector deletes system-managed Kubernetes CSI sidecar components immediately with the updated node selector.
+func (sc *SettingController) updateCSISidecarComponentsNodeSelector() error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
+	if err != nil {
+		return err
+	}
+	newNodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return err
+	}
+
+	updatingRuntimeObjects, err := sc.collectRuntimeObjectsKubernetesCSI()
+	if err != nil {
+		return errors.Wrap(err, "failed to collect runtime objects for node selector update")
+	}
+	notUpdatedNodeSelectorObjs, err := getNotUpdatedNodeSelectorList(newNodeSelector, updatingRuntimeObjects...)
+	if err != nil {
+		return err
+	}
+	if len(notUpdatedNodeSelectorObjs) == 0 {
+		return nil
+	}
+
+	for _, obj := range notUpdatedNodeSelectorObjs {
+		if dp, ok := obj.(*appsv1.Deployment); ok {
+			sc.logger.Infof("Updating the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
+			dp.Spec.Template.Spec.NodeSelector = newNodeSelector
+			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("object type is not Deployment when updating %v setting", types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
 		}
 	}
 
