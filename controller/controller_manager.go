@@ -182,6 +182,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	kubernetesEngpointSlicesController, err := NewKubernetesEndpointSlicesController(logger, ds, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
 
 	// Start goroutines for Longhorn controllers
 	go replicaController.Run(Workers, stopCh)
@@ -220,7 +224,19 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go kubernetesConfigMapController.Run(Workers, stopCh)
 	go kubernetesSecretController.Run(Workers, stopCh)
 	go kubernetesPDBController.Run(Workers, stopCh)
-	go kubernetesEndpointController.Run(Workers, stopCh)
+
+	isAtLeast1_33, err := util.IsKubernetesVersionAtLeast(kubeClient, util.KubernetesVersion1_33)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to determine kubernetes version in controller manager")
+	}
+	if isAtLeast1_33 {
+		logger.Info("Kubernetes version is at least v1.33.0, using EndpointSlice controller")
+		go kubernetesEngpointSlicesController.Run(Workers, stopCh)
+	} else {
+		// Endpoint is deprecated in v1.33+
+		logger.Info("Kubernetes version is below v1.33.0, using Endpoint controller")
+		go kubernetesEndpointController.Run(Workers, stopCh)
+	}
 
 	return websocketController, nil
 }

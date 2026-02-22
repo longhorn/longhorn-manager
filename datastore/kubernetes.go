@@ -21,6 +21,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -1086,6 +1087,36 @@ func (s *DataStore) UpdateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev
 // GetKubernetesEndpointRO gets the Kubernetes Endpoint of the given name in the Longhorn namespace.
 func (s *DataStore) GetKubernetesEndpointRO(name string) (*corev1.Endpoints, error) { // nolint: staticcheck
 	return s.endpointLister.Endpoints(s.namespace).Get(name)
+}
+
+// CreateKubernetesEndpointSlices creates a Kubernetes EndpointSlice resource.
+func (s *DataStore) CreateKubernetesEndpointSlices(endpointSlices *discoveryv1.EndpointSlice) (*discoveryv1.EndpointSlice, error) {
+	return s.kubeClient.DiscoveryV1().EndpointSlices(endpointSlices.Namespace).Create(context.TODO(), endpointSlices, metav1.CreateOptions{})
+}
+
+// DeleteKubernetesEndpointSlices deletes the Kubernetes EndpointSlice of the given name in the Longhorn namespace.
+func (s *DataStore) DeleteKubernetesEndpointSlices(namespace, name string) error {
+	return s.kubeClient.DiscoveryV1().EndpointSlices(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// UpdateKubernetesEndpointSlices updates the Kubernetes EndpointSlice of the given name in the Longhorn namespace.
+func (s *DataStore) UpdateKubernetesEndpointSlices(endpointSlice *discoveryv1.EndpointSlice) (*discoveryv1.EndpointSlice, error) {
+	return s.kubeClient.DiscoveryV1().EndpointSlices(endpointSlice.Namespace).Update(context.TODO(), endpointSlice, metav1.UpdateOptions{})
+}
+
+// GetKubernetesEndpoint gets Kubernetes EndpointSlices object for the given name in the Longhorn namespace.
+func (s *DataStore) GetKubernetesEndpointSlices(namespace, name string) (*discoveryv1.EndpointSlice, error) {
+	return s.kubeClient.DiscoveryV1().EndpointSlices(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func (s *DataStore) ListKubernetesEndpointSlicesRO(namespace string, labelSelector labels.Selector) (*discoveryv1.EndpointSliceList, error) {
+	if labelSelector == nil {
+		labelSelector = labels.Everything()
+	}
+
+	return s.kubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: labelSelector.String(),
+	})
 }
 
 // NewPVManifestForVolume returns a new PersistentVolume object for a longhorn volume
