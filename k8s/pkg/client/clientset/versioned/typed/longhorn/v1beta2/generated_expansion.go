@@ -32,6 +32,8 @@ type BackupTargetExpansion interface{}
 
 type BackupVolumeExpansion interface{}
 
+type DiskScheduleExpansion interface{}
+
 type EngineExpansion interface{}
 
 type EngineImageExpansion interface{}

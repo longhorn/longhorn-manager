@@ -3865,6 +3865,133 @@ func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
 	}
 }
 
+func (s *DataStore) GetDiskScheduleRO(name string) (*longhorn.DiskSchedule, error) {
+	return s.diskScheduleLister.DiskSchedules(s.namespace).Get(name)
+}
+
+// GetDiskSchedule gets Longhorn DiskSchedule for the given name and namespace
+// Returns a new DiskSchedule object
+func (s *DataStore) GetDiskSchedule(name string) (*longhorn.DiskSchedule, error) {
+	resultRO, err := s.GetDiskScheduleRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// CreateDiskSchedule creates a Longhorn DiskSchedule resource and verifies creation
+func (s *DataStore) CreateDiskSchedule(d *longhorn.DiskSchedule) (*longhorn.DiskSchedule, error) {
+	if err := labelNode(d.Spec.NodeID, d); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().DiskSchedules(s.namespace).Create(context.TODO(), d, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "disk schedule", func(name string) (k8sruntime.Object, error) {
+		return s.GetDiskScheduleRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.DiskSchedule)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for diskSchedule")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateDiskSchedule updates Longhorn DiskSchedule resource and verifies update
+func (s *DataStore) UpdateDiskSchedule(diskSchedule *longhorn.DiskSchedule) (*longhorn.DiskSchedule, error) {
+	obj, err := s.lhClient.LonghornV1beta2().DiskSchedules(s.namespace).Update(context.TODO(), diskSchedule, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(diskSchedule.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetDiskScheduleRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateDiskScheduleStatus updates Longhorn DiskSchedule status and verifies update
+func (s *DataStore) UpdateDiskScheduleStatus(diskSchedule *longhorn.DiskSchedule) (*longhorn.DiskSchedule, error) {
+	obj, err := s.lhClient.LonghornV1beta2().DiskSchedules(s.namespace).UpdateStatus(context.TODO(), diskSchedule, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(diskSchedule.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetDiskScheduleRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteDiskSchedule deletes DiskSchedule for the given name and namespace
+func (s *DataStore) DeleteDiskSchedule(name string) error {
+	return s.lhClient.LonghornV1beta2().DiskSchedules(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForDiskSchedule will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForDiskSchedule(obj *longhorn.DiskSchedule) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().DiskSchedules(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for disk schedule %v", obj.Name)
+	}
+	return nil
+}
+
+// ListDiskSchedules returns a diskUUID to object map of all DiskSchedules for the given namespace.
+func (s *DataStore) ListDiskSchedules() (map[string]*longhorn.DiskSchedule, error) {
+	return s.listDiskSchedules(labels.Everything())
+}
+
+// ListDiskSchedulesRO returns a diskUUID to object map of all DiskSchedules for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListDiskSchedulesRO() ([]*longhorn.DiskSchedule, error) {
+	return s.diskScheduleLister.DiskSchedules(s.namespace).List(labels.Everything())
+}
+
+// ListDiskSchedulesOnNode returns a list of all DiskSchedules for the given node in namespace.
+func (s *DataStore) ListDiskSchedulesOnNode(nodeName string) (map[string]*longhorn.DiskSchedule, error) {
+	nodeSelector, err := getNodeSelector(nodeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listDiskSchedules(nodeSelector)
+}
+
+func (s *DataStore) listDiskSchedules(selector labels.Selector) (map[string]*longhorn.DiskSchedule, error) {
+	list, err := s.diskScheduleLister.DiskSchedules(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.DiskSchedule{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
 // GetSettingAsFloat gets the setting for the given name, returns as float
 // Returns error if the definition type is not float
 func (s *DataStore) GetSettingAsFloat(settingName types.SettingName) (float64, error) {

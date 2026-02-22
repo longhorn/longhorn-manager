@@ -75,6 +75,7 @@ type NodeControllerSuite struct {
 	informerFactories *util.InformerFactories
 
 	lhNodeIndexer            cache.Indexer
+	lhDiskScheduleIndexer    cache.Indexer
 	lhReplicaIndexer         cache.Indexer
 	lhSettingsIndexer        cache.Indexer
 	lhInstanceManagerIndexer cache.Indexer
@@ -92,6 +93,7 @@ type NodeControllerSuite struct {
 // nodes and pods
 type NodeControllerFixture struct {
 	lhNodes            map[string]*longhorn.Node
+	lhDiskSchedule     map[string]*longhorn.DiskSchedule
 	lhReplicas         []*longhorn.Replica
 	lhSettings         map[string]*longhorn.Setting
 	lhInstanceManagers map[string]*longhorn.InstanceManager
@@ -107,6 +109,7 @@ type NodeControllerFixture struct {
 // the mock API to the expected results
 type NodeControllerExpectation struct {
 	nodeStatus       map[string]*longhorn.NodeStatus
+	diskSchedules    map[string]*longhorn.DiskScheduleSpec
 	instanceManagers map[string]*longhorn.InstanceManager
 	orphans          map[string]*longhorn.Orphan
 	events           map[string]*corev1.Event
@@ -124,6 +127,7 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 	s.informerFactories = util.NewInformerFactories(TestNamespace, s.kubeClient, s.lhClient, controller.NoResyncPeriodFunc())
 
 	s.lhNodeIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	s.lhDiskScheduleIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().DiskSchedules().Informer().GetIndexer()
 	s.lhReplicaIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 	s.lhSettingsIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 	s.lhInstanceManagerIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
@@ -146,6 +150,9 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -197,6 +204,12 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 				},
 			},
 		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
+			},
+		},
 		orphans: map[string]*longhorn.Orphan{
 			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
 		},
@@ -221,6 +234,7 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 		s.checkNodeConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkOrphans(c, expectation)
 }
 
@@ -231,6 +245,9 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -283,6 +300,12 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 				},
 			},
 		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
+			},
+		},
 		orphans: map[string]*longhorn.Orphan{
 			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
 		},
@@ -307,6 +330,7 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 		s.checkNodeConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkOrphans(c, expectation)
 }
 
@@ -317,6 +341,9 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -369,6 +396,12 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 				},
 			},
 		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
+			},
+		},
 		orphans: map[string]*longhorn.Orphan{
 			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
 		},
@@ -393,6 +426,7 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 		s.checkNodeConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkOrphans(c, expectation)
 }
 
@@ -403,6 +437,9 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -455,6 +492,12 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 				},
 			},
 		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
+			},
+		},
 		orphans: map[string]*longhorn.Orphan{
 			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
 		},
@@ -479,6 +522,7 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 		s.checkNodeConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkOrphans(c, expectation)
 }
 
@@ -488,7 +532,6 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
-			StorageScheduled:    0,
 			StorageAvailable:    0,
 			Type:                longhorn.DiskTypeFilesystem,
 			FSType:              TestDiskPathFSType,
@@ -500,7 +543,6 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
 	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
-			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
@@ -520,6 +562,9 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 			TestNode2: node2,
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhReplicas: []*longhorn.Replica{
 			newReplicaForVolume(vol, eng, TestNode1, TestDiskID1),
@@ -570,15 +615,13 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
-						StorageScheduled: TestVolumeSize,
+						StorageScheduled: 0, // moved to disk schedule, should always keep zero
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 						},
-						ScheduledReplica: map[string]int64{
-							fixture.lhReplicas[0].Name: fixture.lhReplicas[0].Spec.VolumeSize,
-						},
-						ScheduledBackingImage: map[string]int64{},
+						ScheduledReplica:      nil, // moved to disk schedule, should always keep empty
+						ScheduledBackingImage: nil, // moved to disk schedule, should always keep empty
 						DiskName:              TestDiskID1,
 						DiskUUID:              TestDiskID1,
 						Type:                  longhorn.DiskTypeFilesystem,
@@ -595,7 +638,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
-						StorageScheduled: 0,
+						StorageScheduled: 0, // moved to disk schedule, should always keep zero
 						StorageAvailable: 0,
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
@@ -607,6 +650,12 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						InstanceManagerName: TestInstanceManagerName,
 					},
 				},
+			},
+		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
 			},
 		},
 		orphans: map[string]*longhorn.Orphan{
@@ -634,6 +683,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 		s.checkDiskConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkOrphans(c, expectation)
 }
 
@@ -643,7 +693,6 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
-			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
@@ -651,7 +700,6 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			DiskName: TestDiskID1,
 		},
 		"unavailable-disk": {
-			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
@@ -661,7 +709,6 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
 	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
-			StorageScheduled:    0,
 			StorageAvailable:    0,
 			Type:                longhorn.DiskTypeFilesystem,
 			FSType:              TestDiskPathFSType,
@@ -675,6 +722,9 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 			TestNode2: node2,
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -721,14 +771,14 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
-						StorageScheduled: 0,
+						StorageScheduled: 0, // moved to disk schedule, should always keep zero
 						StorageAvailable: 0,
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 						},
-						ScheduledReplica:      map[string]int64{},
-						ScheduledBackingImage: map[string]int64{},
+						ScheduledReplica:      nil, // moved to disk schedule, should always keep empty
+						ScheduledBackingImage: nil, // moved to disk schedule, should always keep empty
 						DiskName:              TestDiskID1,
 						DiskUUID:              TestDiskID1,
 						Type:                  longhorn.DiskTypeFilesystem,
@@ -745,15 +795,23 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
-						StorageScheduled:    0,
-						StorageAvailable:    0,
-						Type:                longhorn.DiskTypeFilesystem,
-						FSType:              TestDiskPathFSType,
-						DiskPath:            TestDefaultDataPath,
-						DiskName:            TestDiskID1,
-						InstanceManagerName: TestInstanceManagerName,
+						StorageScheduled:      0, // moved to disk schedule, should always keep zero
+						StorageAvailable:      0,
+						ScheduledReplica:      nil, // moved to disk schedule, should always keep empty
+						ScheduledBackingImage: nil, // moved to disk schedule, should always keep empty
+						Type:                  longhorn.DiskTypeFilesystem,
+						FSType:                TestDiskPathFSType,
+						DiskPath:              TestDefaultDataPath,
+						DiskName:              TestDiskID1,
+						InstanceManagerName:   TestInstanceManagerName,
 					},
 				},
+			},
+		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
 			},
 		},
 		orphans: map[string]*longhorn.Orphan{
@@ -781,6 +839,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 		s.checkDiskConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkOrphans(c, expectation)
 }
 
@@ -799,7 +858,6 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 	}
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
-			StorageScheduled: 0,
 			StorageAvailable: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: []longhorn.Condition{
@@ -819,7 +877,6 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
 			DiskName:            TestDiskID1,
-			StorageScheduled:    0,
 			StorageAvailable:    0,
 			Type:                longhorn.DiskTypeFilesystem,
 			FSType:              TestDiskPathFSType,
@@ -832,6 +889,9 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 			TestNode2: node2,
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			"new-uuid": newDiskSchedule("new-uuid", TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -878,14 +938,14 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
-						StorageScheduled: 0,
+						StorageScheduled: 0, // moved to disk schedule, should always keep zero
 						StorageAvailable: 0,
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskNotReady)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskFilesystemChanged)),
 						},
-						ScheduledReplica:      map[string]int64{},
-						ScheduledBackingImage: map[string]int64{},
+						ScheduledReplica:      nil, // moved to disk schedule, should always keep empty
+						ScheduledBackingImage: nil, // moved to disk schedule, should always keep empty
 						DiskName:              TestDiskID1,
 						DiskUUID:              "new-uuid",
 						Type:                  longhorn.DiskTypeFilesystem,
@@ -903,7 +963,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
 						DiskName:            TestDiskID1,
-						StorageScheduled:    0,
+						StorageScheduled:    0, // moved to disk schedule, should always keep zero
 						StorageAvailable:    0,
 						Type:                longhorn.DiskTypeFilesystem,
 						FSType:              TestDiskPathFSType,
@@ -911,6 +971,12 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 						InstanceManagerName: TestInstanceManagerName,
 					},
 				},
+			},
+		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			"new-uuid": {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
 			},
 		},
 		orphans: map[string]*longhorn.Orphan{
@@ -938,6 +1004,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		s.checkDiskConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkOrphans(c, expectation)
 }
 
@@ -947,7 +1014,6 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
-			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
@@ -960,6 +1026,9 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -1006,15 +1075,15 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
-						StorageScheduled: 0,
+						StorageScheduled: 0, // moved to disk schedule, should always keep zero
 						StorageAvailable: 0,
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 						},
 						DiskName:              TestDiskID1,
-						ScheduledReplica:      map[string]int64{},
-						ScheduledBackingImage: map[string]int64{},
+						ScheduledReplica:      nil, // moved to disk schedule, should always keep empty
+						ScheduledBackingImage: nil, // moved to disk schedule, should always keep empty
 						DiskUUID:              TestDiskID1,
 						Type:                  longhorn.DiskTypeFilesystem,
 						FSType:                TestDiskPathFSType,
@@ -1022,6 +1091,12 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 						InstanceManagerName:   TestInstanceManagerName,
 					},
 				},
+			},
+		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
 			},
 		},
 		instanceManagers: map[string]*longhorn.InstanceManager{
@@ -1060,6 +1135,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 		s.checkDiskConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkInstanceManagers(c, expectation)
 	s.checkOrphans(c, expectation)
 }
@@ -1070,7 +1146,6 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
-			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
@@ -1104,6 +1179,9 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -1151,15 +1229,15 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
-						StorageScheduled: 0,
+						StorageScheduled: 0, // moved to disk schedule, should always keep zero
 						StorageAvailable: 0,
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 						},
 						DiskName:              TestDiskID1,
-						ScheduledReplica:      map[string]int64{},
-						ScheduledBackingImage: map[string]int64{},
+						ScheduledReplica:      nil, // moved to disk schedule, should always keep empty
+						ScheduledBackingImage: nil, // moved to disk schedule, should always keep empty
 						DiskUUID:              TestDiskID1,
 						Type:                  longhorn.DiskTypeFilesystem,
 						FSType:                TestDiskPathFSType,
@@ -1180,6 +1258,12 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 				false,
 			),
 			"extra-instance-manager-name": extraInstanceManager,
+		},
+		diskSchedules: map[string]*longhorn.DiskScheduleSpec{
+			TestDiskID1: {
+				Name:   TestDiskID1,
+				NodeID: TestNode1,
+			},
 		},
 		orphans: map[string]*longhorn.Orphan{
 			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
@@ -1206,6 +1290,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 		s.checkDiskConditions(c, expectation, n)
 	}
 
+	s.checkDiskSchedules(c, expectation)
 	s.checkInstanceManagers(c, expectation)
 	s.checkOrphans(c, expectation)
 }
@@ -1330,6 +1415,9 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
+		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
 		},
@@ -1428,6 +1516,9 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -1528,6 +1619,9 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
+		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
 		},
@@ -1627,6 +1721,9 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
+		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
 		},
@@ -1725,6 +1822,9 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -1830,6 +1930,9 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -2031,6 +2134,9 @@ CONFIG_NFS_V4_2=y`
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhDiskSchedule: map[string]*longhorn.DiskSchedule{
+			TestDiskID1: newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1),
 		},
 		lhSettings: map[string]*longhorn.Setting{
 			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
@@ -2237,6 +2343,27 @@ func (s *NodeControllerSuite) checkDiskConditions(c *C, expectation *NodeControl
 	c.Assert(node.Status.DiskStatus, DeepEquals, expectation.nodeStatus[node.Name].DiskStatus)
 }
 
+func (s *NodeControllerSuite) checkDiskSchedules(c *C, expectation *NodeControllerExpectation) {
+	// Check that all existing disk schedules are expected and all expected
+	// disk schedules are existing
+	dsList, err := s.lhClient.LonghornV1beta2().DiskSchedules(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, ds := range dsList.Items {
+		if ds.DeletionTimestamp.IsZero() {
+			_, exists := expectation.diskSchedules[ds.Name]
+			c.Assert(exists, Equals, true)
+		}
+	}
+
+	for expectDsName, expectDsSpec := range expectation.diskSchedules {
+		exactDs, err := s.lhClient.LonghornV1beta2().DiskSchedules(TestNamespace).Get(context.TODO(), expectDsName, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(exactDs.DeletionTimestamp.IsZero(), Equals, true)
+		c.Assert(exactDs.Spec, DeepEquals, *expectDsSpec)
+	}
+}
+
 func (s *NodeControllerSuite) checkInstanceManagers(c *C, expectation *NodeControllerExpectation) {
 	// Check that all existing instance managers are expected and all expected
 	// instance managers are existing
@@ -2326,6 +2453,14 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 		c.Assert(err, IsNil)
 		c.Assert(n, NotNil)
 		err = s.lhNodeIndexer.Add(n)
+		c.Assert(err, IsNil)
+	}
+
+	for _, diskSchedule := range fixture.lhDiskSchedule {
+		ds, err := s.lhClient.LonghornV1beta2().DiskSchedules(TestNamespace).Create(context.TODO(), diskSchedule, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(ds, NotNil)
+		err = s.lhDiskScheduleIndexer.Add(ds)
 		c.Assert(err, IsNil)
 	}
 

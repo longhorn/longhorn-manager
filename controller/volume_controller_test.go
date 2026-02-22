@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"time"
 
@@ -79,6 +80,7 @@ type VolumeTestCase struct {
 	replicas      map[string]*longhorn.Replica
 	nodes         []*longhorn.Node
 	backingImages map[string]*longhorn.BackingImage
+	diskSchedules []*longhorn.DiskSchedule
 	engineImage   *longhorn.EngineImage
 
 	expectVolume   *longhorn.Volume
@@ -194,6 +196,21 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.NodeID = TestNode1
 	for _, r := range tc.replicas {
 		r.Status.CurrentState = longhorn.InstanceStateStopped
+	}
+	for _, ds := range tc.diskSchedules {
+		if ds.Spec.Replicas == nil {
+			ds.Spec.Replicas = map[string]int64{}
+		}
+		if ds.Status.Replicas == nil {
+			ds.Status.Replicas = map[string]*longhorn.DiskScheduledResourcesStatus{}
+		}
+		for replicaName, replica := range tc.replicas {
+			ds.Spec.Replicas[replicaName] = replica.Spec.VolumeSize
+			ds.Status.Replicas[replicaName] = &longhorn.DiskScheduledResourcesStatus{
+				State: longhorn.DiskScheduledStateScheduled,
+				Size:  replica.Spec.VolumeSize,
+			}
+		}
 	}
 	tc.volume.Status.State = longhorn.VolumeStateDetached
 	tc.copyCurrentToExpect()
@@ -867,6 +884,21 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.CurrentState = longhorn.InstanceStateStopped
 	}
+	for _, ds := range tc.diskSchedules {
+		if ds.Spec.Replicas == nil {
+			ds.Spec.Replicas = map[string]int64{}
+		}
+		if ds.Status.Replicas == nil {
+			ds.Status.Replicas = map[string]*longhorn.DiskScheduledResourcesStatus{}
+		}
+		for replicaName, replica := range tc.replicas {
+			ds.Spec.Replicas[replicaName] = replica.Spec.VolumeSize
+			ds.Status.Replicas[replicaName] = &longhorn.DiskScheduledResourcesStatus{
+				State: longhorn.DiskScheduledStateScheduled,
+				Size:  replica.Spec.VolumeSize,
+			}
+		}
+	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.CurrentNodeID = ""
 	tc.expectVolume.Status.State = longhorn.VolumeStateAttaching
@@ -1178,6 +1210,10 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			OwnerID: TestOwnerID1,
 			Conditions: []longhorn.Condition{
 				{
+					Type:   string(longhorn.VolumeConditionTypeDiskAllocation),
+					Status: longhorn.ConditionStatusTrue,
+				},
+				{
 					Type:   string(longhorn.VolumeConditionTypeWaitForBackingImage),
 					Status: longhorn.ConditionStatusFalse,
 				},
@@ -1299,6 +1335,7 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 	engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	node2 := newNode(TestNode2, TestNamespace, false, longhorn.ConditionStatusTrue, "")
+	diskSchedule := newDiskSchedule(TestDiskID1, TestNamespace, TestNode1, TestDiskID1)
 	engineImage.Status.NodeDeploymentMap[node2.Name] = true
 
 	return &VolumeTestCase{
@@ -1314,6 +1351,9 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 		nodes: []*longhorn.Node{
 			node1,
 			node2,
+		},
+		diskSchedules: []*longhorn.DiskSchedule{
+			diskSchedule,
 		},
 
 		expectVolume:   nil,
@@ -1351,6 +1391,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 		biIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImages().Informer().GetIndexer()
+		dsIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().DiskSchedules().Informer().GetIndexer()
 
 		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
@@ -1532,6 +1573,39 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			c.Assert(err, IsNil)
 		}
 
+		// default disk schedule requirement/status for existing replicas unless provided by test
+		for _, diskSchedule := range tc.diskSchedules {
+			if len(tc.replicas) == 0 {
+				break
+			}
+			if diskSchedule.Spec.Replicas == nil {
+				diskSchedule.Spec.Replicas = map[string]int64{}
+			}
+			if diskSchedule.Status.Replicas == nil {
+				diskSchedule.Status.Replicas = map[string]*longhorn.DiskScheduledResourcesStatus{}
+			}
+			for replicaName, replica := range tc.replicas {
+				if _, ok := diskSchedule.Spec.Replicas[replicaName]; !ok {
+					diskSchedule.Spec.Replicas[replicaName] = replica.Spec.VolumeSize
+				}
+				if _, ok := diskSchedule.Status.Replicas[replicaName]; !ok {
+					diskSchedule.Status.Replicas[replicaName] = &longhorn.DiskScheduledResourcesStatus{
+						State: longhorn.DiskScheduledStateScheduled,
+						Size:  replica.Spec.VolumeSize,
+					}
+				}
+			}
+		}
+
+		// need to create default disk schedule
+		for _, diskSchedule := range tc.diskSchedules {
+			ds, err := lhClient.LonghornV1beta2().DiskSchedules(TestNamespace).Create(context.TODO(), diskSchedule, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(ds, NotNil)
+			err = dsIndexer.Add(ds)
+			c.Assert(err, IsNil)
+		}
+
 		// Need to put it into both fakeclientset and Indexer
 		v, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -1567,6 +1641,12 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			condition.LastTransitionTime = ""
 			retV.Status.Conditions[ctype] = condition
 		}
+		sort.Slice(retV.Status.Conditions, func(i, j int) bool {
+			return retV.Status.Conditions[i].Type < retV.Status.Conditions[j].Type
+		})
+		sort.Slice(tc.expectVolume.Status.Conditions, func(i, j int) bool {
+			return tc.expectVolume.Status.Conditions[i].Type < tc.expectVolume.Status.Conditions[j].Type
+		})
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
 		retEs, err := lhClient.LonghornV1beta2().Engines(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})

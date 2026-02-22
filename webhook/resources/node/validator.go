@@ -189,7 +189,19 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	// Validate delete disks
 	for name, disk := range oldNode.Spec.Disks {
 		if _, ok := newNode.Spec.Disks[name]; !ok {
-			if disk.AllowScheduling || oldNode.Status.DiskStatus[name].StorageScheduled != 0 {
+			diskStatus, exist := oldNode.Status.DiskStatus[name]
+			if !exist {
+				continue
+			}
+			diskSchedule, err := n.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+			if err != nil {
+				if datastore.ErrorIsNotFound(err) {
+					continue
+				}
+				err = errors.Wrapf(err, "failed to get disk schedule for disk %v", name)
+				return werror.NewInvalidError(err.Error(), "")
+			}
+			if disk.AllowScheduling || diskSchedule.Status.StorageScheduled != 0 {
 				logrus.Infof("Delete Disk on node %v error: Please disable the disk %v and remove all replicas and backing images first", name, disk.Path)
 				return werror.NewInvalidError(fmt.Sprintf("Delete Disk on node %v error: Please disable the disk %v and remove all replicas and backing images first ", name, disk.Path), "")
 			}
