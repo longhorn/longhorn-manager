@@ -69,7 +69,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20251228.0.20260125135229-1c3981801092
 	github.com/longhorn/backupstore v0.0.0-20260127053626-a9fd84935804
-	github.com/longhorn/go-common-libs v0.0.0-20260120075236-9a9dafa0a7ea
+	github.com/longhorn/go-common-libs v0.0.0-20260223034035-98eef598b5bd
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260125095104-688e170e56e5
 	github.com/longhorn/go-spdk-helper v0.4.1-0.20260125095026-c0c0655c2781
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20251228.0.20260127130923-10b074f5bf78
@@ -78,14 +78,14 @@ require (
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260127055837-f422df0f5ac7
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
-	github.com/rancher/dynamiclistener v0.7.3
+	github.com/rancher/dynamiclistener v0.7.5
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.3.1
+	github.com/rancher/wrangler/v3 v3.3.4
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.32.0
+	golang.org/x/mod v0.33.0
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sys v0.40.0
 	golang.org/x/time v0.14.0
@@ -143,7 +143,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
+	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
