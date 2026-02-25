@@ -816,6 +816,10 @@ func (s *DataStore) AreAllRWXVolumesDetached() (bool, error) {
 			continue
 		}
 
+		if volume.Spec.Migratable {
+			continue
+		}
+
 		volumeAttachment, err := s.GetLHVolumeAttachmentByVolumeName(volume.Name)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return false, err
