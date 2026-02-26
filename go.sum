@@ -147,8 +147,8 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/longhorn/backing-image-manager v1.12.0-dev-20260222 h1:ztT1GypQANZqSN4VSLQCLNeY8BUpa2P0LebxRf9uZTg=
 github.com/longhorn/backing-image-manager v1.12.0-dev-20260222/go.mod h1:N4rmrih4l3eCI2ODhjdJrsLySBLyEqobi4qDN5s9veM=
-github.com/longhorn/backupstore v0.0.0-20260127053626-a9fd84935804 h1:lTZ2HOCP0Chka/mpVzWMEx8MHgZZyeuSm0J8mItXPHU=
-github.com/longhorn/backupstore v0.0.0-20260127053626-a9fd84935804/go.mod h1:svcRf2E10R+rGROd91dysLbWG8zdiewAM4SgqWdQWW8=
+github.com/longhorn/backupstore v0.0.0-20260225123158-39d1f7ecbb74 h1:4DsaC1Gi6cYqQAQP2IY0yb/yzxwe+beezHIlRYSyFRU=
+github.com/longhorn/backupstore v0.0.0-20260225123158-39d1f7ecbb74/go.mod h1:Dc/2Fzyx5irz+3oBmBA47C/QwxCSZD0nN8ZBr2JcoOo=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
 github.com/longhorn/go-common-libs v0.0.0-20260223034035-98eef598b5bd h1:nEFdLAHgOfUfQyNsZdncAMEM+tnqK2kfL0zsvzV+eSM=
