@@ -64,10 +64,17 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jinzhu/copier v0.4.0
+<<<<<<< HEAD
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.10.2
 	github.com/longhorn/backupstore v0.0.0-20260127053626-a9fd84935804
 	github.com/longhorn/go-common-libs v0.0.0-20260120075236-9a9dafa0a7ea
+=======
+	github.com/kubernetes-csi/csi-lib-utils v0.23.2
+	github.com/longhorn/backing-image-manager v1.12.0-dev-20260222
+	github.com/longhorn/backupstore v0.0.0-20260225123158-39d1f7ecbb74
+	github.com/longhorn/go-common-libs v0.0.0-20260223034035-98eef598b5bd
+>>>>>>> de959fbb (chore(deps): update dependency backupstore to v0.0.0-20260225123158-39d1f7ecbb74)
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260125095104-688e170e56e5
 	github.com/longhorn/go-spdk-helper v0.4.0
 	github.com/longhorn/longhorn-engine v1.10.2
