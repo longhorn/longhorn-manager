@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
@@ -369,9 +370,7 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 				},
 			},
 		},
-		orphans: map[string]*longhorn.Orphan{
-			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
-		},
+		orphans: map[string]*longhorn.Orphan{},
 	}
 
 	s.initTest(c, fixture)
@@ -913,9 +912,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 				},
 			},
 		},
-		orphans: map[string]*longhorn.Orphan{
-			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
-		},
+		orphans: map[string]*longhorn.Orphan{},
 	}
 
 	s.initTest(c, fixture)
@@ -2204,6 +2201,295 @@ CONFIG_NFS_V4_2=y`
 			}
 		}(testCase.setup, testCase.expectConditionStatus, testCase.expectConditionReason)
 	}
+}
+
+func (s *NodeControllerSuite) TestCanDeleteOrphan(c *C) {
+	type testCase struct {
+		name              string
+		ownerID           string
+		node              *longhorn.Node
+		orphanType        longhorn.OrphanType
+		orphanNodeID      string
+		orphanDiskName    string
+		orphanDiskUUID    string
+		preserveDiskName  bool
+		preserveDiskUUID  bool
+		autoDeleteEnable  bool
+		gracePeriod       int64
+		createdAt         time.Time
+		expectedCanDelete bool
+	}
+
+	testCases := []testCase{
+		{
+			name:              "should not delete when owner is different",
+			ownerID:           TestNode2,
+			node:              newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: false,
+		},
+		{
+			name:              "should not delete when orphan node differs from current node",
+			ownerID:           TestNode1,
+			node:              newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			orphanNodeID:      TestNode2,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: false,
+		},
+		{
+			name:    "should delete when node eviction is requested",
+			ownerID: TestNode1,
+			node: func() *longhorn.Node {
+				node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+				node.Spec.EvictionRequested = true
+				return node
+			}(),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: true,
+		},
+		{
+			name:    "should delete when disk eviction is requested",
+			ownerID: TestNode1,
+			node: func() *longhorn.Node {
+				node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+				disk := node.Spec.Disks[TestDiskID1]
+				disk.EvictionRequested = true
+				node.Spec.Disks[TestDiskID1] = disk
+				return node
+			}(),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: true,
+		},
+		{
+			name:    "should delete when disk is removed from node spec",
+			ownerID: TestNode1,
+			node: func() *longhorn.Node {
+				node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+				delete(node.Spec.Disks, TestDiskID1)
+				return node
+			}(),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: true,
+		},
+		{
+			name:    "should delete when disk UUID changed",
+			ownerID: TestNode1,
+			node: func() *longhorn.Node {
+				node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+				node.Status.DiskStatus[TestDiskID1].DiskUUID = "changed-disk-uuid"
+				return node
+			}(),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: true,
+		},
+		{
+			name:              "should delete orphan CR when node is unavailable",
+			ownerID:           TestNode1,
+			node:              newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonKubernetesNodeNotReady)),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: true,
+		},
+		{
+			name:              "should delete when orphan disk name is empty",
+			ownerID:           TestNode1,
+			node:              newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			orphanDiskName:    "",
+			orphanDiskUUID:    TestDiskID1,
+			preserveDiskName:  true,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: true,
+		},
+		{
+			name:              "should delete when orphan disk uuid is empty",
+			ownerID:           TestNode1,
+			node:              newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			orphanDiskName:    TestDiskID1,
+			orphanDiskUUID:    "",
+			preserveDiskUUID:  true,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: true,
+		},
+		{
+			name:              "should not delete non-replica orphan without auto deletion",
+			ownerID:           TestNode1,
+			node:              newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			orphanType:        longhorn.OrphanTypeEngineInstance,
+			autoDeleteEnable:  false,
+			gracePeriod:       300,
+			createdAt:         time.Now(),
+			expectedCanDelete: false,
+		},
+		{
+			name:              "should delete when auto delete is enabled and grace period elapsed",
+			ownerID:           TestNode1,
+			node:              newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			orphanType:        longhorn.OrphanTypeReplicaData,
+			autoDeleteEnable:  true,
+			gracePeriod:       300,
+			createdAt:         time.Now().Add(-10 * time.Minute),
+			expectedCanDelete: true,
+		},
+	}
+
+	for index, tc := range testCases {
+		nodeName := fmt.Sprintf("%s-%d", TestNode1, index)
+		nodeForCheck := tc.node
+		if tc.node != nil {
+			node := tc.node.DeepCopy()
+			node.Name = nodeName
+			node.Spec.Name = nodeName
+			nodeForCheck = node
+			createdNode, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = s.lhNodeIndexer.Add(createdNode)
+			c.Assert(err, IsNil)
+		}
+
+		orphanType := tc.orphanType
+		if orphanType == "" {
+			orphanType = longhorn.OrphanTypeReplicaData
+		}
+
+		diskName := tc.orphanDiskName
+		if diskName == "" && orphanType == longhorn.OrphanTypeReplicaData && !tc.preserveDiskName {
+			diskName = TestDiskID1
+		}
+		diskUUID := tc.orphanDiskUUID
+		if diskUUID == "" && orphanType == longhorn.OrphanTypeReplicaData && !tc.preserveDiskUUID {
+			diskUUID = TestDiskID1
+		}
+
+		orphanNodeID := tc.orphanNodeID
+		if orphanNodeID == "" {
+			orphanNodeID = nodeName
+		}
+
+		orphanParameters := map[string]string{}
+		if orphanType == longhorn.OrphanTypeReplicaData {
+			orphanParameters = map[string]string{
+				longhorn.OrphanDiskName: diskName,
+				longhorn.OrphanDiskUUID: diskUUID,
+				longhorn.OrphanDiskPath: TestDefaultDataPath,
+			}
+		}
+
+		orphan := newOrphan(
+			longhorn.OrphanSpec{
+				NodeID:     orphanNodeID,
+				Type:       orphanType,
+				Parameters: orphanParameters,
+			},
+			longhorn.OrphanStatus{
+				OwnerID: tc.ownerID,
+			},
+		)
+
+		orphan.CreationTimestamp = metav1.Time{Time: tc.createdAt}
+
+		autoDeleteEnabledTypes := make(map[longhorn.OrphanType]bool)
+		if tc.autoDeleteEnable {
+			autoDeleteEnabledTypes[orphanType] = true
+		}
+
+		canDelete := s.controller.canDeleteOrphan(orphan, nodeForCheck, autoDeleteEnabledTypes, tc.gracePeriod)
+		c.Assert(canDelete, Equals, tc.expectedCanDelete, Commentf(tc.name))
+	}
+}
+
+func (s *NodeControllerSuite) TestDeleteOrphansForReplicaDataStoreMissingData(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+
+	missingDataStore := "missing-replica-data"
+	retainedDataStore := "retained-replica-data"
+
+	missingOrphan := newOrphan(
+		longhorn.OrphanSpec{
+			NodeID: TestNode1,
+			Type:   longhorn.OrphanTypeReplicaData,
+			Parameters: map[string]string{
+				longhorn.OrphanDataName: missingDataStore,
+				longhorn.OrphanDiskName: TestDiskID1,
+				longhorn.OrphanDiskUUID: TestDiskID1,
+				longhorn.OrphanDiskPath: TestDefaultDataPath,
+			},
+		},
+		longhorn.OrphanStatus{OwnerID: TestNode1},
+	)
+
+	retainedOrphan := newOrphan(
+		longhorn.OrphanSpec{
+			NodeID: TestNode1,
+			Type:   longhorn.OrphanTypeReplicaData,
+			Parameters: map[string]string{
+				longhorn.OrphanDataName: retainedDataStore,
+				longhorn.OrphanDiskName: TestDiskID1,
+				longhorn.OrphanDiskUUID: TestDiskID1,
+				longhorn.OrphanDiskPath: TestDefaultDataPath,
+			},
+		},
+		longhorn.OrphanStatus{OwnerID: TestNode1},
+	)
+	retainedOrphan.Status.Conditions = types.SetCondition(retainedOrphan.Status.Conditions,
+		longhorn.OrphanConditionTypeDataCleanable,
+		longhorn.ConditionStatusFalse,
+		longhorn.OrphanConditionTypeDataCleanableReasonDiskInvalid,
+		"",
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: node,
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			missingOrphan.Name:  missingOrphan,
+			retainedOrphan.Name: retainedOrphan,
+		},
+	}
+	s.initTest(c, fixture)
+
+	diskInfo := &monitor.CollectedDiskInfo{
+		Path:     TestDefaultDataPath,
+		DiskUUID: TestDiskID1,
+	}
+
+	err := s.controller.deleteOrphansForReplicaDataStore(node, TestDiskID1, diskInfo, map[string]string{missingDataStore: ""}, 300)
+	c.Assert(err, IsNil)
+
+	_, err = s.lhClient.LonghornV1beta2().Orphans(TestNamespace).Get(context.TODO(), missingOrphan.Name, metav1.GetOptions{})
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+
+	_, err = s.lhClient.LonghornV1beta2().Orphans(TestNamespace).Get(context.TODO(), retainedOrphan.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
 }
 
 // -- Helpers --

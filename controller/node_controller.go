@@ -1457,9 +1457,18 @@ func (nc *NodeController) deleteOrphansForReplicaDataStore(node *longhorn.Node, 
 	if err != nil {
 		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanResourceAutoDeletion)
 	}
-	autoDeleteEnabled, ok := autoDeletionTypes[types.OrphanResourceTypeReplicaData]
-	if !ok {
-		autoDeleteEnabled = false
+	autoDeleteEnabledTypes := make(map[longhorn.OrphanType]bool)
+	for deletionType, enabled := range autoDeletionTypes {
+		if !enabled {
+			continue
+		}
+		switch deletionType {
+		case types.OrphanResourceTypeReplicaData:
+			autoDeleteEnabledTypes[longhorn.OrphanTypeReplicaData] = true
+		case types.OrphanResourceTypeInstance:
+			autoDeleteEnabledTypes[longhorn.OrphanTypeEngineInstance] = true
+			autoDeleteEnabledTypes[longhorn.OrphanTypeReplicaInstance] = true
+		}
 	}
 
 	for dataStore := range missingOrphanedReplicaDataStores {
@@ -1475,7 +1484,7 @@ func (nc *NodeController) deleteOrphansForReplicaDataStore(node *longhorn.Node, 
 	}
 
 	for _, orphan := range orphans {
-		if nc.canDeleteOrphan(orphan, autoDeleteEnabled, autoDeleteGracePeriod) {
+		if nc.canDeleteOrphan(orphan, node, autoDeleteEnabledTypes, autoDeleteGracePeriod) {
 			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				return errors.Wrapf(err, "failed to delete orphan %v", orphan.Name)
 			}
@@ -1484,32 +1493,71 @@ func (nc *NodeController) deleteOrphansForReplicaDataStore(node *longhorn.Node, 
 	return nil
 }
 
-func (nc *NodeController) canDeleteOrphan(orphan *longhorn.Orphan, autoDeleteEnabled bool, autoDeleteGracePeriod int64) bool {
+func (nc *NodeController) canDeleteOrphan(orphan *longhorn.Orphan, node *longhorn.Node, autoDeleteEnabledTypes map[longhorn.OrphanType]bool, autoDeleteGracePeriod int64) bool {
 	if orphan.Status.OwnerID != nc.controllerID {
 		return false
 	}
 
-	dataCleanableCondition := types.GetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeDataCleanable)
-	if dataCleanableCondition.Status == longhorn.ConditionStatusUnknown {
-		return false
-	}
-
 	autoDeleteAllowed := false
-	if autoDeleteEnabled {
+	if autoDeleteEnabledTypes[orphan.Spec.Type] {
 		elapsedTime := time.Since(orphan.CreationTimestamp.Time).Seconds()
 		if elapsedTime > float64(autoDeleteGracePeriod) {
 			autoDeleteAllowed = true
 		}
 	}
 
-	// When dataCleanableCondition is false, it means the associated node is not ready, missing or evicted (check updateDataCleanableCondition()).
-	// In this case, we can delete the orphan directly because the data is not reachable and no need to keep the orphan resource.
-	canDelete := autoDeleteAllowed || dataCleanableCondition.Status == longhorn.ConditionStatusFalse
+	canDeleteWithoutAutoDeletion := false
+	if orphan.Spec.NodeID == node.Name && orphan.Spec.Type == longhorn.OrphanTypeReplicaData {
+		canDeleteCR, reason := nc.canDeleteOrphanDataFromNodeState(orphan, node)
+		if canDeleteCR {
+			nc.logger.Infof("Deletable orphan data CR %v: %v", orphan.Name, reason)
+			canDeleteWithoutAutoDeletion = true
+		}
+	}
+	canDelete := autoDeleteAllowed || canDeleteWithoutAutoDeletion
 	if !canDelete {
-		nc.logger.Debugf("Orphan %v is not ready to be deleted, autoDeleteAllowed: %v, dataCleanableCondition: %v", orphan.Name, autoDeleteAllowed, dataCleanableCondition.Status)
+		nc.logger.Debugf("Orphan %v is not ready to be deleted, autoDeleteAllowed: %v", orphan.Name, autoDeleteAllowed)
 	}
 
 	return canDelete
+}
+
+func (nc *NodeController) canDeleteOrphanDataFromNodeState(orphan *longhorn.Orphan, node *longhorn.Node) (bool, string) {
+	nodeReadyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	switch nodeReadyCondition.Reason {
+	case longhorn.NodeConditionReasonKubernetesNodeGone, longhorn.NodeConditionReasonKubernetesNodeNotReady, longhorn.NodeConditionReasonManagerPodMissing:
+		return true, nodeReadyCondition.Message
+	}
+
+	if node.Spec.EvictionRequested {
+		return true, fmt.Sprintf("node %v is evicted", node.Name)
+	}
+
+	orphanDiskName := orphan.Spec.Parameters[longhorn.OrphanDiskName]
+	orphanDiskUUID := orphan.Spec.Parameters[longhorn.OrphanDiskUUID]
+	if orphanDiskName == "" || orphanDiskUUID == "" {
+		return true, fmt.Sprintf("disk name (%s) or uuid (%s) is empty", orphanDiskName, orphanDiskUUID)
+	}
+
+	diskSpec, exists := node.Spec.Disks[orphanDiskName]
+	if !exists {
+		return true, fmt.Sprintf("disk %v is not found in node %v", orphanDiskName, node.Name)
+	}
+
+	if diskSpec.EvictionRequested {
+		return true, fmt.Sprintf("disk %v is evicted", orphanDiskName)
+	}
+
+	diskStatus, exists := node.Status.DiskStatus[orphanDiskName]
+	if !exists {
+		return true, fmt.Sprintf("disk status %v is not found in node %v", orphanDiskName, node.Name)
+	}
+
+	if diskStatus.DiskUUID != orphanDiskUUID {
+		return true, fmt.Sprintf("disk uuid (%s) is not the same as orphan uuid (%s)", diskStatus.DiskUUID, orphanDiskUUID)
+	}
+
+	return false, ""
 }
 
 func (nc *NodeController) createOrphansForReplicaDataStore(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, newOrphanedReplicaDataStores map[string]string) error {
