@@ -226,6 +226,11 @@ func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longho
 		return
 	}
 
+	if e == nil {
+		vc.logger.Debugf("Skipping metric collection for volume %v: no engine found", v.Name)
+		return
+	}
+
 	engineClientProxy, err := vc.getEngineClientProxy(e)
 	if err != nil {
 		vc.logger.WithError(err).Debugf("Failed to get engine proxy of %v for volume %v", e.Name, v.Name)
