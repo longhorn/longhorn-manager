@@ -94,6 +94,7 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) (*Nod
 				csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 				csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 				csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
+				csi.NodeServiceCapability_RPC_VOLUME_CONDITION,
 			}),
 		log:         logrus.StandardLogger().WithField("component", "csi-node-server"),
 		lhNamespace: lhNamespace,
@@ -668,6 +669,24 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
+// volumeConditionFromRobustness returns CSI VolumeCondition for NodeGetVolumeStats/Volume Health Monitor.
+// When robustness is healthy, returns nil so Kubelet does not emit any event (same as before the feature).
+// When abnormal (degraded, faulted, unknown, etc.), returns VolumeCondition so Kubelet can record an event on the Pod.
+func volumeConditionFromRobustness(robustness string) *csi.VolumeCondition {
+	switch robustness {
+	case string(longhorn.VolumeRobustnessHealthy):
+		return nil
+	case string(longhorn.VolumeRobustnessDegraded):
+		return &csi.VolumeCondition{Abnormal: true, Message: "Volume is degraded"}
+	case string(longhorn.VolumeRobustnessFaulted):
+		return &csi.VolumeCondition{Abnormal: true, Message: "Volume is faulted"}
+	case string(longhorn.VolumeRobustnessUnknown):
+		return &csi.VolumeCondition{Abnormal: true, Message: "Volume condition unknown"}
+	default:
+		return &csi.VolumeCondition{Abnormal: true, Message: "Volume condition unknown"}
+	}
+}
+
 func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	volumePath := req.GetVolumePath()
 	if volumePath == "" {
@@ -686,6 +705,8 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	if existVol == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
 	}
+
+	volumeCondition := volumeConditionFromRobustness(existVol.Robustness)
 
 	isBlockVolume, err := isBlockDevice(volumePath)
 	if err != nil {
@@ -709,6 +730,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 					Unit:  csi.VolumeUsage_BYTES,
 				},
 			},
+			VolumeCondition: volumeCondition,
 		}, nil
 	}
 
@@ -737,6 +759,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 				Unit:      csi.VolumeUsage_INODES,
 			},
 		},
+		VolumeCondition: volumeCondition,
 	}, nil
 }
 
