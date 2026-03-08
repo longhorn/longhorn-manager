@@ -1,8 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.24.0
-
-toolchain go1.24.6
+go 1.25.3
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -67,9 +65,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.9.2
 	github.com/longhorn/backupstore v0.0.0-20260127053626-a9fd84935804
-	github.com/longhorn/go-common-libs v0.0.0-20260120075236-9a9dafa0a7ea
+	github.com/longhorn/go-common-libs v0.0.0-20260223034035-98eef598b5bd
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260125095104-688e170e56e5
-	github.com/longhorn/go-spdk-helper v0.2.0
+	github.com/longhorn/go-spdk-helper v0.5.0
 	github.com/longhorn/longhorn-engine v1.9.2
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250518.0.20250519060809-955e286a739c
 	github.com/longhorn/longhorn-share-manager v1.9.2
@@ -82,7 +80,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.32.0
+	golang.org/x/mod v0.33.0
 	golang.org/x/sys v0.40.0
 	golang.org/x/time v0.11.0
 	google.golang.org/grpc v1.78.0
@@ -118,7 +116,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
+	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
 	golang.org/x/net v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
