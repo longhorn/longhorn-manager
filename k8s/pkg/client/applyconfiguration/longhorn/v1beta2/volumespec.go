@@ -83,6 +83,10 @@ type VolumeSpecApplyConfiguration struct {
 	// concurrently during a single replica rebuild.
 	// When set to 0, it means following the global setting.
 	RebuildConcurrentSyncLimit *int `json:"rebuildConcurrentSyncLimit,omitempty"`
+	// OnDemandChecksumRequestedAt is the RFC3339 timestamp when an on-demand checksum calculation is requested.
+	// When this value differs from LastOnDemandChecksumCompletedAt, the system will attempt to calculate checksums for all snapshots
+	// that do not already have a checksum.
+	OnDemandChecksumRequestedAt *string `json:"onDemandChecksumRequestedAt,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with
@@ -412,5 +416,13 @@ func (b *VolumeSpecApplyConfiguration) WithReplicaRebuildingBandwidthLimit(value
 // If called multiple times, the RebuildConcurrentSyncLimit field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithRebuildConcurrentSyncLimit(value int) *VolumeSpecApplyConfiguration {
 	b.RebuildConcurrentSyncLimit = &value
+	return b
+}
+
+// WithOnDemandChecksumRequestedAt sets the OnDemandChecksumRequestedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the OnDemandChecksumRequestedAt field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithOnDemandChecksumRequestedAt(value string) *VolumeSpecApplyConfiguration {
+	b.OnDemandChecksumRequestedAt = &value
 	return b
 }

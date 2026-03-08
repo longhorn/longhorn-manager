@@ -514,6 +514,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.syncVolumeOnDemandSnapshotStatus(volume, snapshots); err != nil {
+		return err
+	}
+
 	if err := c.updateRecurringJobs(volume); err != nil {
 		return err
 	}
@@ -5346,4 +5350,73 @@ func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *lon
 		return true
 	}
 	return false
+}
+
+// syncVolumeOnDemandSnapshotStatus marks an on-demand checksum request as completed once all relevant user-created snapshots have a checksum.
+func (c *VolumeController) syncVolumeOnDemandSnapshotStatus(v *longhorn.Volume, snapshots map[string]*longhorn.Snapshot) error {
+	// freshChecksumTimeout defines how long we wait for snapshots to report a "fresh" checksum.
+	// After this timeout, any existing checksum is accepted to avoid blocking on-demand completion indefinitely.
+	freshChecksumTimeout := 15 * time.Minute
+
+	dataIntegrity, err := c.ds.GetVolumeSnapshotDataIntegrity(v.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get snapshot data integrity for volume %s", v.Name)
+	}
+	if dataIntegrity == longhorn.SnapshotDataIntegrityDisabled {
+		// No checksum is expected under this policy; ignore on-demand requests.
+		return nil
+	}
+
+	considerOnDemandChecksum, err := shouldConsiderOnDemandRequest(v)
+	if err != nil {
+		return errors.Wrapf(err, "failed to determine volume %s for on-demand snapshot checksum calculation", v.Name)
+	}
+
+	if !considerOnDemandChecksum {
+		return nil
+	}
+
+	requestedAt, err := util.ParseTime(v.Spec.OnDemandChecksumRequestedAt)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse time v.Spec.OnDemandChecksumRequestedAt", v.Name)
+	}
+
+	// Determine whether the freshness requirement should still apply.
+	requireFreshChecksum := time.Since(requestedAt) < freshChecksumTimeout
+
+	for _, snap := range snapshots {
+		// Only consider user-created snapshots that existed when the request was issued.
+		if snap.CreationTimestamp.After(requestedAt) {
+			continue
+		}
+		if !snap.Status.UserCreated {
+			continue
+		}
+
+		// Snapshot must have at least one checksum.
+		if snap.Status.Checksum == "" {
+			return nil
+		}
+
+		// Within the freshness window, require the checksum to be from this request or later.
+		if requireFreshChecksum {
+			if snap.Status.ChecksumCalculatedAt == "" {
+				return nil
+			}
+
+			completeAt, err := util.ParseTime(snap.Status.ChecksumCalculatedAt)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse ChecksumCalculatedAt for snapshot %s", snap.Name)
+			}
+
+			if completeAt.Before(requestedAt) {
+				// Still waiting for a fresh checksum.
+				return nil
+			}
+		}
+	}
+
+	// All relevant snapshots have at least one checksum, and we have fresh results where possible. Acknowledge this request.
+	v.Status.LastOnDemandChecksumCompletedAt = v.Spec.OnDemandChecksumRequestedAt
+	return nil
 }
