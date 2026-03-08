@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.25.7
 
-toolchain go1.26.0
+toolchain go1.26.1
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -68,9 +68,9 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260222
-	github.com/longhorn/backupstore v0.0.0-20260304025831-03d9bbc06a99
-	github.com/longhorn/go-common-libs v0.0.0-20260223034035-98eef598b5bd
-	github.com/longhorn/go-iscsi-helper v0.0.0-20260125095104-688e170e56e5
+	github.com/longhorn/backupstore v0.0.0-20260306105805-ea08687ca2cd
+	github.com/longhorn/go-common-libs v0.0.0-20260307044012-ae36fc92e72e
+	github.com/longhorn/go-iscsi-helper v0.0.0-20260306105756-948eb7e165af
 	github.com/longhorn/go-spdk-helper v0.4.1-0.20260228044657-faccf3d22332
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20260222
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260222
@@ -89,7 +89,7 @@ require (
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sys v0.41.0
 	golang.org/x/time v0.14.0
-	google.golang.org/grpc v1.79.1
+	google.golang.org/grpc v1.79.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.35.2
@@ -101,7 +101,7 @@ require (
 	k8s.io/metrics v0.35.2
 	k8s.io/mount-utils v0.35.2
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
-	sigs.k8s.io/controller-runtime v0.23.1
+	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2
 )
 
@@ -138,7 +138,7 @@ require (
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260118234234-63598269a247 // indirect
+	github.com/longhorn/types v0.0.0-20260304051809-1002ef5005c7 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
