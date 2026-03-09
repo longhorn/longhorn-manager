@@ -260,6 +260,7 @@ const (
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
 	EnvDataEngine     = "DATA_ENGINE"
+	EnvDistro         = "LONGHORN_DISTRO"
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
