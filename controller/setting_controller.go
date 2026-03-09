@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"slices"
 	"sort"
@@ -48,6 +49,8 @@ import (
 const (
 	VersionTagLatest = "latest"
 	VersionTagStable = "stable"
+
+	DefaultEnvDistroUnknown = "unknown"
 )
 
 var (
@@ -1145,7 +1148,8 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 		version = "dev"
 	}
 	req := &CheckUpgradeRequest{
-		AppVersion:     version,
+		AppVersion: version,
+
 		ExtraTagInfo:   extraTagInfo,
 		ExtraFieldInfo: extraFieldInfo,
 	}
@@ -1412,6 +1416,7 @@ const (
 	ClusterInfoHostArch          = util.StructName("HostArch")
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
+	ClusterInfoLonghornDistro    = util.StructName("LonghornDistro")
 
 	ClusterInfoLonghornImageRegistry = util.StructName("LonghornImageRegistry")
 
@@ -1870,6 +1875,8 @@ func (info *ClusterInfo) collectBackupTargetInfo() error {
 }
 
 func (info *ClusterInfo) collectNodeScope() {
+	info.collectLonghornDistro()
+
 	if err := info.collectHostArch(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect host architecture")
 	}
@@ -1889,6 +1896,15 @@ func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectKubernetesNodeProvider(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect node provider")
 	}
+}
+
+func (info *ClusterInfo) collectLonghornDistro() {
+	distro := strings.TrimSpace(os.Getenv(types.EnvDistro))
+	if distro == "" {
+		distro = DefaultEnvDistroUnknown
+	}
+
+	info.structFields.tags.Append(ClusterInfoLonghornDistro, strings.ToLower(distro))
 }
 
 func (info *ClusterInfo) collectHostArch() error {
