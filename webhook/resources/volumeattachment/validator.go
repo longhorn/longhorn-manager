@@ -84,7 +84,17 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", types.LonghornLabelVolume), "metadata.labels")
 	}
 
-	if err := v.verifyTicketCountForMigratableVolume(newVA); err != nil {
+	volume, err := v.ds.GetVolumeRO(newVA.Spec.Volume)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get volume %v for validating volumeattachment update", newVA.Spec.Volume)
+		return werror.NewInvalidError(err.Error(), "spec.volume")
+	}
+
+	if err := v.verifyTicketCountForMigratableVolume(newVA, volume); err != nil {
+		return err
+	}
+
+	if err := v.verifyStrictLocalVolumeAttachment(newVA, volume); err != nil {
 		return err
 	}
 
@@ -100,13 +110,7 @@ func verifyAttachmentTicketIDConsistency(attachmentTickets map[string]*longhorn.
 	return nil
 }
 
-func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *longhorn.VolumeAttachment) error {
-	vol, err := v.ds.GetVolumeRO(va.Spec.Volume)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to get volume %v for attachment", va.Spec.Volume)
-		return werror.NewInvalidError(err.Error(), "spec.volume")
-	}
-
+func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *longhorn.VolumeAttachment, vol *longhorn.Volume) error {
 	if !util.IsMigratableVolume(vol) {
 		return nil
 	}
@@ -132,4 +136,48 @@ func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *lon
 		msg := fmt.Sprintf("cannot have more than 2 CSI tickets for migratable volume %v: %s", vol.Name, ticketsJson)
 		return werror.NewInvalidError(msg, "spec.attachmentTickets")
 	}
+}
+
+func (v *volumeAttachmentValidator) verifyStrictLocalVolumeAttachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) error {
+	if vol.Spec.DataLocality != longhorn.DataLocalityStrictLocal {
+		return nil
+	}
+
+	replicas, err := v.ds.ListVolumeReplicas(vol.Name)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get replicas for volume %v", vol.Name)
+		return werror.NewInvalidError(err.Error(), "spec.volume")
+	}
+
+	if len(replicas) != 1 {
+		err := fmt.Errorf("BUG: replica should be 1 for %v volume %v", longhorn.DataLocalityStrictLocal, vol.Name)
+		return werror.NewInvalidError(err.Error(), "spec.volume")
+	}
+
+	var replica *longhorn.Replica
+	for _, r := range replicas {
+		replica = r
+		break
+	}
+
+	// Allow initial attachment when replica is not yet bound to a node.
+	if replica.Spec.NodeID == "" {
+		return nil
+	}
+
+	if vol.Spec.NodeID != "" && replica.Spec.NodeID != vol.Spec.NodeID {
+		err := fmt.Errorf("invalid VolumeAttachment update for volume %v: data locality %v requires the volume and replica to stay on the same node, but volume is on node %v and replica is on node %v",
+			vol.Name, longhorn.DataLocalityStrictLocal, vol.Spec.NodeID, replica.Spec.NodeID)
+		return werror.NewInvalidError(err.Error(), "spec.attachmentTickets")
+	}
+
+	for _, ticket := range va.Spec.AttachmentTickets {
+		if ticket.NodeID != "" && ticket.NodeID != replica.Spec.NodeID {
+			err := fmt.Errorf("invalid VolumeAttachment update for volume %v: data locality %v requires the volume and replica to stay on the same node, but ticket is on node %v and replica is on node %v",
+				vol.Name, longhorn.DataLocalityStrictLocal, ticket.NodeID, replica.Spec.NodeID)
+			return werror.NewInvalidError(err.Error(), "spec.attachmentTickets")
+		}
+	}
+
+	return nil
 }
