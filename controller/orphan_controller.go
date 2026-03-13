@@ -418,7 +418,7 @@ func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, ins
 
 	// If the instance manager client is unavailable or failed to delete the instance, continue finalizing the orphan.
 	// Later if the orphaned instance is still reachable, the orphan will be recreated.
-	imc, err := oc.getRunningInstanceManagerClientForOrphan(orphan, imName)
+	imc, err := oc.getRunningInstanceManagerClient(imName)
 	if err != nil {
 		oc.logger.WithError(err).Warnf("Failed to delete orphan instance %v due to instance manager client initialization failure. Continue to finalize orphan %v", instanceName, orphan.Name)
 		return
@@ -438,17 +438,13 @@ func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, ins
 	}
 }
 
-func (oc *OrphanController) getRunningInstanceManagerClientForOrphan(orphan *longhorn.Orphan, imName string) (*engineapi.InstanceManagerClient, error) {
-	im, err := oc.ds.GetRunningInstanceManagerByNodeRO(orphan.Spec.NodeID, orphan.Spec.DataEngine)
+func (oc *OrphanController) getRunningInstanceManagerClient(imName string) (*engineapi.InstanceManagerClient, error) {
+	im, err := oc.ds.GetInstanceManagerRO(imName)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
-	}
-	if im.Name != imName {
-		oc.logger.WithField("instanceManager", imName).Warnf("Orphan instance %v is not managed by current running instance manager %v", orphan.Name, im.Name)
-		return nil, nil
 	}
 	return engineapi.NewInstanceManagerClient(im, false)
 }
