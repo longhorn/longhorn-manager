@@ -278,6 +278,11 @@ func (oc *OrphanController) reconcile(orphanName string) (err error) {
 			}
 		}()
 
+		// Before touching the underlying resource, ensure the condition is updated to reflect the current state, to prevent the resource from being deleted by mistake.
+		if err := oc.updateConditions(orphan); err != nil {
+			return errors.Wrapf(err, "failed to update conditions before cleaning orphan %v", orphan.Name)
+		}
+
 		isCleanupComplete, err := oc.cleanupOrphanedResource(orphan)
 		if isCleanupComplete {
 			oc.eventRecorder.Eventf(orphan, corev1.EventTypeNormal, constant.EventReasonOrphanCleanupCompleted, "Orphan %v cleanup completed", orphan.Name)
