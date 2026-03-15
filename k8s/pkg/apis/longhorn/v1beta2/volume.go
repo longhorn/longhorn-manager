@@ -137,6 +137,7 @@ const (
 	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
 	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
+	VolumeConditionReasonSnapshotDataCorruption          = "SnapshotDataCorruption"
 	VolumeConditionReasonWaitForBackingImageFailed       = "GetBackingImageFailed"
 	VolumeConditionReasonWaitForBackingImageWaiting      = "Waiting"
 	VolumeConditionReasonBackingImageVirtualSizeTooLarge = "BackingImageVirtualSizeTooLarge"
