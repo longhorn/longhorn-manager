@@ -370,6 +370,11 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	if err := validateRecurringJobLabels(newVolume); err != nil {
 		return err
 	}
+
+	if err := validateSnapshotHashingRequestTime(oldVolume, newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.snapshotHashingRequestedAt")
+	}
+
 	return nil
 }
 
@@ -680,6 +685,30 @@ func validateRecurringJobLabels(vol *longhorn.Volume) error {
 
 	if len(jobLabels) > 0 {
 		return werror.NewInvalidError(fmt.Sprintf("cannot add recurring jobs to linked-clone volume: %+v ", jobLabels), ".metadata.label")
+	}
+
+	return nil
+}
+
+func validateSnapshotHashingRequestTime(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
+	oldReq := oldVolume.Spec.SnapshotHashingRequestedAt
+	oldDone := oldVolume.Status.LastOnDemandSnapshotHashingCompleteAt
+
+	newReq := newVolume.Spec.SnapshotHashingRequestedAt
+
+	// no change
+	if newReq == oldReq {
+		return nil
+	}
+
+	// Allow clearing or other non-request transitions if needed.
+	if newReq == "" {
+		return nil
+	}
+
+	// Reject only a new request while the previous one is still in progress.
+	if oldReq != "" && oldReq != oldDone {
+		return werror.NewInvalidError("previous snapshot hashing request is still in progress", ".spec.snapshotHashingRequestedAt")
 	}
 
 	return nil

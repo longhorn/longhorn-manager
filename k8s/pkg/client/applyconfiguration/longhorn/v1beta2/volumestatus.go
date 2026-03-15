@@ -49,6 +49,10 @@ type VolumeStatusApplyConfiguration struct {
 	LastDegradedAt         *string                              `json:"lastDegradedAt,omitempty"`
 	ShareEndpoint          *string                              `json:"shareEndpoint,omitempty"`
 	ShareState             *longhornv1beta2.ShareManagerState   `json:"shareState,omitempty"`
+	// LastOnDemandSnapshotHashingCompleteAt is the RFC3339 timestamp when the
+	// most recent on-demand snapshot checksum calculation completed. When this
+	// value matches SnapshotHashingRequestedAt, the requested on-demand checksum calculation is considered complete.
+	LastOnDemandSnapshotHashingCompleteAt *string `json:"lastOnDemandSnapshotHashingCompleteAt,omitempty"`
 }
 
 // VolumeStatusApplyConfiguration constructs a declarative configuration of the VolumeStatus type for use with
@@ -227,5 +231,13 @@ func (b *VolumeStatusApplyConfiguration) WithShareEndpoint(value string) *Volume
 // If called multiple times, the ShareState field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithShareState(value longhornv1beta2.ShareManagerState) *VolumeStatusApplyConfiguration {
 	b.ShareState = &value
+	return b
+}
+
+// WithLastOnDemandSnapshotHashingCompleteAt sets the LastOnDemandSnapshotHashingCompleteAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LastOnDemandSnapshotHashingCompleteAt field is set to the value of the last call.
+func (b *VolumeStatusApplyConfiguration) WithLastOnDemandSnapshotHashingCompleteAt(value string) *VolumeStatusApplyConfiguration {
+	b.LastOnDemandSnapshotHashingCompleteAt = &value
 	return b
 }

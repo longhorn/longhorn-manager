@@ -55,6 +55,10 @@ type SnapshotStatus struct {
 	ReadyToUse bool `json:"readyToUse"`
 	// +optional
 	Checksum string `json:"checksum"`
+	// +optional
+	// ChecksumCalculatedAt is the RFC3339 timestamp indicating when the checksum
+	// for this snapshot was last calculated or updated.
+	ChecksumCalculatedAt string `json:"checksumCalculatedAt,omitempty"`
 }
 
 // +genclient

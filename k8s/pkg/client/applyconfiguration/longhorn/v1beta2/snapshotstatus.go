@@ -35,6 +35,9 @@ type SnapshotStatusApplyConfiguration struct {
 	RestoreSize  *int64            `json:"restoreSize,omitempty"`
 	ReadyToUse   *bool             `json:"readyToUse,omitempty"`
 	Checksum     *string           `json:"checksum,omitempty"`
+	// ChecksumCalculatedAt is the RFC3339 timestamp indicating when the checksum
+	// for this snapshot was last calculated or updated.
+	ChecksumCalculatedAt *string `json:"checksumCalculatedAt,omitempty"`
 }
 
 // SnapshotStatusApplyConfiguration constructs a declarative configuration of the SnapshotStatus type for use with
@@ -148,5 +151,13 @@ func (b *SnapshotStatusApplyConfiguration) WithReadyToUse(value bool) *SnapshotS
 // If called multiple times, the Checksum field is set to the value of the last call.
 func (b *SnapshotStatusApplyConfiguration) WithChecksum(value string) *SnapshotStatusApplyConfiguration {
 	b.Checksum = &value
+	return b
+}
+
+// WithChecksumCalculatedAt sets the ChecksumCalculatedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ChecksumCalculatedAt field is set to the value of the last call.
+func (b *SnapshotStatusApplyConfiguration) WithChecksumCalculatedAt(value string) *SnapshotStatusApplyConfiguration {
+	b.ChecksumCalculatedAt = &value
 	return b
 }
