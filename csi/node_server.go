@@ -523,7 +523,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
 		}
 
-		cryptoParams := crypto.NewEncryptParams(keyProvider, secrets[types.CryptoKeyCipher], secrets[types.CryptoKeyHash], secrets[types.CryptoKeySize], secrets[types.CryptoPBKDF])
+		cryptoParams := crypto.NewEncryptParams(keyProvider,
+			secrets[types.CryptoKeyCipher], secrets[types.CryptoKeyHash], secrets[types.CryptoKeySize],
+			secrets[types.CryptoPBKDF], secrets[types.CryptoPBKDFForceIterations], secrets[types.CryptoPBKDFMemory])
 
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {

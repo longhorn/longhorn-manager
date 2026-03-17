@@ -1349,7 +1349,10 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			string(secret.Data[types.CryptoKeyCipher]),
 			string(secret.Data[types.CryptoKeyHash]),
 			string(secret.Data[types.CryptoKeySize]),
-			string(secret.Data[types.CryptoPBKDF]))
+			string(secret.Data[types.CryptoPBKDF]),
+			string(secret.Data[types.CryptoPBKDFForceIterations]),
+			string(secret.Data[types.CryptoPBKDFMemory]),
+		)
 	}
 
 	manifest := c.createPodManifest(sm, volume.Spec.DataEngine, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
@@ -1609,6 +1612,14 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, da
 			{
 				Name:  "CRYPTOPBKDF",
 				Value: string(cryptoParams.GetPBKDF()),
+			},
+			{
+				Name:  "CRYPTOPBKDFFORCEITERATIONS",
+				Value: string(cryptoParams.GetPBKDFForceIterations()),
+			},
+			{
+				Name:  "CRYPTOPBKDFMEMORY",
+				Value: string(cryptoParams.GetPBKDFMemory()),
 			},
 		}...)
 	}
