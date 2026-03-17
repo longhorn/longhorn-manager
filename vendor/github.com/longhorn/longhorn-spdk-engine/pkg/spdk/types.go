@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
@@ -33,8 +34,11 @@ const (
 
 	SyncTimeout = 60 * time.Minute
 
-	maxNumRetries = 15
+	maxRetries    = 30
 	retryInterval = 1 * time.Second
+
+	disconnectMaxRetries    = 5
+	disconnectRetryInterval = 1 * time.Second
 
 	MaxShallowCopyWaitTime   = 72 * time.Hour
 	ShallowCopyCheckInterval = 3 * time.Second
@@ -52,7 +56,7 @@ const (
 	// When an instance manager containing a replica is deleted, SPDK starts to reconnect to the base bdev's controller.
 	// If the connection cannot be reestablished within the ctrlr_loss_timeout_sec period, the base bdev is removed from the RAID bdev.
 	//
-	// Because the ctrl-loss-tmo for the NVMe-oF initiator connecting to the RAID target is also set to 30 seconds,
+	// Because the ctrl-loss-tmo for the NVMe/TCP initiator connecting to the RAID target is also set to 30 seconds,
 	// replicaCtrlrLossTimeoutSec and replicaFastIOFailTimeoutSec are set to 15 seconds and 10 seconds, respectively.
 	//
 	// If an I/O operation to a replica (base bdev) is unresponsive within 10 seconds, an I/O error is returned,
@@ -63,6 +67,48 @@ const (
 	replicaTransportAckTimeout  = 10
 	replicaKeepAliveTimeoutMs   = 10000
 	replicaMultipath            = "disable"
+)
+
+var (
+	// ErrEngineFrontendCreateInvalidArgument indicates the create request carries
+	// invalid input, such as an unparsable target address.
+	ErrEngineFrontendCreateInvalidArgument = errors.New("engine frontend create invalid argument")
+	// ErrEngineFrontendCreatePrecondition indicates the frontend is not in a
+	// state that can satisfy create preconditions.
+	ErrEngineFrontendCreatePrecondition = errors.New("engine frontend create precondition failed")
+	// ErrEngineFrontendLifecyclePrecondition indicates suspend/resume/delete
+	// cannot proceed because the frontend is in an incompatible state.
+	ErrEngineFrontendLifecyclePrecondition = errors.New("engine frontend lifecycle precondition failed")
+	// ErrEngineFrontendLifecycleUnimplemented indicates the requested lifecycle
+	// operation is not implemented for the current frontend type.
+	ErrEngineFrontendLifecycleUnimplemented = errors.New("engine frontend lifecycle unimplemented")
+)
+
+var (
+	// ErrRecoverDeviceNotFound indicates the NVMe device was not found on the
+	// host during recovery. The persisted record should be removed.
+	ErrRecoverDeviceNotFound = errors.New("device not found on host during recovery")
+)
+
+var (
+	// ErrSwitchOverTargetInvalidInput indicates invalid user input for a target switchover request.
+	ErrSwitchOverTargetInvalidInput = errors.New("invalid switchover target request")
+	// ErrSwitchOverTargetPrecondition indicates the current frontend state cannot satisfy switchover preconditions.
+	ErrSwitchOverTargetPrecondition = errors.New("switchover target precondition failed")
+	// ErrSwitchOverTargetEngineNotFound indicates no engine can be resolved from the target side.
+	ErrSwitchOverTargetEngineNotFound = errors.New("cannot find target engine for switchover")
+	// ErrSwitchOverTargetInternal indicates switchover execution failed due to runtime/internal reasons.
+	ErrSwitchOverTargetInternal = errors.New("failed to switch over target")
+)
+
+var (
+	// ErrExpansionInProgress indicates expansion cannot proceed because another
+	// expansion operation is already running.
+	ErrExpansionInProgress = errors.New("expansion is in progress")
+	// ErrRestoringInProgress indicates expansion cannot proceed while restoring.
+	ErrRestoringInProgress = errors.New("restoring is in progress")
+	// ErrExpansionInvalidSize indicates an invalid target size for expansion.
+	ErrExpansionInvalidSize = errors.New("invalid expansion size")
 )
 
 type Lvol struct {

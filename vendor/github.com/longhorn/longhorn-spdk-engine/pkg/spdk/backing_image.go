@@ -239,13 +239,11 @@ func (bi *BackingImage) ValidateAndUpdate(spdkClient *spdkclient.Client) (err er
 		return errors.Wrapf(err, "failed to get the lvs name for backing image %v with lvs uuid %v", bi.Name, bi.LvsUUID)
 	}
 
-	if errUpdateLogger := bi.log.UpdateLogger(logrus.Fields{
+	bi.log.UpdateLoggerWithWarnOnFailure(logrus.Fields{
 		"backingImagename": bi.Name,
 		"lvsName":          bi.LvsName,
 		"lvsUUID":          bi.LvsUUID,
-	}); errUpdateLogger != nil {
-		bi.log.WithError(errUpdateLogger).Warn("Failed to update logger")
-	}
+	}, "Failed to update logger")
 
 	bi.LvsName = lvsName
 
@@ -493,13 +491,11 @@ func (bi *BackingImage) prepareBackingImageSnapshot(spdkClient *spdkclient.Clien
 	}
 	bi.LvsName = lvsName
 
-	if errUpdateLogger := bi.log.UpdateLogger(logrus.Fields{
+	bi.log.UpdateLoggerWithWarnOnFailure(logrus.Fields{
 		"backingImagename": bi.Name,
 		"lvsName":          bi.LvsName,
 		"lvsUUID":          bi.LvsUUID,
-	}); errUpdateLogger != nil {
-		bi.log.WithError(errUpdateLogger).Warn("Failed to update logger")
-	}
+	}, "Failed to update logger")
 
 	bi.Unlock()
 
@@ -709,7 +705,7 @@ func (bi *BackingImage) prepareFromSync(targetFh *os.File, fromAddress, srcLvsUU
 	if err != nil {
 		return errors.Wrapf(err, "failed to split host and port from address %v", exposedSnapshotLvolAddress)
 	}
-	_, _, err = connectNVMeTarget(srcIP, srcPort, maxNumRetries, retryInterval)
+	_, _, err = discoverAndConnectNVMeTarget(srcIP, srcPort, maxRetries, retryInterval)
 	if err != nil {
 		return errors.Wrapf(err, "failed to connect to NVMe target for source backing image %v in lvsUUID %v with address %v", bi.Name, srcLvsUUID, exposedSnapshotLvolAddress)
 	}

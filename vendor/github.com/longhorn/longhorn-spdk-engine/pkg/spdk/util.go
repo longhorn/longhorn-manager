@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avast/retry-go/v4"
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
@@ -22,34 +23,43 @@ import (
 	helperutil "github.com/longhorn/go-spdk-helper/pkg/util"
 )
 
-func connectNVMeTarget(srcIP string, srcPort int32, maxRetries int, retryInterval time.Duration) (string, string, error) {
+func discoverAndConnectNVMeTarget(srcIP string, srcPort int32, maxRetries int, retryInterval time.Duration) (subsystemNQN, controllerName string, err error) {
 	executor, err := helperutil.NewExecutor(commontypes.ProcDirectory)
 	if err != nil {
 		return "", "", errors.Wrapf(err, "failed to create executor")
 	}
 
-	subsystemNQN := ""
-	controllerName := ""
-	for r := 0; r < maxRetries; r++ {
-		subsystemNQN, err = initiator.DiscoverTarget(srcIP, strconv.Itoa(int(srcPort)), executor)
-		if err != nil {
-			logrus.WithError(err).Warnf("Failed to discover target for with address %v:%v", srcIP, srcPort)
-			time.Sleep(retryInterval)
-			continue
-		}
+	err = retry.Do(
+		func() error {
+			var e error
+			subsystemNQN, e = initiator.DiscoverTarget(srcIP, strconv.Itoa(int(srcPort)), executor)
+			if e != nil {
+				return errors.Wrapf(e, "discover target %s:%d failed", srcIP, srcPort)
+			}
 
-		controllerName, err = initiator.ConnectTarget(srcIP, strconv.Itoa(int(srcPort)), subsystemNQN, executor)
-		if err != nil {
-			logrus.WithError(err).Warnf("Failed to connect target with address %v:%v", srcIP, srcPort)
-			time.Sleep(retryInterval)
-			continue
-		}
-		// break when it successfully discover and connect the target
-		break
-	}
-	if subsystemNQN == "" || controllerName == "" {
+			controllerName, e = initiator.ConnectTarget(srcIP, strconv.Itoa(int(srcPort)), subsystemNQN, executor)
+			if e != nil {
+				return errors.Wrapf(e, "connect target %s:%d (nqn=%s) failed", srcIP, srcPort, subsystemNQN)
+			}
+
+			return nil
+		},
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			logrus.WithError(err).Warnf(
+				"Retrying NVMe target connect: addr=%s:%d attempt=%d/%d next_wait=%s",
+				srcIP, srcPort, n+1, maxRetries, retryInterval,
+			)
+		}),
+	)
+
+	if err != nil || subsystemNQN == "" || controllerName == "" {
 		return "", "", errors.Wrapf(err, "timeout connecting target with address %v:%v", srcIP, srcPort)
 	}
+
 	return subsystemNQN, controllerName, nil
 }
 
@@ -68,7 +78,7 @@ func exposeSnapshotLvolBdev(spdkClient *spdkclient.Client, lvsName, lvolName, ip
 		return "", "", errors.Wrapf(err, "failed to expose snapshot lvol bdev %v", lvolName)
 	}
 
-	for r := 0; r < maxNumRetries; r++ {
+	for r := 0; r < maxRetries; r++ {
 		subsystemNQN, err = initiator.DiscoverTarget(ip, portStr, executor)
 		if err != nil {
 			logrus.WithError(err).Errorf("Failed to discover target for snapshot lvol bdev %v", lvolName)
@@ -108,9 +118,9 @@ func splitHostPort(address string) (string, int32, error) {
 	return address, 0, nil
 }
 
-// connectNVMfBdev connects to the NVMe-oF target, which is exposed by a remote lvol bdev.
-// controllerName is typically the lvol name, and address is the IP:port of the NVMe-oF target.
-func connectNVMfBdev(spdkClient *spdkclient.Client, controllerName, address string, ctrlrLossTimeout, fastIOFailTimeoutSec int) (bdevName string, err error) {
+// connectNVMfBdev connects to the NVMe/TCP target, which is exposed by a remote lvol bdev.
+// controllerName is typically the lvol name, and address is the IP:port of the NVMe/TCP target.
+func connectNVMfBdev(spdkClient *spdkclient.Client, controllerName, address string, ctrlrLossTimeout, fastIOFailTimeoutSec int, maxRetries int, retryInterval time.Duration) (bdevName string, err error) {
 	if controllerName == "" || address == "" {
 		return "", fmt.Errorf("controllerName or address is empty")
 	}
@@ -133,11 +143,38 @@ func connectNVMfBdev(spdkClient *spdkclient.Client, controllerName, address stri
 		return "", err
 	}
 
-	nvmeBdevNameList, err := spdkClient.BdevNvmeAttachController(controllerName, helpertypes.GetNQN(controllerName),
-		ip, port, spdktypes.NvmeTransportTypeTCP, spdktypes.NvmeAddressFamilyIPv4,
-		int32(ctrlrLossTimeout), replicaReconnectDelaySec, int32(fastIOFailTimeoutSec), replicaMultipath)
+	nvmeBdevNameList := []string{}
+	err = retry.Do(
+		func() error {
+			var err error
+			nvmeBdevNameList, err = spdkClient.BdevNvmeAttachController(
+				controllerName,
+				helpertypes.GetNQN(controllerName),
+				ip,
+				port,
+				spdktypes.NvmeTransportTypeTCP,
+				spdktypes.NvmeAddressFamilyIPv4,
+				int32(ctrlrLossTimeout),
+				replicaReconnectDelaySec,
+				int32(fastIOFailTimeoutSec),
+				replicaMultipath,
+			)
+			return err
+		},
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			logrus.WithError(err).Warnf(
+				"Retrying NVMe bdev attach: controller=%s address=%s attempt=%d/%d next_wait=%s",
+				controllerName, address, n+1, maxRetries, retryInterval,
+			)
+		}),
+	)
+
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("attach NVMe controller failed after %d attempts: %w", maxRetries, err)
 	}
 
 	if len(nvmeBdevNameList) != 1 {
@@ -147,14 +184,35 @@ func connectNVMfBdev(spdkClient *spdkclient.Client, controllerName, address stri
 	return nvmeBdevNameList[0], nil
 }
 
-func disconnectNVMfBdev(spdkClient *spdkclient.Client, bdevName string) error {
+func disconnectNVMfBdev(spdkClient *spdkclient.Client, bdevName string, maxRetries int, retryInterval time.Duration) error {
 	if bdevName == "" {
 		return nil
 	}
-	if _, err := spdkClient.BdevNvmeDetachController(helperutil.GetNvmeControllerNameFromNamespaceName(bdevName)); err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-		return err
-	}
-	return nil
+
+	controllerName := helperutil.GetNvmeControllerNameFromNamespaceName(bdevName)
+
+	return retry.Do(
+		func() error {
+			_, err := spdkClient.BdevNvmeDetachController(controllerName)
+			if err != nil {
+				if jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+					return nil
+				}
+				return err
+			}
+			return nil
+		},
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			logrus.WithError(err).Warnf(
+				"Retrying NVMe bdev detach: controller=%s attempt=%d/%d next_wait=%s",
+				controllerName, n+1, maxRetries, retryInterval,
+			)
+		}),
+	)
 }
 
 func GetSnapXattr(spdkClient *spdkclient.Client, alias, key string) (string, error) {

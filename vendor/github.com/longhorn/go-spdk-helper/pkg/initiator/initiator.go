@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avast/retry-go/v4"
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
@@ -26,7 +27,8 @@ const (
 
 	HostProc = "/host/proc"
 
-	validateDiskCreationTimeout = 30 // seconds
+	validateDiskCreationMaxRetries    = 60
+	validateDiskCreationRetryInterval = 1 * time.Second
 
 	UnInitializedUblkId      = -1
 	MaxUblkId                = 65535
@@ -54,9 +56,10 @@ const (
 )
 
 var (
-	idGenerator         IDGenerator
-	isUblkTargetCreated = false
+	idGenerator IDGenerator
 )
+
+var errDeviceNotReady = errors.New("device is not a block device yet")
 
 type Initiator struct {
 	Name     string
@@ -101,7 +104,7 @@ func NewInitiator(name, hostProc string, nvmeTCPInfo *NVMeTCPInfo, ublkInfo *Ubl
 		return nil, fmt.Errorf("cannot initiator creation because both nvmeTCPInfo and ublkInfo are nil or non-nil: nvmeTCPInfo: %v, ublkInfo: %v", nvmeTCPInfo, ublkInfo)
 	}
 	if nvmeTCPInfo != nil && nvmeTCPInfo.SubsystemNQN == "" {
-		return nil, fmt.Errorf("empty subsystem for NVMe-oF initiator creation")
+		return nil, fmt.Errorf("empty subsystem for NVMe/TCP initiator creation")
 	}
 	if ublkInfo != nil && ublkInfo.BdevName == "" {
 		return nil, fmt.Errorf("empty BdevName for ublk initiator creation")
@@ -185,7 +188,7 @@ func (i *Initiator) DisconnectNVMeTCPTarget() error {
 	return DisconnectTarget(i.NVMeTCPInfo.SubsystemNQN, i.executor)
 }
 
-// WaitForNVMeTCPConnect waits for the NVMe-oF initiator to connect
+// WaitForNVMeTCPConnect waits for the NVMe/TCP initiator to connect and load the device info
 func (i *Initiator) WaitForNVMeTCPConnect(maxRetries int, retryInterval time.Duration) (err error) {
 	if i.NVMeTCPInfo == nil {
 		return fmt.Errorf("failed to WaitForNVMeTCPConnect because nvmeTCPInfo is nil")
@@ -198,18 +201,36 @@ func (i *Initiator) WaitForNVMeTCPConnect(maxRetries int, retryInterval time.Dur
 		defer lock.Unlock()
 	}
 
-	for r := 0; r < maxRetries; r++ {
-		err = i.loadNVMeDeviceInfoWithoutLock(i.NVMeTCPInfo.TransportAddress, i.NVMeTCPInfo.TransportServiceID, i.NVMeTCPInfo.SubsystemNQN)
-		if err == nil {
-			return nil
-		}
-		time.Sleep(retryInterval)
+	err = retry.Do(
+		func() error {
+			errTest := i.loadNVMeDeviceInfoWithoutLock(
+				i.NVMeTCPInfo.TransportAddress,
+				i.NVMeTCPInfo.TransportServiceID,
+				i.NVMeTCPInfo.SubsystemNQN,
+			)
+
+			return errTest
+		},
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			i.logger.WithError(err).Warnf(
+				"Retrying waiting for NVMe/TCP connect: address=%s:%s attempt=%d/%d next_wait=%s",
+				i.NVMeTCPInfo.TransportAddress, i.NVMeTCPInfo.TransportServiceID, n+1, maxRetries, retryInterval,
+			)
+		}),
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to wait for NVMe/TCP connect")
 	}
 
-	return err
+	return nil
 }
 
-// WaitForNVMeTCPTargetDisconnect waits for the NVMe-oF initiator to disconnect
+// WaitForNVMeTCPTargetDisconnect waits for the NVMe/TCP initiator to disconnect
 func (i *Initiator) WaitForNVMeTCPTargetDisconnect(maxRetries int, retryInterval time.Duration) (err error) {
 	if i.NVMeTCPInfo == nil {
 		return fmt.Errorf("failed to WaitForNVMeTCPTargetDisconnect because nvmeTCPInfo is nil")
@@ -222,18 +243,53 @@ func (i *Initiator) WaitForNVMeTCPTargetDisconnect(maxRetries int, retryInterval
 		defer lock.Unlock()
 	}
 
-	for r := 0; r < maxRetries; r++ {
-		err = i.loadNVMeDeviceInfoWithoutLock(i.NVMeTCPInfo.TransportAddress, i.NVMeTCPInfo.TransportServiceID, i.NVMeTCPInfo.SubsystemNQN)
-		if types.ErrorIsValidNvmeDeviceNotFound(err) {
-			return nil
-		}
-		time.Sleep(retryInterval)
+	// Keep original behavior when maxRetries <= 0: do nothing and return current err (nil).
+	if maxRetries <= 0 {
+		return err
 	}
 
-	return err
+	var (
+		found        bool
+		lastErr      error
+		attemptCount int
+		forceRetry   = errors.New("force retry")
+	)
+
+	_ = retry.Do(
+		func() error {
+			// Extra terminal no-op attempt to preserve original "sleep after last failed loop" behavior.
+			if attemptCount >= maxRetries {
+				return nil
+			}
+
+			attemptCount++
+			lastErr = i.loadNVMeDeviceInfoWithoutLock(
+				i.NVMeTCPInfo.TransportAddress,
+				i.NVMeTCPInfo.TransportServiceID,
+				i.NVMeTCPInfo.SubsystemNQN,
+			)
+			if types.ErrorIsValidNvmeDeviceNotFound(lastErr) {
+				found = true
+				return nil
+			}
+
+			// Always continue retrying for exactly maxRetries loop-equivalent attempts,
+			// even when lastErr == nil, matching the original for-loop behavior.
+			return forceRetry
+		},
+		retry.Attempts(uint(maxRetries+1)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+	)
+
+	if found {
+		return nil
+	}
+	return lastErr
 }
 
-// Suspend suspends the device mapper device for the NVMe-oF initiator
+// Suspend suspends the device mapper device for the NVMe/TCP initiator
 func (i *Initiator) Suspend(noflush, nolockfs bool) error {
 	if i.hostProc != "" {
 		lock, err := i.newLock()
@@ -245,19 +301,19 @@ func (i *Initiator) Suspend(noflush, nolockfs bool) error {
 
 	suspended, err := i.IsSuspended()
 	if err != nil {
-		return errors.Wrapf(err, "failed to check if linear dm device is suspended for NVMe-oF initiator %s", i.Name)
+		return errors.Wrapf(err, "failed to check if linear dm device is suspended for NVMe/TCP initiator %s", i.Name)
 	}
 
 	if !suspended {
 		if err := i.suspendLinearDmDevice(noflush, nolockfs); err != nil {
-			return errors.Wrapf(err, "failed to suspend linear dm device for NVMe-oF initiator %s", i.Name)
+			return errors.Wrapf(err, "failed to suspend linear dm device for NVMe/TCP initiator %s", i.Name)
 		}
 	}
 
 	return nil
 }
 
-// Resume resumes the device mapper device for the NVMe-oF initiator
+// Resume resumes the device mapper device for the NVMe/TCP initiator
 func (i *Initiator) Resume() error {
 	if i.hostProc != "" {
 		lock, err := i.newLock()
@@ -268,7 +324,7 @@ func (i *Initiator) Resume() error {
 	}
 
 	if err := i.resumeLinearDmDevice(); err != nil {
-		return errors.Wrapf(err, "failed to resume linear dm device for NVMe-oF initiator %s", i.Name)
+		return errors.Wrapf(err, "failed to resume linear dm device for NVMe/TCP initiator %s", i.Name)
 	}
 
 	return nil
@@ -302,11 +358,11 @@ func (i *Initiator) replaceDmDeviceTarget() error {
 	return nil
 }
 
-// StartNvmeTCPInitiator starts the NVMe-oF initiator with the given transportAddress and transportServiceID
+// StartNvmeTCPInitiator starts the NVMe/TCP initiator with the given transportAddress and transportServiceID
 func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID string, dmDeviceAndEndpointCleanupRequired bool, stop bool) (dmDeviceIsBusy bool, err error) {
 	defer func() {
 		if err != nil {
-			err = errors.Wrapf(err, "failed to start NVMe-oF initiator %s", i.Name)
+			err = errors.Wrapf(err, "failed to start NVMe/TCP initiator %s", i.Name)
 		}
 	}()
 
@@ -321,7 +377,7 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 		"transportAddress":                   transportAddress,
 		"transportServiceID":                 transportServiceID,
 		"dmDeviceAndEndpointCleanupRequired": dmDeviceAndEndpointCleanupRequired,
-	}).Info("Starting NVMe-oF initiator")
+	}).Info("Starting NVMe/TCP initiator")
 
 	if i.hostProc != "" {
 		lock, err := i.newLock()
@@ -331,86 +387,97 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 		defer lock.Unlock()
 	}
 
-	// Check if the initiator/NVMe-oF device is already launched and matches the params
+	// Check if the initiator/NVMe/TCP device is already launched and matches the params
 	err = i.loadNVMeDeviceInfoWithoutLock(i.NVMeTCPInfo.TransportAddress, i.NVMeTCPInfo.TransportServiceID, i.NVMeTCPInfo.SubsystemNQN)
 	if err == nil {
 		if i.NVMeTCPInfo.TransportAddress == transportAddress && i.NVMeTCPInfo.TransportServiceID == transportServiceID {
 			err = i.LoadEndpointForNvmeTcpFrontend(false)
 			if err == nil {
-				i.logger.Info("NVMe-oF initiator is already launched with correct params")
+				i.logger.Info("NVMe/TCP initiator is already launched with correct params")
 
 				// also load device source
 				err = i.waitAndLoadNVMeDeviceInfoWithoutLock(transportAddress, transportServiceID)
 				if err != nil {
-					i.logger.WithError(err).Warnf("Failed to load device info for NVMe-oF initiator %s", i.Name)
+					i.logger.WithError(err).Warnf("Failed to load device info for NVMe/TCP initiator %s", i.Name)
 				}
 				return false, nil
 			}
-			i.logger.WithError(err).Warnf("NVMe-oF initiator is launched with failed to load the endpoint")
+			i.logger.WithError(err).Warnf("NVMe/TCP initiator is launched with failed to load the endpoint")
 		} else {
-			i.logger.Warnf("NVMe-oF initiator is launched but with incorrect address, the required one is %s:%s, will try to stop then relaunch it", transportAddress, transportServiceID)
+			i.logger.Warnf("NVMe/TCP initiator is launched but with incorrect address, the required one is %s:%s, will try to stop then relaunch it", transportAddress, transportServiceID)
 		}
 	}
 
 	if stop {
-		i.logger.Info("Stopping NVMe-oF initiator blindly before starting")
+		i.logger.Info("Stopping NVMe/TCP initiator blindly before starting")
 		dmDeviceIsBusy, err = i.stopWithoutLock(nil, dmDeviceAndEndpointCleanupRequired, false, false)
 		if err != nil {
-			return dmDeviceIsBusy, errors.Wrapf(err, "failed to stop the mismatching NVMe-oF initiator %s before starting", i.Name)
+			return dmDeviceIsBusy, errors.Wrapf(err, "failed to stop the mismatching NVMe/TCP initiator %s before starting", i.Name)
 		}
 	} else {
 		dmDeviceIsBusy = true
 	}
 
-	i.logger.Info("Launching NVMe-oF initiator")
-
-	i.connectNVMeTCPTarget(transportAddress, transportServiceID, maxConnectTargetRetries, retryConnectTargetInterval)
-	if i.NVMeTCPInfo.ControllerName == "" {
-		return dmDeviceIsBusy, fmt.Errorf("failed to start NVMe-oF initiator %s within %d * %v sec retries", i.Name, maxConnectTargetRetries, retryConnectTargetInterval.Seconds())
+	i.logger.Info("Discovering and connecting NVMe/TCP target")
+	subsystemNQN, controllerName, err := i.discoverAndConnectNVMeTCPTarget(transportAddress, transportServiceID, maxConnectTargetRetries, retryConnectTargetInterval)
+	if err != nil {
+		return dmDeviceIsBusy, errors.Wrapf(err, "failed to discover and connect NVMe/TCP target %s:%s", transportAddress, transportServiceID)
+	}
+	if err := i.recordConnectedNVMeTCPInfo(subsystemNQN, controllerName); err != nil {
+		return dmDeviceIsBusy, errors.Wrapf(err, "invalid connected NVMe/TCP target state %s:%s", transportAddress, transportServiceID)
 	}
 
+	i.logger.Info("Loading NVMe/TCP initiator device info")
 	err = i.waitAndLoadNVMeDeviceInfoWithoutLock(transportAddress, transportServiceID)
 	if err != nil {
-		return dmDeviceIsBusy, errors.Wrapf(err, "failed to load device info after connecting target for NVMe-oF initiator %s", i.Name)
+		return dmDeviceIsBusy, errors.Wrapf(err, "failed to load device info after connecting target for NVMe/TCP initiator %s", i.Name)
 	}
 
 	if dmDeviceAndEndpointCleanupRequired {
 		if dmDeviceIsBusy {
 			// Endpoint is already created, just replace the target device
-			i.logger.Info("Linear dm device is busy, trying the best to replace the target device for NVMe-oF initiator")
+			i.logger.Info("Linear dm device is busy, trying the best to replace the target device for NVMe/TCP initiator")
 			if err := i.replaceDmDeviceTarget(); err != nil {
-				i.logger.WithError(err).Warnf("Failed to replace the target device for NVMe-oF initiator")
+				i.logger.WithError(err).Warnf("Failed to replace the target device for NVMe/TCP initiator")
 			} else {
-				i.logger.Info("Successfully replaced the target device for NVMe-oF initiator")
+				i.logger.Info("Successfully replaced the target device for NVMe/TCP initiator")
 				dmDeviceIsBusy = false
 			}
 		} else {
-			i.logger.Info("Creating linear dm device for NVMe-oF initiator")
+			i.logger.Info("Creating linear dm device for NVMe/TCP initiator")
 			if err := i.createLinearDmDevice(); err != nil {
-				return false, errors.Wrapf(err, "failed to create linear dm device for NVMe-oF initiator %s", i.Name)
+				return false, errors.Wrapf(err, "failed to create linear dm device for NVMe/TCP initiator %s", i.Name)
 			}
 		}
 	} else {
-		i.logger.Info("Skipping creating linear dm device for NVMe-oF initiator")
+		i.logger.Info("Skipping creating linear dm device for NVMe/TCP initiator")
 		i.dev.Export = i.dev.Source
 	}
 
 	i.logger.Infof("Creating endpoint %v", i.Endpoint)
-	exist, err := i.isEndpointExist()
-	if err != nil {
-		return dmDeviceIsBusy, errors.Wrapf(err, "failed to check if endpoint %v exists for NVMe-oF initiator %s", i.Endpoint, i.Name)
-	}
-	if exist {
-		i.logger.Infof("Skipping endpoint %v creation for NVMe-oF initiator", i.Endpoint)
-	} else {
-		if err := i.makeEndpoint(); err != nil {
-			return dmDeviceIsBusy, err
-		}
+	if err := i.createEndpoint(); err != nil {
+		return dmDeviceIsBusy, err
 	}
 
-	i.logger.Infof("Launched NVMe-oF initiator: %+v", i)
+	i.logger.Infof("Launched NVMe/TCP initiator: %+v", i)
 
 	return dmDeviceIsBusy, nil
+}
+
+func (i *Initiator) createEndpoint() error {
+	exist, err := i.isEndpointExist()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check if endpoint %v exists for NVMe/TCP initiator %s", i.Endpoint, i.Name)
+	}
+	if exist {
+		i.logger.Infof("Skipping endpoint %v creation for NVMe/TCP initiator", i.Endpoint)
+		return nil
+	}
+
+	if err := i.makeEndpoint(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (i *Initiator) StartUblkInitiator(spdkClient *client.Client, dmDeviceAndEndpointCleanupRequired bool) (dmDeviceIsBusy bool, err error) {
@@ -429,13 +496,6 @@ func (i *Initiator) StartUblkInitiator(spdkClient *client.Client, dmDeviceAndEnd
 			return false, err
 		}
 		defer lock.Unlock()
-	}
-
-	if !isUblkTargetCreated {
-		if err := spdkClient.UblkCreateTarget("", true); err != nil {
-			return false, err
-		}
-		isUblkTargetCreated = true
 	}
 
 	ublkDeviceList, err := spdkClient.UblkGetDisks(0)
@@ -467,15 +527,24 @@ func (i *Initiator) StartUblkInitiator(spdkClient *client.Client, dmDeviceAndEnd
 	if err != nil {
 		return false, err
 	}
-	ublkQueueDepth := i.UblkInfo.UblkQueueDepth
-	if ublkQueueDepth <= 0 {
-		ublkQueueDepth = DefaultUblkQueueDepth
+
+	queueDepth := i.UblkInfo.UblkQueueDepth
+	if queueDepth <= 0 {
+		i.logger.Infof("Invalid queue depth %d for ublk initiator, using default value %d", queueDepth, DefaultUblkQueueDepth)
+		queueDepth = DefaultUblkQueueDepth
 	}
-	ublkNumberOfQueue := i.UblkInfo.UblkNumberOfQueue
-	if ublkNumberOfQueue <= 0 {
-		ublkNumberOfQueue = DefaultUblkNumberOfQueue
+	numQueues := i.UblkInfo.UblkNumberOfQueue
+	if numQueues <= 0 {
+		i.logger.Infof("Invalid number of queues %d for ublk initiator, using default value %d", numQueues, DefaultUblkNumberOfQueue)
+		numQueues = DefaultUblkNumberOfQueue
 	}
-	if err := spdkClient.UblkStartDisk(i.UblkInfo.BdevName, availableUblkID, ublkQueueDepth, ublkNumberOfQueue); err != nil {
+
+	i.UblkInfo.UblkQueueDepth = queueDepth
+	i.UblkInfo.UblkNumberOfQueue = numQueues
+
+	i.logger.Infof("Starting ublk initiator with bdev %s, available UBLK ID %d, queue depth %d, number of queues %d",
+		i.UblkInfo.BdevName, availableUblkID, i.UblkInfo.UblkQueueDepth, i.UblkInfo.UblkNumberOfQueue)
+	if err := spdkClient.UblkStartDisk(i.UblkInfo.BdevName, availableUblkID, i.UblkInfo.UblkQueueDepth, i.UblkInfo.UblkNumberOfQueue); err != nil {
 		return false, err
 	}
 	i.UblkInfo.UblkID = availableUblkID
@@ -540,43 +609,96 @@ func (i *Initiator) waitAndLoadNVMeDeviceInfoWithoutLock(transportAddress, trans
 	if i.NVMeTCPInfo == nil {
 		return fmt.Errorf("failed to waitAndLoadNVMeDeviceInfoWithoutLock because nvmeTCPInfo is nil")
 	}
-	for r := 0; r < maxWaitDeviceRetries; r++ {
-		err = i.loadNVMeDeviceInfoWithoutLock(transportAddress, transportServiceID, i.NVMeTCPInfo.SubsystemNQN)
-		if err == nil {
-			break
-		}
-		time.Sleep(waitDeviceInterval)
+
+	err = retry.Do(
+		func() error {
+			return i.loadNVMeDeviceInfoWithoutLock(
+				transportAddress,
+				transportServiceID,
+				i.NVMeTCPInfo.SubsystemNQN,
+			)
+		},
+		retry.Attempts(uint(maxWaitDeviceRetries)),
+		retry.Delay(waitDeviceInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			i.logger.WithError(err).Warnf(
+				"Retrying loading NVMe device info for initiator %s: address=%s:%s attempt=%d/%d next_wait=%s",
+				i.Name, transportAddress, transportServiceID, n+1, maxWaitDeviceRetries, waitDeviceInterval,
+			)
+		}),
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to load NVMe device info")
 	}
-	return err
+
+	return nil
 }
 
-func (i *Initiator) connectNVMeTCPTarget(transportAddress, transportServiceID string, maxRetries int, retryInterval time.Duration) {
+func (i *Initiator) recordConnectedNVMeTCPInfo(subsystemNQN, controllerName string) error {
 	if i.NVMeTCPInfo == nil {
-		logrus.Warnf("Failed to connectTarget because nvmeTCPInfo is nil")
+		return fmt.Errorf("nvmeTCPInfo is nil")
 	}
-	for r := 0; r < maxRetries; r++ {
-		// Rerun this API for a discovered target should be fine
-		subsystemNQN, err := DiscoverTarget(transportAddress, transportServiceID, i.executor)
-		if err != nil {
-			i.logger.WithError(err).Warn("Failed to discover target")
-			time.Sleep(retryInterval)
-			continue
-		}
 
-		controllerName, err := ConnectTarget(transportAddress, transportServiceID, subsystemNQN, i.executor)
-		if err != nil {
-			i.logger.WithError(err).Warn("Failed to connect target")
-			time.Sleep(retryInterval)
-			continue
-		}
-
+	// Persist the discovered subsystem immediately after a successful connect.
+	// Later reload/load/cleanup paths use SubsystemNQN to locate or disconnect
+	// the NVMe device, so it must stay in sync even if controllerName validation fails.
+	if subsystemNQN != "" {
 		i.NVMeTCPInfo.SubsystemNQN = subsystemNQN
-		i.NVMeTCPInfo.ControllerName = controllerName
-		break
 	}
+	if controllerName == "" {
+		return fmt.Errorf("controller name is empty")
+	}
+
+	i.NVMeTCPInfo.ControllerName = controllerName
+	return nil
 }
 
-// Stop stops the NVMe-oF initiator
+func (i *Initiator) discoverAndConnectNVMeTCPTarget(transportAddress, transportServiceID string, maxRetries int, retryInterval time.Duration) (subsystemNQN, controllerName string, err error) {
+	if i.NVMeTCPInfo == nil {
+		return "", "", fmt.Errorf("nvmeTCPInfo is nil")
+	}
+
+	err = retry.Do(
+		func() error {
+			var e error
+
+			i.logger.Infof("Discovering NVMe/TCP target %s:%s", transportAddress, transportServiceID)
+			subsystemNQN, e = DiscoverTarget(transportAddress, transportServiceID, i.executor)
+			if e != nil {
+				return errors.Wrapf(e, "discover NVMe/TCP target %s:%s failed", transportAddress, transportServiceID)
+			}
+
+			i.logger.Infof("Connecting to NVMe/TCP target %s:%s with subsystemNQN %s", transportAddress, transportServiceID, subsystemNQN)
+			controllerName, e = ConnectTarget(transportAddress, transportServiceID, subsystemNQN, i.executor)
+			if e != nil {
+				return errors.Wrapf(e, "connect NVMe/TCP target %s:%s (nqn=%s) failed", transportAddress, transportServiceID, subsystemNQN)
+			}
+
+			return nil
+		},
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			i.logger.WithError(err).Warnf(
+				"Retrying NVMe/TCP target connect: addr=%s:%s attempt=%d/%d next_wait=%s",
+				transportAddress, transportServiceID, n+1, maxRetries, retryInterval,
+			)
+		}),
+	)
+
+	if err != nil {
+		return "", "", errors.Wrapf(err, "failed to discover and connect NVMe/TCP target %s:%s", transportAddress, transportServiceID)
+	}
+
+	return subsystemNQN, controllerName, nil
+}
+
+// Stop stops the NVMe/TCP initiator
 func (i *Initiator) Stop(spdkClient *client.Client, dmDeviceAndEndpointCleanupRequired, deferDmDeviceCleanup, returnErrorForBusyDevice bool) (bool, error) {
 	if i.hostProc != "" {
 		lock, err := i.newLock()
@@ -617,7 +739,7 @@ func (i *Initiator) stopWithoutLock(spdkClient *client.Client, dmDeviceAndEndpoi
 	if i.NVMeTCPInfo != nil {
 		err = DisconnectTarget(i.NVMeTCPInfo.SubsystemNQN, i.executor)
 		if err != nil {
-			return dmDeviceIsBusy, errors.Wrapf(err, "failed to disconnect target for NVMe-oF initiator %s", i.Name)
+			return dmDeviceIsBusy, errors.Wrapf(err, "failed to disconnect target for NVMe/TCP initiator %s", i.Name)
 		}
 
 		i.NVMeTCPInfo.ControllerName = ""
@@ -705,13 +827,13 @@ func (i *Initiator) loadNVMeDeviceInfoWithoutLock(transportAddress, transportSer
 		return err
 	}
 	if len(nvmeDevices) != 1 {
-		return fmt.Errorf("found zero or multiple devices NVMe-oF initiator %s", i.Name)
+		return fmt.Errorf("found zero or multiple devices NVMe/TCP initiator %s", i.Name)
 	}
 	if len(nvmeDevices[0].Namespaces) != 1 {
-		return fmt.Errorf("found zero or multiple devices for NVMe-oF initiator %s", i.Name)
+		return fmt.Errorf("found zero or multiple devices for NVMe/TCP initiator %s", i.Name)
 	}
 	if i.NVMeTCPInfo.ControllerName != "" && i.NVMeTCPInfo.ControllerName != nvmeDevices[0].Controllers[0].Controller {
-		return fmt.Errorf("found mismatching between the detected controller name %s and the recorded value %s for NVMe-oF initiator %s", nvmeDevices[0].Controllers[0].Controller, i.NVMeTCPInfo.ControllerName, i.Name)
+		return fmt.Errorf("found mismatching between the detected controller name %s and the recorded value %s for NVMe/TCP initiator %s", nvmeDevices[0].Controllers[0].Controller, i.NVMeTCPInfo.ControllerName, i.Name)
 	}
 
 	i.NVMeTCPInfo.ControllerName = nvmeDevices[0].Controllers[0].Controller
@@ -727,7 +849,7 @@ func (i *Initiator) loadNVMeDeviceInfoWithoutLock(transportAddress, transportSer
 	devPath := filepath.Join("/dev", i.NVMeTCPInfo.NamespaceName)
 	dev, err := util.DetectDevice(devPath, i.executor)
 	if err != nil {
-		return errors.Wrapf(err, "cannot find the device for NVMe-oF initiator %s with namespace name %s", i.Name, i.NVMeTCPInfo.NamespaceName)
+		return errors.Wrapf(err, "cannot find the device for NVMe/TCP initiator %s with namespace name %s", i.Name, i.NVMeTCPInfo.NamespaceName)
 	}
 
 	i.dev = &util.LonghornBlockDevice{
@@ -775,7 +897,7 @@ func (i *Initiator) LoadEndpointForNvmeTcpFrontend(dmDeviceIsBusy bool) error {
 		i.logger.Debugf("Skipping endpoint %v loading due to device busy", i.Endpoint)
 	} else {
 		if i.NVMeTCPInfo.NamespaceName != "" && !i.isNamespaceExist(depDevices) {
-			return fmt.Errorf("detected device %s name mismatching from endpoint %v for NVMe-oF initiator %s", dev.Name, i.Endpoint, i.Name)
+			return fmt.Errorf("detected device %s name mismatching from endpoint %v for NVMe/TCP initiator %s", dev.Name, i.Endpoint, i.Name)
 		}
 	}
 
@@ -849,7 +971,7 @@ func (i *Initiator) createLinearDmDevice() error {
 	}
 
 	dmDevPath := getDmDevicePath(i.Name)
-	if err := validateDiskCreation(dmDevPath, validateDiskCreationTimeout); err != nil {
+	if err := i.validateDiskCreation(dmDevPath, validateDiskCreationMaxRetries, validateDiskCreationRetryInterval); err != nil {
 		return err
 	}
 
@@ -866,16 +988,40 @@ func (i *Initiator) createLinearDmDevice() error {
 	return nil
 }
 
-func validateDiskCreation(path string, timeout int) error {
-	for i := 0; i < timeout; i++ {
-		isBlockDev, _ := util.IsBlockDevice(path)
-		if isBlockDev {
-			return nil
-		}
-		time.Sleep(time.Second * 1)
+func (i *Initiator) validateDiskCreation(path string, maxRetries int, retryInterval time.Duration) error {
+	if maxRetries <= 0 {
+		return fmt.Errorf("maxRetries must be > 0")
 	}
 
-	return fmt.Errorf("failed to validate device %s creation", path)
+	err := retry.Do(
+		func() error {
+			isBlockDev, err := util.IsBlockDevice(path)
+			if err != nil {
+				return err
+			}
+			if !isBlockDev {
+				return errDeviceNotReady
+			}
+			return nil
+		},
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			i.logger.WithError(err).Warnf(
+				"Retrying device creation validation: path=%s attempt=%d/%d next_wait=%s",
+				path, n+1, maxRetries, retryInterval,
+			)
+		}),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to validate device %s creation: %w", path, err)
+	}
+
+	i.logger.Infof("Device %s is created and ready", path)
+	return nil
 }
 
 func (i *Initiator) suspendLinearDmDevice(noflush, nolockfs bool) error {
@@ -905,19 +1051,41 @@ func (i *Initiator) SyncDmDeviceSize(expectedSize uint64) error {
 	devPath := fmt.Sprintf("/dev/%s", i.dev.Source.Name)
 	expectedSectors := int64(expectedSize / DmSectorSize)
 
-	i.logger.Infof("Start reloading DM device %v to expected size %v bytes (%v sectors)", i.Name, expectedSize, expectedSectors)
+	i.logger.Infof("Start reloading dm device %v to expected size %v bytes (%v sectors)", i.Name, expectedSize, expectedSectors)
 
 	var sectors int64
-	for retry := 0; retry < maxWaitDeviceRetries; retry++ {
-		output, err := i.executor.Execute(nil, util.BlockdevBinary, []string{"--getsize", devPath}, types.ExecuteTimeout)
-		if err == nil {
-			sectors, _ = strconv.ParseInt(strings.TrimSpace(output), 10, 64)
-			if sectors >= expectedSectors {
-				i.logger.Infof("Kernel updated device %v capacity to %v sectors", devPath, sectors)
-				break
-			}
-		}
-		time.Sleep(waitDeviceInterval)
+
+	// Keep original behavior when maxWaitDeviceRetries <= 0:
+	// no polling happens, then fall through to the same final check.
+	if maxWaitDeviceRetries > 0 {
+		const forceRetryMsg = "force retry"
+		forceRetryErr := errors.New(forceRetryMsg)
+
+		attempt := 0
+		_ = retry.Do(
+			func() error {
+				// Extra terminal no-op attempt to preserve original behavior:
+				// sleep also happens after the last failed polling iteration.
+				if attempt >= maxWaitDeviceRetries {
+					return nil
+				}
+				attempt++
+
+				output, err := i.executor.Execute(nil, util.BlockdevBinary, []string{"--getsize", devPath}, types.ExecuteTimeout)
+				if err == nil {
+					sectors, _ = strconv.ParseInt(strings.TrimSpace(output), 10, 64)
+					if sectors >= expectedSectors {
+						i.logger.Infof("Kernel updated device %v capacity to %v sectors", devPath, sectors)
+						return nil
+					}
+				}
+				return forceRetryErr
+			},
+			retry.Attempts(uint(maxWaitDeviceRetries+1)),
+			retry.Delay(waitDeviceInterval),
+			retry.DelayType(retry.FixedDelay),
+			retry.LastErrorOnly(true),
+		)
 	}
 
 	if sectors < expectedSectors {

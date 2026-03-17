@@ -12,13 +12,13 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/backupstore"
+	"github.com/longhorn/go-spdk-helper/pkg/initiator"
 
 	btypes "github.com/longhorn/backupstore/types"
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
 	commonnet "github.com/longhorn/go-common-libs/net"
 	commonns "github.com/longhorn/go-common-libs/ns"
 	commontypes "github.com/longhorn/go-common-libs/types"
-	"github.com/longhorn/go-spdk-helper/pkg/initiator"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
 	helperutil "github.com/longhorn/go-spdk-helper/pkg/util"
@@ -208,7 +208,7 @@ func (b *Backup) CompareSnapshot(snapshotName, compareSnapshotName, volumeName s
 	return b.constructMappings(blockSize), nil
 }
 
-// ReadSnapshot reads the data from the block device exposed by NVMe-oF TCP
+// ReadSnapshot reads the data from the block device exposed by NVMe/TCP TCP
 func (b *Backup) ReadSnapshot(snapshotName, volumeName string, offset int64, data []byte) error {
 	b.Lock()
 	defer b.Unlock()
