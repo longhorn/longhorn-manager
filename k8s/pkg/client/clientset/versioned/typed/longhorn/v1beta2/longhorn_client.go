@@ -36,6 +36,7 @@ type LonghornV1beta2Interface interface {
 	BackupTargetsGetter
 	BackupVolumesGetter
 	EnginesGetter
+	EngineFrontendsGetter
 	EngineImagesGetter
 	InstanceManagersGetter
 	NodesGetter
@@ -87,6 +88,10 @@ func (c *LonghornV1beta2Client) BackupVolumes(namespace string) BackupVolumeInte
 
 func (c *LonghornV1beta2Client) Engines(namespace string) EngineInterface {
 	return newEngines(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) EngineFrontends(namespace string) EngineFrontendInterface {
+	return newEngineFrontends(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) EngineImages(namespace string) EngineImageInterface {

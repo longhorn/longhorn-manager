@@ -26,6 +26,7 @@ import (
 // with apply.
 type InstanceProcessStatusApplyConfiguration struct {
 	Endpoint        *string                        `json:"endpoint,omitempty"`
+	Frontend        *string                        `json:"frontend,omitempty"`
 	ErrorMsg        *string                        `json:"errorMsg,omitempty"`
 	Conditions      map[string]bool                `json:"conditions,omitempty"`
 	Listen          *string                        `json:"listen,omitempty"`
@@ -51,6 +52,14 @@ func InstanceProcessStatus() *InstanceProcessStatusApplyConfiguration {
 // If called multiple times, the Endpoint field is set to the value of the last call.
 func (b *InstanceProcessStatusApplyConfiguration) WithEndpoint(value string) *InstanceProcessStatusApplyConfiguration {
 	b.Endpoint = &value
+	return b
+}
+
+// WithFrontend sets the Frontend field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Frontend field is set to the value of the last call.
+func (b *InstanceProcessStatusApplyConfiguration) WithFrontend(value string) *InstanceProcessStatusApplyConfiguration {
+	b.Frontend = &value
 	return b
 }
 

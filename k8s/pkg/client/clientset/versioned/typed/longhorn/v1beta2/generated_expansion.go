@@ -34,6 +34,8 @@ type BackupVolumeExpansion interface{}
 
 type EngineExpansion interface{}
 
+type EngineFrontendExpansion interface{}
+
 type EngineImageExpansion interface{}
 
 type InstanceManagerExpansion interface{}

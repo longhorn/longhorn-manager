@@ -261,8 +261,13 @@ type VolumeSpec struct {
 	DataLocality DataLocality `json:"dataLocality"`
 	// +optional
 	StaleReplicaTimeout int `json:"staleReplicaTimeout"`
+	// nodeID defines the node where the volume is attached (where the frontend initiator runs).
 	// +optional
 	NodeID string `json:"nodeID"`
+	// engineNodeID defines the node where the backend engine (target) runs.
+	// If empty, falls back to NodeID.
+	// +optional
+	EngineNodeID string `json:"engineNodeID"`
 	// +optional
 	MigrationNodeID string `json:"migrationNodeID"`
 	// +optional
@@ -368,6 +373,9 @@ type VolumeStatus struct {
 	Robustness VolumeRobustness `json:"robustness"`
 	// +optional
 	CurrentNodeID string `json:"currentNodeID"`
+	// the node that the engine (target) is currently running on.
+	// +optional
+	CurrentEngineNodeID string `json:"currentEngineNodeID"`
 	// +optional
 	CurrentImage string `json:"currentImage"`
 	// +optional
