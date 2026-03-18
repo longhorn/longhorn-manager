@@ -36,8 +36,6 @@ const (
 	defaultForceUmountTimeout = 30 * time.Second
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
-
-	nodeTopologyKey = "kubernetes.io/hostname"
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -479,13 +477,21 @@ func getStageBlockVolumePath(stagingTargetPath, volumeID string) string {
 	return filepath.Join(stagingTargetPath, volumeID)
 }
 
-func parseNodeID(topology *csi.Topology) (string, error) {
-	if topology == nil || topology.Segments == nil {
-		return "", fmt.Errorf("missing accessible topology request parameter")
+func isFileNotExistError(err error) bool {
+	if err == nil {
+		return false
 	}
-	nodeId, ok := topology.Segments[nodeTopologyKey]
-	if !ok {
-		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
+	if os.IsNotExist(err) {
+		return true
 	}
-	return nodeId, nil
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such file")
+}
+
+func isNotMountedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "not mounted") ||
+		strings.Contains(err.Error(), "no mount point specified")
 }
