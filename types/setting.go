@@ -172,6 +172,7 @@ const (
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
 	SettingNameCSIAllowedTopologyKeys                                   = SettingName("csi-allowed-topology-keys")
+	SettingNameCSIStorageCapacityTracking                               = SettingName("csi-storage-capacity-tracking")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -297,6 +298,7 @@ var (
 		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
 		SettingNameCSIAllowedTopologyKeys,
+		SettingNameCSIStorageCapacityTracking,
 	}
 )
 
@@ -456,6 +458,7 @@ var (
 		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
 		SettingNameCSIAllowedTopologyKeys:                                   SettingDefinitionCSIAllowedTopologyKeys,
+		SettingNameCSIStorageCapacityTracking:                               SettingDefinitionCSIStorageCapacityTracking,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -2008,6 +2011,19 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "",
+	}
+
+	SettingDefinitionCSIStorageCapacityTracking = SettingDefinition{
+		DisplayName: "CSI Storage Capacity Tracking",
+		Description: "Setting that enables or disables the CSI storage capacity tracking (KEP-1472). " +
+			"This corresponds to the StorageCapacity field on the CSIDriver object. " +
+			"Disabling this may be useful in environments where storage capacity tracking is not needed or causes issues.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 )
 

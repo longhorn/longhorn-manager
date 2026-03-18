@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/ptr"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
@@ -257,6 +258,10 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		}
 	case types.SettingNameDefaultLonghornStaticStorageClass:
 		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
+			return err
+		}
+	case types.SettingNameCSIStorageCapacityTracking:
+		if err := sc.updateCSIStorageCapacityTracking(); err != nil {
 			return err
 		}
 	}
@@ -1078,6 +1083,31 @@ func (sc *SettingController) updateNodeSelector() error {
 		}
 	}
 
+	return nil
+}
+
+func (sc *SettingController) updateCSIStorageCapacityTracking() error {
+	storageCapacity, err := sc.ds.GetSettingAsBool(types.SettingNameCSIStorageCapacityTracking)
+	if err != nil {
+		return err
+	}
+
+	csiDriver, err := sc.ds.GetCSIDriver(types.LonghornDriverName)
+	if err != nil {
+		return err
+	}
+
+	if csiDriver.Spec.StorageCapacity != nil && *csiDriver.Spec.StorageCapacity == storageCapacity {
+		return nil
+	}
+
+	csiDriver.Spec.StorageCapacity = ptr.To(storageCapacity)
+	// NOTE: StorageCapacity became mutable in Kubernetes 1.23+. On older versions, this update will fail.
+	if _, err := sc.ds.UpdateCSIDriver(csiDriver); err != nil {
+		return err
+	}
+
+	sc.logger.Infof("Updated CSI driver StorageCapacity to %v", storageCapacity)
 	return nil
 }
 
