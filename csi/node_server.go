@@ -923,11 +923,7 @@ func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeI
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	// Default topology with hostname (required for CSI storage capacity calculation per node)
-	topologySegments := map[string]string{
-		nodeTopologyKey: ns.nodeID,
-	}
-
+	topologySegments := map[string]string{}
 	// Get allowed topology keys from setting
 	allowedKeys := ns.getAllowedTopologyKeys(ctx)
 
@@ -935,13 +931,20 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	// This enables StorageClass allowedTopologies to match node labels
 	kubeNode, err := ns.kubeClient.CoreV1().Nodes().Get(ctx, ns.nodeID, metav1.GetOptions{})
 	if err != nil {
-		ns.log.WithError(err).Warnf("Failed to get Kubernetes node %s for topology labels, using hostname only", ns.nodeID)
+		ns.log.WithError(err).Warnf("Failed to get Kubernetes node %s for topology labels", ns.nodeID)
 	} else {
 		for key, value := range kubeNode.Labels {
-			if key == nodeTopologyKey || allowedKeys[key] {
+			if allowedKeys[key] {
 				topologySegments[key] = value
 			}
 		}
+	}
+
+	switch ns.getStorageCapacityTracking(ctx) {
+	case types.CSIStorageCapacityTrackingNode:
+		ns.ensureTopologyKey(topologySegments, kubeNode.Labels, corev1.LabelHostname)
+	case types.CSIStorageCapacityTrackingZone:
+		ns.ensureTopologyKey(topologySegments, kubeNode.Labels, corev1.LabelTopologyZone)
 	}
 
 	return &csi.NodeGetInfoResponse{
@@ -953,9 +956,34 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	}, nil
 }
 
+// ensureTopologyKey adds the given label key to topologySegments if not already present, and warns if the label is missing.
+func (ns *NodeServer) ensureTopologyKey(topologySegments, nodeLabels map[string]string, key string) {
+	labelVal, hasLabel := nodeLabels[key]
+	if !hasLabel {
+		ns.log.Errorf("Node is missing label %q, capacity tracking may not work correctly", key)
+		return
+	}
+	_, inTopology := topologySegments[key]
+	if !inTopology {
+		topologySegments[key] = labelVal
+		ns.log.Infof("Added label %q to CSINode topology keys", key)
+	}
+}
+
+// getCSIStorageCapacityTracking returns csi-storage-capacity-tracking setting.
+func (ns *NodeServer) getStorageCapacityTracking(ctx context.Context) types.CSIStorageCapacityTracking {
+	setting, err := ns.lhClient.LonghornV1beta2().Settings(ns.lhNamespace).Get(ctx, string(types.SettingNameCSIStorageCapacityTracking), metav1.GetOptions{})
+	if err != nil {
+		ns.log.WithError(err).Warnf("Failed to get %q setting, defaulting to node-level capacity tracking", types.SettingNameCSIStorageCapacityTracking)
+		return types.CSIStorageCapacityTrackingNode
+	}
+
+	return types.CSIStorageCapacityTracking(setting.Value)
+}
+
 // getAllowedTopologyKeys fetches the CSI Allowed Topology Keys setting and
 // returns a map of allowed keys. If the setting is empty or cannot be fetched,
-// an empty map is returned (only nodeTopologyKey will be used).
+// an empty map is returned.
 func (ns *NodeServer) getAllowedTopologyKeys(ctx context.Context) map[string]bool {
 	obj, err := ns.lhClient.LonghornV1beta2().Settings(ns.lhNamespace).Get(ctx, string(types.SettingNameCSIAllowedTopologyKeys), metav1.GetOptions{})
 	if err != nil {
@@ -963,14 +991,7 @@ func (ns *NodeServer) getAllowedTopologyKeys(ctx context.Context) map[string]boo
 		return nil
 	}
 
-	allowedKeys := make(map[string]bool)
-	for _, key := range strings.Split(obj.Value, ",") {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			allowedKeys[key] = true
-		}
-	}
-	return allowedKeys
+	return types.ParseCSIAllowedTopologyKeys(obj.Value)
 }
 
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
