@@ -2004,7 +2004,8 @@ var (
 		Description: "Comma-separated list of topology keys to keep in CreateVolumeResponse AccessibleTopology. " +
 			"Only the specified keys remain in topology segments and are used for PV nodeAffinity " +
 			"(e.g., \"topology.kubernetes.io/zone,topology.kubernetes.io/region\"). " +
-			"When empty (default), no topology keys are allowed and AccessibleTopology will be empty.",
+			"When empty (default), no topology keys are allowed and AccessibleTopology will be empty. " +
+			"Note: The longhorn-csi-plugin daemonset must be restarted for changes to take effect.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -2015,15 +2016,20 @@ var (
 
 	SettingDefinitionCSIStorageCapacityTracking = SettingDefinition{
 		DisplayName: "CSI Storage Capacity Tracking",
-		Description: "Setting that enables or disables the CSI storage capacity tracking (KEP-1472). " +
-			"This corresponds to the StorageCapacity field on the CSIDriver object. " +
-			"Disabling this may be useful in environments where storage capacity tracking is not needed or causes issues.",
+		Description: "Controls CSI storage capacity tracking (KEP-1472), which allows the kube-scheduler to filter " +
+			"nodes that cannot fit the requested volume. " +
+			"Possible values are \"disabled\" (tracking off), \"node\" (per-node capacity), and \"zone\" (per-zone capacity).",
 		Category:           SettingCategoryGeneral,
-		Type:               SettingTypeBool,
+		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            "true",
+		Default:            string(CSIStorageCapacityTrackingNode),
+		Choices: []any{
+			string(CSIStorageCapacityTrackingDisabled),
+			string(CSIStorageCapacityTrackingNode),
+			string(CSIStorageCapacityTrackingZone),
+		},
 	}
 )
 
@@ -2071,6 +2077,14 @@ type OrphanResourceType string
 const (
 	OrphanResourceTypeReplicaData = OrphanResourceType("replica-data")
 	OrphanResourceTypeInstance    = OrphanResourceType("instance")
+)
+
+type CSIStorageCapacityTracking string
+
+const (
+	CSIStorageCapacityTrackingDisabled CSIStorageCapacityTracking = "disabled"
+	CSIStorageCapacityTrackingNode     CSIStorageCapacityTracking = "node"
+	CSIStorageCapacityTrackingZone     CSIStorageCapacityTracking = "zone"
 )
 
 // ValidateSetting checks if the given value is valid for the given setting name.
@@ -2166,6 +2180,24 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 	}
 
 	return defaultSettings, nil
+}
+
+// IsCSIStorageCapacityEnabled reports whether the capacity tracking mode is "node" or "zone".
+func IsCSIStorageCapacityEnabled(value string) bool {
+	mode := CSIStorageCapacityTracking(value)
+	return mode == CSIStorageCapacityTrackingNode || mode == CSIStorageCapacityTrackingZone
+}
+
+// ParseCSIAllowedTopologyKeys parses a comma-separated topology key list into a set.
+func ParseCSIAllowedTopologyKeys(value string) map[string]bool {
+	allowedKeys := make(map[string]bool)
+	for _, key := range strings.Split(value, ",") {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			allowedKeys[key] = true
+		}
+	}
+	return allowedKeys
 }
 
 // UnmarshalTolerations unmarshals the given toleration setting string into a slice of Toleration.
