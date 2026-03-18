@@ -636,14 +636,14 @@ type DriverObjectDeployment struct {
 	obj *storagev1.CSIDriver
 }
 
-func NewCSIDriverObject() *DriverObjectDeployment {
+func NewCSIDriverObject(storageCapacity bool) *DriverObjectDeployment {
 	obj := &storagev1.CSIDriver{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: types.LonghornDriverName,
 		},
 		Spec: storagev1.CSIDriverSpec{
 			PodInfoOnMount:  ptr.To(true),
-			StorageCapacity: ptr.To(true),
+			StorageCapacity: ptr.To(storageCapacity),
 		},
 	}
 	return &DriverObjectDeployment{

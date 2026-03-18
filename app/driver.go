@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -287,6 +288,15 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	storageCapacityTrackingSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCSIStorageCapacityTracking), metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	storageCapacityTracking, err := strconv.ParseBool(storageCapacityTrackingSetting.Value)
+	if err != nil {
+		return err
+	}
+
 	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {
 	case string(types.SystemManagedPodsImagePullPolicyNever):
@@ -319,7 +329,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	csiDriverObjectDeployment := csi.NewCSIDriverObject()
+	csiDriverObjectDeployment := csi.NewCSIDriverObject(storageCapacityTracking)
 	if err := csiDriverObjectDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
