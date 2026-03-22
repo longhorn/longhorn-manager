@@ -20,6 +20,16 @@ const (
 	StorageNetworkInterface = "lhnet1"
 )
 
+// NoProxyTransport is a copy of http.DefaultTransport with Proxy disabled.
+// Use it for all intra-pod HTTP calls so that requests are never forwarded to
+// an external proxy.
+// Ref: https://github.com/longhorn/longhorn/issues/12779
+var NoProxyTransport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Proxy = nil
+	return t
+}()
+
 func GetHTTPClientErrorPrefix(stateCode int) string {
 	return fmt.Sprintf(HTTPClientErrorPrefixTemplate, stateCode)
 }
@@ -29,9 +39,7 @@ func IsHTTPClientErrorNotFound(inputErr error) bool {
 }
 
 func DetectHTTPServerAvailability(url string, waitIntervalInSecond int, shouldAvailable bool) bool {
-	cli := http.Client{
-		Timeout: time.Second,
-	}
+	cli := http.Client{Timeout: time.Second, Transport: NoProxyTransport}
 
 	endTime := time.Now().Add(time.Duration(waitIntervalInSecond) * time.Second)
 

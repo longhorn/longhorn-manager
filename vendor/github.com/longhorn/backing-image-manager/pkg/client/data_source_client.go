@@ -21,7 +21,7 @@ type DataSourceClient struct {
 }
 
 func (client *DataSourceClient) Get() (*api.DataSourceInfo, error) {
-	httpClient := &http.Client{Timeout: HTTPClientTimeout}
+	httpClient := &http.Client{Timeout: HTTPClientTimeout, Transport: util.NoProxyTransport}
 
 	url := fmt.Sprintf("http://%s/v1/file", client.Remote)
 	req, err := http.NewRequest("GET", url, nil)
@@ -60,7 +60,7 @@ func (client *DataSourceClient) Get() (*api.DataSourceInfo, error) {
 }
 
 func (client *DataSourceClient) Transfer() error {
-	httpClient := &http.Client{Timeout: HTTPClientTimeout}
+	httpClient := &http.Client{Timeout: HTTPClientTimeout, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/file", client.Remote)
 	req, err := http.NewRequest("POST", requestURL, nil)
@@ -93,7 +93,7 @@ func (client *DataSourceClient) Transfer() error {
 }
 
 func (client *DataSourceClient) Upload(filePath string) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 
 	stat, err := os.Stat(filePath)
 	if err != nil {

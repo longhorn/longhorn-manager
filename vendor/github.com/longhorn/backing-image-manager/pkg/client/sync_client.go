@@ -28,7 +28,7 @@ type SyncClient struct {
 }
 
 func (client *SyncClient) Get(filePath string) (*api.FileInfo, error) {
-	httpClient := &http.Client{Timeout: HTTPClientTimeout}
+	httpClient := &http.Client{Timeout: HTTPClientTimeout, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files/%s", client.Remote, url.QueryEscape(filePath))
 	req, err := http.NewRequest("GET", requestURL, nil)
@@ -67,7 +67,7 @@ func (client *SyncClient) Get(filePath string) (*api.FileInfo, error) {
 }
 
 func (client *SyncClient) List() (map[string]*api.FileInfo, error) {
-	httpClient := &http.Client{Timeout: HTTPClientTimeout}
+	httpClient := &http.Client{Timeout: HTTPClientTimeout, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files", client.Remote)
 	req, err := http.NewRequest("GET", requestURL, nil)
@@ -106,7 +106,7 @@ func (client *SyncClient) List() (map[string]*api.FileInfo, error) {
 }
 
 func (client *SyncClient) Delete(filePath string) error {
-	httpClient := &http.Client{Timeout: HTTPClientTimeout}
+	httpClient := &http.Client{Timeout: HTTPClientTimeout, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files/%s", client.Remote, url.QueryEscape(filePath))
 	req, err := http.NewRequest("DELETE", requestURL, nil)
@@ -136,7 +136,7 @@ func (client *SyncClient) Delete(filePath string) error {
 }
 
 func (client *SyncClient) Forget(filePath string) error {
-	httpClient := &http.Client{Timeout: HTTPClientTimeout}
+	httpClient := &http.Client{Timeout: HTTPClientTimeout, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files/%s", client.Remote, url.QueryEscape(filePath))
 	req, err := http.NewRequest("POST", requestURL, nil)
@@ -169,7 +169,7 @@ func (client *SyncClient) Forget(filePath string) error {
 }
 
 func (client *SyncClient) Fetch(srcFilePath, dstFilePath, uuid, diskUUID, expectedChecksum string, size int64) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files", client.Remote)
 	req, err := http.NewRequest("POST", requestURL, nil)
@@ -208,7 +208,7 @@ func (client *SyncClient) Fetch(srcFilePath, dstFilePath, uuid, diskUUID, expect
 }
 
 func (client *SyncClient) DownloadFromURL(downloadURL, filePath, uuid, diskUUID, expectedChecksum, dataEngine string) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files", client.Remote)
 	req, err := http.NewRequest("POST", requestURL, nil)
@@ -247,7 +247,7 @@ func (client *SyncClient) DownloadFromURL(downloadURL, filePath, uuid, diskUUID,
 }
 
 func (client *SyncClient) CloneFromBackingImage(sourceBackingImage, sourceBackingImageUUID, encryption, filePath, uuid, diskUUID, expectedChecksum string, credential map[string]string, dataEngine string) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 	encodedCredential, err := json.Marshal(credential)
 	if err != nil {
 		return err
@@ -294,7 +294,7 @@ func (client *SyncClient) CloneFromBackingImage(sourceBackingImage, sourceBackin
 }
 
 func (client *SyncClient) RestoreFromBackupURL(backupURL, concurrentLimit, filePath, uuid, diskUUID, expectedChecksum string, credential map[string]string, dataEngine string) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 	encodedCredential, err := json.Marshal(credential)
 	if err != nil {
 		return err
@@ -340,7 +340,7 @@ func (client *SyncClient) RestoreFromBackupURL(backupURL, concurrentLimit, fileP
 }
 
 func (client *SyncClient) Upload(src, dst, uuid, diskUUID, expectedChecksum string) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 
 	stat, err := os.Stat(src)
 	if err != nil {
@@ -416,7 +416,7 @@ func (client *SyncClient) Upload(src, dst, uuid, diskUUID, expectedChecksum stri
 }
 
 func (client *SyncClient) Receive(filePath, uuid, diskUUID, expectedChecksum, fileType string, receiverPort int, size int64, dataEngine string) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files", client.Remote)
 	req, err := http.NewRequest("POST", requestURL, nil)
@@ -457,7 +457,7 @@ func (client *SyncClient) Receive(filePath, uuid, diskUUID, expectedChecksum, fi
 }
 
 func (client *SyncClient) Send(filePath, toAddress string) error {
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files/%s", client.Remote, url.QueryEscape(filePath))
 	req, err := http.NewRequest("POST", requestURL, nil)
@@ -506,7 +506,7 @@ func (client *SyncClient) DownloadToDst(srcFilePath, dstFilePath string) error {
 		}
 	}()
 
-	httpClient := &http.Client{Timeout: 0}
+	httpClient := &http.Client{Timeout: 0, Transport: util.NoProxyTransport}
 
 	requestURL := fmt.Sprintf("http://%s/v1/files/%s/download", client.Remote, url.QueryEscape(srcFilePath))
 	req, err := http.NewRequest("GET", requestURL, nil)
