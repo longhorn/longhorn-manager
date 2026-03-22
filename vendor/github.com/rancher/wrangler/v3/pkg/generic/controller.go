@@ -116,6 +116,10 @@ type ClientInterface[T RuntimeMetaObject, TList runtime.Object] interface {
 
 	// WithImpersonation returns a new copy of the client that uses impersonation.
 	WithImpersonation(impersonate rest.ImpersonationConfig) (ClientInterface[T, TList], error)
+
+	// DeleteCollection deletes all resources matching the ListOptions in the
+	// provided namespace.
+	DeleteCollection(namespace string, deleteOpts metav1.DeleteOptions, listOpts metav1.ListOptions) error
 }
 
 // NonNamespacedClientInterface is an interface to performs CRUD like operations on nonNamespaced Objects.
@@ -323,6 +327,12 @@ func (c *Controller[T, TList]) Patch(namespace, name string, pt types.PatchType,
 	return result, c.embeddedClient.Patch(context.TODO(), namespace, name, pt, data, result, metav1.PatchOptions{}, subresources...)
 }
 
+// DeleteCollection will delete the resources in the given namespace matching
+// the listOpts.
+func (c *Controller[T, TList]) DeleteCollection(namespace string, deleteOpts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return c.embeddedClient.DeleteCollection(context.TODO(), namespace, deleteOpts, listOpts)
+}
+
 // WithImpersonation returns a new copy of the client that uses impersonation.
 func (c *Controller[T, TList]) WithImpersonation(impersonate rest.ImpersonationConfig) (ClientInterface[T, TList], error) {
 	newClient, err := c.embeddedClient.WithImpersonation(impersonate)
@@ -404,4 +414,9 @@ func (c *NonNamespacedController[T, TList]) WithImpersonation(impersonate rest.I
 // Cache calls ControllerInterface.Cache(...) and wraps the result in a new NonNamespacedCache.
 func (c *NonNamespacedController[T, TList]) Cache() NonNamespacedCacheInterface[T] {
 	return NewNonNamespacedCache[T](c.Informer().GetIndexer(), c.groupResource)
+}
+
+// DeleteCollection will delete the resources matching the listOpts.
+func (c *NonNamespacedController[T, TList]) DeleteCollection(deleteOpts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return c.Controller.DeleteCollection(metav1.NamespaceAll, deleteOpts, listOpts)
 }

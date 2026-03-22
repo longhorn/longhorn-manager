@@ -451,7 +451,7 @@ github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/metrics
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/wrangler/v3 v3.4.0
+# github.com/rancher/wrangler/v3 v3.5.0
 ## explicit; go 1.25.0
 github.com/rancher/wrangler/v3/pkg/apply
 github.com/rancher/wrangler/v3/pkg/apply/injectors
