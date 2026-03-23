@@ -30,7 +30,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
-
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -509,8 +509,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	if volume.Encrypted {
 		secrets := req.GetSecrets()
-		keyProvider := secrets[types.CryptoKeyProvider]
-		passphrase := secrets[types.CryptoKeyValue]
+		keyProvider := secrets[lhtypes.CryptoKeyProvider]
+		passphrase := secrets[lhtypes.CryptoKeyValue]
 		if keyProvider != "" && keyProvider != "secret" {
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
 		}
@@ -524,8 +524,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		}
 
 		cryptoParams := crypto.NewEncryptParams(keyProvider,
-			secrets[types.CryptoKeyCipher], secrets[types.CryptoKeyHash], secrets[types.CryptoKeySize],
-			secrets[types.CryptoPBKDF], secrets[types.CryptoPBKDFForceIterations], secrets[types.CryptoPBKDFMemory])
+			secrets[lhtypes.CryptoKeyCipher], secrets[lhtypes.CryptoKeyHash], secrets[lhtypes.CryptoKeySize],
+			secrets[lhtypes.CryptoPBKDF], secrets[lhtypes.CryptoPBKDFForceIterations], secrets[lhtypes.CryptoPBKDFMemory])
 
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
@@ -910,8 +910,8 @@ func (ns *NodeServer) expandEncryptedVolume(req *csi.NodeExpandVolumeRequest, vo
 
 // getEncryptionPassphrase checks the encryption secrets and returns the passphrase if valid
 func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeID string) (string, error) {
-	keyProvider := secrets[types.CryptoKeyProvider]
-	passphrase := secrets[types.CryptoKeyValue]
+	keyProvider := secrets[lhtypes.CryptoKeyProvider]
+	passphrase := secrets[lhtypes.CryptoKeyValue]
 	if keyProvider != "" && keyProvider != "secret" {
 		return "", fmt.Errorf("unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
 	}

@@ -36,6 +36,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -1340,18 +1341,18 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			return nil, err
 		}
 
-		cryptoKey = string(secret.Data[types.CryptoKeyValue])
+		cryptoKey = string(secret.Data[lhtypes.CryptoKeyValue])
 		if len(cryptoKey) == 0 {
-			return nil, fmt.Errorf("missing %v in secret for encrypted RWX volume %v", types.CryptoKeyValue, volume.Name)
+			return nil, fmt.Errorf("missing %v in secret for encrypted RWX volume %v", lhtypes.CryptoKeyValue, volume.Name)
 		}
 		cryptoParams = crypto.NewEncryptParams(
-			string(secret.Data[types.CryptoKeyProvider]),
-			string(secret.Data[types.CryptoKeyCipher]),
-			string(secret.Data[types.CryptoKeyHash]),
-			string(secret.Data[types.CryptoKeySize]),
-			string(secret.Data[types.CryptoPBKDF]),
-			string(secret.Data[types.CryptoPBKDFForceIterations]),
-			string(secret.Data[types.CryptoPBKDFMemory]),
+			string(secret.Data[lhtypes.CryptoKeyProvider]),
+			string(secret.Data[lhtypes.CryptoKeyCipher]),
+			string(secret.Data[lhtypes.CryptoKeyHash]),
+			string(secret.Data[lhtypes.CryptoKeySize]),
+			string(secret.Data[lhtypes.CryptoPBKDF]),
+			string(secret.Data[lhtypes.CryptoPBKDFForceIterations]),
+			string(secret.Data[lhtypes.CryptoPBKDFMemory]),
 		)
 	}
 

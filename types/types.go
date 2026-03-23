@@ -306,19 +306,6 @@ const (
 	InstanceManagerSuffixChecksumLength = 32
 )
 
-const (
-	// CryptoKeyProvider specifies how the CryptoKeyValue is retrieved
-	// We currently only support passphrase retrieval via direct secret values
-	CryptoKeyProvider          = "CRYPTO_KEY_PROVIDER"
-	CryptoKeyValue             = "CRYPTO_KEY_VALUE"
-	CryptoKeyCipher            = "CRYPTO_KEY_CIPHER"
-	CryptoKeyHash              = "CRYPTO_KEY_HASH"
-	CryptoKeySize              = "CRYPTO_KEY_SIZE"
-	CryptoPBKDF                = "CRYPTO_PBKDF"
-	CryptoPBKDFForceIterations = "CRYPTO_PBKDF_FORCE_ITERATIONS"
-	CryptoPBKDFMemory          = "CRYPTO_PBKDF_MEMORY"
-)
-
 // SettingsRelatedToVolume should match the items in datastore.GetLabelsForVolumesFollowsGlobalSettings
 //
 //	TODO: May need to add the data locality check

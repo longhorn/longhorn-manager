@@ -33,6 +33,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	lhutils "github.com/longhorn/go-common-libs/utils"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -1117,12 +1118,12 @@ func (s *DataStore) GetEncryptionSecret(secretNamespace, secretName string) (map
 	if secret.Data == nil {
 		return credentialSecret, nil
 	}
-	credentialSecret[types.CryptoKeyProvider] = string(secret.Data[types.CryptoKeyProvider])
-	credentialSecret[types.CryptoKeyValue] = string(secret.Data[types.CryptoKeyValue])
-	credentialSecret[types.CryptoKeyCipher] = string(secret.Data[types.CryptoKeyCipher])
-	credentialSecret[types.CryptoKeyHash] = string(secret.Data[types.CryptoKeyHash])
-	credentialSecret[types.CryptoKeySize] = string(secret.Data[types.CryptoKeySize])
-	credentialSecret[types.CryptoPBKDF] = string(secret.Data[types.CryptoPBKDF])
+	credentialSecret[lhtypes.CryptoKeyProvider] = string(secret.Data[lhtypes.CryptoKeyProvider])
+	credentialSecret[lhtypes.CryptoKeyValue] = string(secret.Data[lhtypes.CryptoKeyValue])
+	credentialSecret[lhtypes.CryptoKeyCipher] = string(secret.Data[lhtypes.CryptoKeyCipher])
+	credentialSecret[lhtypes.CryptoKeyHash] = string(secret.Data[lhtypes.CryptoKeyHash])
+	credentialSecret[lhtypes.CryptoKeySize] = string(secret.Data[lhtypes.CryptoKeySize])
+	credentialSecret[lhtypes.CryptoPBKDF] = string(secret.Data[lhtypes.CryptoPBKDF])
 	return credentialSecret, nil
 }
 
