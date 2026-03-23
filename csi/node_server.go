@@ -30,7 +30,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
-
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -500,8 +500,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	if volume.Encrypted {
 		secrets := req.GetSecrets()
-		keyProvider := secrets[types.CryptoKeyProvider]
-		passphrase := secrets[types.CryptoKeyValue]
+		keyProvider := secrets[lhtypes.CryptoKeyProvider]
+		passphrase := secrets[lhtypes.CryptoKeyValue]
 		if keyProvider != "" && keyProvider != "secret" {
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
 		}
@@ -515,8 +515,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		}
 
 		cryptoParams := crypto.NewEncryptParams(keyProvider,
-			secrets[types.CryptoKeyCipher], secrets[types.CryptoKeyHash], secrets[types.CryptoKeySize],
-			secrets[types.CryptoPBKDF], secrets[types.CryptoPBKDFForceIterations], secrets[types.CryptoPBKDFMemory])
+			secrets[lhtypes.CryptoKeyCipher], secrets[lhtypes.CryptoKeyHash], secrets[lhtypes.CryptoKeySize],
+			secrets[lhtypes.CryptoPBKDF], secrets[lhtypes.CryptoPBKDFForceIterations], secrets[lhtypes.CryptoPBKDFMemory])
 
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
@@ -892,6 +892,51 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	return &csi.NodeExpandVolumeResponse{CapacityBytes: requestedSize}, nil
 }
 
+<<<<<<< HEAD
+=======
+// expandEncryptedVolume handles the expansion of encrypted volumes and
+// returns updated device path, and error if any.
+func (ns *NodeServer) expandEncryptedVolume(req *csi.NodeExpandVolumeRequest, volume *longhornclient.Volume, volumeID string) (string, error) {
+	log := ns.log.WithFields(logrus.Fields{"function": "expandEncryptedVolume"})
+	dataEngine := volume.DataEngine
+	encryptedDevicePath := crypto.VolumeMapper(volumeID, dataEngine)
+
+	// Need to enable feature gate in v1.25:
+	// https://github.com/kubernetes/enhancements/issues/3107
+	// https://kubernetes.io/blog/2022/09/21/kubernetes-1-25-use-secrets-while-expanding-csi-volumes-on-node-alpha/
+	secrets := req.GetSecrets()
+	if len(secrets) == 0 {
+		log.Infof("Skip encrypted device resizing for volume %v node expansion since the secret is empty, maybe the related feature gate is not enabled", volumeID)
+		return encryptedDevicePath, nil
+	}
+	passphrase, err := ns.getEncryptionPassphrase(secrets, volumeID)
+	if err != nil {
+		return encryptedDevicePath, err
+	}
+
+	// blindly resize the crypto device
+	if err := crypto.ResizeEncryptoDevice(volumeID, dataEngine, passphrase); err != nil {
+		return encryptedDevicePath, fmt.Errorf("failed to resize crypto device %v for volume %v node expansion: %v", encryptedDevicePath, volumeID, err)
+	}
+
+	return encryptedDevicePath, nil
+}
+
+// getEncryptionPassphrase checks the encryption secrets and returns the passphrase if valid
+func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeID string) (string, error) {
+	keyProvider := secrets[lhtypes.CryptoKeyProvider]
+	passphrase := secrets[lhtypes.CryptoKeyValue]
+	if keyProvider != "" && keyProvider != "secret" {
+		return "", fmt.Errorf("unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
+	}
+	if len(passphrase) == 0 {
+		return "", fmt.Errorf("missing passphrase for encrypted volume %v", volumeID)
+	}
+
+	return passphrase, nil
+}
+
+>>>>>>> 5cfffa1b (fix: use crypto constants from go-common-libs instead of duplicating them in manager)
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	return &csi.NodeGetInfoResponse{
 		NodeId:            ns.nodeID,

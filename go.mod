@@ -192,3 +192,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+replace github.com/longhorn/go-common-libs => github.com/davidcheng0922/go-common-libs v0.0.0-20260323032226-99d6d1e3b6af
