@@ -65,7 +65,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.9.2
 	github.com/longhorn/backupstore v0.0.0-20260322130856-ea97711b6530
-	github.com/longhorn/go-common-libs v0.0.0-20260318015712-f76eda5ec3f6
+	github.com/longhorn/go-common-libs v0.0.0-20260323115845-a31a74cd171a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260306105756-948eb7e165af
 	github.com/longhorn/go-spdk-helper v0.2.0
 	github.com/longhorn/longhorn-engine v1.9.2
@@ -192,5 +192,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
-
-replace github.com/longhorn/go-common-libs => github.com/davidcheng0922/go-common-libs v0.0.0-20260323032226-99d6d1e3b6af
