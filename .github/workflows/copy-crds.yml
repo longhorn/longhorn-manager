@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           # Checkout as many commits as needed for the diff
           fetch-depth: 2
@@ -31,7 +31,7 @@ jobs:
       # Run the step only with "changed" equals "True"
       - name: Create Pull Request
         if: steps.diff-commits.outputs.changed
-        uses: longhorn/bot/copy-files-and-create-pr-action@master
+        uses: longhorn/bot/copy-files-and-create-pr-action@34354a22b34defc637e5029345d392a9e2dec72e # master
         env:
           API_TOKEN_GITHUB: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
         with:

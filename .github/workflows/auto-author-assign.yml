@@ -6,4 +6,4 @@ on:
 
 jobs:
   assign-author:
-    uses: longhorn/longhorn/.github/workflows/auto-author-assign.yml@master
+    uses: longhorn/longhorn/.github/workflows/auto-author-assign.yml@eb3790253449e3577b4acb88b5620258cde6d747 # v1.11.1
