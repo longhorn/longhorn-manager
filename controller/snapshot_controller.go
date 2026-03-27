@@ -687,7 +687,15 @@ func (sc *SnapshotController) generatingEventsForSnapshot(existingSnapshot, snap
 		if snapshot.Status.ReadyToUse {
 			sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonUpdate, "snapshot becomes ready to use")
 		} else {
-			sc.eventRecorder.Event(snapshot, corev1.EventTypeWarning, constant.EventReasonUpdate, "snapshot becomes not ready to use")
+			// When MarkRemoved is true or DeletionTimestamp is set, the snapshot is being
+			// intentionally cleaned up (e.g., auto-cleanup after backup). Use Normal event
+			// type for expected state transitions, consistent with the snapshotErrorLost
+			// handling above.
+			eventType := corev1.EventTypeWarning
+			if snapshot.Status.MarkRemoved || !snapshot.DeletionTimestamp.IsZero() {
+				eventType = corev1.EventTypeNormal
+			}
+			sc.eventRecorder.Event(snapshot, eventType, constant.EventReasonUpdate, "snapshot becomes not ready to use")
 		}
 	}
 }
