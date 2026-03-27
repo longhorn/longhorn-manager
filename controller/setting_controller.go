@@ -439,27 +439,24 @@ func (sc *SettingController) updateTaintToleration() error {
 		if err != nil {
 			return err
 		}
-		switch objType := obj.(type) {
+		switch objTyped := obj.(type) {
 		case *appsv1.DaemonSet:
-			ds := obj.(*appsv1.DaemonSet)
-			sc.logger.Infof("Deleting daemonset %v to update tolerations from %v to %v", ds.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
-			if err := sc.updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
+			sc.logger.Infof("Deleting daemonset %v to update tolerations from %v to %v", objTyped.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.updateTolerationForDaemonset(objTyped, lastAppliedTolerationsList, newTolerationsList); err != nil {
 				return err
 			}
 		case *appsv1.Deployment:
-			dp := obj.(*appsv1.Deployment)
-			sc.logger.Infof("Updating deployment %v to update tolerations from %v to %v", dp.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
-			if err := sc.updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
+			sc.logger.Infof("Updating deployment %v to update tolerations from %v to %v", objTyped.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.updateTolerationForDeployment(objTyped, lastAppliedTolerationsList, newTolerationsList); err != nil {
 				return err
 			}
 		case *corev1.Pod:
-			pod := obj.(*corev1.Pod)
-			sc.logger.Infof("Deleting pod %v to update tolerations from %v to %v", pod.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
-			if err := sc.ds.DeletePod(pod.Name); err != nil {
+			sc.logger.Infof("Deleting pod %v to update tolerations from %v to %v", objTyped.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.ds.DeletePod(objTyped.Name); err != nil {
 				return err
 			}
 		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameTaintToleration)
+			return fmt.Errorf("unknown object type %v when updating %v setting", objTyped, types.SettingNameTaintToleration)
 		}
 	}
 
@@ -606,29 +603,26 @@ func (sc *SettingController) updatePriorityClass() error {
 	}
 
 	for _, obj := range notUpdatedPriorityClassObjs {
-		switch objType := obj.(type) {
+		switch objTyped := obj.(type) {
 		case *appsv1.DaemonSet:
-			ds := obj.(*appsv1.DaemonSet)
-			sc.logger.Infof("Updating the priority class from %v to %v for %v", ds.Spec.Template.Spec.PriorityClassName, newPriorityClass, ds.Name)
-			ds.Spec.Template.Spec.PriorityClassName = newPriorityClass
-			if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+			sc.logger.Infof("Updating the priority class from %v to %v for %v", objTyped.Spec.Template.Spec.PriorityClassName, newPriorityClass, objTyped.Name)
+			objTyped.Spec.Template.Spec.PriorityClassName = newPriorityClass
+			if _, err := sc.ds.UpdateDaemonSet(objTyped); err != nil {
 				return err
 			}
 		case *appsv1.Deployment:
-			dp := obj.(*appsv1.Deployment)
-			sc.logger.Infof("Updating the priority class from %v to %v for %v", dp.Spec.Template.Spec.PriorityClassName, newPriorityClass, dp.Name)
-			dp.Spec.Template.Spec.PriorityClassName = newPriorityClass
-			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+			sc.logger.Infof("Updating the priority class from %v to %v for %v", objTyped.Spec.Template.Spec.PriorityClassName, newPriorityClass, objTyped.Name)
+			objTyped.Spec.Template.Spec.PriorityClassName = newPriorityClass
+			if _, err := sc.ds.UpdateDeployment(objTyped); err != nil {
 				return err
 			}
 		case *corev1.Pod:
-			pod := obj.(*corev1.Pod)
-			sc.logger.Infof("Deleting pod %v to update the priority class from %v to %v", pod.Name, pod.Spec.PriorityClassName, newPriorityClass)
-			if err := sc.ds.DeletePod(pod.Name); err != nil {
+			sc.logger.Infof("Deleting pod %v to update the priority class from %v to %v", objTyped.Name, objTyped.Spec.PriorityClassName, newPriorityClass)
+			if err := sc.ds.DeletePod(objTyped.Name); err != nil {
 				return err
 			}
 		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
+			return fmt.Errorf("unknown object type %v when updating %v setting", objTyped, types.SettingNamePriorityClass)
 		}
 	}
 
@@ -639,18 +633,15 @@ func getNotUpdatedPriorityClassList(newPriorityClassName string, objs ...runtime
 	notUpdatedObjsList := []runtime.Object{}
 	oldPriorityClassName := ""
 	for _, obj := range objs {
-		switch objType := obj.(type) {
+		switch objTyped := obj.(type) {
 		case *appsv1.DaemonSet:
-			ds := obj.(*appsv1.DaemonSet)
-			oldPriorityClassName = ds.Spec.Template.Spec.PriorityClassName
+			oldPriorityClassName = objTyped.Spec.Template.Spec.PriorityClassName
 		case *appsv1.Deployment:
-			dp := obj.(*appsv1.Deployment)
-			oldPriorityClassName = dp.Spec.Template.Spec.PriorityClassName
+			oldPriorityClassName = objTyped.Spec.Template.Spec.PriorityClassName
 		case *corev1.Pod:
-			pod := obj.(*corev1.Pod)
-			oldPriorityClassName = pod.Spec.PriorityClassName
+			oldPriorityClassName = objTyped.Spec.PriorityClassName
 		default:
-			return nil, fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
+			return nil, fmt.Errorf("unknown object type %v when updating %v setting", objTyped, types.SettingNamePriorityClass)
 		}
 		if oldPriorityClassName == newPriorityClassName {
 			continue
@@ -1002,31 +993,28 @@ func (sc *SettingController) updateNodeSelector() error {
 	}
 
 	for _, obj := range notUpdatedNodeSelectorObjs {
-		switch objType := obj.(type) {
+		switch objTyped := obj.(type) {
 		case *appsv1.DaemonSet:
-			ds := obj.(*appsv1.DaemonSet)
-			sc.logger.Infof("Updating the node selector from %v to %v for %v", ds.Spec.Template.Spec.NodeSelector, newNodeSelector, ds.Name)
-			ds.Spec.Template.Spec.NodeSelector = newNodeSelector
-			if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+			sc.logger.Infof("Updating the node selector from %v to %v for %v", objTyped.Spec.Template.Spec.NodeSelector, newNodeSelector, objTyped.Name)
+			objTyped.Spec.Template.Spec.NodeSelector = newNodeSelector
+			if _, err := sc.ds.UpdateDaemonSet(objTyped); err != nil {
 				return err
 			}
 		case *appsv1.Deployment:
-			dp := obj.(*appsv1.Deployment)
-			sc.logger.Infof("Updating the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
-			dp.Spec.Template.Spec.NodeSelector = newNodeSelector
-			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+			sc.logger.Infof("Updating the node selector from %v to %v for %v", objTyped.Spec.Template.Spec.NodeSelector, newNodeSelector, objTyped.Name)
+			objTyped.Spec.Template.Spec.NodeSelector = newNodeSelector
+			if _, err := sc.ds.UpdateDeployment(objTyped); err != nil {
 				return err
 			}
 		case *corev1.Pod:
-			pod := obj.(*corev1.Pod)
-			if pod.DeletionTimestamp == nil {
-				sc.logger.Infof("Deleting pod %v to update the node selector from %v to %v", pod.Name, pod.Spec.NodeSelector, newNodeSelector)
-				if err := sc.ds.DeletePod(pod.Name); err != nil {
+			if objTyped.DeletionTimestamp == nil {
+				sc.logger.Infof("Deleting pod %v to update the node selector from %v to %v", objTyped.Name, objTyped.Spec.NodeSelector, newNodeSelector)
+				if err := sc.ds.DeletePod(objTyped.Name); err != nil {
 					return err
 				}
 			}
 		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
+			return fmt.Errorf("unknown object type %v when updating %v setting", objTyped, types.SettingNamePriorityClass)
 		}
 	}
 
@@ -1143,18 +1131,15 @@ func getNotUpdatedNodeSelectorList(newNodeSelector map[string]string, objs ...ru
 	notUpdatedObjsList := []runtime.Object{}
 	var oldNodeSelector map[string]string
 	for _, obj := range objs {
-		switch objType := obj.(type) {
+		switch objTyped := obj.(type) {
 		case *appsv1.DaemonSet:
-			ds := obj.(*appsv1.DaemonSet)
-			oldNodeSelector = ds.Spec.Template.Spec.NodeSelector
+			oldNodeSelector = objTyped.Spec.Template.Spec.NodeSelector
 		case *appsv1.Deployment:
-			dp := obj.(*appsv1.Deployment)
-			oldNodeSelector = dp.Spec.Template.Spec.NodeSelector
+			oldNodeSelector = objTyped.Spec.Template.Spec.NodeSelector
 		case *corev1.Pod:
-			pod := obj.(*corev1.Pod)
-			oldNodeSelector = pod.Spec.NodeSelector
+			oldNodeSelector = objTyped.Spec.NodeSelector
 		default:
-			return nil, fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameSystemManagedComponentsNodeSelector)
+			return nil, fmt.Errorf("unknown object type %v when updating %v setting", objTyped, types.SettingNameSystemManagedComponentsNodeSelector)
 		}
 		if oldNodeSelector == nil && len(newNodeSelector) == 0 {
 			continue
