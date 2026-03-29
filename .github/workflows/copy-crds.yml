@@ -31,7 +31,7 @@ jobs:
       # Run the step only with "changed" equals "True"
       - name: Create Pull Request
         if: steps.diff-commits.outputs.changed
-        uses: longhorn/bot/copy-files-and-create-pr-action@34354a22b34defc637e5029345d392a9e2dec72e # master
+        uses: longhorn/bot/copy-files-and-create-pr-action@937b18e87b98f77e382bde2aaeb0c602e8841d85 # master
         env:
           API_TOKEN_GITHUB: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
         with:
