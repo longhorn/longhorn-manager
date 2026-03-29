@@ -1014,7 +1014,7 @@ func (sc *SettingController) updateNodeSelector() error {
 				}
 			}
 		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objTyped, types.SettingNamePriorityClass)
+			return fmt.Errorf("unknown object type %v when updating %v setting", objTyped, types.SettingNameSystemManagedComponentsNodeSelector)
 		}
 	}
 
