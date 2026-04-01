@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -73,6 +74,11 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to specify disk driver", name, disk.Type), "")
 			}
 		}
+	}
+
+	// Validate no duplicate disk paths
+	if err := validateNodeDiskPaths(node.Name, node.Spec.Disks); err != nil {
+		return err
 	}
 
 	return nil
@@ -186,6 +192,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		}
 	}
 
+	// Validate no duplicate disk paths
+	if err := validateNodeDiskPaths(newNode.Name, newNode.Spec.Disks); err != nil {
+		return err
+	}
+
 	// Validate delete disks
 	for name, disk := range oldNode.Spec.Disks {
 		if _, ok := newNode.Spec.Disks[name]; !ok {
@@ -203,6 +214,31 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) type is not allow to change", newNode.Name, name, disk.Path), "")
 			}
 		}
+	}
+
+	return nil
+}
+
+func validateNodeDiskPaths(nodeName string, disks map[string]longhorn.DiskSpec) error {
+	pathMap := map[string]string{} // normalizedPath -> diskName
+
+	for diskName, disk := range disks {
+		// Normalize the path
+		cleanPath := filepath.Clean(disk.Path)
+
+		// Avoid resolving symlinks here because the webhook runs in a
+		// pod and cannot access the target node's file system.
+		if existingDisk, exists := pathMap[cleanPath]; exists {
+			return werror.NewInvalidError(
+				fmt.Sprintf(
+					"duplicate disk path %v on node %v (disks %v and %v)",
+					cleanPath, nodeName, existingDisk, diskName,
+				),
+				"",
+			)
+		}
+
+		pathMap[cleanPath] = diskName
 	}
 
 	return nil
