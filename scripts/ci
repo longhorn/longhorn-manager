@@ -5,13 +5,4 @@ cd $(dirname $0)
 
 ./build
 ./validate
-./test -cover
-
-if [[ -z "${NO_PACKAGE}" ]]; then
-  ./package
-
-  IMAGE=$(cat ../bin/latest_image)
-
-  echo
-  echo "Longhorn Manager IMAGE: ${IMAGE}"
-fi
+./test
