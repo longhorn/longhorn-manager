@@ -78,7 +78,7 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 
 	// Validate no duplicate disk paths
 	if err := validateNodeDiskPaths(node.Name, node.Spec.Disks); err != nil {
-		return err
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil
@@ -194,7 +194,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 
 	// Validate no duplicate disk paths
 	if err := validateNodeDiskPaths(newNode.Name, newNode.Spec.Disks); err != nil {
-		return err
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	// Validate delete disks
@@ -220,7 +220,8 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 }
 
 func validateNodeDiskPaths(nodeName string, disks map[string]longhorn.DiskSpec) error {
-	pathMap := map[string]string{} // normalizedPath -> diskName
+	pathMap := map[string]string{}
+	var duplicates []string
 
 	for diskName, disk := range disks {
 		// Normalize the path
@@ -229,16 +230,15 @@ func validateNodeDiskPaths(nodeName string, disks map[string]longhorn.DiskSpec) 
 		// Avoid resolving symlinks here because the webhook runs in a
 		// pod and cannot access the target node's file system.
 		if existingDisk, exists := pathMap[cleanPath]; exists {
-			return werror.NewInvalidError(
-				fmt.Sprintf(
-					"duplicate disk path %v on node %v (disks %v and %v)",
-					cleanPath, nodeName, existingDisk, diskName,
-				),
-				"",
-			)
+			duplicates = append(duplicates, fmt.Sprintf("%v (disks %v and %v)", cleanPath, existingDisk, diskName))
+			continue
 		}
 
 		pathMap[cleanPath] = diskName
+	}
+
+	if len(duplicates) > 0 {
+		return fmt.Errorf("duplicate disk paths on node %v: %v", nodeName, duplicates)
 	}
 
 	return nil

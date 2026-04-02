@@ -18,11 +18,11 @@ func TestValidateNodeDiskPathsDuplicate(t *testing.T) {
 	err := validateNodeDiskPaths("node1", disks)
 	assert.Error(t, err)
 
-	// Updated assertion (more flexible & correct)
-	assert.Contains(t, err.Error(), "duplicate disk path")
+	assert.Contains(t, err.Error(), "duplicate disk paths")
 	assert.Contains(t, err.Error(), "node1")
 	assert.Contains(t, err.Error(), "disk-1")
 	assert.Contains(t, err.Error(), "disk-2")
+	assert.Contains(t, err.Error(), "/fake/path/disk1")
 }
 
 func TestValidateNodeDiskPathsUnique(t *testing.T) {
@@ -44,7 +44,9 @@ func TestValidateNodeDiskPathsNormalizedDuplicate(t *testing.T) {
 	err := validateNodeDiskPaths("node1", disks)
 	assert.Error(t, err)
 
-	assert.Contains(t, err.Error(), "duplicate disk path /fake/path/disk1 on node node1")
+	assert.Contains(t, err.Error(), "duplicate disk paths")
+	assert.Contains(t, err.Error(), "node1")
+	assert.Contains(t, err.Error(), "/fake/path/disk1")
 }
 
 func TestFilepathCleanWithBDF(t *testing.T) {
