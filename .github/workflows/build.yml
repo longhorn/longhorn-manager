@@ -54,15 +54,12 @@ jobs:
         image_tag=${image_tag}
         EOF
 
-    # Build and verify binaries
+    # Build binaries
     - name: Run ci
-      run: NO_PACKAGE=true make ci
+      run: make ci
 
-    - uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
-      with:
-        files: ./coverage.out
-        flags: unittests
-        token: ${{ secrets.CODECOV_TOKEN }}
+    - name: Run test
+      run: make test
 
   build_push_image:
     name: Build and push image

@@ -24,12 +24,11 @@ _testmain.go
 *.test
 *.prof
 
-# Rancher
-.dapper
-trash.lock
-.trash-conf
+# build files
+/.dapper
 bin/
-Dockerfile.dapper[0-9]*
+cscope*
+validate.done
 
 # patch tmp files
 *.orig

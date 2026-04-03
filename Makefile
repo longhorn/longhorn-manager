@@ -1,20 +1,26 @@
 PROJECT := longhorn-manager
-TARGETS := $(shell ls scripts)
 MACHINE := longhorn
 # Define the target platforms that can be used across the ecosystem.
 # Note that what would actually be used for a given project will be
 # defined in TARGET_PLATFORMS, and must be a subset of the below:
 DEFAULT_PLATFORMS := linux/amd64,linux/arm64
 
-.dapper:
-	@echo Downloading dapper
-	@curl -sL https://releases.rancher.com/dapper/latest/dapper-`uname -s`-`uname -m` > .dapper.tmp
-	@@chmod +x .dapper.tmp
-	@./.dapper.tmp -v
-	@mv .dapper.tmp .dapper
+.PHONY: build validate test ci package
+build:
+	docker buildx build --target build-artifacts --output type=local,dest=. -f Dockerfile .
 
-$(TARGETS): .dapper
-	./.dapper $@
+validate:
+	docker buildx build --target validate -f Dockerfile .
+
+test:
+	docker buildx build --target base -t longhorn-manager-test -f Dockerfile .
+	docker run --privileged -v /dev:/host/dev longhorn-manager-test ./scripts/test
+
+ci:
+	docker buildx build --target ci-artifacts --output type=local,dest=. -f Dockerfile .
+
+package:
+	bash scripts/package
 
 .PHONY: buildx-machine
 buildx-machine:
@@ -36,5 +42,3 @@ generate:
 	bash k8s/generate_code.sh
 
 .DEFAULT_GOAL := ci
-
-.PHONY: $(TARGETS)
