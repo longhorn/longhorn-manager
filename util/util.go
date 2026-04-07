@@ -127,6 +127,9 @@ func ConvertToCamel(input, separator string) string {
 }
 
 func ConvertFirstCharToLower(input string) string {
+	if input == "" {
+		return ""
+	}
 	return strings.ToLower(input[:1]) + input[1:]
 }
 

@@ -185,6 +185,156 @@ func (s *TestSuite) TestGetValidMountPoint(c *C) {
 	}
 }
 
+func TestParseLabels(t *testing.T) {
+	tests := map[string]struct {
+		input       []string
+		expected    map[string]string
+		expectError bool
+	}{
+		"empty input": {
+			input:    []string{},
+			expected: map[string]string{},
+		},
+		"single valid label": {
+			input:    []string{"key=value"},
+			expected: map[string]string{"key": "value"},
+		},
+		"multiple valid labels": {
+			input:    []string{"key1=value1", "key2=value2"},
+			expected: map[string]string{"key1": "value1", "key2": "value2"},
+		},
+		"value with equals sign": {
+			input:    []string{"key=val=ue"},
+			expected: map[string]string{"key": "val=ue"},
+		},
+		"missing equals sign": {
+			input:       []string{"noequalssign"},
+			expectError: true,
+		},
+		"empty value": {
+			input:       []string{"key="},
+			expectError: true,
+		},
+		"empty key": {
+			input:       []string{"=value"},
+			expectError: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := assert.New(t)
+			result, err := ParseLabels(tc.input)
+			if tc.expectError {
+				assert.Error(err)
+			} else {
+				assert.NoError(err)
+				assert.Equal(tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestSplitStringToMap(t *testing.T) {
+	tests := map[string]struct {
+		str       string
+		separator string
+		expected  map[string]struct{}
+	}{
+		"empty string": {
+			str: "", separator: ",", expected: map[string]struct{}{},
+		},
+		"single item": {
+			str: "a", separator: ",",
+			expected: map[string]struct{}{"a": {}},
+		},
+		"multiple items": {
+			str: "a,b,c", separator: ",",
+			expected: map[string]struct{}{"a": {}, "b": {}, "c": {}},
+		},
+		"items with whitespace": {
+			str: " a , b , c ", separator: ",",
+			expected: map[string]struct{}{"a": {}, "b": {}, "c": {}},
+		},
+		"trailing separator": {
+			str: "a,b,", separator: ",",
+			expected: map[string]struct{}{"a": {}, "b": {}},
+		},
+		"duplicates": {
+			str: "a,b,a", separator: ",",
+			expected: map[string]struct{}{"a": {}, "b": {}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := assert.New(t)
+			assert.Equal(tc.expected, SplitStringToMap(tc.str, tc.separator))
+		})
+	}
+}
+
+func TestConvertToCamel(t *testing.T) {
+	tests := map[string]struct {
+		input     string
+		separator string
+		expected  string
+	}{
+		"hyphen separated": {
+			input: "hello-world", separator: "-", expected: "HelloWorld",
+		},
+		"underscore separated": {
+			input: "foo_bar_baz", separator: "_", expected: "FooBarBaz",
+		},
+		"single word": {
+			input: "hello", separator: "-", expected: "Hello",
+		},
+		"empty string": {
+			input: "", separator: "-", expected: "",
+		},
+		"trailing separator": {
+			input: "hello-", separator: "-", expected: "Hello",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := assert.New(t)
+			assert.Equal(tc.expected, ConvertToCamel(tc.input, tc.separator))
+		})
+	}
+}
+
+func TestConvertFirstCharToLower(t *testing.T) {
+	tests := map[string]struct {
+		input    string
+		expected string
+	}{
+		"uppercase first": {
+			input: "Hello", expected: "hello",
+		},
+		"already lowercase": {
+			input: "hello", expected: "hello",
+		},
+		"single character": {
+			input: "H", expected: "h",
+		},
+		"all uppercase": {
+			input: "HELLO", expected: "hELLO",
+		},
+		"empty string": {
+			input: "", expected: "",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := assert.New(t)
+			assert.Equal(tc.expected, ConvertFirstCharToLower(tc.input))
+		})
+	}
+}
+
 func TestTimestampAfterTimestamp(t *testing.T) {
 	tests := map[string]struct {
 		timestamp1 string
