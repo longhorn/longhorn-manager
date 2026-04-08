@@ -13,9 +13,9 @@ import (
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 
-	corev1 "k8s.io/api/core/v1"
-
 	"k8s.io/apimachinery/pkg/util/sets"
+
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/util"
@@ -131,6 +131,7 @@ const (
 	SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingName("snapshot-data-integrity-immediate-check-after-snapshot-creation")
 	SettingNameSnapshotDataIntegrityCronJob                             = SettingName("snapshot-data-integrity-cronjob")
 	SettingNameSnapshotMaxCount                                         = SettingName("snapshot-max-count")
+	SettingNameSnapshotCountWarningThreshold                            = SettingName("snapshot-count-warning-threshold")
 	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
@@ -251,6 +252,7 @@ var (
 		SettingNameSnapshotDataIntegrityCronJob,
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameSnapshotMaxCount,
+		SettingNameSnapshotCountWarningThreshold,
 		SettingNameRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
@@ -407,6 +409,7 @@ var (
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameSnapshotDataIntegrityCronJob:                             SettingDefinitionSnapshotDataIntegrityCronJob,
 		SettingNameSnapshotMaxCount:                                         SettingDefinitionSnapshotMaxCount,
+		SettingNameSnapshotCountWarningThreshold:                            SettingDefinitionSnapshotCountWarningThreshold,
 		SettingNameRestoreVolumeRecurringJobs:                               SettingDefinitionRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
@@ -1487,6 +1490,23 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            strconv.Itoa(MaxSnapshotNum),
+	}
+
+	SettingDefinitionSnapshotCountWarningThreshold = SettingDefinition{
+		DisplayName: "Snapshot Count Warning Threshold",
+		Description: "Warning threshold for the TooManySnapshots volume condition. " +
+			"The condition is triggered when the snapshot count exceeds the smaller of this value and snapshot-max-count." +
+			"Valid range: 2–250.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "100",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 2,
+			ValueIntRangeMaximum: MaxSnapshotNum,
+		},
 	}
 
 	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{

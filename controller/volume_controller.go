@@ -57,8 +57,7 @@ var (
 )
 
 const (
-	CronJobBackoffLimit             = 3
-	VolumeSnapshotsWarningThreshold = 100
+	CronJobBackoffLimit = 3
 
 	LastAppliedCronJobSpecAnnotationKeySuffix = "last-applied-cronjob-spec"
 
@@ -1942,7 +1941,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	numSnapshots := len(e.Status.Snapshots) - 1 // Counting volume-head here would be confusing.
 
 	snapshotCountThreshold := c.getSnapshotCountThreshold(v, log)
-	countExceededThreshold := numSnapshots > snapshotCountThreshold
+	countExceededThreshold := numSnapshots >= snapshotCountThreshold
 
 	var snapshotTotalSize int64
 	if v.Spec.SnapshotMaxSize != 0 {
@@ -1958,7 +1957,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	if countExceededThreshold || sizeExceededThreshold {
 		warningMessages := []string{}
 		if countExceededThreshold {
-			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots count is %v over the warning threshold %v", numSnapshots, snapshotCountThreshold))
+			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots count is %v at or over the warning threshold %v", numSnapshots, snapshotCountThreshold))
 		}
 		if sizeExceededThreshold {
 			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots total size is %v at or over the warning threshold %v", snapshotTotalSize, v.Spec.SnapshotMaxSize))
@@ -2081,16 +2080,13 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 }
 
 func (c *VolumeController) getSnapshotCountThreshold(v *longhorn.Volume, log *logrus.Entry) int {
-	snapshotCountThreshold := v.Spec.SnapshotMaxCount
-	if snapshotCountThreshold <= 0 {
-		if val, err := c.ds.GetSettingAsInt(types.SettingNameSnapshotMaxCount); err != nil {
-			log.WithError(err).Warnf("Failed to get global %v setting, fallback to %v", types.SettingNameSnapshotMaxCount, VolumeSnapshotsWarningThreshold)
-			snapshotCountThreshold = VolumeSnapshotsWarningThreshold
-		} else {
-			snapshotCountThreshold = int(val)
-		}
+	threshold, err := c.ds.GetSettingAsInt(types.SettingNameSnapshotCountWarningThreshold)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting, falling back to v.Spec.SnapshotMaxCount %v",
+			types.SettingNameSnapshotCountWarningThreshold, v.Spec.SnapshotMaxCount)
+		return v.Spec.SnapshotMaxCount
 	}
-	return snapshotCountThreshold
+	return min(int(threshold), v.Spec.SnapshotMaxCount)
 }
 
 func (c *VolumeController) getSnapshotTotalSize(e *longhorn.Engine, log *logrus.Entry) (int64, error) {
