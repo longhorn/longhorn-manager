@@ -1369,6 +1369,9 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 			engine := vol.Controllers[0]
 			engineSize, _ := strconv.ParseInt(engine.Size, 10, 64)
 			engineReady = engineSize >= requestedSize && !engine.IsExpanding
+			if types.IsDataEngineV2(longhorn.DataEngineType(vol.DataEngine)) {
+				engineReady = engineReady && engine.LastExpansionError == ""
+			}
 		}
 		size, _ := strconv.ParseInt(vol.Size, 10, 64)
 		return size >= requestedSize && engineReady

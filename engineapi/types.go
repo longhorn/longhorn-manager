@@ -77,10 +77,10 @@ type Metrics struct {
 }
 
 type EngineClient interface {
-	VersionGet(engine *longhorn.Engine, clientOnly bool) (*EngineVersion, error)
+	VersionGet(obj interface{}, clientOnly bool) (*EngineVersion, error)
 
 	VolumeGet(*longhorn.Engine) (*Volume, error)
-	VolumeExpand(*longhorn.Engine) error
+	VolumeExpand(obj interface{}) error
 
 	VolumeFrontendStart(*longhorn.Engine) error
 	VolumeFrontendShutdown(*longhorn.Engine) error
@@ -89,7 +89,7 @@ type EngineClient interface {
 	VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error
+	ReplicaAdd(obj interface{}, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error
 	ReplicaRemove(engine *longhorn.Engine, url, replicaName string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimitMbps int64) error
@@ -98,19 +98,19 @@ type EngineClient interface {
 	ReplicaRebuildConcurrentSyncLimitSet(engine *longhorn.Engine, limit int) error
 	ReplicaRebuildConcurrentSyncLimitGet(engine *longhorn.Engine) (int, error)
 
-	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string, freezeFilesystem bool) (string, error)
-	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.SnapshotInfo, error)
-	SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.SnapshotInfo, error)
-	SnapshotDelete(engine *longhorn.Engine, name string) error
-	SnapshotRevert(engine *longhorn.Engine, name string) error
-	SnapshotPurge(engine *longhorn.Engine) error
-	SnapshotPurgeStatus(engine *longhorn.Engine) (map[string]*longhorn.PurgeStatus, error)
-	SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential, parameters map[string]string) (string, string, error)
-	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress, replicaName string) (*longhorn.EngineBackupStatus, error)
-	SnapshotCloneStatus(engine *longhorn.Engine) (map[string]*longhorn.SnapshotCloneStatus, error)
-	SnapshotClone(engine *longhorn.Engine, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error
-	SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error
-	SnapshotHashStatus(engine *longhorn.Engine, snapshotName string) (map[string]*longhorn.HashStatus, error)
+	SnapshotCreate(obj interface{}, name string, labels map[string]string, freezeFilesystem bool) (string, error)
+	SnapshotList(obj interface{}) (map[string]*longhorn.SnapshotInfo, error)
+	SnapshotGet(obj interface{}, name string) (*longhorn.SnapshotInfo, error)
+	SnapshotDelete(obj interface{}, name string) error
+	SnapshotRevert(obj interface{}, name string) error
+	SnapshotPurge(obj interface{}) error
+	SnapshotPurgeStatus(obj interface{}) (map[string]*longhorn.PurgeStatus, error)
+	SnapshotBackup(obj interface{}, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential, parameters map[string]string) (string, string, error)
+	SnapshotBackupStatus(obj interface{}, backupName, replicaAddress, replicaName string) (*longhorn.EngineBackupStatus, error)
+	SnapshotCloneStatus(obj interface{}) (map[string]*longhorn.SnapshotCloneStatus, error)
+	SnapshotClone(obj interface{}, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error
+	SnapshotHash(obj interface{}, snapshotName string, rehash bool) error
+	SnapshotHashStatus(obj interface{}, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
@@ -125,6 +125,19 @@ type EngineClient interface {
 
 	MetricsGet(engine *longhorn.Engine) (*Metrics, error)
 	RemountReadOnlyVolume(engine *longhorn.Engine) error
+}
+
+// EngineFrontendClient defines the interface for communicating with a running
+// EngineFrontend (v2 data engine initiator) instance.
+type EngineFrontendClient interface {
+	// EngineFrontendGet retrieves the current state of the engine frontend instance
+	EngineFrontendGet(ef *longhorn.EngineFrontend) (*longhorn.InstanceProcess, error)
+	// EngineFrontendSwitchOverTarget switches the initiator to a new engine target
+	EngineFrontendSwitchOverTarget(ef *longhorn.EngineFrontend, targetAddress string) error
+	// EngineFrontendSuspend suspends the engine frontend instance
+	EngineFrontendSuspend(ef *longhorn.EngineFrontend) error
+	// EngineFrontendResume resumes the engine frontend instance
+	EngineFrontendResume(ef *longhorn.EngineFrontend) error
 }
 
 type EngineClientRequest struct {
@@ -299,28 +312,28 @@ func GetEngineInstanceFrontend(dataEngine longhorn.DataEngineType, volumeFronten
 	return frontend, err
 }
 
-func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
-	if volume == nil || volume.Frontend == "" {
+func GetEngineEndpoint(frontend string, endpoint, ip string) (string, error) {
+	if frontend == "" {
 		return "", nil
 	}
 
-	switch volume.Frontend {
+	switch frontend {
 	case iscsidevtypes.FrontendTGTBlockDev, spdkdevtypes.FrontendSPDKTCPBlockdev:
-		return volume.Endpoint, nil
+		return endpoint, nil
 	case iscsidevtypes.FrontendTGTISCSI:
 		if ip == "" {
-			return "", fmt.Errorf("iscsi endpoint %v is missing ip", volume.Endpoint)
+			return "", fmt.Errorf("iscsi endpoint %v is missing ip", endpoint)
 		}
 
 		// it will looks like this in the end
 		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
 		formattedIPPort := net.JoinHostPort(ip, DefaultISCSIPort)
-		return EndpointISCSIPrefix + formattedIPPort + "/" + volume.Endpoint + "/" + DefaultISCSILUN, nil
+		return EndpointISCSIPrefix + formattedIPPort + "/" + endpoint + "/" + DefaultISCSILUN, nil
 	case spdkdevtypes.FrontendSPDKTCPNvmf, spdkdevtypes.FrontendSPDKUblk:
-		return volume.Endpoint, nil
+		return endpoint, nil
 	}
 
-	return "", fmt.Errorf("unknown frontend %v", volume.Frontend)
+	return "", fmt.Errorf("unknown frontend %v", frontend)
 }
 
 func IsEndpointTGTBlockDev(endpoint string) bool {

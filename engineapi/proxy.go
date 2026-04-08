@@ -2,6 +2,7 @@ package engineapi
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	"github.com/cockroachdb/errors"
@@ -27,12 +28,22 @@ func getLoggerForEngineProxyClient(logger logrus.FieldLogger, im *longhorn.Insta
 	)
 }
 
-func GetCompatibleClient(e *longhorn.Engine, fallBack interface{}, ds *datastore.DataStore, logger logrus.FieldLogger, proxyConnCounter util.Counter) (c EngineClientProxy, err error) {
-	if e == nil {
-		return nil, errors.Errorf("BUG: failed to get engine client proxy due to missing engine")
+func GetCompatibleClient(obj interface{}, fallBack interface{}, ds *datastore.DataStore, logger logrus.FieldLogger, proxyConnCounter util.Counter) (c EngineClientProxy, err error) {
+	if obj == nil {
+		return nil, errors.Errorf("BUG: failed to get engine client proxy due to missing object")
 	}
 
-	im, err := ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
+	var instanceManagerName string
+	switch v := obj.(type) {
+	case *longhorn.Engine:
+		instanceManagerName = v.Status.InstanceManagerName
+	case *longhorn.EngineFrontend:
+		instanceManagerName = v.Status.InstanceManagerName
+	default:
+		return nil, errors.Errorf("BUG: unsupported object type %T for engine client proxy", obj)
+	}
+
+	im, err := ds.GetInstanceManagerRO(instanceManagerName)
 	if err != nil {
 		return nil, err
 	}
@@ -181,16 +192,53 @@ func (p *Proxy) Close() {
 	p.proxyConnCounter.DecreaseCount()
 }
 
-func (p *Proxy) DirectToURL(e *longhorn.Engine) string {
-	if e == nil {
-		p.logger.Debug("BUG: cannot get engine client proxy re-direct URL with nil engine object")
+func (p *Proxy) DirectToURL(obj interface{}) string {
+	if obj == nil {
+		p.logger.Debug("BUG: cannot get engine client proxy re-direct URL with nil object")
 		return ""
 	}
 
-	return imutil.GetURL(e.Status.StorageIP, e.Status.Port)
+	switch v := obj.(type) {
+	case *longhorn.Engine:
+		if v == nil {
+			p.logger.Debug("BUG: cannot get engine client proxy re-direct URL with nil engine object")
+			return ""
+		}
+		return imutil.GetURL(v.Status.StorageIP, v.Status.Port)
+	case *longhorn.EngineFrontend:
+		if v == nil {
+			p.logger.Debug("BUG: cannot get engine client proxy re-direct URL with nil engine frontend object")
+			return ""
+		}
+		return imutil.GetURL(v.Status.StorageIP, v.Status.Port)
+	default:
+		p.logger.Debugf("BUG: unsupported object type %T for re-direct URL", obj)
+		return ""
+	}
 }
 
-func (p *Proxy) VersionGet(e *longhorn.Engine, clientOnly bool) (version *EngineVersion, err error) {
+func (p *Proxy) GetObjInfo(obj interface{}) (dataEngine, engineName, engineFrontendName, volumeName string, err error) {
+	if obj == nil {
+		return "", "", "", "", fmt.Errorf("BUG: cannot get info with nil object")
+	}
+
+	switch v := obj.(type) {
+	case *longhorn.Engine:
+		if v == nil {
+			return "", "", "", "", fmt.Errorf("BUG: cannot get info with nil engine object")
+		}
+		return string(v.Spec.DataEngine), v.Name, "", v.Spec.VolumeName, nil
+	case *longhorn.EngineFrontend:
+		if v == nil {
+			return "", "", "", "", fmt.Errorf("BUG: cannot get info with nil engine frontend object")
+		}
+		return string(v.Spec.DataEngine), v.Spec.EngineName, v.Name, v.Spec.VolumeName, nil
+	default:
+		return "", "", "", "", fmt.Errorf("BUG: unsupported object type %T for object info", obj)
+	}
+}
+
+func (p *Proxy) VersionGet(obj interface{}, clientOnly bool) (version *EngineVersion, err error) {
 	recvClientVersion := p.grpcClient.ClientVersionGet()
 	clientVersion := (*longhorn.EngineVersionDetails)(&recvClientVersion)
 
@@ -200,7 +248,7 @@ func (p *Proxy) VersionGet(e *longhorn.Engine, clientOnly bool) (version *Engine
 		}, nil
 	}
 
-	recvServerVersion, err := p.grpcClient.ServerVersionGet(p.DirectToURL(e))
+	recvServerVersion, err := p.grpcClient.ServerVersionGet(p.DirectToURL(obj))
 	if err != nil {
 		return nil, err
 	}

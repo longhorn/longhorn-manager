@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -45,6 +46,13 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 	}
 
 	for _, v := range volumes {
+		engineFrontends := []*longhorn.EngineFrontend{}
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			engineFrontends, err = s.m.GetEngineFrontendsSorted(v.Name)
+			if err != nil {
+				return nil, err
+			}
+		}
 		controllers, err := s.m.GetEnginesSorted(v.Name)
 		if err != nil {
 			return nil, err
@@ -62,7 +70,7 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 			return nil, err
 		}
 
-		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, backups, volumeAttachment, apiContext))
+		resp.Data = append(resp.Data, toVolumeResource(v, engineFrontends, controllers, replicas, backups, volumeAttachment, apiContext))
 	}
 	resp.ResourceType = "volume"
 	resp.CreateTypes = map[string]string{
@@ -96,6 +104,14 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		}
 	}
 
+	engineFrontends := []*longhorn.EngineFrontend{}
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		engineFrontends, err = s.m.GetEngineFrontendsSorted(v.Name)
+		if err != nil {
+			return err
+		}
+	}
+
 	controllers, err := s.m.GetEnginesSorted(id)
 	if err != nil {
 		return err
@@ -113,7 +129,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		return err
 	}
 
-	apiContext.Write(toVolumeResource(v, controllers, replicas, backups, volumeAttachment, apiContext))
+	apiContext.Write(toVolumeResource(v, engineFrontends, controllers, replicas, backups, volumeAttachment, apiContext))
 	return nil
 }
 

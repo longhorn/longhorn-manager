@@ -322,7 +322,7 @@ func (btc *BackupTargetClient) BackupCleanUpAllMounts() (err error) {
 
 // SnapshotBackup calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine, snapName, backupName, backupTarget,
+func (e *EngineBinary) SnapshotBackup(obj interface{}, snapName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels, credential, parameters map[string]string) (string, string, error) {
 	if snapName == etypes.VolumeHeadName {
@@ -378,7 +378,7 @@ func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine, snapName, backupN
 
 // SnapshotBackupStatus calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress,
+func (e *EngineBinary) SnapshotBackupStatus(obj interface{}, backupName, replicaAddress,
 	replicaName string) (*longhorn.EngineBackupStatus, error) {
 	args := []string{"backup", "status", backupName}
 	if replicaAddress != "" {
@@ -387,7 +387,7 @@ func (e *EngineBinary) SnapshotBackupStatus(engine *longhorn.Engine, backupName,
 
 	// For now, we likely don't know the replica name here. Don't bother checking the binary version if we don't.
 	if replicaName != "" {
-		version, err := e.VersionGet(engine, true)
+		version, err := e.VersionGet(obj, true)
 		if err != nil {
 			return nil, err
 		}

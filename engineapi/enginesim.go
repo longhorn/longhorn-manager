@@ -127,7 +127,7 @@ func (e *EngineSimulator) ReplicaList(*longhorn.Engine) (map[string]*Replica, er
 	return ret, nil
 }
 
-func (e *EngineSimulator) ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout int64, grpcTimeoutSeconds int64) error {
+func (e *EngineSimulator) ReplicaAdd(obj interface{}, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout int64, grpcTimeoutSeconds int64) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
@@ -168,47 +168,47 @@ func (e *EngineSimulator) SimulateStopReplica(addr string) error {
 	return nil
 }
 
-func (e *EngineSimulator) SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string,
+func (e *EngineSimulator) SnapshotCreate(obj interface{}, name string, labels map[string]string,
 	freezeFilesystem bool) (string, error) {
 	return "", errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.SnapshotInfo, error) {
+func (e *EngineSimulator) SnapshotList(obj interface{}) (map[string]*longhorn.SnapshotInfo, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.SnapshotInfo, error) {
+func (e *EngineSimulator) SnapshotGet(obj interface{}, name string) (*longhorn.SnapshotInfo, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotDelete(engine *longhorn.Engine, name string) error {
+func (e *EngineSimulator) SnapshotDelete(obj interface{}, name string) error {
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotRevert(engine *longhorn.Engine, name string) error {
+func (e *EngineSimulator) SnapshotRevert(obj interface{}, name string) error {
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotPurge(*longhorn.Engine) error {
+func (e *EngineSimulator) SnapshotPurge(obj interface{}) error {
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotPurgeStatus(*longhorn.Engine) (map[string]*longhorn.PurgeStatus, error) {
+func (e *EngineSimulator) SnapshotPurgeStatus(obj interface{}) (map[string]*longhorn.PurgeStatus, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget,
+func (e *EngineSimulator) SnapshotBackup(obj interface{}, snapshotName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels, credential, parameters map[string]string) (string, string, error) {
 	return "", "", errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress,
+func (e *EngineSimulator) SnapshotBackupStatus(obj interface{}, backupName, replicaAddress,
 	replicaName string) (*longhorn.EngineBackupStatus, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) VersionGet(engine *longhorn.Engine, clientOnly bool) (*EngineVersion, error) {
+func (e *EngineSimulator) VersionGet(obj interface{}, clientOnly bool) (*EngineVersion, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 
@@ -216,7 +216,7 @@ func (e *EngineSimulator) VolumeGet(*longhorn.Engine) (*Volume, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) VolumeExpand(*longhorn.Engine) error {
+func (e *EngineSimulator) VolumeExpand(obj interface{}) error {
 	return errors.New(ErrNotImplement)
 }
 
@@ -224,7 +224,7 @@ func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, b
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotClone(engine *longhorn.Engine, snapshotName, fromEngineAddress, fromVolumeName,
+func (e *EngineSimulator) SnapshotClone(obj interface{}, snapshotName, fromEngineAddress, fromVolumeName,
 	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error {
 	return errors.New(ErrNotImplement)
 }
@@ -233,7 +233,7 @@ func (e *EngineSimulator) BackupRestoreStatus(*longhorn.Engine) (map[string]*lon
 	return nil, errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotCloneStatus(*longhorn.Engine) (map[string]*longhorn.SnapshotCloneStatus, error) {
+func (e *EngineSimulator) SnapshotCloneStatus(obj interface{}) (map[string]*longhorn.SnapshotCloneStatus, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 
@@ -276,11 +276,11 @@ func (e *EngineSimulator) ReplicaRebuildVerify(engine *longhorn.Engine, replicaN
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error {
+func (e *EngineSimulator) SnapshotHash(obj interface{}, snapshotName string, rehash bool) error {
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotHashStatus(engine *longhorn.Engine, snapshotName string) (map[string]*longhorn.HashStatus, error) {
+func (e *EngineSimulator) SnapshotHashStatus(obj interface{}, snapshotName string) (map[string]*longhorn.HashStatus, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 

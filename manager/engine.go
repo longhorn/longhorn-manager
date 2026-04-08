@@ -113,7 +113,7 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 		return nil, err
 	}
 
-	freezeFilesystem, err := m.ds.GetFreezeFilesystemForSnapshotSetting(e)
+	freezeFilesystem, err := m.ds.GetFreezeFilesystemForSnapshotSetting(volumeName, vol.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,11 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 	}
 	defer engineClientProxy.Close()
 
-	snapshotName, err = engineClientProxy.SnapshotCreate(e, snapshotName, labels, freezeFilesystem)
+	dataEngineObj, err := m.ds.GetDataEngineObject(e)
+	if err != nil {
+		return nil, err
+	}
+	snapshotName, err = engineClientProxy.SnapshotCreate(dataEngineObj, snapshotName, labels, freezeFilesystem)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +171,11 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 	}
 	defer engineClientProxy.Close()
 
-	if err := engineClientProxy.SnapshotDelete(engine, snapshotName); err != nil {
+	dataEngineObj, err := m.ds.GetDataEngineObject(engine)
+	if err != nil {
+		return err
+	}
+	if err := engineClientProxy.SnapshotDelete(dataEngineObj, snapshotName); err != nil {
 		return err
 	}
 
@@ -213,7 +221,11 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return fmt.Errorf("not revert to snapshot '%s' for volume '%s' since it's marked as Removed", snapshotName, volumeName)
 	}
 
-	if err := engineClientProxy.SnapshotRevert(engine, snapshotName); err != nil {
+	dataEngineObj, err := m.ds.GetDataEngineObject(engine)
+	if err != nil {
+		return err
+	}
+	if err := engineClientProxy.SnapshotRevert(dataEngineObj, snapshotName); err != nil {
 		return err
 	}
 
@@ -263,7 +275,11 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return errors.Errorf("cannot start snapshot purge for volume %v: concurrent snapshot purge limit reached", volumeName)
 	}
 
-	if err := engineClientProxy.SnapshotPurge(engine); err != nil {
+	dataEngineObj, err := m.ds.GetDataEngineObject(engine)
+	if err != nil {
+		return err
+	}
+	if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 		return err
 	}
 

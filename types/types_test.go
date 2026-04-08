@@ -234,6 +234,44 @@ func (s *TestSuite) TestGenerateEngineNameForVolume(c *C) {
 	}
 }
 
+func (s *TestSuite) TestGenerateEngineFrontendNameForVolume(c *C) {
+	type testCase struct {
+		volumeName                string
+		currentEngineFrontendName string
+
+		expectedEngineFrontendName string
+	}
+	testCases := map[string]testCase{
+		"case 1: testvol, new engine frontend": {
+			volumeName:                 "testvol",
+			currentEngineFrontendName:  "",
+			expectedEngineFrontendName: "testvol-ef-0",
+		},
+		"case 2: testvol, new engine frontend from old format": {
+			volumeName:                 "testvol",
+			currentEngineFrontendName:  "testvol-ef",
+			expectedEngineFrontendName: "testvol-ef-1",
+		},
+		"case 3: testvol, next engine frontend": {
+			volumeName:                 "testvol",
+			currentEngineFrontendName:  "testvol-ef-0",
+			expectedEngineFrontendName: "testvol-ef-1",
+		},
+		"case 4: test-vol, newer engine frontend": {
+			volumeName:                 "test-vol",
+			currentEngineFrontendName:  "test-vol-ef-1",
+			expectedEngineFrontendName: "test-vol-ef-2",
+		},
+	}
+
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v\n", testName)
+
+		actual := GenerateEngineFrontendNameForVolume(testCase.volumeName, testCase.currentEngineFrontendName)
+		c.Assert(actual, Equals, testCase.expectedEngineFrontendName, Commentf(TestErrResultFmt, testName))
+	}
+}
+
 func (s *TestSuite) TestValidateManagerURL(c *C) {
 	type testCase struct {
 		input       string

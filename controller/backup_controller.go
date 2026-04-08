@@ -1002,6 +1002,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 	if err != nil {
 		return nil, err
 	}
+	bc.logger.Infof("Enable backup monitor for backup %v", backup.Name)
 	bc.monitors[backup.Name] = monitor
 	return monitor, nil
 }

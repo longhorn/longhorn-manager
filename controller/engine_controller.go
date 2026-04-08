@@ -533,9 +533,8 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
-		Engine:         e,
-		VolumeFrontend: frontend,
-		// TODO: use default settings value if not set in engine spec
+		Engine:                           e,
+		VolumeFrontend:                   frontend,
 		UblkQueueDepth:                   ublkQueueDepth,
 		UblkNumberOfQueue:                ublkNumberOfQueue,
 		EngineReplicaTimeout:             engineReplicaTimeout,
@@ -924,7 +923,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if err != nil {
 			return err
 		}
-		endpoint, err := engineapi.GetEngineEndpoint(volumeInfo, engine.Status.IP)
+		if volumeInfo == nil {
+			return fmt.Errorf("got nil volume info from engine client proxy")
+		}
+		endpoint, err := engineapi.GetEngineEndpoint(volumeInfo.Frontend, volumeInfo.Endpoint, engine.Status.IP)
 		if err != nil {
 			return err
 		}
@@ -946,7 +948,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				m.expansionBackoff.Next(engine.Name, time.Now())
 			}
 		}
-		if engine.Status.CurrentSize != 0 && engine.Status.CurrentSize != volumeInfo.Size {
+		expansionSucceeded := engine.Status.CurrentSize != 0 && engine.Status.CurrentSize != volumeInfo.Size
+		if types.IsDataEngineV2(engine.Spec.DataEngine) {
+			expansionSucceeded = expansionSucceeded &&
+				volumeInfo.LastExpansionError == "" && !volumeInfo.IsExpanding
+		}
+		if expansionSucceeded {
 			m.eventRecorder.Eventf(engine, corev1.EventTypeNormal, constant.EventReasonSucceededExpansion,
 				"Engine successfully expand size from %v to %v", engine.Status.CurrentSize, volumeInfo.Size)
 			m.expansionUpdateTime = time.Now()
@@ -954,10 +961,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.CurrentSize = volumeInfo.Size
 		engine.Status.IsExpanding = volumeInfo.IsExpanding
 
-		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
-			m.logger.Infof("Starting frontend %v", engine.Spec.Frontend)
-			if err := engineClientProxy.VolumeFrontendStart(engine); err != nil {
-				return errors.Wrapf(err, "failed to start frontend %v", engine.Spec.Frontend)
+		if types.IsDataEngineV1(engine.Spec.DataEngine) {
+			if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
+				m.logger.Infof("Starting frontend %v", engine.Spec.Frontend)
+				if err := engineClientProxy.VolumeFrontendStart(engine); err != nil {
+					return errors.Wrapf(err, "failed to start frontend %v", engine.Spec.Frontend)
+				}
 			}
 		}
 
@@ -1024,7 +1033,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	// TODO: Check if the purge failure is handled somewhere else
-	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(engine)
+	dataEngineObj, err := m.ds.GetDataEngineObject(engine)
+	if err != nil {
+		return err
+	}
+	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(dataEngineObj)
 	if err != nil {
 		m.logger.WithError(err).Warn("Failed to get snapshot purge status")
 	} else {
@@ -1059,20 +1072,33 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	if requireExpansion {
 		// Cannot continue to start restoration if expansion is not complete
-		if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
-			m.logger.Debug("Cannot start engine expansion since it is in the back-off window")
-		} else {
-			m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
-			// The error info and the backoff interval will be updated later.
-			m.expansionUpdateTime = time.Now()
-			if err := engineClientProxy.VolumeExpand(engine); err != nil {
-				return err
+		if types.IsDataEngineV1(engine.Spec.DataEngine) {
+			if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
+				m.logger.Debug("Cannot start engine expansion since it is in the back-off window")
+			} else {
+				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
+				m.expansionUpdateTime = time.Now()
+				if err := engineClientProxy.VolumeExpand(engine); err != nil {
+					return err
+				}
 			}
+			return nil
 		}
-		return nil
+		// V2 expansion is driven by EngineFrontendMonitor, not EngineMonitor.
+		// Do not return early here so that restore status polling can continue.
 	}
 	// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry as well as the error info if exists.
-	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
+	expansionComplete := engine.Spec.VolumeSize == engine.Status.CurrentSize
+	if types.IsDataEngineV2(engine.Spec.DataEngine) {
+		// For V2, also require that no expansion is actively running.
+		// We intentionally do NOT require LastExpansionError == "" here:
+		// partial replica failures leave a stale error even though the RAID
+		// is already operating at the new size. The error is cleared below
+		// once expansion is complete.
+		expansionComplete = expansionComplete &&
+			!engine.Status.IsExpanding
+	}
+	if expansionComplete {
 		m.expansionBackoff.DeleteEntry(engine.Name)
 		m.expansionUpdateTime = time.Now()
 		engine.Status.LastExpansionError = ""
@@ -1119,6 +1145,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
 	if needRestore {
+		if shouldDeferRestoreDuringExpansion(engine, expansionComplete) {
+			m.logger.Debug("Delaying restore until V2 expansion is complete")
+			return nil
+		}
+
 		if m.restoreBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
 			m.logger.Debug("Cannot restore the backup for engine since it is still in the backoff window")
 			return nil
@@ -1177,6 +1208,15 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	return nil
+}
+
+// shouldDeferRestoreDuringExpansion returns true when a V2 engine still has
+// an outstanding expansion so that restore should wait.
+func shouldDeferRestoreDuringExpansion(engine *longhorn.Engine, expansionComplete bool) bool {
+	if engine == nil {
+		return false
+	}
+	return types.IsDataEngineV2(engine.Spec.DataEngine) && !expansionComplete
 }
 
 func (m *EngineMonitor) checkAndApplyRebuildQoS(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy, rebuildStatus map[string]*longhorn.RebuildStatus) error {
@@ -1807,26 +1847,16 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 }
 
 func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
-	replicaExists := make(map[string]bool)
-	replicaRebuildingInProgress := make(map[string]bool)
-	for replica, mode := range e.Status.ReplicaModeMap {
-		replicaExists[replica] = true
-		if mode == longhorn.ReplicaModeWO {
-			replicaRebuildingInProgress[replica] = true
-		}
-	}
-	// We cannot rebuild more than one replica at one time
-	if len(replicaRebuildingInProgress) > 0 {
-		ec.logger.WithField("volume", e.Spec.VolumeName).Infof("Skipped rebuilding of replica because there is another rebuild in progress: %v, since we only rebuild one replica at a time", replicaRebuildingInProgress)
+	if types.IsDataEngineV2(e.Spec.DataEngine) {
 		return nil
 	}
-	for replica, addr := range e.Status.CurrentReplicaAddressMap {
-		// one is enough
-		if !replicaExists[replica] {
-			return ec.startRebuilding(e, replica, addr)
-		}
+
+	replicaName, addr, needRebuild := getReplicaRebuildCandidate(e, ec.logger)
+	if !needRebuild {
+		return nil
 	}
-	return nil
+
+	return ec.startRebuilding(e, replicaName, addr)
 }
 
 func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy engineapi.EngineClientProxy) (bool, error) {
@@ -1920,7 +1950,14 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			}
 
 			log.Info("Starting snapshot purge before rebuilding")
-			if err := engineClientProxy.SnapshotPurge(e); err != nil {
+			dataEngineObj, err := ec.ds.GetDataEngineObject(e)
+			if err != nil {
+				log.WithError(err).Error("Failed to get data engine object before rebuilding")
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				return
+			}
+			if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
@@ -2066,7 +2103,14 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			}
 
 			log.Info("Starting snapshot purge after rebuilding")
-			if err := engineClientProxy.SnapshotPurge(e); err != nil {
+			dataEngineObj, err := ec.ds.GetDataEngineObject(e)
+			if err != nil {
+				log.WithError(err).Error("Failed to get data engine object after rebuilding")
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				return
+			}
+			if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
@@ -2135,112 +2179,11 @@ func (ec *EngineController) getFileLocalSync(targetReplica *longhorn.Replica, en
 
 // updateReplicaRebuildFailedCondition updates the rebuild failed condition if replica rebuilding failed
 func (ec *EngineController) updateReplicaRebuildFailedCondition(replica *longhorn.Replica, errMsg string) (*longhorn.Replica, error) {
-	replicaRebuildFailedReason, conditionStatus, err := ec.getReplicaRebuildFailedReason(replica.Spec.NodeID, errMsg)
-	if err != nil {
-		return nil, err
-	}
-
-	replica.Status.Conditions = types.SetCondition(
-		replica.Status.Conditions,
-		longhorn.ReplicaConditionTypeRebuildFailed,
-		conditionStatus,
-		replicaRebuildFailedReason,
-		errMsg)
-
-	replica, err = ec.ds.UpdateReplicaStatus(replica)
-
-	return replica, err
-}
-
-func (ec *EngineController) getReplicaRebuildFailedReason(replicaNodeID, errMsg string) (failedReason string, conditionStatus longhorn.ConditionStatus, err error) {
-	failedReason, conditionStatus, isRebuildingFailedByNetwork := getReplicaRebuildFailedReasonFromError(errMsg)
-	if isRebuildingFailedByNetwork {
-		replicaNode, err := ec.ds.GetNodeRO(replicaNodeID)
-		if err != nil {
-			return "", "", err
-		}
-
-		replicaRebuildFailedCondition := types.GetCondition(replicaNode.Status.Conditions, longhorn.NodeConditionTypeReady)
-		switch replicaRebuildFailedCondition.Reason {
-		case longhorn.NodeConditionReasonManagerPodDown, longhorn.NodeConditionReasonKubernetesNodeGone, longhorn.NodeConditionReasonKubernetesNodeNotReady:
-			failedReason = replicaRebuildFailedCondition.Reason
-		}
-	}
-
-	return failedReason, conditionStatus, nil
-}
-
-func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.ConditionStatus, bool) {
-	switch {
-	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedCanceledErrorMSG):
-		fallthrough
-	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedDeadlineExceededErrorMSG):
-		fallthrough
-	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedUnavailableErrorMSG):
-		return longhorn.ReplicaConditionReasonRebuildFailedDisconnection, longhorn.ConditionStatusTrue, true
-	case errMsg == "":
-		return "", longhorn.ConditionStatusFalse, false
-	default:
-		return longhorn.ReplicaConditionReasonRebuildFailedGeneral, longhorn.ConditionStatusTrue, false
-	}
+	return updateReplicaRebuildFailedCondition(ec.ds, replica, errMsg)
 }
 
 func (ec *EngineController) waitForV2EngineRebuild(engine *longhorn.Engine, replicaName string, timeout int64) (err error) {
-	if !types.IsDataEngineV2(engine.Spec.DataEngine) {
-		return nil
-	}
-
-	ticker := time.NewTicker(EnginePollInterval)
-	defer ticker.Stop()
-	timer := time.NewTimer(time.Duration(timeout) * time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			e, err := ec.ds.GetEngineRO(engine.Name)
-			if err != nil {
-				// There is no need to continue if the engine is not found
-				if apierrors.IsNotFound(err) {
-					return errors.Wrapf(err, "engine %v not found during v2 replica %s rebuild wait", engine.Name, replicaName)
-				}
-				// There may be something wrong with the indexer or the API sever, will retry
-				continue
-			}
-			if e.Spec.ReplicaAddressMap[replicaName] == "" {
-				return fmt.Errorf("unknown replica %v for engine", replicaName)
-			}
-			// There is no need to continue when the replica is not found or the replica is not in a valid state for rebuilding
-			r, err := ec.ds.GetReplicaRO(replicaName)
-			if err != nil {
-				return err
-			}
-			if r.Status.CurrentState != longhorn.InstanceStateRunning {
-				return fmt.Errorf("replica %v is state %s, which is invalid for rebuilding", replicaName, r.Status.CurrentState)
-			}
-			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeRW {
-				return nil
-			}
-			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeERR {
-				return fmt.Errorf("replica %v is in ERR mode, which is invalid for rebuilding", replicaName)
-			}
-			if e.Status.ReplicaModeMap[replicaName] == "" {
-				continue
-			}
-			// For a rebuilding replica (with mode WO), there should be a corresponding rebuilding status
-			rebuildingStatus := e.Status.RebuildStatus[engineapi.GetBackendReplicaURL(e.Status.CurrentReplicaAddressMap[replicaName])]
-			if rebuildingStatus == nil {
-				continue
-			}
-			if rebuildingStatus.State == engineapi.ProcessStateError || rebuildingStatus.Error != "" {
-				return fmt.Errorf("failed to wait for v2 replica %s rebuild, rebuilding state %s, error: %v", replicaName, rebuildingStatus.State, rebuildingStatus.Error)
-			}
-			if rebuildingStatus.State == engineapi.ProcessStateComplete {
-				return nil
-			}
-		case <-timer.C:
-			return fmt.Errorf("timeout waiting for replica %v to be rebuilt", replicaName)
-		}
-	}
+	return waitForV2EngineRebuild(ec.ds, engine, replicaName, timeout)
 }
 
 func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
@@ -2522,6 +2465,7 @@ func needStatusUpdateBesidesSize(existing, new *longhorn.EngineStatus) bool {
 	// If we don't have a volume-head snapshot in new and old status, just compare statuses directly.
 	existingSnapshot, existingSnapshotOK := existing.Snapshots[etypes.VolumeHeadName]
 	newSnapshot, newSnapshotOK := new.Snapshots[etypes.VolumeHeadName]
+
 	if !existingSnapshotOK || !newSnapshotOK {
 		return !reflect.DeepEqual(existing, new)
 	}
@@ -2529,6 +2473,7 @@ func needStatusUpdateBesidesSize(existing, new *longhorn.EngineStatus) bool {
 	// Otherwise, compare without the size of volume-head.
 	existingSize := existingSnapshot.Size
 	existingSnapshot.Size = newSnapshot.Size
+
 	needUpdate := !reflect.DeepEqual(existing, new)
 	existingSnapshot.Size = existingSize
 	return needUpdate

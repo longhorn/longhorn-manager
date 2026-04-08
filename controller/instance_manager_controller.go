@@ -551,6 +551,7 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
 		im.Status.InstanceEngines = nil
+		im.Status.InstanceEngineFrontends = nil
 		im.Status.InstanceReplicas = nil
 		im.Status.BackingImages = nil
 	}
@@ -750,7 +751,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		return false, true, false, nil
 	}
 
-	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas) {
+	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceEngineFrontends, im.Status.InstanceReplicas) {
 		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
 			return false, false, true, nil
 		}
@@ -1308,7 +1309,7 @@ func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeNa
 	}
 
 	for _, im := range ims {
-		if len(im.Status.InstanceEngines) > 0 {
+		if len(im.Status.InstanceEngines) > 0 || len(im.Status.InstanceEngineFrontends) > 0 {
 			return false, formatInstanceMessage(im), nil
 		}
 	}
@@ -1827,6 +1828,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
+			MountPath:        types.MetadataDirectoryInContainer,
+			Name:             "metadata",
+			MountPropagation: &mountPropagationHostToContainer,
+		},
+		{
 			MountPath: types.UnixDomainSocketDirectoryInContainer,
 			Name:      "unix-domain-socket",
 		},
@@ -1854,6 +1860,15 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: types.EngineBinaryDirectoryOnHost,
+				},
+			},
+		},
+		{
+			Name: "metadata",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: types.MetadataDirectoryOnHost,
+					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
 		},
@@ -2454,16 +2469,18 @@ func (m *InstanceManagerMonitor) syncInstances(im *longhorn.InstanceManager, ins
 func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, instanceMap instanceProcessMap) bool {
 	switch {
 	default:
-		engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
+		engineProcesses, engineFrontendProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
 
 		// reflect.DeepEqual treats the two maps `var m1 map[string]process` and `m2 := map[string]process` as different maps.
 		// Therefore, to prevent unnecessary updates, we must check both that the length of the maps is zero and that the maps are identical.
 		if ((len(im.Status.InstanceEngines) == 0 && len(engineProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngines, engineProcesses)) &&
+			((len(im.Status.InstanceEngineFrontends) == 0 && len(engineFrontendProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngineFrontends, engineFrontendProcesses)) &&
 			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcesses)) {
 			return false
 		}
 
 		im.Status.InstanceEngines = engineProcesses
+		im.Status.InstanceEngineFrontends = engineFrontendProcesses
 		im.Status.InstanceReplicas = replicaProcesses
 	}
 	return true
@@ -2482,7 +2499,7 @@ func (m *InstanceManagerMonitor) StopMonitorWithLock() {
 }
 
 func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, instanceMap instanceProcessMap) {
-	engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
+	engineProcesses, _, replicaProcesses := m.categorizeProcesses(instanceMap)
 	existOrphansList, err := m.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
 	if err != nil {
 		m.logger.WithError(err).Errorf("Failed to list orphans on node %s", im.Spec.NodeID)
@@ -2625,18 +2642,21 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 	return m.ds.CreateOrphan(orphan)
 }
 
-func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap) {
+func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap, instanceProcessMap) {
 	engineProcesses := make(instanceProcessMap)
+	engineFrontendProcesses := make(instanceProcessMap)
 	replicaProcesses := make(instanceProcessMap)
 	for name, process := range instanceMap {
 		switch process.Status.Type {
 		case longhorn.InstanceTypeEngine:
 			engineProcesses[name] = process
+		case longhorn.InstanceTypeEngineFrontend:
+			engineFrontendProcesses[name] = process
 		case longhorn.InstanceTypeReplica:
 			replicaProcesses[name] = process
 		}
 	}
-	return engineProcesses, replicaProcesses
+	return engineProcesses, engineFrontendProcesses, replicaProcesses
 }
 
 func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {

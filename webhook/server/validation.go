@@ -15,6 +15,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/backuptarget"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backupvolume"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
+	"github.com/longhorn/longhorn-manager/webhook/resources/enginefrontend"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
@@ -55,6 +56,7 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		systemrestore.NewValidator(ds),
 		volumeattachment.NewValidator(ds),
 		engine.NewValidator(ds),
+		enginefrontend.NewValidator(ds),
 		replica.NewValidator(ds),
 		instancemanager.NewValidator(ds),
 		persistentvolumeclaim.NewValidator(ds),

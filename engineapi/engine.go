@@ -135,7 +135,11 @@ func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error
 
 // ReplicaAdd calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error {
+func (e *EngineBinary) ReplicaAdd(obj interface{}, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error {
+	engine, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("unsupported object type %T for engine binary replica add", obj)
+	}
 	// Ignore grpcTimeoutSeconds because we expect that longhorn manager should use proxy gRPC to communicate with
 	// engine/replica who understands this field
 	if err := ValidateReplicaURL(url); err != nil {
@@ -204,7 +208,7 @@ func (e *EngineBinary) VolumeGet(*longhorn.Engine) (*Volume, error) {
 
 // VersionGet calls engine binary to get client version and request gRPC proxy
 // for server version.
-func (e *EngineBinary) VersionGet(engine *longhorn.Engine, clientOnly bool) (*EngineVersion, error) {
+func (e *EngineBinary) VersionGet(obj interface{}, clientOnly bool) (*EngineVersion, error) {
 	cmdline := []string{"version"}
 	if clientOnly {
 		cmdline = append(cmdline, "--client-only")
@@ -225,7 +229,11 @@ func (e *EngineBinary) VersionGet(engine *longhorn.Engine, clientOnly bool) (*En
 
 // VolumeExpand calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) VolumeExpand(engine *longhorn.Engine) error {
+func (e *EngineBinary) VolumeExpand(obj interface{}) error {
+	engine, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("VolumeExpand via EngineBinary is only supported for *longhorn.Engine, got %T", obj)
+	}
 	size := engine.Spec.VolumeSize
 	if _, err := e.ExecuteEngineBinary("expand", "--size", strconv.FormatInt(size, 10)); err != nil {
 		return errors.Wrapf(err, "cannot get expand volume engine to size %v", size)

@@ -132,3 +132,50 @@ func TestNeedStatusUpdate(t *testing.T) {
 		assert.Equal(tc.expectRateLimited, rateLimited, "rateLimited")
 	}
 }
+
+func TestShouldDeferRestoreDuringExpansion(t *testing.T) {
+	tests := map[string]struct {
+		engine            *longhorn.Engine
+		expansionComplete bool
+		expect            bool
+	}{
+		"nil engine does not defer": {
+			engine:            nil,
+			expansionComplete: false,
+			expect:            false,
+		},
+		"v1 engine does not defer": {
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{DataEngine: longhorn.DataEngineTypeV1},
+				},
+			},
+			expansionComplete: false,
+			expect:            false,
+		},
+		"v2 engine defers while expansion incomplete": {
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{DataEngine: longhorn.DataEngineTypeV2},
+				},
+			},
+			expansionComplete: false,
+			expect:            true,
+		},
+		"v2 engine proceeds after expansion completes": {
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{DataEngine: longhorn.DataEngineTypeV2},
+				},
+			},
+			expansionComplete: true,
+			expect:            false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.expect, shouldDeferRestoreDuringExpansion(tc.engine, tc.expansionComplete))
+		})
+	}
+}

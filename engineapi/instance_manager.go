@@ -17,6 +17,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -293,10 +294,10 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
 			UblkID:          p.InstanceStatus.UblkID,
 			UUID:            p.InstanceStatus.UUID,
-
+			Endpoint:        p.InstanceStatus.Endpoint,
+			Frontend:        p.InstanceStatus.Frontend,
 			// FIXME: These fields are not used, maybe we can deprecate them later.
-			Listen:   "",
-			Endpoint: "",
+			Listen: "",
 		},
 	}
 }
@@ -495,6 +496,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		}
 	case longhorn.DataEngineTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
+		// v2 target doesn't need frontend - it will be set by initiator (EngineFrontend)
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -544,6 +546,84 @@ type ReplicaInstanceCreateRequest struct {
 	BackingImagePath    string
 	DataLocality        longhorn.DataLocality
 	EngineCLIAPIVersion int
+}
+
+// EngineFrontendInstanceCreateRequest contains the parameters to create an engine frontend (initiator) instance
+type EngineFrontendInstanceCreateRequest struct {
+	EngineFrontend    *longhorn.EngineFrontend
+	VolumeFrontend    longhorn.VolumeFrontend
+	UblkQueueDepth    int
+	UblkNumberOfQueue int
+	TargetIP          string
+	TargetPort        int
+	EngineName        string
+}
+
+// EngineFrontendInstanceCreate creates a new engine frontend (initiator) instance for v2 data engine
+func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontendInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	frontend, err := GetEngineInstanceFrontend(req.EngineFrontend.Spec.DataEngine, req.VolumeFrontend)
+	if err != nil {
+		return nil, err
+	}
+
+	// EngineFrontend (initiator) is only supported in v2 data engine and API version >= 4
+	if c.GetAPIVersion() < 4 {
+		return nil, fmt.Errorf("engine frontend (initiator) requires instance manager API version >= 4")
+	}
+
+	targetAddress := util.BuildTargetAddress(req.TargetIP, req.TargetPort)
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(req.EngineFrontend.Spec.DataEngine),
+		DataEngine:         string(req.EngineFrontend.Spec.DataEngine),
+		Name:               req.EngineFrontend.Name,
+		InstanceType:       string(longhorn.InstanceTypeEngineFrontend), // v2 initiator
+		VolumeName:         req.EngineFrontend.Spec.VolumeName,
+		Size:               uint64(req.EngineFrontend.Spec.VolumeSize),
+		PortCount:          DefaultEnginePortCount,
+		PortArgs:           []string{DefaultPortArg},
+
+		EngineFrontend: imclient.EngineFrontendCreateRequest{
+			Frontend:          frontend,
+			UblkQueueDepth:    req.UblkQueueDepth,
+			UblkNumberOfQueue: req.UblkNumberOfQueue,
+			TargetAddress:     targetAddress,
+			EngineName:        req.EngineName,
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// EngineFrontendSwitchOverTarget switches over the target for an engine frontend instance
+func (c *InstanceManagerClient) EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName string) error {
+	if c.GetAPIVersion() < 4 {
+		return fmt.Errorf("engine frontend switch over target requires instance manager API version >= 4")
+	}
+	return c.instanceServiceGrpcClient.InstanceSwitchOverTarget(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend), targetAddress, engineName)
+}
+
+// EngineFrontendSuspend suspends the engine frontend instance
+func (c *InstanceManagerClient) EngineFrontendSuspend(dataEngine longhorn.DataEngineType, name string) error {
+	if c.GetAPIVersion() < 4 {
+		return fmt.Errorf("engine frontend suspend requires instance manager API version >= 4")
+	}
+	return c.instanceServiceGrpcClient.InstanceSuspend(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend))
+}
+
+// EngineFrontendResume resumes the engine frontend instance
+func (c *InstanceManagerClient) EngineFrontendResume(dataEngine longhorn.DataEngineType, name string) error {
+	if c.GetAPIVersion() < 4 {
+		return fmt.Errorf("engine frontend resume requires instance manager API version >= 4")
+	}
+	return c.instanceServiceGrpcClient.InstanceResume(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend))
 }
 
 // ReplicaInstanceCreate creates a new replica instance
