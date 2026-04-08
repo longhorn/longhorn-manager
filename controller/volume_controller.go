@@ -1417,7 +1417,7 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 			chosenReplica = rs[r.Name]
 			break
 		}
-		if r.Status.InstanceManagerName == "" {
+		if types.IsDataEngineV2(v.Spec.DataEngine) && r.Status.InstanceManagerName == "" {
 			continue
 		}
 		im, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
@@ -3264,9 +3264,6 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 }
 
 func (c *VolumeController) getReplicasUnderDiskPressure() (map[string]bool, error) {
-	if c.scheduler == nil {
-		return nil, nil
-	}
 
 	settingDiskPressurePercentage, err := c.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
 	if err != nil {
@@ -3561,9 +3558,7 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 		return nil, err
 	}
 
-	if c.scheduler != nil {
-		readyNodes = c.scheduler.FilterNodesSchedulableForVolume(readyNodes, volume)
-	}
+	readyNodes = c.scheduler.FilterNodesSchedulableForVolume(readyNodes, volume)
 
 	allowEmptyNodeSelectorVolume, err := c.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
@@ -4411,11 +4406,6 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 		return err
 	}
 
-	sourceEngineFrontend, err := c.ds.GetVolumeCurrentEngineFrontend(sourceVolName)
-	if err != nil {
-		return err
-	}
-
 	if snapshotName == "" {
 		// Use a deterministic UUID for snapshotName in case this reconciliation fails and we hit this code block again
 		// in the next reconciliation. We don't want to generate multiple snapshots. Create the UUID by hashing the UIDs
@@ -4425,6 +4415,10 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 
 		var sourceObj interface{} = sourceEngine
 		if types.IsDataEngineV2(sourceVol.Spec.DataEngine) {
+			sourceEngineFrontend, err := c.ds.GetVolumeCurrentEngineFrontend(sourceVolName)
+			if err != nil {
+				return err
+			}
 			sourceObj = sourceEngineFrontend
 		}
 

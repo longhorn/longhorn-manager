@@ -1781,6 +1781,9 @@ func (s *DataStore) GetVolumeCurrentEngineFrontend(volumeName string) (*longhorn
 	if err != nil {
 		return nil, err
 	}
+	if ef == nil {
+		return nil, errors.Errorf("cannot find the current engine frontend for volume %v", volumeName)
+	}
 	return ef.DeepCopy(), nil
 }
 
