@@ -28,7 +28,7 @@ func CollectHealthDataFromMountPath(mountPath, diskName string, logger logrus.Fi
 // CollectHealthDataForBlockDevice collects health data directly from a block device
 // without resolving through mount paths. This is used for V2 block-type disks.
 func CollectHealthDataForBlockDevice(devicePath, diskName string, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
-	physicalDevice, err := commonsys.ResolveBlockDeviceToPhysicalDevice(devicePath)
+	physicalDevice, err := commonns.ResolveBlockDeviceToPhysicalDevice(devicePath)
 	if err != nil {
 		return nil, err
 	}
