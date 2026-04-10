@@ -204,8 +204,8 @@ func TestParseLabels(t *testing.T) {
 			expected: map[string]string{"key1": "value1", "key2": "value2"},
 		},
 		"value with equals sign": {
-			input:    []string{"key=val=ue"},
-			expected: map[string]string{"key": "val=ue"},
+			input:    []string{"key=val=val2"},
+			expected: map[string]string{"key": "val=val2"},
 		},
 		"missing equals sign": {
 			input:       []string{"noequalssign"},
