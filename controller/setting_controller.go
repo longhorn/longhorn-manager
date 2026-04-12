@@ -351,6 +351,10 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	switch settingName {
 	case types.SettingNameSystemManagedCSIComponentsResourceLimits:
 		return sc.updateSystemManagedCSIComponentsResourceLimits()
+	case types.SettingNameEngineImagePodLivenessProbePeriod,
+		types.SettingNameEngineImagePodLivenessProbeTimeout,
+		types.SettingNameEngineImagePodLivenessProbeFailureThreshold:
+		return sc.updateEngineImagePodLivenessProbes()
 	}
 
 	// These settings are also protected by webhook validators, when there are new updates.
@@ -378,6 +382,62 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	}
 
 	return nil
+}
+
+func (sc *SettingController) updateEngineImagePodLivenessProbes() error {
+	probePeriodSeconds, probeTimeoutSeconds, livenessProbeFailureThreshold := sc.getEngineImagePodLivenessProbeParameters()
+
+	labels := types.GetBaseLabelsForSystemManagedComponent()
+	labels[types.GetLonghornLabelComponentKey()] = types.LonghornLabelEngineImage
+
+	daemonSets, err := sc.ds.ListDaemonSetWithLabels(labels)
+	if err != nil {
+		return errors.Wrap(err, "failed to list engine image daemonsets for liveness probe update")
+	}
+
+	for _, daemonSet := range daemonSets {
+		existingDaemonSet := daemonSet.DeepCopy()
+		desiredDaemonSet := daemonSet.DeepCopy()
+
+		setEngineImageDaemonSetLivenessProbe(desiredDaemonSet, probePeriodSeconds, probeTimeoutSeconds, livenessProbeFailureThreshold)
+
+		if reflect.DeepEqual(existingDaemonSet.Spec, desiredDaemonSet.Spec) {
+			continue
+		}
+
+		sc.logger.Infof("Updating engine image daemonset %v liveness probe to periodSeconds=%v timeoutSeconds=%v failureThreshold=%v",
+			daemonSet.Name, probePeriodSeconds, probeTimeoutSeconds, livenessProbeFailureThreshold)
+		if _, err := sc.ds.UpdateDaemonSet(desiredDaemonSet); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (sc *SettingController) getEngineImagePodLivenessProbeParameters() (periodSeconds, timeoutSeconds, failureThreshold int32) {
+	probePeriodSeconds, err := sc.ds.GetSettingAsInt(types.SettingNameEngineImagePodLivenessProbePeriod)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Falling back to default %v=%v",
+			types.SettingNameEngineImagePodLivenessProbePeriod, datastore.PodProbePeriodSeconds)
+		probePeriodSeconds = datastore.PodProbePeriodSeconds
+	}
+
+	probeTimeoutSeconds, err := sc.ds.GetSettingAsInt(types.SettingNameEngineImagePodLivenessProbeTimeout)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Falling back to default %v=%v",
+			types.SettingNameEngineImagePodLivenessProbeTimeout, datastore.PodProbeTimeoutSeconds)
+		probeTimeoutSeconds = datastore.PodProbeTimeoutSeconds
+	}
+
+	livenessProbeFailureThreshold, err := sc.ds.GetSettingAsInt(types.SettingNameEngineImagePodLivenessProbeFailureThreshold)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Falling back to default %v=%v",
+			types.SettingNameEngineImagePodLivenessProbeFailureThreshold, datastore.PodLivenessProbeFailureThreshold)
+		livenessProbeFailureThreshold = datastore.PodLivenessProbeFailureThreshold
+	}
+
+	return int32(probePeriodSeconds), int32(probeTimeoutSeconds), int32(livenessProbeFailureThreshold)
 }
 
 // getResponsibleNodeID returns which node need to run

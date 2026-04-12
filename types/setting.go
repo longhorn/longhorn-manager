@@ -164,6 +164,9 @@ const (
 	SettingNameDefaultUblkQueueDepth                                    = SettingName("default-ublk-queue-depth")
 	SettingNameDefaultUblkNumberOfQueue                                 = SettingName("default-ublk-number-of-queue")
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
+	SettingNameEngineImagePodLivenessProbePeriod                        = SettingName("engine-image-pod-liveness-probe-period")
+	SettingNameEngineImagePodLivenessProbeTimeout                       = SettingName("engine-image-pod-liveness-probe-timeout")
+	SettingNameEngineImagePodLivenessProbeFailureThreshold              = SettingName("engine-image-pod-liveness-probe-failure-threshold")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
@@ -286,6 +289,9 @@ var (
 		SettingNameDefaultUblkQueueDepth,
 		SettingNameDefaultUblkNumberOfQueue,
 		SettingNameDefaultBackupBlockSize,
+		SettingNameEngineImagePodLivenessProbePeriod,
+		SettingNameEngineImagePodLivenessProbeTimeout,
+		SettingNameEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath,
 		SettingNameNodeDiskHealthMonitoring,
@@ -442,6 +448,9 @@ var (
 		SettingNameDefaultUblkQueueDepth:                                    SettingDefinitionDefaultUblkQueueDepth,
 		SettingNameDefaultUblkNumberOfQueue:                                 SettingDefinitionDefaultUblkNumberOfQueue,
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
+		SettingNameEngineImagePodLivenessProbePeriod:                        SettingDefinitionEngineImagePodLivenessProbePeriod,
+		SettingNameEngineImagePodLivenessProbeTimeout:                       SettingDefinitionEngineImagePodLivenessProbeTimeout,
+		SettingNameEngineImagePodLivenessProbeFailureThreshold:              SettingDefinitionEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
 		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
@@ -1621,6 +1630,57 @@ var (
 		DataEngineSpecific: false,
 		Choices:            []any{int64(2), int64(16)},
 		Default:            "2",
+	}
+
+	SettingDefinitionEngineImagePodLivenessProbePeriod = SettingDefinition{
+		DisplayName: "Engine Image Pod Liveness Probe Period",
+		Description: "In seconds. The setting specifies the interval between liveness probes for engine image pods. The default value is 5 seconds.\n\n" +
+			"WARNING: \n\n" +
+			"  - Applying this setting causes Longhorn to update existing engine image DaemonSets immediately.\n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "5",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 60,
+		},
+	}
+
+	SettingDefinitionEngineImagePodLivenessProbeTimeout = SettingDefinition{
+		DisplayName: "Engine Image Pod Liveness Probe Timeout",
+		Description: "In seconds. The setting specifies the timeout for the engine image pod liveness probe. The default value is 4 seconds.\n\n" +
+			"WARNING: \n\n" +
+			"  - Applying this setting causes Longhorn to update existing engine image DaemonSets immediately.\n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "4",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 60,
+		},
+	}
+
+	SettingDefinitionEngineImagePodLivenessProbeFailureThreshold = SettingDefinition{
+		DisplayName: "Engine Image Pod Liveness Probe Failure Threshold",
+		Description: "The setting specifies the number of consecutive failed liveness probes before an engine image pod is restarted. The default value is 3.\n\n" +
+			"WARNING: \n\n" +
+			"  - Applying this setting causes Longhorn to update existing engine image DaemonSets immediately.\n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "3",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 60,
+		},
 	}
 
 	SettingDefinitionInstanceManagerPodLivenessProbeTimeout = SettingDefinition{

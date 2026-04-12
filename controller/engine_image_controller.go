@@ -779,6 +779,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
+	podProbePeriodSeconds, podProbeTimeoutSeconds, podLivenessProbeFailureThreshold := ic.getEngineImagePodLivenessProbeParameters()
 	cmd := []string{
 		"/bin/bash",
 	}
@@ -858,9 +859,9 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 									},
 								},
 								InitialDelaySeconds: datastore.PodProbeInitialDelay,
-								TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
-								PeriodSeconds:       datastore.PodProbePeriodSeconds,
-								FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
+								TimeoutSeconds:      podProbeTimeoutSeconds,
+								PeriodSeconds:       podProbePeriodSeconds,
+								FailureThreshold:    podLivenessProbeFailureThreshold,
 							},
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: &privileged,
@@ -892,6 +893,45 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 	types.AddGoCoverDirToDaemonSet(d)
 
 	return d, nil
+}
+
+func (ic *EngineImageController) getEngineImagePodLivenessProbeParameters() (periodSeconds, timeoutSeconds, failureThreshold int32) {
+	probePeriodSeconds, err := ic.ds.GetSettingAsInt(types.SettingNameEngineImagePodLivenessProbePeriod)
+	if err != nil {
+		ic.logger.WithError(err).Warnf("Falling back to default %v=%v",
+			types.SettingNameEngineImagePodLivenessProbePeriod, datastore.PodProbePeriodSeconds)
+		probePeriodSeconds = datastore.PodProbePeriodSeconds
+	}
+
+	probeTimeoutSeconds, err := ic.ds.GetSettingAsInt(types.SettingNameEngineImagePodLivenessProbeTimeout)
+	if err != nil {
+		ic.logger.WithError(err).Warnf("Falling back to default %v=%v",
+			types.SettingNameEngineImagePodLivenessProbeTimeout, datastore.PodProbeTimeoutSeconds)
+		probeTimeoutSeconds = datastore.PodProbeTimeoutSeconds
+	}
+
+	livenessProbeFailureThreshold, err := ic.ds.GetSettingAsInt(types.SettingNameEngineImagePodLivenessProbeFailureThreshold)
+	if err != nil {
+		ic.logger.WithError(err).Warnf("Falling back to default %v=%v",
+			types.SettingNameEngineImagePodLivenessProbeFailureThreshold, datastore.PodLivenessProbeFailureThreshold)
+		livenessProbeFailureThreshold = datastore.PodLivenessProbeFailureThreshold
+	}
+
+	return int32(probePeriodSeconds), int32(probeTimeoutSeconds), int32(livenessProbeFailureThreshold)
+}
+
+func setEngineImageDaemonSetLivenessProbe(ds *appsv1.DaemonSet, periodSeconds, timeoutSeconds, failureThreshold int32) {
+	for i := range ds.Spec.Template.Spec.Containers {
+		container := &ds.Spec.Template.Spec.Containers[i]
+		if container.Name != ds.Name || container.LivenessProbe == nil {
+			continue
+		}
+
+		container.LivenessProbe.PeriodSeconds = periodSeconds
+		container.LivenessProbe.TimeoutSeconds = timeoutSeconds
+		container.LivenessProbe.FailureThreshold = failureThreshold
+		return
+	}
 }
 
 func (ic *EngineImageController) isResponsibleFor(ei *longhorn.EngineImage) (bool, error) {

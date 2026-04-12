@@ -202,7 +202,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 
 		kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
 		lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
-		extentionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
@@ -215,7 +215,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 		eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
 
-		ic, err := newTestEngineImageController(lhClient, kubeClient, extentionClient, informerFactories)
+		ic, err := newTestEngineImageController(lhClient, kubeClient, extensionClient, informerFactories)
 		c.Assert(err, IsNil)
 
 		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), newSetting(string(types.SettingNameDefaultEngineImage), tc.defaultEngineImage), metav1.CreateOptions{})
@@ -293,4 +293,74 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			c.Assert(ds.Status, DeepEquals, tc.expectedDaemonSet.Status)
 		}
 	}
+}
+
+func (s *TestSuite) TestCreateEngineImageDaemonSetSpecUsesConfiguredLivenessProbe(c *C) {
+	kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+	extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+	ic, err := newTestEngineImageController(lhClient, kubeClient, extensionClient, informerFactories)
+	c.Assert(err, IsNil)
+
+	for _, setting := range []*longhorn.Setting{
+		newSetting(string(types.SettingNameEngineImagePodLivenessProbePeriod), "30"),
+		newSetting(string(types.SettingNameEngineImagePodLivenessProbeTimeout), "15"),
+		newSetting(string(types.SettingNameEngineImagePodLivenessProbeFailureThreshold), "10"),
+	} {
+		setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = settingIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+
+	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeploying)
+	daemonSet, err := ic.createEngineImageDaemonSetSpec(
+		engineImage,
+		nil,
+		"",
+		"",
+		corev1.PullIfNotPresent,
+		nil,
+	)
+	c.Assert(err, IsNil)
+
+	livenessProbe := daemonSet.Spec.Template.Spec.Containers[0].LivenessProbe
+	c.Assert(livenessProbe.PeriodSeconds, Equals, int32(30))
+	c.Assert(livenessProbe.TimeoutSeconds, Equals, int32(15))
+	c.Assert(livenessProbe.FailureThreshold, Equals, int32(10))
+
+	readinessProbe := daemonSet.Spec.Template.Spec.Containers[0].ReadinessProbe
+	c.Assert(readinessProbe.PeriodSeconds, Equals, int32(datastore.PodProbePeriodSeconds))
+	c.Assert(readinessProbe.TimeoutSeconds, Equals, int32(datastore.PodProbeTimeoutSeconds))
+	c.Assert(readinessProbe.FailureThreshold, Equals, int32(datastore.PodLivenessProbeFailureThreshold))
+}
+
+func (s *TestSuite) TestCreateEngineImageDaemonSetSpecUsesDefaultLivenessProbeOnSettingError(c *C) {
+	kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+	extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	ic, err := newTestEngineImageController(lhClient, kubeClient, extensionClient, informerFactories)
+	c.Assert(err, IsNil)
+
+	daemonSet, err := ic.createEngineImageDaemonSetSpec(
+		newEngineImage(TestEngineImage, longhorn.EngineImageStateDeploying),
+		nil,
+		"",
+		"",
+		corev1.PullIfNotPresent,
+		nil,
+	)
+	c.Assert(err, IsNil)
+
+	livenessProbe := daemonSet.Spec.Template.Spec.Containers[0].LivenessProbe
+	c.Assert(livenessProbe.PeriodSeconds, Equals, int32(datastore.PodProbePeriodSeconds))
+	c.Assert(livenessProbe.TimeoutSeconds, Equals, int32(datastore.PodProbeTimeoutSeconds))
+	c.Assert(livenessProbe.FailureThreshold, Equals, int32(datastore.PodLivenessProbeFailureThreshold))
 }
