@@ -2650,7 +2650,7 @@ func getRebuildingReplicaCount(e *longhorn.Engine) int {
 type replicaAutoBalanceCount func(*longhorn.Volume, *longhorn.Engine, map[string]*longhorn.Replica) (int, map[string][]string, error)
 
 func (c *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.Volume, e *longhorn.Engine,
-	rs map[string]*longhorn.Replica, fnCount replicaAutoBalanceCount) int {
+	rs map[string]*longhorn.Replica, fnCount replicaAutoBalanceCount) (int, map[string][]string) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceOption", longhorn.ReplicaAutoBalanceLeastEffort)
 
 	var err error
@@ -2669,23 +2669,24 @@ func (c *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.
 		string(longhorn.ReplicaAutoBalanceBestEffort),
 	}
 	if !util.Contains(enabled, string(setting)) {
-		return 0
+		return 0, nil
 	}
 
 	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		if v.Status.State != longhorn.VolumeStateDetached {
 			log.Warnf("Failed to auto-balance volume in %s state", v.Status.Robustness)
 		}
-		return 0
+		return 0, nil
 	}
 
 	var adjustCount int
-	adjustCount, _, err = fnCount(v, e, rs)
+	var extraRNames map[string][]string
+	adjustCount, extraRNames, err = fnCount(v, e, rs)
 	if err != nil {
-		return 0
+		return 0, nil
 	}
 	log.Debugf("Found %v replica candidate for auto-balance", adjustCount)
-	return adjustCount
+	return adjustCount, extraRNames
 }
 
 func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.Volume, e *longhorn.Engine,
@@ -2965,6 +2966,20 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 	readyNodes, err := c.listReadySchedulableAndScheduledNodesRO(v, rs, log)
 	if err != nil {
 		return 0, nil, err
+	}
+
+	// Zone-level balancing is meaningless when no nodes have zone info.
+	// All replicas would land in zone "" and always appear balanced.
+	hasZone := false
+	for _, node := range readyNodes {
+		if node.Status.Zone != "" {
+			hasZone = true
+			break
+		}
+	}
+	if !hasZone {
+		log.Debugf("Skipping zone auto-balance: no nodes have zone information")
+		return 0, nil, nil
 	}
 
 	var usedZones []string
@@ -3251,11 +3266,25 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 	case v.Spec.NumberOfReplicas > usableCount:
 		return v.Spec.NumberOfReplicas - usableCount, ""
 	case v.Spec.NumberOfReplicas == usableCount:
-		if adjustCount := c.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone); adjustCount != 0 {
-			return adjustCount, ""
+		if adjustCount, zoneExtraRs := c.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone); adjustCount != 0 {
+			// zoneExtraRs keys are zones that already have running replicas.
+			// Derive unused zones by finding zones of ready nodes that are not in zoneExtraRs.
+			unusedZones := c.getUnusedZonesForAutoBalance(v, zoneExtraRs)
+			nCandidates := c.getNodeCandidatesForAutoBalanceZone(v, e, rs, unusedZones)
+			if len(nCandidates) != 0 {
+				return adjustCount, nCandidates[0]
+			}
+			// Do not trigger rebalance without a target node.
+			return 0, ""
 		}
-		if adjustCount := c.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode); adjustCount != 0 {
-			return adjustCount, ""
+		if adjustCount, nodeExtraRs := c.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode); adjustCount != 0 {
+			// Find unused ready nodes not already in nodeExtraRs as target candidates.
+			nCandidate := c.getNodeCandidateForAutoBalanceNode(v, rs, nodeExtraRs)
+			if nCandidate != "" {
+				return adjustCount, nCandidate
+			}
+			// Do not trigger rebalance without a target node.
+			return 0, ""
 		}
 
 		var nCandidates []string
@@ -3271,7 +3300,10 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 			return adjustCount, nCandidates[0]
 		}
 
-		return adjustCount, ""
+		// Do not trigger rebalance without a target node, as the scheduler may
+		// place the new replica on an already-overcrowded node, resulting in a
+		// rebuild-cleanup loop.
+		return 0, ""
 	}
 	return 0, ""
 }
@@ -3349,6 +3381,95 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		log.Infof("Found node candidates: %v ", candidateNames)
 	}
 	return candidateNames
+}
+
+// getNodeCandidateForAutoBalanceNode returns a ready, schedulable node that
+// does not already have a running replica for this volume (i.e., not in
+// nodeExtraRs). This is used by least-effort auto-balance to provide a
+// hardNodeAffinity so the new replica is placed on an unused node instead of
+// an already-overcrowded one.
+func (c *VolumeController) getNodeCandidateForAutoBalanceNode(v *longhorn.Volume, rs map[string]*longhorn.Replica, nodeExtraRs map[string][]string) string {
+	log := getLoggerForVolume(c.logger, v).WithFields(
+		logrus.Fields{
+			"replicaAutoBalanceOption": longhorn.ReplicaAutoBalanceLeastEffort,
+			"replicaAutoBalanceType":   "node",
+		},
+	)
+
+	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
+	if err != nil {
+		log.WithError(err).Warn("Failed to list ready nodes for auto-balance node candidate")
+		return ""
+	}
+
+	ei := &longhorn.EngineImage{}
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
+		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
+		if err != nil {
+			log.WithError(err).Warn("Failed to get engine image for auto-balance node candidate")
+			return ""
+		}
+	}
+
+	for nName, n := range readyNodes {
+		// Skip nodes that already have a running replica for this volume.
+		if _, exists := nodeExtraRs[nName]; exists {
+			continue
+		}
+
+		if !n.Spec.AllowScheduling {
+			continue
+		}
+
+		if isReady, _ := c.ds.CheckDataEngineImageReadiness(ei.Spec.Image, v.Spec.DataEngine, nName); !isReady {
+			continue
+		}
+
+		// Also skip nodes that have any replica (including non-running) for this volume,
+		// to avoid placing a new replica on a node with a rebuilding or starting replica.
+		hasReplica := false
+		for _, r := range rs {
+			if r.Spec.NodeID == nName {
+				hasReplica = true
+				break
+			}
+		}
+		if hasReplica {
+			continue
+		}
+
+		log.Infof("Found node candidate %v for auto-balance", nName)
+		return nName
+	}
+
+	log.Debug("No unused node candidate found for auto-balance")
+	return ""
+}
+
+// getUnusedZonesForAutoBalance returns zones of ready schedulable nodes that
+// are NOT already in usedZones (zones with existing replicas).
+func (c *VolumeController) getUnusedZonesForAutoBalance(v *longhorn.Volume, usedZones map[string][]string) []string {
+	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "zone")
+
+	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
+	if err != nil {
+		log.WithError(err).Warn("Failed to list ready nodes for unused zones")
+		return nil
+	}
+
+	unusedZoneSet := make(map[string]bool)
+	for _, node := range readyNodes {
+		zone := node.Status.Zone
+		if _, used := usedZones[zone]; !used {
+			unusedZoneSet[zone] = true
+		}
+	}
+
+	var unusedZones []string
+	for zone := range unusedZoneSet {
+		unusedZones = append(unusedZones, zone)
+	}
+	return unusedZones
 }
 
 func (c *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
