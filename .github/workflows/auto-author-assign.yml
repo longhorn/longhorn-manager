@@ -1,9 +1,0 @@
-name: Auto Author Assign
-
-on:
-  pull_request_target:
-    types: [ opened, reopened ]
-
-jobs:
-  assign-author:
-    uses: longhorn/longhorn/.github/workflows/auto-author-assign.yml@eb3790253449e3577b4acb88b5620258cde6d747 # v1.11.1
