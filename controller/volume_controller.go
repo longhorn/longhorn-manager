@@ -1156,7 +1156,7 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 	// existing replicas. And this causes a rebuilding loop if this new
 	// replica is for data locality.
 	// Ref: https://github.com/longhorn/longhorn/issues/4761
-	if cleaned, err = c.cleanupAutoBalancedReplicas(v, e, rs); err != nil || cleaned {
+	if cleaned, err = c.cleanupAutoBalancedReplicas(v, rs); err != nil || cleaned {
 		return err
 	}
 
@@ -1208,7 +1208,8 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v)
 
-	// Pick up the replicas in not-ready nodes or in not-running instance manager first
+	// Pick up the replicas in not-ready nodes, in not-running instance manager,
+	// or on not-ready disks first.
 	var chosenReplica *longhorn.Replica
 	for _, r := range rs {
 		if r.Spec.NodeID == "" {
@@ -1232,6 +1233,31 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 			chosenReplica = rs[r.Name]
 			break
 		}
+		// Check if the replica's disk is not ready (disconnected, filesystem
+		// changed, etc.). This does NOT include disk pressure — a pressured
+		// disk still has healthy replicas, and that case is handled by step 4's
+		// storage-based sort instead.
+		node, err := c.ds.GetNodeRO(r.Spec.NodeID)
+		if err != nil {
+			return false, err
+		}
+		if node != nil {
+			for _, diskStatus := range node.Status.DiskStatus {
+				if diskStatus.DiskUUID != r.Spec.DiskID {
+					continue
+				}
+				diskReady := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady)
+				if diskReady.Status != longhorn.ConditionStatusTrue {
+					log.Infof("Deleting replica %v on not-ready disk %v of node %v (reason: %v)",
+						r.Name, r.Spec.DiskID, r.Spec.NodeID, diskReady.Reason)
+					chosenReplica = rs[r.Name]
+				}
+				break
+			}
+			if chosenReplica != nil {
+				break
+			}
+		}
 	}
 
 	if chosenReplica != nil {
@@ -1243,27 +1269,42 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 	return false, nil
 }
 
-// cleanupReplicaInUnstableEnv uses kube node Ready transition time as a heuristic to identify replicas on recently recovered nodes, assuming the disk or node was unstable before recovery.
-func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+// getReplicaOnUnstableNode identifies a replica that sits on an "unstable"
+// node — one whose kube Ready transition time is significantly later than
+// others (>30 min gap).
+//
+// When candidates is non-nil, only replicas in that set are considered.
+// This allows step 3 of cleanupAutoBalancedReplicas to find the most recently
+// unstable replica within the overcrowded candidate list specifically, rather
+// than globally.
+//
+// Note: not-ready nodes are already handled by cleanupReplicaInNotReadyEnv
+// (step 1), which runs before this function is called.
+//
+// Returns the replica or nil if no unstable replica is found.
+func (c *VolumeController) getReplicaOnUnstableNode(v *longhorn.Volume, rs map[string]*longhorn.Replica, candidateReplicaNames []string) (*longhorn.Replica, error) {
 	log := getLoggerForVolume(c.logger, v)
 
-	// Pick up the replicas on the node that becomes ready most recently.
-	// Here we use kube node rather than Longhorn node because Longhorn node's ready condition will be affected by
-	// the corresponding longhorn-manager pod.
-	var chosenReplica, lastReadyReplica *longhorn.Replica
-	var lastReadyTransitionTime, secondLastReadyTransitionTime metav1.Time
 	nodeReplicaMap := make(map[string]*longhorn.Replica, len(rs))
 	for _, r := range rs {
 		if isHealthyAndActiveReplica(r, false) {
 			nodeReplicaMap[r.Spec.NodeID] = r
 		}
 	}
+
 	nodes, err := c.ds.ListKubeNodesRO()
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+
+	type nodeInfo struct {
+		replica        *longhorn.Replica
+		transitionTime metav1.Time
+	}
+	var infos []nodeInfo
 	for _, node := range nodes {
-		if nodeReplicaMap[node.Name] == nil {
+		r := nodeReplicaMap[node.Name]
+		if r == nil {
 			continue
 		}
 		var readyCondition corev1.NodeCondition
@@ -1279,41 +1320,72 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 			log.Warnf("Failed to find ready condition for node %v during the replica cleanup, will skip it", node.Name)
 			continue
 		}
-		// In case of a replica being on not-ready node, chose it first.
-		if readyCondition.Status != corev1.ConditionTrue {
-			chosenReplica = nodeReplicaMap[node.Name]
-			break
-		}
+		infos = append(infos, nodeInfo{
+			replica:        r,
+			transitionTime: readyCondition.LastTransitionTime,
+		})
+	}
 
-		if readyCondition.LastTransitionTime.After(lastReadyTransitionTime.Time) {
-			lastReadyReplica = nodeReplicaMap[node.Name]
-			secondLastReadyTransitionTime = lastReadyTransitionTime
-			lastReadyTransitionTime = readyCondition.LastTransitionTime
-		} else if readyCondition.LastTransitionTime.After(secondLastReadyTransitionTime.Time) {
-			secondLastReadyTransitionTime = readyCondition.LastTransitionTime
+	var lastTime, secondLastTime metav1.Time
+	for _, info := range infos {
+		if info.transitionTime.After(lastTime.Time) {
+			secondLastTime = lastTime
+			lastTime = info.transitionTime
+		} else if info.transitionTime.After(secondLastTime.Time) {
+			secondLastTime = info.transitionTime
 		}
 	}
 
-	// If there is a node being ready recently and the transition time is 30 minutes later than others,
-	// it is likely that the disk was having issues before and just got recovered.
-	// So choose the replica in that disk for deletion.
-	if chosenReplica == nil && !lastReadyTransitionTime.IsZero() && !secondLastReadyTransitionTime.IsZero() &&
-		lastReadyTransitionTime.After(secondLastReadyTransitionTime.Add(UnstableNodeReadyTimeThreshold)) {
-		log.Infof("Deleting replica %v on node %s disk %v since its kube node ready transition time %v is over %v minutes later than others",
-			lastReadyReplica.Name, lastReadyReplica.Spec.NodeID, lastReadyReplica.Spec.DiskID, lastReadyTransitionTime.Format(time.RFC3339), UnstableNodeReadyTimeThreshold.Minutes())
-		chosenReplica = lastReadyReplica
+	if lastTime.IsZero() || secondLastTime.IsZero() ||
+		!lastTime.After(secondLastTime.Add(UnstableNodeReadyTimeThreshold)) {
+		return nil, nil
 	}
 
-	if chosenReplica != nil {
-		if err := c.deleteReplica(chosenReplica, rs); err != nil {
-			return false, err
+	var unstableCandidates map[string]bool
+	if len(candidateReplicaNames) > 0 {
+		unstableCandidates = make(map[string]bool, len(candidateReplicaNames))
+		for _, rName := range candidateReplicaNames {
+			unstableCandidates[rName] = true
 		}
-		return true, nil
 	}
-	return false, nil
+
+	var chosen *longhorn.Replica
+	var chosenTime metav1.Time
+	for _, info := range infos {
+		if !info.transitionTime.After(secondLastTime.Add(UnstableNodeReadyTimeThreshold)) {
+			continue
+		}
+		if unstableCandidates != nil && !unstableCandidates[info.replica.Name] {
+			continue
+		}
+		if chosen == nil || info.transitionTime.After(chosenTime.Time) {
+			chosen = info.replica
+			chosenTime = info.transitionTime
+		}
+	}
+
+	if chosen != nil {
+		log.Infof("Replica %v is on unstable node %s disk %v (kube node ready transition time %v is over %v minutes later than others)",
+			chosen.Name, chosen.Spec.NodeID, chosen.Spec.DiskID, chosenTime.Format(time.RFC3339), UnstableNodeReadyTimeThreshold.Minutes())
+	}
+	return chosen, nil
 }
 
-func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+// cleanupAutoBalancedReplicas deletes one extra healthy replica when the
+// volume has more healthy replicas than spec.NumberOfReplicas. It follows
+// a strict priority order to avoid conflicting with auto-balance decisions:
+//
+//  1. Delete a replica in a not-ready environment (node down, instance
+//     manager not running, or disk not ready). These replicas are on
+//     potentially failing infrastructure and are safe to remove first.
+//  2. Delete an extra replica from the most overcrowded nodes or zones.
+//  3. When there are multiple candidates for overcrowded nodes or zones,
+//     or all healthy replicas are evenly spread,
+//     prefer to delete a replica on an unstable node
+//     (whose kube Ready transition time is significantly later than others).
+//  4. If no unstable replica is found, the replica from the most overcrowded
+//     group with the least available disk storage is deleted.
+func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "delete")
 
 	setting := c.ds.GetAutoBalancedReplicasSetting(v, log)
@@ -1321,54 +1393,59 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 		return false, nil
 	}
 
-	// In case of potential regressions or unexpected behavior changes, these cleanups are available only when
-	// the auto balance setting is enabled.
+	// Step 1: Delete replicas in not-ready environment first.
 	// See https://github.com/longhorn/longhorn/issues/11730 and https://github.com/longhorn/longhorn/issues/12511
 	if cleaned, err := c.cleanupReplicaInNotReadyEnv(v, rs); err != nil || cleaned {
 		return cleaned, err
 	}
 
-	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, rs); err != nil || cleaned {
-		return cleaned, err
-	}
-
-	var rNames []string
-	if setting == longhorn.ReplicaAutoBalanceBestEffort {
-		_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode)
-		if len(rNames) == 0 {
-			_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
-		}
-	}
-
-	var err error
-	if len(rNames) == 0 {
-		rNames, err = c.getPreferredReplicaCandidatesForDeletion(rs)
-		if err != nil {
-			return false, err
-		}
-
-		log.Infof("Found replica deletion candidates %v", rNames)
-	} else {
-		log.Infof("Found replica deletion candidates %v with best-effort", rNames)
-	}
-
-	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, rs)
+	// Step 2: Pick up all extra replicas from overcrowded nodes or zones if possible.
+	// When replicas are evenly spread, returns all replica names for steps 3 and 4.
+	preferredReplicaNames, err := c.getPreferredOvercrowdedReplicaCandidatesForDeletion(rs)
 	if err != nil {
 		return false, err
 	}
+	if len(preferredReplicaNames) == 0 {
+		return false, fmt.Errorf("unexpectedly found no replica candidates for deletion when checking overcrowding")
+	}
 
-	r := rs[rNames[0]]
-	log.Infof("Deleting replica %v", r.Name)
+	log.Infof("Found preferred replica deletion candidates %v with replica auto balance %v", preferredReplicaNames, setting)
+
+	// Step 3: Prefer to delete a replica on an unstable node (one whose kube Ready
+	// transition time is significantly later than others) from the candidates.
+	// The candidates can be from overcrowded nodes/zones
+	// or all healthy replicas when there is no overcrowding.
+	unstableReplica, err := c.getReplicaOnUnstableNode(v, rs, preferredReplicaNames)
+	if err != nil {
+		return false, err
+	}
+	if unstableReplica != nil {
+		log.Infof("Deleting replica %v on unstable node %v", unstableReplica.Name, unstableReplica.Spec.NodeID)
+		if err := c.deleteReplica(unstableReplica, rs); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	// Step 4: If there is no replica on unstable nodes,
+	// fallback to delete the replica on the disk with the least available storage.
+	preferredReplicaNames, err = c.getSortedReplicasByAscendingStorageAvailable(preferredReplicaNames, rs)
+	if err != nil {
+		return false, err
+	}
+	r := rs[preferredReplicaNames[0]]
+	log.Infof("Deleting replica %v on the disk with the least available storage", r.Name)
 	if err := c.deleteReplica(r, rs); err != nil {
 		return false, err
 	}
+
 	return true, nil
 }
 
 func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
 	if !isDataLocalityDisabled(v) &&
 		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
-		rNames, err := c.getPreferredReplicaCandidatesForDeletion(rs)
+		rNames, err := c.getPreferredOvercrowdedReplicaCandidatesForDeletion(rs)
 		if err != nil {
 			return false, err
 		}
@@ -2383,7 +2460,7 @@ func imInStartingOrRunningState(im *longhorn.InstanceManager) bool {
 		im.Status.CurrentState == longhorn.InstanceManagerStateRunning
 }
 
-func (c *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) ([]string, error) {
+func (c *VolumeController) getPreferredOvercrowdedReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) (preferred []string, err error) {
 	diskToReplicaMap := make(map[string][]string)
 	nodeToReplicaMap := make(map[string][]string)
 	zoneToReplicaMap := make(map[string][]string)
@@ -2400,37 +2477,34 @@ func (c *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[strin
 	for _, r := range rs {
 		diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID] = append(diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID], r.Name)
 		nodeToReplicaMap[r.Spec.NodeID] = append(nodeToReplicaMap[r.Spec.NodeID], r.Name)
-		if node, ok := nodeMap[r.Spec.NodeID]; ok {
+		if node, ok := nodeMap[r.Spec.NodeID]; ok && node.Status.Zone != "" {
 			zoneToReplicaMap[node.Status.Zone] = append(zoneToReplicaMap[node.Status.Zone], r.Name)
 		}
 	}
 
-	var deletionCandidates []string
-
-	// prefer to delete replicas on the same disk
-	deletionCandidates = findValueWithBiggestLength(diskToReplicaMap)
-	if len(deletionCandidates) > 1 {
-		return deletionCandidates, nil
+	// Try disk > node > zone in order of priority.
+	var maxCrowdedCount int
+	var tiedOvercrowdedNodeReplicasMap map[string][]string
+	for _, m := range []map[string][]string{diskToReplicaMap, nodeToReplicaMap, zoneToReplicaMap} {
+		// `zoneToReplicaMap` may be empty if none of the nodes have zone information.
+		// We should skip it and avoid treating all replicas as tied overcrowded candidates.
+		if len(m) == 0 {
+			continue
+		}
+		// `maxCrowdedCount == 1` means no overcrowding at this level of locality.
+		// Then, we will continue to the next loop and check the next level until we find overcrowding.
+		// If there is no overcrowding at all levels, the returned `tiedOvercrowdedNodeReplicasMap` should include all replicas.
+		maxCrowdedCount, tiedOvercrowdedNodeReplicasMap = findAllValuesWithBiggestLength(m)
+		if maxCrowdedCount > 1 {
+			break
+		}
 	}
 
-	// if all replicas are on different disks, prefer to delete replicas on the same node
-	deletionCandidates = findValueWithBiggestLength(nodeToReplicaMap)
-	if len(deletionCandidates) > 1 {
-		return deletionCandidates, nil
+	preferred = make([]string, 0, maxCrowdedCount*len(tiedOvercrowdedNodeReplicasMap))
+	for _, replicas := range tiedOvercrowdedNodeReplicasMap {
+		preferred = append(preferred, replicas...)
 	}
-
-	// if all replicas are on different nodes, prefer to delete replicas on the same zone
-	deletionCandidates = findValueWithBiggestLength(zoneToReplicaMap)
-	if len(deletionCandidates) > 1 {
-		return deletionCandidates, nil
-	}
-
-	// if all replicas are on different zones, return all replicas' names in the input RS
-	deletionCandidates = make([]string, 0, len(rs))
-	for rName := range rs {
-		deletionCandidates = append(deletionCandidates, rName)
-	}
-	return deletionCandidates, nil
+	return preferred, nil
 }
 
 // getSortedReplicasByAscendingStorageAvailable retrieves a sorted list of replica names
@@ -2491,14 +2565,25 @@ func (c *VolumeController) getSortedReplicasByAscendingStorageAvailable(replicaC
 	return sortedReplicas, nil
 }
 
-func findValueWithBiggestLength(m map[string][]string) []string {
-	targetKey, currentMax := "", 0
-	for k, v := range m {
-		if len(v) > currentMax {
-			targetKey, currentMax = k, len(v)
+// findAllValuesWithBiggestLength returns a list of lists from the input list map that are
+// tied at the maximum length.
+func findAllValuesWithBiggestLength(m map[string][]string) (maxLength int, tiedBiggestListMap map[string][]string) {
+	for _, v := range m {
+		if len(v) > maxLength {
+			maxLength = len(v)
 		}
 	}
-	return m[targetKey]
+	if maxLength < 1 {
+		return 0, nil
+	}
+
+	tiedBiggestListMap = make(map[string][]string)
+	for k, v := range m {
+		if len(v) == maxLength {
+			tiedBiggestListMap[k] = v
+		}
+	}
+	return maxLength, tiedBiggestListMap
 }
 
 func isDataLocalityBestEffort(v *longhorn.Volume) bool {
