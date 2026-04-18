@@ -1443,28 +1443,39 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, rs ma
 }
 
 func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
-	if !isDataLocalityDisabled(v) &&
-		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
-		rNames, err := c.getPreferredOvercrowdedReplicaCandidatesForDeletion(rs)
-		if err != nil {
-			return false, err
-		}
+	if isDataLocalityDisabled(v) || !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+		return false, nil
+	}
 
-		// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
-		// Sometime cleanupExtraHealthyReplicas() is called more than once with the same input (v,e,rs).
-		// To make the deleting operation idempotent and prevent deleting more replica than needed,
-		// we always delete the replica with the smallest name.
-		sort.Strings(rNames)
-		for _, rName := range rNames {
-			r := rs[rName]
-			if r.Spec.NodeID != e.Spec.NodeID {
-				if err := c.deleteReplica(r, rs); err != nil {
-					return false, err
-				}
-				return true, nil
-			}
+	// Only consider non-local replicas for deletion. The overcrowding
+	// analysis must exclude the local (engine-node) replicas, otherwise
+	// the engine node itself may be the most overcrowded group — yielding
+	// all-local candidates that the deletion loop would skip entirely.
+	nonLocalReplicaMap := make(map[string]*longhorn.Replica)
+	for _, r := range rs {
+		if r.Spec.NodeID != e.Spec.NodeID && isHealthyAndActiveReplica(r, false) {
+			nonLocalReplicaMap[r.Name] = r
 		}
 	}
+	rNames, err := c.getPreferredOvercrowdedReplicaCandidatesForDeletion(nonLocalReplicaMap)
+	if err != nil {
+		return false, err
+	}
+
+	// Delete the non-local replica with the smallest name for idempotency.
+	// cleanupExtraHealthyReplicas() can be called more than once with the
+	// same input, so a deterministic pick prevents deleting more than needed.
+	sort.Strings(rNames)
+	for _, rName := range rNames {
+		r := rs[rName]
+		if r.Spec.NodeID != e.Spec.NodeID {
+			if err := c.deleteReplica(r, rs); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+
 	return false, nil
 }
 

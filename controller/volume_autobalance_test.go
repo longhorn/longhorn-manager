@@ -931,3 +931,190 @@ func setKubeNodeReadyTransitionTime(node *corev1.Node, t metav1.Time) {
 		}
 	}
 }
+
+// TestDataLocalityCleanupWhenEngineNodeOvercrowded verifies that
+// cleanupDataLocalityReplicas correctly deletes a non-local replica even when
+// the engine node is the most overcrowded node.
+//
+// Before the fix, cleanupDataLocalityReplicas passed all replicas (including
+// local ones) to getPreferredOvercrowdedReplicaCandidatesForDeletion. When the
+// engine node was overcrowded, the candidate list contained only local replicas
+// which the deletion loop skipped — resulting in no deletion at all.
+//
+// Setup:
+//
+//	Engine on Node1.
+//	Node1: r1, r2 (both local, overcrowded)
+//	Node2: r3 (non-local)
+//	NumberOfReplicas = 2, DataLocality = best-effort
+//	3 healthy replicas → 1 extra
+//
+// Expected: r3 (non-local) is deleted.
+func (s *TestSuite) TestDataLocalityCleanupWhenEngineNodeOvercrowded(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	// Create daemon pods
+	for _, dp := range []struct {
+		name, node, ip string
+	}{
+		{TestDaemon1, TestNode1, TestIP1},
+		{TestDaemon2, TestNode2, TestIP2},
+	} {
+		d := newDaemonPod(corev1.PodRunning, dp.name, TestNamespace, dp.node, dp.ip, nil)
+		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), d, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = pIndexer.Add(p)
+		c.Assert(err, IsNil)
+	}
+
+	// Create engine image
+	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+	engineImage.Status.NodeDeploymentMap[TestNode1] = true
+	engineImage.Status.NodeDeploymentMap[TestNode2] = true
+	ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), engineImage, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	err = eiIndexer.Add(ei)
+	c.Assert(err, IsNil)
+
+	// Create Longhorn nodes
+	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	for _, node := range []*longhorn.Node{node1, node2} {
+		n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = nIndexer.Add(n)
+		c.Assert(err, IsNil)
+		knode := newKubernetesNode(node.Name, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = knIndexer.Add(kn)
+		c.Assert(err, IsNil)
+	}
+
+	// Create instance managers
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	for _, imInfo := range []struct {
+		name, ownerID, nodeID, ip string
+	}{
+		{TestInstanceManagerName + "-" + TestNode1, TestOwnerID1, TestNode1, TestIP1},
+		{TestInstanceManagerName + "-" + TestNode2, TestOwnerID2, TestNode2, TestIP2},
+	} {
+		im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
+			context.TODO(),
+			newInstanceManager(imInfo.name, longhorn.InstanceManagerStateRunning, imInfo.ownerID, imInfo.nodeID, imInfo.ip,
+				map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeV1, TestInstanceManagerImage, false),
+			metav1.CreateOptions{},
+		)
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+	}
+
+	// Settings
+	for name, value := range map[string]string{
+		string(types.SettingNameDefaultEngineImage):               TestEngineImage,
+		string(types.SettingNameDefaultInstanceManagerImage):      TestInstanceManagerImage,
+		string(types.SettingNameReplicaAutoBalance):               string(longhorn.ReplicaAutoBalanceDisabled),
+		string(types.SettingNameReplicaReplenishmentWaitInterval): "0",
+	} {
+		s := initSettingsNameValue(name, value)
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+
+	// Volume with DataLocality = best-effort, 2 replicas desired.
+	// Engine on Node1, which has 2 replicas (overcrowded). Node2 has 1.
+	volume := newVolume(TestVolumeName, 2)
+	volume.Spec.DataLocality = longhorn.DataLocalityBestEffort
+	volume.Status.State = longhorn.VolumeStateAttached
+	volume.Status.CurrentNodeID = TestNode1
+	volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+	volume.Status.CurrentImage = TestEngineImage
+
+	engine := newEngineForVolume(volume)
+	engine.Spec.NodeID = TestNode1
+	engine.Spec.DesireState = longhorn.InstanceStateRunning
+	engine.Status.CurrentState = longhorn.InstanceStateRunning
+	engine.Status.OwnerID = TestNode1
+	engine.Status.IP = TestIP1
+	engine.Status.StorageIP = TestIP1
+	engine.Status.Port = 9501
+	engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+
+	// r1, r2 on Node1 (engine node, overcrowded), r3 on Node2 (non-local)
+	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+	replica2 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+	replica3 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+
+	replicas := map[string]*longhorn.Replica{
+		replica1.Name: replica1,
+		replica2.Name: replica2,
+		replica3.Name: replica3,
+	}
+
+	for name, r := range replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.LastHealthyAt = r.Spec.HealthyAt
+		r.Status.CurrentState = longhorn.InstanceStateRunning
+		r.Status.IP = randomIP()
+		r.Status.StorageIP = r.Status.IP
+		r.Status.Port = randomPort()
+		r.Spec.DesireState = longhorn.InstanceStateRunning
+		engine.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+		engine.Status.ReplicaModeMap[name] = longhorn.ReplicaModeRW
+	}
+
+	replica1.Status.InstanceManagerName = TestInstanceManagerName + "-" + TestNode1
+	replica2.Status.InstanceManagerName = TestInstanceManagerName + "-" + TestNode1
+	replica3.Status.InstanceManagerName = TestInstanceManagerName + "-" + TestNode2
+
+	// Create replicas in the datastore for deleteReplica to work
+	rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+	for _, r := range replicas {
+		rObj, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = rIndexer.Add(rObj)
+		c.Assert(err, IsNil)
+	}
+
+	// Call cleanupDataLocalityReplicas.
+	// hasLocalReplicaOnSameNodeAsEngine is true (r1 and r2 are on engine node).
+	// The function should delete r3 (the non-local replica on Node2).
+	//
+	// Bug scenario (if passing rs instead of nonLocalReplicaMap):
+	//   getPreferredOvercrowdedReplicaCandidatesForDeletion(rs) sees Node1
+	//   with 2 replicas → returns [r1, r2] → both on engine node → deletion
+	//   loop skips both → cleaned=false. WRONG.
+	cleaned, err := vc.cleanupDataLocalityReplicas(volume, engine, replicas)
+	c.Assert(err, IsNil)
+	c.Assert(cleaned, Equals, true,
+		Commentf("cleanupDataLocalityReplicas should have deleted the non-local replica"))
+
+	// r3 (non-local, on Node2) should be deleted
+	c.Assert(replicas[replica3.Name], IsNil,
+		Commentf("replica3 (non-local on Node2) should have been deleted"))
+
+	// r1 and r2 (local, on engine Node1) should be preserved
+	c.Assert(replicas[replica1.Name], NotNil,
+		Commentf("replica1 (local on engine Node1) should have been preserved"))
+	c.Assert(replicas[replica2.Name], NotNil,
+		Commentf("replica2 (local on engine Node1) should have been preserved"))
+}
