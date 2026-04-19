@@ -21,10 +21,11 @@ const (
 )
 
 type Options struct {
-	Namespace   string
-	Resync      time.Duration
-	TweakList   TweakListOptionsFunc
-	WaitHealthy func(ctx context.Context)
+	Namespace        string
+	Resync           time.Duration
+	TweakList        TweakListOptionsFunc
+	WaitHealthy      func(ctx context.Context)
+	DisableWatchList bool
 }
 
 func NewCache(obj, listObj runtime.Object, client *client.Client, opts *Options) cache.SharedIndexInformer {
@@ -37,11 +38,12 @@ func NewCache(obj, listObj runtime.Object, client *client.Client, opts *Options)
 	opts = applyDefaultCacheOptions(opts)
 
 	lw := &deferredListWatcher{
-		client:      client,
-		tweakList:   opts.TweakList,
-		namespace:   opts.Namespace,
-		listObj:     listObj,
-		waitHealthy: opts.WaitHealthy,
+		client:           client,
+		tweakList:        opts.TweakList,
+		namespace:        opts.Namespace,
+		listObj:          listObj,
+		waitHealthy:      opts.WaitHealthy,
+		disableWatchList: opts.DisableWatchList,
 	}
 
 	return &deferredCache{
@@ -88,12 +90,19 @@ type deferredCache struct {
 }
 
 type deferredListWatcher struct {
-	lw          cache.ListerWatcher
-	client      *client.Client
-	tweakList   TweakListOptionsFunc
-	namespace   string
-	listObj     runtime.Object
-	waitHealthy func(ctx context.Context)
+	lw               cache.ListerWatcher
+	client           *client.Client
+	tweakList        TweakListOptionsFunc
+	namespace        string
+	listObj          runtime.Object
+	waitHealthy      func(ctx context.Context)
+	disableWatchList bool
+}
+
+// IsWatchListSemanticsUnSupported implements the unSupportedWatchListSemantics interface from client-go's util/watchlist package.
+// When this returns true, it tells the client to NOT use the new WatchList feature.
+func (d *deferredListWatcher) IsWatchListSemanticsUnSupported() bool {
+	return d.disableWatchList
 }
 
 func (d *deferredListWatcher) List(options metav1.ListOptions) (runtime.Object, error) {

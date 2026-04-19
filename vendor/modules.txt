@@ -298,7 +298,7 @@ github.com/longhorn/go-common-libs/sync
 github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20260327125832-d1a62805e28f
+# github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
 ## explicit; go 1.25.0
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/iscsidev
@@ -441,7 +441,7 @@ github.com/rancher/dynamiclistener/storage/memory
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
-# github.com/rancher/lasso v0.2.6
+# github.com/rancher/lasso v0.2.7
 ## explicit; go 1.25.0
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client
@@ -451,7 +451,7 @@ github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/metrics
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/wrangler/v3 v3.5.0
+# github.com/rancher/wrangler/v3 v3.5.1
 ## explicit; go 1.25.0
 github.com/rancher/wrangler/v3/pkg/apply
 github.com/rancher/wrangler/v3/pkg/apply/injectors
@@ -570,8 +570,8 @@ go.yaml.in/yaml/v2
 # go.yaml.in/yaml/v3 v3.0.4
 ## explicit; go 1.16
 go.yaml.in/yaml/v3
-# golang.org/x/crypto v0.47.0
-## explicit; go 1.24.0
+# golang.org/x/crypto v0.49.0
+## explicit; go 1.25.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/blowfish
@@ -591,13 +591,14 @@ golang.org/x/exp/slog/internal/buffer
 # golang.org/x/mod v0.34.0
 ## explicit; go 1.25.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.49.0
-## explicit; go 1.24.0
+# golang.org/x/net v0.52.0
+## explicit; go 1.25.0
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/internal/httpcommon
+golang.org/x/net/internal/httpsfv
 golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
 golang.org/x/net/proxy
@@ -617,8 +618,8 @@ golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.39.0
-## explicit; go 1.24.0
+# golang.org/x/term v0.41.0
+## explicit; go 1.25.0
 golang.org/x/term
 # golang.org/x/text v0.35.0
 ## explicit; go 1.25.0
@@ -1334,7 +1335,7 @@ k8s.io/metrics/pkg/client/clientset/versioned
 k8s.io/metrics/pkg/client/clientset/versioned/scheme
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1alpha1
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
-# k8s.io/mount-utils v0.35.3 => k8s.io/mount-utils v0.35.3
+# k8s.io/mount-utils v0.35.4 => k8s.io/mount-utils v0.35.4
 ## explicit; go 1.25.0
 k8s.io/mount-utils
 # k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
@@ -1400,7 +1401,7 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/kubelet => k8s.io/kubelet v0.35.3
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
 # k8s.io/metrics => k8s.io/metrics v0.35.3
-# k8s.io/mount-utils => k8s.io/mount-utils v0.35.3
+# k8s.io/mount-utils => k8s.io/mount-utils v0.35.4
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.35.3
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.35.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.35.3
