@@ -64,20 +64,49 @@ func RPCToInstanceList(obj *rpc.InstanceListResponse) map[string]*Instance {
 }
 
 type InstanceStatus struct {
-	State                  string          `json:"state"`
-	ErrorMsg               string          `json:"errorMsg"`
-	Conditions             map[string]bool `json:"conditions"`
-	PortStart              int32           `json:"portStart"`
-	PortEnd                int32           `json:"portEnd"`
-	TargetPortStart        int32           `json:"targetPortStart"`
-	TargetPortEnd          int32           `json:"targetPortEnd"`
-	StandbyTargetPortStart int32           `json:"standbyTargetPortStart"`
-	StandbyTargetPortEnd   int32           `json:"standbyTargetPortEnd"`
-	UblkID                 int32           `json:"ublk_id"`
-	UUID                   string          `json:"uuid"`
+	State                  string                      `json:"state"`
+	ErrorMsg               string                      `json:"errorMsg"`
+	Conditions             map[string]bool             `json:"conditions"`
+	PortStart              int32                       `json:"portStart"`
+	PortEnd                int32                       `json:"portEnd"`
+	TargetPortStart        int32                       `json:"targetPortStart"`
+	TargetPortEnd          int32                       `json:"targetPortEnd"`
+	StandbyTargetPortStart int32                       `json:"standbyTargetPortStart"`
+	StandbyTargetPortEnd   int32                       `json:"standbyTargetPortEnd"`
+	UblkID                 int32                       `json:"ublk_id"`
+	UUID                   string                      `json:"uuid"`
+	Endpoint               string                      `json:"endpoint"`
+	Frontend               string                      `json:"frontend"`
+	ActivePath             string                      `json:"activePath"`
+	PreferredPath          string                      `json:"preferredPath"`
+	Paths                  []EngineFrontendNvmeTCPPath `json:"paths"`
+}
+
+type EngineFrontendNvmeTCPPath struct {
+	TargetIP   string `json:"targetIP"`
+	TargetPort int32  `json:"targetPort"`
+	EngineName string `json:"engineName"`
+	NQN        string `json:"nqn"`
+	NGUID      string `json:"nguid"`
+	ANAState   string `json:"anaState"`
 }
 
 func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
+	paths := make([]EngineFrontendNvmeTCPPath, 0, len(obj.Paths))
+	for _, path := range obj.Paths {
+		if path == nil {
+			continue
+		}
+		paths = append(paths, EngineFrontendNvmeTCPPath{
+			TargetIP:   path.TargetIp,
+			TargetPort: path.TargetPort,
+			EngineName: path.EngineName,
+			NQN:        path.Nqn,
+			NGUID:      path.Nguid,
+			ANAState:   path.AnaState,
+		})
+	}
+
 	return InstanceStatus{
 		State:                  obj.State,
 		ErrorMsg:               obj.ErrorMsg,
@@ -90,6 +119,11 @@ func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
 		StandbyTargetPortEnd:   obj.StandbyTargetPortEnd,
 		UblkID:                 obj.UblkId,
 		UUID:                   obj.Uuid,
+		Endpoint:               obj.Endpoint,
+		Frontend:               obj.Frontend,
+		ActivePath:             obj.ActivePath,
+		PreferredPath:          obj.PreferredPath,
+		Paths:                  paths,
 	}
 }
 

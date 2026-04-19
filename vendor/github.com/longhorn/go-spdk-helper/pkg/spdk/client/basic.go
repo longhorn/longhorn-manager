@@ -1164,6 +1164,29 @@ func (c *Client) NvmfCreateSubsystem(nqn string) (created bool, err error) {
 	return created, json.Unmarshal(cmdOutput, &created)
 }
 
+// NvmfCreateSubsystemWithCntlid constructs an NVMe over Fabrics target
+// subsystem with an optional CNTLID range and ANA reporting enabled.
+func (c *Client) NvmfCreateSubsystemWithCntlid(nqn string, minCntlid, maxCntlid uint16) (created bool, err error) {
+	req := spdktypes.NvmfCreateSubsystemRequest{
+		Nqn:          nqn,
+		AllowAnyHost: true,
+		AnaReporting: true,
+	}
+	if minCntlid > 0 {
+		req.MinCntlid = minCntlid
+	}
+	if maxCntlid > 0 {
+		req.MaxCntlid = maxCntlid
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("nvmf_create_subsystem", req)
+	if err != nil {
+		return false, err
+	}
+
+	return created, json.Unmarshal(cmdOutput, &created)
+}
+
 // NvmfDeleteSubsystem constructs an NVMe over Fabrics target subsystem..
 //
 //	"nqn": Required. Subsystem NQN.
@@ -1210,11 +1233,18 @@ func (c *Client) NvmfGetSubsystems(nqn, tgtName string) (subsystemList []spdktyp
 //
 //	"nguid": Optional. Namespace globally unique identifier.
 func (c *Client) NvmfSubsystemAddNs(nqn, bdevName, nguid string) (nsid uint32, err error) {
+	return c.NvmfSubsystemAddNsWithUUID(nqn, bdevName, nguid, "")
+}
+
+// NvmfSubsystemAddNsWithUUID adds a namespace with an optional stable UUID for
+// NVMe multipath aggregation.
+func (c *Client) NvmfSubsystemAddNsWithUUID(nqn, bdevName, nguid, nsUUID string) (nsid uint32, err error) {
 	req := spdktypes.NvmfSubsystemAddNsRequest{
 		Nqn: nqn,
 		Namespace: spdktypes.NvmfSubsystemNamespace{
 			BdevName: bdevName,
 			Nguid:    nguid,
+			UUID:     nsUUID,
 		},
 	}
 
@@ -1341,6 +1371,47 @@ func (c *Client) NvmfSubsystemRemoveListener(nqn, traddr, trsvcid string, trtype
 	}
 
 	return deleted, json.Unmarshal(cmdOutput, &deleted)
+}
+
+// NvmfSubsystemListenerSetANAState sets the ANA state of a subsystem listener.
+//
+//	"nqn": Required. Subsystem NQN.
+//
+//	"traddr": Required. NVMe-oF target address: an ip or BDF.
+//
+//	"trsvcid": Required. NVMe-oF target trsvcid: a port number.
+//
+//	"trtype": Required. NVMe-oF target trtype.
+//
+//	"adrfam": Required. Address family.
+//
+//	"anaState": Required. Listener ANA state.
+//
+//	"anaGrpid": Optional. ANA group ID.
+func (c *Client) NvmfSubsystemListenerSetANAState(nqn, traddr, trsvcid string, trtype spdktypes.NvmeTransportType,
+	adrfam spdktypes.NvmeAddressFamily, anaState spdktypes.NvmfSubsystemListenerAnaState, anaGrpid uint32) (result bool, err error) {
+	if anaGrpid == 0 {
+		anaGrpid = spdktypes.DefaultNvmfANAGroupID
+	}
+
+	req := spdktypes.NvmfSubsystemListenerSetANAStateRequest{
+		Nqn: nqn,
+		ListenAddress: spdktypes.NvmfSubsystemListenAddress{
+			Traddr:  traddr,
+			Trsvcid: trsvcid,
+			Trtype:  trtype,
+			Adrfam:  adrfam,
+		},
+		AnaState: anaState,
+		AnaGrpid: anaGrpid,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("nvmf_subsystem_listener_set_ana_state", req)
+	if err != nil {
+		return false, err
+	}
+
+	return result, json.Unmarshal(cmdOutput, &result)
 }
 
 // NvmfSubsystemGetListeners lists all listeners for the specified NVMe-oF target subsystem.

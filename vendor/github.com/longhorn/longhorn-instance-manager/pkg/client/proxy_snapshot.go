@@ -12,12 +12,15 @@ import (
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
-func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, serviceAddress,
+func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress,
 	volumeSnapshotName string, labels map[string]string, freezeFilesystem bool) (snapshotName string, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
 		"serviceAddress": serviceAddress,
+	}
+	if dataEngine == dataEngineV2 {
+		input["engineFrontendName"] = engineFrontendName
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return "", errors.Wrap(err, "failed to snapshot volume")
@@ -48,8 +51,9 @@ func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, service
 
 	req := &rpc.EngineVolumeSnapshotRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:    serviceAddress,
-			EngineName: engineName,
+			Address:            serviceAddress,
+			EngineName:         engineName,
+			EngineFrontendName: engineFrontendName,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
@@ -229,13 +233,16 @@ func (c *ProxyClient) SnapshotCloneStatus(dataEngine, engineName, volumeName, se
 	return status, nil
 }
 
-func (c *ProxyClient) SnapshotRevert(dataEngine, engineName, volumeName, serviceAddress string,
+func (c *ProxyClient) SnapshotRevert(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress string,
 	name string) (err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
 		"serviceAddress": serviceAddress,
 		"name":           name,
+	}
+	if dataEngine == dataEngineV2 {
+		input["engineFrontendName"] = engineFrontendName
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return errors.Wrap(err, "failed to revert volume to snapshot")
@@ -257,8 +264,9 @@ func (c *ProxyClient) SnapshotRevert(dataEngine, engineName, volumeName, service
 
 	req := &rpc.EngineSnapshotRevertRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:    serviceAddress,
-			EngineName: engineName,
+			Address:            serviceAddress,
+			EngineName:         engineName,
+			EngineFrontendName: engineFrontendName,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
@@ -276,12 +284,15 @@ func (c *ProxyClient) SnapshotRevert(dataEngine, engineName, volumeName, service
 	return nil
 }
 
-func (c *ProxyClient) SnapshotPurge(dataEngine, engineName, volumeName, serviceAddress string,
+func (c *ProxyClient) SnapshotPurge(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress string,
 	skipIfInProgress bool) (err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
 		"serviceAddress": serviceAddress,
+	}
+	if dataEngine == dataEngineV2 {
+		input["engineFrontendName"] = engineFrontendName
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return errors.Wrap(err, "failed to purge snapshots")
@@ -298,8 +309,9 @@ func (c *ProxyClient) SnapshotPurge(dataEngine, engineName, volumeName, serviceA
 
 	req := &rpc.EngineSnapshotPurgeRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:    serviceAddress,
-			EngineName: engineName,
+			Address:            serviceAddress,
+			EngineName:         engineName,
+			EngineFrontendName: engineFrontendName,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
@@ -317,7 +329,7 @@ func (c *ProxyClient) SnapshotPurge(dataEngine, engineName, volumeName, serviceA
 	return nil
 }
 
-func (c *ProxyClient) SnapshotPurgeStatus(dataEngine, engineName, volumeName, serviceAddress string) (status map[string]*SnapshotPurgeStatus, err error) {
+func (c *ProxyClient) SnapshotPurgeStatus(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress string) (status map[string]*SnapshotPurgeStatus, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
@@ -337,8 +349,9 @@ func (c *ProxyClient) SnapshotPurgeStatus(dataEngine, engineName, volumeName, se
 	}()
 
 	req := &rpc.ProxyEngineRequest{
-		Address:    serviceAddress,
-		EngineName: engineName,
+		Address:            serviceAddress,
+		EngineName:         engineName,
+		EngineFrontendName: engineFrontendName,
 		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
@@ -364,12 +377,15 @@ func (c *ProxyClient) SnapshotPurgeStatus(dataEngine, engineName, volumeName, se
 	return status, nil
 }
 
-func (c *ProxyClient) SnapshotRemove(dataEngine, engineName, volumeName, serviceAddress string,
+func (c *ProxyClient) SnapshotRemove(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress string,
 	names []string) (err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
 		"serviceAddress": serviceAddress,
+	}
+	if dataEngine == dataEngineV2 {
+		input["engineFrontendName"] = engineFrontendName
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return errors.Wrapf(err, "failed to remove snapshot %v", names)
@@ -386,8 +402,9 @@ func (c *ProxyClient) SnapshotRemove(dataEngine, engineName, volumeName, service
 
 	req := &rpc.EngineSnapshotRemoveRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:    serviceAddress,
-			EngineName: engineName,
+			Address:            serviceAddress,
+			EngineName:         engineName,
+			EngineFrontendName: engineFrontendName,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
