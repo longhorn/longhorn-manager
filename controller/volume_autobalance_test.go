@@ -1118,3 +1118,219 @@ func (s *TestSuite) TestDataLocalityCleanupWhenEngineNodeOvercrowded(c *C) {
 	c.Assert(replicas[replica2.Name], NotNil,
 		Commentf("replica2 (local on engine Node1) should have been preserved"))
 }
+
+// TestAutoBalanceCountingConsistency verifies that the add side
+// (getReplenishReplicasCount / getReplicaCountForAutoBalanceNode) and cleanup
+// side (getPreferredOvercrowdedReplicaCandidatesForDeletion) agree on replica
+// counts when a healthy+active replica is in a non-Running state (e.g.,
+// Starting).
+//
+// One Example Scenario:
+//   - Node A: 2 replicas (r1 Running + r2 Starting but healthy+active)
+//   - Node B: 1 replica (r3 Running)
+//   - Node C: empty
+//
+// Before the fix:
+//   - Add side used `CurrentState == Running` → undercounted Node A (saw 1)
+//   - Cleanup side counted ALL replicas → overcounted Node A (saw 2+)
+//   - This mismatch caused the add side to think Node A was balanced while the
+//     cleanup side thought it was overcrowded, contributing to the loop.
+//
+// After the fix, both sides use `isHealthyAndActiveReplica`, so they agree:
+//   - Add side: A=2, B=1, C=0 → imbalanced, adjustCount=1, target=C
+//   - Cleanup side: A is overcrowded (2 replicas) → candidates include r1,r2
+func (s *TestSuite) TestAutoBalanceCountingConsistency(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	// Create daemon pods for 3 nodes
+	for _, dp := range []struct {
+		name, node, ip string
+	}{
+		{TestDaemon1, TestNode1, TestIP1},
+		{TestDaemon2, TestNode2, TestIP2},
+		{TestDaemon3, TestNode3, TestIP3},
+	} {
+		d := newDaemonPod(corev1.PodRunning, dp.name, TestNamespace, dp.node, dp.ip, nil)
+		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), d, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = pIndexer.Add(p)
+		c.Assert(err, IsNil)
+	}
+
+	// Create engine image
+	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+	engineImage.Status.NodeDeploymentMap[TestNode1] = true
+	engineImage.Status.NodeDeploymentMap[TestNode2] = true
+	engineImage.Status.NodeDeploymentMap[TestNode3] = true
+	ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), engineImage, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	err = eiIndexer.Add(ei)
+	c.Assert(err, IsNil)
+
+	// Create 3 Longhorn nodes
+	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node3 := newNode(TestNode3, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	for _, node := range []*longhorn.Node{node1, node2, node3} {
+		n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = nIndexer.Add(n)
+		c.Assert(err, IsNil)
+		knode := newKubernetesNode(node.Name, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = knIndexer.Add(kn)
+		c.Assert(err, IsNil)
+	}
+
+	// Create instance managers
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	for _, imInfo := range []struct {
+		name, ownerID, nodeID, ip string
+	}{
+		{TestInstanceManagerName + "-" + TestNode1, TestOwnerID1, TestNode1, TestIP1},
+		{TestInstanceManagerName + "-" + TestNode2, TestOwnerID2, TestNode2, TestIP2},
+		{TestInstanceManagerName + "-" + TestNode3, TestOwnerID3, TestNode3, TestIP3},
+	} {
+		im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
+			context.TODO(),
+			newInstanceManager(imInfo.name, longhorn.InstanceManagerStateRunning, imInfo.ownerID, imInfo.nodeID, imInfo.ip,
+				map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeV1, TestInstanceManagerImage, false),
+			metav1.CreateOptions{},
+		)
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+	}
+
+	// Settings: least-effort auto-balance
+	for name, value := range map[string]string{
+		string(types.SettingNameDefaultEngineImage):               TestEngineImage,
+		string(types.SettingNameDefaultInstanceManagerImage):      TestInstanceManagerImage,
+		string(types.SettingNameReplicaAutoBalance):               string(longhorn.ReplicaAutoBalanceLeastEffort),
+		string(types.SettingNameReplicaReplenishmentWaitInterval): "0",
+	} {
+		s := initSettingsNameValue(name, value)
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+
+	// Volume with 3 replicas:
+	//   r1 on Node1 (healthy+active, Running)
+	//   r2 on Node1 (healthy+active, Starting — NOT Running)
+	//   r3 on Node2 (healthy+active, Running)
+	//   Node3 is empty
+	volume := newVolume(TestVolumeName, 3)
+	volume.Status.State = longhorn.VolumeStateAttached
+	volume.Status.CurrentNodeID = TestNode1
+	volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+	volume.Status.CurrentImage = TestEngineImage
+
+	engine := newEngineForVolume(volume)
+	engine.Spec.NodeID = TestNode1
+	engine.Spec.DesireState = longhorn.InstanceStateRunning
+	engine.Status.CurrentState = longhorn.InstanceStateRunning
+	engine.Status.OwnerID = TestNode1
+	engine.Status.IP = TestIP1
+	engine.Status.StorageIP = TestIP1
+	engine.Status.Port = 9501
+	engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+
+	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+	replica2 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1) // 2nd on same node
+	replica3 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+
+	replicas := map[string]*longhorn.Replica{
+		replica1.Name: replica1,
+		replica2.Name: replica2,
+		replica3.Name: replica3,
+	}
+
+	for name, r := range replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.LastHealthyAt = r.Spec.HealthyAt
+		r.Status.CurrentState = longhorn.InstanceStateRunning
+		r.Status.IP = randomIP()
+		r.Status.StorageIP = r.Status.IP
+		r.Status.Port = randomPort()
+		r.Spec.DesireState = longhorn.InstanceStateRunning
+		engine.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+		engine.Status.ReplicaModeMap[name] = longhorn.ReplicaModeRW
+	}
+
+	// Key: set r2 to Starting (healthy+active but NOT Running).
+	// Before the fix, the add side (Running filter) would skip r2 and see
+	// Node1 as having only 1 replica → balanced with Node2 (1 each).
+	// After the fix, both sides count r2 → Node1 has 2, Node2 has 1.
+	replica2.Status.CurrentState = longhorn.InstanceStateStarting
+
+	// ---- Verify add side ----
+	// getReplenishReplicasCount should see Node1=2 (r1+r2), Node2=1, Node3=0
+	// and request 1 new replica targeting Node3.
+	replenishCount, hardNodeAffinity := vc.getReplenishReplicasCount(volume, replicas, engine)
+
+	c.Assert(replenishCount, Equals, 1,
+		Commentf("Add side should detect imbalance: Node1=2, Node2=1, Node3=0"))
+	c.Assert(hardNodeAffinity, Equals, TestNode3,
+		Commentf("Add side should target the empty node (Node3)"))
+
+	// ---- Verify cleanup side ----
+	// getPreferredOvercrowdedReplicaCandidatesForDeletion should see Node1
+	// as overcrowded (2 replicas including the Starting one).
+	candidates, err := vc.getPreferredOvercrowdedReplicaCandidatesForDeletion(replicas)
+	c.Assert(err, IsNil)
+
+	// Node1 has 2 replicas → overcrowded → candidates should include r1 and r2
+	candidateSet := make(map[string]bool, len(candidates))
+	for _, name := range candidates {
+		candidateSet[name] = true
+	}
+	c.Assert(candidateSet[replica1.Name], Equals, true,
+		Commentf("Cleanup side should include r1 (on overcrowded Node1) in candidates"))
+	c.Assert(candidateSet[replica2.Name], Equals, true,
+		Commentf("Cleanup side should include r2 (Starting but healthy+active, on overcrowded Node1) in candidates"))
+	c.Assert(candidateSet[replica3.Name], Equals, false,
+		Commentf("Cleanup side should NOT include r3 (sole replica on Node2) in candidates"))
+
+	// ---- Verify failed replicas are excluded from both sides ----
+	// Add a failed replica on Node2 to verify it's not counted by either side.
+	failedReplica := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+	failedReplica.Spec.FailedAt = getTestNow()
+	failedReplica.Status.CurrentState = longhorn.InstanceStateStopped
+	replicas[failedReplica.Name] = failedReplica
+
+	// Add side: failed replica should NOT be counted → Node2 still has 1
+	replenishCount2, hardNodeAffinity2 := vc.getReplenishReplicasCount(volume, replicas, engine)
+	c.Assert(replenishCount2, Equals, 1,
+		Commentf("Add side should still detect same imbalance after adding failed replica"))
+	c.Assert(hardNodeAffinity2, Equals, TestNode3,
+		Commentf("Add side should still target Node3 after adding failed replica"))
+
+	// Cleanup side: failed replica should NOT be counted → Node2 still has 1
+	candidates2, err := vc.getPreferredOvercrowdedReplicaCandidatesForDeletion(replicas)
+	c.Assert(err, IsNil)
+	candidateSet2 := make(map[string]bool, len(candidates2))
+	for _, name := range candidates2 {
+		candidateSet2[name] = true
+	}
+	c.Assert(candidateSet2[failedReplica.Name], Equals, false,
+		Commentf("Cleanup side should NOT include the failed replica in candidates"))
+}

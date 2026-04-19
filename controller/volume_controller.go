@@ -2485,7 +2485,14 @@ func (c *VolumeController) getPreferredOvercrowdedReplicaCandidatesForDeletion(r
 		nodeMap[node.Name] = node
 	}
 
+	// Only consider healthy and active replicas for the overcrowding
+	// analysis. Failed/rebuilding/inactive replicas are handled by other
+	// cleanup paths (e.g. cleanupCorruptedOrStaleReplicas) and should not
+	// inflate a node's replica count here.
 	for _, r := range rs {
+		if !isHealthyAndActiveReplica(r, false) {
+			continue
+		}
 		diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID] = append(diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID], r.Name)
 		nodeToReplicaMap[r.Spec.NodeID] = append(nodeToReplicaMap[r.Spec.NodeID], r.Name)
 		if node, ok := nodeMap[r.Spec.NodeID]; ok && node.Status.Zone != "" {
@@ -3096,7 +3103,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		}
 	}
 	for _, r := range rs {
-		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+		if !isHealthyAndActiveReplica(r, false) {
 			continue
 		}
 
@@ -3251,7 +3258,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 
 	nodeExtraRs := make(map[string][]string)
 	for _, r := range rs {
-		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+		if !isHealthyAndActiveReplica(r, false) {
 			continue
 		}
 
