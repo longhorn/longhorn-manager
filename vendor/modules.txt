@@ -265,7 +265,7 @@ github.com/longhorn/go-common-libs/sync
 github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20260327125832-d1a62805e28f
+# github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
 ## explicit; go 1.25.0
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/iscsidev
@@ -1306,7 +1306,7 @@ k8s.io/metrics/pkg/client/clientset/versioned
 k8s.io/metrics/pkg/client/clientset/versioned/scheme
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1alpha1
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
-# k8s.io/mount-utils v0.35.3 => k8s.io/mount-utils v0.35.3
+# k8s.io/mount-utils v0.35.4 => k8s.io/mount-utils v0.35.4
 ## explicit; go 1.25.0
 k8s.io/mount-utils
 # k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
@@ -1372,7 +1372,7 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/kubelet => k8s.io/kubelet v0.35.3
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
 # k8s.io/metrics => k8s.io/metrics v0.35.3
-# k8s.io/mount-utils => k8s.io/mount-utils v0.35.3
+# k8s.io/mount-utils => k8s.io/mount-utils v0.35.4
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.35.3
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.35.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.35.3
