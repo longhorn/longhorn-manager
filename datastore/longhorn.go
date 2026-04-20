@@ -5344,6 +5344,14 @@ func (s *DataStore) ListBackupsWithBackupVolumeName(backupTargetName, volumeName
 	return itemMap, nil
 }
 
+// ListBackupsWithSelectorRO returns a list of Backups matching the selector.
+func (s *DataStore) ListBackupsWithSelectorRO(selector labels.Selector) ([]*longhorn.Backup, error) {
+	if selector == nil {
+		selector = labels.Everything()
+	}
+	return s.backupLister.Backups(s.namespace).List(selector)
+}
+
 // ListBackupsRO returns a list of all Backups for the given namespace
 func (s *DataStore) ListBackupsRO() ([]*longhorn.Backup, error) {
 	return s.backupLister.Backups(s.namespace).List(labels.Everything())
