@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -287,11 +288,13 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	storageCapacityEnabled := false
 	storageCapacityTrackingSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCSIStorageCapacityTracking), metav1.GetOptions{})
 	if err != nil {
+		logrus.WithError(err).Warnf("failed to get storage capacity tracking setting, defaulting to false")
+	} else if storageCapacityEnabled, err = strconv.ParseBool(storageCapacityTrackingSetting.Value); err != nil {
 		return err
 	}
-	storageCapacityEnabled := types.IsCSIStorageCapacityEnabled(storageCapacityTrackingSetting.Value)
 
 	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {

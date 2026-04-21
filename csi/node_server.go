@@ -940,11 +940,12 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		}
 	}
 
-	switch ns.getStorageCapacityTracking(ctx) {
-	case types.CSIStorageCapacityTrackingNode:
-		ns.ensureTopologyKey(topologySegments, kubeNode.Labels, corev1.LabelHostname)
-	case types.CSIStorageCapacityTrackingZone:
-		ns.ensureTopologyKey(topologySegments, kubeNode.Labels, corev1.LabelTopologyZone)
+	// Always expose hostname and zone topology keys in CSINode regardless of the csi-allowed-topology-keys setting.
+	// Controller server relies on these keys to locate the correct node or zone when responding to capacity queries.
+	// Note: these keys are only included in PV node affinity if listed in the csi-allowed-topology-keys setting.
+	if kubeNode != nil {
+		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelHostname)
+		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelTopologyZone)
 	}
 
 	return &csi.NodeGetInfoResponse{
@@ -957,28 +958,17 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 }
 
 // ensureTopologyKey adds the given label key to topologySegments if not already present, and warns if the label is missing.
-func (ns *NodeServer) ensureTopologyKey(topologySegments, nodeLabels map[string]string, key string) {
+func (ns *NodeServer) ensureTopologyKey(nodeName string, topologySegments, nodeLabels map[string]string, key string) {
 	labelVal, hasLabel := nodeLabels[key]
 	if !hasLabel {
-		ns.log.Errorf("Node is missing label %q, capacity tracking may not work correctly", key)
+		ns.log.Warnf("Node %q is missing label %q, capacity tracking may not work correctly", nodeName, key)
 		return
 	}
 	_, inTopology := topologySegments[key]
 	if !inTopology {
 		topologySegments[key] = labelVal
-		ns.log.Infof("Added label %q to CSINode topology keys", key)
+		ns.log.Infof("Added label %q to CSINode %q topology keys", key, nodeName)
 	}
-}
-
-// getCSIStorageCapacityTracking returns csi-storage-capacity-tracking setting.
-func (ns *NodeServer) getStorageCapacityTracking(ctx context.Context) types.CSIStorageCapacityTracking {
-	setting, err := ns.lhClient.LonghornV1beta2().Settings(ns.lhNamespace).Get(ctx, string(types.SettingNameCSIStorageCapacityTracking), metav1.GetOptions{})
-	if err != nil {
-		ns.log.WithError(err).Warnf("Failed to get %q setting, defaulting to node-level capacity tracking", types.SettingNameCSIStorageCapacityTracking)
-		return types.CSIStorageCapacityTrackingNode
-	}
-
-	return types.CSIStorageCapacityTracking(setting.Value)
 }
 
 // getAllowedTopologyKeys fetches the CSI Allowed Topology Keys setting and

@@ -23,10 +23,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -35,8 +34,6 @@ import (
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	lhlisters "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta2"
 )
 
 const (
@@ -59,13 +56,13 @@ const (
 
 type ControllerServer struct {
 	csi.UnimplementedControllerServer
-	apiClient     *longhornclient.RancherClient
-	nodeID        string
-	caps          []*csi.ControllerServiceCapability
-	accessModes   []*csi.VolumeCapability_AccessMode
-	log           *logrus.Entry
-	settingLister lhlisters.SettingNamespaceLister
-	nodeLister    lhlisters.NodeNamespaceLister
+	apiClient   *longhornclient.RancherClient
+	nodeID      string
+	caps        []*csi.ControllerServiceCapability
+	accessModes []*csi.VolumeCapability_AccessMode
+	log         *logrus.Entry
+	lhClient    lhclientset.Interface
+	lhNamespace string
 }
 
 func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string) (*ControllerServer, error) {
@@ -82,19 +79,6 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get longhorn clientset")
-	}
-
-	informerFactory := lhinformers.NewSharedInformerFactoryWithOptions(lhClient, 0, lhinformers.WithNamespace(lhNamespace))
-	settingInformer := informerFactory.Longhorn().V1beta2().Settings()
-	_ = settingInformer.Informer()
-	nodeInformer := informerFactory.Longhorn().V1beta2().Nodes()
-	_ = nodeInformer.Informer()
-
-	// Start informers and wait for cache sync
-	stopCh := make(chan struct{})
-	informerFactory.Start(stopCh)
-	if !cache.WaitForCacheSync(stopCh, settingInformer.Informer().HasSynced, nodeInformer.Informer().HasSynced) {
-		return nil, errors.New("failed to sync informer caches")
 	}
 
 	return &ControllerServer{
@@ -117,9 +101,9 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
 				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			}),
-		log:           logrus.StandardLogger().WithField("component", "csi-controller-server"),
-		settingLister: settingInformer.Lister().Settings(lhNamespace),
-		nodeLister:    nodeInformer.Lister().Nodes(lhNamespace),
+		log:         logrus.StandardLogger().WithField("component", "csi-controller-server"),
+		lhClient:    lhClient,
+		lhNamespace: lhNamespace,
 	}, nil
 }
 
@@ -729,19 +713,15 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		}
 	}()
 
-	storageCapacityTrackingSetting, err := cs.getSettingAsString(types.SettingNameCSIStorageCapacityTracking)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameCSIStorageCapacityTracking, err)
-	}
-	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyNodeSelectorVolume)
+	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(ctx, types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyNodeSelectorVolume, err)
 	}
-	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
+	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(ctx, types.SettingNameAllowEmptyDiskSelectorVolume)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
 	}
-	overProvisioningPercentage, err := cs.getSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
+	overProvisioningPercentage, err := cs.getSettingAsInt(ctx, types.SettingNameStorageOverProvisioningPercentage)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameStorageOverProvisioningPercentage, err)
 	}
@@ -758,6 +738,10 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	dataEngine := longhorn.DataEngineTypeV1
 	if dataEngineType, ok := scParameters["dataEngine"]; ok {
 		dataEngine = longhorn.DataEngineType(dataEngineType)
+	}
+	storageCapacityMode := types.CSIStorageCapacityTrackingModeNode
+	if storageCapacityModeRaw, ok := scParameters["storageCapacityMode"]; ok {
+		storageCapacityMode = types.CSIStorageCapacityTrackingMode(storageCapacityModeRaw)
 	}
 
 	nodeCapacity := func(node *longhorn.Node) (maximumVolumeSize int64, availableCapacity int64) {
@@ -793,10 +777,10 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 			overProvisionLimit := ((diskStatus.StorageMaximum - diskSpec.StorageReserved) * overProvisioningPercentage) / 100
 			storageSchedulable := overProvisionLimit - diskStatus.StorageScheduled
 			storageSchedulable = max(storageSchedulable, 0)
-			if dataEngine == longhorn.DataEngineTypeV1 && diskStatus.Type == longhorn.DiskTypeFilesystem {
-				maximumVolumeSize = max(maximumVolumeSize, storageSchedulable)
-				availableCapacity += storageSchedulable
-			} else if dataEngine == longhorn.DataEngineTypeV2 && diskStatus.Type == longhorn.DiskTypeBlock {
+			validDisk := (dataEngine == longhorn.DataEngineTypeV1 && diskStatus.Type == longhorn.DiskTypeFilesystem) ||
+				(dataEngine == longhorn.DataEngineTypeV2 && diskStatus.Type == longhorn.DiskTypeBlock)
+
+			if validDisk {
 				maximumVolumeSize = max(maximumVolumeSize, storageSchedulable)
 				availableCapacity += storageSchedulable
 			}
@@ -811,13 +795,13 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	if topology == nil || len(topology.Segments) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "missing or empty accessible topology request parameter")
 	}
-	switch types.CSIStorageCapacityTracking(storageCapacityTrackingSetting) {
-	case types.CSIStorageCapacityTrackingNode:
+	switch storageCapacityMode {
+	case types.CSIStorageCapacityTrackingModeNode:
 		nodeID, ok := topology.Segments[corev1.LabelHostname]
 		if !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "missing %q topology segment", corev1.LabelHostname)
 		}
-		node, err := cs.nodeLister.Get(nodeID)
+		node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
@@ -826,25 +810,25 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		}
 		maximumVolumeSize, availableCapacity = nodeCapacity(node)
 		log.Infof("Node: %s, DataEngine: %s, MaximumVolumeSize: %d, AvailableCapacity: %d", nodeID, dataEngine, maximumVolumeSize, availableCapacity)
-	case types.CSIStorageCapacityTrackingZone:
+	case types.CSIStorageCapacityTrackingModeZone:
 		zone, ok := topology.Segments[corev1.LabelTopologyZone]
 		if !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "missing %q topology segment", corev1.LabelTopologyZone)
 		}
-		nodes, err := cs.nodeLister.List(labels.Everything())
+		nodeList, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to list nodes: %v", err)
 		}
-		for _, node := range nodes {
+		for _, node := range nodeList.Items {
 			if node.Status.Zone == zone {
-				nodeMaximumVolumeSize, nodeAvailableCapacity := nodeCapacity(node)
+				nodeMaximumVolumeSize, nodeAvailableCapacity := nodeCapacity(&node)
 				maximumVolumeSize = max(maximumVolumeSize, nodeMaximumVolumeSize)
 				availableCapacity += nodeAvailableCapacity
 			}
 		}
 		log.Infof("Zone: %s, DataEngine: %s, MaximumVolumeSize: %d, AvailableCapacity: %d", zone, dataEngine, maximumVolumeSize, availableCapacity)
 	default:
-		return nil, status.Errorf(codes.Internal, "unexpected value %q for setting %q", storageCapacityTrackingSetting, types.SettingNameCSIStorageCapacityTracking)
+		return nil, status.Errorf(codes.InvalidArgument, "unexpected value %q for storage class parameter 'storageCapacityMode'", storageCapacityMode)
 	}
 
 	rsp = &csi.GetCapacityResponse{
@@ -861,24 +845,24 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	return rsp, nil
 }
 
-func (cs *ControllerServer) getSettingAsBoolean(name types.SettingName) (bool, error) {
-	obj, err := cs.settingLister.Get(string(name))
+func (cs *ControllerServer) getSettingAsBoolean(ctx context.Context, name types.SettingName) (bool, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(ctx, string(name), metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}
 	return strconv.ParseBool(obj.Value)
 }
 
-func (cs *ControllerServer) getSettingAsInt(name types.SettingName) (int64, error) {
-	obj, err := cs.settingLister.Get(string(name))
+func (cs *ControllerServer) getSettingAsInt(ctx context.Context, name types.SettingName) (int64, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(ctx, string(name), metav1.GetOptions{})
 	if err != nil {
 		return -1, err
 	}
 	return strconv.ParseInt(obj.Value, 10, 64)
 }
 
-func (cs *ControllerServer) getSettingAsString(name types.SettingName) (string, error) {
-	obj, err := cs.settingLister.Get(string(name))
+func (cs *ControllerServer) getSettingAsString(ctx context.Context, name types.SettingName) (string, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(ctx, string(name), metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -1728,7 +1712,7 @@ func (cs *ControllerServer) getAccessibleTopologyFromRequirements(ctx context.Co
 	// Filter topology keys based on the CSI Allowed Topology Keys setting.
 	// Only keys listed in the setting are kept; if the setting is empty or missing,
 	// all topology keys are filtered out (no nodeAffinity on PV).
-	allowedKeysStr, err := cs.getSettingAsString(types.SettingNameCSIAllowedTopologyKeys)
+	allowedKeysStr, err := cs.getSettingAsString(ctx, types.SettingNameCSIAllowedTopologyKeys)
 	if err != nil {
 		log.WithError(err).Warn("Failed to get CSI allowed topology keys setting, filtering all topology keys")
 	}
