@@ -1250,12 +1250,17 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 	// Pick up the replicas on the node that becomes ready most recently.
 	// Here we use kube node rather than Longhorn node because Longhorn node's ready condition will be affected by
 	// the corresponding longhorn-manager pod.
-	var chosenReplica, lastReadyReplica *longhorn.Replica
+	var chosenReplica *longhorn.Replica
+	var lastReadyReplicas []*longhorn.Replica
 	var lastReadyTransitionTime, secondLastReadyTransitionTime metav1.Time
-	nodeReplicaMap := make(map[string]*longhorn.Replica, len(rs))
+	nodeReplicasMap := make(map[string][]*longhorn.Replica, len(rs))
 	for _, r := range rs {
 		if isHealthyAndActiveReplica(r, false) {
-			nodeReplicaMap[r.Spec.NodeID] = r
+			if nodeReplicasMap[r.Spec.NodeID] == nil {
+				nodeReplicasMap[r.Spec.NodeID] = []*longhorn.Replica{r}
+			} else {
+				nodeReplicasMap[r.Spec.NodeID] = append(nodeReplicasMap[r.Spec.NodeID], r)
+			}
 		}
 	}
 	nodes, err := c.ds.ListKubeNodesRO()
@@ -1263,7 +1268,7 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 		return false, err
 	}
 	for _, node := range nodes {
-		if nodeReplicaMap[node.Name] == nil {
+		if nodeReplicasMap[node.Name] == nil {
 			continue
 		}
 		var readyCondition corev1.NodeCondition
@@ -1281,12 +1286,15 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 		}
 		// In case of a replica being on not-ready node, chose it first.
 		if readyCondition.Status != corev1.ConditionTrue {
-			chosenReplica = nodeReplicaMap[node.Name]
-			break
+			if len(nodeReplicasMap[node.Name]) > 0 {
+				chosenReplica = nodeReplicasMap[node.Name][0]
+				log.Infof("Deleting replica %v on unstable node %s as its kube node ready condition is false", chosenReplica.Name, chosenReplica.Spec.NodeID)
+				break
+			}
 		}
 
 		if readyCondition.LastTransitionTime.After(lastReadyTransitionTime.Time) {
-			lastReadyReplica = nodeReplicaMap[node.Name]
+			lastReadyReplicas = nodeReplicasMap[node.Name]
 			secondLastReadyTransitionTime = lastReadyTransitionTime
 			lastReadyTransitionTime = readyCondition.LastTransitionTime
 		} else if readyCondition.LastTransitionTime.After(secondLastReadyTransitionTime.Time) {
@@ -1299,9 +1307,27 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 	// So choose the replica in that disk for deletion.
 	if chosenReplica == nil && !lastReadyTransitionTime.IsZero() && !secondLastReadyTransitionTime.IsZero() &&
 		lastReadyTransitionTime.After(secondLastReadyTransitionTime.Add(UnstableNodeReadyTimeThreshold)) {
-		log.Infof("Deleting replica %v on node %s disk %v since its kube node ready transition time %v is over %v minutes later than others",
-			lastReadyReplica.Name, lastReadyReplica.Spec.NodeID, lastReadyReplica.Spec.DiskID, lastReadyTransitionTime.Format(time.RFC3339), UnstableNodeReadyTimeThreshold.Minutes())
-		chosenReplica = lastReadyReplica
+		// We only pick up one of the replicas whose spec.HealthyAt is earlier than the node ready transition time,
+		// which means the replica has been healthy before the node becomes ready or stable.
+		// If all replicas on that node have spec.HealthyAt later than the node ready transition time,
+		// to avoid false deletion,the cleanup will be skipped
+		// https://github.com/longhorn/longhorn/issues/12926
+		for _, r := range lastReadyReplicas {
+			if r.Spec.HealthyAt == "" {
+				continue
+			}
+			healthyAtTime, err := util.ParseTime(r.Spec.HealthyAt)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to parse HealthyAt %v of replica %v, skipping unstable replica cleanup evaluation for this replica", r.Spec.HealthyAt, r.Name)
+			}
+			if healthyAtTime.Before(lastReadyTransitionTime.Time) {
+				chosenReplica = r
+				log.Infof("Deleting replica %v on unstable node %s disk %v (whose kube node ready transition time %v is over %v minutes later than others), since its healthy transition time %v is before the node ready transition time %v",
+					chosenReplica.Name, chosenReplica.Spec.NodeID, chosenReplica.Spec.DiskID, lastReadyTransitionTime.Format(time.RFC3339), UnstableNodeReadyTimeThreshold.Minutes(),
+					healthyAtTime.Format(time.RFC3339), lastReadyTransitionTime.Format(time.RFC3339))
+				break
+			}
+		}
 	}
 
 	if chosenReplica != nil {
