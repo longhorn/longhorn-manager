@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/cache"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,29 +20,16 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake" // nolint: staticcheck
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
 
 const testNamespace = "longhorn-system-test"
 
 func newTestControllerServer(t *testing.T, objs ...runtime.Object) *ControllerServer {
 	t.Helper()
-	lhClient := lhfake.NewSimpleClientset(objs...) // nolint: staticcheck
-	informerFactory := lhinformers.NewSharedInformerFactoryWithOptions(lhClient, 0, lhinformers.WithNamespace(testNamespace))
-	settingInformer := informerFactory.Longhorn().V1beta2().Settings()
-	_ = settingInformer.Informer()
-	nodeInformer := informerFactory.Longhorn().V1beta2().Nodes()
-	_ = nodeInformer.Informer()
-	stopCh := make(chan struct{})
-	t.Cleanup(func() { close(stopCh) })
-	informerFactory.Start(stopCh)
-	if !cache.WaitForCacheSync(stopCh, settingInformer.Informer().HasSynced, nodeInformer.Informer().HasSynced) {
-		t.Fatal("failed to sync informer caches")
-	}
 	return &ControllerServer{
-		log:           logrus.StandardLogger().WithField("component", "test"),
-		settingLister: settingInformer.Lister().Settings(testNamespace),
-		nodeLister:    nodeInformer.Lister().Nodes(testNamespace),
+		log:         logrus.StandardLogger().WithField("component", "test"),
+		lhClient:    lhfake.NewSimpleClientset(objs...), // nolint: staticcheck
+		lhNamespace: testNamespace,
 	}
 }
 
@@ -79,19 +65,19 @@ func TestGetCapacity(t *testing.T) {
 			testName:                "Node setting not found",
 			skipNodeSettingCreation: true,
 			node:                    newNode("node-0", "storage", "", true, true, true, false),
-			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-node-selector-volume: setting.longhorn.io \"allow-empty-node-selector-volume\" not found"),
+			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-node-selector-volume: settings.longhorn.io \"allow-empty-node-selector-volume\" not found"),
 		},
 		{
 			testName:                "Disk setting not found",
 			skipDiskSettingCreation: true,
 			node:                    newNode("node-0", "storage", "", true, true, true, false),
-			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-disk-selector-volume: setting.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
+			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-disk-selector-volume: settings.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
 		},
 		{
 			testName:                            "Over-provisioning setting not found",
 			skipOverProvisioningSettingCreation: true,
 			node:                                newNode("node-0", "storage", "", true, true, true, false),
-			err:                                 status.Errorf(codes.Internal, "failed to get setting storage-over-provisioning-percentage: setting.longhorn.io \"storage-over-provisioning-percentage\" not found"),
+			err:                                 status.Errorf(codes.Internal, "failed to get setting storage-over-provisioning-percentage: settings.longhorn.io \"storage-over-provisioning-percentage\" not found"),
 		},
 		{
 			testName:                   "Invalid over-provisioning setting value",
@@ -253,7 +239,6 @@ func TestGetCapacity(t *testing.T) {
 	} {
 		t.Run(test.testName, func(t *testing.T) {
 			var objs []runtime.Object
-			objs = append(objs, newSetting(string(types.SettingNameCSIStorageCapacityTracking), "node"))
 			if !test.skipNodeCreation {
 				addDisksToNode(test.node, test.disks)
 				objs = append(objs, test.node)
@@ -354,7 +339,6 @@ func TestGetCapacityPerZone(t *testing.T) {
 		objs = append(objs, node)
 	}
 	objs = append(objs,
-		newSetting(string(types.SettingNameCSIStorageCapacityTracking), "zone"),
 		newSetting(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"),
 		newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"),
 		newSetting(string(types.SettingNameStorageOverProvisioningPercentage), "100"),
@@ -376,7 +360,9 @@ func TestGetCapacityPerZone(t *testing.T) {
 						corev1.LabelTopologyZone: tc.zone,
 					},
 				},
-				Parameters: map[string]string{},
+				Parameters: map[string]string{
+					"storageCapacityMode": "zone",
+				},
 			}
 			res, err := cs.GetCapacity(context.TODO(), req)
 			if err != nil {

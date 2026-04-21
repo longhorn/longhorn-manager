@@ -476,22 +476,3 @@ func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability)
 func getStageBlockVolumePath(stagingTargetPath, volumeID string) string {
 	return filepath.Join(stagingTargetPath, volumeID)
 }
-
-func isFileNotExistError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if os.IsNotExist(err) {
-		return true
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "no such file")
-}
-
-func isNotMountedError(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "not mounted") ||
-		strings.Contains(err.Error(), "no mount point specified")
-}
