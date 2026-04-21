@@ -2016,21 +2016,22 @@ var (
 
 	SettingDefinitionCSIStorageCapacityTracking = SettingDefinition{
 		DisplayName: "CSI Storage Capacity Tracking",
-		Description: "Controls CSI storage capacity tracking (KEP-1472), which allows the kube-scheduler to filter " +
-			"nodes that cannot fit the requested volume. " +
-			"Possible values are \"disabled\" (tracking off), \"node\" (per-node capacity), and \"zone\" (per-zone capacity).",
+		Description: "Controls CSI storage capacity tracking, which allows the kube-scheduler to filter " +
+			"nodes that cannot fit the requested volume.",
 		Category:           SettingCategoryGeneral,
-		Type:               SettingTypeString,
+		Type:               SettingTypeBool,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            string(CSIStorageCapacityTrackingNode),
-		Choices: []any{
-			string(CSIStorageCapacityTrackingDisabled),
-			string(CSIStorageCapacityTrackingNode),
-			string(CSIStorageCapacityTrackingZone),
-		},
+		Default:            "false",
 	}
+)
+
+type CSIStorageCapacityTrackingMode string
+
+const (
+	CSIStorageCapacityTrackingModeNode = CSIStorageCapacityTrackingMode("node")
+	CSIStorageCapacityTrackingModeZone = CSIStorageCapacityTrackingMode("zone")
 )
 
 type NodeDownPodDeletionPolicy string
@@ -2077,14 +2078,6 @@ type OrphanResourceType string
 const (
 	OrphanResourceTypeReplicaData = OrphanResourceType("replica-data")
 	OrphanResourceTypeInstance    = OrphanResourceType("instance")
-)
-
-type CSIStorageCapacityTracking string
-
-const (
-	CSIStorageCapacityTrackingDisabled CSIStorageCapacityTracking = "disabled"
-	CSIStorageCapacityTrackingNode     CSIStorageCapacityTracking = "node"
-	CSIStorageCapacityTrackingZone     CSIStorageCapacityTracking = "zone"
 )
 
 // ValidateSetting checks if the given value is valid for the given setting name.
@@ -2180,12 +2173,6 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 	}
 
 	return defaultSettings, nil
-}
-
-// IsCSIStorageCapacityEnabled reports whether the capacity tracking mode is "node" or "zone".
-func IsCSIStorageCapacityEnabled(value string) bool {
-	mode := CSIStorageCapacityTracking(value)
-	return mode == CSIStorageCapacityTrackingNode || mode == CSIStorageCapacityTrackingZone
 }
 
 // ParseCSIAllowedTopologyKeys parses a comma-separated topology key list into a set.

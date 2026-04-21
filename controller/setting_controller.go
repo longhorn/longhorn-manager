@@ -23,7 +23,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8stypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -1087,49 +1086,26 @@ func (sc *SettingController) updateNodeSelector() error {
 	return nil
 }
 
-// syncCSIDriverStorageCapacity syncs the CSIDriver StorageCapacity field and restarts
-// longhorn-csi-plugin based on the capacity tracking setting.
+// syncCSIDriverStorageCapacity syncs the CSIDriver StorageCapacity field
 func (sc *SettingController) syncCSIDriverStorageCapacity() error {
-	setting, err := sc.ds.GetSetting(types.SettingNameCSIStorageCapacityTracking)
+	storageCapacityEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameCSIStorageCapacityTracking)
 	if err != nil {
 		return err
-	}
-	storageCapacityEnabled := types.IsCSIStorageCapacityEnabled(setting.Value)
-	// Restart longhorn-csi-plugin to update CSINode topology keys, which must reflect the new
-	// capacity tracking mode for capacity reporting to function correctly.
-	// Use the setting value as the annotation to avoid restart on every setting resync.
-	if storageCapacityEnabled {
-		ds, err := sc.ds.GetDaemonSet(types.CSIPluginName)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get %v daemonset", types.CSIPluginName)
-		}
-		if ds.Spec.Template.Annotations[types.AnnotationCSIStorageCapacityTracking] != setting.Value {
-			restartPatch := fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{%q:%q}}}}}`,
-				types.AnnotationCSIStorageCapacityTracking, setting.Value)
-			if _, err := sc.kubeClient.AppsV1().DaemonSets(sc.namespace).Patch(
-				context.TODO(), types.CSIPluginName, k8stypes.MergePatchType, []byte(restartPatch), metav1.PatchOptions{},
-			); err != nil {
-				return errors.Wrapf(err, "failed to restart %v daemonset", types.CSIPluginName)
-			}
-			sc.logger.Infof("Restarted %v daemonset to apply new CSI topology keys (mode: %s)", types.CSIPluginName, setting.Value)
-		}
 	}
 
 	csiDriver, err := sc.ds.GetCSIDriver(types.LonghornDriverName)
 	if err != nil {
 		return err
 	}
-
 	if csiDriver.Spec.StorageCapacity != nil && *csiDriver.Spec.StorageCapacity == storageCapacityEnabled {
 		return nil
 	}
 
 	csiDriver.Spec.StorageCapacity = ptr.To(storageCapacityEnabled)
-	// NOTE: StorageCapacity became mutable in Kubernetes 1.23+. On older versions, this update will fail.
 	if _, err := sc.ds.UpdateCSIDriver(csiDriver); err != nil {
 		return err
 	}
-	sc.logger.Infof("Updated CSI driver StorageCapacity to %v (value: %s)", storageCapacityEnabled, setting.Value)
+	sc.logger.Infof("Updated CSI driver StorageCapacity to %v", storageCapacityEnabled)
 
 	return nil
 }
