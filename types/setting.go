@@ -128,6 +128,7 @@ const (
 	SettingNameSupportBundleNodeCollectionTimeout                       = SettingName("support-bundle-node-collection-timeout")
 	SettingNameDeletingConfirmationFlag                                 = SettingName("deleting-confirmation-flag")
 	SettingNameEngineReplicaTimeout                                     = SettingName("engine-replica-timeout")
+	SettingNameStaleReplicaTimeout                                      = SettingName("stale-replica-timeout")
 	SettingNameSnapshotDataIntegrity                                    = SettingName("snapshot-data-integrity")
 	SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingName("snapshot-data-integrity-immediate-check-after-snapshot-creation")
 	SettingNameSnapshotDataIntegrityCronJob                             = SettingName("snapshot-data-integrity-cronjob")
@@ -229,6 +230,7 @@ var (
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval,
+		SettingNameStaleReplicaTimeout,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameReplicaRebuildConcurrentSyncLimit,
 		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit,
@@ -391,6 +393,7 @@ var (
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
+		SettingNameStaleReplicaTimeout:                                      SettingDefinitionStaleReplicaTimeout,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameReplicaRebuildConcurrentSyncLimit:                        SettingDefinitionReplicaRebuildConcurrentSyncLimit,
 		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit:          SettingDefinitionConcurrentBackingImageCopyReplenishPerNodeLimit,
@@ -1087,6 +1090,23 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "600",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
+	}
+
+	SettingDefinitionStaleReplicaTimeout = SettingDefinition{
+		DisplayName: "Stale Replica Timeout",
+		Description: "In minutes. The timeout determines how long Longhorn will wait before cleaning up a stale replica " +
+			"that is no longer part of the volume engine.\n" +
+			"The effective cleanup delay is the greater of this setting and the Replica Replenishment Wait Interval " +
+			"(converted to minutes and rounded up). Setting this to 0 allows cleanup as soon as that effective delay is reached.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "2880",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
