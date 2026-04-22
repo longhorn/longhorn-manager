@@ -1619,6 +1619,50 @@ func (s *TestSuite) TestGetSnapshotCountThresholdFallback(c *C) {
 	c.Assert(threshold, Equals, specMaxCount)
 }
 
+func (s *TestSuite) TestGetEffectiveStaleReplicaTimeout(c *C) {
+	tests := []struct {
+		name                  string
+		volumeTimeout         int
+		globalTimeout         int
+		replenishmentInterval int
+		expected              int
+	}{
+		{
+			name:                  "Scenario 1: Volume Spec overrides Global Setting",
+			volumeTimeout:         10,
+			globalTimeout:         60,
+			replenishmentInterval: 0,
+			expected:              10,
+		},
+		{
+			name:                  "Scenario 2: Global used when Spec is 0",
+			volumeTimeout:         0,
+			globalTimeout:         30,
+			replenishmentInterval: 0,
+			expected:              30,
+		},
+		{
+			name:                  "Scenario 3: Max with Replenishment Interval (Safety)",
+			volumeTimeout:         1,
+			globalTimeout:         1,
+			replenishmentInterval: 600,
+			expected:              10,
+		},
+		{
+			name:                  "Scenario 4: Rounding up seconds to minutes (Stable)",
+			volumeTimeout:         0,
+			globalTimeout:         0,
+			replenishmentInterval: 61,
+			expected:              2,
+		},
+	}
+
+	for _, tc := range tests {
+		result := getEffectiveStaleReplicaTimeout(tc.volumeTimeout, tc.globalTimeout, tc.replenishmentInterval)
+		c.Assert(result, Equals, tc.expected, Commentf("Failed case: %v", tc.name))
+	}
+}
+
 func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
 	// We have to skip lister check for unit tests
 	// Because the changes written through the API won't be reflected in the listers
