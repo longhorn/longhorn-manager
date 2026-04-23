@@ -35,6 +35,7 @@ const (
 	CRDVolumeName                 = "volumes.longhorn.io"
 	CRDEngineImageName            = "engineimages.longhorn.io"
 	CRDNodeName                   = "nodes.longhorn.io"
+	CRDDiskScheduleName           = "diskschedules.longhorn.io"
 	CRDInstanceManagerName        = "instancemanagers.longhorn.io"
 	CRDShareManagerName           = "sharemanagers.longhorn.io"
 	CRDBackingImageName           = "backingimages.longhorn.io"
@@ -136,6 +137,12 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.NodeInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDDiskScheduleName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.DiskScheduleInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.DiskScheduleInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
 		if _, err = ds.InstanceManagerInformer.AddEventHandler(c.controlleeHandler()); err != nil {
@@ -612,6 +619,13 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteNodes(nodes)
 	}
 
+	if diskSchedules, err := c.ds.ListDiskSchedules(); err != nil {
+		return true, err
+	} else if len(diskSchedules) > 0 {
+		c.logger.Infof("Found %d disk schedules remaining", len(diskSchedules))
+		return true, c.deleteDiskSchedule(diskSchedules)
+	}
+
 	if instanceManagers, err := c.ds.ListInstanceManagers(); err != nil {
 		return true, err
 	} else if len(instanceManagers) > 0 {
@@ -944,6 +958,33 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 				}
 			} else {
 				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return
+}
+
+func (c *UninstallController) deleteDiskSchedule(diskSchedules map[string]*longhorn.DiskSchedule) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete disk schedules")
+	}()
+	for _, ds := range diskSchedules {
+		log := getLoggerForDiskSchedule(c.logger, ds)
+		if ds.DeletionTimestamp == nil {
+			log.Infof("Adding annotation %v to DiskSchedule %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn), ds.Name)
+			ds.Annotations[types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn)] = ""
+			if _, err := c.ds.UpdateDiskSchedule(ds); err != nil {
+				return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+			}
+			if errDelete := c.ds.DeleteDiskSchedule(ds.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("DiskSchedule is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
 		}
 	}

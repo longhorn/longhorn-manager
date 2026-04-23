@@ -60,6 +60,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	diskScheduleController, err := NewDiskScheduleController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	websocketController, err := NewWebsocketController(logger, ds)
 	if err != nil {
 		return nil, err
@@ -189,6 +193,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeController.Run(Workers, stopCh)
 	go engineImageController.Run(Workers, stopCh)
 	go nodeController.Run(Workers, stopCh)
+	go diskScheduleController.Run(stopCh)
 	go websocketController.Run(stopCh)
 	go settingController.Run(stopCh)
 	go instanceManagerController.Run(Workers, stopCh)

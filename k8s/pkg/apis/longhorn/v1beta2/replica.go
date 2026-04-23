@@ -12,11 +12,18 @@ const (
 const (
 	ReplicaConditionTypeRebuildFailed                = "RebuildFailed"
 	ReplicaConditionTypeWaitForBackingImage          = "WaitForBackingImage"
+	ReplicaConditionTypeDiskAllocation               = "DiskAllocation"
 	ReplicaConditionReasonWaitForBackingImageFailed  = "GetBackingImageFailed"
 	ReplicaConditionReasonWaitForBackingImageWaiting = "Waiting"
 
 	ReplicaConditionReasonRebuildFailedDisconnection = "Disconnection"
 	ReplicaConditionReasonRebuildFailedGeneral       = "General"
+
+	ReplicaConditionReasonDiskAllocationError    = "Error"
+	ReplicaConditionReasonDiskAllocationPending  = "Pending"
+	ReplicaConditionReasonDiskAllocationRejected = "Rejected"
+	ReplicaConditionReasonDiskAllocationWaiting  = "Waiting"
+	ReplicaConditionReasonDiskAllocationAccepted = "Accepted"
 )
 
 // ReplicaSpec defines the desired state of the Longhorn replica

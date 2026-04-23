@@ -74,6 +74,14 @@ type BackupVolumeListerExpansion interface{}
 // BackupVolumeNamespaceLister.
 type BackupVolumeNamespaceListerExpansion interface{}
 
+// DiskScheduleListerExpansion allows custom methods to be added to
+// DiskScheduleLister.
+type DiskScheduleListerExpansion interface{}
+
+// DiskScheduleNamespaceListerExpansion allows custom methods to be added to
+// DiskScheduleNamespaceLister.
+type DiskScheduleNamespaceListerExpansion interface{}
+
 // EngineListerExpansion allows custom methods to be added to
 // EngineLister.
 type EngineListerExpansion interface{}

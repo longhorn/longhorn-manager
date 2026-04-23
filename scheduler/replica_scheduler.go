@@ -39,7 +39,8 @@ type ReplicaScheduler struct {
 type Disk struct {
 	longhorn.DiskSpec
 	*longhorn.DiskStatus
-	NodeID string
+	NodeID           string
+	StorageScheduled int64
 }
 
 type DiskSchedulingInfo struct {
@@ -436,9 +437,14 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 				if !exists {
 					continue
 				}
-				diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
-				if err != nil {
-					logrus.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v when checking disk pressure for auto-balance", diskName, nodeName)
+				diskSchedule, diskScheduleErr := rcs.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+				if diskSchedule == nil {
+					logrus.WithError(diskScheduleErr).Debugf("Failed to get disk schedule %v for disk %v on node %v when checking disk pressure for auto-balance", diskStatus.DiskUUID, diskName, nodeName)
+					continue
+				}
+				diskInfo, diskInfoErr := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, diskSchedule)
+				if diskInfoErr != nil {
+					logrus.WithError(diskInfoErr).Debugf("Failed to get disk scheduling info for disk %v on node %v when checking disk pressure for auto-balance", diskName, nodeName)
 					continue
 				}
 				if rcs.IsDiskUnderPressure(diskPressurePercentage, diskInfo) {
@@ -547,6 +553,13 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
+		diskSchedule, diskScheduleErr := rcs.ds.GetDiskScheduleRO(diskUUID)
+		if diskSchedule == nil {
+			errs.Append(longhorn.ErrorReplicaScheduleDiskNotFound,
+				fmt.Errorf("cannot find the the schedule for disk %v when scheduling replica %v: %v", diskUUID, volume.Name, diskScheduleErr))
+			continue
+		}
+
 		isV1EngineFilesystemDisk := types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem
 		isV2EngineBlockDisk := types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock
 		if !isV1EngineFilesystemDisk && !isV2EngineBlockDisk {
@@ -563,7 +576,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		}
 
 		if requireSchedulingCheck {
-			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, diskSchedule)
 			if err != nil {
 				errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 					errors.Wrapf(err, "failed to get disk scheduling info for disk %v", diskName))
@@ -612,9 +625,10 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		}
 
 		suggestDisk := &Disk{
-			DiskSpec:   diskSpec,
-			DiskStatus: diskStatus,
-			NodeID:     node.Name,
+			DiskSpec:         diskSpec,
+			DiskStatus:       diskStatus,
+			NodeID:           node.Name,
+			StorageScheduled: diskSchedule.Status.StorageScheduled,
 		}
 		preferredDisks[diskUUID] = suggestDisk
 	}
@@ -712,6 +726,15 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 		"diskPath":          replica.Spec.DiskPath,
 		"dataDirectoryName": replica.Spec.DataDirectoryName,
 	}).Infof("Schedule replica to node %v", replica.Spec.NodeID)
+}
+
+func (rcs *ReplicaScheduler) ResetReplicaScheduling(replica *longhorn.Replica) {
+	replica.Spec.NodeID = ""
+	replica.Spec.DiskID = ""
+	replica.Spec.DiskPath = ""
+	replica.Spec.DataDirectoryName = ""
+
+	logrus.Infof("Reset scheduling of replica %v", replica.Name)
 }
 
 // getDiskWithMostBalanceScore selects a disk for a replica by minimizing imbalance.
@@ -1135,9 +1158,14 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Reason != longhorn.DiskConditionReasonDiskPressure {
 				continue
 			}
-			schedulingInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
-			if err != nil {
-				logrus.Warnf("failed to GetDiskSchedulingInfo of disk %v on node %v when checking replica %v is reusable: %v", diskName, node.Name, r.Name, err)
+			diskSchedule, diskScheduleErr := rcs.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+			if diskSchedule == nil {
+				logrus.Warnf("failed to get disk schedule %v of disk %v on node %v when checking replica %v is reusable: %v", diskStatus.DiskUUID, diskName, node.Name, r.Name, diskScheduleErr)
+				continue
+			}
+			schedulingInfo, diskInfoErr := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, diskSchedule)
+			if diskInfoErr != nil {
+				logrus.Warnf("failed to GetDiskSchedulingInfo of disk %v on node %v when checking replica %v is reusable: %v", diskName, node.Name, r.Name, diskInfoErr)
 			}
 			if !rcs.isDiskNotFull(schedulingInfo) {
 				continue
@@ -1239,7 +1267,7 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 	// Ensure that the total scheduled size (including this replica) does not exceed the allowed over-provisioning limit.
 	// This prevents excessive over-commitment of the disk capacity.
 	scheduledTotal := size + info.StorageScheduled
-	overProvisionLimit := int64(float64(info.StorageMaximum-info.StorageReserved) * float64(info.OverProvisioningPercentage) / 100)
+	overProvisionLimit := GetDiskOverProvisionLimit(info.StorageMaximum, info.StorageReserved, info.OverProvisioningPercentage)
 	if scheduledTotal > overProvisionLimit {
 		return false, fmt.Sprintf(
 			"Scheduling space condition failed: ScheduledTotal = %d (Size + StorageScheduled) is greater than ProvisionedLimit = %d (%d%% of StorageMax - StorageReserved). ",
@@ -1330,9 +1358,15 @@ func (rcs *ReplicaScheduler) FilterNodesSchedulableForVolume(nodes map[string]*l
 				continue
 			}
 
-			diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
-			if err != nil {
-				logrus.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, node.Name)
+			diskSchedule, diskScheduleErr := rcs.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+			if diskSchedule == nil {
+				logrus.WithError(diskScheduleErr).Debugf("Failed to get disk schedule for disk %v on node %v", diskName, node.Name)
+				continue
+			}
+
+			diskInfo, diskInfoErr := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, diskSchedule)
+			if diskInfoErr != nil {
+				logrus.WithError(diskInfoErr).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, node.Name)
 				continue
 			}
 
@@ -1360,7 +1394,7 @@ func (rcs *ReplicaScheduler) isDiskNotFull(info *DiskSchedulingInfo) bool {
 		info.StorageAvailable > int64(float64(info.StorageMaximum)*float64(info.MinimalAvailablePercentage)/100)
 }
 
-func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskStatus *longhorn.DiskStatus) (*DiskSchedulingInfo, error) {
+func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskStatus *longhorn.DiskStatus, diskSchedule *longhorn.DiskSchedule) (*DiskSchedulingInfo, error) {
 	// get StorageOverProvisioningPercentage and StorageMinimalAvailablePercentage settings
 	overProvisioningPercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
 	if err != nil {
@@ -1373,7 +1407,7 @@ func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskS
 	info := &DiskSchedulingInfo{
 		DiskUUID:                   diskStatus.DiskUUID,
 		StorageAvailable:           diskStatus.StorageAvailable,
-		StorageScheduled:           diskStatus.StorageScheduled,
+		StorageScheduled:           diskSchedule.Status.StorageScheduled,
 		StorageReserved:            disk.StorageReserved,
 		StorageMaximum:             diskStatus.StorageMaximum,
 		OverProvisioningPercentage: overProvisioningPercentage,
@@ -1397,9 +1431,9 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 		if r.Spec.NodeID == "" {
 			continue
 		}
-		node, err := rcs.ds.GetNode(r.Spec.NodeID)
-		if err != nil {
-			return nil, err
+		node, diskInfoErr := rcs.ds.GetNode(r.Spec.NodeID)
+		if diskInfoErr != nil {
+			return nil, diskInfoErr
 		}
 		diskSpec, diskStatus, ok := findDiskSpecAndDiskStatusInNode(r.Spec.DiskID, node)
 		if !ok {
@@ -1408,11 +1442,18 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 			errs.Append(longhorn.ErrorReplicaScheduleDiskNotFound, fmt.Errorf("failed to find disk %v in node %v", r.Spec.DiskID, node.Name))
 			return errs, msg
 		}
-		diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, &diskStatus)
-		if err != nil {
-			msg := errors.Wrapf(err, "failed to get disk scheduling info for disk %v on node %v", r.Spec.DiskID, node.Name)
+		diskSchedule, diskScheduleErr := rcs.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+		if diskSchedule == nil {
+			msg := errors.Wrapf(diskScheduleErr, "failed to get disk schedule for disk %v on node %v", r.Spec.DiskID, node.Name)
 			errs := multierr.NewMultiError()
-			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed, fmt.Errorf("failed to get disk scheduling info for disk %v on node %v: %v", r.Spec.DiskID, node.Name, err))
+			errs.Append(longhorn.ErrorReplicaScheduleDiskNotFound, fmt.Errorf("failed to find disk schedule of disk %v in node %v", r.Spec.DiskID, node.Name))
+			return errs, msg
+		}
+		diskInfo, diskInfoErr := rcs.GetDiskSchedulingInfo(diskSpec, &diskStatus, diskSchedule)
+		if diskInfoErr != nil {
+			msg := errors.Wrapf(diskInfoErr, "failed to get disk scheduling info for disk %v on node %v", r.Spec.DiskID, node.Name)
+			errs := multierr.NewMultiError()
+			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed, fmt.Errorf("failed to get disk scheduling info for disk %v on node %v: %v", r.Spec.DiskID, node.Name, diskInfoErr))
 			return errs, msg
 		}
 		diskIDToDiskInfo[r.Spec.DiskID] = diskInfo
@@ -1539,4 +1580,9 @@ func (rcs *ReplicaScheduler) timeToReplacementReplica(volume *longhorn.Volume) (
 	}
 
 	return timeOfNext.Sub(now), timeOfNext, nil
+}
+
+// GetDiskOverProvisionLimit calculates the over-provisioning limit for a disk based on its maximum storage, reserved storage, and over-provisioning percentage.
+func GetDiskOverProvisionLimit(storageMaximum, storageReserved, overProvisioningPercentage int64) int64 {
+	return int64(float64(storageMaximum-storageReserved) * float64(overProvisioningPercentage) / 100)
 }
