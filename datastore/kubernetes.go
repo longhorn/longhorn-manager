@@ -552,6 +552,16 @@ func (s *DataStore) DeleteCSIDriver(name string) error {
 	return s.kubeClient.StorageV1().CSIDrivers().Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
+// GetCSIDriver gets the CSIDriver for the given name
+func (s *DataStore) GetCSIDriver(name string) (*storagev1.CSIDriver, error) {
+	return s.kubeClient.StorageV1().CSIDrivers().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// UpdateCSIDriver updates the CSIDriver
+func (s *DataStore) UpdateCSIDriver(csiDriver *storagev1.CSIDriver) (*storagev1.CSIDriver, error) {
+	return s.kubeClient.StorageV1().CSIDrivers().Update(context.TODO(), csiDriver, metav1.UpdateOptions{})
+}
+
 // ListManagerPods returns a list of Pods marked with app=longhorn-manager
 func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	selector, err := s.getManagerSelector()

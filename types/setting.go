@@ -160,6 +160,7 @@ const (
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
+	SettingNameCSIStorageCapacityTracking                               = SettingName("csi-storage-capacity-tracking")
 
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
@@ -279,6 +280,7 @@ var (
 		SettingNameDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath,
+		SettingNameCSIStorageCapacityTracking,
 	}
 )
 
@@ -425,6 +427,7 @@ var (
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
+		SettingNameCSIStorageCapacityTracking:                               SettingDefinitionCSIStorageCapacityTracking,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1771,6 +1774,19 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            DefaultLogDirectoryOnHost,
+	}
+
+	SettingDefinitionCSIStorageCapacityTracking = SettingDefinition{
+		DisplayName: "CSI Storage Capacity Tracking",
+		Description: "Setting that enables or disables the CSI storage capacity tracking (KEP-1472). " +
+			"This corresponds to the StorageCapacity field on the CSIDriver object. " +
+			"Disabling this may be useful in environments where storage capacity tracking is not needed or causes issues.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 )
 
