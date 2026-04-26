@@ -109,6 +109,17 @@ const (
 	VolumeCloneStateFailed                       = VolumeCloneState("failed")
 )
 
+// VolumeSwitchoverState describes the progress of a v2 engine live switchover.
+type VolumeSwitchoverState string
+
+const (
+	VolumeSwitchoverStateEmpty         = VolumeSwitchoverState("")
+	VolumeSwitchoverStatePreparing     = VolumeSwitchoverState("preparing")
+	VolumeSwitchoverStateSwitchingOver = VolumeSwitchoverState("switching-over")
+	VolumeSwitchoverStateFinalizing    = VolumeSwitchoverState("finalizing")
+	VolumeSwitchoverStateReverting     = VolumeSwitchoverState("reverting")
+)
+
 type VolumeCloneStatus struct {
 	// +optional
 	SourceVolume string `json:"sourceVolume"`
@@ -261,8 +272,13 @@ type VolumeSpec struct {
 	DataLocality DataLocality `json:"dataLocality"`
 	// +optional
 	StaleReplicaTimeout int `json:"staleReplicaTimeout"`
+	// nodeID defines the node where the volume is attached (where the frontend initiator runs).
 	// +optional
 	NodeID string `json:"nodeID"`
+	// engineNodeID defines the node where the backend engine (target) runs.
+	// If empty, falls back to NodeID.
+	// +optional
+	EngineNodeID string `json:"engineNodeID"`
 	// +optional
 	MigrationNodeID string `json:"migrationNodeID"`
 	// +optional
@@ -368,6 +384,9 @@ type VolumeStatus struct {
 	Robustness VolumeRobustness `json:"robustness"`
 	// +optional
 	CurrentNodeID string `json:"currentNodeID"`
+	// the node that the engine (target) is currently running on.
+	// +optional
+	CurrentEngineNodeID string `json:"currentEngineNodeID"`
 	// +optional
 	CurrentImage string `json:"currentImage"`
 	// +optional
@@ -409,6 +428,10 @@ type VolumeStatus struct {
 	// most recent on-demand snapshot checksum calculation completed.
 	// When this value matches SnapshotHashingRequestedAt, the requested on-demand checksum calculation is considered complete.
 	LastOnDemandSnapshotHashingCompleteAt string `json:"lastOnDemandSnapshotHashingCompleteAt,omitempty"`
+	// SwitchoverState describes the current progress of a v2 engine live switchover.
+	// Empty when no switchover is in progress.
+	// +optional
+	SwitchoverState VolumeSwitchoverState `json:"switchoverState"`
 }
 
 // +genclient
@@ -422,6 +445,7 @@ type VolumeStatus struct {
 // +kubebuilder:printcolumn:name="Scheduled",type=string,JSONPath=`.status.conditions[?(@.type=='Schedulable')].status`,description="The scheduled condition of the volume"
 // +kubebuilder:printcolumn:name="Size",type=string,JSONPath=`.spec.size`,description="The size of the volume"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.currentNodeID`,description="The node that the volume is currently attaching to"
+// +kubebuilder:printcolumn:name="Switchover",type=string,JSONPath=`.status.switchoverState`,description="The engine switchover state",priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Volume is where Longhorn stores volume object.

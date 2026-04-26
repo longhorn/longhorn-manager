@@ -82,6 +82,14 @@ type EngineListerExpansion interface{}
 // EngineNamespaceLister.
 type EngineNamespaceListerExpansion interface{}
 
+// EngineFrontendListerExpansion allows custom methods to be added to
+// EngineFrontendLister.
+type EngineFrontendListerExpansion interface{}
+
+// EngineFrontendNamespaceListerExpansion allows custom methods to be added to
+// EngineFrontendNamespaceLister.
+type EngineFrontendNamespaceListerExpansion interface{}
+
 // EngineImageListerExpansion allows custom methods to be added to
 // EngineImageLister.
 type EngineImageListerExpansion interface{}

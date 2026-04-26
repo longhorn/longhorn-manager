@@ -100,6 +100,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.EngineApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineBackupStatus"):
 		return &longhornv1beta2.EngineBackupStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontend"):
+		return &longhornv1beta2.EngineFrontendApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontendNvmeTCPPath"):
+		return &longhornv1beta2.EngineFrontendNvmeTCPPathApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontendSpec"):
+		return &longhornv1beta2.EngineFrontendSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontendStatus"):
+		return &longhornv1beta2.EngineFrontendStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineImage"):
 		return &longhornv1beta2.EngineImageApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineImageSpec"):

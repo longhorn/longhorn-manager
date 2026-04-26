@@ -27,15 +27,17 @@ import (
 //
 // VolumeStatus defines the observed state of the Longhorn volume
 type VolumeStatusApplyConfiguration struct {
-	OwnerID          *string                             `json:"ownerID,omitempty"`
-	State            *longhornv1beta2.VolumeState        `json:"state,omitempty"`
-	Robustness       *longhornv1beta2.VolumeRobustness   `json:"robustness,omitempty"`
-	CurrentNodeID    *string                             `json:"currentNodeID,omitempty"`
-	CurrentImage     *string                             `json:"currentImage,omitempty"`
-	KubernetesStatus *KubernetesStatusApplyConfiguration `json:"kubernetesStatus,omitempty"`
-	Conditions       []ConditionApplyConfiguration       `json:"conditions,omitempty"`
-	LastBackup       *string                             `json:"lastBackup,omitempty"`
-	LastBackupAt     *string                             `json:"lastBackupAt,omitempty"`
+	OwnerID       *string                           `json:"ownerID,omitempty"`
+	State         *longhornv1beta2.VolumeState      `json:"state,omitempty"`
+	Robustness    *longhornv1beta2.VolumeRobustness `json:"robustness,omitempty"`
+	CurrentNodeID *string                           `json:"currentNodeID,omitempty"`
+	// the node that the engine (target) is currently running on.
+	CurrentEngineNodeID *string                             `json:"currentEngineNodeID,omitempty"`
+	CurrentImage        *string                             `json:"currentImage,omitempty"`
+	KubernetesStatus    *KubernetesStatusApplyConfiguration `json:"kubernetesStatus,omitempty"`
+	Conditions          []ConditionApplyConfiguration       `json:"conditions,omitempty"`
+	LastBackup          *string                             `json:"lastBackup,omitempty"`
+	LastBackupAt        *string                             `json:"lastBackupAt,omitempty"`
 	// the node that this volume is currently migrating to
 	CurrentMigrationNodeID *string                              `json:"currentMigrationNodeID,omitempty"`
 	FrontendDisabled       *bool                                `json:"frontendDisabled,omitempty"`
@@ -53,6 +55,9 @@ type VolumeStatusApplyConfiguration struct {
 	// most recent on-demand snapshot checksum calculation completed.
 	// When this value matches SnapshotHashingRequestedAt, the requested on-demand checksum calculation is considered complete.
 	LastOnDemandSnapshotHashingCompleteAt *string `json:"lastOnDemandSnapshotHashingCompleteAt,omitempty"`
+	// SwitchoverState describes the current progress of a v2 engine live switchover.
+	// Empty when no switchover is in progress.
+	SwitchoverState *longhornv1beta2.VolumeSwitchoverState `json:"switchoverState,omitempty"`
 }
 
 // VolumeStatusApplyConfiguration constructs a declarative configuration of the VolumeStatus type for use with
@@ -90,6 +95,14 @@ func (b *VolumeStatusApplyConfiguration) WithRobustness(value longhornv1beta2.Vo
 // If called multiple times, the CurrentNodeID field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithCurrentNodeID(value string) *VolumeStatusApplyConfiguration {
 	b.CurrentNodeID = &value
+	return b
+}
+
+// WithCurrentEngineNodeID sets the CurrentEngineNodeID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CurrentEngineNodeID field is set to the value of the last call.
+func (b *VolumeStatusApplyConfiguration) WithCurrentEngineNodeID(value string) *VolumeStatusApplyConfiguration {
+	b.CurrentEngineNodeID = &value
 	return b
 }
 
@@ -239,5 +252,13 @@ func (b *VolumeStatusApplyConfiguration) WithShareState(value longhornv1beta2.Sh
 // If called multiple times, the LastOnDemandSnapshotHashingCompleteAt field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithLastOnDemandSnapshotHashingCompleteAt(value string) *VolumeStatusApplyConfiguration {
 	b.LastOnDemandSnapshotHashingCompleteAt = &value
+	return b
+}
+
+// WithSwitchoverState sets the SwitchoverState field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SwitchoverState field is set to the value of the last call.
+func (b *VolumeStatusApplyConfiguration) WithSwitchoverState(value longhornv1beta2.VolumeSwitchoverState) *VolumeStatusApplyConfiguration {
+	b.SwitchoverState = &value
 	return b
 }

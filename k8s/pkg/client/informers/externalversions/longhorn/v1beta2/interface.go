@@ -40,6 +40,8 @@ type Interface interface {
 	BackupVolumes() BackupVolumeInformer
 	// Engines returns a EngineInformer.
 	Engines() EngineInformer
+	// EngineFrontends returns a EngineFrontendInformer.
+	EngineFrontends() EngineFrontendInformer
 	// EngineImages returns a EngineImageInformer.
 	EngineImages() EngineImageInformer
 	// InstanceManagers returns a InstanceManagerInformer.
@@ -119,6 +121,11 @@ func (v *version) BackupVolumes() BackupVolumeInformer {
 // Engines returns a EngineInformer.
 func (v *version) Engines() EngineInformer {
 	return &engineInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// EngineFrontends returns a EngineFrontendInformer.
+func (v *version) EngineFrontends() EngineFrontendInformer {
+	return &engineFrontendInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // EngineImages returns a EngineImageInformer.
