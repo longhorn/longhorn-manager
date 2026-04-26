@@ -12,24 +12,20 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, backupTarget,
+func (p *Proxy) SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels, credential, parameters map[string]string) (string, string, error) {
 	if snapshotName == etypes.VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", etypes.VolumeHeadName)
 	}
 
-	if e == nil {
-		return "", "", errors.Wrapf(errors.Errorf("missing engine"), "failed to backup %v", snapshotName)
-	}
-
-	snap, err := p.SnapshotGet(e, snapshotName)
+	snap, err := p.SnapshotGet(obj, snapshotName)
 	if err != nil {
-		return "", "", errors.Wrapf(err, "error getting snapshot '%s', engine '%s'", snapshotName, e.Name)
+		return "", "", errors.Wrapf(err, "error getting snapshot '%s', engine '%s'", snapshotName, obj.GetEngineName())
 	}
 
 	if snap == nil {
-		return "", "", errors.Errorf("could not find snapshot '%s' to backup, engine '%s'", snapshotName, e.Name)
+		return "", "", errors.Errorf("could not find snapshot '%s' to backup, engine '%s'", snapshotName, obj.GetEngineName())
 	}
 
 	// get environment variables if backup for s3
@@ -38,9 +34,8 @@ func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, bac
 		return "", "", err
 	}
 
-	backupID, replicaAddress, err := p.grpcClient.SnapshotBackup(string(e.Spec.DataEngine), e.Name,
-		e.Spec.VolumeName, p.DirectToURL(e), backupName, snapshotName, backupTarget, backingImageName,
-		backingImageChecksum, compressionMethod, concurrentLimit, storageClassName, labels, credentialEnv, parameters,
+	backupID, replicaAddress, err := p.grpcClient.SnapshotBackup(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(), p.DirectToURL(obj),
+		backupName, snapshotName, backupTarget, backingImageName, backingImageChecksum, compressionMethod, concurrentLimit, storageClassName, labels, credentialEnv, parameters,
 	)
 	if err != nil {
 		return "", "", err
@@ -49,10 +44,9 @@ func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, bac
 	return backupID, replicaAddress, nil
 }
 
-func (p *Proxy) SnapshotBackupStatus(e *longhorn.Engine, backupName, replicaAddress,
-	replicaName string) (status *longhorn.EngineBackupStatus, err error) {
-	recv, err := p.grpcClient.SnapshotBackupStatus(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
-		p.DirectToURL(e), backupName, replicaAddress, replicaName)
+func (p *Proxy) SnapshotBackupStatus(obj DataEngineObject, backupName, replicaAddress, replicaName string) (status *longhorn.EngineBackupStatus, err error) {
+	recv, err := p.grpcClient.SnapshotBackupStatus(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(),
+		p.DirectToURL(obj), backupName, replicaAddress, replicaName)
 	if err != nil {
 		return nil, err
 	}

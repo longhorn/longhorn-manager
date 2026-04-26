@@ -927,7 +927,7 @@ func (c *BackingImageDataSourceController) prepareRunningParametersForExport(bid
 		}
 	}
 	if newSnapshotRequired {
-		freezeFilesystem, err := c.ds.GetFreezeFilesystemForSnapshotSetting(e)
+		freezeFilesystem, err := c.ds.GetFreezeFilesystemForSnapshotSetting(volumeName, v.Spec.DataEngine)
 		if err != nil {
 			return err
 		}
@@ -938,8 +938,12 @@ func (c *BackingImageDataSourceController) prepareRunningParametersForExport(bid
 		}
 		defer engineClientProxy.Close()
 
+		dataEngineObj, err := c.ds.GetDataEngineObject(e)
+		if err != nil {
+			return err
+		}
 		snapLabels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage): bids.Name}
-		snapshotName, err := engineClientProxy.SnapshotCreate(e, bids.Name+"-"+util.RandomID(), snapLabels, freezeFilesystem)
+		snapshotName, err := engineClientProxy.SnapshotCreate(dataEngineObj, bids.Name+"-"+util.RandomID(), snapLabels, freezeFilesystem)
 		if err != nil {
 			return err
 		}

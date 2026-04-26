@@ -8,7 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
-	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -27,12 +26,12 @@ func getLoggerForEngineProxyClient(logger logrus.FieldLogger, im *longhorn.Insta
 	)
 }
 
-func GetCompatibleClient(e *longhorn.Engine, fallBack interface{}, ds *datastore.DataStore, logger logrus.FieldLogger, proxyConnCounter util.Counter) (c EngineClientProxy, err error) {
-	if e == nil {
-		return nil, errors.Errorf("BUG: failed to get engine client proxy due to missing engine")
+func GetCompatibleClient(obj DataEngineObject, fallBack interface{}, ds *datastore.DataStore, logger logrus.FieldLogger, proxyConnCounter util.Counter) (c EngineClientProxy, err error) {
+	if obj == nil {
+		return nil, errors.Errorf("BUG: failed to get engine client proxy due to missing object")
 	}
 
-	im, err := ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
+	im, err := ds.GetInstanceManagerRO(obj.GetInstanceManagerName())
 	if err != nil {
 		return nil, err
 	}
@@ -181,16 +180,15 @@ func (p *Proxy) Close() {
 	p.proxyConnCounter.DecreaseCount()
 }
 
-func (p *Proxy) DirectToURL(e *longhorn.Engine) string {
-	if e == nil {
-		p.logger.Debug("BUG: cannot get engine client proxy re-direct URL with nil engine object")
+func (p *Proxy) DirectToURL(obj DataEngineObject) string {
+	if obj == nil {
+		p.logger.Debug("BUG: cannot get engine client proxy re-direct URL with nil object")
 		return ""
 	}
-
-	return imutil.GetURL(e.Status.StorageIP, e.Status.Port)
+	return DirectToURL(obj)
 }
 
-func (p *Proxy) VersionGet(e *longhorn.Engine, clientOnly bool) (version *EngineVersion, err error) {
+func (p *Proxy) VersionGet(obj DataEngineObject, clientOnly bool) (version *EngineVersion, err error) {
 	recvClientVersion := p.grpcClient.ClientVersionGet()
 	clientVersion := (*longhorn.EngineVersionDetails)(&recvClientVersion)
 
@@ -200,7 +198,7 @@ func (p *Proxy) VersionGet(e *longhorn.Engine, clientOnly bool) (version *Engine
 		}, nil
 	}
 
-	recvServerVersion, err := p.grpcClient.ServerVersionGet(p.DirectToURL(e))
+	recvServerVersion, err := p.grpcClient.ServerVersionGet(p.DirectToURL(obj))
 	if err != nil {
 		return nil, err
 	}

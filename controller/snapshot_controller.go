@@ -750,7 +750,7 @@ func (sc *SnapshotController) getTheOnlyEngineCRforSnapshotRO(snapshot *longhorn
 }
 
 func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, engine *longhorn.Engine) error {
-	freezeFilesystem, err := sc.ds.GetFreezeFilesystemForSnapshotSetting(engine)
+	freezeFilesystem, err := sc.ds.GetFreezeFilesystemForSnapshotSetting(snapshot.Spec.Volume, engine.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -772,7 +772,11 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 	}
 	if snapshotInfo == nil {
 		sc.logger.Infof("Creating snapshot %v of volume %v", snapshot.Name, snapshot.Spec.Volume)
-		_, err = engineClientProxy.SnapshotCreate(engine, snapshot.Name, snapshot.Spec.Labels, freezeFilesystem)
+		dataEngineObj, err := sc.ds.GetDataEngineObject(engine)
+		if err != nil {
+			return err
+		}
+		_, err = engineClientProxy.SnapshotCreate(dataEngineObj, snapshot.Name, snapshot.Spec.Labels, freezeFilesystem)
 		if err != nil {
 			return err
 		}
@@ -801,13 +805,21 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 	}
 
 	if !snapshotInfo.Removed {
+		dataEngineObj, err := sc.ds.GetDataEngineObject(engine)
+		if err != nil {
+			return err
+		}
 		sc.logger.Infof("Deleting snapshot %v", snapshot.Name)
-		if err = engineClientProxy.SnapshotDelete(engine, snapshot.Name); err != nil {
+		if err = engineClientProxy.SnapshotDelete(dataEngineObj, snapshot.Name); err != nil {
 			return err
 		}
 	}
 	// TODO: Check if the purge failure is handled somewhere else
-	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(engine)
+	dataEngineObj, err := sc.ds.GetDataEngineObject(engine)
+	if err != nil {
+		return err
+	}
+	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(dataEngineObj)
 	if err != nil {
 		return errors.Wrap(err, "failed to get snapshot purge status")
 	}
@@ -831,7 +843,11 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 
 		// We checked DisableSnapshotPurge at a higher level, so we do not need to check it again here.
 		sc.logger.Infof("Starting SnapshotPurge to delete snapshot %v", snapshot.Name)
-		if err := engineClientProxy.SnapshotPurge(engine); err != nil {
+		dataEngineObj, err := sc.ds.GetDataEngineObject(engine)
+		if err != nil {
+			return err
+		}
+		if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 			return err
 		}
 	}
