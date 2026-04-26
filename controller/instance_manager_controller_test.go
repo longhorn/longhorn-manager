@@ -218,13 +218,14 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			},
 			1,
 			longhorn.InstanceManagerStatus{
-				OwnerID:          TestNode1,
-				CurrentState:     longhorn.InstanceManagerStateError, // The state will become InstanceManagerStateStarting in the next reconcile loop
-				IP:               TestIP1,
-				APIMinVersion:    0,
-				APIVersion:       0,
-				InstanceEngines:  nil, // Transition to InstanceManagerStateError erases process information.
-				InstanceReplicas: nil, // Transition to InstanceManagerStateError erases process information.
+				OwnerID:                 TestNode1,
+				CurrentState:            longhorn.InstanceManagerStateError, // The state will become InstanceManagerStateStarting in the next reconcile loop
+				IP:                      TestIP1,
+				APIMinVersion:           0,
+				APIVersion:              0,
+				InstanceEngines:         nil, // Transition to InstanceManagerStateError erases process information.
+				InstanceEngineFrontends: nil, // Transition to InstanceManagerStateError erases process information.
+				InstanceReplicas:        nil, // Transition to InstanceManagerStateError erases process information.
 				Conditions: []longhorn.Condition{
 					{
 						Type:   longhorn.InstanceManagerConditionTypePodReady,
@@ -494,7 +495,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		im := newInstanceManager(
 			TestInstanceManagerName, tc.currentState,
 			tc.currentOwnerID, tc.nodeID, currentIP,
-			tc.currentEngines, tc.currentReplicas,
+			tc.currentEngines, nil, tc.currentReplicas,
 			longhorn.DataEngineTypeV1,
 			TestInstanceManagerImage,
 			false,

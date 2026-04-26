@@ -101,6 +101,7 @@ func (s *OrphanControllerSuite) TestGetRunningInstanceManagerClientNotRunning(c 
 		TestOwnerID1, TestNode1, "", // empty IP
 		map[string]longhorn.InstanceProcess{},
 		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
 		longhorn.DataEngineTypeV1,
 		TestInstanceManagerImage,
 		false,
@@ -145,6 +146,7 @@ func (s *OrphanControllerSuite) TestGetRunningInstanceManagerClientByName(c *C) 
 		TestOwnerID1, TestNode1, TestIP1,
 		map[string]longhorn.InstanceProcess{},
 		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
 		longhorn.DataEngineTypeV1,
 		TestInstanceManagerImage,
 		false,
@@ -159,6 +161,7 @@ func (s *OrphanControllerSuite) TestGetRunningInstanceManagerClientByName(c *C) 
 		"specific-im",
 		longhorn.InstanceManagerStateError,
 		TestOwnerID1, TestNode1, "", // empty IP -> NewInstanceManagerClient will fail
+		map[string]longhorn.InstanceProcess{},
 		map[string]longhorn.InstanceProcess{},
 		map[string]longhorn.InstanceProcess{},
 		longhorn.DataEngineTypeV1,

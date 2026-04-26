@@ -48,6 +48,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	engineFrontendController, err := NewEngineFrontendController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyConnCounter, snapshotConcurrentLimiter)
+	if err != nil {
+		return nil, err
+	}
 	volumeController, err := NewVolumeController(logger, ds, scheme, kubeClient, namespace, controllerID, shareManagerImage, proxyConnCounter)
 	if err != nil {
 		return nil, err
@@ -186,6 +190,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	// Start goroutines for Longhorn controllers
 	go replicaController.Run(Workers, stopCh)
 	go engineController.Run(Workers, stopCh)
+	go engineFrontendController.Run(Workers, stopCh)
 	go volumeController.Run(Workers, stopCh)
 	go engineImageController.Run(Workers, stopCh)
 	go nodeController.Run(Workers, stopCh)

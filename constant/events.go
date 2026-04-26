@@ -59,9 +59,11 @@ const (
 
 	EventReasonFailedSnapshotDataIntegrityCheck = "FailedSnapshotDataIntegrityCheck"
 
-	EventReasonFailed   = "Failed"
-	EventReasonReady    = "Ready"
-	EventReasonUploaded = "Uploaded"
+	EventReasonFailed           = "Failed"
+	EventReasonReady            = "Ready"
+	EventReasonUploaded         = "Uploaded"
+	EventReasonSwitchover       = "Switchover"
+	EventReasonFailedSwitchover = "FailedSwitchover"
 
 	EventReasonUpgrade                = "Upgrade"
 	EventReasonFailedUpgradePreCheck  = "FailedUpgradePreCheck"
