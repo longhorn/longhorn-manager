@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.25.7
+go 1.26.0
 
 toolchain go1.26.2
 
@@ -48,7 +48,7 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.35.3
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
 	k8s.io/metrics => k8s.io/metrics v0.35.3
-	k8s.io/mount-utils => k8s.io/mount-utils v0.35.4
+	k8s.io/mount-utils => k8s.io/mount-utils v0.36.0
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.35.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.35.3
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.35.3
@@ -85,7 +85,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.34.0
+	golang.org/x/mod v0.35.0
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sys v0.43.0
 	golang.org/x/time v0.15.0
@@ -99,7 +99,7 @@ require (
 	k8s.io/client-go v0.35.3
 	k8s.io/kubernetes v1.35.3
 	k8s.io/metrics v0.35.3
-	k8s.io/mount-utils v0.35.4
+	k8s.io/mount-utils v0.36.0
 	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
 	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2
@@ -212,14 +212,14 @@ require (
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0
+	golang.org/x/text v0.36.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.35.3 // indirect
 	k8s.io/component-base v0.35.3 // indirect
 	k8s.io/component-helpers v0.33.0 // indirect
 	k8s.io/controller-manager v0.33.0 // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
+	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-aggregator v0.35.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20251125145642-4e65d59e963e // indirect
 	k8s.io/kubelet v0.0.0 // indirect
