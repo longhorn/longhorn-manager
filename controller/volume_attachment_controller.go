@@ -100,6 +100,15 @@ func NewLonghornVolumeAttachmentController(
 	}
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.EngineInformer.HasSynced)
 
+	if _, err = ds.EngineFrontendInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    vac.enqueueEngineFrontendChange,
+		UpdateFunc: func(old, cur interface{}) { vac.enqueueEngineFrontendChange(cur) },
+		DeleteFunc: vac.enqueueEngineFrontendChange,
+	}, 0); err != nil {
+		return nil, err
+	}
+	vac.cacheSyncs = append(vac.cacheSyncs, ds.EngineFrontendInformer.HasSynced)
+
 	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vac.enqueueNodeChange(cur) },
 	}, 0); err != nil {
@@ -183,6 +192,34 @@ func (vac *VolumeAttachmentController) enqueueEngineChange(obj interface{}) {
 		vac.enqueueVolumeAttachment(va)
 	}
 
+}
+
+func (vac *VolumeAttachmentController) enqueueEngineFrontendChange(obj interface{}) {
+	ef, ok := obj.(*longhorn.EngineFrontend)
+
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		// use the last known state, to enqueue, dependent objects
+		ef, ok = deletedState.Obj.(*longhorn.EngineFrontend)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	volumeAttachments, err := vac.ds.ListLonghornVolumeAttachmentByVolumeRO(ef.Spec.VolumeName)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list Longhorn VolumeAttachment of volume %v: %v", ef.Spec.VolumeName, err))
+		return
+	}
+
+	for _, va := range volumeAttachments {
+		vac.enqueueVolumeAttachment(va)
+	}
 }
 
 func (vac *VolumeAttachmentController) enqueueNodeChange(obj interface{}) {
@@ -954,8 +991,29 @@ func isVolumeShareAvailable(vol *longhorn.Volume) bool {
 
 func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node string) bool {
 	es, _ := vac.ds.ListVolumeEnginesRO(volumeName)
+	volume, err := vac.ds.GetVolumeRO(volumeName)
+	if err != nil {
+		return false
+	}
+
+	var efs map[string]*longhorn.EngineFrontend
+	var efForNode *longhorn.EngineFrontend
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		efs, err = vac.ds.ListVolumeEngineFrontendsRO(volumeName)
+		if err != nil {
+			return false
+		}
+		efForNode, err = getEngineFrontendForNode(efs, node)
+		if err != nil || !isEngineFrontendReady(efForNode) {
+			return false
+		}
+	}
+
 	for _, e := range es {
-		if e.Spec.NodeID != node {
+		if types.IsDataEngineV1(volume.Spec.DataEngine) && e.Spec.NodeID != node {
+			continue
+		}
+		if types.IsDataEngineV2(volume.Spec.DataEngine) && (efForNode == nil || efForNode.Spec.EngineName != e.Name) {
 			continue
 		}
 		if e.DeletionTimestamp != nil {

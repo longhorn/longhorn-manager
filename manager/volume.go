@@ -109,6 +109,23 @@ func (m *VolumeManager) GetEnginesSorted(vName string) ([]*longhorn.Engine, erro
 	return engines, nil
 }
 
+func (m *VolumeManager) GetEngineFrontendsSorted(vName string) ([]*longhorn.EngineFrontend, error) {
+	engineFrontendMap, err := m.ds.ListVolumeEngineFrontends(vName)
+	if err != nil {
+		return []*longhorn.EngineFrontend{}, err
+	}
+
+	engineFrontends := make([]*longhorn.EngineFrontend, len(engineFrontendMap))
+	engineFrontendNames, err := util.SortKeys(engineFrontendMap)
+	if err != nil {
+		return []*longhorn.EngineFrontend{}, err
+	}
+	for i, engineFrontendName := range engineFrontendNames {
+		engineFrontends[i] = engineFrontendMap[engineFrontendName]
+	}
+	return engineFrontends, nil
+}
+
 func (m *VolumeManager) GetReplicas(vName string) (map[string]*longhorn.Replica, error) {
 	return m.ds.ListVolumeReplicas(vName)
 }

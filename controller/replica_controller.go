@@ -255,6 +255,22 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return errors.Wrapf(err, "failed to cleanup the related replica instance before deleting replica %v", replica.Name)
 		}
 
+		// For v2, wait for the SPDK lvol bdev to be fully torn down before
+		// cleaning up data or removing the finalizer.
+		if types.IsDataEngineV2(replica.Spec.DataEngine) {
+			if err := rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus); err != nil {
+				return err
+			}
+			if _, err := rc.ds.UpdateReplicaStatus(replica); err != nil {
+				return err
+			}
+			if replica.Status.CurrentState != longhorn.InstanceStateStopped &&
+				replica.Status.CurrentState != longhorn.InstanceStateError {
+				log.Infof("Waiting for replica instance to stop before removing finalizer (current state: %v)", replica.Status.CurrentState)
+				return nil
+			}
+		}
+
 		rs, err := rc.ds.ListVolumeReplicasRO(replica.Spec.VolumeName)
 		if err != nil {
 			return errors.Wrapf(err, "failed to list replicas of the volume before deleting replica %v", replica.Name)
