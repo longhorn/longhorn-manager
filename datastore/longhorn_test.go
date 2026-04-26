@@ -9,9 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -203,4 +207,36 @@ func TestCreateReplica(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
+	const (
+		testNamespace  = "longhorn-system"
+		testVolumeName = "test-volume"
+	)
+
+	lhClient := lhfake.NewSimpleClientset(&longhorn.Volume{ // nolint: staticcheck
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testVolumeName,
+			Namespace: testNamespace,
+		},
+	}) // nolint: staticcheck
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+	ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactories.Start(stopCh)
+
+	require.True(t, cache.WaitForCacheSync(stopCh,
+		ds.VolumeInformer.HasSynced,
+		ds.EngineFrontendInformer.HasSynced,
+	))
+
+	ef, err := ds.GetVolumeCurrentEngineFrontend(testVolumeName)
+	require.Error(t, err)
+	require.Nil(t, ef)
+	require.Contains(t, err.Error(), "cannot find the current engine frontend")
 }

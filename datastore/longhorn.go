@@ -855,7 +855,7 @@ func (s *DataStore) AreAllEngineInstancesStopped(dataEngine longhorn.DataEngineT
 
 		imMap := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
 		for _, instanceManager := range imMap {
-			if len(instanceManager.Status.InstanceEngines) > 0 {
+			if len(instanceManager.Status.InstanceEngines) > 0 || len(instanceManager.Status.InstanceEngineFrontends) > 0 {
 				return false, ims, err
 			}
 
@@ -1609,8 +1609,17 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 		if e.DeletionTimestamp != nil {
 			continue // We cannot use a deleted engine.
 		}
-		if (v.Spec.NodeID != "" && v.Spec.NodeID == e.Spec.NodeID) ||
-			(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == e.Spec.NodeID) {
+		targetEngineNodeID := v.Spec.NodeID
+		if types.IsDataEngineV2(v.Spec.DataEngine) && v.Spec.EngineNodeID != "" {
+			targetEngineNodeID = v.Spec.EngineNodeID
+		}
+		targetCurrentEngineNodeID := v.Status.CurrentNodeID
+		if types.IsDataEngineV2(v.Spec.DataEngine) && v.Status.CurrentEngineNodeID != "" {
+			targetCurrentEngineNodeID = v.Status.CurrentEngineNodeID
+		}
+
+		if (targetEngineNodeID != "" && targetEngineNodeID == e.Spec.NodeID) ||
+			(targetCurrentEngineNodeID != "" && targetCurrentEngineNodeID == e.Spec.NodeID) {
 			if currentEngine != nil {
 				return nil, nil, fmt.Errorf("BUG: found the second new active engine %v besides %v", e.Name, currentEngine.Name)
 			}
@@ -1677,6 +1686,126 @@ func (s *DataStore) PickVolumeCurrentEngine(v *longhorn.Volume, es map[string]*l
 
 	e, _, err := GetCurrentEngineAndExtras(v, es)
 	return e, err
+}
+
+// GetCurrentEngineFrontendAndExtras detects the current EngineFrontend and extra EngineFrontends from the EngineFrontend list of a volume with the given namespace.
+// GetCurrentEngineFrontendAndExtras uses Spec.Active as the primary match
+// (consistent with GetCurrentEngineAndExtras for Engine). Falls back to
+// GetNewCurrentEngineFrontendAndExtras when no Active EF is found.
+func GetCurrentEngineFrontendAndExtras(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (currentEngineFrontend *longhorn.EngineFrontend, extras []*longhorn.EngineFrontend, err error) {
+	for _, ef := range efs {
+		if ef.Spec.Active {
+			if currentEngineFrontend != nil {
+				return nil, nil, fmt.Errorf("BUG: found the second active engine frontend %v besides %v", ef.Name, currentEngineFrontend.Name)
+			}
+			currentEngineFrontend = ef
+		} else {
+			extras = append(extras, ef)
+		}
+	}
+	if currentEngineFrontend == nil {
+		logrus.Warnf("Failed to directly pick up the current one from engine frontends for volume %v by Active flag, falling back to node-based detection", v.Name)
+		return GetNewCurrentEngineFrontendAndExtras(v, efs)
+	}
+	return
+}
+
+// GetNewCurrentEngineFrontendAndExtras detects the new current EngineFrontend
+// by NodeID matching (similar to GetNewCurrentEngineAndExtras for Engine).
+func GetNewCurrentEngineFrontendAndExtras(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (currentEngineFrontend *longhorn.EngineFrontend, extras []*longhorn.EngineFrontend, err error) {
+	for name := range efs {
+		ef := efs[name]
+		if ef.DeletionTimestamp != nil {
+			continue
+		}
+
+		targetNodeID := v.Spec.NodeID
+		targetCurrentNodeID := v.Status.CurrentNodeID
+
+		if (targetNodeID != "" && targetNodeID == ef.Spec.NodeID) ||
+			(targetCurrentNodeID != "" && targetCurrentNodeID == ef.Spec.NodeID) {
+			if currentEngineFrontend != nil {
+				return nil, nil, fmt.Errorf("BUG: found the second new active engine frontend %v besides %v", ef.Name, currentEngineFrontend.Name)
+			}
+			currentEngineFrontend = ef
+		} else {
+			extras = append(extras, ef)
+		}
+	}
+
+	// If volume only has 1 non-deleted engine frontend left and it could not
+	// be matched by NodeID (e.g., both v.Spec.NodeID and v.Status.CurrentNodeID
+	// are empty during detach-while-attaching), use it as the current EF.
+	if currentEngineFrontend == nil {
+		var activeEFs []*longhorn.EngineFrontend
+		for _, ef := range efs {
+			if ef.DeletionTimestamp == nil {
+				activeEFs = append(activeEFs, ef)
+			}
+		}
+		if len(activeEFs) == 1 {
+			currentEngineFrontend = activeEFs[0]
+			extras = []*longhorn.EngineFrontend{}
+		}
+	}
+
+	if currentEngineFrontend == nil {
+		return nil, nil, fmt.Errorf("cannot find the current engine frontend for the volume %v", v.Name)
+	}
+
+	currentEngineFrontend.Spec.Active = true
+	return
+}
+
+// PickVolumeCurrentEngineFrontend pick the current EngineFrontend from the EngineFrontend list of a volume with the given namespace
+func (s *DataStore) PickVolumeCurrentEngineFrontend(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	if len(efs) == 0 {
+		return nil, nil
+	}
+
+	ef, _, err := GetCurrentEngineFrontendAndExtras(v, efs)
+	return ef, err
+}
+
+// GetVolumeCurrentEngineFrontend returns the EngineFrontend for a volume with the given namespace
+func (s *DataStore) GetVolumeCurrentEngineFrontend(volumeName string) (*longhorn.EngineFrontend, error) {
+	efs, err := s.ListVolumeEngineFrontendsRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	v, err := s.GetVolumeRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	ef, err := s.PickVolumeCurrentEngineFrontend(v, efs)
+	if err != nil {
+		return nil, err
+	}
+	if ef == nil {
+		return nil, errors.Errorf("cannot find the current engine frontend for volume %v", volumeName)
+	}
+	return ef.DeepCopy(), nil
+}
+
+// ListVolumeEngineFrontendsRO returns an object contains all EngineFrontends with the given
+// LonghornLabelVolume name and namespace
+func (s *DataStore) ListVolumeEngineFrontendsRO(volumeName string) (map[string]*longhorn.EngineFrontend, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineFrontendList, err := s.engineFrontendLister.EngineFrontends(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	engineFrontendMap := make(map[string]*longhorn.EngineFrontend, len(engineFrontendList))
+	for _, ef := range engineFrontendList {
+		engineFrontendMap[ef.Name] = ef
+	}
+
+	return engineFrontendMap, nil
 }
 
 // GetVolumeCurrentEngine returns the Engine for a volume with the given namespace
@@ -1849,6 +1978,184 @@ func (s *DataStore) ListVolumeEnginesRO(volumeName string) (map[string]*longhorn
 	}
 
 	return engineMap, nil
+}
+
+func checkEngineFrontend(ef *longhorn.EngineFrontend) error {
+	if ef.Name == "" || ef.Spec.VolumeName == "" {
+		return fmt.Errorf("BUG: missing required field %+v", ef)
+	}
+	return nil
+}
+
+// CreateEngineFrontend creates a Longhorn EngineFrontend resource and verifies creation
+func (s *DataStore) CreateEngineFrontend(ef *longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	if err := checkEngineFrontend(ef); err != nil {
+		return nil, err
+	}
+	if err := labelNode(ef.Spec.NodeID, ef); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).Create(context.TODO(), ef, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ef.Name, "enginefrontend", func(name string) (k8sruntime.Object, error) {
+		return s.GetEngineFrontendRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.EngineFrontend)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for enginefrontend")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateEngineFrontend updates Longhorn EngineFrontend and verifies update
+func (s *DataStore) UpdateEngineFrontend(ef *longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	if err := checkEngineFrontend(ef); err != nil {
+		return nil, err
+	}
+	if err := labelNode(ef.Spec.NodeID, ef); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).Update(context.TODO(), ef, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(ef.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetEngineFrontendRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateEngineFrontendStatus updates Longhorn EngineFrontend status and verifies update
+func (s *DataStore) UpdateEngineFrontendStatus(ef *longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	obj, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).UpdateStatus(context.TODO(), ef, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(ef.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetEngineFrontendRO(name)
+	})
+	return obj, nil
+}
+
+// ResetMonitoringEngineFrontendStatus cleans and updates EngineFrontend status
+func (s *DataStore) ResetMonitoringEngineFrontendStatus(ef *longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	ef.Status.CurrentSize = 0
+	ef.Status.Endpoint = ""
+	ef.Status.TargetIP = ""
+	ef.Status.TargetPort = 0
+	ef.Status.ActivePath = ""
+	ef.Status.PreferredPath = ""
+	ef.Status.Paths = nil
+	ef.Status.SwitchoverPhase = longhorn.EngineFrontendSwitchoverPhaseNone
+	ret, err := s.UpdateEngineFrontendStatus(ef)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to reset engine frontend status for %v", ef.Name)
+	}
+	return ret, nil
+}
+
+// DeleteEngineFrontend won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteEngineFrontend(name string) error {
+	return s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForEngineFrontend will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForEngineFrontend(obj *longhorn.EngineFrontend) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for enginefrontend %v", obj.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) GetEngineFrontendRO(name string) (*longhorn.EngineFrontend, error) {
+	return s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// ListEngineFrontendsByVolumeRO returns a list of all EngineFrontends for the given volume
+func (s *DataStore) ListEngineFrontendsByVolumeRO(volumeName string) ([]*longhorn.EngineFrontend, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listEngineFrontendsRO(selector)
+}
+
+func (s *DataStore) listEngineFrontendsRO(selector labels.Selector) ([]*longhorn.EngineFrontend, error) {
+	list, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	engineFrontends := []*longhorn.EngineFrontend{}
+	for i := range list.Items {
+		engineFrontends = append(engineFrontends, &list.Items[i])
+	}
+	return engineFrontends, nil
+}
+
+// GetEngineFrontend returns the EngineFrontend for the given name and namespace
+func (s *DataStore) GetEngineFrontend(name string) (*longhorn.EngineFrontend, error) {
+	resultRO, err := s.GetEngineFrontendRO(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) listEngineFrontends(selector labels.Selector) (map[string]*longhorn.EngineFrontend, error) {
+	list, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	engineFrontends := map[string]*longhorn.EngineFrontend{}
+	for i := range list.Items {
+		engineFrontends[list.Items[i].Name] = &list.Items[i]
+	}
+	return engineFrontends, nil
+}
+
+// ListEngineFrontends returns an object contains all EngineFrontends for the given namespace
+func (s *DataStore) ListEngineFrontends() (map[string]*longhorn.EngineFrontend, error) {
+	return s.listEngineFrontends(labels.Everything())
+}
+
+// ListVolumeEngineFrontends returns an object contains all EngineFrontends with the given
+// LonghornLabelVolume name and namespace
+func (s *DataStore) ListVolumeEngineFrontends(volumeName string) (map[string]*longhorn.EngineFrontend, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listEngineFrontends(selector)
 }
 
 func checkReplica(r *longhorn.Replica) error {
@@ -4402,6 +4709,10 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		name = obj.Name
 		dataEngine = obj.Spec.DataEngine
 		nodeID = obj.Spec.NodeID
+	case *longhorn.EngineFrontend:
+		name = obj.Name
+		dataEngine = obj.Spec.DataEngine
+		nodeID = obj.Spec.NodeID
 	case *longhorn.Replica:
 		name = obj.Name
 		dataEngine = obj.Spec.DataEngine
@@ -6767,12 +7078,12 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 	return nil, &types.NotFoundError{Name: "a running instance manager for node " + node}
 }
 
-func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (bool, error) {
-	if types.IsDataEngineV2(e.Spec.DataEngine) {
+func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(volumeName string, dataEngine longhorn.DataEngineType) (bool, error) {
+	if types.IsDataEngineV2(dataEngine) {
 		return false, nil
 	}
 
-	volume, err := s.GetVolumeRO(e.Spec.VolumeName)
+	volume, err := s.GetVolumeRO(volumeName)
 	if err != nil {
 		return false, err
 	}
@@ -6781,7 +7092,7 @@ func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (b
 		return volume.Spec.FreezeFilesystemForSnapshot == longhorn.FreezeFilesystemForSnapshotEnabled, nil
 	}
 
-	return s.GetSettingAsBoolByDataEngine(types.SettingNameFreezeFilesystemForSnapshot, e.Spec.DataEngine)
+	return s.GetSettingAsBoolByDataEngine(types.SettingNameFreezeFilesystemForSnapshot, dataEngine)
 }
 
 func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage, diskUUID string) (bool, error) {
@@ -6884,4 +7195,11 @@ func (s *DataStore) GetAllDiskUUIDFirstFourChar() (map[string]bool, error) {
 	}
 
 	return firstFourCharSet, nil
+}
+
+func (s *DataStore) GetDataEngineObject(engine *longhorn.Engine) (longhorn.DataEngineObject, error) {
+	if types.IsDataEngineV2(engine.Spec.DataEngine) {
+		return s.GetVolumeCurrentEngineFrontend(engine.Spec.VolumeName)
+	}
+	return engine, nil
 }
