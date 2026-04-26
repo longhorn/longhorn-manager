@@ -74,7 +74,7 @@ require (
 	github.com/longhorn/go-spdk-helper v0.5.0
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20260405
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260405
-	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260405
+	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260419
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260304090835-8b93a5453dcd
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
