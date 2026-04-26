@@ -94,7 +94,7 @@ func upgradeSettings(namespace string, lhClient *lhclientset.Clientset, resource
 			continue
 		}
 
-		value, err := datastore.GetSettingValidValue(definition, s.Value)
+		value, err := datastore.GetSettingValidValueStripped(definition, s.Value)
 		if err != nil {
 			errs = append(errs, errors.Wrapf(err, "failed to get valid value for setting %s", s.Name))
 			continue

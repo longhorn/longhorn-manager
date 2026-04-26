@@ -439,6 +439,48 @@ func GetSettingValidValue(definition types.SettingDefinition, value string) (str
 		return "", err
 	}
 
+	// Reject any data engine types that are not in the default values
+	for dataEngine := range values {
+		if _, ok := defaultValues[dataEngine]; !ok {
+			return "", fmt.Errorf("value %v is invalid for setting %v: contains unsupported data engine types", value, definition.DisplayName)
+		}
+	}
+
+	return convertDataEngineValuesToJSONString(values)
+}
+
+// GetSettingValidValueStripped is similar to GetSettingValidValue but strips
+// unsupported data engine types instead of returning an error. This is used
+// during upgrades where old settings may contain data engines that are no
+// longer supported.
+func GetSettingValidValueStripped(definition types.SettingDefinition, value string) (string, error) {
+	if !definition.DataEngineSpecific {
+		return value, nil
+	}
+
+	if !types.IsJSONFormat(definition.Default) {
+		return "", fmt.Errorf("setting %v is data engine specific but default value %v is not in JSON-formatted string", definition.DisplayName, definition.Default)
+	}
+
+	var values map[longhorn.DataEngineType]any
+	var err error
+
+	// Get default values from definition
+	defaultValues, err := types.ParseDataEngineSpecificSetting(definition, definition.Default)
+	if err != nil {
+		return "", err
+	}
+
+	// Get values from customized value
+	if types.IsJSONFormat(value) {
+		values, err = types.ParseDataEngineSpecificSetting(definition, value)
+	} else {
+		values, err = types.ParseSettingSingleValue(definition, value)
+	}
+	if err != nil {
+		return "", err
+	}
+
 	// Remove any data engine types that are not in the default values
 	for dataEngine := range values {
 		if _, ok := defaultValues[dataEngine]; !ok {

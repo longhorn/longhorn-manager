@@ -16,6 +16,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func TestCreateReplica(t *testing.T) {
@@ -201,6 +202,106 @@ func TestCreateReplica(t *testing.T) {
 					assert.NotNil(t, createdReplica)
 				}
 			}
+		})
+	}
+}
+
+func TestGetSettingValidValue(t *testing.T) {
+	// Use a v1-only bool setting definition similar to disable-revision-counter
+	v1OnlyBoolDef := types.SettingDefinition{
+		DisplayName:        "Test V1 Only Bool",
+		Type:               types.SettingTypeBool,
+		Required:           true,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV1),
+	}
+
+	tests := map[string]struct {
+		definition  types.SettingDefinition
+		value       string
+		expectError bool
+		expected    string
+	}{
+		"valid v1-only value": {
+			definition:  v1OnlyBoolDef,
+			value:       fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV1),
+			expectError: false,
+			expected:    fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV1),
+		},
+		"invalid v1 and v2 for v1-only setting": {
+			definition:  v1OnlyBoolDef,
+			value:       fmt.Sprintf("{%q:\"true\",%q:\"true\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+			expectError: true,
+		},
+		"invalid v2-only for v1-only setting": {
+			definition:  v1OnlyBoolDef,
+			value:       fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV2),
+			expectError: true,
+		},
+		"single value gets expanded to all supported engines": {
+			definition:  v1OnlyBoolDef,
+			value:       "false",
+			expectError: false,
+			expected:    fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV1),
+		},
+		"non data-engine-specific returns as is": {
+			definition: types.SettingDefinition{
+				DisplayName:        "Test Non Specific",
+				Type:               types.SettingTypeBool,
+				DataEngineSpecific: false,
+				Default:            "true",
+			},
+			value:       "false",
+			expectError: false,
+			expected:    "false",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := GetSettingValidValue(tc.definition, tc.value)
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestGetSettingValidValueStripped(t *testing.T) {
+	// Use a v1-only bool setting definition
+	v1OnlyBoolDef := types.SettingDefinition{
+		DisplayName:        "Test V1 Only Bool",
+		Type:               types.SettingTypeBool,
+		Required:           true,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV1),
+	}
+
+	tests := map[string]struct {
+		definition types.SettingDefinition
+		value      string
+		expected   string
+	}{
+		"strips v2 from v1-only setting": {
+			definition: v1OnlyBoolDef,
+			value:      fmt.Sprintf("{%q:\"true\",%q:\"true\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+			expected:   fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV1),
+		},
+		"valid v1-only value unchanged": {
+			definition: v1OnlyBoolDef,
+			value:      fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV1),
+			expected:   fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV1),
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := GetSettingValidValueStripped(tc.definition, tc.value)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, result)
 		})
 	}
 }
