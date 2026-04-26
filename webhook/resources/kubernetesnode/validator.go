@@ -87,7 +87,7 @@ func (v *kubeNodeValidator) canNodeDisableV2DataEngine(oldNode, newNode *corev1.
 			return true, nil
 		}
 		// Check if there is any instance (Engine or Replica) on this node.
-		if len(im.Status.InstanceEngines)+len(im.Status.InstanceReplicas) > 0 {
+		if len(im.Status.InstanceEngines)+len(im.Status.InstanceReplicas)+len(im.Status.InstanceEngineFrontends) > 0 {
 			return false, nil
 		}
 	}
