@@ -4287,9 +4287,9 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	// a restore/DR volume is considered as finished if the following conditions are satisfied:
 	// 1) The restored backup is up-to-date;
 	// 2) The volume is no longer a DR volume;
-	// 3) The restore/DR volume is
-	//   3.1) it's state `Healthy`;
-	//   3.2) or it's state `Degraded` with all the scheduled replica included in the engine
+	// 3) The restore/DR volume is either:
+	//   3.1) Healthy with at least spec.numberOfReplicas RW replicas;
+	//   3.2) or Degraded with degraded availability allowed, at least one RW replica, and all scheduled replicas included in the engine.
 	if v.Spec.FromBackup == "" {
 		return nil
 	}
@@ -4337,7 +4337,7 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 		}
 	}
 
-	allScheduledReplicasIncluded, err := c.checkAllScheduledReplicasIncluded(v, e, rs)
+	healthyReplicaCount, allScheduledReplicasIncluded, err := c.checkRestoredReplicaReadiness(e, rs)
 	if err != nil {
 		return err
 	}
@@ -4347,7 +4347,14 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 		return err
 	}
 
-	if !isPurging && ((v.Status.Robustness == longhorn.VolumeRobustnessHealthy && allScheduledReplicasIncluded) || (v.Status.Robustness == longhorn.VolumeRobustnessDegraded && degradedVolumeSupported)) {
+	restoreCompleted := false
+	if v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
+		restoreCompleted = healthyReplicaCount >= v.Spec.NumberOfReplicas
+	} else if v.Status.Robustness == longhorn.VolumeRobustnessDegraded && degradedVolumeSupported {
+		restoreCompleted = healthyReplicaCount > 0 && allScheduledReplicasIncluded
+	}
+
+	if !isPurging && restoreCompleted {
 		log.Infof("Restore/DR volume finished with the last restored backup %s", e.Status.LastRestoredBackup)
 		v.Status.IsStandby = false
 		v.Status.RestoreRequired = false
@@ -4356,28 +4363,32 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	return nil
 }
 
-func (c *VolumeController) checkAllScheduledReplicasIncluded(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
-	healthReplicaCount := 0
+func (c *VolumeController) checkRestoredReplicaReadiness(e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, bool, error) {
+	healthyReplicaCount := 0
 	hasReplicaNotIncluded := false
 
 	for _, r := range rs {
+		if r.DeletionTimestamp != nil {
+			hasReplicaNotIncluded = true
+			continue
+		}
 		// skip unscheduled replicas
 		if r.Spec.NodeID == "" {
 			continue
 		}
 		if isDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
-			return false, err
+			return 0, false, err
 		} else if isDownOrDeleted {
 			continue
 		}
 		if mode := e.Status.ReplicaModeMap[r.Name]; mode == longhorn.ReplicaModeRW {
-			healthReplicaCount++
+			healthyReplicaCount++
 		} else {
 			hasReplicaNotIncluded = true
 		}
 	}
 
-	return healthReplicaCount > 0 && (healthReplicaCount >= v.Spec.NumberOfReplicas || !hasReplicaNotIncluded), nil
+	return healthyReplicaCount, !hasReplicaNotIncluded, nil
 }
 
 func (c *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn.Volume, e *longhorn.Engine) (err error) {

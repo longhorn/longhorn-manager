@@ -1342,6 +1342,96 @@ func (s *TestSuite) TestGetSnapshotCountThresholdFallback(c *C) {
 	c.Assert(threshold, Equals, specMaxCount)
 }
 
+func (s *TestSuite) TestCheckAndFinishVolumeRestoreReplicaReadiness(c *C) {
+	datastore.SkipListerCheck = true
+
+	testBackupURL := backupstore.EncodeBackupURL(TestBackupName, TestVolumeName, TestBackupTarget)
+
+	testCases := map[string]struct {
+		allowDegradedAvailability string
+		robustness                longhorn.VolumeRobustness
+		deletingReplica           bool
+		expectRestoreRequired     bool
+	}{
+		"keep restore required when healthy volume has fewer restored replicas than requested": {
+			allowDegradedAvailability: "false",
+			robustness:                longhorn.VolumeRobustnessHealthy,
+			expectRestoreRequired:     true,
+		},
+		"finish degraded restore when degraded availability is allowed": {
+			allowDegradedAvailability: "true",
+			robustness:                longhorn.VolumeRobustnessDegraded,
+			expectRestoreRequired:     false,
+		},
+		"keep restore required when degraded volume has deleting replica": {
+			allowDegradedAvailability: "true",
+			robustness:                longhorn.VolumeRobustnessDegraded,
+			deletingReplica:           true,
+			expectRestoreRequired:     true,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+		vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		c.Assert(err, IsNil)
+
+		setting := initSettingsNameValue(
+			string(types.SettingNameAllowVolumeCreationWithDegradedAvailability),
+			tc.allowDegradedAvailability)
+		createdSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(createdSetting)
+		c.Assert(err, IsNil)
+
+		for _, node := range []*longhorn.Node{
+			newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		} {
+			createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = nIndexer.Add(createdNode)
+			c.Assert(err, IsNil)
+		}
+
+		volume := newVolume(TestVolumeName, 3)
+		volume.Spec.FromBackup = testBackupURL
+		volume.Status.Robustness = tc.robustness
+		volume.Status.RestoreInitiated = true
+		volume.Status.RestoreRequired = true
+
+		engine := newEngineForVolume(volume)
+		engine.Spec.RequestedBackupRestore = TestBackupName
+		engine.Status.LastRestoredBackup = TestBackupName
+		engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+
+		replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+		replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+		if tc.deletingReplica {
+			now := metav1.NewTime(time.Now())
+			replica2.DeletionTimestamp = &now
+		}
+		replicas := map[string]*longhorn.Replica{
+			replica1.Name: replica1,
+			replica2.Name: replica2,
+		}
+		engine.Status.ReplicaModeMap[replica1.Name] = longhorn.ReplicaModeRW
+		engine.Status.ReplicaModeMap[replica2.Name] = longhorn.ReplicaModeRW
+
+		err = vc.checkAndFinishVolumeRestore(volume, engine, replicas)
+		c.Assert(err, IsNil)
+		c.Assert(volume.Status.RestoreRequired, Equals, tc.expectRestoreRequired)
+	}
+}
+
 func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
 	// We have to skip lister check for unit tests
 	// Because the changes written through the API won't be reflected in the listers
