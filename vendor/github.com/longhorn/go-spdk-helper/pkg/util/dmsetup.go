@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	commonns "github.com/longhorn/go-common-libs/ns"
@@ -85,17 +86,51 @@ func DmsetupDeps(dmDeviceName string, executor *commonns.Executor) ([]string, er
 		return nil, err
 	}
 
-	return parseDependentDevicesFromString(outputStr), nil
+	knownDevices, err := GetKnownDevices(executor)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseDependentDevicesFromString(outputStr, knownDevices), nil
 }
 
-func parseDependentDevicesFromString(str string) []string {
-	re := regexp.MustCompile(`\(([\w-]+)\)`)
+func parseDependentDevicesFromString(str string, knownDevices map[string]*LonghornBlockDevice) []string {
+	re := regexp.MustCompile(`\(([^)]+)\)`)
 	matches := re.FindAllStringSubmatch(str, -1)
 
 	devices := make([]string, 0, len(matches))
 
 	for _, match := range matches {
-		devices = append(devices, match[1])
+		dep := strings.TrimSpace(match[1])
+		if dep == "" {
+			continue
+		}
+
+		if !strings.Contains(dep, ",") {
+			devices = append(devices, dep)
+			continue
+		}
+
+		majorMinor := strings.Split(dep, ",")
+		if len(majorMinor) != 2 {
+			continue
+		}
+
+		major, errMajor := strconv.Atoi(strings.TrimSpace(majorMinor[0]))
+		minor, errMinor := strconv.Atoi(strings.TrimSpace(majorMinor[1]))
+		if errMajor != nil || errMinor != nil {
+			continue
+		}
+
+		for _, device := range knownDevices {
+			if device == nil {
+				continue
+			}
+			if device.Source.Major == major && device.Source.Minor == minor {
+				devices = append(devices, device.Source.Name)
+				break
+			}
+		}
 	}
 
 	return devices
