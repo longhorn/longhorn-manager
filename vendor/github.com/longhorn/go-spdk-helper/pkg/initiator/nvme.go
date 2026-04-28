@@ -62,6 +62,29 @@ func DisconnectTarget(nqn string, executor *commonns.Executor) error {
 	return disconnect(nqn, executor)
 }
 
+// DisconnectController disconnects a single NVMe controller that
+// matches the given NQN, IP, and port. This is used to remove an individual
+// multipath path without affecting other controllers for the same subsystem.
+// It returns nil if no matching controller is found (already disconnected).
+func DisconnectController(nqn, ip, port string, executor *commonns.Executor) error {
+	subsystems, err := listSubsystems("", executor)
+	if err != nil {
+		return errors.Wrap(err, "failed to list subsystems for controller disconnect")
+	}
+	for _, sys := range subsystems {
+		if sys.NQN != nqn {
+			continue
+		}
+		for _, path := range sys.Paths {
+			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
+			if controllerIP == ip && controllerPort == port {
+				return disconnectController(path.Name, executor)
+			}
+		}
+	}
+	return nil
+}
+
 // GetDevices returns all devices
 func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []Device, err error) {
 	defer func() {
@@ -145,6 +168,76 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 		}
 		if match {
 			res = append(res, d)
+		}
+	}
+
+	if len(res) == 0 {
+		// NVMe native multipath fallback: when multiple controllers share one
+		// subsystem NQN, the kernel will only create a single namespace block
+		// device (e.g. /dev/nvme4n1) under the first controller. Additional
+		// controllers (e.g. nvme5) added via `nvme connect` do not get their
+		// own block device because the kernel merges them as extra I/O paths.
+		//
+		// The per-device `nvme list-subsys /dev/nvme4n1` only returns the
+		// path for the controller that owns that block device (nvme4), so the
+		// primary matching loop above cannot find the new controller. Here we
+		// query ALL subsystems without a device path filter to discover every
+		// controller, then map back to the existing namespace block device.
+		subsystems, err := listSubsystems("", executor)
+		if err != nil {
+			return nil, err
+		}
+		for _, sys := range subsystems {
+			if sys.NQN != nqn {
+				continue
+			}
+			pathMatch := false
+			for _, path := range sys.Paths {
+				controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
+				if ip != "" && ip != controllerIP {
+					continue
+				}
+				if port != "" && port != controllerPort {
+					continue
+				}
+				pathMatch = true
+				break
+			}
+			if !pathMatch {
+				continue
+			}
+
+			// Found a subsystem with a matching controller. Now find the
+			// namespace block device that belongs to this subsystem from
+			// the per-device scan we already performed.
+			for _, d := range devices {
+				if d.SubsystemNQN != nqn {
+					continue
+				}
+				if len(d.Namespaces) == 0 {
+					continue
+				}
+				// Rebuild this device with ALL controllers from the
+				// unfiltered subsystem query so the caller can select
+				// the correct controller.
+				allControllers := []Controller{}
+				for _, p := range sys.Paths {
+					allControllers = append(allControllers, Controller{
+						Controller: p.Name,
+						Transport:  p.Transport,
+						Address:    p.Address,
+						State:      p.State,
+					})
+				}
+				multipathDevice := Device{
+					Subsystem:    sys.Name,
+					SubsystemNQN: sys.NQN,
+					Controllers:  allControllers,
+					Namespaces:   d.Namespaces,
+				}
+				res = append(res, multipathDevice)
+				break
+			}
 		}
 	}
 
