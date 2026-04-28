@@ -13,6 +13,8 @@ ENV DAPPER_RUN_ARGS --privileged --tmpfs /go/src/github.com/longhorn/longhorn/in
 ENV TRASH_CACHE ${DAPPER_SOURCE}/.trash-cache
 ENV HOME ${DAPPER_SOURCE}
 
+ENV GOLANGCI_LINT_VERSION=v2.11.4
+
 WORKDIR ${DAPPER_SOURCE}
 
 ENTRYPOINT ["./scripts/entry"]
@@ -22,7 +24,9 @@ RUN zypper -n install gcc ca-certificates git wget curl vim less file python3-to
     rm -rf /var/cache/zypp/*
 
 # Install golangci-lint
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
+RUN curl -fsSL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh -o /tmp/install.sh \
+    && chmod +x /tmp/install.sh \
+    && /tmp/install.sh -b /usr/local/bin ${GOLANGCI_LINT_VERSION}
 
 # Docker Builx: The docker version in dapper is too old to have buildx. Install it manually.
 RUN curl -sSfLO https://github.com/docker/buildx/releases/download/v0.13.1/buildx-v0.13.1.linux-${ARCH} && \
