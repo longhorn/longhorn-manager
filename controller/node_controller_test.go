@@ -79,6 +79,8 @@ type NodeControllerSuite struct {
 	lhReplicaIndexer         cache.Indexer
 	lhSettingsIndexer        cache.Indexer
 	lhInstanceManagerIndexer cache.Indexer
+	lhIMUIndexer             cache.Indexer
+	lhIMUCIndexer            cache.Indexer
 	lhOrphanIndexer          cache.Indexer
 
 	podIndexer  cache.Indexer
@@ -96,6 +98,8 @@ type NodeControllerFixture struct {
 	lhReplicas         []*longhorn.Replica
 	lhSettings         map[string]*longhorn.Setting
 	lhInstanceManagers map[string]*longhorn.InstanceManager
+	lhIMUs             map[string]*longhorn.InstanceManagerUpgrade
+	lhIMUCs            map[string]*longhorn.InstanceManagerUpgradeControl
 	lhOrphans          map[string]*longhorn.Orphan
 	pods               map[string]*corev1.Pod
 	nodes              map[string]*corev1.Node
@@ -128,6 +132,8 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 	s.lhReplicaIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 	s.lhSettingsIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 	s.lhInstanceManagerIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	s.lhIMUIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	s.lhIMUCIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgradeControls().Informer().GetIndexer()
 	s.lhOrphanIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Orphans().Informer().GetIndexer()
 
 	s.podIndexer = s.informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
@@ -2211,6 +2217,50 @@ CONFIG_NFS_V4_2=y`
 	}
 }
 
+func (s *NodeControllerSuite) TestShouldPreserveOldV2InstanceManagerOnProtectedTemporaryNode(c *C) {
+	activeIMU := newIMU("upgrade-node-1", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+	activeIMU.Status.Engines = map[string]longhorn.EngineRelocation{
+		"volume-a": {
+			OriginalNodeID:  TestNode1,
+			TemporaryNodeID: TestNode2,
+		},
+	}
+
+	fixture := &NodeControllerFixture{
+		lhIMUs: map[string]*longhorn.InstanceManagerUpgrade{
+			activeIMU.Name: activeIMU,
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	preserve, err := s.controller.shouldPreserveOldV2InstanceManagerDuringUpgrade(TestNode2)
+	c.Assert(err, IsNil)
+	c.Assert(preserve, Equals, true)
+}
+
+func (s *NodeControllerSuite) TestShouldNotPreserveOldV2InstanceManagerOnUpgradeSourceNode(c *C) {
+	activeIMU := newIMU("upgrade-node-1", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+	activeIMU.Status.Engines = map[string]longhorn.EngineRelocation{
+		"volume-a": {
+			OriginalNodeID:  TestNode1,
+			TemporaryNodeID: TestNode2,
+		},
+	}
+
+	fixture := &NodeControllerFixture{
+		lhIMUs: map[string]*longhorn.InstanceManagerUpgrade{
+			activeIMU.Name: activeIMU,
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	preserve, err := s.controller.shouldPreserveOldV2InstanceManagerDuringUpgrade(TestNode1)
+	c.Assert(err, IsNil)
+	c.Assert(preserve, Equals, false)
+}
+
 func (s *NodeControllerSuite) TestShouldConsiderOnDemandRequest(c *C) {
 	testCases := []struct {
 		name            string
@@ -2438,6 +2488,22 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 		c.Assert(err, IsNil)
 		c.Assert(im, NotNil)
 		err = s.lhInstanceManagerIndexer.Add(im)
+		c.Assert(err, IsNil)
+	}
+
+	for _, imu := range fixture.lhIMUs {
+		upgrade, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(upgrade, NotNil)
+		err = s.lhIMUIndexer.Add(upgrade)
+		c.Assert(err, IsNil)
+	}
+
+	for _, imuc := range fixture.lhIMUCs {
+		control, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(TestNamespace).Create(context.TODO(), imuc, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(control, NotNil)
+		err = s.lhIMUCIndexer.Add(control)
 		c.Assert(err, IsNil)
 	}
 

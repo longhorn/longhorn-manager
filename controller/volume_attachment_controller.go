@@ -600,6 +600,14 @@ func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.Volum
 
 func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
 	log := getLoggerForLHVolumeAttachment(vac.logger, va)
+	if vac.shouldKeepAttachedDuringV2LiveUpgradeSwitchover(vol) {
+		log.WithFields(logrus.Fields{
+			"attachmentNodeID":    vol.Spec.NodeID,
+			"engineNodeID":        vol.Spec.EngineNodeID,
+			"currentEngineNodeID": vol.Status.CurrentEngineNodeID,
+		}).Info("Skipping volume detach while v2 engine switchover is in progress during live upgrade")
+		return false
+	}
 	// For auto salvage logic
 	// TODO: create Auto Salvage controller to handle this logic instead of AD controller
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
@@ -639,6 +647,41 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	if !hasUninterruptibleTicket(currentAttachmentTickets, vol) && hasWorkloadTicket(attachmentTicketsOnOtherNodes, longhorn.AnyValue) {
 		log.Info("Workload attachment ticket interrupted snapshot/backup attachment tickets")
 		return true
+	}
+
+	return false
+}
+
+// During a v2 live upgrade, the instance manager being replaced can belong to the
+// current engine node rather than the workload attachment node. Keep the volume
+// attached while the engine is switching over so the old IM disappearing does not
+// trigger a detach in the middle of the handoff. Outside this upgrade window, the
+// normal detach logic below still applies.
+func (vac *VolumeAttachmentController) shouldKeepAttachedDuringV2LiveUpgradeSwitchover(vol *longhorn.Volume) bool {
+	if !types.IsDataEngineV2(vol.Spec.DataEngine) {
+		return false
+	}
+
+	isAttachedOnCurrentNode := vol.Spec.NodeID != "" && vol.Spec.NodeID == vol.Status.CurrentNodeID
+	isEngineSwitchoverInProgress := vol.Spec.EngineNodeID != "" &&
+		vol.Status.CurrentEngineNodeID != "" &&
+		vol.Spec.EngineNodeID != vol.Status.CurrentEngineNodeID
+	if !isAttachedOnCurrentNode || !isEngineSwitchoverInProgress {
+		return false
+	}
+
+	checkedNodes := map[string]struct{}{}
+	for _, nodeID := range []string{vol.Spec.NodeID, vol.Spec.EngineNodeID, vol.Status.CurrentEngineNodeID} {
+		if nodeID == "" {
+			continue
+		}
+		if _, exists := checkedNodes[nodeID]; exists {
+			continue
+		}
+		checkedNodes[nodeID] = struct{}{}
+		if hasActiveInstanceManagerUpgradeOnNode(vac.ds, nodeID) {
+			return true
+		}
 	}
 
 	return false
@@ -1028,6 +1071,13 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 		}
 		if !hasAvailableReplica {
 			continue
+		}
+		if types.IsDataEngineV2(volume.Spec.DataEngine) {
+			if !isEngineFrontendReadyForNode(efs, node) {
+				if !hasActiveInstanceManagerUpgradeOnNode(vac.ds, node) || !isEngineFrontendTemporarilyAvailableForNode(efs, node) {
+					continue
+				}
+			}
 		}
 		return true
 	}

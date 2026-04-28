@@ -135,6 +135,7 @@ const (
 	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
+	SettingNameTakeSnapshotBeforeV2DataEngineUpgrade                    = SettingName("take-snapshot-before-v2-data-engine-upgrade")
 	SettingNameReplicaFileSyncHTTPClientTimeout                         = SettingName("replica-file-sync-http-client-timeout")
 	SettingNameLongGRPCTimeOut                                          = SettingName("long-grpc-timeout")
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
@@ -168,6 +169,8 @@ const (
 	SettingNameEngineImagePodLivenessProbeTimeout                       = SettingName("engine-image-pod-liveness-probe-timeout")
 	SettingNameEngineImagePodLivenessProbeFailureThreshold              = SettingName("engine-image-pod-liveness-probe-failure-threshold")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
+	SettingNameV2InstanceManagerUpgradeStartTime                        = SettingName("v2-instance-manager-upgrade-start-time")
+	SettingNameV2InstanceManagerUpgradeTimeout                          = SettingName("v2-instance-manager-upgrade-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
@@ -294,11 +297,14 @@ var (
 		SettingNameEngineImagePodLivenessProbeTimeout,
 		SettingNameEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
+		SettingNameV2InstanceManagerUpgradeStartTime,
+		SettingNameV2InstanceManagerUpgradeTimeout,
 		SettingNameLogPath,
 		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
 		SettingNameCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking,
+		SettingNameTakeSnapshotBeforeV2DataEngineUpgrade,
 	}
 )
 
@@ -454,11 +460,14 @@ var (
 		SettingNameEngineImagePodLivenessProbeTimeout:                       SettingDefinitionEngineImagePodLivenessProbeTimeout,
 		SettingNameEngineImagePodLivenessProbeFailureThreshold:              SettingDefinitionEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
+		SettingNameV2InstanceManagerUpgradeStartTime:                        SettingDefinitionV2InstanceManagerUpgradeStartTime,
+		SettingNameV2InstanceManagerUpgradeTimeout:                          SettingDefinitionV2InstanceManagerUpgradeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
 		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
 		SettingNameCSIAllowedTopologyKeys:                                   SettingDefinitionCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking:                               SettingDefinitionCSIStorageCapacityTracking,
+		SettingNameTakeSnapshotBeforeV2DataEngineUpgrade:                    SettingDefinitionTakeSnapshotBeforeV2DataEngineUpgrade,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1703,6 +1712,38 @@ var (
 		},
 	}
 
+	SettingDefinitionV2InstanceManagerUpgradeStartTime = SettingDefinition{
+		DisplayName: "V2 Instance Manager Upgrade Start Time",
+		Description: "In RFC3339 format. Specifies when the rolling upgrade of V2 instance managers should begin. " +
+			"This provides flexibility for scheduling the upgrade at a preferred time. If empty, the upgrade starts immediately. " +
+			"Once an upgrade has started, changes to this setting are ignored.\n\n" +
+			"Example: 2026-04-20T15:00:00Z\n\n",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
+	}
+
+	SettingDefinitionV2InstanceManagerUpgradeTimeout = SettingDefinition{
+		DisplayName: "V2 Instance Manager Upgrade Timeout",
+		Description: "In minutes. Since the V2 instance manager is upgraded node by node, an unexpected issue on one node could block upgrades on the remaining nodes. " +
+			"This timeout defines how long an upgrade process can run on a single node before it is aborted, allowing other nodes to continue their upgrade process. " +
+			"The default value is 60 minutes.\n\n" +
+			"**Important**: Changes to this setting take effect immediately and apply to all in-flight upgrade operations. " +
+			"Increasing the timeout gives more time to struggling upgrades; decreasing it may cause currently running upgrades to abort if they exceed the new limit.\n\n",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "60",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
+	}
+
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName:        "Log Level",
 		Description:        "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
@@ -2018,6 +2059,17 @@ var (
 		DisplayName: "CSI Storage Capacity Tracking",
 		Description: "Controls CSI storage capacity tracking, which allows the kube-scheduler to filter " +
 			"nodes that cannot fit the requested volume.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
+	}
+
+	SettingDefinitionTakeSnapshotBeforeV2DataEngineUpgrade = SettingDefinition{
+		DisplayName:        "Take Snapshot Before V2 Data Engine Upgrade",
+		Description:        "If enabled, Longhorn takes a snapshot and waits for its checksum calculation to complete before relocating a v2 data engine to another node during the Instance Manager Upgrade. This helps minimize replica rebuild time if a failure occurs during the upgrade. This setting must be enabled to utilize the Fast Replica Rebuild feature (`fast-replica-rebuild-enabled`) during the upgrade process.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,

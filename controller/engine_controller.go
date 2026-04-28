@@ -1145,6 +1145,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
 	if needRestore {
+		if requireExpansion {
+			return nil
+		}
+
 		if m.restoreBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
 			m.logger.Debug("Cannot restore the backup for engine since it is still in the backoff window")
 			return nil

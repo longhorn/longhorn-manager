@@ -99,6 +99,25 @@ func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 		vol.Status.State == longhorn.VolumeStateDetached
 }
 
+func hasActiveInstanceManagerUpgradeOnNode(ds *datastore.DataStore, nodeID string) bool {
+	if ds == nil || nodeID == "" {
+		return false
+	}
+
+	imus, err := ds.ListInstanceManagerUpgradesRO()
+	if err != nil {
+		return false
+	}
+
+	for _, imu := range imus {
+		if imu.Spec.NodeID == nodeID && types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nodeID, disableFrontend string, attacherType longhorn.AttacherType) {
 	attachmentTicket, ok := va.Spec.AttachmentTickets[ticketID]
 	if !ok {
