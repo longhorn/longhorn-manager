@@ -71,7 +71,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260414054550-8570535ce7ad
 	github.com/longhorn/go-common-libs v0.0.0-20260328134226-cafa38fc4ce8
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
-	github.com/longhorn/go-spdk-helper v0.5.0
+	github.com/longhorn/go-spdk-helper v0.6.0
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20251228.0.20260127130923-10b074f5bf78
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20251228.0.20260127140337-f4fd700aba81
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20251228.0.20260125094554-850cb68cc193
@@ -110,6 +110,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
+	github.com/avast/retry-go/v4 v4.7.0 // indirect
 	github.com/bits-and-blooms/bitset v1.16.0 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
