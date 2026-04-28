@@ -1542,9 +1542,10 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 			}
 		}
 		// If the unstable node has fewer replicas than the most-loaded node,
-		// deleting from it would worsen the imbalance.  Redirect the deletion
-		// to the most-loaded node instead.
-		if chosenCount < maxCount && maxNode != "" && maxNode != chosenReplica.Spec.NodeID {
+		// deleting from it would worsen the imbalance. Redirect the deletion
+		// to the most-loaded node instead. This is a v2 switchover balancing
+		// heuristic and must not change v1 replica cleanup behavior.
+		if types.IsDataEngineV2(v.Spec.DataEngine) && chosenCount < maxCount && maxNode != "" && maxNode != chosenReplica.Spec.NodeID {
 			chosenReplica = nodeReplicas[maxNode]
 		}
 
@@ -6026,7 +6027,10 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 
 func (c *VolumeController) deleteReplica(r *longhorn.Replica, rs map[string]*longhorn.Replica) error {
 	// Must call Update before removal to keep the fields up to date
-	if _, err := c.ds.UpdateReplica(r); err != nil && !apierrors.IsConflict(err) {
+	if _, err := c.ds.UpdateReplica(r); err != nil {
+		if !types.IsDataEngineV2(r.Spec.DataEngine) {
+			return err
+		}
 		logrus.WithError(err).Warnf("Failed to update replica %v before deletion, proceeding with delete", r.Name)
 	}
 	if err := c.ds.DeleteReplica(r.Name); err != nil {

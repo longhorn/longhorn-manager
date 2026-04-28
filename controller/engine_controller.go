@@ -1931,7 +1931,15 @@ type rebuildContext struct {
 	fileSyncHTTPClientTO int64
 }
 
-func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, addr string) (err error) {
+func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, addr string) error {
+	if types.IsDataEngineV1(e.Spec.DataEngine) {
+		return ec.startRebuildingV1(e, replicaName, addr)
+	}
+
+	return ec.startRebuildingV2(e, replicaName, addr)
+}
+
+func (ec *EngineController) startRebuildingV2(e *longhorn.Engine, replicaName, addr string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replicaName, e.Name)
 	}()
@@ -1940,18 +1948,15 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 
 	// For v2, the ReplicaAdd call must go through the EngineFrontend (initiator),
 	// while membership and cleanup operations remain engine-owned.
-	var ef *longhorn.EngineFrontend
-	if types.IsDataEngineV2(e.Spec.DataEngine) {
-		ef, err = ec.getRunningEngineFrontendForEngine(e)
-		if err != nil {
-			return err
-		}
-		if ef == nil {
-			log.Warnf("No running engine frontend found, deferring v2 rebuild")
-			return fmt.Errorf("no running engine frontend for engine %v", e.Name)
-		}
-		log = log.WithField("engineFrontend", ef.Name)
+	ef, err := ec.getRunningEngineFrontendForEngine(e)
+	if err != nil {
+		return err
 	}
+	if ef == nil {
+		log.Warnf("No running engine frontend found, deferring v2 rebuild")
+		return fmt.Errorf("no running engine frontend for engine %v", e.Name)
+	}
+	log = log.WithField("engineFrontend", ef.Name)
 
 	// Engine-based proxy for membership checks and the final poll.
 	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
@@ -1998,6 +2003,240 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		return err
 	}
 
+	return nil
+}
+
+func (ec *EngineController) startRebuildingV1(e *longhorn.Engine, replicaName, addr string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replicaName, e.Name)
+	}()
+
+	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})
+
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
+	if err != nil {
+		return err
+	}
+	defer engineClientProxy.Close()
+
+	// We need to know the current status, since ReplicaAddressMap may not
+	// have been updated since the last rebuild.
+	alreadyExists, err := doesAddressExistInEngine(e, addr, engineClientProxy)
+	if err != nil {
+		return err
+	}
+	if alreadyExists {
+		log.Infof("Replica %v address %v has been added to the engine already", replicaName, addr)
+		return nil
+	}
+
+	replicaURL := engineapi.GetBackendReplicaURL(addr)
+	go func() {
+		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameAutoCleanupSystemGeneratedSnapshot)
+			return
+		}
+
+		fastReplicaRebuild, err := ec.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, e.Spec.DataEngine)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting for data engine %v", types.SettingNameFastReplicaRebuildEnabled, e.Spec.DataEngine)
+			return
+		}
+
+		fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameReplicaFileSyncHTTPClientTimeout)
+			return
+		}
+
+		grpcTimeoutSeconds, err := ec.ds.GetSettingAsInt(types.SettingNameLongGRPCTimeOut)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameLongGRPCTimeOut)
+			return
+		}
+
+		engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
+		if err != nil {
+			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
+			ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding,
+				"Failed rebuilding replica with Address %v: %v", addr, err)
+			return
+		}
+		defer engineClientProxy.Close()
+
+		// If enabled, call and wait for SnapshotPurge to clean up system generated snapshot before rebuilding.
+		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
+		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshot purge simultaneously.
+		if autoCleanupSystemGeneratedSnapshot {
+			allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, e, ec.ds)
+			if err != nil {
+				log.WithError(err).Error("Failed to check whether can start snapshot purge before rebuilding")
+				return
+			}
+
+			if !allowSnapshotPurge {
+				log.Debugf("Cannot start SnapshotPurge for engine %v before rebuilding because the concurrent limit is reached", e.Name)
+				return
+			}
+
+			log.Info("Starting snapshot purge before rebuilding")
+			if err := engineClientProxy.SnapshotPurge(e); err != nil {
+				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				return
+			}
+
+			log.Info("Starting snapshot purge before rebuilding, will wait for the purge complete")
+			purgeDone := false
+			endTime := time.Now().Add(time.Duration(purgeWaitIntervalInSecond) * time.Second)
+			ticker := time.NewTicker(2 * EnginePollInterval)
+			defer ticker.Stop()
+			for !purgeDone && time.Now().Before(endTime) {
+				<-ticker.C
+
+				// It may have been a long time since we started purging. Should we proceed?
+				e, err := ec.ds.GetEngineRO(e.Name)
+				if err != nil {
+					log.WithError(err).Error("Failed to get engine and wait for the purge before rebuilding")
+					return
+				}
+				if !shouldProceedToWaitAndRebuild(e, replicaName, addr, log) {
+					return
+				}
+
+				// Wait for purge complete
+				purgeDone = true
+				for _, purgeStatus := range e.Status.PurgeStatus {
+					if purgeStatus.IsPurging {
+						purgeDone = false
+						break
+					}
+				}
+			}
+			if !purgeDone {
+				log.Errorf("Timeout waiting for snapshot purge done before rebuilding, wait interval %v second", purgeWaitIntervalInSecond)
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonTimeoutSnapshotPurge,
+					"Timeout waiting for snapshot purge done before rebuilding volume %v, wait interval %v second",
+					e.Spec.VolumeName, purgeWaitIntervalInSecond)
+				return
+			}
+		}
+
+		replica, err := ec.ds.GetReplica(replicaName)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get replica %v; unable to mark failed rebuild", replicaName)
+			return
+		}
+
+		// check and reset replica rebuild failed condition
+		replica, err = ec.updateReplicaRebuildFailedCondition(replica, "")
+		if err != nil {
+			log.WithError(err).Errorf("Failed to update rebuild status information on replica %v", replicaName)
+			return
+		}
+
+		localSync, err := ec.getFileLocalSync(replica, e)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to initiate file local sync for replica %v, use remote sync", replicaName)
+		}
+
+		// start rebuild
+		if e.Spec.RequestedBackupRestore != "" {
+			if e.Spec.NodeID != "" {
+				ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilding,
+					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
+				err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, true, fastReplicaRebuild, localSync, fileSyncHTTPClientTimeout, 0)
+			}
+		} else {
+			ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilding,
+				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
+			err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, false, fastReplicaRebuild, localSync, fileSyncHTTPClientTimeout, grpcTimeoutSeconds)
+		}
+
+		if err != nil {
+			replicaRebuildErrMsg := err.Error()
+
+			log.WithError(err).Errorf("Failed to rebuild replica %v", addr)
+			ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
+			// we've sent out event to notify user. we don't want to
+			// automatically handle it because it may cause chain
+			// reaction to create numerous new replicas if we set
+			// the replica to failed.
+			// user can decide to delete it then we will try again
+			log.Infof("Removing failed rebuilding replica %v", addr)
+			if err := engineClientProxy.ReplicaRemove(e, replicaURL, replicaName); err != nil {
+				log.WithError(err).Warnf("Failed to remove rebuilding replica %v", addr)
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedDeleting,
+					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v",
+					replicaName, addr, e.Name, e.Spec.VolumeName, err)
+			}
+
+			// Before we mark the Replica as Failed automatically, we want to check the Backoff to avoid recreating new
+			// Replicas too quickly. If the Replica is still in the Backoff period, we will leave the Replica alone. If
+			// it is past the Backoff period, we'll try to mark the Replica as Failed and increase the Backoff period
+			// for the next failure.
+			if !ec.backoff.IsInBackOffSinceUpdate(e.Name, time.Now()) {
+				replica, err = ec.updateReplicaRebuildFailedCondition(replica, replicaRebuildErrMsg)
+				if err != nil {
+					log.WithError(err).Errorf("Failed to update rebuild status information on replica %v", replicaName)
+					return
+				}
+
+				setReplicaFailedAt(replica, util.Now())
+				replica.Spec.DesireState = longhorn.InstanceStateStopped
+				if _, err := ec.ds.UpdateReplica(replica); err != nil {
+					log.WithError(err).Errorf("Unable to mark failed rebuild on replica %v", replicaName)
+					return
+				}
+				// Now that the Replica can actually be recreated, we can move up the Backoff.
+				ec.backoff.Next(e.Name, time.Now())
+				backoffTime := ec.backoff.Get(e.Name).Seconds()
+				log.Infof("Marked failed rebuild on replica %v, backoff period is now %v seconds", replicaName, backoffTime)
+				return
+			}
+			log.Debugf("Engine is still in backoff for replica %v rebuild failure", replicaName)
+			return
+		}
+		// Replica rebuild succeeded, clear Backoff.
+		ec.backoff.DeleteEntry(e.Name)
+		ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilt,
+			"Replica %v with Address %v has been rebuilt for volume %v", replicaName, addr, e.Spec.VolumeName)
+
+		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
+		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
+		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshotPurge simultaneously.
+		if autoCleanupSystemGeneratedSnapshot {
+			// Ideally this purge should be retriable to avoid accumulating system-generated snapshots.
+			// However, since retry is not supported yet, we only enforce the concurrency limiter here.
+			allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, e, ec.ds)
+			if err != nil {
+				log.WithError(err).Error("Failed to check whether can start snapshot purge after rebuilding")
+				return
+			}
+
+			if !allowSnapshotPurge {
+				log.Debug("Cannot start SnapshotPurge for engine after rebuilding because the concurrent limit is reached")
+				return
+			}
+
+			log.Info("Starting snapshot purge after rebuilding")
+			if err := engineClientProxy.SnapshotPurge(e); err != nil {
+				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				return
+			}
+		}
+	}()
+
+	// Wait until engine confirmed that rebuild started
+	if err := wait.PollUntilContextTimeout(context.Background(), EnginePollInterval, EnginePollTimeout, true, func(context.Context) (bool, error) {
+		return doesAddressExistInEngine(e, addr, engineClientProxy)
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 

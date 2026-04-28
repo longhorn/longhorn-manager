@@ -1843,11 +1843,15 @@ func (s *TestSuite) TestCleanupReplicasDoesNotSkipExtraHealthyCleanupForV1WhenAt
 	localReplica.Spec.Active = true
 	localReplica.Spec.HealthyAt = getTestNow()
 	localReplica.Status.CurrentState = longhorn.InstanceStateRunning
+	localReplica.Status.IP = TestIP1
+	localReplica.Status.StorageIP = TestIP1
 
 	remoteReplica := newReplicaForVolume(v, e, TestNode2, TestDiskID2)
 	remoteReplica.Spec.Active = true
 	remoteReplica.Spec.HealthyAt = getTestNow()
 	remoteReplica.Status.CurrentState = longhorn.InstanceStateRunning
+	remoteReplica.Status.IP = TestIP2
+	remoteReplica.Status.StorageIP = TestIP2
 
 	rs := map[string]*longhorn.Replica{
 		localReplica.Name:  localReplica,
@@ -2912,6 +2916,7 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 				VolumeSize:  v.Spec.Size,
 				Image:       TestEngineImage,
 				DesireState: longhorn.InstanceStateStopped,
+				DataEngine:  v.Spec.DataEngine,
 			},
 			EngineName:        e.Name,
 			DiskID:            diskID,
