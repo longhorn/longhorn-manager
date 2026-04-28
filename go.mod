@@ -33,12 +33,12 @@ replace (
 	k8s.io/component-base => k8s.io/component-base v0.35.3
 	k8s.io/component-helpers => k8s.io/component-helpers v0.35.3
 	k8s.io/controller-manager => k8s.io/controller-manager v0.35.3
-	k8s.io/cri-api => k8s.io/cri-api v0.35.3
+	k8s.io/cri-api => k8s.io/cri-api v0.36.0
 	k8s.io/cri-client => k8s.io/cri-client v0.35.3
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.35.3
 	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.35.3
 	k8s.io/endpointslice => k8s.io/endpointslice v0.35.3
-	k8s.io/externaljwt => k8s.io/externaljwt v0.35.3
+	k8s.io/externaljwt => k8s.io/externaljwt v0.36.0
 	k8s.io/kms => k8s.io/kms v0.35.3
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.35.3
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.35.3
@@ -102,7 +102,7 @@ require (
 	k8s.io/mount-utils v0.36.0
 	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
 	sigs.k8s.io/controller-runtime v0.23.3
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.2
+	sigs.k8s.io/structured-merge-diff/v6 v6.4.0
 )
 
 require (
