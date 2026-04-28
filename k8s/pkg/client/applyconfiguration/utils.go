@@ -114,6 +114,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.EngineImageSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineImageStatus"):
 		return &longhornv1beta2.EngineImageStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineRelocation"):
+		return &longhornv1beta2.EngineRelocationApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineSpec"):
 		return &longhornv1beta2.EngineSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineStatus"):
@@ -130,6 +132,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.InstanceManagerSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerStatus"):
 		return &longhornv1beta2.InstanceManagerStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerUpgrade"):
+		return &longhornv1beta2.InstanceManagerUpgradeApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerUpgradeControl"):
+		return &longhornv1beta2.InstanceManagerUpgradeControlApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerUpgradeControlSpec"):
+		return &longhornv1beta2.InstanceManagerUpgradeControlSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerUpgradeControlStatus"):
+		return &longhornv1beta2.InstanceManagerUpgradeControlStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerUpgradeSpec"):
+		return &longhornv1beta2.InstanceManagerUpgradeSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerUpgradeStatus"):
+		return &longhornv1beta2.InstanceManagerUpgradeStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("InstanceProcess"):
 		return &longhornv1beta2.InstanceProcessApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("InstanceProcessSpec"):
@@ -148,6 +162,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.NodeSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("NodeStatus"):
 		return &longhornv1beta2.NodeStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("NodeUpgradeInfo"):
+		return &longhornv1beta2.NodeUpgradeInfoApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("Orphan"):
 		return &longhornv1beta2.OrphanApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("OrphanSpec"):

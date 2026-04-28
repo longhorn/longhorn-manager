@@ -64,6 +64,10 @@ type DataStore struct {
 	SettingInformer                cache.SharedInformer
 	instanceManagerLister          lhlisters.InstanceManagerLister
 	InstanceManagerInformer        cache.SharedInformer
+	instanceManagerUpgradeLister          lhlisters.InstanceManagerUpgradeLister
+	InstanceManagerUpgradeInformer        cache.SharedInformer
+	instanceManagerUpgradeControlLister   lhlisters.InstanceManagerUpgradeControlLister
+	InstanceManagerUpgradeControlInformer cache.SharedInformer
 	shareManagerLister             lhlisters.ShareManagerLister
 	ShareManagerInformer           cache.SharedInformer
 	backingImageLister             lhlisters.BackingImageLister
@@ -155,6 +159,10 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, settingInformer.Informer().HasSynced)
 	instanceManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers()
 	cacheSyncs = append(cacheSyncs, instanceManagerInformer.Informer().HasSynced)
+	instanceManagerUpgradeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades()
+	cacheSyncs = append(cacheSyncs, instanceManagerUpgradeInformer.Informer().HasSynced)
+	instanceManagerUpgradeControlInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgradeControls()
+	cacheSyncs = append(cacheSyncs, instanceManagerUpgradeControlInformer.Informer().HasSynced)
 	shareManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().ShareManagers()
 	cacheSyncs = append(cacheSyncs, shareManagerInformer.Informer().HasSynced)
 	backingImageInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImages()
@@ -246,6 +254,10 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		SettingInformer:                settingInformer.Informer(),
 		instanceManagerLister:          instanceManagerInformer.Lister(),
 		InstanceManagerInformer:        instanceManagerInformer.Informer(),
+		instanceManagerUpgradeLister:          instanceManagerUpgradeInformer.Lister(),
+		InstanceManagerUpgradeInformer:        instanceManagerUpgradeInformer.Informer(),
+		instanceManagerUpgradeControlLister:   instanceManagerUpgradeControlInformer.Lister(),
+		InstanceManagerUpgradeControlInformer: instanceManagerUpgradeControlInformer.Informer(),
 		shareManagerLister:             shareManagerInformer.Lister(),
 		ShareManagerInformer:           shareManagerInformer.Informer(),
 		backingImageLister:             backingImageInformer.Lister(),

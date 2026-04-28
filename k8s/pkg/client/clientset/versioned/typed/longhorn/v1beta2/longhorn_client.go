@@ -39,6 +39,8 @@ type LonghornV1beta2Interface interface {
 	EngineFrontendsGetter
 	EngineImagesGetter
 	InstanceManagersGetter
+	InstanceManagerUpgradesGetter
+	InstanceManagerUpgradeControlsGetter
 	NodesGetter
 	OrphansGetter
 	RecurringJobsGetter
@@ -100,6 +102,14 @@ func (c *LonghornV1beta2Client) EngineImages(namespace string) EngineImageInterf
 
 func (c *LonghornV1beta2Client) InstanceManagers(namespace string) InstanceManagerInterface {
 	return newInstanceManagers(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) InstanceManagerUpgrades(namespace string) InstanceManagerUpgradeInterface {
+	return newInstanceManagerUpgrades(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) InstanceManagerUpgradeControls(namespace string) InstanceManagerUpgradeControlInterface {
+	return newInstanceManagerUpgradeControls(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) Nodes(namespace string) NodeInterface {

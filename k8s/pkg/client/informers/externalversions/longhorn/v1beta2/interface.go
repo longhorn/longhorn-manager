@@ -46,6 +46,10 @@ type Interface interface {
 	EngineImages() EngineImageInformer
 	// InstanceManagers returns a InstanceManagerInformer.
 	InstanceManagers() InstanceManagerInformer
+	// InstanceManagerUpgrades returns a InstanceManagerUpgradeInformer.
+	InstanceManagerUpgrades() InstanceManagerUpgradeInformer
+	// InstanceManagerUpgradeControls returns a InstanceManagerUpgradeControlInformer.
+	InstanceManagerUpgradeControls() InstanceManagerUpgradeControlInformer
 	// Nodes returns a NodeInformer.
 	Nodes() NodeInformer
 	// Orphans returns a OrphanInformer.
@@ -136,6 +140,16 @@ func (v *version) EngineImages() EngineImageInformer {
 // InstanceManagers returns a InstanceManagerInformer.
 func (v *version) InstanceManagers() InstanceManagerInformer {
 	return &instanceManagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// InstanceManagerUpgrades returns a InstanceManagerUpgradeInformer.
+func (v *version) InstanceManagerUpgrades() InstanceManagerUpgradeInformer {
+	return &instanceManagerUpgradeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// InstanceManagerUpgradeControls returns a InstanceManagerUpgradeControlInformer.
+func (v *version) InstanceManagerUpgradeControls() InstanceManagerUpgradeControlInformer {
+	return &instanceManagerUpgradeControlInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Nodes returns a NodeInformer.
