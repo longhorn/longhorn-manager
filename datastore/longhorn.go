@@ -707,6 +707,33 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 			return errors.Wrapf(err, "failed to get the storage class %v for setting %v", value, types.SettingNameDefaultLonghornStaticStorageClass)
 		}
+
+	case types.SettingNameV2InstanceManagerUpgradeStartTime:
+		// Validate RFC3339 format if value is not empty
+		if value != "" {
+			if _, err := time.Parse(time.RFC3339, value); err != nil {
+				return errors.Wrapf(err, "setting %v must be in RFC3339 format (e.g., 2026-04-20T15:00:00Z)", name)
+			}
+		}
+
+		// Check if upgrade has already started - if so, prevent changing start time
+		imuc, err := s.GetInstanceManagerUpgradeControlRO(types.InstanceManagerUpgradeControlName)
+		if err != nil {
+			if ErrorIsNotFound(err) {
+				// No upgrade control exists yet, allow setting the start time
+				return nil
+			}
+			return errors.Wrapf(err, "failed to check upgrade status for setting %v", name)
+		}
+
+		// Check if any node is actively upgrading (in-progress state).
+		// We only block updates during active upgrades, not when all nodes are
+		// in terminal states (completed/failed/converged) from a previous upgrade cycle.
+		for nodeID, info := range imuc.Status.Nodes {
+			if info.State == longhorn.NodeUpgradeStateInProgress {
+				return errors.Errorf("cannot update %v setting: upgrade actively in progress on node %v. Changes to start time are ignored during active upgrades", name, nodeID)
+			}
+		}
 	}
 	return nil
 }
@@ -7236,4 +7263,231 @@ func (s *DataStore) GetDataEngineObject(engine *longhorn.Engine) (longhorn.DataE
 		return s.GetVolumeCurrentEngineFrontend(engine.Spec.VolumeName)
 	}
 	return engine, nil
+}
+
+func checkInstanceManagerUpgrade(imu *longhorn.InstanceManagerUpgrade) error {
+	if imu.Name == "" {
+		return fmt.Errorf("BUG: missing required field %+v", imu)
+	}
+	return nil
+}
+
+func (s *DataStore) GetInstanceManagerUpgradeRO(name string) (*longhorn.InstanceManagerUpgrade, error) {
+	return s.instanceManagerUpgradeLister.InstanceManagerUpgrades(s.namespace).Get(name)
+}
+
+// GetInstanceManagerUpgrade returns a copy of the InstanceManagerUpgrade for the given name and namespace
+func (s *DataStore) GetInstanceManagerUpgrade(name string) (*longhorn.InstanceManagerUpgrade, error) {
+	resultRO, err := s.GetInstanceManagerUpgradeRO(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// ListInstanceManagerUpgradesRO returns a list of all InstanceManagerUpgrades in the given namespace from lister cache
+func (s *DataStore) ListInstanceManagerUpgradesRO() ([]*longhorn.InstanceManagerUpgrade, error) {
+	return s.listInstanceManagerUpgradesRO(labels.Everything())
+}
+
+func (s *DataStore) listInstanceManagerUpgradesRO(selector labels.Selector) ([]*longhorn.InstanceManagerUpgrade, error) {
+	list, err := s.instanceManagerUpgradeLister.InstanceManagerUpgrades(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// ListInstanceManagerUpgrades returns a map of all InstanceManagerUpgrades in the given namespace
+func (s *DataStore) ListInstanceManagerUpgrades() (map[string]*longhorn.InstanceManagerUpgrade, error) {
+	return s.listInstanceManagerUpgrades(labels.Everything())
+}
+
+func (s *DataStore) listInstanceManagerUpgrades(selector labels.Selector) (map[string]*longhorn.InstanceManagerUpgrade, error) {
+	list, err := s.instanceManagerUpgradeLister.InstanceManagerUpgrades(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	instanceManagerUpgrades := map[string]*longhorn.InstanceManagerUpgrade{}
+	for _, imu := range list {
+		instanceManagerUpgrades[imu.Name] = imu.DeepCopy()
+	}
+	return instanceManagerUpgrades, nil
+}
+
+// CreateInstanceManagerUpgrade creates a Longhorn InstanceManagerUpgrade resource and verifies creation
+func (s *DataStore) CreateInstanceManagerUpgrade(imu *longhorn.InstanceManagerUpgrade) (*longhorn.InstanceManagerUpgrade, error) {
+	if err := checkInstanceManagerUpgrade(imu); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(s.namespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(imu.Name, "instancemanagerupgrade", func(name string) (k8sruntime.Object, error) {
+		return s.GetInstanceManagerUpgradeRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret, ok := obj.(*longhorn.InstanceManagerUpgrade)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for instancemanagerupgrade")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateInstanceManagerUpgrade updates Longhorn InstanceManagerUpgrade and verifies update
+func (s *DataStore) UpdateInstanceManagerUpgrade(imu *longhorn.InstanceManagerUpgrade) (*longhorn.InstanceManagerUpgrade, error) {
+	if err := checkInstanceManagerUpgrade(imu); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(s.namespace).Update(context.TODO(), imu, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(imu.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetInstanceManagerUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateInstanceManagerUpgradeStatus updates Longhorn InstanceManagerUpgrade status and verifies update
+func (s *DataStore) UpdateInstanceManagerUpgradeStatus(imu *longhorn.InstanceManagerUpgrade) (*longhorn.InstanceManagerUpgrade, error) {
+	obj, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(s.namespace).UpdateStatus(context.TODO(), imu, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(imu.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetInstanceManagerUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteInstanceManagerUpgrade won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteInstanceManagerUpgrade(name string) error {
+	return s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForInstanceManagerUpgrade will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForInstanceManagerUpgrade(obj *longhorn.InstanceManagerUpgrade) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+
+	_, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for instancemanagerupgrade %v", obj.Name)
+	}
+
+	return nil
+}
+
+// GetInstanceManagerUpgradeControlRO returns the InstanceManagerUpgradeControl from the lister cache (read-only).
+func (s *DataStore) GetInstanceManagerUpgradeControlRO(name string) (*longhorn.InstanceManagerUpgradeControl, error) {
+	return s.instanceManagerUpgradeControlLister.InstanceManagerUpgradeControls(s.namespace).Get(name)
+}
+
+// GetInstanceManagerUpgradeControl returns a copy of the InstanceManagerUpgradeControl for the given name.
+func (s *DataStore) GetInstanceManagerUpgradeControl(name string) (*longhorn.InstanceManagerUpgradeControl, error) {
+	resultRO, err := s.GetInstanceManagerUpgradeControlRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// ListInstanceManagerUpgradeControls returns a map of all InstanceManagerUpgradeControls in the namespace.
+func (s *DataStore) ListInstanceManagerUpgradeControls() (map[string]*longhorn.InstanceManagerUpgradeControl, error) {
+	list, err := s.instanceManagerUpgradeControlLister.InstanceManagerUpgradeControls(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	controls := map[string]*longhorn.InstanceManagerUpgradeControl{}
+	for _, imuc := range list {
+		controls[imuc.Name] = imuc.DeepCopy()
+	}
+	return controls, nil
+}
+
+// CreateInstanceManagerUpgradeControl creates a Longhorn InstanceManagerUpgradeControl resource and verifies creation.
+func (s *DataStore) CreateInstanceManagerUpgradeControl(imuc *longhorn.InstanceManagerUpgradeControl) (*longhorn.InstanceManagerUpgradeControl, error) {
+	if imuc.Name == "" {
+		return nil, fmt.Errorf("BUG: missing required field for InstanceManagerUpgradeControl %+v", imuc)
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(s.namespace).Create(context.TODO(), imuc, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(imuc.Name, "instancemanagerupgradecontrol", func(name string) (k8sruntime.Object, error) {
+		return s.GetInstanceManagerUpgradeControlRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret, ok := obj.(*longhorn.InstanceManagerUpgradeControl)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for instancemanagerupgradecontrol")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateInstanceManagerUpgradeControl updates Longhorn InstanceManagerUpgradeControl and verifies update.
+func (s *DataStore) UpdateInstanceManagerUpgradeControl(imuc *longhorn.InstanceManagerUpgradeControl) (*longhorn.InstanceManagerUpgradeControl, error) {
+	obj, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(s.namespace).Update(context.TODO(), imuc, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(imuc.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetInstanceManagerUpgradeControlRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateInstanceManagerUpgradeControlStatus updates Longhorn InstanceManagerUpgradeControl status and verifies update.
+func (s *DataStore) UpdateInstanceManagerUpgradeControlStatus(imuc *longhorn.InstanceManagerUpgradeControl) (*longhorn.InstanceManagerUpgradeControl, error) {
+	obj, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(s.namespace).UpdateStatus(context.TODO(), imuc, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(imuc.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetInstanceManagerUpgradeControlRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteInstanceManagerUpgradeControl deletes the InstanceManagerUpgradeControl with the given name.
+func (s *DataStore) DeleteInstanceManagerUpgradeControl(name string) error {
+	return s.lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
