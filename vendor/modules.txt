@@ -284,7 +284,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20260330053112-1eb5d5e4dc8c
+# github.com/longhorn/go-common-libs v0.0.0-20260418032157-c135767e4855
 ## explicit; go 1.25.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -431,7 +431,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/rancher/dynamiclistener v0.8.0
+# github.com/rancher/dynamiclistener v0.8.1
 ## explicit; go 1.25.0
 github.com/rancher/dynamiclistener
 github.com/rancher/dynamiclistener/cert

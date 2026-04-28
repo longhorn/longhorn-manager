@@ -179,8 +179,8 @@ github.com/longhorn/backupstore v0.0.0-20260414054550-8570535ce7ad h1:B1nZo9xIBU
 github.com/longhorn/backupstore v0.0.0-20260414054550-8570535ce7ad/go.mod h1:20Yvj7Gz9wkp1iHD1u77+CWG281L6SVe8/SZDnwQMAI=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
-github.com/longhorn/go-common-libs v0.0.0-20260330053112-1eb5d5e4dc8c h1:z3PbrKQ47E+KdCGoEIALiey0tb0y0aCiaAOXtBcgUWo=
-github.com/longhorn/go-common-libs v0.0.0-20260330053112-1eb5d5e4dc8c/go.mod h1:Vw9cRchaffWmZMjHOjqhSG37tFN9DdQ/isKs4ViPXQE=
+github.com/longhorn/go-common-libs v0.0.0-20260418032157-c135767e4855 h1:zNOYBzIBoRfuo2raspHy3qmzYjs/CMz53RKXbI0SIYk=
+github.com/longhorn/go-common-libs v0.0.0-20260418032157-c135767e4855/go.mod h1:Vw9cRchaffWmZMjHOjqhSG37tFN9DdQ/isKs4ViPXQE=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b h1:877AlP/bMchRs0qRHVW3zZ42qt+iNjALc4Sz9XzrgZQ=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b/go.mod h1:5obSKdWNPiFbFTzPWU09k9mGCSnpN9pgGoHQTUk7kYo=
 github.com/longhorn/go-spdk-helper v0.6.1-0.20260422091955-74dd5ebcf118 h1:RXDo8yttKgZp6QlB1wV89+EEq4rgwHF+hS1IDhQOGAA=
@@ -250,8 +250,8 @@ github.com/prometheus/common v0.67.5/go.mod h1:SjE/0MzDEEAyrdr5Gqc6G+sXI67maCxza
 github.com/prometheus/procfs v0.0.0-20181204211112-1dc9a6cbc91a/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.19.2 h1:zUMhqEW66Ex7OXIiDkll3tl9a1ZdilUOd/F6ZXw4Vws=
 github.com/prometheus/procfs v0.19.2/go.mod h1:M0aotyiemPhBCM0z5w87kL22CxfcH05ZpYlu+b4J7mw=
-github.com/rancher/dynamiclistener v0.8.0 h1:V+Au9B37jY5LTVanpIVOgUnMHERVmJR9dIZRtpAzz/I=
-github.com/rancher/dynamiclistener v0.8.0/go.mod h1:0dO+pAb3FHrGIR6IaOjXqGXSRLMsecVdz64x7aRjBoU=
+github.com/rancher/dynamiclistener v0.8.1 h1:3F+NO4BzfNokyxk9YwklIuoqXjwaAp9rE5KsUyPKGFE=
+github.com/rancher/dynamiclistener v0.8.1/go.mod h1:5MQbIxCYXROxeXaagcx2dvlV0+j7pKOcMMQoI1wHRDA=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b h1:so40GMVZOZkQeIbAzaZRq6wDrMErvRLuXNsGTRZUpg8=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b/go.mod h1:7oQvGNiJsGvrUgB+7AH8bmdzuR0uhULfwKb43Ht0hUk=
 github.com/rancher/lasso v0.2.7 h1:N56Pm8KJSk7gRVYILSGb35QBfjcDDeGFMfwUCivsbeg=

@@ -69,7 +69,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260419.0.20260419095453-27efdbdca692
 	github.com/longhorn/backupstore v0.0.0-20260414054550-8570535ce7ad
-	github.com/longhorn/go-common-libs v0.0.0-20260330053112-1eb5d5e4dc8c
+	github.com/longhorn/go-common-libs v0.0.0-20260418032157-c135767e4855
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
 	github.com/longhorn/go-spdk-helper v0.6.1-0.20260422091955-74dd5ebcf118
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20260405
@@ -78,7 +78,7 @@ require (
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260424114859-e899814562ff
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
-	github.com/rancher/dynamiclistener v0.8.0
+	github.com/rancher/dynamiclistener v0.8.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.5.1
 	github.com/robfig/cron v1.2.0
