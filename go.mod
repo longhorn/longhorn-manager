@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.25.0
+go 1.25.3
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -67,7 +67,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260329081928-dd6c86c9ba6d
 	github.com/longhorn/go-common-libs v0.0.0-20260328134226-cafa38fc4ce8
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
-	github.com/longhorn/go-spdk-helper v0.2.0
+	github.com/longhorn/go-spdk-helper v0.5.0
 	github.com/longhorn/longhorn-engine v1.9.2
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250518.0.20250519060809-955e286a739c
 	github.com/longhorn/longhorn-share-manager v1.9.2
