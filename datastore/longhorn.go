@@ -726,7 +726,11 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to check upgrade status for setting %v", name)
 		}
 
-		// Check if any node is actively upgrading (in-progress state).
+		if imuc.Status.CurrentNode != "" {
+			return errors.Errorf("cannot update %v setting: upgrade actively in progress on node %v. Changes to start time are ignored during active upgrades", name, imuc.Status.CurrentNode)
+		}
+
+		// Additionally check if any node is in the in-progress state.
 		// We only block updates during active upgrades, not when all nodes are
 		// in terminal states (completed/failed/converged) from a previous upgrade cycle.
 		for nodeID, info := range imuc.Status.Nodes {

@@ -26,28 +26,30 @@ import (
 )
 
 const (
-	LonghornKindNode                = "Node"
-	LonghornKindVolume              = "Volume"
-	LonghornKindVolumeAttachment    = "VolumeAttachment"
-	LonghornKindEngine              = "Engine"
-	LonghornKindEngineFrontend      = "EngineFrontend"
-	LonghornKindReplica             = "Replica"
-	LonghornKindBackupTarget        = "BackupTarget"
-	LonghornKindBackupVolume        = "BackupVolume"
-	LonghornKindBackup              = "Backup"
-	LonghornKindBackupBackingImage  = "BackupBackingImage"
-	LonghornKindSnapshot            = "Snapshot"
-	LonghornKindEngineImage         = "EngineImage"
-	LonghornKindInstanceManager     = "InstanceManager"
-	LonghornKindShareManager        = "ShareManager"
-	LonghornKindBackingImage        = "BackingImage"
-	LonghornKindBackingImageManager = "BackingImageManager"
-	LonghornKindRecurringJob        = "RecurringJob"
-	LonghornKindSetting             = "Setting"
-	LonghornKindSupportBundle       = "SupportBundle"
-	LonghornKindSystemBackup        = "SystemBackup"
-	LonghornKindSystemRestore       = "SystemRestore"
-	LonghornKindOrphan              = "Orphan"
+	LonghornKindNode                          = "Node"
+	LonghornKindVolume                        = "Volume"
+	LonghornKindVolumeAttachment              = "VolumeAttachment"
+	LonghornKindEngine                        = "Engine"
+	LonghornKindEngineFrontend                = "EngineFrontend"
+	LonghornKindReplica                       = "Replica"
+	LonghornKindBackupTarget                  = "BackupTarget"
+	LonghornKindBackupVolume                  = "BackupVolume"
+	LonghornKindBackup                        = "Backup"
+	LonghornKindBackupBackingImage            = "BackupBackingImage"
+	LonghornKindSnapshot                      = "Snapshot"
+	LonghornKindEngineImage                   = "EngineImage"
+	LonghornKindInstanceManager               = "InstanceManager"
+	LonghornKindShareManager                  = "ShareManager"
+	LonghornKindBackingImage                  = "BackingImage"
+	LonghornKindBackingImageManager           = "BackingImageManager"
+	LonghornKindRecurringJob                  = "RecurringJob"
+	LonghornKindSetting                       = "Setting"
+	LonghornKindSupportBundle                 = "SupportBundle"
+	LonghornKindSystemBackup                  = "SystemBackup"
+	LonghornKindSystemRestore                 = "SystemRestore"
+	LonghornKindOrphan                        = "Orphan"
+	LonghornKindInstanceManagerUpgrade        = "InstanceManagerUpgrade"
+	LonghornKindInstanceManagerUpgradeControl = "InstanceManagerUpgradeControl"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -98,6 +100,11 @@ const (
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
 	CRDAPIVersionV1beta2  = "longhorn.io/v1beta2"
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
+
+	// InstanceManagerUpgradeControlName is the well-known name of the singleton
+	// InstanceManagerUpgradeControl CR that orchestrates rolling live upgrades
+	// across all nodes. Only one such CR exists per Longhorn installation.
+	InstanceManagerUpgradeControlName = "longhorn-instance-manager-upgrade-control"
 )
 
 const (
@@ -169,6 +176,7 @@ const (
 
 	LonghornLabelEngineImage                = "engine-image"
 	LonghornLabelInstanceManager            = "instance-manager"
+	LonghornLabelInstanceManagerUpgrade     = "instance-manager-upgrade"
 	LonghornLabelNode                       = "node"
 	LonghornLabelDiskUUID                   = "disk-uuid"
 	LonghornLabelInstanceManagerType        = "instance-manager-type"
@@ -252,6 +260,18 @@ const (
 	CSISidecarPortNameResizer     = "csi-resizer"
 	CSISidecarPortNameSnapshotter = "csi-snapshotter"
 )
+
+func IsActiveInstanceManagerUpgradeState(state longhorn.InstanceManagerUpgradeState) bool {
+	switch state {
+	case longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
+		longhorn.InstanceManagerUpgradeStateRestoringEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes:
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	RecurringJobParameterFullBackupInterval = "full-backup-interval"

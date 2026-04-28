@@ -131,6 +131,46 @@ func newEngine(name, currentImage, imName, nodeName, ip string, port int, starte
 	}
 }
 
+func newEngineFrontend(name, currentImage, imName, nodeName, ip string, port int, started bool, currentState, desireState longhorn.InstanceState) *longhorn.EngineFrontend {
+	var conditions []longhorn.Condition
+	conditions = types.SetCondition(conditions,
+		longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusTrue,
+		"", "")
+
+	return &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels:    types.GetVolumeLabels(TestVolumeName),
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  TestVolumeName,
+				VolumeSize:  TestVolumeSize,
+				DesireState: desireState,
+				NodeID:      nodeName,
+				DataEngine:  longhorn.DataEngineTypeV2,
+				Image:       TestEngineImage,
+			},
+			EngineName: ExistingInstance,
+			Frontend:   longhorn.VolumeFrontendBlockDev,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			InstanceStatus: longhorn.InstanceStatus{
+				OwnerID:             TestOwnerID1,
+				CurrentState:        currentState,
+				CurrentImage:        currentImage,
+				InstanceManagerName: imName,
+				IP:                  ip,
+				StorageIP:           ip,
+				Port:                port,
+				Started:             started,
+				Conditions:          conditions,
+			},
+		},
+	}
+}
+
 func (s *TestSuite) TestReconcileInstanceState(c *C) {
 	testCases := map[string]struct {
 		instanceType longhorn.InstanceType
@@ -629,6 +669,11 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			c.Assert(ok, Equals, true)
 			spec = &e.Spec.InstanceSpec
 			status = &e.Status.InstanceStatus
+		} else if tc.instanceType == longhorn.InstanceTypeEngineFrontend {
+			ef, ok := tc.obj.(*longhorn.EngineFrontend)
+			c.Assert(ok, Equals, true)
+			spec = &ef.Spec.InstanceSpec
+			status = &ef.Status.InstanceStatus
 		} else {
 			r, ok := tc.obj.(*longhorn.Replica)
 			c.Assert(ok, Equals, true)
@@ -649,6 +694,150 @@ func newTestInstanceHandler(lhClient *lhfake.Clientset, kubeClient *fake.Clients
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	fakeRecorder := record.NewFakeRecorder(100)
 	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
+}
+
+func (s *TestSuite) TestReconcileInstanceStateEngineFrontendLiveUpgradeTolerance(c *C) {
+	testCases := map[string]struct {
+		imus                        []*longhorn.InstanceManagerUpgrade
+		efStatusInstanceManagerName string
+		imName                      string
+		imProcesses                 map[string]longhorn.InstanceProcess
+		imDeleting                  bool
+		expectedState               longhorn.InstanceState
+		expectedImage               string
+		expectedStarted             bool
+		expectedInstanceManagerName string
+	}{
+		"active live upgrade keeps engine frontend unknown": {
+			imus: []*longhorn.InstanceManagerUpgrade{
+				newIMU("test-imu", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM),
+			},
+			efStatusInstanceManagerName: TestInstanceManagerName,
+			imName:                      TestInstanceManagerName,
+			imProcesses: map[string]longhorn.InstanceProcess{
+				ExistingInstance: {
+					Spec: longhorn.InstanceProcessSpec{
+						Name: ExistingInstance,
+					},
+					Status: longhorn.InstanceProcessStatus{
+						State:     longhorn.InstanceStateRunning,
+						PortStart: TestPort1,
+					},
+				},
+			},
+			imDeleting:                  true,
+			expectedState:               longhorn.InstanceStateUnknown,
+			expectedImage:               TestEngineImage,
+			expectedStarted:             true,
+			expectedInstanceManagerName: TestInstanceManagerName,
+		},
+		"without live upgrade engine frontend becomes error": {
+			efStatusInstanceManagerName: TestInstanceManagerName,
+			imName:                      TestInstanceManagerName,
+			imProcesses: map[string]longhorn.InstanceProcess{
+				ExistingInstance: {
+					Spec: longhorn.InstanceProcessSpec{
+						Name: ExistingInstance,
+					},
+					Status: longhorn.InstanceProcessStatus{
+						State:     longhorn.InstanceStateRunning,
+						PortStart: TestPort1,
+					},
+				},
+			},
+			imDeleting:                  true,
+			expectedState:               longhorn.InstanceStateError,
+			expectedImage:               "",
+			expectedStarted:             true,
+			expectedInstanceManagerName: TestInstanceManagerName,
+		},
+		"active live upgrade marks engine frontend stopped for recreation on replacement im": {
+			imus: []*longhorn.InstanceManagerUpgrade{
+				newIMU("test-imu", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM),
+			},
+			efStatusInstanceManagerName: "old-instance-manager",
+			imName:                      "replacement-instance-manager",
+			imProcesses:                 map[string]longhorn.InstanceProcess{},
+			imDeleting:                  false,
+			expectedState:               longhorn.InstanceStateStopped,
+			expectedImage:               "",
+			expectedStarted:             false,
+			expectedInstanceManagerName: "",
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing instance handler: %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+		h := newTestInstanceHandler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(eiIndexer.Add(ei), IsNil)
+
+		imImageSetting := newDefaultInstanceManagerImageSetting()
+		imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(sIndexer.Add(imImageSetting), IsNil)
+
+		v2DataEngineSetting := initSettingsNameValue(string(types.SettingNameV2DataEngine), "true")
+		v2DataEngineSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), v2DataEngineSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(sIndexer.Add(v2DataEngineSetting), IsNil)
+
+		im := newInstanceManager(
+			tc.imName, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			tc.imProcesses,
+			map[string]longhorn.InstanceProcess{},
+			longhorn.DataEngineTypeV2,
+			TestInstanceManagerImage,
+			tc.imDeleting,
+		)
+		createdIM, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imIndexer.Add(createdIM), IsNil)
+
+		for _, imu := range tc.imus {
+			createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(imuIndexer.Add(createdIMU), IsNil)
+		}
+
+		pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, createdIM.Name, createdIM.Namespace, createdIM.Spec.NodeID)
+		c.Assert(pIndexer.Add(pod), IsNil)
+		_, err = kubeClient.CoreV1().Pods(createdIM.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		node, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(nodeIndexer.Add(node), IsNil)
+
+		ef := newEngineFrontend(ExistingInstance, TestEngineImage, tc.efStatusInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning)
+
+		err = h.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus)
+		c.Assert(err, IsNil)
+		c.Assert(ef.Status.CurrentState, Equals, tc.expectedState)
+		c.Assert(ef.Status.CurrentImage, Equals, tc.expectedImage)
+		c.Assert(ef.Status.Started, Equals, tc.expectedStarted)
+		c.Assert(ef.Status.InstanceManagerName, Equals, tc.expectedInstanceManagerName)
+		c.Assert(ef.Status.IP, Equals, "")
+		c.Assert(ef.Status.StorageIP, Equals, "")
+		c.Assert(ef.Status.Port, Equals, 0)
+	}
 }
 
 func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {

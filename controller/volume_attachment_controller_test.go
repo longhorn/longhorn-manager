@@ -435,6 +435,7 @@ func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *
 	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 	engineIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
 	engineFrontendIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
 
 	vac, err := NewLonghornVolumeAttachmentController(logger, ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace)
 	c.Assert(err, IsNil)
@@ -498,7 +499,70 @@ func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *
 	err = engineFrontendIndexer.Update(createdEngineFrontend)
 	c.Assert(err, IsNil)
 
-	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, true)
+
+	createdEngineFrontend.Spec.Frontend = longhorn.VolumeFrontendBlockDev
+	createdEngineFrontend.Status.CurrentState = longhorn.InstanceStateUnknown
+	createdEngineFrontend.Status.Endpoint = "/dev/longhorn/" + v.Name
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+
+	imu := newIMU("test-imu-node-2", TestNode2, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imuIndexer.Add(createdIMU)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, true)
+}
+
+func (s *TestSuite) TestShouldDoDetachSkipsDuringV2LiveUpgradeSwitchover(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	logger := logrus.StandardLogger()
+
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+	vac, err := NewLonghornVolumeAttachmentController(logger, ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.NodeID = TestNode1
+	v.Spec.EngineNodeID = TestNode1
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentEngineNodeID = TestNode2
+	v.Status.State = longhorn.VolumeStateAttached
+
+	va := &longhorn.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      types.GetLHVolumeAttachmentNameFromVolumeName(v.Name),
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.VolumeAttachmentSpec{
+			Volume:            v.Name,
+			AttachmentTickets: map[string]*longhorn.AttachmentTicket{},
+		},
+	}
+
+	c.Assert(vac.shouldDoDetach(va, v), Equals, true)
+
+	imu := newIMU("test-imu-node-2", TestNode2, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateRestoringEngines)
+	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imuIndexer.Add(createdIMU)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.shouldDoDetach(va, v), Equals, false)
 }
 
 func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCase) {
