@@ -3,6 +3,7 @@ package initiator
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -359,6 +360,19 @@ func disconnect(nqn string, executor *commonns.Executor) error {
 	// NQN:nqn.2023-01.io.spdk:raid01 disconnected 1 controller(s)
 	//
 	// And trying to disconnect a non-existing target would return exit code 0
+	_, err := executor.Execute(nil, nvmeBinary, opts, types.ExecuteTimeout)
+	return err
+}
+
+// disconnectController disconnects a single NVMe controller by device name
+// (e.g. "nvme4"). This removes one multipath path without affecting other
+// controllers for the same subsystem NQN.
+func disconnectController(controllerName string, executor *commonns.Executor) error {
+	devPath := filepath.Join("/dev", controllerName)
+	opts := []string{
+		"disconnect",
+		"--device", devPath,
+	}
 	_, err := executor.Execute(nil, nvmeBinary, opts, types.ExecuteTimeout)
 	return err
 }

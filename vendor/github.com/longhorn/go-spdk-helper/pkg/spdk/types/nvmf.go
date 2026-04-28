@@ -1,5 +1,36 @@
 package types
 
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
+
+type NvmfANAGroupID string
+
+const DefaultNvmfANAGroupID uint32 = 1
+
+func (groupID *NvmfANAGroupID) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*groupID = ""
+		return nil
+	}
+
+	var stringValue string
+	if err := json.Unmarshal(data, &stringValue); err == nil {
+		*groupID = NvmfANAGroupID(stringValue)
+		return nil
+	}
+
+	var numericValue uint32
+	if err := json.Unmarshal(data, &numericValue); err == nil {
+		*groupID = NvmfANAGroupID(strconv.FormatUint(uint64(numericValue), 10))
+		return nil
+	}
+
+	return fmt.Errorf("failed to unmarshal ANA group ID %s", string(data))
+}
+
 type NvmfCreateTransportRequest struct {
 	Trtype NvmeTransportType `json:"trtype"`
 }
@@ -80,6 +111,34 @@ type NvmfSubsystemNamespace struct {
 	PtplFile string `json:"ptpl_file,omitempty"`
 }
 
+// UnmarshalJSON handles SPDK returning anagrpid as either a string or a number.
+func (ns *NvmfSubsystemNamespace) UnmarshalJSON(data []byte) error {
+	type Alias NvmfSubsystemNamespace
+	aux := &struct {
+		Anagrpid json.RawMessage `json:"anagrpid,omitempty"`
+		*Alias
+	}{
+		Alias: (*Alias)(ns),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if len(aux.Anagrpid) > 0 && string(aux.Anagrpid) != "null" {
+		var s string
+		if err := json.Unmarshal(aux.Anagrpid, &s); err == nil {
+			ns.Anagrpid = s
+		} else {
+			var n uint32
+			if err := json.Unmarshal(aux.Anagrpid, &n); err == nil {
+				ns.Anagrpid = strconv.FormatUint(uint64(n), 10)
+			} else {
+				return fmt.Errorf("failed to unmarshal anagrpid: %s", string(aux.Anagrpid))
+			}
+		}
+	}
+	return nil
+}
+
 type NvmfSubsystemHost struct {
 	Nqn string `json:"nqn"`
 }
@@ -110,6 +169,15 @@ type NvmfSubsystemRemoveListenerRequest struct {
 	TgtName string `json:"tgt_name,omitempty"`
 }
 
+type NvmfSubsystemListenerSetANAStateRequest struct {
+	Nqn           string                        `json:"nqn"`
+	ListenAddress NvmfSubsystemListenAddress    `json:"listen_address"`
+	AnaState      NvmfSubsystemListenerAnaState `json:"ana_state"`
+	AnaGrpid      uint32                        `json:"anagrpid,omitempty"`
+
+	TgtName string `json:"tgt_name,omitempty"`
+}
+
 type NvmfSubsystemGetListenersRequest struct {
 	Nqn string `json:"nqn"`
 
@@ -119,11 +187,16 @@ type NvmfSubsystemGetListenersRequest struct {
 type NvmfSubsystemListenerAnaState string
 
 const (
-	NvmfSubsystemListenerAnaStateOptimized      = "optimized"
-	NvmfSubsystemListenerAnaStateNonOptimized   = "non-optimized"
-	NvmfSubsystemListenerAnaStateInaccessible   = "Inaccessible"
-	NvmfSubsystemListenerAnaStatePersistentLoss = "persistent-loss"
-	NvmfSubsystemListenerAnaStateChange         = "change"
+	NvmfSubsystemListenerAnaStateOptimized    = "optimized"
+	NvmfSubsystemListenerAnaStateNonOptimized = "non_optimized"
+	NvmfSubsystemListenerAnaStateInaccessible = "inaccessible"
+
+	// Deprecated: NvmfSubsystemListenerAnaStatePersistentLoss is kept for
+	// backward compatibility with older Longhorn versions that reference it.
+	NvmfSubsystemListenerAnaStatePersistentLoss = "persistent_loss"
+	// Deprecated: NvmfSubsystemListenerAnaStateChange is kept for backward
+	// compatibility with older Longhorn versions that reference it.
+	NvmfSubsystemListenerAnaStateChange = "change"
 )
 
 type NvmfSubsystemListener struct {
