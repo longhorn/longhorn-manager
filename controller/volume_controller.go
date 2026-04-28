@@ -1930,21 +1930,28 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		// as faulted so the detach/reattach/remount cycle restores access.
 		if types.IsDataEngineV2(v.Spec.DataEngine) {
 			ef, err := pickCurrentEngineFrontend(v, efs)
-			if err == nil && ef != nil && ef.Status.CurrentState == longhorn.InstanceStateError {
-				if v.Status.CurrentNodeID != "" || (v.Spec.NodeID != "" && v.Status.CurrentNodeID == "" && v.Status.State != longhorn.VolumeStateAttached) {
-					log.Warn("EngineFrontend of volume dead unexpectedly, setting v.Status.Robustness to faulted")
-					msg := fmt.Sprintf("EngineFrontend of volume %v dead unexpectedly, setting v.Status.Robustness to faulted", v.Name)
-					c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
-					e.Spec.LogRequested = true
-					for _, r := range rs {
-						if r.Status.CurrentState == longhorn.InstanceStateRunning {
-							r.Spec.LogRequested = true
-							rs[r.Name] = r
+			if err == nil && ef != nil {
+				// We intentionally do not force robustness to Unknown for EF state Unknown here.
+				// During live upgrade, InstanceHandler may temporarily tolerate EF Unknown while
+				// the old IM is being replaced, and changing robustness here would block
+				// processEngineSwitchover() and push the volume into detach. Outside live upgrade,
+				// the normal IM/engine Unknown handling above remains unchanged.
+				if ef.Status.CurrentState == longhorn.InstanceStateError {
+					if v.Status.CurrentNodeID != "" || (v.Spec.NodeID != "" && v.Status.CurrentNodeID == "" && v.Status.State != longhorn.VolumeStateAttached) {
+						log.Warn("EngineFrontend of volume dead unexpectedly, setting v.Status.Robustness to faulted")
+						msg := fmt.Sprintf("EngineFrontend of volume %v dead unexpectedly, setting v.Status.Robustness to faulted", v.Name)
+						c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
+						e.Spec.LogRequested = true
+						for _, r := range rs {
+							if r.Status.CurrentState == longhorn.InstanceStateRunning {
+								r.Spec.LogRequested = true
+								rs[r.Name] = r
+							}
 						}
-					}
-					v.Status.Robustness = longhorn.VolumeRobustnessFaulted
-					if err := c.handleDelinquentAndStaleStateForFaultedRWXVolume(v); err != nil {
-						return err
+						v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+						if err := c.handleDelinquentAndStaleStateForFaultedRWXVolume(v); err != nil {
+							return err
+						}
 					}
 				}
 			}
@@ -4629,6 +4636,23 @@ func isEngineFrontendReady(ef *longhorn.EngineFrontend) bool {
 	return ef.Status.Endpoint != ""
 }
 
+func isEngineFrontendTemporarilyAvailableForNode(efs map[string]*longhorn.EngineFrontend, nodeID string) bool {
+	ef, err := getEngineFrontendForNode(efs, nodeID)
+	if err != nil || ef == nil {
+		return false
+	}
+
+	if ef.Spec.DesireState != longhorn.InstanceStateRunning || ef.Status.CurrentState != longhorn.InstanceStateUnknown {
+		return false
+	}
+
+	if ef.Spec.DisableFrontend || ef.Spec.Frontend == longhorn.VolumeFrontendEmpty {
+		return true
+	}
+
+	return ef.Status.Endpoint != ""
+}
+
 // createEngineFrontend creates an EngineFrontend CR for v2 data engine
 // The EngineFrontend is created in stopped state and will be started when
 // the Engine is running.
@@ -5485,11 +5509,10 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		migrationEngineFrontend.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
 		migrationEngineFrontend.Spec.DisableFrontend = v.Status.FrontendDisabled
 		migrationEngineFrontend.Spec.EngineName = migrationEngine.Name
-		if migrationEngine.Status.CurrentState == longhorn.InstanceStateRunning && migrationEngine.Status.IP != "" {
-			if migrationEngine.Status.Port != 0 {
-				migrationEngineFrontend.Spec.TargetIP = migrationEngine.Status.IP
-				migrationEngineFrontend.Spec.TargetPort = migrationEngine.Status.Port
-			}
+		if migrationEngine.Status.CurrentState == longhorn.InstanceStateRunning &&
+			migrationEngine.Status.IP != "" && migrationEngine.Status.Port != 0 {
+			migrationEngineFrontend.Spec.TargetIP = migrationEngine.Status.IP
+			migrationEngineFrontend.Spec.TargetPort = migrationEngine.Status.Port
 			migrationEngineFrontend.Spec.DesireState = longhorn.InstanceStateRunning
 		}
 		if migrationEngineFrontend.Spec.DesireState != longhorn.InstanceStateRunning ||
@@ -5561,7 +5584,7 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 			return nil
 		}
 
-		currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
+		currentEngine, extras, err := datastore.GetNewCurrentEngineAndExtras(v, es)
 		if err != nil {
 			log.WithError(err).Warn("Failed to finalize the engine switchover")
 			return nil
@@ -5786,8 +5809,36 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	return nil
 }
 
+func pickCurrentEngineForV2SwitchoverCleanup(v *longhorn.Volume, es map[string]*longhorn.Engine, efs map[string]*longhorn.EngineFrontend) (*longhorn.Engine, []*longhorn.Engine, error) {
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil {
+			return nil, nil, err
+		}
+		if ef != nil && ef.Spec.EngineName != "" {
+			currentEngine, exists := es[ef.Spec.EngineName]
+			if exists && currentEngine.DeletionTimestamp == nil {
+				extras := []*longhorn.Engine{}
+				for _, e := range es {
+					if e.Name == currentEngine.Name {
+						continue
+					}
+					extras = append(extras, e)
+				}
+				return currentEngine, extras, nil
+			}
+		}
+	}
+
+	return datastore.GetNewCurrentEngineAndExtras(v, es)
+}
+
 func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Volume, targetNodeID string, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
 	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"migrationNodeID": targetNodeID, "migrationEngine": migrationEngine.Name})
+	waitForTargetReplicaAttachmentDuringLiveUpgradeRestore := types.IsDataEngineV2(v.Spec.DataEngine) &&
+		hasActiveInstanceManagerUpgradeOnNode(c.ds, targetNodeID) &&
+		currentEngine.Spec.NodeID != "" &&
+		currentEngine.Spec.NodeID != targetNodeID
 
 	// Check the migration engine current status
 	if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != targetNodeID {
@@ -5832,6 +5883,15 @@ func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Vol
 					log.Infof("Need to revert rather than starting migration since the current replica %v is already in the engine spec, which means it may start rebuilding", r.Name)
 					return false, true, nil
 				}
+				// During live-upgrade restore-back, wait for a running replica on the
+				// original/target node to be reattached instead of switching over while
+				// the volume still depends on the temporary-side replica.
+				if waitForTargetReplicaAttachmentDuringLiveUpgradeRestore &&
+					r.Spec.NodeID == targetNodeID &&
+					r.Status.CurrentState == longhorn.InstanceStateRunning {
+					log.Warnf("Running replica %v on target node %v wasn't added to engine yet, waiting for it to be attached before completing migration", r.Name, targetNodeID)
+					return false, false, nil
+				}
 				log.Warnf("Running replica %v wasn't added to engine, will ignore it and continue migration", r.Name)
 			default:
 				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
@@ -5841,6 +5901,16 @@ func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Vol
 				migrationReplicaLists[dataPath] = []*longhorn.Replica{}
 			}
 			migrationReplicaLists[dataPath] = append(migrationReplicaLists[dataPath], r)
+		} else if waitForTargetReplicaAttachmentDuringLiveUpgradeRestore &&
+			r.Spec.EngineName == "" &&
+			r.Spec.NodeID == targetNodeID &&
+			r.Status.CurrentState == longhorn.InstanceStateRunning {
+			// During live-upgrade restore-back, a replica on the target/original node
+			// may be running but not yet assigned to the migration engine. Don't ignore
+			// it; wait for it to be attached so we don't switch over while still
+			// depending on the temporary-side replica.
+			log.Warnf("Replica %v on target node %v is running but not yet in migration engine, waiting for it to be attached", r.Name, targetNodeID)
+			return false, false, nil
 		} else {
 			log.Warnf("During migration found unknown replica with engine %v, will directly remove it", r.Spec.EngineName)
 			if err := c.deleteReplica(r, rs); err != nil {
