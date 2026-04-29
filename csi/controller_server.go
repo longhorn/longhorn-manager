@@ -1130,9 +1130,9 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		return nil, err
 	}
 
-	log.Infof("Volume %s backup %s of snapshot %s created", existVol.Name, backup.Id, csiSnapshotName)
-	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, existVol.Name, backup.Id)
-	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(existVol.Name, snapshotID, snapshotCR.CreationTime,
+	log.Infof("Volume %s backup %s of snapshot %s created", backup.VolumeName, backup.Name, csiSnapshotName)
+	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, backup.VolumeName, backup.Name)
+	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(backup.VolumeName, snapshotID, snapshotCR.CreationTime,
 		existVol.Size, backup.State == string(longhorn.BackupStateCompleted))
 	return rsp, nil
 }
@@ -1489,18 +1489,15 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 	}
 }
 
-// waitForBackupControllerSync returns the backup of the given snapshot of the given volume. It does not return until
-// the backup controller has synced at least once (so the backup contains information we need). This function does not
-// wait for the existence of a backup. If one doesn't exist, it returns without error immediately.
+// waitForBackupControllerSync polls until the backup controller has synced the snapshot creation time into the Backup
+// CR (best effort). On timeout, if the Backup CR exists it is returned so the caller can respond with
+// ready_to_use=false per the CSI spec; if the CR does not exist at all a codes.Internal error is returned.
 func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName string) (*longhornclient.Backup, error) {
-	// Don't wait if we don't need to.
 	backup, err := cs.getBackup(volumeName, snapshotName)
 	if err != nil {
 		return nil, err
 	}
 	if backup != nil && backup.SnapshotCreated != "" {
-		// The backup controller sets the snapshot creation time at first sync. If we do not wait to return until
-		// this is done, we may see timestamp related errors in csi-snapshotter logs.
 		return backup, nil
 	}
 
@@ -1515,9 +1512,20 @@ func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName
 	for {
 		select {
 		case <-timeout:
-			msg := fmt.Sprintf("waitForBackupControllerSync: timeout while waiting for backup controller to sync for volume %s and snapshot %s", volumeName, snapshotName)
+			// Best effort: SnapshotCreated was not synced in time. If the Backup CR exists, return it so
+			// the caller can respond with ready_to_use=false per the CSI spec. The sidecar will retry
+			// CreateSnapshot idempotently until the backup completes and ready_to_use=true is returned.
+			backup, err := cs.getBackup(volumeName, snapshotName)
+			if err != nil {
+				return nil, err
+			}
+			if backup != nil {
+				logrus.Debugf("waitForBackupControllerSync: backup CR for snapshot %s on volume %s exists but SnapshotCreated not yet synced; returning with ready_to_use=false", snapshotName, volumeName)
+				return backup, nil
+			}
+			msg := fmt.Sprintf("waitForBackupControllerSync: timeout waiting for Backup CR to be created for volume %s snapshot %s", volumeName, snapshotName)
 			logrus.Warn(msg)
-			return nil, status.Error(codes.DeadlineExceeded, msg)
+			return nil, status.Error(codes.Internal, msg)
 		case <-tick:
 			backup, err := cs.getBackup(volumeName, snapshotName)
 			if err != nil {
