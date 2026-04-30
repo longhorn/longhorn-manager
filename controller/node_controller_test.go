@@ -397,6 +397,64 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 	s.checkOrphans(c, expectation)
 }
 
+func (s *NodeControllerSuite) TestNonOwnerDoesNotMarkDisksNotReadyWhenNodeNotReady(c *C) {
+	// This test verifies that when a non-owner controller reconciles a node
+	// that is not-ready due to a transient reason (ManagerPodDown), it does NOT
+	// mark the disks as not-ready. Only definitive down states (K8s node gone/not ready)
+	// should trigger disk marking by non-owners.
+	node := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode2: node,
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		pods: map[string]*corev1.Pod{
+			// Manager pod is failed — causes ManagerPodDown (transient)
+			TestDaemon2: newDaemonPod(corev1.PodFailed, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil),
+		},
+		nodes: map[string]*corev1.Node{
+			// K8s node itself is healthy
+			TestNode2: newKubernetesNode(
+				TestNode2,
+				corev1.ConditionTrue,
+				corev1.ConditionFalse,
+				corev1.ConditionFalse,
+				corev1.ConditionFalse,
+				corev1.ConditionFalse,
+				corev1.ConditionTrue,
+			),
+		},
+	}
+
+	expectation := &NodeControllerExpectation{
+		nodeStatus: map[string]*longhorn.NodeStatus{
+			TestNode2: {
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonManagerPodDown),
+				},
+			},
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	err := s.controller.syncNode(getKey(node, c))
+	c.Assert(err, IsNil)
+
+	n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+
+	s.checkNodeConditions(c, expectation, n)
+
+	diskStatus := n.Status.DiskStatus[TestDiskID1]
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusTrue)
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status, Equals, longhorn.ConditionStatusTrue)
+}
+
 func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 	var err error
 

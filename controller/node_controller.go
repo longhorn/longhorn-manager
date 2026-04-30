@@ -450,11 +450,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
-	// Explicitly mark all disk on this node as not ready and not schedulable when
-	// node is not ready. This ensures auto-salvage is gated during node recovery.
-	// Ref: https://github.com/longhorn/longhorn/issues/12406
-	nc.markAllDisksNotReadyWhenNodeNotReady(node)
-
 	// Set any RWX leases to non-delinquent if owned by not-ready node.
 	// Usefulness of delinquent state has passed.
 	if err = nc.clearDelinquentLeasesIfNodeNotReady(node); err != nil {
@@ -465,8 +460,20 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
 
 	if nc.controllerID != node.Name {
+		// For non-owner controllers, only mark disks not-ready when the node is
+		// definitively down (K8s node gone or not ready). This prevents non-owners
+		// from interfering with the owner's disk status during transient states
+		// (e.g. manager pod restart), which could cause disks to get stuck in
+		// not-ready state.
+		// Ref: https://github.com/longhorn/longhorn/issues/12406
+		nc.markAllDisksNotReadyWhenNodeDefinitelyDown(node)
 		return nil
 	}
+
+	// Explicitly mark all disk on this node as not ready and not schedulable when
+	// node is not ready. This ensures auto-salvage is gated during node recovery.
+	// Ref: https://github.com/longhorn/longhorn/issues/12406
+	nc.markAllDisksNotReadyWhenNodeNotReady(node)
 
 	// Getting here is enough proof of life to turn on the services that might
 	// have been turned off for RWX failover.
@@ -2044,6 +2051,52 @@ func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node, ma
 			nc.eventRecorder, node, corev1.EventTypeWarning)
 	}
 	return nodeReady
+}
+
+// markAllDisksNotReadyWhenNodeDefinitelyDown marks all disks as not-ready and
+// not-schedulable only when the node is definitively down (Kubernetes node gone
+// or not ready). This is used by non-owner controllers to ensure disk status is
+// updated for auto-salvage gating without interfering with the owner during
+// transient states like manager pod restarts.
+func (nc *NodeController) markAllDisksNotReadyWhenNodeDefinitelyDown(node *longhorn.Node) {
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	if cond.Status == longhorn.ConditionStatusTrue {
+		return
+	}
+
+	// Only act on definitive node-down reasons. Transient reasons like
+	// ManagerPodDown will be handled by the owner once it recovers.
+	if cond.Reason != string(longhorn.NodeConditionReasonKubernetesNodeGone) &&
+		cond.Reason != string(longhorn.NodeConditionReasonKubernetesNodeNotReady) {
+		return
+	}
+
+	reason := string(longhorn.DiskConditionReasonNodeNotReady)
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		diskStatus.Conditions = types.SetConditionAndRecord(
+			diskStatus.Conditions,
+			longhorn.DiskConditionTypeReady,
+			longhorn.ConditionStatusFalse,
+			reason,
+			fmt.Sprintf(
+				"Waiting for disk %v (%v) on node %v to be ready",
+				diskName, diskStatus.DiskPath, node.Name,
+			),
+			nc.eventRecorder, node, corev1.EventTypeWarning)
+
+		diskStatus.Conditions = types.SetConditionAndRecord(
+			diskStatus.Conditions,
+			longhorn.DiskConditionTypeSchedulable,
+			longhorn.ConditionStatusFalse,
+			reason,
+			fmt.Sprintf(
+				"Waiting for disk %v (%v) on node %v to be schedulable",
+				diskName, diskStatus.DiskPath, node.Name,
+			),
+			nc.eventRecorder, node, corev1.EventTypeWarning)
+
+		node.Status.DiskStatus[diskName] = diskStatus
+	}
 }
 
 func (nc *NodeController) markAllDisksNotReadyWhenNodeNotReady(node *longhorn.Node) {
