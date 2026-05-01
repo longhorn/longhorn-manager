@@ -1149,8 +1149,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		// Detect this case and call ReplicaRebuildVerify to transition the replica to RW.
 		m.verifyCompletedRebuild(engine, addressReplicaMap, rebuildStatus, engineClientProxy)
 
-		// It's meaningless to sync the trim related field for old engines or engines in old engine instance managers
-		if cliAPIVersion >= 7 && im.Status.APIVersion >= 3 {
+		// It's meaningless to sync the trim related field for old engines or engines in old engine instance managers.
+		// For v2, cliAPIVersion is always 0, so skip the v1-specific version gate.
+		if types.IsDataEngineV2(engine.Spec.DataEngine) || (cliAPIVersion >= 7 && im.Status.APIVersion >= 3) {
 			// Check and correct flag UnmapMarkSnapChainRemoved for the engine and replicas
 			engine.Status.UnmapMarkSnapChainRemovedEnabled = volumeInfo.UnmapMarkSnapChainRemoved
 			if engine.Spec.UnmapMarkSnapChainRemovedEnabled != volumeInfo.UnmapMarkSnapChainRemoved {
@@ -1161,7 +1162,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 
-		if cliAPIVersion >= 10 && im.Status.APIVersion >= 5 {
+		// For v2, cliAPIVersion is always 0, so skip the v1-specific version gate.
+		if types.IsDataEngineV2(engine.Spec.DataEngine) || (cliAPIVersion >= 10 && im.Status.APIVersion >= 5) {
 			engine.Status.SnapshotMaxCount = volumeInfo.SnapshotMaxCount
 			if engine.Spec.SnapshotMaxCount != volumeInfo.SnapshotMaxCount {
 				logrus.Infof("Correcting flag SnapshotMaxCount from %d to %d", volumeInfo.SnapshotMaxCount, engine.Spec.SnapshotMaxCount)
