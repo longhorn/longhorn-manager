@@ -21,38 +21,38 @@ toolchain go1.26.2
 
 replace (
 	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
-	k8s.io/api => k8s.io/api v0.35.3
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.3
-	k8s.io/apimachinery => k8s.io/apimachinery v0.35.3
-	k8s.io/apiserver => k8s.io/apiserver v0.35.3
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.35.3
-	k8s.io/client-go => k8s.io/client-go v0.35.3
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.35.3
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.35.3
-	k8s.io/code-generator => k8s.io/code-generator v0.35.3
-	k8s.io/component-base => k8s.io/component-base v0.35.3
-	k8s.io/component-helpers => k8s.io/component-helpers v0.35.3
-	k8s.io/controller-manager => k8s.io/controller-manager v0.35.3
+	k8s.io/api => k8s.io/api v0.35.4
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.4
+	k8s.io/apimachinery => k8s.io/apimachinery v0.35.4
+	k8s.io/apiserver => k8s.io/apiserver v0.35.4
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.35.4
+	k8s.io/client-go => k8s.io/client-go v0.35.4
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.35.4
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.35.4
+	k8s.io/code-generator => k8s.io/code-generator v0.35.4
+	k8s.io/component-base => k8s.io/component-base v0.35.4
+	k8s.io/component-helpers => k8s.io/component-helpers v0.35.4
+	k8s.io/controller-manager => k8s.io/controller-manager v0.35.4
 	k8s.io/cri-api => k8s.io/cri-api v0.36.0
-	k8s.io/cri-client => k8s.io/cri-client v0.35.3
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.35.3
-	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.35.3
-	k8s.io/endpointslice => k8s.io/endpointslice v0.35.3
+	k8s.io/cri-client => k8s.io/cri-client v0.35.4
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.35.4
+	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.35.4
+	k8s.io/endpointslice => k8s.io/endpointslice v0.35.4
 	k8s.io/externaljwt => k8s.io/externaljwt v0.36.0
-	k8s.io/kms => k8s.io/kms v0.35.3
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.35.3
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.35.3
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.35.3
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.35.3
-	k8s.io/kubectl => k8s.io/kubectl v0.35.3
-	k8s.io/kubelet => k8s.io/kubelet v0.35.3
+	k8s.io/kms => k8s.io/kms v0.35.4
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.35.4
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.35.4
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.35.4
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.35.4
+	k8s.io/kubectl => k8s.io/kubectl v0.35.4
+	k8s.io/kubelet => k8s.io/kubelet v0.35.4
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
-	k8s.io/metrics => k8s.io/metrics v0.35.3
+	k8s.io/metrics => k8s.io/metrics v0.35.4
 	k8s.io/mount-utils => k8s.io/mount-utils v0.36.0
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.35.3
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.35.3
-	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.35.3
-	k8s.io/sample-controller => k8s.io/sample-controller v0.35.3
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.35.4
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.35.4
+	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.35.4
+	k8s.io/sample-controller => k8s.io/sample-controller v0.35.4
 )
 
 require (
@@ -69,9 +69,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260419.0.20260419095453-27efdbdca692
 	github.com/longhorn/backupstore v0.0.0-20260414054550-8570535ce7ad
-	github.com/longhorn/go-common-libs v0.0.0-20260418032157-c135767e4855
+	github.com/longhorn/go-common-libs v0.0.0-20260502033232-8cc14de85b45
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
-	github.com/longhorn/go-spdk-helper v0.6.1-0.20260422091955-74dd5ebcf118
+	github.com/longhorn/go-spdk-helper v0.6.1-0.20260502161311-a7689bc3c0e4
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20260419.0.20260429072047-589f2d5665a3
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260419.0.20260429083054-d6c61b025956
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260419.0.20260426105811-243598c42581
@@ -92,13 +92,13 @@ require (
 	google.golang.org/grpc v1.80.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.35.3
-	k8s.io/apiextensions-apiserver v0.35.3
-	k8s.io/apimachinery v0.35.3
-	k8s.io/cli-runtime v0.35.3
-	k8s.io/client-go v0.35.3
-	k8s.io/kubernetes v1.35.3
-	k8s.io/metrics v0.35.3
+	k8s.io/api v0.35.4
+	k8s.io/apiextensions-apiserver v0.35.4
+	k8s.io/apimachinery v0.35.4
+	k8s.io/cli-runtime v0.35.4
+	k8s.io/client-go v0.35.4
+	k8s.io/kubernetes v1.35.4
+	k8s.io/metrics v0.35.4
 	k8s.io/mount-utils v0.36.0
 	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
 	sigs.k8s.io/controller-runtime v0.23.3
@@ -155,7 +155,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -205,8 +205,8 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/slok/goresilience v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	go.opentelemetry.io/otel v1.39.0 // indirect
-	go.opentelemetry.io/otel/trace v1.39.0 // indirect
+	go.opentelemetry.io/otel v1.41.0 // indirect
+	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	golang.org/x/crypto v0.49.0 // indirect
@@ -216,8 +216,8 @@ require (
 	golang.org/x/text v0.36.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	k8s.io/apiserver v0.35.3 // indirect
-	k8s.io/component-base v0.35.3 // indirect
+	k8s.io/apiserver v0.35.4 // indirect
+	k8s.io/component-base v0.35.4 // indirect
 	k8s.io/component-helpers v0.33.0 // indirect
 	k8s.io/controller-manager v0.33.0 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
