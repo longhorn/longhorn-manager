@@ -49,6 +49,7 @@ type VolumeStatusApplyConfiguration struct {
 	IsStandby              *bool                                `json:"isStandby,omitempty"`
 	ActualSize             *int64                               `json:"actualSize,omitempty"`
 	LastDegradedAt         *string                              `json:"lastDegradedAt,omitempty"`
+	LastAutoSalvagedAt     *string                              `json:"lastAutoSalvagedAt,omitempty"`
 	ShareEndpoint          *string                              `json:"shareEndpoint,omitempty"`
 	ShareState             *longhornv1beta2.ShareManagerState   `json:"shareState,omitempty"`
 	// LastOnDemandSnapshotHashingCompleteAt is the RFC3339 timestamp (e.g., "2026-03-16T10:30:00Z") when the
@@ -228,6 +229,14 @@ func (b *VolumeStatusApplyConfiguration) WithActualSize(value int64) *VolumeStat
 // If called multiple times, the LastDegradedAt field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithLastDegradedAt(value string) *VolumeStatusApplyConfiguration {
 	b.LastDegradedAt = &value
+	return b
+}
+
+// WithLastAutoSalvagedAt sets the LastAutoSalvagedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LastAutoSalvagedAt field is set to the value of the last call.
+func (b *VolumeStatusApplyConfiguration) WithLastAutoSalvagedAt(value string) *VolumeStatusApplyConfiguration {
+	b.LastAutoSalvagedAt = &value
 	return b
 }
 

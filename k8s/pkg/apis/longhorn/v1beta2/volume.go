@@ -420,6 +420,8 @@ type VolumeStatus struct {
 	// +optional
 	LastDegradedAt string `json:"lastDegradedAt"`
 	// +optional
+	LastAutoSalvagedAt string `json:"lastAutoSalvagedAt"`
+	// +optional
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
