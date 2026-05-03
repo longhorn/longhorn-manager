@@ -985,6 +985,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.CurrentNodeID = ""
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
+	tc.expectVolume.Status.LastAutoSalvagedAt = getTestNow()
 	tc.expectVolume.Status.RemountRequestedAt = getTestNow()
 
 	testCases["volume salvage requested - all replica failed"] = tc

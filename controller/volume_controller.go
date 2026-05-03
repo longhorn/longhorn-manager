@@ -1905,7 +1905,9 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				}
 				if salvaged {
 					// remount the reattached volume later if possible
-					v.Status.RemountRequestedAt = c.nowHandler()
+					now := c.nowHandler()
+					v.Status.LastAutoSalvagedAt = now
+					v.Status.RemountRequestedAt = now
 					msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 					v.Status.Robustness = longhorn.VolumeRobustnessUnknown
