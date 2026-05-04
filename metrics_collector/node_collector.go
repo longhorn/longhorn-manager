@@ -12,6 +12,7 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -253,6 +254,16 @@ func (nc *NodeCollector) collectNodeActualCPUMemoryUsage(ch chan<- prometheus.Me
 			nc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
+
+	enabled := true
+	if v, err := nc.ds.GetSettingAsBool(types.SettingNameKubernetesMetricsServerMetricsEnabled); err != nil {
+		nc.logger.WithError(err).Warnf("Failed to get setting %v, defaulting to enabled", types.SettingNameKubernetesMetricsServerMetricsEnabled)
+	} else {
+		enabled = v
+	}
+	if !enabled {
+		return
+	}
 
 	nodeMetrics, err := nc.kubeMetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{
 		FieldSelector: "metadata.name=" + nc.currentNodeID,

@@ -79,6 +79,7 @@ const (
 	SettingNameUpgradeResponderURL                                      = SettingName("upgrade-responder-url")
 	SettingNameManagerURL                                               = SettingName("manager-url")
 	SettingNameAllowCollectingLonghornUsage                             = SettingName("allow-collecting-longhorn-usage-metrics")
+	SettingNameKubernetesMetricsServerMetricsEnabled                    = SettingName("kubernetes-metrics-server-metrics-enabled")
 	SettingNameCurrentLonghornVersion                                   = SettingName("current-longhorn-version")
 	SettingNameLatestLonghornVersion                                    = SettingName("latest-longhorn-version")
 	SettingNameStableLonghornVersions                                   = SettingName("stable-longhorn-versions")
@@ -205,6 +206,7 @@ var (
 		SettingNameUpgradeResponderURL,
 		SettingNameManagerURL,
 		SettingNameAllowCollectingLonghornUsage,
+		SettingNameKubernetesMetricsServerMetricsEnabled,
 		SettingNameCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion,
 		SettingNameStableLonghornVersions,
@@ -366,6 +368,7 @@ var (
 		SettingNameUpgradeResponderURL:                                      SettingDefinitionUpgradeResponderURL,
 		SettingNameManagerURL:                                               SettingDefinitionManagerURL,
 		SettingNameAllowCollectingLonghornUsage:                             SettingDefinitionAllowCollectingLonghornUsageMetrics,
+		SettingNameKubernetesMetricsServerMetricsEnabled:                    SettingDefinitionKubernetesMetricsServerMetricsEnabled,
 		SettingNameCurrentLonghornVersion:                                   SettingDefinitionCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion:                                    SettingDefinitionLatestLonghornVersion,
 		SettingNameStableLonghornVersions:                                   SettingDefinitionStableLonghornVersions,
@@ -735,6 +738,21 @@ var (
 		DisplayName: "Allow Collecting Longhorn Usage Metrics",
 		Description: "Enabling this setting will allow Longhorn to provide additional usage metrics to https://metrics.longhorn.io/.\n" +
 			"This information will help us better understand how Longhorn is being used, which will ultimately contribute to future improvements.\n",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
+	}
+
+	SettingDefinitionKubernetesMetricsServerMetricsEnabled = SettingDefinition{
+		DisplayName: "Kubernetes Metrics Server Metrics Enabled",
+		Description: "Enabling this setting allows Longhorn to query the Kubernetes Metrics Server ('metrics.k8s.io') for pod and node resource usage. " +
+			"Disable if Metrics Server is not installed to prevent repeated scrape errors and unnecessary API traffic. " +
+			"Disabling hides metrics for: longhorn_node_cpu_usage_millicpu, longhorn_node_memory_usage_bytes, " +
+			"longhorn_instance_manager_cpu_usage_millicpu, longhorn_instance_manager_memory_usage_bytes, " +
+			"longhorn_manager_cpu_usage_millicpu, longhorn_manager_memory_usage_bytes.\n",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,

@@ -1685,6 +1685,16 @@ func (info *ClusterInfo) collectNodeCount() error {
 }
 
 func (info *ClusterInfo) collectResourceUsage() error {
+	enabled := true
+	if v, err := info.ds.GetSettingAsBool(types.SettingNameKubernetesMetricsServerMetricsEnabled); err != nil {
+		logrus.WithError(err).Warnf("Failed to get setting %v, defaulting to enabled", types.SettingNameKubernetesMetricsServerMetricsEnabled)
+	} else {
+		enabled = v
+	}
+	if !enabled {
+		return nil
+	}
+
 	componentMap := map[string]map[string]string{
 		"Manager":         info.ds.GetManagerLabel(),
 		"InstanceManager": types.GetInstanceManagerComponentLabel(),
