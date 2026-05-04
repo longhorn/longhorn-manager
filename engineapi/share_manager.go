@@ -18,9 +18,13 @@ type ShareManagerClient struct {
 }
 
 func NewShareManagerClient(sm *longhorn.ShareManager, pod *corev1.Pod) (*ShareManagerClient, error) {
+	return NewShareManagerClientByName(sm.Name, pod)
+}
+
+func NewShareManagerClientByName(name string, pod *corev1.Pod) (*ShareManagerClient, error) {
 	client, err := smclient.NewShareManagerClient(net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(ShareManagerDefaultPort)))
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create Share Manager client for %v", sm.Name)
+		return nil, errors.Wrapf(err, "failed to create Share Manager client for %v", name)
 	}
 
 	return &ShareManagerClient{
@@ -50,4 +54,8 @@ func (c *ShareManagerClient) Unmount() error {
 
 func (c *ShareManagerClient) Mount() error {
 	return c.grpcClient.Mount()
+}
+
+func (c *ShareManagerClient) IsServing() (bool, error) {
+	return c.grpcClient.IsServing()
 }
