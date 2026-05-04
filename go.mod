@@ -74,7 +74,7 @@ require (
 	github.com/longhorn/go-spdk-helper v0.6.1-0.20260502161311-a7689bc3c0e4
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20260503
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260503
-	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503
+	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260505154420-01688654fbaf
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
@@ -138,7 +138,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260424095800-4b6385093e88 // indirect
+	github.com/longhorn/types v0.0.0-20260505090548-f44cbe9dd7b0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
