@@ -4,6 +4,9 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -17,6 +20,7 @@ type ShareManagerClient struct {
 	address string
 	conn    *grpc.ClientConn
 	client  rpc.ShareManagerServiceClient
+	health  healthpb.HealthClient
 }
 
 func NewShareManagerClient(address string) (*ShareManagerClient, error) {
@@ -36,6 +40,7 @@ func NewShareManagerClient(address string) (*ShareManagerClient, error) {
 		address: address,
 		conn:    conn,
 		client:  rpc.NewShareManagerServiceClient(conn),
+		health:  healthpb.NewHealthClient(conn),
 	}, nil
 }
 
@@ -77,4 +82,16 @@ func (c *ShareManagerClient) Mount() error {
 
 	_, err := c.client.Mount(ctx, &emptypb.Empty{})
 	return err
+}
+
+func (c *ShareManagerClient) IsServing() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	resp, err := c.health.Check(ctx, &healthpb.HealthCheckRequest{})
+	if err != nil {
+		return false, err
+	}
+
+	return resp.GetStatus() == healthpb.HealthCheckResponse_SERVING, nil
 }
