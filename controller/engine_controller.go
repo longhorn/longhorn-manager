@@ -386,9 +386,16 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 				return err
 			}
 		}
-	} else if ec.isMonitoring(engine) {
-		// engine is not running
-		ec.resetAndStopMonitoring(engine)
+	} else {
+		if ec.isMonitoring(engine) {
+			// engine is not running
+			ec.resetAndStopMonitoring(engine)
+		}
+		if types.IsDataEngineV2(engine.Spec.DataEngine) {
+			if engine.Status.CurrentState == longhorn.InstanceStateError {
+				ec.fillV2ExpansionFailureFromInstanceError(engine)
+			}
+		}
 	}
 
 	if err := ec.syncSnapshotCRs(engine); err != nil {
@@ -528,6 +535,35 @@ func failedCloneBefore(e *longhorn.Engine) bool {
 		}
 	}
 	return false
+}
+
+func (ec *EngineController) fillV2ExpansionFailureFromInstanceError(engine *longhorn.Engine) {
+	if engine.Status.LastExpansionError != "" || engine.Status.LastExpansionFailedAt != "" {
+		return
+	}
+
+	if !isV2ExpansionIncomplete(engine) {
+		return
+	}
+
+	errMsg := ""
+	instance, err := ec.GetInstance(engine)
+	if err != nil {
+		errMsg = fmt.Sprintf("engine instance could not be reached; unable to determine whether expansion completed successfully, and the result has not yet been reflected in engine status: %v", err)
+	} else if instance == nil {
+		errMsg = "engine instance could not be reached; unable to determine whether expansion completed successfully, and the result has not yet been reflected in engine status"
+	} else {
+		instanceErrMsg := instance.Status.ErrorMsg
+		if instanceErrMsg == "" {
+			errMsg = "unable to determine whether expansion completed successfully before the engine entered error, and the result has not yet been reflected in engine status"
+		} else {
+			errMsg = fmt.Sprintf("unable to determine whether expansion completed successfully before the engine entered error; instance error: %v", instanceErrMsg)
+		}
+	}
+	// The engine is already in error at this stage, and volume information is unavailable,
+	// so use the current engine instance error message to backfill the expansion failure.
+	engine.Status.LastExpansionError = errMsg
+	engine.Status.LastExpansionFailedAt = util.Now()
 }
 
 func (ec *EngineController) enqueueEngine(obj interface{}) {
@@ -3074,4 +3110,11 @@ func isV2ReplicaAddAlreadyInProgressError(err error) bool {
 
 func isV2ReplicaAddRestoreInProgressError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "restore is in progress")
+}
+
+func isV2ExpansionIncomplete(engine *longhorn.Engine) bool {
+	// Do not rely on IsExpanding here. If spdk_tgt is already down, that runtime
+	// state may be stale and stay true, which would prevent this fallback path
+	// from working.
+	return engine.Spec.VolumeSize > engine.Status.CurrentSize
 }
