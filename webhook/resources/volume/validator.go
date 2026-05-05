@@ -2,6 +2,7 @@ package volume
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -49,6 +50,7 @@ func (v *volumeValidator) Resource() admission.Resource {
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
 			admissionregv1.Update,
+			admissionregv1.Delete,
 		},
 	}
 }
@@ -150,6 +152,11 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 	if types.IsDataEngineV1(volume.Spec.DataEngine) && volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
 		return werror.NewInvalidError(fmt.Sprintf("BUG: v1 data engine does not support clone mode %v", longhorn.CloneModeLinkedClone), ".spec.cloneMode")
+	}
+	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		if err := v.validateLinkedCloneInstanceManagerVersion(volume); err != nil {
+			return err
+		}
 	}
 
 	if err := verifyVolumeDataSource(v.ds, volume); err != nil {
@@ -413,6 +420,15 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.migrationNodeID")
 	}
 
+	if newVolume.Spec.NumberOfReplicas != oldVolume.Spec.NumberOfReplicas {
+		if err := v.validateLinkedCloneReplicaCountIncrease(newVolume); err != nil {
+			return err
+		}
+		if err := v.validateSourceVolumeReplicaCountDecrease(oldVolume, newVolume); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -584,11 +600,6 @@ func validateReplicaCount(cloneMode longhorn.CloneMode, dataLocality longhorn.Da
 			return werror.NewInvalidError(fmt.Sprintf("number of replica count should be 1 when data locality is %v", longhorn.DataLocalityStrictLocal), "")
 		}
 	}
-	if cloneMode == longhorn.CloneModeLinkedClone {
-		if replicaCount != 1 {
-			return werror.NewInvalidError(fmt.Sprintf("number of replica count must be 1 when clone mode %v", longhorn.CloneModeLinkedClone), "")
-		}
-	}
 	return nil
 }
 
@@ -706,6 +717,89 @@ func validateImmutable(field string, oldVal, newVal any) error {
 	return nil
 }
 
+// validateLinkedCloneInstanceManagerVersion rejects linked-clone volume creation
+// when no V2 instance manager with the required proxy API version is available.
+// This is a best-effort guard based on the informer cache.
+func (v *volumeValidator) validateLinkedCloneInstanceManagerVersion(vol *longhorn.Volume) error {
+	ims, err := v.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance managers while validating linked-clone volume %v", vol.Name)
+	}
+	for _, im := range ims {
+		if im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
+			return nil
+		}
+	}
+	return werror.NewForbiddenError(fmt.Sprintf(
+		"cannot create linked-clone volume %v: no instance manager with proxy API version >= %d found; upgrade instance managers first",
+		vol.Name, engineapi.MinProxyAPIVersionForNReplicaLinkedClone))
+}
+
+// validateLinkedCloneReplicaCountIncrease rejects an attempt to raise the
+// replica count of a linked-clone volume above its source volume's replica count.
+func (v *volumeValidator) validateLinkedCloneReplicaCountIncrease(newVolume *longhorn.Volume) error {
+	if newVolume.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+	srcVolName := types.GetVolumeName(newVolume.Spec.DataSource)
+	if srcVolName == "" {
+		return nil
+	}
+	srcVolume, err := v.ds.GetVolumeRO(srcVolName)
+	if err != nil {
+		return werror.NewInternalError(errors.Wrapf(err, "failed to get source volume %v", srcVolName).Error())
+	}
+	if newVolume.Spec.NumberOfReplicas > srcVolume.Spec.NumberOfReplicas {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"cannot increase replica count of linked-clone volume %v to %v: exceeds source volume %v replica count %v",
+			newVolume.Name, newVolume.Spec.NumberOfReplicas, srcVolName, srcVolume.Spec.NumberOfReplicas,
+		), "spec.numberOfReplicas")
+	}
+	return nil
+}
+
+// validateSourceVolumeReplicaCountDecrease rejects an attempt to reduce the
+// replica count of a source volume when there are not enough free source
+// replicas to satisfy the requested decrease.
+func (v *volumeValidator) validateSourceVolumeReplicaCountDecrease(oldVolume, newVolume *longhorn.Volume) error {
+	decreaseBy := oldVolume.Spec.NumberOfReplicas - newVolume.Spec.NumberOfReplicas
+	if decreaseBy <= 0 {
+		return nil
+	}
+
+	cloneVolumes, err := v.ds.ListLinkedCloneVolumesBySourceVolumeRO(newVolume.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list linked-clone volumes for volume %v: %v", newVolume.Name, err))
+	}
+	if len(cloneVolumes) == 0 {
+		return nil
+	}
+
+	srcReplicas, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list replicas for volume %v: %v", newVolume.Name, err))
+	}
+
+	freeCount := 0
+	for _, srcReplica := range srcReplicas {
+		cloneReplicas, err := v.ds.ListLinkedCloneReplicasBySrcReplicaRO(srcReplica.Name)
+		if err != nil {
+			return werror.NewInternalError(fmt.Sprintf("failed to list linked-clone replicas for replica %v: %v", srcReplica.Name, err))
+		}
+		if len(cloneReplicas) == 0 {
+			freeCount++
+		}
+	}
+
+	if freeCount < decreaseBy {
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot decrease replica count of source volume %v by %d: only %d of %d source replicas are not backing linked-clone replicas",
+			newVolume.Name, decreaseBy, freeCount, len(srcReplicas),
+		))
+	}
+	return nil
+}
+
 func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error {
 	if vol.Spec.DataSource == "" {
 		return nil
@@ -721,20 +815,21 @@ func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error
 	if vol.Spec.DataEngine != srcVol.Spec.DataEngine {
 		return werror.NewInvalidError(fmt.Sprintf("cannot clone volume with data engine %v into a volume with data engine %v", srcVol.Spec.DataEngine, vol.Spec.DataEngine), ".spec.dataSource")
 	}
-	if srcVol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-		return werror.NewInvalidError(fmt.Sprintf("cannot create a new volume from a linked-clone volume %v", srcVolName), ".spec.dataSource")
+	// If the source volume is itself a linked-clone, it must have completed cloning
+	// before it can serve as the source for another linked-clone volume.
+	if srcVol.Spec.CloneMode == longhorn.CloneModeLinkedClone &&
+		srcVol.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
+		return werror.NewInvalidError(
+			fmt.Sprintf("cannot use volume %v as linked-clone source: its own cloning is not yet completed (state: %v)",
+				srcVol.Name, srcVol.Status.CloneStatus.State), "spec.dataSource")
 	}
 	if vol.Spec.CloneMode != longhorn.CloneModeLinkedClone {
 		return nil
 	}
-	volumesRO, err := ds.ListVolumesRO()
-	if err != nil {
-		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
-	}
-	for _, v := range volumesRO {
-		if types.GetVolumeName(v.Spec.DataSource) == srcVolName && v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-			return werror.NewInvalidError(fmt.Sprintf("BUG: there already exist a linked-cloned volume %v from the source volume %v", v.Name, srcVolName), ".spec.dataSource")
-		}
+	if vol.Spec.NumberOfReplicas > srcVol.Spec.NumberOfReplicas {
+		return werror.NewInvalidError(
+			fmt.Sprintf("linked-clone volume cannot have more replicas (%d) than its source volume (%d)",
+				vol.Spec.NumberOfReplicas, srcVol.Spec.NumberOfReplicas), "spec.numberOfReplicas")
 	}
 
 	return nil
@@ -842,5 +937,33 @@ func (v *volumeValidator) validateEncryptedVolMigrationEngineImage(oldVolume *lo
 		return fmt.Errorf("cannot migratable volume %v with engine image %v that has CLI API version %v less than %v for encrypted volumes", newVolume.Name, engineImage, cliAPIVersion, lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize)
 	}
 
+	return nil
+}
+
+func (v *volumeValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
+	oldVolume, ok := oldObj.(*longhorn.Volume)
+	if !ok {
+		return werror.NewInvalidError("unexpected object type", "")
+	}
+
+	clones, err := v.ds.ListLinkedCloneVolumesBySourceVolumeRO(oldVolume.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list linked-clone volumes for volume %v: %v",
+			oldVolume.Name, err))
+	}
+	// Block deletion regardless of clone status: linked-clone replicas
+	// always co-locate with source replicas on the same disk and share
+	// parent snapshot data, so the source volume cannot be deleted
+	// independently even after cloning has completed.
+	if len(clones) > 0 {
+		cloneNames := make([]string, 0, len(clones))
+		for _, clone := range clones {
+			cloneNames = append(cloneNames, clone.Name)
+		}
+		sort.Strings(cloneNames)
+		return werror.NewForbiddenError(
+			fmt.Sprintf("cannot delete volume %v: it is the source of linked-clone volume(s) %v",
+				oldVolume.Name, cloneNames))
+	}
 	return nil
 }
