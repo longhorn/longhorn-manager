@@ -112,15 +112,15 @@ func (r *replicaValidator) validateLinkedCloneReplicaDeletion(replica *longhorn.
 		return nil
 	}
 
-	cloneReplicas, err := r.ds.ListLinkedCloneReplicasBySrcReplica(replica.Name)
+	cloneReplicas, err := r.ds.ListLinkedCloneReplicasBySrcReplicaRO(replica.Name)
 	if err != nil {
 		return werror.NewInternalError(fmt.Sprintf(
 			"failed to list linked-clone replicas for replica %v: %v", replica.Name, err))
 	}
 	if len(cloneReplicas) > 0 {
 		cloneNames := make([]string, 0, len(cloneReplicas))
-		for name := range cloneReplicas {
-			cloneNames = append(cloneNames, name)
+		for _, r := range cloneReplicas {
+			cloneNames = append(cloneNames, r.Name)
 		}
 		sort.Strings(cloneNames)
 		return werror.NewForbiddenError(fmt.Sprintf(

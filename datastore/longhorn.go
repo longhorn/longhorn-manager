@@ -7301,6 +7301,19 @@ func (s *DataStore) ListLinkedCloneVolumesBySourceVolume(srcVolumeName string) (
 	return s.ListVolumesByLabelSelector(selector)
 }
 
+// ListLinkedCloneVolumesBySourceVolumeRO returns a slice of read-only linked-clone
+// volumes whose DataSource points to srcVolumeName.
+// The returned objects must NOT be mutated.
+func (s *DataStore) ListLinkedCloneVolumesBySourceVolumeRO(srcVolumeName string) ([]*longhorn.Volume, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetLinkedCloneSourceVolumeLabel(srcVolumeName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.volumeLister.Volumes(s.namespace).List(selector)
+}
+
 // ListLinkedCloneReplicasBySrcReplica returns a map of all linked-clone replicas
 // whose Spec.LinkedCloneSrcReplicaName equals srcReplicaName. The map is keyed by
 // replica name and contains deep copies safe for mutation.
@@ -7312,6 +7325,19 @@ func (s *DataStore) ListLinkedCloneReplicasBySrcReplica(srcReplicaName string) (
 		return nil, err
 	}
 	return s.listReplicas(selector)
+}
+
+// ListLinkedCloneReplicasBySrcReplicaRO returns a slice of read-only linked-clone
+// replicas whose Spec.LinkedCloneSrcReplicaName equals srcReplicaName.
+// The returned objects must NOT be mutated.
+func (s *DataStore) ListLinkedCloneReplicasBySrcReplicaRO(srcReplicaName string) ([]*longhorn.Replica, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetLinkedCloneSrcReplicaLabel(srcReplicaName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.replicaLister.Replicas(s.namespace).List(selector)
 }
 
 // IsSnapshotLinkedCloneEntrypoint returns (true, cloneVolumeNames, nil) when
