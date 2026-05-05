@@ -175,12 +175,12 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/longhorn/backing-image-manager v1.12.0-dev-20260419.0.20260419095453-27efdbdca692 h1:0DGoytaJDX4fxOBf+ixgVtHNFUtqkuLVjXETvtiPmRk=
 github.com/longhorn/backing-image-manager v1.12.0-dev-20260419.0.20260419095453-27efdbdca692/go.mod h1:T7GdxGpz8c/P2s0m0wdnXAS0U7fac7F8F50mcUXNfhM=
-github.com/longhorn/backupstore v0.0.0-20260414054550-8570535ce7ad h1:B1nZo9xIBUueGBHlpcHKb+c08473MSj0EkXBuN3pzBQ=
-github.com/longhorn/backupstore v0.0.0-20260414054550-8570535ce7ad/go.mod h1:20Yvj7Gz9wkp1iHD1u77+CWG281L6SVe8/SZDnwQMAI=
+github.com/longhorn/backupstore v0.0.0-20260502085909-21ee466f5a8a h1:Rdj7bnw9+Rpv/YclXD/Xwrb7xEkGcNIBc8KeLB/nM9E=
+github.com/longhorn/backupstore v0.0.0-20260502085909-21ee466f5a8a/go.mod h1:IqdT/ycq6X4zpT9YO9785I/Nr10ehj68TFufJfxkoUg=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
-github.com/longhorn/go-common-libs v0.0.0-20260502033232-8cc14de85b45 h1:JLEb575HP0Ynp40YuEGp7wAtTFSA+JxsiVPp+a8Dr4M=
-github.com/longhorn/go-common-libs v0.0.0-20260502033232-8cc14de85b45/go.mod h1:HIhm4v80CChro4GNckAB+K9ZMuxQbWnCh5bOPLxgsOI=
+github.com/longhorn/go-common-libs v0.0.0-20260502161928-1e84fa75a8f1 h1:sjDswhcTrEqeXSjcHjaeccYT1v1WW9wNHB3fWFArM38=
+github.com/longhorn/go-common-libs v0.0.0-20260502161928-1e84fa75a8f1/go.mod h1:+aXFI8DmHTX4Az9pZF16/XKfrVKWIESJjw+hcxdMslw=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b h1:877AlP/bMchRs0qRHVW3zZ42qt+iNjALc4Sz9XzrgZQ=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b/go.mod h1:5obSKdWNPiFbFTzPWU09k9mGCSnpN9pgGoHQTUk7kYo=
 github.com/longhorn/go-spdk-helper v0.6.1-0.20260502161311-a7689bc3c0e4 h1:kL5hVHF+a59TRCN11gNxmu5Uu9IOSd2r3XcTZIR08DQ=
