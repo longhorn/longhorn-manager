@@ -4924,6 +4924,19 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 		snapshotName = snapshot.Name
 	}
 
+	// Persist the entrypoint snapshot label to enable webhook protection.
+	// UpdateVolume is required because syncVolume only saves status.
+	labelKey := types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)
+	if v.Labels == nil {
+		v.Labels = map[string]string{}
+	}
+	if v.Labels[labelKey] == "" {
+		v.Labels[labelKey] = snapshotName
+		if _, err := c.ds.UpdateVolume(v); err != nil {
+			return errors.Wrapf(err, "failed to persist linked-clone source snapshot label on volume %v", v.Name)
+		}
+	}
+
 	// Store data into the volume clone status. Make sure that the created snapshot
 	// persit in the volume spec before continue
 	v.Status.CloneStatus.SourceVolume = sourceVolName
