@@ -1,15 +1,21 @@
 package controller
 
 import (
+	// Category 1: std_no_alias
 	"context"
 	"fmt"
 	"math"
 	"strconv"
 	"time"
 
+	// Category 3: third_party_non_k8s_no_alias
 	"github.com/sirupsen/logrus"
+
+	// Category 4: third_party_non_k8s_alias
 	. "gopkg.in/check.v1"
 
+	// Category 5: k8s_no_alias
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
@@ -17,20 +23,23 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
+	// Category 6: k8s_alias
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"k8s.io/apimachinery/pkg/runtime"
-
+	// Category 7: longhorn_external_no_alias
 	"github.com/longhorn/backupstore"
 
+	// Category 8: longhorn_external_alias
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
+	// Category 9: this_repo_no_alias
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	// Category 10: this_repo_alias
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
@@ -1341,6 +1350,93 @@ func (s *TestSuite) TestGetSnapshotCountThresholdFallback(c *C) {
 	log := logrus.NewEntry(logrus.StandardLogger())
 	threshold := vc.getSnapshotCountThreshold(v, log)
 	c.Assert(threshold, Equals, specMaxCount)
+}
+
+func (s *TestSuite) TestShouldCleanUpFailedReplica(c *C) {
+	// 1. Setup the mock environment
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	now := time.Now()
+
+	// 2. Define the test cases
+	tests := []struct {
+		name                             string
+		volume                           *longhorn.Volume
+		replica                          *longhorn.Replica
+		staleReplicaTimeoutSetting       int
+		replenishmentWaitIntervalSetting int
+		expected                         bool
+	}{
+		{
+			name: "Scenario 1: Volume Spec overrides Global Setting",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 10},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-15 * time.Minute).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       60,
+			replenishmentWaitIntervalSetting: 0,
+			expected:                         true,
+		},
+		{
+			name: "Scenario 2: Global used when Spec is 0",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 0},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-15 * time.Minute).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       30,
+			replenishmentWaitIntervalSetting: 0,
+			expected:                         false,
+		},
+		{
+			name: "Scenario 3: Max with Replenishment Interval (Safety)",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 1},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-3 * time.Minute).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       1,
+			replenishmentWaitIntervalSetting: 600, // 10 mins
+			expected:                         false,
+		},
+		{
+			name: "Scenario 4: Rounding up seconds to minutes (Stable)",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 0},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-110 * time.Second).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       0,
+			replenishmentWaitIntervalSetting: 61,
+			expected:                         false,
+		},
+	}
+
+	// 3. Run the cases
+	for _, tc := range tests {
+		// We pass 1 for safeAsLastReplicaCount to bypass the "last replica" protection logic
+		result := vc.shouldCleanUpFailedReplica(tc.volume, tc.replica, 1, tc.staleReplicaTimeoutSetting, tc.replenishmentWaitIntervalSetting)
+		c.Assert(result, Equals, tc.expected, Commentf("Failed case: %v", tc.name))
+	}
 }
 
 func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
