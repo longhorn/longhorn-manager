@@ -540,22 +540,74 @@ func (s *Server) EngineBackupStatus(ctx context.Context, req *spdkrpc.BackupStat
 
 func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBackupRestoreRequest) (ret *spdkrpc.EngineBackupRestoreResponse, err error) {
 	logrus.WithFields(logrus.Fields{
-		"backup":       req.BackupUrl,
-		"engine":       req.EngineName,
-		"snapshotName": req.SnapshotName,
-		"concurrent":   req.ConcurrentLimit,
+		"backup":     req.BackupUrl,
+		"engine":     req.EngineName,
+		"concurrent": req.ConcurrentLimit,
 	}).Info("Restoring backup")
 
 	s.RLock()
-	e := s.engineMap[req.EngineName]
-	spdkClient := s.spdkClient
-	s.RUnlock()
-
-	if e == nil {
+	e, exist := s.engineMap[req.EngineName]
+	if !exist {
+		s.RUnlock()
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for restoring backup", req.EngineName)
 	}
 
-	return e.BackupRestore(spdkClient, req.BackupUrl, req.EngineName, req.SnapshotName, req.Credential, req.ConcurrentLimit)
+	// Backup restore is only supported when the engine has no frontend (empty EngineFrontend).
+	// Reject requests if any frontend is configured.
+	for _, frontend := range s.engineFrontendMap {
+		frontend.RLock()
+		engineName := frontend.EngineName
+		frontendType := frontend.Frontend
+		frontendName := frontend.Name
+		frontend.RUnlock()
+
+		if engineName == req.EngineName && frontendType != types.FrontendEmpty {
+			s.RUnlock()
+			return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "cannot restore backup: engine %v has a non-empty frontend %v", req.EngineName, frontendName)
+		}
+	}
+
+	spdkClient := s.spdkClient
+	portAllocator := s.portAllocator
+	s.RUnlock()
+
+	// Create a temporary EngineFrontend for the duration of this restore.
+	// It is NOT registered in engineFrontendMap and is discarded on return.
+	//
+	// FrontendSPDKTCPBlockdev causes BackupRestore to create an NVMe-TCP initiator
+	// and expose a block device that EngineRestore.OpenVolumeDev can open.
+	//
+	// The channel must be buffered with capacity 2: EngineFrontend.BackupRestore sends
+	// once on the success path (via defer) and the teardown goroutine sends once on
+	// completion. There is no reader, so an unbuffered channel would block both senders
+	// permanently. The buffer absorbs both sends and the channel is GC'd with tempEF.
+	e.RLock()
+	volumeName := e.VolumeName
+	specSize := e.SpecSize
+	e.RUnlock()
+
+	throwawayUpdateCh := make(chan interface{}, 2)
+	tempEF := NewEngineFrontend(
+		e.Name+"-restore",
+		e.Name,
+		volumeName,
+		types.FrontendSPDKTCPBlockdev,
+		specSize,
+		types.DefaultUblkQueueDepth,
+		types.DefaultUblkNumberOfQueue,
+		throwawayUpdateCh,
+	)
+
+	logrus.WithFields(logrus.Fields{
+		"enginefrontend": tempEF.Name,
+		"engine":         tempEF.EngineName,
+		"volume":         tempEF.VolumeName,
+		"frontend":       tempEF.Frontend,
+		"replicas":       len(e.ReplicaStatusMap),
+		"specSize":       e.SpecSize,
+	}).Info("Creating temporary engine frontend for backup restore request")
+
+	return tempEF.BackupRestore(e, spdkClient, req.BackupUrl, req.Credential, req.ConcurrentLimit, portAllocator)
 }
 
 func (s *Server) EngineRestoreStatus(ctx context.Context, req *spdkrpc.RestoreStatusRequest) (*spdkrpc.RestoreStatusResponse, error) {
@@ -564,7 +616,7 @@ func (s *Server) EngineRestoreStatus(ctx context.Context, req *spdkrpc.RestoreSt
 	s.RUnlock()
 
 	if e == nil {
-		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for backup creation", req.EngineName)
+		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for restore status", req.EngineName)
 	}
 
 	resp, err := e.RestoreStatus()

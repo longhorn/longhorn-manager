@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/util"
 
+	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
 	safelog "github.com/longhorn/longhorn-spdk-engine/pkg/log"
 
 	"github.com/longhorn/go-spdk-helper/pkg/initiator"
@@ -2660,5 +2661,124 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 	default:
 		recoverErr = fmt.Errorf("unsupported frontend type %s for recovery of engine frontend %s", ef.Frontend, ef.Name)
 		return recoverErr
+	}
+}
+
+// BackupRestore initiates a backup restore via this frontend.
+// The EngineFrontend must not have an active endpoint — it is expected to be a
+// dedicated restore frontend with no pre-existing initiator connection.
+// A temporary NVMe-TCP target is created on the engine for data transfer and torn
+// down (along with the initiator) once the restore goroutine completes.
+// Flow: EngineFrontend.BackupRestore -> Engine.BackupRestore
+func (ef *EngineFrontend) BackupRestore(engine *Engine, spdkClient *spdkclient.Client, backupUrl string, credential map[string]string, concurrentLimit int32, superiorPortAllocator *commonbitmap.Bitmap) (resp *spdkrpc.EngineBackupRestoreResponse, err error) {
+	ef.log.Infof("Starting backup restore for backup %s", backupUrl)
+	targetPrepared := false
+	frontendPrepared := false
+
+	ef.Lock()
+	if ef.isCreating {
+		ef.Unlock()
+		return nil, fmt.Errorf("engine frontend %s is still creating", ef.Name)
+	}
+	if ef.isSwitchingOver {
+		ef.Unlock()
+		return nil, fmt.Errorf("engine frontend %s is switching over target", ef.Name)
+	}
+	if ef.Endpoint != "" {
+		ef.Unlock()
+		return nil, fmt.Errorf("engine frontend %s already has an active endpoint %s; backup restore requires a dedicated frontend with no existing connection", ef.Name, ef.Endpoint)
+	}
+	ef.IsRestoring = true
+	ef.Frontend = types.FrontendSPDKTCPBlockdev
+	ef.Unlock()
+
+	defer func() {
+		if err != nil {
+			if targetPrepared {
+				engine.cleanupTemporaryNvmeTcpTargetForRestore(spdkClient, superiorPortAllocator, "restore flow failure")
+			}
+			if frontendPrepared {
+				ef.teardownRestoreInitiator(spdkClient)
+			}
+			ef.Lock()
+			ef.IsRestoring = false
+			ef.Frontend = ""
+			ef.Unlock()
+		} else {
+			ef.UpdateCh <- nil
+		}
+	}()
+
+	// Ensure the engine has a NVMe-TCP target to connect to (creates one if absent).
+	if err := engine.ensureNvmeTcpTargetForRestore(spdkClient, superiorPortAllocator); err != nil {
+		return nil, errors.Wrapf(err, "engine %s: failed to ensure NVMe-TCP target for backup restore", engine.Name)
+	}
+	targetPrepared = true
+
+	engine.RLock()
+	targetAddress := net.JoinHostPort(engine.NvmeTcpTarget.IP, strconv.Itoa(int(engine.NvmeTcpTarget.Port)))
+	engine.RUnlock()
+
+	ef.log.Infof("Setting up NVMe-TCP initiator for backup restore, target: %s", targetAddress)
+	if err := ef.createNvmeTcpFrontend(spdkClient, targetAddress); err != nil {
+		return nil, errors.Wrapf(err, "failed to setup NVMe-TCP frontend for backup restore")
+	}
+	frontendPrepared = true
+
+	ef.RLock()
+	endpoint := ef.Endpoint
+	ef.RUnlock()
+
+	if endpoint == "" {
+		return nil, fmt.Errorf("engine frontend %s has no endpoint after frontend setup for backup restore", ef.Name)
+	}
+
+	ef.log.Infof("Using endpoint %s for backup restore", endpoint)
+	resp, doneCh, err := engine.BackupRestore(spdkClient, backupUrl, endpoint, credential, concurrentLimit, superiorPortAllocator)
+	if err != nil {
+		return nil, err
+	}
+
+	// Tear down the initiator connection once the restore goroutine signals completion.
+	go func() {
+		<-doneCh
+		ef.log.Info("Backup restore complete, tearing down NVMe-TCP frontend")
+		ef.teardownRestoreInitiator(spdkClient)
+
+		ef.Lock()
+		ef.IsRestoring = false
+		ef.Unlock()
+		ef.UpdateCh <- nil
+	}()
+
+	return resp, nil
+}
+
+func (ef *EngineFrontend) teardownRestoreInitiator(spdkClient *spdkclient.Client) {
+	ef.Lock()
+	defer ef.Unlock()
+
+	if ef.initiator != nil {
+		if _, stopErr := ef.initiator.Stop(spdkClient, true, true, true); stopErr != nil {
+			ef.log.WithError(stopErr).Warn("Failed to stop NVMe-TCP initiator after backup restore")
+		}
+		ef.initiator = nil
+	}
+	ef.Endpoint = ""
+	ef.Frontend = ""
+
+	if ef.NvmeTcpFrontend != nil {
+		ef.NvmeTcpFrontend.TargetIP = ""
+		ef.NvmeTcpFrontend.TargetPort = 0
+		ef.NvmeTcpFrontend.Nqn = ""
+		ef.NvmeTcpFrontend.Nguid = ""
+	}
+
+	// The restore frontend is only a temporary data path. Once it is torn down,
+	// report the frontend as stopped so the control plane can recreate a normal
+	// attach frontend instead of treating this now-empty process as still ready.
+	if ef.State != types.InstanceStateError {
+		ef.State = types.InstanceStateStopped
+		ef.ErrorMsg = ""
 	}
 }

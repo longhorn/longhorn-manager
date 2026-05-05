@@ -439,7 +439,6 @@ func (c *SPDKClient) EngineBackupRestore(req *BackupRestoreRequest) error {
 	recv, err := client.EngineBackupRestore(ctx, &spdkrpc.EngineBackupRestoreRequest{
 		BackupUrl:       req.BackupUrl,
 		EngineName:      req.EngineName,
-		SnapshotName:    req.SnapshotName,
 		Credential:      req.Credential,
 		ConcurrentLimit: req.ConcurrentLimit,
 	})
