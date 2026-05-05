@@ -491,7 +491,7 @@ func getEngineFrontendSwitchoverFailureEventMessage(failureType switchoverFailur
 }
 
 func recordEngineFrontendSwitchoverFailureEvent(recorder record.EventRecorder, ef *longhorn.EngineFrontend, failureType switchoverFailureType, targetAddress string, err error) {
-	recorder.Eventf(ef, corev1.EventTypeWarning, constant.EventReasonFailedSwitchover,
+	recorder.Event(ef, corev1.EventTypeWarning, constant.EventReasonFailedSwitchover,
 		getEngineFrontendSwitchoverFailureEventMessage(failureType, targetAddress, err))
 }
 

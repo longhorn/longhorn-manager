@@ -1909,7 +1909,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 					v.Status.LastAutoSalvagedAt = now
 					v.Status.RemountRequestedAt = now
 					msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
-					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+					c.eventRecorder.Event(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 					v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 					return nil
 				}
@@ -1922,7 +1922,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
 			v.Status.RemountRequestedAt = c.nowHandler()
 			msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
-			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+			c.eventRecorder.Event(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 			return nil
 		}
 
@@ -6128,7 +6128,7 @@ func (c *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) e
 	if sm.Status.State == longhorn.ShareManagerStateError || sm.Status.State == longhorn.ShareManagerStateUnknown {
 		volume.Status.RemountRequestedAt = c.nowHandler()
 		msg := fmt.Sprintf("Volume %v requested remount at %v", volume.Name, volume.Status.RemountRequestedAt)
-		c.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+		c.eventRecorder.Event(volume, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 	}
 
 	// sync the share state and endpoint

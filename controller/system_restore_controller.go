@@ -182,12 +182,12 @@ func getLoggerForSystemRestore(logger logrus.FieldLogger, systemRestore *longhor
 
 func (c *SystemRestoreController) LogErrorState(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore, log logrus.FieldLogger) {
 	log.Error(record.message)
-	c.eventRecorder.Eventf(systemRestore, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
+	c.eventRecorder.Event(systemRestore, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
 }
 
 func (c *SystemRestoreController) LogNormalState(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore, log logrus.FieldLogger) {
 	log.Info(record.message)
-	c.eventRecorder.Eventf(systemRestore, corev1.EventTypeNormal, record.reason, record.message)
+	c.eventRecorder.Event(systemRestore, corev1.EventTypeNormal, record.reason, record.message)
 }
 
 func (c *SystemRestoreController) syncSystemRestore(key string) (err error) {

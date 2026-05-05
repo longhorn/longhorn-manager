@@ -1500,7 +1500,7 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 
 		message := fmt.Sprintf("Purging failed SupportBundle %v", supportBundle.Name)
 		sc.logger.Info(message)
-		sc.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, constant.EventReasonDeleting, message)
+		sc.eventRecorder.Event(supportBundle, corev1.EventTypeNormal, constant.EventReasonDeleting, message)
 	}
 
 	return nil

@@ -581,14 +581,14 @@ func (c *SupportBundleController) recordErrorState(record *supportBundleRecord, 
 	)
 
 	log.Error(record.message)
-	c.eventRecorder.Eventf(supportBundle, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
+	c.eventRecorder.Event(supportBundle, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
 }
 
 func (c *SupportBundleController) recordNormalState(record *supportBundleRecord, supportBundle *longhorn.SupportBundle, log logrus.FieldLogger) {
 	supportBundle.Status.State = record.nextState
 
 	log.Info(record.message)
-	c.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, record.reason, record.message)
+	c.eventRecorder.Event(supportBundle, corev1.EventTypeNormal, record.reason, record.message)
 }
 
 func (c *SupportBundleController) recordManagerState(supportBundleManager *SupportBundleManager, supportBundle *longhorn.SupportBundle, log logrus.FieldLogger) {
@@ -611,7 +611,7 @@ func (c *SupportBundleController) recordManagerState(supportBundleManager *Suppo
 		message,
 	)
 
-	c.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, constant.EventReasonCreate, fmt.Sprintf(SupportBundleMsgManagerPhase, message))
+	c.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, constant.EventReasonCreate, SupportBundleMsgManagerPhase, message)
 	log.Info(message)
 
 }
