@@ -6975,3 +6975,4 @@ func (c *VolumeController) syncVolumeOnDemandSnapshotStatus(v *longhorn.Volume, 
 	v.Status.LastOnDemandSnapshotHashingCompleteAt = v.Spec.SnapshotHashingRequestedAt
 	return nil
 }
+
