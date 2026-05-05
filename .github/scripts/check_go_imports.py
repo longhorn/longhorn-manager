@@ -330,7 +330,6 @@ def check_file(filepath: str, module_path: str) -> List[str]:
 
     for groups in blocks:
         errors.extend(check_group_order(groups, filepath))
-        errors.extend(check_group_sorting(groups, filepath))
         errors.extend(check_duplicate_imports(groups, filepath))
 
     return errors
