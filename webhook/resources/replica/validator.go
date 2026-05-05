@@ -2,6 +2,7 @@ package replica
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/cockroachdb/errors"
 
@@ -82,6 +83,49 @@ func (r *replicaValidator) Delete(request *admission.Request, obj runtime.Object
 
 	if err := r.validateReplicaDeletion(replica); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := r.validateLinkedCloneReplicaDeletion(replica); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLinkedCloneReplicaDeletion blocks deletion of a replica that is the
+// source of one or more active linked-clone replicas.  The guard is bypassed
+// when the owning volume is being deleted so that normal cascade cleanup can
+// proceed.
+func (r *replicaValidator) validateLinkedCloneReplicaDeletion(replica *longhorn.Replica) error {
+	if replica.Spec.VolumeName == "" {
+		return nil
+	}
+
+	vol, err := r.ds.GetVolumeRO(replica.Spec.VolumeName)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return werror.NewInternalError(fmt.Sprintf(
+			"failed to get volume %v before checking linked-clone replicas for replica %v: %v",
+			replica.Spec.VolumeName, replica.Name, err))
+	}
+	// Bypass: src volume is being deleted — allow cascade cleanup.
+	if vol != nil && vol.DeletionTimestamp != nil {
+		return nil
+	}
+
+	cloneReplicas, err := r.ds.ListLinkedCloneReplicasBySrcReplica(replica.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf(
+			"failed to list linked-clone replicas for replica %v: %v", replica.Name, err))
+	}
+	if len(cloneReplicas) > 0 {
+		cloneNames := make([]string, 0, len(cloneReplicas))
+		for name := range cloneReplicas {
+			cloneNames = append(cloneNames, name)
+		}
+		sort.Strings(cloneNames)
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot delete replica %v: it is the source of linked-clone replica(s) %v",
+			replica.Name, cloneNames))
 	}
 
 	return nil
