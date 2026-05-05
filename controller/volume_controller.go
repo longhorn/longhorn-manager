@@ -4216,12 +4216,6 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 		}
 		return 0, ""
 	}
-	newVolume := len(rs) == 0
-	// For linked-cloned volume, never create new replica after the first time
-	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && !newVolume {
-		return 0, ""
-	}
-
 	switch {
 	case v.Spec.NumberOfReplicas < usableCount:
 		return 0, ""
