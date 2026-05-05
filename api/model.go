@@ -1549,7 +1549,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			UnmapMarkSnapChainRemovedEnabled: e.Status.UnmapMarkSnapChainRemovedEnabled,
 		})
 
-		if e.Spec.NodeID == v.Status.CurrentNodeID {
+		if controllerNodeID == v.Status.CurrentNodeID {
 			ve = e
 		}
 		rs := e.Status.RestoreStatus
