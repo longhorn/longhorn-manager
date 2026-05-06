@@ -39,6 +39,8 @@ type SnapshotStatus struct {
 	// +optional
 	UserCreated bool `json:"userCreated"`
 	// +optional
+	RequestedTime string `json:"requestedTime"`
+	// +optional
 	CreationTime string `json:"creationTime"`
 	// +optional
 	Size int64 `json:"size"`
