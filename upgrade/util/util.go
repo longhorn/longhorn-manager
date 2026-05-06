@@ -1340,6 +1340,8 @@ func UpdateResourcesStatus(namespace string, lhClient *lhclientset.Clientset, re
 			err = updateBackupStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Backup))
 		case types.LonghornKindBackingImage:
 			err = updateBackingImageStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImage))
+		case types.LonghornKindSnapshot:
+			err = updateSnapshotStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -1455,6 +1457,26 @@ func updateBackingImageStatus(namespace string, lhClient *lhclientset.Clientset,
 		}
 
 		if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).UpdateStatus(context.TODO(), bi, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateSnapshotStatus(namespace string, lhClient *lhclientset.Clientset, snapshots map[string]*longhorn.Snapshot) error {
+	existingSnapshotList, err := lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingSnapshot := range existingSnapshotList.Items {
+		snapshot, ok := snapshots[existingSnapshot.Name]
+		if !ok {
+			continue
+		}
+		if reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {
+			continue
+		}
+		if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).UpdateStatus(context.TODO(), snapshot, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 			return err
 		}
 	}
