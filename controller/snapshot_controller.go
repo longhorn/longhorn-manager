@@ -51,6 +51,9 @@ type SnapshotController struct {
 	cacheSyncs             []cache.InformerSynced
 	engineClientCollection engineapi.EngineClientCollection
 
+	// for unit test
+	nowHandler func() string
+
 	proxyConnCounter util.Counter
 }
 
@@ -82,6 +85,7 @@ func NewSnapshotController(
 		eventRecorder:          eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-snapshot-controller"}),
 		ds:                     ds,
 		engineClientCollection: engineClientCollection,
+		nowHandler:             util.Now,
 		proxyConnCounter:       proxyConnCounter,
 	}
 
@@ -442,6 +446,14 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return err
 		}
 
+		if snapshot.Spec.CreateSnapshot && snapshot.Status.RequestedTime == "" {
+			// The snapshot has not been taken at the engine side. It is safe to cancel the attachment and delete the CR.
+			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
+				return err
+			}
+			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
+		}
+
 		if isEngineUpgrading(engine) {
 			// requeue the snapshot to wait for upgrading engine after 3 seconds
 			snapshot.Status.Error = fmt.Sprintf("snapshot deletion delayed: volume engine %v is upgrading from image %v to %v", engine.Name, engine.Status.CurrentImage, engine.Spec.Image)
@@ -455,7 +467,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 				return
 			}
 			if snapshotInfo, ok := engine.Status.Snapshots[snapshot.Name]; ok {
-				if err := syncSnapshotWithSnapshotInfo(snapshot, snapshotInfo, engine.Spec.VolumeSize); err != nil {
+				if err := syncSnapshotWithSnapshotInfo(sc.logger, snapshot, snapshotInfo, engine.Spec.VolumeSize); err != nil {
 					return
 				}
 			}
@@ -589,7 +601,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		return nil
 	}
 
-	if err := syncSnapshotWithSnapshotInfo(snapshot, snapshotInfo, engine.Spec.VolumeSize); err != nil {
+	if err := syncSnapshotWithSnapshotInfo(sc.logger, snapshot, snapshotInfo, engine.Spec.VolumeSize); err != nil {
 		return err
 	}
 
@@ -711,7 +723,7 @@ func (sc *SnapshotController) isVolumeDeletedOrBeingDeleted(volumeName string) (
 	return !volume.DeletionTimestamp.IsZero(), nil
 }
 
-func syncSnapshotWithSnapshotInfo(snap *longhorn.Snapshot, snapInfo *longhorn.SnapshotInfo, restoreSize int64) error {
+func syncSnapshotWithSnapshotInfo(logger logrus.FieldLogger, snap *longhorn.Snapshot, snapInfo *longhorn.SnapshotInfo, restoreSize int64) error {
 	size, err := strconv.ParseInt(snapInfo.Size, 10, 64)
 	if err != nil {
 		return err
@@ -724,6 +736,12 @@ func syncSnapshotWithSnapshotInfo(snap *longhorn.Snapshot, snapInfo *longhorn.Sn
 	snap.Status.Size = size
 	snap.Status.Labels = snapInfo.Labels
 	snap.Status.RestoreSize = restoreSize
+	if snap.Status.RequestedTime == "" && snapInfo.Created != "" {
+		if snapInfo.UserCreated {
+			logger.Warnf("Backfilling RequestedTime for user-created snapshot %v from engine creation time %v; the snapshot controller may have lost track of the creation request", snap.Name, snapInfo.Created)
+		}
+		snap.Status.RequestedTime = snapInfo.Created
+	}
 	if snap.Status.MarkRemoved || snap.DeletionTimestamp != nil {
 		snap.Status.ReadyToUse = false
 	} else {
@@ -771,7 +789,8 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 		return err
 	}
 	if snapshotInfo == nil {
-		sc.logger.Infof("Creating snapshot %v of volume %v", snapshot.Name, snapshot.Spec.Volume)
+		now := sc.nowHandler()
+		sc.logger.Infof("Creating snapshot %v of volume %v at %s", snapshot.Name, snapshot.Spec.Volume, now)
 		dataEngineObj, err := sc.ds.GetDataEngineObject(engine)
 		if err != nil {
 			return err
@@ -780,6 +799,7 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 		if err != nil {
 			return err
 		}
+		snapshot.Status.RequestedTime = now
 	}
 	return nil
 }
