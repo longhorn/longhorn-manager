@@ -51,8 +51,7 @@ var (
 	RetryInterval = 100 * time.Millisecond
 	RetryCounts   = 20
 
-	AutoSalvageTimeLimit             = 1 * time.Minute
-	RecentHealthyReplicaCleanupDelay = 1 * time.Minute
+	AutoSalvageTimeLimit = 1 * time.Minute
 
 	UnstableNodeReadyTimeThreshold = 30 * time.Minute
 )
@@ -1135,45 +1134,6 @@ func getSafeAsLastReplicaCount(rs map[string]*longhorn.Replica) int {
 	return count
 }
 
-func (c *VolumeController) hasRecentlyHealthyExtraReplica(v *longhorn.Volume, rs map[string]*longhorn.Replica) bool {
-	if !types.IsDataEngineV2(v.Spec.DataEngine) {
-		return false
-	}
-
-	healthyReplicas := make([]*longhorn.Replica, 0, len(rs))
-	for _, r := range rs {
-		if isHealthyAndActiveReplica(r, false) {
-			healthyReplicas = append(healthyReplicas, r)
-		}
-	}
-	if len(healthyReplicas) <= v.Spec.NumberOfReplicas {
-		return false
-	}
-
-	now, err := util.ParseTime(c.nowHandler())
-	if err != nil {
-		logrus.WithError(err).Warn("Failed to parse current time while checking recently healthy extra replicas")
-		return false
-	}
-
-	sort.Slice(healthyReplicas, func(i, j int) bool {
-		ti, errI := util.ParseTime(healthyReplicas[i].Spec.HealthyAt)
-		tj, errJ := util.ParseTime(healthyReplicas[j].Spec.HealthyAt)
-		if errI != nil || errJ != nil {
-			return healthyReplicas[i].Spec.HealthyAt < healthyReplicas[j].Spec.HealthyAt
-		}
-		return ti.Before(tj)
-	})
-
-	for i := v.Spec.NumberOfReplicas; i < len(healthyReplicas); i++ {
-		if util.TimestampWithinLimit(now, healthyReplicas[i].Spec.HealthyAt, RecentHealthyReplicaCleanupDelay) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func getFailedReplicaCount(rs map[string]*longhorn.Replica) int {
 	count := 0
 	for _, r := range rs {
@@ -1219,13 +1179,6 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	if types.IsDataEngineV2(v.Spec.DataEngine) &&
 		v.Status.State == longhorn.VolumeStateAttached &&
 		!c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
-		return nil
-	}
-
-	// For v2, a newly rebuilt surplus replica can become RW a short time before the
-	// serving path is truly stable. Defer extra healthy cleanup briefly so we do not
-	// immediately discard the older known-good replica if another detach/crash follows.
-	if c.hasRecentlyHealthyExtraReplica(v, rs) {
 		return nil
 	}
 
