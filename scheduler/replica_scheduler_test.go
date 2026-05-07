@@ -2340,3 +2340,291 @@ func (s *TestSuite) TestIsDiskEligibleForVolume(c *C) {
 		}
 	}
 }
+
+// TestLinkedCloneScheduler covers the linked-clone scheduling path introduced
+// in the refactoring of buildLinkedCloneSrcNodeDiskMap and FindDiskCandidates.
+func (s *TestSuite) TestLinkedCloneScheduler(c *C) {
+
+	// ------------------------------------------------------------------
+	// setupLinkedCloneEnv builds the full scheduler environment used by
+	// Tests 1–5.  schedulableNodes are created as proper Longhorn nodes
+	// with disks.  For each name in srcReplicaNodes, a healthy source
+	// replica is registered in the indexer (no node object is required
+	// for src nodes — only replica objects are read during map building).
+	// ------------------------------------------------------------------
+	type linkedCloneEnv struct {
+		rcs         *ReplicaScheduler
+		srcReplicas []*longhorn.Replica // one per srcReplicaNode, in input order
+		cloneVolume *longhorn.Volume
+	}
+
+	setupLinkedCloneEnv := func(schedulableNodes, srcReplicaNodes []string) linkedCloneEnv {
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		rcs := newReplicaScheduler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+		// Default instance-manager-image setting.
+		defaultIMSetting := initSettings(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), defaultIMSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+
+		// Engine image shared by all schedulable nodes.
+		ei := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+
+		daemonIPs := []string{TestIP1, TestIP2, TestIP3}
+		daemonNames := []string{TestDaemon1, TestDaemon2, TestDaemon3}
+		for i, nodeName := range schedulableNodes {
+			daemon := newDaemonPod(corev1.PodRunning, daemonNames[i%3], TestNamespace, nodeName, daemonIPs[i%3])
+			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = pIndexer.Add(p)
+			c.Assert(err, IsNil)
+
+			diskID := getDiskID(nodeName, "1")
+			node := newNode(nodeName, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+			node.Spec.Disks = map[string]longhorn.DiskSpec{
+				diskID: newDisk(TestDefaultDataPath, true, 0),
+			}
+			node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+				diskID: {
+					StorageAvailable: TestDiskAvailableSize,
+					StorageScheduled: 0,
+					StorageMaximum:   TestDiskSize,
+					Conditions: []longhorn.Condition{
+						newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+					},
+					DiskUUID: diskID,
+					Type:     longhorn.DiskTypeFilesystem,
+				},
+			}
+			ei.Status.NodeDeploymentMap[nodeName] = true
+
+			n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = nIndexer.Add(n)
+			c.Assert(err, IsNil)
+
+			im := newInstanceManager(nodeName)
+			imObj, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = imIndexer.Add(imObj)
+			c.Assert(err, IsNil)
+		}
+
+		eiObj, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), ei, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = eiIndexer.Add(eiObj)
+		c.Assert(err, IsNil)
+
+		// Source volume: one healthy replica per srcReplicaNode.
+		srcVolName := "src-vol-linked-clone"
+		srcVol := newVolume(srcVolName, len(srcReplicaNodes))
+		srcReplicas := make([]*longhorn.Replica, 0, len(srcReplicaNodes))
+		for _, nodeName := range srcReplicaNodes {
+			r := newReplicaForVolume(srcVol)
+			r.Spec.NodeID = nodeName
+			r.Spec.DiskID = getDiskID(nodeName, "1")
+			r.Spec.HealthyAt = TestTimeNow
+			r.Spec.FailedAt = ""
+			created, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = rIndexer.Add(created)
+			c.Assert(err, IsNil)
+			srcReplicas = append(srcReplicas, created)
+		}
+
+		// Clone volume that references the source volume.
+		cloneVol := newVolume("clone-vol-linked-clone", 1)
+		cloneVol.Spec.CloneMode = longhorn.CloneModeLinkedClone
+		cloneVol.Spec.DataSource = types.NewVolumeDataSourceTypeVolume(srcVolName)
+
+		return linkedCloneEnv{
+			rcs:         rcs,
+			srcReplicas: srcReplicas,
+			cloneVolume: cloneVol,
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Test 1: FindDiskCandidates — linked-clone, successful scheduling
+	//   All three schedulable nodes each hold a healthy source replica.
+	//   Scheduling must succeed and every returned disk must belong to
+	//   one of the source replica nodes.
+	// ------------------------------------------------------------------
+	fmt.Println("testing FindDiskCandidates linked-clone - successful scheduling")
+	{
+		env := setupLinkedCloneEnv(
+			[]string{TestNode1, TestNode2, TestNode3},
+			[]string{TestNode1, TestNode2, TestNode3},
+		)
+
+		cloneReplica3 := newReplicaForVolume(env.cloneVolume)
+		allReplicas3 := map[string]*longhorn.Replica{cloneReplica3.Name: cloneReplica3}
+
+		diskCandidates3, errs3 := env.rcs.FindDiskCandidates(cloneReplica3, allReplicas3, env.cloneVolume)
+		c.Assert(len(errs3), Equals, 0)
+		c.Assert(len(diskCandidates3), Not(Equals), 0)
+
+		validSrcDisks3 := map[string]bool{
+			getDiskID(TestNode1, "1"): true,
+			getDiskID(TestNode2, "1"): true,
+			getDiskID(TestNode3, "1"): true,
+		}
+		for diskUUID := range diskCandidates3 {
+			c.Assert(validSrcDisks3[diskUUID], Equals, true,
+				Commentf("unexpected disk candidate %q not in source replica disks", diskUUID))
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Test 2: FindDiskCandidates — linked-clone, no schedulable src nodes
+	//   Source replicas live on nodes outside the schedulable set.  After
+	//   filtering the intersection is empty, so scheduling must fail with
+	//   ErrorReplicaScheduleLinkedCloneNotSatisfied.
+	// ------------------------------------------------------------------
+	fmt.Println("testing FindDiskCandidates linked-clone - no schedulable src nodes")
+	{
+		env := setupLinkedCloneEnv(
+			[]string{TestNode1, TestNode2, TestNode3},
+			[]string{"extra-node-4", "extra-node-5"},
+		)
+
+		cloneReplica4 := newReplicaForVolume(env.cloneVolume)
+		allReplicas4 := map[string]*longhorn.Replica{cloneReplica4.Name: cloneReplica4}
+
+		diskCandidates4, errs4 := env.rcs.FindDiskCandidates(cloneReplica4, allReplicas4, env.cloneVolume)
+		c.Assert(len(diskCandidates4), Equals, 0)
+		_, hasLinkedCloneErr := errs4[longhorn.ErrorReplicaScheduleLinkedCloneNotSatisfied]
+		c.Assert(hasLinkedCloneErr, Equals, true)
+	}
+
+	// ------------------------------------------------------------------
+	// Test 3: FindDiskCandidates — linked-clone, hard constraint
+	//   LinkedCloneSrcReplicaName is set to the replica on TestNode2.
+	//   Even though all three nodes are schedulable, only the disk on
+	//   TestNode2 may be returned as a candidate.
+	// ------------------------------------------------------------------
+	fmt.Println("testing FindDiskCandidates linked-clone - hard constraint (known src replica)")
+	{
+		env := setupLinkedCloneEnv(
+			[]string{TestNode1, TestNode2, TestNode3},
+			[]string{TestNode1, TestNode2, TestNode3},
+		)
+
+		cloneReplica5 := newReplicaForVolume(env.cloneVolume)
+		// srcReplicas[1] is the replica on TestNode2 (order matches input slice).
+		cloneReplica5.Spec.LinkedCloneSrcReplicaName = env.srcReplicas[1].Name
+
+		allReplicas5 := map[string]*longhorn.Replica{cloneReplica5.Name: cloneReplica5}
+
+		diskCandidates5, errs5 := env.rcs.FindDiskCandidates(cloneReplica5, allReplicas5, env.cloneVolume)
+		c.Assert(len(errs5), Equals, 0)
+		c.Assert(len(diskCandidates5), Equals, 1)
+
+		expectedDisk5 := getDiskID(TestNode2, "1")
+		_, hasDisk5 := diskCandidates5[expectedDisk5]
+		c.Assert(hasDisk5, Equals, true,
+			Commentf("expected disk %q to be the sole candidate, got %v", expectedDisk5, diskCandidates5))
+	}
+
+	// ------------------------------------------------------------------
+	// Test 4: FindDiskCandidates — soft anti-affinity fallback
+	//   Only TestNode1 is schedulable. Source replicas exist on all three
+	//   nodes, but TestNode2 and TestNode3 are not schedulable (no node
+	//   object / instance manager). An existing clone replica already
+	//   occupies TestNode1. With node soft anti-affinity explicitly
+	//   enabled on the volume, scheduling must fall back to TestNode1
+	//   rather than fail.
+	// ------------------------------------------------------------------
+	fmt.Println("testing FindDiskCandidates linked-clone - soft anti-affinity fallback")
+	{
+		// Only TestNode1 is schedulable; src replicas exist on all three.
+		env := setupLinkedCloneEnv(
+			[]string{TestNode1},
+			[]string{TestNode1, TestNode2, TestNode3},
+		)
+
+		// Enable node soft anti-affinity on the volume so the scheduler
+		// is allowed to reuse a node that already hosts a clone replica.
+		env.cloneVolume.Spec.ReplicaSoftAntiAffinity = longhorn.ReplicaSoftAntiAffinityEnabled
+
+		// Existing clone replica already placed on TestNode1.
+		existingClone := newReplicaForVolume(env.cloneVolume)
+		existingClone.Spec.NodeID = TestNode1
+		existingClone.Spec.DiskID = getDiskID(TestNode1, "1")
+		existingClone.Spec.HealthyAt = TestTimeNow
+		existingClone.Spec.LinkedCloneSrcReplicaName = env.srcReplicas[0].Name
+
+		// New clone replica to schedule — no src replica assigned yet.
+		newClone := newReplicaForVolume(env.cloneVolume)
+
+		allReplicas6 := map[string]*longhorn.Replica{
+			existingClone.Name: existingClone,
+			newClone.Name:      newClone,
+		}
+
+		// With soft anti-affinity enabled, scheduling must succeed by
+		// falling back to TestNode1 even though it already hosts a clone.
+		diskCandidates6, errs6 := env.rcs.FindDiskCandidates(newClone, allReplicas6, env.cloneVolume)
+		c.Assert(len(errs6), Equals, 0,
+			Commentf("expected no errors but got: %v", errs6))
+		c.Assert(len(diskCandidates6), Not(Equals), 0,
+			Commentf("expected fallback scheduling on TestNode1 to succeed"))
+
+		expectedDisk6 := getDiskID(TestNode1, "1")
+		_, hasDisk6 := diskCandidates6[expectedDisk6]
+		c.Assert(hasDisk6, Equals, true,
+			Commentf("expected fallback disk %q, got %v", expectedDisk6, diskCandidates6))
+	}
+
+	// ------------------------------------------------------------------
+	// Test 5: FindDiskCandidates — linked-clone, strict anti-affinity blocks reuse
+	//   Only TestNode1 is schedulable and source replicas exist on all three
+	//   nodes. An existing clone replica already occupies TestNode1. With
+	//   node soft anti-affinity disabled (the global default), the scheduler
+	//   must not reuse TestNode1 and must return no candidates and no error,
+	//   because the anti-affinity gate silently skips used nodes rather than
+	//   raising a scheduling error.
+	// ------------------------------------------------------------------
+	fmt.Println("testing FindDiskCandidates linked-clone - strict anti-affinity blocks reuse")
+	{
+		env := setupLinkedCloneEnv(
+			[]string{TestNode1},
+			[]string{TestNode1, TestNode2, TestNode3},
+		)
+
+		// ReplicaSoftAntiAffinity is left at its global default ("false"),
+		// so the volume spec override is intentionally not set here.
+
+		existingClone7 := newReplicaForVolume(env.cloneVolume)
+		existingClone7.Spec.NodeID = TestNode1
+		existingClone7.Spec.DiskID = getDiskID(TestNode1, "1")
+		existingClone7.Spec.HealthyAt = TestTimeNow
+		existingClone7.Spec.LinkedCloneSrcReplicaName = env.srcReplicas[0].Name
+
+		newClone7 := newReplicaForVolume(env.cloneVolume)
+
+		allReplicas7 := map[string]*longhorn.Replica{
+			existingClone7.Name: existingClone7,
+			newClone7.Name:      newClone7,
+		}
+
+		diskCandidates7, errs7 := env.rcs.FindDiskCandidates(newClone7, allReplicas7, env.cloneVolume)
+		c.Assert(len(diskCandidates7), Equals, 0,
+			Commentf("expected no candidates when strict anti-affinity blocks the only available node"))
+		c.Assert(len(errs7), Equals, 0,
+			Commentf("expected no scheduling error — strict anti-affinity silently skips used nodes"))
+	}
+}
