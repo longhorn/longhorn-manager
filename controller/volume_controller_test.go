@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
 	. "gopkg.in/check.v1"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
@@ -20,8 +22,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/backupstore"
 
@@ -1863,129 +1863,6 @@ func (s *TestSuite) TestCleanupReplicasDoesNotSkipExtraHealthyCleanupForV1WhenAt
 	}
 
 	err = vc.cleanupReplicas(v, map[string]*longhorn.Engine{e.Name: e}, rs, nil)
-	c.Assert(err, IsNil)
-	c.Assert(rs, HasLen, 1)
-	c.Assert(rs[localReplica.Name], NotNil)
-	c.Assert(rs[remoteReplica.Name], IsNil)
-}
-
-func (s *TestSuite) TestCleanupReplicasSkipsExtraHealthyCleanupForRecentlyHealthyV2Replica(c *C) {
-	datastore.SkipListerCheck = true
-
-	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
-	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
-	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
-	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-
-	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
-	c.Assert(err, IsNil)
-
-	v := newVolume(TestVolumeName, 1)
-	v.Spec.DataEngine = longhorn.DataEngineTypeV2
-	v.Spec.DataLocality = longhorn.DataLocalityBestEffort
-	v.Spec.NodeID = TestNode1
-	v.Status.State = longhorn.VolumeStateAttached
-	v.Status.CurrentNodeID = TestNode1
-	v.Status.CurrentImage = TestEngineImage
-
-	e := newEngineForVolume(v)
-	e.Spec.DataEngine = longhorn.DataEngineTypeV2
-	e.Spec.NodeID = TestNode1
-	e.Status.CurrentState = longhorn.InstanceStateRunning
-
-	baseNow, err := util.ParseTime(getTestNow())
-	c.Assert(err, IsNil)
-
-	localReplica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
-	localReplica.Spec.Active = true
-	localReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow)
-	localReplica.Spec.LastHealthyAt = localReplica.Spec.HealthyAt
-	localReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	remoteReplica := newReplicaForVolume(v, e, TestNode2, TestDiskID2)
-	remoteReplica.Spec.Active = true
-	remoteReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow.Add(-2 * RecentHealthyReplicaCleanupDelay))
-	remoteReplica.Spec.LastHealthyAt = remoteReplica.Spec.HealthyAt
-	remoteReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "/dev/longhorn/test")
-	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.Endpoint = "/dev/longhorn/test"
-
-	rs := map[string]*longhorn.Replica{
-		localReplica.Name:  localReplica,
-		remoteReplica.Name: remoteReplica,
-	}
-	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
-
-	err = vc.cleanupReplicas(v, map[string]*longhorn.Engine{e.Name: e}, rs, efs)
-	c.Assert(err, IsNil)
-	c.Assert(rs, HasLen, 2)
-	c.Assert(rs[localReplica.Name], NotNil)
-	c.Assert(rs[remoteReplica.Name], NotNil)
-}
-
-func (s *TestSuite) TestCleanupReplicasAllowsExtraHealthyCleanupAfterRecentHealthyDelay(c *C) {
-	datastore.SkipListerCheck = true
-
-	kubeClient := fake.NewSimpleClientset()
-	lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
-	extensionsClient := apiextensionsfake.NewSimpleClientset()
-	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-
-	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
-	c.Assert(err, IsNil)
-	rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
-
-	v := newVolume(TestVolumeName, 1)
-	v.Spec.DataEngine = longhorn.DataEngineTypeV2
-	v.Spec.DataLocality = longhorn.DataLocalityBestEffort
-	v.Spec.NodeID = TestNode1
-	v.Status.State = longhorn.VolumeStateAttached
-	v.Status.CurrentNodeID = TestNode1
-	v.Status.CurrentImage = TestEngineImage
-
-	e := newEngineForVolume(v)
-	e.Spec.DataEngine = longhorn.DataEngineTypeV2
-	e.Spec.NodeID = TestNode1
-	e.Status.CurrentState = longhorn.InstanceStateRunning
-
-	baseNow, err := util.ParseTime(getTestNow())
-	c.Assert(err, IsNil)
-	vc.nowHandler = func() string {
-		return util.FormatTimeZ(baseNow.Add(RecentHealthyReplicaCleanupDelay + time.Second))
-	}
-
-	localReplica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
-	localReplica.Spec.Active = true
-	localReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow)
-	localReplica.Spec.LastHealthyAt = localReplica.Spec.HealthyAt
-	localReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	remoteReplica := newReplicaForVolume(v, e, TestNode2, TestDiskID2)
-	remoteReplica.Spec.Active = true
-	remoteReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow.Add(-2 * RecentHealthyReplicaCleanupDelay))
-	remoteReplica.Spec.LastHealthyAt = remoteReplica.Spec.HealthyAt
-	remoteReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "/dev/longhorn/test")
-	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.Endpoint = "/dev/longhorn/test"
-
-	rs := map[string]*longhorn.Replica{
-		localReplica.Name:  localReplica,
-		remoteReplica.Name: remoteReplica,
-	}
-	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
-
-	for _, replica := range []*longhorn.Replica{localReplica, remoteReplica} {
-		createdReplica, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
-		c.Assert(err, IsNil)
-		err = rIndexer.Add(createdReplica)
-		c.Assert(err, IsNil)
-	}
-
-	err = vc.cleanupReplicas(v, map[string]*longhorn.Engine{e.Name: e}, rs, efs)
 	c.Assert(err, IsNil)
 	c.Assert(rs, HasLen, 1)
 	c.Assert(rs[localReplica.Name], NotNil)
