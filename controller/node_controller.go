@@ -1948,16 +1948,8 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 				return err
 			}
 			if replica.Spec.EvictionRequested != shouldEvictReplica {
-				isLinkedClone, err := nc.ds.IsVolumeLinkedCloneVolume(replica.Spec.VolumeName)
-				if err != nil {
-					log.WithError(err).Warnf("Cannot evict replica %v", replica.Name)
-				} else if isLinkedClone {
-					log.Warnf("Cannot evict replica %v because the volume %v is a linked-clone volume. "+
-						"Please delete this volume to unblock the eviction", replica.Name, replica.Spec.VolumeName)
-				} else {
-					replica.Spec.EvictionRequested = shouldEvictReplica
-					replicasToSync = append(replicasToSync, replicaToSync{replica, reason})
-				}
+				replica.Spec.EvictionRequested = shouldEvictReplica
+				replicasToSync = append(replicasToSync, replicaToSync{replica, reason})
 			}
 
 			if replica.Spec.EvictionRequested && !node.Spec.EvictionRequested && !diskSpec.EvictionRequested {
