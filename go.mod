@@ -72,17 +72,10 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20260502161928-1e84fa75a8f1
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
 	github.com/longhorn/go-spdk-helper v0.6.1-0.20260502161311-a7689bc3c0e4
-<<<<<<< HEAD
-	github.com/longhorn/longhorn-engine v1.12.0-dev-20260419.0.20260429072047-589f2d5665a3
-	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260419.0.20260429083054-d6c61b025956
-	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260419.0.20260426105811-243598c42581
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260505043642-d55f5bad3135
-=======
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20260503
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260503
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260505154420-01688654fbaf
->>>>>>> 2850ba05 (fix(rwx): remount workload only after share-manager is serving)
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.1
@@ -94,7 +87,7 @@ require (
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.35.0
 	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sys v0.43.0
+	golang.org/x/sys v0.44.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
