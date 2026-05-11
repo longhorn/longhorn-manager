@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+
+	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -32,8 +35,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -45,6 +46,7 @@ const (
 	TestSupportBundleNameReplaceSuffix = "-replace"
 
 	TestSupportBundleManagerPodIP   = "10.10.10.10"
+	TestSupportBundleManagerPodIPv6 = "2001:db8::10"
 	TestSupportBundleManagerPodName = "support-bundle-manager"
 
 	TestSupportBundleServiceAccount = "longhorn-support-bundle"
@@ -57,6 +59,7 @@ type SupportBundleTestCase struct {
 
 	supportBundleNames              []string
 	supportBundleManagerPodNames    []string
+	supportBundleManagerPodIP       string
 	supportBundleFailedHistoryLimit string
 
 	expectedState    longhorn.SupportBundleState
@@ -140,76 +143,87 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 		},
 	}
 
-	for name, tc := range testCases {
-		if len(tc.supportBundleNames) == 0 {
-			tc.supportBundleNames = append(tc.supportBundleNames, TestSupportBundleName)
-		}
+	// IP version test matrix: run all test cases with both IPv4 and IPv6 pod IPs
+	ipVersions := map[string]string{
+		"ipv4": TestSupportBundleManagerPodIP,
+		"ipv6": TestSupportBundleManagerPodIPv6,
+	}
 
-		if tc.expectedState == "" {
-			tc.expectedState = tc.state
-		}
-
-		if tc.supportBundleFailedHistoryLimit == "" {
-			tc.supportBundleFailedHistoryLimit = "1"
-		}
-
-		if tc.controllerID == "" {
-			tc.controllerID = rolloutOwnerID
-		}
-
-		fmt.Printf("testing %v\n", name)
-
-		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
-		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
-		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
-
-		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-
-		fakeSupportBundleNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
-		fakeSupportBundleManagerImageSetting(c, informerFactories.LhInformerFactory, lhClient)
-		fakeSupportBundleFailedHistoryLimitSetting(tc.supportBundleFailedHistoryLimit, c, informerFactories.LhInformerFactory, lhClient)
-
-		supportBundleController, err := newFakeSupportBundleController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
-		c.Assert(err, IsNil)
-
-		var supportBundle *longhorn.SupportBundle
-		for _, supportBundleName := range tc.supportBundleNames {
-			supportBundle = fakeSupportBundle(supportBundleName, rolloutOwnerID, tc.state, c, informerFactories.LhInformerFactory, lhClient)
-
-			if strings.HasSuffix(supportBundleName, TestSupportBundleNamePurgeSuffix) {
-				continue
+	for ipVersionName, podIP := range ipVersions {
+		for name, tc := range testCases {
+			if len(tc.supportBundleNames) == 0 {
+				tc.supportBundleNames = append(tc.supportBundleNames, TestSupportBundleName)
 			}
 
-			for _, podName := range tc.supportBundleManagerPodNames {
-				fakeSupportBundleManagerPod(podName, supportBundle, supportBundleController.ds, c, informerFactories.KubeInformerFactory, kubeClient)
-			}
-		}
-		c.Assert(supportBundle, NotNil)
-
-		err = supportBundleController.reconcile(tc.supportBundleNames[0])
-		c.Assert(err, IsNil)
-
-		for _, supportBundleName := range tc.supportBundleNames {
-			supportBundle, err = lhClient.LonghornV1beta2().SupportBundles(TestNamespace).Get(context.TODO(), supportBundleName, metav1.GetOptions{})
-			isPurged := tc.state == longhorn.SupportBundleStatePurging && strings.HasSuffix(supportBundleName, TestSupportBundleNamePurgeSuffix)
-			isReplaced := tc.state == longhorn.SupportBundleStateReplaced && strings.HasSuffix(supportBundleName, TestSupportBundleNameReplaceSuffix)
-			if isPurged || isReplaced {
-				c.Assert(err, NotNil)
-				c.Assert(apierrors.IsNotFound(err), Equals, tc.expectedNotExist)
-				continue
+			if tc.expectedState == "" {
+				tc.expectedState = tc.state
 			}
 
-			if tc.state == longhorn.SupportBundleStateNone && strings.HasSuffix(supportBundleName, TestSupportBundleNameReadySuffix) {
-				c.Assert(err, IsNil)
-				c.Assert(supportBundle.Status.State, Equals, longhorn.SupportBundleStateReplaced)
-				continue
+			if tc.supportBundleFailedHistoryLimit == "" {
+				tc.supportBundleFailedHistoryLimit = "1"
 			}
 
+			if tc.controllerID == "" {
+				tc.controllerID = rolloutOwnerID
+			}
+
+			// Override pod IP for each IP version iteration
+			tc.supportBundleManagerPodIP = podIP
+
+			fmt.Printf("testing %v (%s)\n", name, ipVersionName)
+
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+			fakeSupportBundleNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
+			fakeSupportBundleManagerImageSetting(c, informerFactories.LhInformerFactory, lhClient)
+			fakeSupportBundleFailedHistoryLimitSetting(tc.supportBundleFailedHistoryLimit, c, informerFactories.LhInformerFactory, lhClient)
+
+			supportBundleController, err := newFakeSupportBundleController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
 			c.Assert(err, IsNil)
-			c.Assert(supportBundle.Status.State, Equals, tc.expectedState)
 
-			isFinalizer := util.FinalizerExists(longhornFinalizerKey, supportBundle) == !tc.expectedNotExist
-			c.Assert(isFinalizer, Equals, true)
+			var supportBundle *longhorn.SupportBundle
+			for _, supportBundleName := range tc.supportBundleNames {
+				supportBundle = fakeSupportBundle(supportBundleName, rolloutOwnerID, tc.state, c, informerFactories.LhInformerFactory, lhClient)
+
+				if strings.HasSuffix(supportBundleName, TestSupportBundleNamePurgeSuffix) {
+					continue
+				}
+
+				for _, podName := range tc.supportBundleManagerPodNames {
+					fakeSupportBundleManagerPod(podName, tc.supportBundleManagerPodIP, supportBundle, supportBundleController.ds, c, informerFactories.KubeInformerFactory, kubeClient)
+				}
+			}
+			c.Assert(supportBundle, NotNil)
+
+			err = supportBundleController.reconcile(tc.supportBundleNames[0])
+			c.Assert(err, IsNil)
+
+			for _, supportBundleName := range tc.supportBundleNames {
+				supportBundle, err = lhClient.LonghornV1beta2().SupportBundles(TestNamespace).Get(context.TODO(), supportBundleName, metav1.GetOptions{})
+				isPurged := tc.state == longhorn.SupportBundleStatePurging && strings.HasSuffix(supportBundleName, TestSupportBundleNamePurgeSuffix)
+				isReplaced := tc.state == longhorn.SupportBundleStateReplaced && strings.HasSuffix(supportBundleName, TestSupportBundleNameReplaceSuffix)
+				if isPurged || isReplaced {
+					c.Assert(err, NotNil)
+					c.Assert(apierrors.IsNotFound(err), Equals, tc.expectedNotExist)
+					continue
+				}
+
+				if tc.state == longhorn.SupportBundleStateNone && strings.HasSuffix(supportBundleName, TestSupportBundleNameReadySuffix) {
+					c.Assert(err, IsNil)
+					c.Assert(supportBundle.Status.State, Equals, longhorn.SupportBundleStateReplaced)
+					continue
+				}
+
+				c.Assert(err, IsNil)
+				c.Assert(supportBundle.Status.State, Equals, tc.expectedState)
+
+				isFinalizer := util.FinalizerExists(longhornFinalizerKey, supportBundle) == !tc.expectedNotExist
+				c.Assert(isFinalizer, Equals, true)
+			}
 		}
 	}
 }
@@ -297,14 +311,14 @@ func fakeSupportBundleNamespace(c *C, informerFactory informers.SharedInformerFa
 	c.Assert(err, IsNil)
 }
 
-func fakeSupportBundleManagerPod(name string, supportBundle *longhorn.SupportBundle, ds *datastore.DataStore, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
+func fakeSupportBundleManagerPod(name, podIP string, supportBundle *longhorn.SupportBundle, ds *datastore.DataStore, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
 	pod := newPod(
 		&corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{Ready: true}}},
 		name+"-"+supportBundle.Name, TestNamespace,
 		supportBundle.Status.OwnerID,
 	)
 	pod.Labels = ds.GetSupportBundleManagerLabel(supportBundle)
-	pod.Status.PodIP = TestSupportBundleManagerPodIP
+	pod.Status.PodIP = podIP
 	pod, err := client.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	c.Assert(err, IsNil)
 
@@ -345,6 +359,16 @@ type fakeSupportBundleHTTPClient struct {
 }
 
 func (m *fakeSupportBundleHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	// Validate that the URL authority is well-formed by attempting to split it.
+	// This ensures IPv6 addresses are properly bracketed (e.g., [::1]:8080),
+	// since net.SplitHostPort will fail on malformed authorities like "::1:8080".
+	if req.URL.Host == "" {
+		return nil, errors.Errorf("malformed URL: missing host in %v", req.URL)
+	}
+	if _, _, err := net.SplitHostPort(req.URL.Host); err != nil {
+		return nil, errors.Wrapf(err, "malformed URL authority %q in %v", req.URL.Host, req.URL)
+	}
+
 	status := &SupportBundleManagerStatus{
 		Phase:        SupportBundleManagerPhase("done"),
 		Error:        false,
