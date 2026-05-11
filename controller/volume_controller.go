@@ -1731,6 +1731,10 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
+	if err := c.syncLinkedCloneReplicaSourceFields(v, rs); err != nil {
+		return err
+	}
+
 	if err := c.updateRequestedDataSourceForVolumeCloning(v, e); err != nil {
 		return err
 	}
@@ -4410,6 +4414,105 @@ func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 		return time.Now().After(t)
 	}
 	return false
+}
+
+func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+	if v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+	// Snapshot must be resolved before we can assign src replica fields.
+	if v.Status.CloneStatus.Snapshot == "" {
+		return nil
+	}
+
+	srcVolName := types.GetVolumeName(v.Spec.DataSource)
+	srcReplicas, err := c.ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list replicas for source volume %v", srcVolName)
+	}
+
+	// Count how many clone replicas already reference each src replica (for load balancing)
+	srcReplicaCloneCount := map[string]int{}
+	for _, r := range rs {
+		if r.Spec.LinkedCloneSrcReplicaName != "" {
+			srcReplicaCloneCount[r.Spec.LinkedCloneSrcReplicaName]++
+		}
+	}
+
+	for _, r := range rs {
+		if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+			continue // not scheduled yet
+		}
+		if r.Spec.LinkedCloneSrcReplicaName != "" {
+			continue // already set, immutable
+		}
+		if r.Spec.FailedAt != "" {
+			continue // already failed, skip to avoid redundant updates and duplicate events
+		}
+
+		// Find healthy src replicas on the same node+disk
+		var candidates []*longhorn.Replica
+		for _, sr := range srcReplicas {
+			if sr.Spec.NodeID == r.Spec.NodeID &&
+				sr.Spec.DiskID == r.Spec.DiskID &&
+				sr.Spec.FailedAt == "" &&
+				sr.Spec.HealthyAt != "" &&
+				!sr.Spec.EvictionRequested {
+				candidates = append(candidates, sr)
+			}
+		}
+		if len(candidates) == 0 {
+			// Check if any src replica exists on this disk at all (even unhealthy ones).
+			hasSrcOnDisk := false
+			for _, sr := range srcReplicas {
+				if sr.Spec.NodeID == r.Spec.NodeID && sr.Spec.DiskID == r.Spec.DiskID {
+					hasSrcOnDisk = true
+					break
+				}
+			}
+			if !hasSrcOnDisk {
+				// The src replica was deleted during the scheduling window.
+				// Fail this clone replica so the volume controller cleans it up
+				// and schedules a replacement on an available src replica.
+				setReplicaFailedAt(r, c.nowHandler())
+				if _, err := c.ds.UpdateReplica(r); err != nil {
+					return errors.Wrapf(err, "failed to mark stranded clone replica %v as failed", r.Name)
+				}
+				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailed,
+					"clone replica %v marked as failed: source replica on disk %v node %v was removed during scheduling window",
+					r.Name, r.Spec.DiskID, r.Spec.NodeID)
+			}
+			// else: src exists but is temporarily unhealthy; will retry on next reconcile
+			continue
+		}
+
+		// Pick the src replica with the fewest existing clone replicas (load balancing)
+		best := candidates[0]
+		for _, candidate := range candidates[1:] {
+			if srcReplicaCloneCount[candidate.Name] < srcReplicaCloneCount[best.Name] {
+				best = candidate
+			}
+		}
+
+		// Set fields and label
+		existingReplica := r.DeepCopy()
+		r.Spec.LinkedCloneSrcReplicaName = best.Name
+
+		// Update the linked-clone-src-replica label
+		if r.Labels == nil {
+			r.Labels = map[string]string{}
+		}
+		r.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)] = best.Name
+
+		if !reflect.DeepEqual(existingReplica.Spec, r.Spec) || !reflect.DeepEqual(existingReplica.Labels, r.Labels) {
+			if _, err := c.ds.UpdateReplica(r); err != nil {
+				return errors.Wrapf(err, "failed to update replica %v with linked-clone source fields", r.Name)
+			}
+			// Update local count so subsequent loop iterations use updated counts
+			srcReplicaCloneCount[best.Name]++
+		}
+	}
+	return nil
 }
 
 func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) (err error) {
