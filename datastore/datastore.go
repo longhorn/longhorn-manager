@@ -134,8 +134,42 @@ type DataStore struct {
 	extensionsClient apiextensionsclientset.Interface
 }
 
-// NewDataStore creates new DataStore object
+// NewDataStore creates a DataStore with the cluster-wide PodInformer
+// (equivalent to NewDataStoreForGlobal).
 func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	return NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+}
+
+// NewDataStoreForGlobal — used by the longhorn-global-manager process;
+// cluster-wide PodInformer.
+func NewDataStoreForGlobal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	pi := informerFactories.KubeInformerFactory.Core().V1().Pods()
+	attachPodInformer(ds, pi.Lister(), pi.Informer())
+	return ds
+}
+
+// NewDataStoreForNodeLocal — used by the longhorn-manager DaemonSet;
+// namespace-filtered PodInformer (every in-DaemonSet Pod consumer filters to
+// longhorn-system anyway).
+func NewDataStoreForNodeLocal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	pi := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Pods()
+	attachPodInformer(ds, pi.Lister(), pi.Informer())
+	return ds
+}
+
+// attachPodInformer wires the chosen Pod informer into a DataStore built by
+// newDataStoreCommon (which leaves Pod fields unset).
+func attachPodInformer(ds *DataStore, podLister corelisters.PodLister, podSharedInformer cache.SharedInformer) {
+	ds.podLister = podLister
+	ds.PodInformer = podSharedInformer
+	ds.cacheSyncs = append(ds.cacheSyncs, podSharedInformer.HasSynced)
+}
+
+// newDataStoreCommon builds the DataStore with every informer except
+// PodInformer, which the public wrappers attach afterward.
+func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
 	cacheSyncs := []cache.InformerSynced{}
 
 	// Longhorn Informers
@@ -187,8 +221,6 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
 
 	// Kube Informers
-	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
-	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
 	kubeNodeInformer := informerFactories.KubeInformerFactory.Core().V1().Nodes()
 	cacheSyncs = append(cacheSyncs, kubeNodeInformer.Informer().HasSynced)
 	persistentVolumeInformer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes()
@@ -277,9 +309,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		lhVolumeAttachmentLister:       lhVolumeAttachmentInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVolumeAttachmentInformer.Informer(),
 
-		kubeClient:                    kubeClient,
-		podLister:                     podInformer.Lister(),
-		PodInformer:                   podInformer.Informer(),
+		kubeClient: kubeClient,
+
 		persistentVolumeLister:        persistentVolumeInformer.Lister(),
 		PersistentVolumeInformer:      persistentVolumeInformer.Informer(),
 		persistentVolumeClaimLister:   persistentVolumeClaimInformer.Lister(),
