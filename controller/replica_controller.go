@@ -314,6 +314,20 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
+	// For linked-clone replicas, instance creation must wait until
+	// LinkedCloneSrcReplicaName is set by the volume controller.
+	if replica.Spec.LinkedCloneSrcReplicaName == "" {
+		vol, err := rc.ds.GetVolumeRO(replica.Spec.VolumeName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return err // transient error — requeue
+			}
+			// Volume not found: orphan replica, let it proceed to cleanup
+		} else if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			return nil // gate: wait for volume controller to set the field
+		}
+	}
+
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
