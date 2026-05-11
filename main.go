@@ -62,6 +62,7 @@ func main() {
 	}
 	a.Commands = []cli.Command{
 		app.DaemonCmd(),
+		app.GlobalCmd(),
 		app.RecurringJobCmd(),
 		app.DeployDriverCmd(),
 		app.CSICommand(),

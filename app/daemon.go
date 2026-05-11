@@ -55,6 +55,7 @@ const (
 	FlagServiceAccount            = "service-account"
 	FlagKubeConfig                = "kube-config"
 	FlagUpgradeVersionCheck       = "upgrade-version-check"
+	FlagNodeLocalOnly             = "node-local-only"
 )
 
 const (
@@ -104,6 +105,10 @@ func DaemonCmd() cli.Command {
 			cli.BoolFlag{
 				Name:  FlagUpgradeVersionCheck,
 				Usage: "Enforce version checking for upgrades. If disabled, there will be no requirement for the necessary upgrade source version",
+			},
+			cli.BoolFlag{
+				Name:  FlagNodeLocalOnly,
+				Usage: "Run as node-local: skip the global controllers (KubernetesPV/PodController), which must then be hosted by a longhorn-global-manager Deployment.",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -305,7 +310,14 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+	nodeLocalOnly := c.Bool(FlagNodeLocalOnly)
+
+	var clients *client.Clients
+	if nodeLocalOnly {
+		clients, err = client.NewClientsForNodeLocal(kubeconfigPath, ctx.Done())
+	} else {
+		clients, err = client.NewClients(kubeconfigPath, true, ctx.Done())
+	}
 	if err != nil {
 		return err
 	}
@@ -334,6 +346,15 @@ func startManager(c *cli.Context) error {
 		kubeconfigPath, meta.Version, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
 		return err
+	}
+
+	if !nodeLocalOnly {
+		// Consolidated mode: no separate global manager Deployment is
+		// running, so this DaemonSet binary also hosts the cluster-wide
+		// controllers (KubernetesPV/Pod) in-process.
+		if err := controller.StartGlobalControllersInDaemonSet(logger, clients, currentNodeID); err != nil {
+			return err
+		}
 	}
 
 	m := manager.NewVolumeManager(currentNodeID, clients.Datastore, proxyConnCounter, snapshotConcurrentLimiter)

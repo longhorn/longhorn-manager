@@ -30,6 +30,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+// KubernetesPVController is a global-scope controller hosted by
+// longhorn-global-manager in split topology; future waves may
+// regroup these under a `global/` directory or filename prefix.
+// See enhancements/20260506-global-longhorn-manager.md.
 type KubernetesPVController struct {
 	*baseController
 
@@ -40,6 +44,11 @@ type KubernetesPVController struct {
 	eventRecorder record.EventRecorder
 
 	ds *datastore.DataStore
+
+	// globalManagerEnabled — true: hosted as singleton in
+	// longhorn-global-manager (sharding guards skipped); false: in
+	// DaemonSet (sharding guards apply to avoid N daemons racing).
+	globalManagerEnabled bool
 
 	cacheSyncs []cache.InformerSynced
 
@@ -55,7 +64,8 @@ func NewKubernetesPVController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	controllerID string) (*KubernetesPVController, error) {
+	controllerID string,
+	globalManagerEnabled bool) (*KubernetesPVController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -68,6 +78,8 @@ func NewKubernetesPVController(
 		controllerID: controllerID,
 
 		ds: ds,
+
+		globalManagerEnabled: globalManagerEnabled,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-kubernetes-pv-controller"}),
@@ -195,7 +207,9 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 		return err
 	}
 
-	if volume.Status.OwnerID != kc.controllerID {
+	// Consolidated: shard by volume owner. Split: leader is the
+	// single writer.
+	if !kc.globalManagerEnabled && volume.Status.OwnerID != kc.controllerID {
 		return nil
 	}
 
@@ -386,7 +400,9 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 		}
 		return false, errors.Wrap(err, "failed to get volume for cleanup in cleanupForPVDeletion")
 	}
-	if kc.controllerID != volume.Status.OwnerID {
+	// Same sharding logic as syncKubernetesStatus: skip when not the
+	// per-CR owner in consolidated mode; always run in split mode.
+	if !kc.globalManagerEnabled && kc.controllerID != volume.Status.OwnerID {
 		kc.pvToVolumeCache.Delete(pvName)
 		return true, nil
 	}
