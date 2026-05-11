@@ -30,6 +30,8 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+// KubernetesPVController is hosted by the longhorn-global-manager Deployment.
+// See enhancements/20260506-global-longhorn-manager.md.
 type KubernetesPVController struct {
 	*baseController
 
@@ -193,10 +195,6 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 			return nil
 		}
 		return err
-	}
-
-	if volume.Status.OwnerID != kc.controllerID {
-		return nil
 	}
 
 	existingVolume := volume.DeepCopy()
@@ -385,10 +383,6 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 			return true, nil
 		}
 		return false, errors.Wrap(err, "failed to get volume for cleanup in cleanupForPVDeletion")
-	}
-	if kc.controllerID != volume.Status.OwnerID {
-		kc.pvToVolumeCache.Delete(pvName)
-		return true, nil
 	}
 	pv, err := kc.ds.GetPersistentVolumeRO(pvName)
 	if err != nil && !datastore.ErrorIsNotFound(err) {

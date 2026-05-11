@@ -190,7 +190,9 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			}
 		}
 
-		clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+		// The admission webhook only reads longhorn-system Pods (AWS-IAM secret path),
+		// never workload Pods, so the node-local client keeps this process off a cluster-wide Pod watch.
+		clients, err := client.NewClientsForNodeLocal(kubeconfigPath, ctx.Done())
 		if err != nil {
 			return err
 		}
@@ -306,7 +308,9 @@ func startManager(cmd *cli.Command) error {
 		return err
 	}
 
-	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+	// DaemonSet is always node-local; the cluster-wide Pod controllers live
+	// only in the global-manager Deployment.
+	clients, err := client.NewClientsForNodeLocal(kubeconfigPath, ctx.Done())
 	if err != nil {
 		return err
 	}
@@ -330,7 +334,7 @@ func startManager(cmd *cli.Command) error {
 
 	snapshotConcurrentLimiter := controller.NewSnapshotConcurrentLimiter()
 
-	wsc, err := controller.StartControllers(logger, clients,
+	wsc, err := controller.StartNodeLocalControllers(logger, clients,
 		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, instanceManagerImage,
 		kubeconfigPath, meta.Version, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
