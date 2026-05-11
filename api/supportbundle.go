@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -60,7 +61,7 @@ func (s *Server) SupportBundleDownload(w http.ResponseWriter, req *http.Request)
 		return fmt.Errorf("support bundle not ready")
 	}
 
-	sourceURL := fmt.Sprintf(types.SupportBundleURLDownloadFmt, supportBundleIP, types.SupportBundleURLPort)
+	sourceURL := util.BuildHTTPURL(supportBundleIP, types.SupportBundleURLPort, types.SupportBundleURLDownloadPath)
 	newReq, err := http.NewRequestWithContext(req.Context(), http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return err

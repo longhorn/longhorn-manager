@@ -12,9 +12,9 @@ const (
 	SupportBundleManagerApp      = "support-bundle-manager"
 	SupportBundleManagerLabelKey = "rancher/supportbundle"
 
-	SupportBundleURLPort        = 8080
-	SupportBundleURLStatusFmt   = "http://%s:%v/status"
-	SupportBundleURLDownloadFmt = "http://%s:%v/bundle"
+	SupportBundleURLPort         = 8080
+	SupportBundleURLStatusPath   = "status"
+	SupportBundleURLDownloadPath = "bundle"
 
 	SupportBundleDownloadTimeout = 24 * time.Hour
 )
