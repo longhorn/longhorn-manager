@@ -11,6 +11,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -70,6 +71,20 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 			err := fmt.Errorf("changing data engine for replica %v is not supported", oldReplica.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
+	}
+
+	// LinkedCloneSrcReplicaName is immutable once set.
+	if oldReplica.Spec.LinkedCloneSrcReplicaName != "" &&
+		newReplica.Spec.LinkedCloneSrcReplicaName != oldReplica.Spec.LinkedCloneSrcReplicaName {
+		return werror.NewInvalidError("spec.linkedCloneSrcReplicaName is immutable once set",
+			"spec.linkedCloneSrcReplicaName")
+	}
+	// The linked-clone-src-replica label is immutable once set to a non-empty value.
+	oldLabel := oldReplica.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)]
+	newLabel := newReplica.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)]
+	if oldLabel != "" && newLabel != oldLabel {
+		return werror.NewInvalidError("label linked-clone-src-replica is immutable once set",
+			"metadata.labels")
 	}
 
 	return nil
