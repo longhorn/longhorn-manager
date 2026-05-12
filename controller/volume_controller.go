@@ -36,6 +36,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/constant"
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/scheduler"
@@ -1898,6 +1899,20 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				// See https://github.com/longhorn/longhorn/issues/9089
 				if err := c.handleDelinquentAndStaleStateForFaultedRWXVolume(v); err != nil {
 					return err
+				}
+				// When the engine crashed unexpectedly, the LUKS device might still be mounted and the underlayer device is gone if the volume is encrypted.
+				// This can cause the subsequent attach to fail because the LUKS device is stale in use and ISCSI target can not be logged out.
+				// We can not lazy unmount the LUKS device at the CSI plugin level before sending an attaching volume request
+				// to the Longhorn server in ControllerPublishVolume because the CSI request might be received
+				// by a CSI plugin pod on the node (maybe node A) where the LUKS device is not present (maybe node B).
+				// After an unexpected engine crash, a stale LUKS device mount may still be present.
+				// Lazy unmount it here to clear stale mount state before re-attaching the volume.
+				if v.Spec.Encrypted {
+					log.Infof("Volume is encrypted, lazy unmounting crypto device for volume %v if it is still mounted", v.Name)
+					cryptoDevice := crypto.VolumeMapper(v.Name, string(v.Spec.DataEngine))
+					if err := util.LazyUnmount(cryptoDevice); err != nil {
+						return errors.Wrapf(err, "failed to lazy unmount crypto device %v for volume %v", cryptoDevice, v.Name)
+					}
 				}
 			}
 		}
