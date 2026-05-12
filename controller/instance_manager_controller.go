@@ -1616,10 +1616,23 @@ func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
 	if types.IsDataEngineV2(dataEngine) {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
 
-		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
+		// For v2, also verify:
+		// 1. spdk_tgt process exists.
+		// 2. spdk_tgt is not stuck in a stopped/traced state (for example, after SIGSTOP).
+		processProbe := `
+pids=$(pgrep -f '^spdk_tgt') &&
+[ -n "$pids" ] &&
+status=0 &&
+for pid in $pids; do
+  state=$(awk '/^State:/ {print $2}' /proc/$pid/status 2>/dev/null)
+  [ -n "$state" ] || status=1
+  [ "$state" != "T" ] && [ "$state" != "t" ] || status=1
+done
+test $status -eq 0
+`
 		livenessProbes = append(livenessProbes, processProbe)
 	}
-	return fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
+	return strings.Join(livenessProbes, " && ")
 }
 
 func (imc *InstanceManagerController) getLogPath() (string, error) {
