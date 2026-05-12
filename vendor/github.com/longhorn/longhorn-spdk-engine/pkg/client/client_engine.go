@@ -10,6 +10,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/api"
+	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/util"
 )
 
@@ -324,7 +325,10 @@ func (c *SPDKClient) EngineSnapshotHashStatus(name, snapshotName string) (respon
 }
 
 // EngineSnapshotClone clones a snapshot from a source engine into the target engine.
-func (c *SPDKClient) EngineSnapshotClone(name, snapshotName, srcEngineName, srcEngineAddress string, cloneMode spdkrpc.CloneMode) error {
+// dstReplicaSrcReplicaPairMap maps each dst replica name to its corresponding src replica name.
+// When non-empty (v2 linked-clone), the engine uses this explicit pairing instead of auto-detecting
+// by IP+lvsUUID co-location.
+func (c *SPDKClient) EngineSnapshotClone(name, snapshotName, srcEngineName, srcEngineAddress string, cloneMode spdkrpc.CloneMode, dstReplicaSrcReplicaPairMap map[string]string) error {
 	if err := util.VerifyParams(
 		util.Param{Name: "name", Value: name},
 		util.Param{Name: "snapshotName", Value: snapshotName},
@@ -340,11 +344,12 @@ func (c *SPDKClient) EngineSnapshotClone(name, snapshotName, srcEngineName, srcE
 	defer cancel()
 
 	_, err := client.EngineSnapshotClone(ctx, &spdkrpc.EngineSnapshotCloneRequest{
-		Name:             name,
-		SnapshotName:     snapshotName,
-		SrcEngineName:    srcEngineName,
-		SrcEngineAddress: srcEngineAddress,
-		CloneMode:        cloneMode,
+		Name:                        name,
+		SnapshotName:                snapshotName,
+		SrcEngineName:               srcEngineName,
+		SrcEngineAddress:            srcEngineAddress,
+		CloneMode:                   cloneMode,
+		DstReplicaSrcReplicaPairMap: dstReplicaSrcReplicaPairMap,
 	})
 	return errors.Wrapf(err, "failed to clone snapshot for engine %s, snapshotName %s, srcEngineName %s, srcEngineAddress %s",
 		name, snapshotName, srcEngineName, srcEngineAddress)
@@ -353,7 +358,7 @@ func (c *SPDKClient) EngineSnapshotClone(name, snapshotName, srcEngineName, srcE
 // EngineReplicaAdd calls the full-flow EngineReplicaAdd gRPC on the Engine node.
 // When efName and efAddress are non-empty, they are set on the request so
 // Engine can call back to the EngineFrontend for suspend/resume.
-func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress string, fastSync bool, efName, efAddress string) error {
+func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress string, fastSync bool, efName, efAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string) error {
 	if engineName == "" {
 		return fmt.Errorf("failed to add replica for engine: missing required parameter engineName")
 	}
@@ -366,12 +371,15 @@ func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress st
 	defer cancel()
 
 	req := &spdkrpc.EngineReplicaAddRequest{
-		EngineName:            engineName,
-		ReplicaName:           replicaName,
-		ReplicaAddress:        replicaAddress,
-		FastSync:              fastSync,
-		EngineFrontendName:    efName,
-		EngineFrontendAddress: efAddress,
+		EngineName:                  engineName,
+		ReplicaName:                 replicaName,
+		ReplicaAddress:              replicaAddress,
+		FastSync:                    fastSync,
+		EngineFrontendName:          efName,
+		EngineFrontendAddress:       efAddress,
+		LinkedCloneSrcReplicaName:   linkedCloneSrcReplicaName,
+		LinkedCloneSrcEngineName:    linkedCloneSrcEngineName,
+		LinkedCloneSrcEngineAddress: linkedCloneSrcEngineAddress,
 	}
 
 	_, err := client.EngineReplicaAdd(ctx, req)
@@ -433,7 +441,7 @@ func (c *SPDKClient) EngineBackupCreate(req *BackupCreateRequest) (*spdkrpc.Back
 		BackupTarget:         req.BackupTarget,
 		VolumeName:           req.VolumeName,
 		EngineName:           req.EngineName,
-		Labels:               req.Labels,
+		Labels:               types.EncodeBackupParametersIntoLabels(req.Labels, req.Parameters),
 		Credential:           req.Credential,
 		BackingImageName:     req.BackingImageName,
 		BackingImageChecksum: req.BackingImageChecksum,
