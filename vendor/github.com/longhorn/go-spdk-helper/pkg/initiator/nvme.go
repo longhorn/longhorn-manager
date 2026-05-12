@@ -302,7 +302,7 @@ func isTransientNVMeScanError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no such file or directory")
+	return strings.Contains(msg, types.ErrorMessageNoSuchFileOrDirectory)
 }
 
 // Flush commits data and metadata associated with the specified namespace(s) to nonvolatile media.

@@ -278,7 +278,7 @@ func (c *SPDKClient) EngineFrontendSnapshotPurge(name string) error {
 
 // EngineFrontendReplicaAdd adds a replica through the engine frontend path.
 // The EngineReplicaAdd path is for internal orchestration; external callers should use EngineFrontendReplicaAdd.
-func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool) error {
+func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string) error {
 	if engineFrontendName == "" {
 		return fmt.Errorf("failed to add replica for engine frontend: missing required parameter engineFrontendName")
 	}
@@ -291,10 +291,13 @@ func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, r
 	defer cancel()
 
 	_, err := client.EngineFrontendReplicaAdd(ctx, &spdkrpc.EngineFrontendReplicaAddRequest{
-		EngineFrontendName: engineFrontendName,
-		ReplicaName:        replicaName,
-		ReplicaAddress:     replicaAddress,
-		FastSync:           fastSync,
+		EngineFrontendName:          engineFrontendName,
+		ReplicaName:                 replicaName,
+		ReplicaAddress:              replicaAddress,
+		FastSync:                    fastSync,
+		LinkedCloneSrcReplicaName:   linkedCloneSrcReplicaName,
+		LinkedCloneSrcEngineName:    linkedCloneSrcEngineName,
+		LinkedCloneSrcEngineAddress: linkedCloneSrcEngineAddress,
 	})
 	return errors.Wrapf(err, "failed to add replica %s with address %s by engine frontend %s", replicaName, replicaAddress, engineFrontendName)
 }

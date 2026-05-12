@@ -199,7 +199,7 @@ func GetDeviceSectorSize(devPath string, executor *commonns.Executor) (int64, er
 // GetDeviceNumbers returns the major and minor numbers of the given device
 func GetDeviceNumbers(devPath string, executor *commonns.Executor) (int, int, error) {
 	opts := []string{
-		"-l", "-J", "-n", "-o", "MAJ:MIN", devPath,
+		"--nodeps", "-l", "-J", "-n", "-o", "MAJ:MIN", devPath,
 	}
 	output, err := executor.Execute(nil, lsblkBinary, opts, types.ExecuteTimeout)
 	if err != nil {
