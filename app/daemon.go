@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" // for runtime profiling
 	"os"
 	"time"
+
+	_ "net/http/pprof" // for runtime profiling
 
 	"github.com/cockroachdb/errors"
 	"github.com/gorilla/handlers"
