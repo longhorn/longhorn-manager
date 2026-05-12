@@ -2,6 +2,7 @@ package spdk
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -261,7 +262,7 @@ func (s *Server) EngineList(ctx context.Context, req *emptypb.Empty) (*spdkrpc.E
 
 // EngineWatch returns a stream of engine updates
 func (s *Server) EngineWatch(req *emptypb.Empty, srv spdkrpc.SPDKService_EngineWatchServer) error {
-	responseCh, err := s.Subscribe(types.InstanceTypeEngine)
+	responseCh, err := s.Subscribe(srv.Context(), types.InstanceTypeEngine)
 	if err != nil {
 		return err
 	}
@@ -330,7 +331,7 @@ func (s *Server) EngineReplicaAdd(ctx context.Context, req *spdkrpc.EngineReplic
 		frontendSuspendResumeWrapper = buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress, log)
 	}
 
-	if err := e.ReplicaAdd(spdkClient, req.ReplicaName, req.ReplicaAddress, req.FastSync, frontendSuspendResumeWrapper); err != nil {
+	if err := e.ReplicaAdd(spdkClient, req.ReplicaName, req.ReplicaAddress, req.FastSync, req.LinkedCloneSrcReplicaName, frontendSuspendResumeWrapper); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to add replica %s to engine %s: %v", req.ReplicaName, req.EngineName, err)
 	}
 	return &emptypb.Empty{}, nil
@@ -504,6 +505,7 @@ func (s *Server) EngineSnapshotClone(ctx context.Context, req *spdkrpc.EngineSna
 		util.Param{Name: "snapshotName", Value: req.SnapshotName},
 		util.Param{Name: "srcEngineName", Value: req.SrcEngineName},
 		util.Param{Name: "srcEngineAddress", Value: req.SrcEngineAddress},
+		util.Param{Name: "dstReplicaSrcReplicaPairMap", Value: fmt.Sprintf("%+v", req.DstReplicaSrcReplicaPairMap)},
 	); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "%v", err)
 	}
@@ -516,7 +518,7 @@ func (s *Server) EngineSnapshotClone(ctx context.Context, req *spdkrpc.EngineSna
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for snapshot clone", req.Name)
 	}
 
-	if err := e.SnapshotClone(req.SnapshotName, req.SrcEngineName, req.SrcEngineAddress, req.CloneMode); err != nil {
+	if err := e.SnapshotClone(req.SnapshotName, req.SrcEngineName, req.SrcEngineAddress, req.CloneMode, req.DstReplicaSrcReplicaPairMap); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil

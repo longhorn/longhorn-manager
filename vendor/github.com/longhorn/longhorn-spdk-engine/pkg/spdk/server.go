@@ -524,16 +524,16 @@ func (s *Server) broadcasting() {
 	}
 }
 
-func (s *Server) Subscribe(instanceType types.InstanceType) (<-chan interface{}, error) {
+func (s *Server) Subscribe(ctx context.Context, instanceType types.InstanceType) (<-chan interface{}, error) {
 	switch instanceType {
 	case types.InstanceTypeEngine:
-		return s.broadcasters[types.InstanceTypeEngine].Subscribe(context.TODO(), s.engineBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeEngine].Subscribe(ctx, s.engineBroadcastConnector)
 	case types.InstanceTypeEngineFrontend:
-		return s.broadcasters[types.InstanceTypeEngineFrontend].Subscribe(context.TODO(), s.engineFrontendBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeEngineFrontend].Subscribe(ctx, s.engineFrontendBroadcastConnector)
 	case types.InstanceTypeReplica:
-		return s.broadcasters[types.InstanceTypeReplica].Subscribe(context.TODO(), s.replicaBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeReplica].Subscribe(ctx, s.replicaBroadcastConnector)
 	case types.InstanceTypeBackingImage:
-		return s.broadcasters[types.InstanceTypeBackingImage].Subscribe(context.TODO(), s.backingImageBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeBackingImage].Subscribe(ctx, s.backingImageBroadcastConnector)
 	}
 	return nil, fmt.Errorf("invalid instance type %v for subscription", instanceType)
 }
