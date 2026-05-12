@@ -8,6 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 )
 
@@ -338,19 +339,28 @@ func (c *Client) BdevLvolGetWithFilter(name string, timeout uint64, filter func(
 			continue
 		}
 		b.DriverSpecific.Lvol.Xattrs = make(map[string]string)
-		user_created, err := c.BdevLvolGetXattr(b.Name, UserCreated)
-		if err == nil {
-			b.DriverSpecific.Lvol.Xattrs[UserCreated] = user_created
-		} else {
-			b.DriverSpecific.Lvol.Xattrs[UserCreated] = strconv.FormatBool(true)
+		userCreated, err := c.BdevLvolGetXattr(b.Name, UserCreated)
+		if err != nil {
+			if !jsonrpc.IsJSONRPCRespErrorNoSuchFileOrDirectory(err) {
+				return nil, err
+			}
+			userCreated = strconv.FormatBool(true)
 		}
-		snapshot_timestamp, err := c.BdevLvolGetXattr(b.Name, SnapshotTimestamp)
-		if err == nil {
-			b.DriverSpecific.Lvol.Xattrs[SnapshotTimestamp] = snapshot_timestamp
+		b.DriverSpecific.Lvol.Xattrs[UserCreated] = userCreated
+
+		snapshotTimestamp, err := c.BdevLvolGetXattr(b.Name, SnapshotTimestamp)
+		if err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchFileOrDirectory(err) {
+			return nil, err
 		}
+		b.DriverSpecific.Lvol.Xattrs[SnapshotTimestamp] = snapshotTimestamp
+
 		if b.DriverSpecific.Lvol.Snapshot {
 			checksum, err := c.BdevLvolGetSnapshotChecksum(b.Name)
-			if err == nil {
+			if err != nil {
+				if !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+					return nil, err
+				}
+			} else {
 				b.DriverSpecific.Lvol.Xattrs[SnapshotChecksum] = checksum
 			}
 		}

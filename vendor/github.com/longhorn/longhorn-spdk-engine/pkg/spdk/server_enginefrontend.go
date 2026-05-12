@@ -206,7 +206,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 	}()
 
 	// Delegate to EngineReplicaAdd on the Engine node, passing EF info for callback.
-	if err := engineClient.EngineReplicaAdd(engineName, req.ReplicaName, req.ReplicaAddress, req.FastSync, ef.Name, efAddress); err != nil {
+	if err := engineClient.EngineReplicaAdd(engineName, req.ReplicaName, req.ReplicaAddress, req.FastSync, ef.Name, efAddress, req.LinkedCloneSrcReplicaName, req.LinkedCloneSrcEngineName, req.LinkedCloneSrcEngineAddress); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to add replica %s on engine %s: %v", req.ReplicaName, engineName, err)
 	}
 

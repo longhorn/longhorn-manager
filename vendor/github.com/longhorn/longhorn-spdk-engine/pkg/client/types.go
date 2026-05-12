@@ -38,7 +38,16 @@ type BackupCreateRequest struct {
 	CompressionMethod    string
 	ConcurrentLimit      int32
 	Labels               []string
-	Credential           map[string]string
+	// Parameters carries well-known backup parameters (e.g. "backup-mode") that
+	// backupstore's DeltaBackupConfig needs but that the v2 spdkrpc.BackupCreateRequest
+	// proto message has no dedicated field for. The client wrappers
+	// (EngineBackupCreate / ReplicaBackupCreate) smuggle these through the
+	// Labels field on the wire; the server side extracts them again before
+	// they can be persisted as user-visible backup labels. See
+	// types.EncodeBackupParametersIntoLabels / ExtractBackupParametersFromLabels
+	// for the recognised keys and the encoder/decoder pair.
+	Parameters map[string]string
+	Credential map[string]string
 }
 
 type BackupRestoreRequest struct {

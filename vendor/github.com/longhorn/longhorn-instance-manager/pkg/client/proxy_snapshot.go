@@ -133,7 +133,7 @@ func (c *ProxyClient) SnapshotList(dataEngine, engineName, volumeName,
 
 func (c *ProxyClient) SnapshotClone(dataEngine, engineName, volumeName, serviceAddress,
 	snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout int,
-	grpcTimeoutSeconds int64, cloneMode string) (err error) {
+	grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) (err error) {
 	input := map[string]string{
 		"engineName":        engineName,
 		"volumeName":        volumeName,
@@ -166,14 +166,15 @@ func (c *ProxyClient) SnapshotClone(dataEngine, engineName, volumeName, serviceA
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
 		},
-		FromEngineAddress:         fromEngineAddress,
-		SnapshotName:              snapshotName,
-		ExportBackingImageIfExist: false,
-		FileSyncHttpClientTimeout: int32(fileSyncHTTPClientTimeout),
-		FromEngineName:            fromEngineName,
-		FromVolumeName:            fromVolumeName,
-		GrpcTimeoutSeconds:        grpcTimeoutSeconds,
-		CloneMode:                 getCloneMode(cloneMode),
+		FromEngineAddress:           fromEngineAddress,
+		SnapshotName:                snapshotName,
+		ExportBackingImageIfExist:   false,
+		FileSyncHttpClientTimeout:   int32(fileSyncHTTPClientTimeout),
+		FromEngineName:              fromEngineName,
+		FromVolumeName:              fromVolumeName,
+		GrpcTimeoutSeconds:          grpcTimeoutSeconds,
+		CloneMode:                   getCloneMode(cloneMode),
+		DstReplicaSrcReplicaPairMap: dstReplicaSrcReplicaPairMap,
 	}
 	ctx, cancel := getContextWithGRPCLongTimeout(c.ctx, grpcTimeoutSeconds)
 	defer cancel()

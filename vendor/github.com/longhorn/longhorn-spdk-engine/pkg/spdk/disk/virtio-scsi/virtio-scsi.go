@@ -76,5 +76,24 @@ func (d *DiskDriverVirtioScsi) DiskDelete(spdkClient *spdkclient.Client, diskNam
 }
 
 func (d *DiskDriverVirtioScsi) DiskGet(spdkClient *spdkclient.Client, diskName, diskPath string, timeout uint64) ([]spdktypes.BdevInfo, error) {
-	return spdkClient.BdevGetBdevs(diskName, timeout)
+	bdevs, err := spdkClient.BdevGetBdevs("", timeout)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get bdevs")
+	}
+	found := []spdktypes.BdevInfo{}
+	for _, bdev := range bdevs {
+		if bdev.ProductName != spdktypes.BdevProductNameVirtioScsi {
+			continue
+		}
+		// virtio-scsi controller <diskName> exposes bdev(s) named "<diskName>t<target>"
+		match, err := disk.IsVirtioScsiBdevOfDisk(bdev.Name, diskName)
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to check if bdev %v belongs to disk %v", bdev.Name, diskName)
+			continue
+		}
+		if match {
+			found = append(found, bdev)
+		}
+	}
+	return found, nil
 }
