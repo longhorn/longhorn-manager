@@ -66,6 +66,9 @@ type ReplicaSpecApplyConfiguration struct {
 	EvictionRequested                *bool   `json:"evictionRequested,omitempty"`
 	SnapshotMaxCount                 *int    `json:"snapshotMaxCount,omitempty"`
 	SnapshotMaxSize                  *int64  `json:"snapshotMaxSize,omitempty"`
+	// LinkedCloneSrcReplicaName is the name of the src replica this clone replica is parented to.
+	// Immutable once set. Non-empty only for linked-clone replicas.
+	LinkedCloneSrcReplicaName *string `json:"linkedCloneSrcReplicaName,omitempty"`
 }
 
 // ReplicaSpecApplyConfiguration constructs a declarative configuration of the ReplicaSpec type for use with
@@ -215,5 +218,13 @@ func (b *ReplicaSpecApplyConfiguration) WithSnapshotMaxCount(value int) *Replica
 // If called multiple times, the SnapshotMaxSize field is set to the value of the last call.
 func (b *ReplicaSpecApplyConfiguration) WithSnapshotMaxSize(value int64) *ReplicaSpecApplyConfiguration {
 	b.SnapshotMaxSize = &value
+	return b
+}
+
+// WithLinkedCloneSrcReplicaName sets the LinkedCloneSrcReplicaName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LinkedCloneSrcReplicaName field is set to the value of the last call.
+func (b *ReplicaSpecApplyConfiguration) WithLinkedCloneSrcReplicaName(value string) *ReplicaSpecApplyConfiguration {
+	b.LinkedCloneSrcReplicaName = &value
 	return b
 }
