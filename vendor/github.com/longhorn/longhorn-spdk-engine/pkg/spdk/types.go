@@ -27,10 +27,12 @@ const (
 	DiskTypeFilesystem = "filesystem"
 	DiskTypeBlock      = "block"
 
-	ReplicaRebuildingLvolSuffix  = "rebuilding"
-	ReplicaExpiredLvolSuffix     = "expired"
-	ReplicaCloningLvolSuffix     = "cloning"
-	RebuildingSnapshotNamePrefix = "rebuild"
+	ReplicaRebuildingLvolSuffix         = "rebuilding"
+	ReplicaExpiredLvolSuffix            = "expired"
+	ReplicaCloningLvolSuffix            = "cloning"
+	RebuildingSnapshotNamePrefix        = "rebuild"
+	ReplicaCloneEntrypointLvolInfix     = "clone-ep"
+	ReplicaCloneEntrypointTmpHeadSuffix = "tmp-head"
 
 	SyncTimeout = 60 * time.Minute
 
@@ -70,6 +72,10 @@ const (
 )
 
 var (
+	cloneEntrypointLvolSeparator = "-" + ReplicaCloneEntrypointLvolInfix + "-"
+)
+
+var (
 	// ErrEngineFrontendCreateInvalidArgument indicates the create request carries
 	// invalid input, such as an unparsable target address.
 	ErrEngineFrontendCreateInvalidArgument = errors.New("engine frontend create invalid argument")
@@ -88,6 +94,10 @@ var (
 	// ErrRecoverDeviceNotFound indicates the NVMe device was not found on the
 	// host during recovery. The persisted record should be removed.
 	ErrRecoverDeviceNotFound = errors.New("device not found on host during recovery")
+	// ErrRecoveryCancelled indicates that recovery was aborted because a
+	// concurrent operation (e.g. EngineFrontendCreate) changed the ef state
+	// from Pending, meaning host-level operations should not proceed.
+	ErrRecoveryCancelled = errors.New("recovery cancelled by concurrent operation")
 )
 
 var (
@@ -285,6 +295,66 @@ func GetReplicaNameFromCloningLvolName(lvolName string) string {
 
 func GetTmpSnapNameForCloningLvol(replicaName string) string {
 	return fmt.Sprintf("%s-%s-tmp", replicaName, ReplicaCloningLvolSuffix)
+}
+
+func GetCloneEntrypointLvolNamePrefix(replicaName string) string {
+	return fmt.Sprintf("%s-%s-", replicaName, ReplicaCloneEntrypointLvolInfix)
+}
+
+func GetCloneEntrypointLvolName(replicaName, snapshotName string) string {
+	return fmt.Sprintf("%s%s", GetCloneEntrypointLvolNamePrefix(replicaName), snapshotName)
+}
+
+func GetCloneEntrypointTmpHeadLvolName(replicaName, snapshotName string) string {
+	return fmt.Sprintf("%s-%s", GetCloneEntrypointLvolName(replicaName, snapshotName), ReplicaCloneEntrypointTmpHeadSuffix)
+}
+
+func IsCloneEntrypointLvol(lvolName string) bool {
+	return strings.Contains(lvolName, cloneEntrypointLvolSeparator) && !IsCloneEntrypointTmpHeadLvol(lvolName)
+}
+
+func IsCloneEntrypointOfReplica(replicaName, lvolName string) bool {
+	return strings.HasPrefix(lvolName, GetCloneEntrypointLvolNamePrefix(replicaName)) &&
+		!IsCloneEntrypointTmpHeadLvol(lvolName)
+}
+
+func IsCloneEntrypointTmpHeadLvol(lvolName string) bool {
+	return strings.Contains(lvolName, cloneEntrypointLvolSeparator) && strings.HasSuffix(lvolName, ReplicaCloneEntrypointTmpHeadSuffix)
+}
+
+func GetSnapshotNameFromCloneEntrypointLvolName(replicaName, epLvolName string) string {
+	return strings.TrimPrefix(epLvolName, GetCloneEntrypointLvolNamePrefix(replicaName))
+}
+
+func GetSnapshotNameFromCloneEntrypointLvolNameWithoutReplicaName(epLvolName string) (string, error) {
+	sepIdx := strings.Index(epLvolName, cloneEntrypointLvolSeparator)
+	if sepIdx < 0 {
+		return "", fmt.Errorf("invalid clone entrypoint name %q: missing %q separator", epLvolName, cloneEntrypointLvolSeparator)
+	}
+	snapshotName := epLvolName[sepIdx+len(cloneEntrypointLvolSeparator):]
+	if snapshotName == "" {
+		return "", fmt.Errorf("invalid clone entrypoint name %q: no content after %q separator", epLvolName, cloneEntrypointLvolSeparator)
+	}
+	return snapshotName, nil
+}
+
+func GetSourceReplicaNameFromCloneEntrypointLvolName(epLvolName string) string {
+	idx := strings.Index(epLvolName, cloneEntrypointLvolSeparator)
+	if idx < 0 {
+		return ""
+	}
+	return epLvolName[:idx]
+}
+
+// GetCloneReplicaNameFromEntrypointChildLvol extracts the clone replica name
+// from a direct child of a clone entrypoint. The child may be the clone
+// replica head (name == replicaName) or a snapshot taken after cloning
+// (name == replicaName-snap-xxx).
+func GetCloneReplicaNameFromEntrypointChildLvol(childLvolName string) string {
+	if idx := strings.Index(childLvolName, "-snap-"); idx > 0 {
+		return childLvolName[:idx]
+	}
+	return childLvolName
 }
 
 func GetNvmfEndpoint(nqn, ip string, port int32) string {
