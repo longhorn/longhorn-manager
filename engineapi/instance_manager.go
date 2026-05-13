@@ -33,6 +33,10 @@ const (
 	// UnsupportedInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
 	UnsupportedInstanceManagerProxyAPIVersion = 0
 
+	// MinProxyAPIVersionForNReplicaLinkedClone is the minimum proxy API version that supports
+	// N-replica simultaneous linked-clone via DstReplicaSrcReplicaPairMap.
+	MinProxyAPIVersionForNReplicaLinkedClone = 7
+
 	DefaultEnginePortCount = 1
 
 	DefaultReplicaPortCountV1 = 10
