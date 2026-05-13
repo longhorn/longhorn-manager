@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -485,11 +486,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// The backup creation is complete, then the source of truth becomes the remote backup target
-	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, log, bc.proxyConnCounter, longhorn.DataEngineTypeAll)
 	if err != nil {
-		log.WithError(err).Error("Error init backup target clients")
+		log.WithError(err).Error("Failed to init backup target clients")
 		return nil // Ignore error to prevent enqueue
 	}
+	defer engineClientProxy.Close()
 
 	backupURL := backupstore.EncodeBackupURL(backup.Name, canonicalBackupVolumeName, backupTargetClient.URL)
 	backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential)
@@ -518,9 +520,24 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 	}
 
+	volume, err := bc.ds.GetVolume(canonicalBackupVolumeName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	if backup.Status.State == longhorn.BackupStateError && volume != nil {
+		if err := bc.syncFinalEngineBackupStatus(engineClientProxy, volume, backup); err != nil {
+			return err
+		}
+	}
+
 	// Update Backup CR status
+	if backup.Spec.SnapshotName == "" || volume == nil {
+		backup.Status.State = longhorn.BackupStateCompleted
+	}
 	backup.Status.BackupTargetName = backupTargetName
-	backup.Status.State = longhorn.BackupStateCompleted
 	backup.Status.URL = backupInfo.URL
 	backup.Status.SnapshotName = backupInfo.SnapshotName
 	backup.Status.SnapshotCreatedAt = backupInfo.SnapshotCreated
@@ -962,6 +979,60 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 	bc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, string(backup.Status.State),
 		"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
 
+	return nil
+}
+
+func (bc *BackupController) syncFinalEngineBackupStatus(engineClientProxy engineapi.EngineClientProxy, volume *longhorn.Volume, backup *longhorn.Backup) error {
+	if backup == nil || volume == nil || engineClientProxy == nil {
+		return nil
+	}
+
+	if volume.Status.State != longhorn.VolumeStateAttached {
+		return nil
+	}
+
+	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
+	if err != nil {
+		return err
+	}
+	if engine.Status.CurrentState != longhorn.InstanceStateRunning {
+		return nil
+	}
+
+	rsMap, err := engineClientProxy.ReplicaList(engine)
+	if err != nil {
+		return err
+	}
+	replicaAddress := ""
+	for addr, rs := range rsMap {
+		if rs.Mode == longhorn.ReplicaModeRW {
+			replicaAddress = addr
+			break
+		}
+	}
+	if replicaAddress == "" {
+		return fmt.Errorf("no RW replica found for engine %v to sync backup %v status", engine.Name, backup.Name)
+	}
+
+	backupStatus, err := engineClientProxy.SnapshotBackupStatus(engine, backup.Name, strings.TrimPrefix(replicaAddress, "tcp://"), "")
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			backup.Status.State = longhorn.BackupStateCompleted
+			return nil
+		}
+		return err
+	}
+
+	backup.Status.Progress = backupStatus.Progress
+	backup.Status.Error = backupStatus.Error
+	if backup.Status.Error != "" {
+		errMsg := strings.ToLower(backup.Status.Error)
+		if strings.Contains(errMsg, "backup not found") {
+			backup.Status.State = longhorn.BackupStateCompleted
+			return nil
+		}
+	}
+	backup.Status.State = engineapi.ConvertEngineBackupState(backupStatus.State)
 	return nil
 }
 
