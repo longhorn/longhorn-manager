@@ -990,31 +990,51 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		// replicas will be started by ReconcileVolumeState() later
 	}
 
-	// While volume is in cloning process, there will only 1 replica so e.Status.CloneStatus will have length of 1
-	for _, status := range e.Status.CloneStatus {
-		if status == nil {
-			continue
+	// Aggregate clone statuses across all replicas. For linked-clone volumes
+	// all N replicas perform SnapshotCloneDst in parallel; for deep-copy clone
+	// there is exactly 1 replica at this stage.
+	if isCloneTargetCopyInProgress(v) {
+		total, complete, errored := 0, 0, 0
+		var firstError string
+		for _, status := range e.Status.CloneStatus {
+			if status == nil {
+				continue
+			}
+			total++
+			switch status.State {
+			case engineapi.ProcessStateComplete:
+				complete++
+			case engineapi.ProcessStateError:
+				errored++
+				if firstError == "" {
+					firstError = status.Error
+				}
+			}
 		}
 
-		if !isCloneTargetCopyInProgress(v) {
-			// No longer need to sync up with the engine because the volume has reach reached copy-complete
-			continue
-		}
-
-		switch status.State {
-		case engineapi.ProcessStateComplete:
+		if errored > 0 {
+			if v.Spec.CloneMode != longhorn.CloneModeLinkedClone || complete == 0 {
+				v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
+				c.eventRecorder.Eventf(
+					v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
+					"failed to clone snapshot %v with clone mode %v from source volume %v: %v",
+					v.Status.CloneStatus.Snapshot, v.Spec.CloneMode, v.Status.CloneStatus.SourceVolume, firstError,
+				)
+			} else {
+				// For linked-clone: at least one replica completed the clone; failed replicas
+				// can be rebuilt from the successful ones via normal Longhorn replica rebuild.
+				v.Status.CloneStatus.State = longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
+				c.eventRecorder.Eventf(
+					v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCopyCompleteAwaitingHealthy,
+					"partially cloned snapshot %v with clone mode %v from source volume %v (%v/%v replicas succeeded); failed replicas will be rebuilt",
+					v.Status.CloneStatus.Snapshot, v.Spec.CloneMode, v.Status.CloneStatus.SourceVolume, complete, total)
+			}
+		} else if total > 0 && complete == total {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
 			c.eventRecorder.Eventf(
 				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCopyCompleteAwaitingHealthy,
 				"copied the data from snapshot %v of the source volume %v. Waiting for volume to be fully HA before marking the clone as completed",
 				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
-		case engineapi.ProcessStateError:
-			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
-			c.eventRecorder.Eventf(
-				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
-				"failed to clone snapshot %v from source volume %v: %v",
-				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error,
-			)
 		}
 	}
 
@@ -3785,8 +3805,19 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 		}
 	}
 
-	// Only create 1 replica while volume is in cloning process
-	if isCloneTargetNotCompletedAndNotCopyCompleted(v) {
+	// Only create 1 replica during deep-copy clone to prevent data inconsistency.
+	// Linked-clone uses a fast metadata operation (BdevLvolSetParent) and supports
+	// N simultaneous replicas when the instance manager proxy API supports DstReplicaSrcReplicaPairMap
+	// (proxy API >= MinProxyAPIVersionForNReplicaLinkedClone). In that case the engine receives an
+	// explicit dst→src map from the manager and clones all N replicas in one SnapshotClone call.
+	linkedCloneAllowsN := false
+	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && e != nil {
+		im, imErr := c.ds.GetInstanceManagerByInstance(e)
+		if imErr == nil && im != nil && im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
+			linkedCloneAllowsN = true
+		}
+	}
+	if isCloneTargetNotCompletedAndNotCopyCompleted(v) && !linkedCloneAllowsN {
 		if usableCount == 0 {
 			return 1, ""
 		}
@@ -6632,4 +6663,3 @@ func (c *VolumeController) syncVolumeOnDemandSnapshotStatus(v *longhorn.Volume, 
 	v.Status.LastOnDemandSnapshotHashingCompleteAt = v.Spec.SnapshotHashingRequestedAt
 	return nil
 }
-
