@@ -123,7 +123,7 @@ type EngineClient interface {
 	SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential, parameters map[string]string) (string, string, error)
 	SnapshotBackupStatus(obj DataEngineObject, backupName, replicaAddress, replicaName string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(obj DataEngineObject) (map[string]*longhorn.SnapshotCloneStatus, error)
-	SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error
+	SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) error
 	SnapshotHash(obj DataEngineObject, snapshotName string, rehash bool) error
 	SnapshotHashStatus(obj DataEngineObject, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
