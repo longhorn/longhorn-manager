@@ -53,6 +53,9 @@ type EngineFrontendController struct {
 
 	instanceHandler *InstanceHandler
 
+	// nil means use DeleteInstance; set in tests.
+	deleteInstanceHandler func(obj interface{}) error
+
 	proxyConnCounter util.Counter
 
 	backoff *flowcontrol.Backoff
@@ -368,6 +371,32 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 	// Use instance handler to reconcile state
 	if err := efc.instanceHandler.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus); err != nil {
 		return err
+	}
+
+	// Delete stale EF instances recovered with an empty frontend in the IM.
+	if ef.Status.CurrentState == longhorn.InstanceStateRunning &&
+		ef.Spec.DesireState == longhorn.InstanceStateRunning &&
+		isEngineFrontendEndpointRequired(ef) {
+		var (
+			im    *longhorn.InstanceManager
+			imErr error
+		)
+		if ef.Status.InstanceManagerName != "" {
+			im, imErr = efc.ds.GetInstanceManagerRO(ef.Status.InstanceManagerName)
+		} else {
+			im, imErr = efc.ds.GetInstanceManagerByInstanceRO(ef)
+		}
+		if imErr != nil {
+			log.WithError(imErr).Warn("Failed to get instance manager for stale engine frontend detection, skipping")
+		} else if shouldDeleteStaleRunningEngineFrontend(ef, im) {
+			log.Warnf("EngineFrontend %v is running in IM with empty frontend (spec expects %v), deleting stale instance to trigger re-creation", ef.Name, ef.Spec.Frontend)
+			efc.eventRecorder.Eventf(ef, corev1.EventTypeWarning, constant.EventReasonStaleInstance,
+				"Deleting stale instance: IM reports empty frontend but spec expects %v", ef.Spec.Frontend)
+			if err := efc.deleteEngineFrontendInstance(ef); err != nil {
+				return errors.Wrapf(err, "failed to delete stale engine frontend instance %v", ef.Name)
+			}
+			return nil
+		}
 	}
 
 	statusTargetInitialized := isEngineFrontendTargetInitialized(ef.Status.TargetIP, ef.Status.TargetPort)
@@ -1077,6 +1106,27 @@ func isEngineFrontendEndpointRequired(ef *longhorn.EngineFrontend) bool {
 		return false
 	}
 	return !ef.Spec.DisableFrontend && ef.Spec.Frontend != longhorn.VolumeFrontendEmpty
+}
+
+// Caller must ensure isEngineFrontendEndpointRequired(ef) before calling.
+func shouldDeleteStaleRunningEngineFrontend(ef *longhorn.EngineFrontend, im *longhorn.InstanceManager) bool {
+	if ef == nil || im == nil {
+		return false
+	}
+
+	instance, exists := im.Status.InstanceEngineFrontends[ef.Name]
+	if !exists {
+		return false
+	}
+
+	return instance.Status.State == longhorn.InstanceStateRunning && instance.Status.Frontend == ""
+}
+
+func (efc *EngineFrontendController) deleteEngineFrontendInstance(ef *longhorn.EngineFrontend) error {
+	if efc.deleteInstanceHandler != nil {
+		return efc.deleteInstanceHandler(ef)
+	}
+	return efc.DeleteInstance(ef)
 }
 
 func syncEngineFrontendPathStatus(ef *longhorn.EngineFrontend, instance *longhorn.InstanceProcess) {
