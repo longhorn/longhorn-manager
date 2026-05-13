@@ -110,7 +110,7 @@ func (e *EngineBinary) SnapshotPurgeStatus(obj DataEngineObject) (map[string]*lo
 // SnapshotClone calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName,
-	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error {
+	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) error {
 	args := []string{"snapshot", "clone", "--snapshot-name", snapshotName, "--from-controller-address",
 		fromEngineAddress}
 
