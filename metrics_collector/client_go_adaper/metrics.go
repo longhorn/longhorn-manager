@@ -89,7 +89,7 @@ type latencyAdapter struct {
 }
 
 func (l *latencyAdapter) Observe(ctx context.Context, verb string, u url.URL, latency time.Duration) {
-	l.metric.WithLabelValues(verb, u.String()).Observe(latency.Seconds())
+	l.metric.WithLabelValues(verb, normalizeURLLabel(u)).Observe(latency.Seconds())
 }
 
 type resultAdapter struct {
@@ -98,4 +98,18 @@ type resultAdapter struct {
 
 func (r *resultAdapter) Increment(ctx context.Context, code, method, host string) {
 	r.metric.WithLabelValues(code, method, host).Inc()
+}
+
+// normalizeURLLabel strips query parameters and fragments from the URL.
+// client-go's finalURLTemplate() already normalizes path segments (replacing
+// namespace/resource names with {namespace}/{name}), but preserves distinct
+// query parameter name combinations (e.g. ?fieldSelector={value}&watch={value}
+// vs ?timeout={value}), which still causes cardinality explosion.
+func normalizeURLLabel(u url.URL) string {
+	normalized := u
+	normalized.RawQuery = ""
+	normalized.ForceQuery = false
+	normalized.Fragment = ""
+
+	return normalized.String()
 }
