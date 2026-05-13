@@ -75,4 +75,6 @@ const (
 	EventReasonMigrationFailed = "MigrationFailed"
 
 	EventReasonOrphanCleanupCompleted = "OrphanCleanupCompleted"
+
+	EventReasonStaleInstance = "StaleInstance"
 )
