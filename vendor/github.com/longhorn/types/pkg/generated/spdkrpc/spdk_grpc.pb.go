@@ -60,6 +60,7 @@ const (
 	SPDKService_EngineGet_FullMethodName                                 = "/spdkrpc.SPDKService/EngineGet"
 	SPDKService_EngineSuspend_FullMethodName                             = "/spdkrpc.SPDKService/EngineSuspend"
 	SPDKService_EngineResume_FullMethodName                              = "/spdkrpc.SPDKService/EngineResume"
+	SPDKService_EngineSnapshotMaxCountSet_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotMaxCountSet"
 	SPDKService_EngineExpand_FullMethodName                              = "/spdkrpc.SPDKService/EngineExpand"
 	SPDKService_EngineExpandPrecheck_FullMethodName                      = "/spdkrpc.SPDKService/EngineExpandPrecheck"
 	SPDKService_EngineDeleteTarget_FullMethodName                        = "/spdkrpc.SPDKService/EngineDeleteTarget"
@@ -160,6 +161,7 @@ type SPDKServiceClient interface {
 	EngineGet(ctx context.Context, in *EngineGetRequest, opts ...grpc.CallOption) (*Engine, error)
 	EngineSuspend(ctx context.Context, in *EngineSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineResume(ctx context.Context, in *EngineResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineSnapshotMaxCountSet(ctx context.Context, in *EngineSnapshotMaxCountSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineExpand(ctx context.Context, in *EngineExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineExpandPrecheck(ctx context.Context, in *EngineExpandPrecheckRequest, opts ...grpc.CallOption) (*EngineExpandPrecheckResponse, error)
 	EngineDeleteTarget(ctx context.Context, in *EngineDeleteTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -603,6 +605,15 @@ func (c *sPDKServiceClient) EngineSuspend(ctx context.Context, in *EngineSuspend
 func (c *sPDKServiceClient) EngineResume(ctx context.Context, in *EngineResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, SPDKService_EngineResume_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineSnapshotMaxCountSet(ctx context.Context, in *EngineSnapshotMaxCountSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineSnapshotMaxCountSet_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1208,6 +1219,7 @@ type SPDKServiceServer interface {
 	EngineGet(context.Context, *EngineGetRequest) (*Engine, error)
 	EngineSuspend(context.Context, *EngineSuspendRequest) (*emptypb.Empty, error)
 	EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error)
+	EngineSnapshotMaxCountSet(context.Context, *EngineSnapshotMaxCountSetRequest) (*emptypb.Empty, error)
 	EngineExpand(context.Context, *EngineExpandRequest) (*emptypb.Empty, error)
 	EngineExpandPrecheck(context.Context, *EngineExpandPrecheckRequest) (*EngineExpandPrecheckResponse, error)
 	EngineDeleteTarget(context.Context, *EngineDeleteTargetRequest) (*emptypb.Empty, error)
@@ -1390,6 +1402,9 @@ func (UnimplementedSPDKServiceServer) EngineSuspend(context.Context, *EngineSusp
 }
 func (UnimplementedSPDKServiceServer) EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineResume not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineSnapshotMaxCountSet(context.Context, *EngineSnapshotMaxCountSetRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotMaxCountSet not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineExpand(context.Context, *EngineExpandRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineExpand not implemented")
@@ -2285,6 +2300,24 @@ func _SPDKService_EngineResume_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).EngineResume(ctx, req.(*EngineResumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineSnapshotMaxCountSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineSnapshotMaxCountSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineSnapshotMaxCountSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineSnapshotMaxCountSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineSnapshotMaxCountSet(ctx, req.(*EngineSnapshotMaxCountSetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3432,6 +3465,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EngineResume",
 			Handler:    _SPDKService_EngineResume_Handler,
+		},
+		{
+			MethodName: "EngineSnapshotMaxCountSet",
+			Handler:    _SPDKService_EngineSnapshotMaxCountSet_Handler,
 		},
 		{
 			MethodName: "EngineExpand",

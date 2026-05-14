@@ -109,6 +109,8 @@ var (
 	ErrRestoringInProgress = errors.New("restoring is in progress")
 	// ErrExpansionInvalidSize indicates an invalid target size for expansion.
 	ErrExpansionInvalidSize = errors.New("invalid expansion size")
+	// ErrAlreadyRestored indicates the requested backup has already been restored.
+	ErrAlreadyRestored = errors.New("already restored backup")
 )
 
 type Lvol struct {
