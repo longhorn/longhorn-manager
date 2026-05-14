@@ -138,6 +138,8 @@ type Engine struct {
 	Head        *api.Lvol
 	SnapshotMap map[string]*api.Lvol
 
+	SnapshotMaxCount int32
+
 	IsRestoring           bool
 	RestoringSnapshotName string
 
@@ -174,7 +176,7 @@ type EngineReplicaStatus struct {
 	Mode     types.Mode
 }
 
-func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}) *Engine {
+func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, snapshotMaxCount int32) *Engine {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"engineName": engineName,
 		"volumeName": volumeName,
@@ -206,6 +208,8 @@ func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineU
 		NvmeTcpTarget: &NvmeTcpTarget{},
 
 		State: types.InstanceStatePending,
+
+		SnapshotMaxCount: snapshotMaxCount,
 
 		SnapshotMap: map[string]*api.Lvol{},
 
@@ -466,16 +470,12 @@ func (e *Engine) validateReplicaSize(replicaAddressMap map[string]string) error 
 	// Validate the engine & replica sizes before creating the engine
 	replicaSizeMap := make(map[string]uint64, len(replicaAddressMap))
 	for replicaName, replicaAddr := range replicaAddressMap {
-		replicaClient, err := GetServiceClient(replicaAddr)
+		replicaSize, err := e.getReplicaSpecSize(replicaName, replicaAddr)
 		if err != nil {
 			return err
 		}
-		replica, err := replicaClient.ReplicaGet(replicaName)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get replica %v from %v", replicaName, replicaAddr)
-		}
 
-		replicaSizeMap[replicaName] = replica.SpecSize
+		replicaSizeMap[replicaName] = replicaSize
 	}
 
 	// check if all replica sizes are the same
@@ -496,6 +496,26 @@ func (e *Engine) validateReplicaSize(replicaAddressMap map[string]string) error 
 	}
 
 	return nil
+}
+
+func (e *Engine) getReplicaSpecSize(replicaName, replicaAddr string) (uint64, error) {
+	replicaClient, err := GetServiceClient(replicaAddr)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		errClose := replicaClient.Close()
+		if errClose != nil {
+			e.log.WithError(errClose).Errorf("Failed to close replica %s client with address %s when getting replica spec size", replicaName, replicaAddr)
+		}
+	}()
+
+	replica, err := replicaClient.ReplicaGet(replicaName)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to get replica %v from %v", replicaName, replicaAddr)
+	}
+
+	return replica.SpecSize, nil
 }
 
 // filterSalvageCandidates updates the replicaAddressMap by retaining only replicas
@@ -721,6 +741,7 @@ func (e *Engine) getWithoutLock() (res *spdkrpc.Engine) {
 		IsExpanding:           e.isExpanding,
 		LastExpansionError:    e.lastExpansionError,
 		LastExpansionFailedAt: e.lastExpansionFailedAt,
+		SnapshotMaxCount:      e.SnapshotMaxCount,
 	}
 
 	if e.NvmeTcpTarget != nil {
@@ -740,6 +761,17 @@ func (e *Engine) getWithoutLock() (res *spdkrpc.Engine) {
 	}
 
 	return res
+}
+
+func (e *Engine) SetSnapshotMaxCount(count int32) {
+	e.Lock()
+	e.SnapshotMaxCount = count
+	e.Unlock()
+
+	select {
+	case e.UpdateCh <- nil:
+	default:
+	}
 }
 
 type replicaAddFrontendSuspendResumeWrapper func(work func() error) error
@@ -1592,6 +1624,7 @@ func (e *Engine) getReplicaClients() (replicaClients map[string]*client.SPDKClie
 		}
 		c, err := GetServiceClient(replicaStatus.Address)
 		if err != nil {
+			e.closeReplicaClients(replicaClients)
 			return nil, err
 		}
 		replicaClients[replicaName] = c
@@ -1613,6 +1646,10 @@ func (e *Engine) closeReplicaClients(replicaClients map[string]*client.SPDKClien
 func (e *Engine) snapshotOperationPreCheckWithoutLock(replicaClients map[string]*client.SPDKClient, snapshotName string, snapshotOp SnapshotOperationType) (string, error) {
 	if snapshotOp == SnapshotOperationCreate && snapshotName == "" {
 		snapshotName = util.UUID()[:8]
+	}
+
+	if snapshotOp == SnapshotOperationCreate && e.SnapshotMaxCount > 0 && int32(len(e.SnapshotMap)) >= e.SnapshotMaxCount {
+		return "", fmt.Errorf("snapshot count %d is equal or larger than snapshotMaxCount %d", len(e.SnapshotMap), e.SnapshotMaxCount)
 	}
 
 	if snapshotOp == SnapshotOperationDelete {
@@ -2089,6 +2126,9 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 
 	backupInfo, err := backupstore.InspectBackup(backupUrl)
 	if err != nil {
+		e.Lock()
+		e.recordBackupRestoreStartErrorLocked(spdkClient, backupUrl, "", superiorPortAllocator, err)
+		e.Unlock()
 		return resp, nil, err
 	}
 
@@ -2102,11 +2142,16 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	}
 
 	if backupInfo.VolumeSize != int64(e.SpecSize) {
-		return resp, nil, fmt.Errorf("the backup volume %v size %v must be the same as the Longhorn volume size %v", backupInfo.VolumeName, backupInfo.VolumeSize, e.SpecSize)
+		err := fmt.Errorf("the backup volume %v size %v must be the same as the Longhorn volume size %v", backupInfo.VolumeName, backupInfo.VolumeSize, e.SpecSize)
+		e.recordBackupRestoreStartErrorLocked(spdkClient, backupUrl, "", superiorPortAllocator, err)
+		return resp, nil, err
 	}
 
 	isFullRestore, err := e.backupRestorePrepare(spdkClient, backupUrl, credential, superiorPortAllocator)
 	if err != nil {
+		if !errors.Is(err, ErrAlreadyRestored) {
+			e.recordBackupRestoreStartErrorLocked(spdkClient, backupUrl, "", superiorPortAllocator, err)
+		}
 		return resp, nil, err
 	}
 
@@ -2131,12 +2176,14 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	if isFullRestore {
 		e.log.Infof("Starting a new full restore for backup %v", backupUrl)
 		if err := e.backupRestore(backupUrl, concurrentLimit); err != nil {
+			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
 			return resp, nil, errors.Wrapf(err, "failed to start full backup restore")
 		}
 		e.log.Infof("Successfully initiated full restore for %v to %v", backupUrl, e.Name)
 	} else {
 		e.log.Infof("Starting an incremental restore for backup %v", backupUrl)
 		if err := e.backupRestoreIncrementally(backupUrl, lastRestored, concurrentLimit); err != nil {
+			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
 			return resp, nil, errors.Wrapf(err, "failed to start incremental backup restore")
 		}
 		e.log.Infof("Successfully initiated incremental restore for %v to %v", backupUrl, e.Name)
@@ -2159,6 +2206,37 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	}()
 
 	return resp, ch, nil
+}
+
+func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Client, backupURL, backupName string, superiorPortAllocator *commonbitmap.Bitmap, restoreErr error) {
+	if restoreErr == nil {
+		return
+	}
+
+	// If another restore is already in progress, don't overwrite its state.
+	// This guards against a TOCTOU race where a concurrent BackupRestore call
+	// started between our precheck (which released the lock) and this error
+	// recording (which re-acquired it).
+	if e.IsRestoring {
+		e.log.Warnf("Skipping restore error recording for %v: another restore is already in progress", backupURL)
+		return
+	}
+
+	if backupName == "" {
+		var err error
+		backupName, _, _, err = backupstore.DecodeBackupURL(util.UnescapeURL(backupURL))
+		if err != nil {
+			e.log.WithError(err).Warnf("Failed to decode backup URL %v while recording restore error", backupURL)
+			backupName = backupURL
+		}
+	}
+
+	if e.restore == nil {
+		e.restore = NewEngineRestore(spdkClient, backupURL, backupName, e, superiorPortAllocator)
+	} else {
+		e.restore.StartNewRestore(backupURL, backupName, true)
+	}
+	e.restore.UpdateRestoreStatus("", 0, restoreErr)
 }
 
 func (e *Engine) precheckBackupRestore(backupURL string) error {
@@ -2194,14 +2272,23 @@ func (e *Engine) backupRestorePrepare(spdkClient *spdkclient.Client, backupUrl s
 		return false, errors.Wrapf(err, "failed to decode backup URL %v", backupUrl)
 	}
 
-	if e.restore == nil || e.restore.State == btypes.ProgressStateError || e.restore.State == btypes.ProgressStateCanceled {
+	if e.restore == nil {
 		e.restore = NewEngineRestore(spdkClient, backupUrl, backupName, e, superiorPortAllocator)
 	} else {
 		if e.restore.LastRestored == backupName {
-			return false, fmt.Errorf("already restored backup %v", backupName)
+			return false, fmt.Errorf("%w %v", ErrAlreadyRestored, backupName)
 		}
-		validLastRestoredBackup := e.canDoIncrementalRestore(e.restore, backupUrl, backupName)
-		e.restore.StartNewRestore(backupUrl, backupName, validLastRestoredBackup)
+		if e.restore.State == btypes.ProgressStateError || e.restore.State == btypes.ProgressStateCanceled {
+			lastRestored := e.restore.LastRestored
+			e.restore = NewEngineRestore(spdkClient, backupUrl, backupName, e, superiorPortAllocator)
+			e.restore.LastRestored = lastRestored
+			if !e.canDoIncrementalRestore(e.restore, backupUrl, backupName) {
+				e.restore.LastRestored = ""
+			}
+		} else {
+			validLastRestoredBackup := e.canDoIncrementalRestore(e.restore, backupUrl, backupName)
+			e.restore.StartNewRestore(backupUrl, backupName, validLastRestoredBackup)
+		}
 	}
 
 	e.IsRestoring = true

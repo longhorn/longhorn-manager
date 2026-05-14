@@ -96,6 +96,7 @@ type EngineCreateRequest struct {
 	TargetAddress     string
 	UpgradeRequired   bool
 	SalvageRequested  bool
+	SnapshotMaxCount  int
 }
 
 type EngineFrontendCreateRequest struct {
@@ -163,6 +164,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				ReplicaAddressMap: req.Engine.ReplicaAddressMap,
 				Frontend:          req.Engine.Frontend,
 				SalvageRequested:  req.Engine.SalvageRequested,
+				SnapshotMaxCount:  int32(req.Engine.SnapshotMaxCount),
 				UblkQueueDepth:    int32(req.Engine.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.Engine.UblkNumberOfQueue),
 			}

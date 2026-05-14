@@ -38,6 +38,12 @@ type Server struct {
 	diskCreateLock sync.Mutex
 	hotplugActive  atomic.Bool // use atomic.Bool to avoid data races across goroutines.
 
+	// replicaMapGen is bumped (under Lock) every time replicaMap is mutated
+	// by ReplicaCreate or ReplicaDelete.  verify() captures it in
+	// newVerifyState and compares in applyVerifiedState to detect
+	// concurrent mutations and skip stale overwrites.
+	replicaMapGen int64
+
 	ctx context.Context
 
 	spdkClient    *spdkclient.Client
@@ -213,6 +219,7 @@ func (s *Server) clientReconnect() error {
 
 type verifyState struct {
 	replicaMap            map[string]*Replica
+	replicaMapGen         int64
 	replicaMapForSync     map[string]*Replica
 	engineMapForSync      map[string]*Engine
 	engineFrontendForSync map[string]*EngineFrontend
@@ -240,7 +247,24 @@ func (s *Server) verify() (err error) {
 		return err
 	}
 
+	if !s.applyVerifiedState(state) {
+		return nil
+	}
+
+	return s.syncVerifiedObjects(state)
+}
+
+func (s *Server) applyVerifiedState(state *verifyState) bool {
 	s.Lock()
+	defer s.Unlock()
+
+	if s.replicaMapGen != state.replicaMapGen {
+		logrus.Infof("spdk gRPC server: skipped replica map update due to concurrent replica mutation during verify")
+		s.backingImageMap = state.backingImageMap
+		s.UpdateEngineMetrics()
+		return false
+	}
+
 	if len(s.replicaMap) != len(state.replicaMap) {
 		logrus.Infof("spdk gRPC server: replica map updated, map count is changed from %d to %d", len(s.replicaMap), len(state.replicaMap))
 	}
@@ -248,14 +272,13 @@ func (s *Server) verify() (err error) {
 	s.replicaMap = state.replicaMap
 	s.backingImageMap = state.backingImageMap
 	s.UpdateEngineMetrics()
-	s.Unlock()
-
-	return s.syncVerifiedObjects(state)
+	return true
 }
 
 func (s *Server) newVerifyState() *verifyState {
 	state := &verifyState{
 		replicaMap:            map[string]*Replica{},
+		replicaMapGen:         s.replicaMapGen,
 		replicaMapForSync:     map[string]*Replica{},
 		engineMapForSync:      map[string]*Engine{},
 		engineFrontendForSync: map[string]*EngineFrontend{},
@@ -703,6 +726,10 @@ func (s *Server) newBackingImage(req *spdkrpc.BackingImageCreateRequest) (*Backi
 }
 
 func (s *Server) UpdateEngineMetrics() {
+	if s.spdkClient == nil {
+		return
+	}
+
 	previousBdevIostat := s.currentBdevIostat
 	bdevIostat, err := s.spdkClient.BdevGetIostat("", false)
 	if err != nil {
