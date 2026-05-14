@@ -1,4 +1,4 @@
-package client_go_adaper
+package client_go_adapter
 
 import (
 	"net/url"
