@@ -564,6 +564,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			InitiatorAddress:  req.InitiatorAddress,
 			TargetAddress:     req.TargetAddress,
 			SalvageRequested:  req.Engine.Spec.SalvageRequested,
+			SnapshotMaxCount:  req.Engine.Spec.SnapshotMaxCount,
 		},
 	})
 

@@ -160,6 +160,7 @@ type Engine struct {
 	IsExpanding           bool                  `json:"is_expanding"`
 	LastExpansionError    string                `json:"last_expansion_error"`
 	LastExpansionFailedAt string                `json:"last_expansion_failed_at"`
+	SnapshotMaxCount      int32                 `json:"snapshot_max_count"`
 }
 
 func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
@@ -182,6 +183,7 @@ func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
 		IsExpanding:           e.IsExpanding,
 		LastExpansionError:    e.LastExpansionError,
 		LastExpansionFailedAt: e.LastExpansionFailedAt,
+		SnapshotMaxCount:      e.SnapshotMaxCount,
 	}
 	for rName, mode := range e.ReplicaModeMap {
 		res.ReplicaModeMap[rName] = types.GRPCReplicaModeToReplicaMode(mode)

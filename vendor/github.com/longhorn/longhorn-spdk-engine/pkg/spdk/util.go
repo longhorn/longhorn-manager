@@ -192,7 +192,7 @@ func disconnectNVMfBdev(spdkClient *spdkclient.Client, bdevName string, maxRetri
 
 	controllerName := helperutil.GetNvmeControllerNameFromNamespaceName(bdevName)
 
-	return retry.Do(
+	if err := retry.Do(
 		func() error {
 			_, err := spdkClient.BdevNvmeDetachController(controllerName)
 			if err != nil {
@@ -211,6 +211,43 @@ func disconnectNVMfBdev(spdkClient *spdkclient.Client, bdevName string, maxRetri
 			logrus.WithError(err).Warnf(
 				"Retrying NVMe bdev detach: controller=%s attempt=%d/%d next_wait=%s",
 				controllerName, n+1, maxRetries, retryInterval,
+			)
+		}),
+	); err != nil {
+		return err
+	}
+
+	// BdevNvmeDetachController returning success only means SPDK accepted the detach
+	// request. The namespace bdev may still exist briefly while outstanding I/O drains.
+	// Wait until the namespace disappears before the caller tears down the peer
+	// exposure or deletes the parent lvol; otherwise SPDK can assert in
+	// bdev_channel_destroy_resource() with io_submitted still queued.
+	return waitForNVMfBdevDetached(spdkClient, bdevName, controllerName, maxRetries, retryInterval)
+}
+
+func waitForNVMfBdevDetached(spdkClient *spdkclient.Client, bdevName, controllerName string, maxRetries int, retryInterval time.Duration) error {
+	return retry.Do(
+		func() error {
+			bdevs, err := spdkClient.BdevGetBdevs(bdevName, 0)
+			if err != nil {
+				if jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+					return nil
+				}
+				return err
+			}
+			if len(bdevs) == 0 {
+				return nil
+			}
+			return fmt.Errorf("NVMe bdev %s for controller %s is still present after detach", bdevName, controllerName)
+		},
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			logrus.WithError(err).Warnf(
+				"Waiting for NVMe bdev removal: bdev=%s controller=%s attempt=%d/%d next_wait=%s",
+				bdevName, controllerName, n+1, maxRetries, retryInterval,
 			)
 		}),
 	)

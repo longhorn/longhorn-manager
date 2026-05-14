@@ -41,6 +41,7 @@ func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRe
 		// Always update the replica map
 		s.Lock()
 		s.replicaMap[req.Name] = r
+		s.replicaMapGen++
 		s.Unlock()
 	}()
 
@@ -70,6 +71,7 @@ func (s *Server) ReplicaDelete(ctx context.Context, req *spdkrpc.ReplicaDeleteRe
 		if err == nil && req.CleanupRequired {
 			s.Lock()
 			delete(s.replicaMap, req.Name)
+			s.replicaMapGen++
 			s.Unlock()
 		}
 	}()

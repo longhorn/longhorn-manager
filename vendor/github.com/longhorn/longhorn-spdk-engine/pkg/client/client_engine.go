@@ -14,7 +14,7 @@ import (
 )
 
 // EngineCreate creates and starts an engine instance with the requested replicas.
-func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize uint64, replicaAddressMap map[string]string, portCount int32, salvageRequested bool) (*api.Engine, error) {
+func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize uint64, replicaAddressMap map[string]string, portCount int32, salvageRequested bool, snapshotMaxCount int32) (*api.Engine, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to start engine: missing required parameter name")
 	}
@@ -37,12 +37,33 @@ func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize ui
 		ReplicaAddressMap: replicaAddressMap,
 		PortCount:         portCount,
 		SalvageRequested:  salvageRequested,
+		SnapshotMaxCount:  snapshotMaxCount,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start engine")
 	}
 
 	return api.ProtoEngineToEngine(resp), nil
+}
+
+func (c *SPDKClient) EngineSnapshotMaxCountSet(name string, count int32) error {
+	if name == "" {
+		return fmt.Errorf("failed to set snapshot max count for engine: missing required parameter name")
+	}
+
+	client := c.getSPDKServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.EngineSnapshotMaxCountSet(ctx, &spdkrpc.EngineSnapshotMaxCountSetRequest{
+		Name:  name,
+		Count: count,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to set snapshot max count %d for engine %v", count, name)
+	}
+
+	return nil
 }
 
 // EngineDelete deletes an engine instance by name.
