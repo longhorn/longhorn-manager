@@ -556,6 +556,11 @@ func (c *SupportBundleController) getSupportBundleStatusFromManager(url string) 
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close support bundle manager response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
