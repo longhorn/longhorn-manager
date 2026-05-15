@@ -5,7 +5,8 @@ source $(dirname $0)/version
 
 LINKFLAGS="-X github.com/longhorn/longhorn-manager/meta.Version=$VERSION
            -X github.com/longhorn/longhorn-manager/meta.GitCommit=$GITCOMMIT
-           -X github.com/longhorn/longhorn-manager/meta.BuildDate=$BUILDDATE"
+           -X github.com/longhorn/longhorn-manager/meta.BuildDate=$BUILDDATE
+           -X github.com/longhorn/longhorn-manager/meta.TwoMinorUpgradeDistros=${LONGHORN_TWO_MINOR_UPGRADE_DISTROS}"
 [ "$(uname)" != "Darwin" ] && OTHER_LINKFLAGS="-extldflags -static -s"
 
 # add coverage flags if there is no tag and it's on master or a version branch like v1.6.x
