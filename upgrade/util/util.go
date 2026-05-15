@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -269,6 +270,12 @@ func checkLHUpgradePath(namespace string, lhClient lhclientset.Interface) error 
 	}
 
 	if (lhNewMinorVersionNum - lhCurrentMinorVersionNum) > 1 {
+		if (lhNewMinorVersionNum - lhCurrentMinorVersionNum) == 2 {
+			if distro, ok := isTwoMinorUpgradeDistroEnabled(); ok {
+				logrus.Infof("Allowing the upgrade path from %v to %v for distro %q (two-minor-upgrade enabled)", lhCurrentVersion, meta.Version, distro)
+				return nil
+			}
+		}
 		return fmt.Errorf("failed to upgrade since upgrading from %v to %v for minor version is not supported", lhCurrentVersion, meta.Version)
 	}
 
@@ -281,6 +288,21 @@ func checkLHUpgradePath(namespace string, lhClient lhclientset.Interface) error 
 	}
 
 	return nil
+}
+
+func isTwoMinorUpgradeDistroEnabled() (string, bool) {
+	distro := strings.ToLower(strings.TrimSpace(os.Getenv(types.EnvDistro)))
+	if distro == "" {
+		return "", false
+	}
+
+	for _, candidate := range strings.Split(meta.TwoMinorUpgradeDistros, ",") {
+		if strings.ToLower(strings.TrimSpace(candidate)) == distro {
+			return distro, true
+		}
+	}
+
+	return "", false
 }
 
 // checkEngineUpgradePath returns error if the upgrade path from

@@ -77,10 +77,12 @@ func TestProgressMonitorInc(t *testing.T) {
 
 func TestCheckUpgradePathSupported(t *testing.T) {
 	testCases := []struct {
-		name           string
-		currentVersion string
-		upgradeVersion string
-		expectError    bool
+		name                   string
+		currentVersion         string
+		upgradeVersion         string
+		distro                 string
+		twoMinorUpgradeDistros string
+		expectError            bool
 	}{
 		{
 			name:           "new install",
@@ -117,6 +119,30 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 			currentVersion: "v1.3.0-dev",
 			upgradeVersion: "v1.5.0",
 			expectError:    true,
+		},
+		{
+			name:                   "upgrade across two minor versions for supported distro",
+			currentVersion:         "v1.3.0-dev",
+			upgradeVersion:         "v1.5.0",
+			distro:                 "Def",
+			twoMinorUpgradeDistros: "abc, def",
+			expectError:            false,
+		},
+		{
+			name:                   "upgrade across two minor versions for unsupported distro",
+			currentVersion:         "v1.3.0-dev",
+			upgradeVersion:         "v1.5.0",
+			distro:                 "dev",
+			twoMinorUpgradeDistros: "abc, def",
+			expectError:            true,
+		},
+		{
+			name:                   "upgrade across three minor versions for supported distro",
+			currentVersion:         "v1.2.0-dev",
+			upgradeVersion:         "v1.5.0",
+			distro:                 "def",
+			twoMinorUpgradeDistros: "abc, def",
+			expectError:            true,
 		},
 		{
 			name:           "upgradable minor version",
@@ -175,6 +201,11 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)
+			t.Setenv(types.EnvDistro, tt.distro)
+
+			origTwoMinor := meta.TwoMinorUpgradeDistros
+			meta.TwoMinorUpgradeDistros = tt.twoMinorUpgradeDistros
+			t.Cleanup(func() { meta.TwoMinorUpgradeDistros = origTwoMinor })
 
 			meta.Version = tt.upgradeVersion
 			err := newCheckLHUpgradePathSupported(lhClient)
