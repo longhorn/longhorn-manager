@@ -2,6 +2,12 @@ package controller
 
 import (
 	"context"
+<<<<<<< HEAD
+=======
+	"regexp"
+	"strconv"
+	"strings"
+>>>>>>> a6b529e1 (fix: allow live engine upgrade for same-commit revisioned engine images)
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -25,6 +31,13 @@ const (
 	podRecreateInitBackoff = 1 * time.Second
 	podRecreateMaxBackoff  = 120 * time.Second
 	backoffGCPeriod        = 12 * time.Hour
+
+	// Matches revisioned engine image tags such as 1.10.2-4.12 or 1.10.2-4.20.
+	engineImageRevisionTagPattern = `.+-\d+\.\d+$`
+)
+
+var (
+	engineImageRevisionTagRegex = regexp.MustCompile(engineImageRevisionTagPattern)
 )
 
 // newBackoff returns a flowcontrol.Backoff and starts a background GC loop.
@@ -242,3 +255,32 @@ func getAwsIAMRoleArnFromSecret(ds *datastore.DataStore, namespace, secretName s
 	// Key not found; clear the annotation if needed.
 	return "", nil
 }
+<<<<<<< HEAD
+=======
+
+func getCorrectedEncryptedVolumeSize(volumeSizeStr string, labels map[string]string) (string, error) {
+	if encrypted, exists := labels[types.LonghornLabelVolumeEncrypted]; exists && encrypted == types.LonghornLabelValueEnabled {
+		volumeSize, err := strconv.ParseInt(volumeSizeStr, 10, 64)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to convert volume size: %v", volumeSizeStr)
+		}
+		correctedSize := volumeSize - lhtypes.Luks2EncryptionHeaderSize
+		if correctedSize < 0 {
+			return "", errors.Errorf("corrected volume size is negative: %d", correctedSize)
+		}
+		return strconv.FormatInt(correctedSize, 10), nil
+	}
+	return volumeSizeStr, nil
+}
+
+func isRevisionedEngineImage(image string) bool {
+	lastSlashIndex := strings.LastIndex(image, "/")
+	lastColonIndex := strings.LastIndex(image, ":")
+	if lastColonIndex <= lastSlashIndex {
+		return false
+	}
+
+	tag := image[lastColonIndex+1:]
+	return engineImageRevisionTagRegex.MatchString(tag)
+}
+>>>>>>> a6b529e1 (fix: allow live engine upgrade for same-commit revisioned engine images)
