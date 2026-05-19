@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
+
 	"github.com/longhorn/longhorn-manager/engineapi"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 // mockEngineClientProxy wraps EngineSimulator and overrides ReplicaRebuildVerify for test control.
@@ -146,6 +148,56 @@ func TestNeedStatusUpdate(t *testing.T) {
 			needStatusUpdate, rateLimited := tc.monitor.needStatusUpdate(tc.existingEngine, tc.engine)
 			assert.Equal(tc.expectNeedStatusUpdate, needStatusUpdate, "needStatusUpdate")
 			assert.Equal(tc.expectRateLimited, rateLimited, "rateLimited")
+		})
+	}
+}
+
+func TestShouldAllowEngineImageUpgrade(t *testing.T) {
+	shouldAllowEngineImageUpgrade := func(sourceGitCommit, targetGitCommit, targetImage string) bool {
+		return sourceGitCommit != targetGitCommit || isRevisionedEngineImage(targetImage)
+	}
+
+	tests := map[string]struct {
+		sourceGitCommit string
+		targetGitCommit string
+		targetImage     string
+		expected        bool
+	}{
+		"same commit and regular release tag is blocked": {
+			sourceGitCommit: "same-commit",
+			targetGitCommit: "same-commit",
+			targetImage:     "dp.apps.rancher.io/containers/longhorn-engine:1.10.2",
+			expected:        false,
+		},
+		"same commit and revisioned release tag is allowed": {
+			sourceGitCommit: "same-commit",
+			targetGitCommit: "same-commit",
+			targetImage:     "dp.apps.rancher.io/containers/longhorn-engine:1.10.2-4.12",
+			expected:        true,
+		},
+		"same commit and master head tag is blocked": {
+			sourceGitCommit: "same-commit",
+			targetGitCommit: "same-commit",
+			targetImage:     "longhornio/longhorn-engine:master-head",
+			expected:        false,
+		},
+		"same commit and revisioned release tag with registry port is allowed": {
+			sourceGitCommit: "same-commit",
+			targetGitCommit: "same-commit",
+			targetImage:     "registry:5000/longhorn-engine:1.10.2-1.1",
+			expected:        true,
+		},
+		"different commit and regular release tag is allowed": {
+			sourceGitCommit: "old-commit",
+			targetGitCommit: "new-commit",
+			targetImage:     "dp.apps.rancher.io/containers/longhorn-engine:1.10.3",
+			expected:        true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.expected, shouldAllowEngineImageUpgrade(tc.sourceGitCommit, tc.targetGitCommit, tc.targetImage))
 		})
 	}
 }
