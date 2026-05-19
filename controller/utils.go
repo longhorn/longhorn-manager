@@ -1,16 +1,9 @@
 package controller
 
 import (
-<<<<<<< HEAD
-=======
-	"context"
 	"regexp"
-	"strconv"
 	"strings"
-	"time"
 
-	"github.com/cockroachdb/errors"
->>>>>>> a6b529e1 (fix: allow live engine upgrade for same-commit revisioned engine images)
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,13 +16,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-<<<<<<< HEAD
-=======
 const (
-	podRecreateInitBackoff = 1 * time.Second
-	podRecreateMaxBackoff  = 120 * time.Second
-	backoffGCPeriod        = 12 * time.Hour
-
 	// Matches revisioned engine image tags such as 1.10.2-4.12 or 1.10.2-4.20.
 	engineImageRevisionTagPattern = `.+-\d+\.\d+$`
 )
@@ -38,27 +25,6 @@ var (
 	engineImageRevisionTagRegex = regexp.MustCompile(engineImageRevisionTagPattern)
 )
 
-// newBackoff returns a flowcontrol.Backoff and starts a background GC loop.
-func newBackoff(ctx context.Context) *flowcontrol.Backoff {
-	backoff := flowcontrol.NewBackOff(podRecreateInitBackoff, podRecreateMaxBackoff)
-
-	go func() {
-		ticker := time.NewTicker(backoffGCPeriod)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				backoff.GC()
-			}
-		}
-	}()
-
-	return backoff
-}
-
->>>>>>> a6b529e1 (fix: allow live engine upgrade for same-commit revisioned engine images)
 func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
 		if r.Spec.EvictionRequested {
@@ -181,80 +147,6 @@ func isSnapshotExistInEngine(snapshotName string, engine *longhorn.Engine) bool 
 	}
 	return false
 }
-<<<<<<< HEAD
-=======
-
-func newReplicaCR(v *longhorn.Volume, e *longhorn.Engine, hardNodeAffinity string) *longhorn.Replica {
-	return &longhorn.Replica{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateReplicaNameForVolume(v.Name),
-			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
-		},
-		Spec: longhorn.ReplicaSpec{
-			InstanceSpec: longhorn.InstanceSpec{
-				VolumeName:  v.Name,
-				VolumeSize:  v.Spec.Size,
-				Image:       v.Status.CurrentImage,
-				DataEngine:  v.Spec.DataEngine,
-				DesireState: longhorn.InstanceStateStopped,
-			},
-			EngineName:                       e.Name,
-			Active:                           true,
-			BackingImage:                     v.Spec.BackingImage,
-			HardNodeAffinity:                 hardNodeAffinity,
-			RevisionCounterDisabled:          v.Spec.RevisionCounterDisabled,
-			UnmapMarkDiskChainRemovedEnabled: e.Spec.UnmapMarkSnapChainRemovedEnabled,
-			SnapshotMaxCount:                 v.Spec.SnapshotMaxCount,
-			SnapshotMaxSize:                  v.Spec.SnapshotMaxSize,
-		},
-	}
-}
-
-func enqueueAfterDelay(queue workqueue.TypedRateLimitingInterface[any], obj interface{}, delay time.Duration) error {
-	key, err := controller.KeyFunc(obj)
-	if err != nil {
-		return errors.Wrapf(err, "couldn't get key for object %v", obj)
-	}
-	queue.AddAfter(key, delay)
-	return nil
-}
-
-// getAwsIAMRoleArnFromSecret retrieves the AWS IAM Role ARN from the specified secret in the given namespace.
-// returns the AWS IAM Role ARN string.
-func getAwsIAMRoleArnFromSecret(ds *datastore.DataStore, namespace, secretName string) (string, error) {
-	secret, err := ds.GetSecretRO(namespace, secretName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return "", nil
-		}
-		return "", err
-	}
-
-	if secret == nil || secret.Data == nil {
-		return "", nil
-	}
-
-	if arn, ok := secret.Data[types.AWSIAMRoleArn]; ok {
-		return string(arn), nil
-	}
-	// Key not found; clear the annotation if needed.
-	return "", nil
-}
-
-func getCorrectedEncryptedVolumeSize(volumeSizeStr string, labels map[string]string) (string, error) {
-	if encrypted, exists := labels[types.LonghornLabelVolumeEncrypted]; exists && encrypted == types.LonghornLabelValueEnabled {
-		volumeSize, err := strconv.ParseInt(volumeSizeStr, 10, 64)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to convert volume size: %v", volumeSizeStr)
-		}
-		correctedSize := volumeSize - lhtypes.Luks2EncryptionHeaderSize
-		if correctedSize < 0 {
-			return "", errors.Errorf("corrected volume size is negative: %d", correctedSize)
-		}
-		return strconv.FormatInt(correctedSize, 10), nil
-	}
-	return volumeSizeStr, nil
-}
 
 func isRevisionedEngineImage(image string) bool {
 	lastSlashIndex := strings.LastIndex(image, "/")
@@ -266,4 +158,3 @@ func isRevisionedEngineImage(image string) bool {
 	tag := image[lastColonIndex+1:]
 	return engineImageRevisionTagRegex.MatchString(tag)
 }
->>>>>>> a6b529e1 (fix: allow live engine upgrade for same-commit revisioned engine images)
