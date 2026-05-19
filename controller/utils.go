@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -28,6 +30,13 @@ const (
 	podRecreateInitBackoff = 1 * time.Second
 	podRecreateMaxBackoff  = 120 * time.Second
 	backoffGCPeriod        = 12 * time.Hour
+
+	// Matches revisioned engine image tags such as 1.10.2-4.12 or 1.10.2-4.20.
+	engineImageRevisionTagPattern = `.+-\d+\.\d+$`
+)
+
+var (
+	engineImageRevisionTagRegex = regexp.MustCompile(engineImageRevisionTagPattern)
 )
 
 // newBackoff returns a flowcontrol.Backoff and starts a background GC loop.
@@ -259,4 +268,15 @@ func getCorrectedEncryptedVolumeSize(volumeSizeStr string, labels map[string]str
 		return strconv.FormatInt(correctedSize, 10), nil
 	}
 	return volumeSizeStr, nil
+}
+
+func isRevisionedEngineImage(image string) bool {
+	lastSlashIndex := strings.LastIndex(image, "/")
+	lastColonIndex := strings.LastIndex(image, ":")
+	if lastColonIndex <= lastSlashIndex {
+		return false
+	}
+
+	tag := image[lastColonIndex+1:]
+	return engineImageRevisionTagRegex.MatchString(tag)
 }

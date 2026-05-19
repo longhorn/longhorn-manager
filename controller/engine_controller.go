@@ -2654,9 +2654,10 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 			return err
 		}
 
-		// Don't use image with different image name but same commit here. It
-		// will cause live replica to be removed. Volume controller should filter those.
-		if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
+		// Revisioned engine images may keep the same engine git commit while still
+		// representing a distinct image artifact that should follow the regular
+		// upgrade flow, e.g. 1.10.2 -> 1.10.2-4.12 or 1.10.2-4.12 -> 1.10.2-4.20.
+		if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit || isRevisionedEngineImage(e.Spec.Image) {
 			log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 			if err := ec.UpgradeEngineInstance(e, log); err != nil {
 				return err
