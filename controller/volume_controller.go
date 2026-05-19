@@ -3296,7 +3296,7 @@ func (c *VolumeController) checkOldAndNewEngineImagesForLiveUpgrade(v *longhorn.
 		return errors.Wrapf(err, "engine live upgrade to %v, but the image wasn't ready", newImage.Spec.Image)
 	}
 
-	if oldImage.Status.GitCommit == newImage.Status.GitCommit {
+	if oldImage.Status.GitCommit == newImage.Status.GitCommit && !isRevisionedEngineImage(newImage.Spec.Image) {
 		return fmt.Errorf("engine image %v and %v are identical, delay upgrade until detach for volume", oldImage.Spec.Image, newImage.Spec.Image)
 	}
 
