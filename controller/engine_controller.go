@@ -1054,7 +1054,13 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			// alongside it.
 			currentReplicaTransitionTimeMap[replica] = util.Now()
 		} else {
-			if r.Mode != engine.Status.ReplicaModeMap[replica] {
+			prevMode := engine.Status.ReplicaModeMap[replica]
+			// A persisted ERR for a replica the engine still reports as WO is an override from
+			// markFailedRebuildsAsErr; the engine keeps reporting WO until the replica is actually
+			// stopped. Treat this as unchanged so we don't spam "rebuilding" events or reset the
+			// transition time every cycle.
+			overrideStillInEffect := prevMode == longhorn.ReplicaModeERR && r.Mode == longhorn.ReplicaModeWO
+			if r.Mode != prevMode && !overrideStillInEffect {
 				switch r.Mode {
 				case longhorn.ReplicaModeERR:
 					m.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFaulted, "Detected replica %v (%v) in error", replica, addr)
@@ -1071,7 +1077,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			} else {
 				oldTime, ok := engine.Status.ReplicaTransitionTimeMap[replica]
 				if !ok {
-					m.logger.Errorf("BUG: Replica %v (%v) was previously in mode %v but transition time was not recorded", replica, addr, engine.Status.ReplicaModeMap[replica])
+					m.logger.Errorf("BUG: Replica %v (%v) was previously in mode %v but transition time was not recorded", replica, addr, prevMode)
 					currentReplicaTransitionTimeMap[replica] = util.Now()
 				} else {
 					currentReplicaTransitionTimeMap[replica] = oldTime
@@ -1169,10 +1175,18 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 
-		// The rebuild failure will be handled by ec.startRebuilding()
-		rebuildStatus, err := engineClientProxy.ReplicaRebuildStatus(engine)
-		if err != nil {
-			return err
+		// Rebuild failures during ec.startRebuilding() are handled by that function. Failures
+		// surfaced afterwards (sync agent retries exhausted, gRPC interruption, node down)
+		// leave the replica stuck in WO — markFailedRebuildsAsErr below catches those.
+		rebuildStatus, statusErr := engineClientProxy.ReplicaRebuildStatus(engine)
+		if statusErr != nil {
+			// Run markFailedRebuildsAsErr anyway so Path 2 (Replica CR FailedAt /
+			// InstanceStateError) can still clean up stuck WO entries when the rebuild
+			// status fetch itself is timing out (the node-down case it was designed for).
+			// Path 1 harmlessly no-ops on a nil rebuildStatus.
+			m.logger.WithError(statusErr).Warn("Failed to fetch rebuild status; running Replica CR failure cleanup only")
+			m.markFailedRebuildsAsErr(engine, existingEngine, addressReplicaMap, nil, m.ds.GetReplicaRO)
+			return statusErr
 		}
 
 		if err := m.checkAndApplyRebuildQoS(engine, engineClientProxy, rebuildStatus); err != nil {
@@ -1180,9 +1194,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 		engine.Status.RebuildStatus = rebuildStatus
 
-		// If a rebuild completed while the gRPC connection to the sync agent was interrupted,
-		// reloadAndVerify is never called and the replica stays in WO mode indefinitely.
-		// Detect this case and call ReplicaRebuildVerify to transition the replica to RW.
+		m.markFailedRebuildsAsErr(engine, existingEngine, addressReplicaMap, rebuildStatus, m.ds.GetReplicaRO)
 		m.verifyCompletedRebuild(engine, addressReplicaMap, rebuildStatus, engineClientProxy)
 
 		// It's meaningless to sync the trim related field for old engines or engines in old engine instance managers
@@ -1407,6 +1419,87 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	return nil
+}
+
+// markFailedRebuildsAsErr transitions a WO replica to ERR when we can prove the rebuild is dead.
+// Without this, ReplicaList keeps reporting WO and rebuildNewReplica blocks forever. Two signals
+// are considered:
+//  1. The sync agent reports a failed rebuild status (normal case: engine reachable, replica dead).
+//  2. The Replica CR is marked failed (node-down case: rebuild status fetch may be timing out).
+//
+// Event and transition time are emitted only on the first transition because the engine keeps
+// reporting WO, so our ERR override is re-applied every cycle until the replica is stopped.
+func (m *EngineMonitor) markFailedRebuildsAsErr(engine, existingEngine *longhorn.Engine,
+	addressReplicaMap map[string]string, rebuildStatus map[string]*longhorn.RebuildStatus,
+	getReplica func(name string) (*longhorn.Replica, error)) {
+	// Path 1: the sync agent itself reports the rebuild as errored.
+	for url, status := range rebuildStatus {
+		if status == nil || status.IsRebuilding {
+			continue
+		}
+		if status.State != engineapi.ProcessStateError && status.Error == "" {
+			continue
+		}
+
+		addr := engineapi.GetAddressFromBackendReplicaURL(url)
+		replicaName := addressReplicaMap[addr]
+		if replicaName == "" {
+			continue
+		}
+
+		reason := fmt.Sprintf("sync agent reported rebuild state=%q", status.State)
+		if status.Error != "" {
+			reason = fmt.Sprintf("%s, error: %v", reason, status.Error)
+		}
+		m.flipWOReplicaToErr(engine, existingEngine, replicaName, addr, reason)
+	}
+
+	// Path 2: the Replica CR is already known-failed (e.g., node down, instance-manager unreachable),
+	// but the engine still reports WO. Without flipping to ERR, rebuildNewReplica never unblocks.
+	for replicaName, mode := range engine.Status.ReplicaModeMap {
+		if mode != longhorn.ReplicaModeWO {
+			continue
+		}
+		if strings.HasPrefix(replicaName, unknownReplicaPrefix) {
+			continue
+		}
+		r, err := getReplica(replicaName)
+		if err != nil || r == nil {
+			continue
+		}
+		if r.Spec.FailedAt == "" && r.Status.CurrentState != longhorn.InstanceStateError {
+			continue
+		}
+
+		m.flipWOReplicaToErr(engine, existingEngine, replicaName, engine.Status.CurrentReplicaAddressMap[replicaName],
+			fmt.Sprintf("replica CR is failed (FailedAt=%q, CurrentState=%q)",
+				r.Spec.FailedAt, r.Status.CurrentState))
+	}
+}
+
+// flipWOReplicaToErr overrides a stale WO entry in ReplicaModeMap with ERR. Callers are
+// responsible for deciding that the WO state is truly stale; this helper only enforces the
+// first-transition guard (event + transition time).
+func (m *EngineMonitor) flipWOReplicaToErr(engine, existingEngine *longhorn.Engine,
+	replicaName, addr, reason string) {
+	if engine.Status.ReplicaModeMap[replicaName] != longhorn.ReplicaModeWO {
+		return
+	}
+	alreadyErr := existingEngine.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeERR
+	engine.Status.ReplicaModeMap[replicaName] = longhorn.ReplicaModeERR
+	if alreadyErr {
+		return
+	}
+
+	m.logger.Warnf("Transitioning replica %v (%v) from WO to ERR: %v", replicaName, addr, reason)
+	if m.eventRecorder != nil {
+		m.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFaulted,
+			"Replica %v (%v) transitioned from WO to ERR: %v", replicaName, addr, reason)
+	}
+	if engine.Status.ReplicaTransitionTimeMap == nil {
+		engine.Status.ReplicaTransitionTimeMap = map[string]string{}
+	}
+	engine.Status.ReplicaTransitionTimeMap[replicaName] = util.Now()
 }
 
 // verifyCompletedRebuild detects replicas that finished rebuilding while the gRPC connection to the
