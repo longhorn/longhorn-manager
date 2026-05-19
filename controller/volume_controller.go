@@ -1913,6 +1913,14 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 					if err := util.LazyUnmount(cryptoDevice); err != nil {
 						return errors.Wrapf(err, "failed to lazy unmount crypto device %v for volume %v", cryptoDevice, v.Name)
 					}
+					if types.IsDataEngineV2(longhorn.DataEngineType(v.Spec.DataEngine)) {
+						// For v2 data engine, the dm-encrypted device will block the removing of the linear dm device that Longhorn creates for the volume on SPDK engine side.
+						// so we remove the encrypted dm device directly here to clear the stale state.
+						// And linear dm device will be removed on SPDK engine side when restarting the initiator.
+						if err := util.RemoveDMDevice(cryptoDevice); err != nil {
+							return errors.Wrapf(err, "failed to remove dm-crypt device %v for volume %v", cryptoDevice, v.Name)
+						}
+					}
 				}
 			}
 		}
