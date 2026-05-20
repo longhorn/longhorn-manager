@@ -547,18 +547,9 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		isV1EngineFilesystemDisk := types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem
-		isV2EngineBlockDisk := types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock
-		if !isV1EngineFilesystemDisk && !isV2EngineBlockDisk {
-			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
-			continue
-		}
-
-		if !datastore.IsSupportedVolumeSize(volume.Spec.DataEngine, diskStatus.FSType, volume.Spec.Size) {
-			logrus.Debugf("Volume %v size %v is not compatible with the file system %v of the disk %v", volume.Name, volume.Spec.Size, diskStatus.Type, diskName)
-			errs.Append(longhorn.ErrorReplicaScheduleIncompatibleVolumeSize,
-				fmt.Errorf("volume %v size %v is not compatible with the file system %v of the disk %v",
-					volume.Name, volume.Spec.Size, diskStatus.Type, diskName))
+		if eligible, reason, msg := rcs.IsDiskEligibleForVolume(diskSpec, diskStatus, volume, allowEmptyDiskSelectorVolume, biDiskSelector); !eligible {
+			errs.Append(reason,
+				fmt.Errorf("disk %v on node %v: %v", diskName, node.Name, msg))
 			continue
 		}
 
@@ -588,25 +579,6 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 				errs.Append(longhorn.ErrorReplicaScheduleInsufficientStorage,
 					fmt.Errorf("disk %v on node %v does not have enough storage available for replica %v with size %v",
 						diskName, node.Name, volume.Name, volume.Spec.Size))
-				continue
-			}
-		}
-
-		// Check if the Disk's Tags are valid.
-		if !types.IsSelectorsInTags(diskSpec.Tags, volume.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
-			errs.Append(longhorn.ErrorReplicaScheduleTagsNotFulfilled,
-				fmt.Errorf("disk %v on node %v does not match the disk selector %v for volume %v",
-					diskName, node.Name, volume.Spec.DiskSelector, volume.Name))
-			continue
-		}
-
-		if volume.Spec.BackingImage != "" {
-			// If the disks don't match the tags of the backing image of this volume,
-			// don't schedule the replica on it because it will hang there
-			if !types.IsSelectorsInTags(diskSpec.Tags, biDiskSelector, allowEmptyDiskSelectorVolume) {
-				errs.Append(longhorn.ErrorReplicaScheduleTagsNotFulfilled,
-					fmt.Errorf("disk %v on node %v does not match the disk selector %v for backing image %v of volume %v",
-						diskName, node.Name, biDiskSelector, volume.Spec.BackingImage, volume.Name))
 				continue
 			}
 		}
@@ -1282,6 +1254,58 @@ func (rcs *ReplicaScheduler) ValidateDiskAvailableForExpansion(requiredBytes int
 	}
 
 	return nil
+}
+
+// IsDiskEligibleForVolume validates whether a disk meets the basic eligibility
+// requirements for hosting a replica of the given volume. This consolidates the
+// common checks shared between the replica scheduling path and the disk-pressure
+// auto-balance candidate evaluation.
+//
+// biDiskSelector is the backing image's DiskSelector (if any). Callers should
+// fetch it once per volume evaluation via GetBackingImageRO and pass it in to
+// avoid repeated lister lookups inside per-disk loops.
+//
+// Returns:
+//   - eligible: whether the disk passes all checks.
+//   - reason: an ErrorReplicaSchedule* constant categorizing the failure (empty when eligible).
+//   - message: a human-readable explanation of the failure (empty when eligible).
+func (rcs *ReplicaScheduler) IsDiskEligibleForVolume(diskSpec longhorn.DiskSpec, diskStatus *longhorn.DiskStatus, volume *longhorn.Volume, allowEmptyDiskSelectorVolume bool, biDiskSelector []string) (eligible bool, reason string, message string) {
+	if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+		return false, longhorn.ErrorReplicaScheduleDiskUnavailable, "disk does not allow scheduling or eviction is requested"
+	}
+
+	// Validate disk type compatibility with the volume's data engine.
+	isV1EngineFilesystemDisk := types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem
+	isV2EngineBlockDisk := types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock
+	if !isV1EngineFilesystemDisk && !isV2EngineBlockDisk {
+		return false, longhorn.ErrorReplicaScheduleDiskUnavailable,
+			fmt.Sprintf("disk type %v is not compatible with data engine %v", diskSpec.Type, volume.Spec.DataEngine)
+	}
+
+	if !datastore.IsSupportedVolumeSize(volume.Spec.DataEngine, diskStatus.FSType, volume.Spec.Size) {
+		return false, longhorn.ErrorReplicaScheduleIncompatibleVolumeSize,
+			fmt.Sprintf("volume size %v is not compatible with file system %v", volume.Spec.Size, diskStatus.FSType)
+	}
+
+	// Check volume disk selector tags.
+	if !types.IsSelectorsInTags(diskSpec.Tags, volume.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
+		return false, longhorn.ErrorReplicaScheduleTagsNotFulfilled,
+			fmt.Sprintf("disk tags %v do not match volume disk selector %v", diskSpec.Tags, volume.Spec.DiskSelector)
+	}
+
+	// Check backing image disk selector tags (only when a backing image is in use).
+	// Gate on volume.Spec.BackingImage rather than len(biDiskSelector) to preserve
+	// the allow-empty-disk-selector-volume semantics: when a backing image has an
+	// empty DiskSelector and the setting is false, disks with tags must be rejected
+	// to stay consistent with backing image distribution logic.
+	if volume.Spec.BackingImage != "" {
+		if !types.IsSelectorsInTags(diskSpec.Tags, biDiskSelector, allowEmptyDiskSelectorVolume) {
+			return false, longhorn.ErrorReplicaScheduleTagsNotFulfilled,
+				fmt.Sprintf("disk tags %v do not match backing image disk selector %v", diskSpec.Tags, biDiskSelector)
+		}
+	}
+
+	return true, "", ""
 }
 
 func (rcs *ReplicaScheduler) IsSchedulableToDiskConsiderDiskPressure(diskPressurePercentage, size, requiredStorage int64, info *DiskSchedulingInfo) bool {
