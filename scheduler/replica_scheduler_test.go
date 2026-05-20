@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
@@ -21,8 +23,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -1727,4 +1727,205 @@ func (s *TestSuite) TestScheduleReplicaToDiskOnLocalNode(c *C) {
 	replica1.Spec.FailedAt = getTestNow().String()
 	rs.scheduleReplicaToDiskOnLocalNode(replica2, replicas, volume, diskCandidates)
 	c.Assert(replica2.Spec.NodeID, Equals, TestNode1)
+}
+
+func (s *TestSuite) TestIsDiskEligibleForVolume(c *C) {
+	rcs := &ReplicaScheduler{} // No datastore calls needed; all inputs are passed in.
+
+	baseDiskSpec := longhorn.DiskSpec{
+		Type:            longhorn.DiskTypeFilesystem,
+		Path:            TestDefaultDataPath,
+		AllowScheduling: true,
+		Tags:            []string{"primary"},
+	}
+	baseDiskStatus := &longhorn.DiskStatus{
+		StorageAvailable: TestDiskAvailableSize,
+		StorageMaximum:   TestDiskSize,
+		FSType:           "ext4",
+	}
+	baseVolume := &longhorn.Volume{
+		Spec: longhorn.VolumeSpec{
+			Size:         TestVolumeSize,
+			DataEngine:   longhorn.DataEngineTypeV1,
+			DiskSelector: []string{"primary"},
+		},
+	}
+
+	tests := []struct {
+		name                      string
+		diskSpec                  longhorn.DiskSpec
+		diskStatus                *longhorn.DiskStatus
+		volume                    *longhorn.Volume
+		allowEmptyDiskSelectorVol bool
+		biDiskSelector            []string
+		expect                    bool
+		expectReason              string
+	}{
+		{
+			name:       "Eligible - tags match, no backing image selector",
+			diskSpec:   baseDiskSpec,
+			diskStatus: baseDiskStatus,
+			volume:     baseVolume,
+			expect:     true,
+		},
+		{
+			name: "Ineligible - volume diskSelector mismatch",
+			diskSpec: longhorn.DiskSpec{
+				Type:            longhorn.DiskTypeFilesystem,
+				Path:            TestDefaultDataPath,
+				AllowScheduling: true,
+				Tags:            []string{"secondary"},
+			},
+			diskStatus:   baseDiskStatus,
+			volume:       baseVolume,
+			expect:       false,
+			expectReason: longhorn.ErrorReplicaScheduleTagsNotFulfilled,
+		},
+		{
+			name: "Ineligible - AllowScheduling disabled",
+			diskSpec: longhorn.DiskSpec{
+				Type:            longhorn.DiskTypeFilesystem,
+				Path:            TestDefaultDataPath,
+				AllowScheduling: false,
+				Tags:            []string{"primary"},
+			},
+			diskStatus:   baseDiskStatus,
+			volume:       baseVolume,
+			expect:       false,
+			expectReason: longhorn.ErrorReplicaScheduleDiskUnavailable,
+		},
+		{
+			name: "Ineligible - EvictionRequested",
+			diskSpec: longhorn.DiskSpec{
+				Type:              longhorn.DiskTypeFilesystem,
+				Path:              TestDefaultDataPath,
+				AllowScheduling:   true,
+				EvictionRequested: true,
+				Tags:              []string{"primary"},
+			},
+			diskStatus:   baseDiskStatus,
+			volume:       baseVolume,
+			expect:       false,
+			expectReason: longhorn.ErrorReplicaScheduleDiskUnavailable,
+		},
+		{
+			name: "Ineligible - disk type mismatch (block disk for v1 engine)",
+			diskSpec: longhorn.DiskSpec{
+				Type:            longhorn.DiskTypeBlock,
+				Path:            TestDefaultDataPath,
+				AllowScheduling: true,
+				Tags:            []string{"primary"},
+			},
+			diskStatus:   baseDiskStatus,
+			volume:       baseVolume,
+			expect:       false,
+			expectReason: longhorn.ErrorReplicaScheduleDiskUnavailable,
+		},
+		{
+			name:       "Ineligible - backing image diskSelector mismatch",
+			diskSpec:   baseDiskSpec,
+			diskStatus: baseDiskStatus,
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					Size:         TestVolumeSize,
+					DataEngine:   longhorn.DataEngineTypeV1,
+					DiskSelector: []string{"primary"},
+					BackingImage: "test-bi",
+				},
+			},
+			biDiskSelector: []string{"special-bi-tag"},
+			expect:         false,
+			expectReason:   longhorn.ErrorReplicaScheduleTagsNotFulfilled,
+		},
+		{
+			name: "Eligible - backing image diskSelector matches disk tags",
+			diskSpec: longhorn.DiskSpec{
+				Type:            longhorn.DiskTypeFilesystem,
+				Path:            TestDefaultDataPath,
+				AllowScheduling: true,
+				Tags:            []string{"primary", "special-bi-tag"},
+			},
+			diskStatus: baseDiskStatus,
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					Size:         TestVolumeSize,
+					DataEngine:   longhorn.DataEngineTypeV1,
+					DiskSelector: []string{"primary"},
+					BackingImage: "test-bi",
+				},
+			},
+			biDiskSelector: []string{"special-bi-tag"},
+			expect:         true,
+		},
+		{
+			name: "Ineligible - backing image with empty diskSelector, allowEmpty=false, disk has tags",
+			diskSpec: longhorn.DiskSpec{
+				Type:            longhorn.DiskTypeFilesystem,
+				Path:            TestDefaultDataPath,
+				AllowScheduling: true,
+				Tags:            []string{"primary"},
+			},
+			diskStatus: baseDiskStatus,
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					Size:         TestVolumeSize,
+					DataEngine:   longhorn.DataEngineTypeV1,
+					DiskSelector: []string{"primary"},
+					BackingImage: "test-bi",
+				},
+			},
+			biDiskSelector:            []string{},
+			allowEmptyDiskSelectorVol: false,
+			expect:                    false,
+			expectReason:              longhorn.ErrorReplicaScheduleTagsNotFulfilled,
+		},
+		{
+			name: "Eligible - empty volume diskSelector with allowEmptyDiskSelectorVolume=true",
+			diskSpec: longhorn.DiskSpec{
+				Type:            longhorn.DiskTypeFilesystem,
+				Path:            TestDefaultDataPath,
+				AllowScheduling: true,
+				Tags:            []string{"anything"},
+			},
+			diskStatus: baseDiskStatus,
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					Size:         TestVolumeSize,
+					DataEngine:   longhorn.DataEngineTypeV1,
+					DiskSelector: []string{},
+				},
+			},
+			allowEmptyDiskSelectorVol: true,
+			expect:                    true,
+		},
+		{
+			name: "Ineligible - empty volume diskSelector with allowEmptyDiskSelectorVolume=false and disk has tags",
+			diskSpec: longhorn.DiskSpec{
+				Type:            longhorn.DiskTypeFilesystem,
+				Path:            TestDefaultDataPath,
+				AllowScheduling: true,
+				Tags:            []string{"anything"},
+			},
+			diskStatus: baseDiskStatus,
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					Size:         TestVolumeSize,
+					DataEngine:   longhorn.DataEngineTypeV1,
+					DiskSelector: []string{},
+				},
+			},
+			allowEmptyDiskSelectorVol: false,
+			expect:                    false,
+			expectReason:              longhorn.ErrorReplicaScheduleTagsNotFulfilled,
+		},
+	}
+
+	for _, tt := range tests {
+		c.Logf("Running scenario: %s", tt.name)
+		result, reason, _ := rcs.IsDiskEligibleForVolume(tt.diskSpec, tt.diskStatus, tt.volume, tt.allowEmptyDiskSelectorVol, tt.biDiskSelector)
+		c.Assert(result, Equals, tt.expect, Commentf("scenario: %s", tt.name))
+		if !tt.expect {
+			c.Assert(reason, Equals, tt.expectReason, Commentf("scenario: %s reason", tt.name))
+		}
+	}
 }

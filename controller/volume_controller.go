@@ -2806,6 +2806,20 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 		return errors.Errorf("%v setting is 0, skip auto-balance replicas in disk pressure", types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
 	}
 
+	allowEmptyDiskSelectorVolume, err := c.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return err
+	}
+
+	var biDiskSelector []string
+	if volume.Spec.BackingImage != "" {
+		bi, err := c.ds.GetBackingImageRO(volume.Spec.BackingImage)
+		if err != nil {
+			return err
+		}
+		biDiskSelector = bi.Spec.DiskSelector
+	}
+
 	nodes, err := c.ds.ListNodesRO()
 	if err != nil {
 		return err
@@ -2841,7 +2855,7 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 			continue
 		}
 
-		if !diskSpec.AllowScheduling {
+		if eligible, _, _ := c.scheduler.IsDiskEligibleForVolume(diskSpec, diskStatus, volume, allowEmptyDiskSelectorVolume, biDiskSelector); !eligible {
 			continue
 		}
 
