@@ -135,7 +135,7 @@ func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error
 
 // ReplicaAdd calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error {
+func (e *EngineBinary) ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, linkedCloneSrcReplicaName string) error {
 	engine, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return fmt.Errorf("unsupported object type %T for engine binary replica add", obj)
