@@ -1162,6 +1162,25 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 		return false, nil
 	}
 
+	// For linked-clone replicas, the src replica must be healthy on the same disk.
+	// RebuildingDstFinish calls repairCloneEntrypoint which needs the src replica's
+	// LVS present on this node to re-create the entrypoint snapshot. If the src
+	// replica is absent or unhealthy, defer reuse until it recovers.
+	if r.Spec.LinkedCloneSrcReplicaName != "" {
+		srcReplica, err := rcs.ds.GetReplicaRO(r.Spec.LinkedCloneSrcReplicaName)
+		if err != nil {
+			logrus.Warnf("Failed to get src replica %v for linked-clone replica %v: %v",
+				r.Spec.LinkedCloneSrcReplicaName, r.Name, err)
+			return false, nil
+		}
+		if srcReplica.Spec.NodeID != r.Spec.NodeID || srcReplica.Spec.DiskID != r.Spec.DiskID {
+			return false, nil
+		}
+		if srcReplica.Spec.FailedAt != "" || srcReplica.Spec.HealthyAt == "" {
+			return false, nil
+		}
+	}
+
 	return true, nil
 }
 
