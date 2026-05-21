@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,6 +42,11 @@ const (
 	BackupBlockSize2Mi           = 2 * BackupBlockSizeMi
 	BackupBlockSize16Mi          = 16 * BackupBlockSizeMi
 	BackupBlockSizeInvalid int64 = -1
+
+	// maxCPU is the maximum supported CPU number.
+	// This is a reasonable upper bound to prevent resource exhaustion from malicious input
+	// while supporting modern high-core-count servers.
+	maxCPU = 1023
 )
 
 type SettingType string
@@ -1785,7 +1791,7 @@ var (
 
 	SettingDefinitionDataEngineCPUMask = SettingDefinition{
 		DisplayName:        "Data Engine CPU Mask",
-		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the number of assigned cores does not exceed the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1.\n\n",
+		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the number of assigned cores does not exceed the guaranteed Instance Manager CPUs for the V2 Data Engine. Accepts hex mask format (e.g., 0x1, 0xff) or CPU list format (e.g., 1-3,5,7). CPU list format is automatically converted to hex mask. The default value is 0x1.\n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -2822,6 +2828,11 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 			if _, err := UnmarshalOrphanResourceTypes(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
+
+		case SettingNameDataEngineCPUMask:
+			if _, err := NormalizeCPUMask(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
 		}
 	}
 
@@ -2857,4 +2868,147 @@ func parseSettingSingleString(definition SettingDefinition, value string) (map[l
 	}
 
 	return values, nil
+}
+
+// CPUListToHexMask converts a CPU list format string (e.g., "1-3,5,7") to a hex mask (e.g., "0xae").
+// Supported formats:
+//   - Individual CPUs: "1,2,3"
+//   - Ranges: "0-3"
+//   - Mixed: "1-3,5,7"
+//   - Parenthesized groups: "(1-3),(5)"
+func CPUListToHexMask(cpuList string) (string, error) {
+	mask, err := parseCPUListToMask(cpuList)
+	if err != nil {
+		return "", err
+	}
+	if mask.Sign() == 0 {
+		return "", fmt.Errorf("CPU list is empty")
+	}
+
+	return "0x" + mask.Text(16), nil
+}
+
+// parseCPUListToMask parses a CPU list string and builds the bitmask directly
+// using math/big.Int to support arbitrary CPU counts. Each CPU number is
+// validated immediately against the valid range (0-maxCPU), so malicious inputs
+// like "0-1000000000" fail fast without large allocations.
+func parseCPUListToMask(cpuList string) (*big.Int, error) {
+	// Remove parentheses — they are optional grouping in DPDK lcores format
+	cpuList = strings.ReplaceAll(cpuList, "(", "")
+	cpuList = strings.ReplaceAll(cpuList, ")", "")
+	cpuList = strings.TrimSpace(cpuList)
+
+	if cpuList == "" {
+		return nil, fmt.Errorf("CPU list is empty")
+	}
+
+	mask := new(big.Int)
+	parts := strings.Split(cpuList, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("invalid CPU list %q: empty CPU entry", cpuList)
+		}
+
+		if strings.Contains(part, "-") {
+			rangeParts := strings.SplitN(part, "-", 2)
+			start, err := strconv.Atoi(strings.TrimSpace(rangeParts[0]))
+			if err != nil {
+				return nil, fmt.Errorf("invalid CPU number %q in range %q", rangeParts[0], part)
+			}
+			end, err := strconv.Atoi(strings.TrimSpace(rangeParts[1]))
+			if err != nil {
+				return nil, fmt.Errorf("invalid CPU number %q in range %q", rangeParts[1], part)
+			}
+			if start < 0 || start > maxCPU {
+				return nil, fmt.Errorf("CPU number %d is out of valid range (0-%d)", start, maxCPU)
+			}
+			if end < 0 || end > maxCPU {
+				return nil, fmt.Errorf("CPU number %d is out of valid range (0-%d)", end, maxCPU)
+			}
+			if start > end {
+				return nil, fmt.Errorf("invalid CPU range %q: start (%d) > end (%d)", part, start, end)
+			}
+			for i := start; i <= end; i++ {
+				mask.SetBit(mask, i, 1)
+			}
+		} else {
+			cpu, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid CPU number %q", part)
+			}
+			if cpu < 0 || cpu > maxCPU {
+				return nil, fmt.Errorf("CPU number %d is out of valid range (0-%d)", cpu, maxCPU)
+			}
+			mask.SetBit(mask, cpu, 1)
+		}
+	}
+
+	return mask, nil
+}
+
+func isHexDigit(c rune) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// IsHexCPUMask checks if the value is a hex CPU mask format (e.g., "0x1", "0xff").
+func IsHexCPUMask(value string) bool {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, "0x") && !strings.HasPrefix(value, "0X") {
+		return false
+	}
+	hexPart := value[2:]
+	if hexPart == "" {
+		return false
+	}
+	for _, c := range hexPart {
+		if !isHexDigit(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// NormalizeCPUMask normalizes the CPU mask value. If it's already a hex mask, it is
+// validated to be non-zero and returned as-is. If it's a CPU list format (e.g., "1-3,5"),
+// it's converted to a hex mask.
+func NormalizeCPUMask(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("CPU mask value is empty")
+	}
+
+	// Handle values with 0x/0X prefix explicitly as hex masks
+	if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
+		hexPart := value[2:]
+		if hexPart == "" {
+			return "", fmt.Errorf("invalid hex CPU mask %q: missing hex digits after prefix", value)
+		}
+		// Each hex digit represents 4 bits; maxCPU+1 bits requires at most (maxCPU+1)/4 hex digits.
+		// Reject overly long inputs early to avoid expensive big.Int parsing.
+		maxHexDigits := (maxCPU + 1) / 4
+		if len(hexPart) > maxHexDigits {
+			return "", fmt.Errorf("CPU mask %q exceeds maximum supported CPU %d", value, maxCPU)
+		}
+		for _, c := range hexPart {
+			if !isHexDigit(c) {
+				return "", fmt.Errorf("invalid hex CPU mask %q: contains non-hex character %q", value, string(c))
+			}
+		}
+		mask := new(big.Int)
+		_, ok := mask.SetString(hexPart, 16)
+		if !ok {
+			return "", fmt.Errorf("invalid hex CPU mask %q", value)
+		}
+		if mask.Sign() == 0 {
+			return "", fmt.Errorf("CPU mask %q is zero, at least one CPU must be selected", value)
+		}
+		if mask.BitLen() > maxCPU+1 {
+			return "", fmt.Errorf("CPU mask %q exceeds maximum supported CPU %d", value, maxCPU)
+		}
+		return value, nil
+	}
+
+	// Try to parse as CPU list and convert to hex mask
+	return CPUListToHexMask(value)
 }

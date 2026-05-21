@@ -29,12 +29,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhutils "github.com/longhorn/go-common-libs/utils"
+
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
-	lhutils "github.com/longhorn/go-common-libs/utils"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -403,6 +404,10 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 			if err != nil {
 				return err
 			}
+			value, err = NormalizeSettingValue(sName, value)
+			if err != nil {
+				return err
+			}
 			logrus.Infof("Setting %v default value is updated to a customized value %v (raw value %v)", sName, value, raw)
 			definition.Default = value
 			types.SetSettingDefinition(sName, definition)
@@ -447,6 +452,35 @@ func GetSettingValidValue(definition types.SettingDefinition, value string) (str
 	}
 
 	return convertDataEngineValuesToJSONString(values)
+}
+
+// NormalizeSettingValue applies setting-specific normalization to a value that
+// has already been validated and converted to JSON format by GetSettingValidValue.
+// For example, it converts CPU list format to hex mask for the DataEngineCPUMask setting.
+func NormalizeSettingValue(name types.SettingName, value string) (string, error) {
+	if name != types.SettingNameDataEngineCPUMask {
+		return value, nil
+	}
+
+	var values map[longhorn.DataEngineType]string
+	if err := json.Unmarshal([]byte(value), &values); err != nil {
+		return "", fmt.Errorf("failed to unmarshal CPU mask setting value %q: %v", value, err)
+	}
+
+	for dataEngine, v := range values {
+		normalized, err := types.NormalizeCPUMask(v)
+		if err != nil {
+			return "", fmt.Errorf("failed to normalize CPU mask for data engine %s: %v", dataEngine, err)
+		}
+		values[dataEngine] = normalized
+	}
+
+	jsonBytes, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal normalized CPU mask setting value: %v", err)
+	}
+
+	return string(jsonBytes), nil
 }
 
 func convertDataEngineValuesToJSONString(values map[longhorn.DataEngineType]any) (string, error) {
