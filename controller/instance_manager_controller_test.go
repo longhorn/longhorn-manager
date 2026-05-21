@@ -32,11 +32,12 @@ type InstanceManagerTestCase struct {
 	nodeDown     bool
 	nodeID       string
 
-	currentPodStatus *corev1.PodStatus
-	currentOwnerID   string
-	currentState     longhorn.InstanceManagerState
-	currentEngines   map[string]longhorn.InstanceProcess
-	currentReplicas  map[string]longhorn.InstanceProcess
+	currentPodStatus  *corev1.PodStatus
+	currentOwnerID    string
+	currentState      longhorn.InstanceManagerState
+	currentEngines    map[string]longhorn.InstanceProcess
+	currentReplicas   map[string]longhorn.InstanceProcess
+	nodeSelectorValue string
 
 	expectedPodCount int
 	expectedStatus   longhorn.InstanceManagerStatus
@@ -155,6 +156,7 @@ func newTestInstanceManagerController(lhClient *lhfake.Clientset, kubeClient *fa
 		imc.cacheSyncs[index] = alwaysReady
 	}
 	imc.versionUpdater = fakeInstanceManagerVersionUpdater
+	imc.monitoringDisabled = true
 
 	return imc, nil
 }
@@ -166,7 +168,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager change ownership": {
 			TestNode1, false, TestNode1,
 			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning},
-			TestNode2, longhorn.InstanceManagerStateUnknown, nil, nil, 1,
+			TestNode2, longhorn.InstanceManagerStateUnknown, nil, nil, "",
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -216,6 +219,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 					},
 				},
 			},
+			"",
 			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:                 TestNode1,
@@ -242,7 +246,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
 			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning},
-			TestNode2, longhorn.InstanceManagerStateRunning, nil, nil, 1,
+			TestNode2, longhorn.InstanceManagerStateRunning, nil, nil, "",
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode2,
 				CurrentState:  longhorn.InstanceManagerStateUnknown,
@@ -266,7 +271,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
 			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodPending},
-			TestNode1, longhorn.InstanceManagerStateError, nil, nil, 1,
+			TestNode1, longhorn.InstanceManagerStateError, nil, nil, "",
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateStarting,
@@ -283,7 +289,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager running": {
 			TestNode1, false, TestNode1,
 			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning},
-			TestNode1, longhorn.InstanceManagerStateStarting, nil, nil, 1,
+			TestNode1, longhorn.InstanceManagerStateStarting, nil, nil, "",
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -310,7 +317,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager starting engine": {
 			TestNode1, false, TestNode1,
 			nil,
-			TestNode1, longhorn.InstanceManagerStateStopped, nil, nil, 1,
+			TestNode1, longhorn.InstanceManagerStateStopped, nil, nil, "",
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
@@ -332,7 +340,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager starting replica": {
 			TestNode1, false, TestNode1,
 			nil,
-			TestNode1, longhorn.InstanceManagerStateStopped, nil, nil, 1,
+			TestNode1, longhorn.InstanceManagerStateStopped, nil, nil, "",
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
@@ -354,7 +363,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager sync IP": {
 			TestNode1, false, TestNode1,
 			&corev1.PodStatus{PodIP: TestIP2, Phase: corev1.PodRunning},
-			TestNode1, longhorn.InstanceManagerStateRunning, nil, nil, 1,
+			TestNode1, longhorn.InstanceManagerStateRunning, nil, nil, "",
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -374,6 +384,60 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 					{
 						Type:   longhorn.InstanceManagerConditionTypeSettingSynced,
 						Status: longhorn.ConditionStatusTrue,
+					},
+				},
+			},
+		},
+		"instance manager node selector not matching - no pod created": {
+			TestNode1, false, TestNode1,
+			nil,
+			TestNode1, longhorn.InstanceManagerStateStopped, nil, nil, "kubernetes.io/hostname:does-not-exist",
+			0,
+			longhorn.InstanceManagerStatus{
+				OwnerID:       TestNode1,
+				CurrentState:  longhorn.InstanceManagerStateStopped,
+				APIMinVersion: 0,
+				APIVersion:    0,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypePodReady,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonPodNotFound,
+					},
+					{
+						Type:   longhorn.InstanceManagerConditionTypeNodeReady,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonNodeSelectorNotMatching,
+					},
+				},
+			},
+		},
+		"instance manager node selector not matching - existing pod deleted": {
+			// Pod is in Failed phase so syncStatusWithPod transitions the state to
+			// Error.  With state=Error, syncInstanceManagerPDB returns early and
+			// does not overwrite the NodeSelectorNotMatching condition set by
+			// handlePod.  syncMonitor also skips startMonitoring for Error state,
+			// which avoids leaking a goroutine that blocks test teardown.
+			TestNode1, false, TestNode1,
+			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodFailed},
+			TestNode1, longhorn.InstanceManagerStateRunning, nil, nil, "kubernetes.io/hostname:does-not-exist",
+			0,
+			longhorn.InstanceManagerStatus{
+				OwnerID:       TestNode1,
+				CurrentState:  longhorn.InstanceManagerStateError,
+				IP:            TestIP1,
+				APIMinVersion: 0,
+				APIVersion:    0,
+				Conditions: []longhorn.Condition{
+					{
+						Type:   longhorn.InstanceManagerConditionTypePodReady,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonPodFailed,
+					},
+					{
+						Type:   longhorn.InstanceManagerConditionTypeNodeReady,
+						Status: longhorn.ConditionStatusFalse,
+						Reason: longhorn.InstanceManagerConditionReasonNodeSelectorNotMatching,
 					},
 				},
 			},
@@ -448,6 +512,9 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		c.Assert(err, IsNil)
 
 		systemManagedComponentsNodeSelectorSetting := newSystemManagedComponentsNodeSelectorSetting()
+		if tc.nodeSelectorValue != "" {
+			systemManagedComponentsNodeSelectorSetting.Value = tc.nodeSelectorValue
+		}
 		systemManagedComponentsNodeSelectorSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), systemManagedComponentsNodeSelectorSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(systemManagedComponentsNodeSelectorSetting)
@@ -526,7 +593,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		c.Assert(podList.Items, HasLen, tc.expectedPodCount)
 
 		// Check the Pod that was created by the Instance Manager.
-		if tc.currentPodStatus == nil {
+		if tc.currentPodStatus == nil && tc.expectedPodCount > 0 {
 			pod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(pod.Spec.Containers[0].Name, Equals, "instance-manager")

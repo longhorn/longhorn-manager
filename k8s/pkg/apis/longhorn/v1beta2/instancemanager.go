@@ -26,8 +26,9 @@ const (
 	InstanceManagerConditionTypePodReady      = "PodReady"
 	InstanceManagerConditionTypeSettingSynced = "SettingSynced"
 
-	InstanceManagerConditionReasonNodeDown          = "Down"
-	InstanceManagerConditionReasonNodeUnschedulable = "Unschedulable"
+	InstanceManagerConditionReasonNodeDown                    = "Down"
+	InstanceManagerConditionReasonNodeUnschedulable           = "Unschedulable"
+	InstanceManagerConditionReasonNodeSelectorNotMatching     = "NodeSelectorNotMatching"
 
 	InstanceManagerConditionReasonPodDeleting = "Deleting"
 	InstanceManagerConditionReasonPodFailed   = "Failed"

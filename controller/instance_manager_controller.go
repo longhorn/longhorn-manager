@@ -17,6 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -73,7 +74,8 @@ type InstanceManagerController struct {
 	backoff *flowcontrol.Backoff
 
 	// for unit test
-	versionUpdater func(*longhorn.InstanceManager) error
+	versionUpdater     func(*longhorn.InstanceManager) error
+	monitoringDisabled bool
 }
 
 type InstanceManagerMonitor struct {
@@ -662,7 +664,12 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
-	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	isNodeSelectorMatching, err := imc.isNodeSelectorMatchingForIM(im)
+	if err != nil {
+		return err
+	}
+
+	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied && isNodeSelectorMatching) || areInstancesRunningInPod || isPodDeletedOrNotRunning
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
 		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
 		isPodDeletionNotRequired {
@@ -693,6 +700,17 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonNodeUnschedulable, fmt.Sprintf("Instance manager node %v is unschedulable", im.Spec.NodeID))
 		}
 		return err
+	}
+
+	// The pod spec carries both NodeSelector and NodeName. If the IM's node
+	// does not satisfy the selector, Kubernetes will immediately fail pod
+	// scheduling due to node selector / affinity mismatch. Skip pod creation
+	// here so the controller does not loop.
+	if !isNodeSelectorMatching {
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeNodeReady,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonNodeSelectorNotMatching,
+			fmt.Sprintf("Instance manager node %v does not match the system managed components node selector", im.Spec.NodeID))
+		return nil
 	}
 
 	backoffID := im.Name
@@ -811,6 +829,25 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
 		longhorn.ConditionStatusTrue, "", "")
 	return true, false, false, nil
+}
+
+// isNodeSelectorMatchingForIM returns true when the IM's node satisfies the
+// system-managed-components-node-selector setting, or when the setting is
+// empty.  It does not modify im.Status; callers are responsible for setting
+// the appropriate condition when the function returns false.
+func (imc *InstanceManagerController) isNodeSelectorMatchingForIM(im *longhorn.InstanceManager) (bool, error) {
+	nodeSelector, err := imc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return false, err
+	}
+	if len(nodeSelector) == 0 {
+		return true, nil
+	}
+	kubeNode, err := imc.ds.GetKubernetesNodeRO(im.Spec.NodeID)
+	if err != nil {
+		return false, err
+	}
+	return labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
 }
 
 func (imc *InstanceManagerController) isSettingTaintTolerationSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -964,6 +1001,10 @@ func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn
 }
 
 func (imc *InstanceManagerController) syncMonitor(im *longhorn.InstanceManager) error {
+	if imc.monitoringDisabled {
+		return nil
+	}
+
 	// For now Longhorn won't actively disable or enable monitoring when the InstanceManager is Unknown.
 	if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown {
 		return nil
