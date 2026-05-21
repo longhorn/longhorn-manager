@@ -3,13 +3,14 @@ package types
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 
-	corev1 "k8s.io/api/core/v1"
-
 	. "gopkg.in/check.v1"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -349,5 +350,197 @@ func (s *TestSuite) TestValidateManagerURL(c *C) {
 		} else {
 			c.Assert(err, NotNil, Commentf("Expected error for test case: %s", testName))
 		}
+	}
+}
+
+func (s *TestSuite) TestCPUListToHexMask(c *C) {
+	type testCase struct {
+		input       string
+		expected    string
+		expectError bool
+	}
+	testCases := map[string]testCase{
+		"single cpu 0": {
+			input:    "0",
+			expected: "0x1",
+		},
+		"single cpu 1": {
+			input:    "1",
+			expected: "0x2",
+		},
+		"single cpu 7": {
+			input:    "7",
+			expected: "0x80",
+		},
+		"range 0-3": {
+			input:    "0-3",
+			expected: "0xf",
+		},
+		"range 1-3": {
+			input:    "1-3",
+			expected: "0xe",
+		},
+		"comma separated": {
+			input:    "1,2,3",
+			expected: "0xe",
+		},
+		"mixed range and individual": {
+			input:    "1-3,5,7",
+			expected: "0xae",
+		},
+		"parenthesized group": {
+			input:    "(0-3)",
+			expected: "0xf",
+		},
+		"multiple parenthesized groups": {
+			input:    "(1-3),(5)",
+			expected: "0x2e",
+		},
+		"high cpu numbers": {
+			input:    "32,63",
+			expected: "0x8000000100000000",
+		},
+		"cpu beyond 64": {
+			input:    "64,127",
+			expected: "0x80000000000000010000000000000000",
+		},
+		"large range 0-127": {
+			input:    "0-127",
+			expected: "0xffffffffffffffffffffffffffffffff",
+		},
+		"empty string": {
+			input:       "",
+			expectError: true,
+		},
+		"leading comma": {
+			input:       ",1",
+			expectError: true,
+		},
+		"trailing comma": {
+			input:       "1,",
+			expectError: true,
+		},
+		"empty middle entry": {
+			input:       "1,,3",
+			expectError: true,
+		},
+		"whitespace-only middle entry": {
+			input:       "1,   ,3",
+			expectError: true,
+		},
+		"invalid format": {
+			input:       "abc",
+			expectError: true,
+		},
+		"invalid range reversed": {
+			input:       "5-3",
+			expectError: true,
+		},
+		"cpu number too high": {
+			input:       "1024",
+			expectError: true,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		result, err := CPUListToHexMask(testCase.input)
+		if testCase.expectError {
+			c.Assert(err, NotNil, Commentf("Expected error for test case: %s", testName))
+		} else {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+			c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
+		}
+	}
+}
+
+func (s *TestSuite) TestNormalizeCPUMask(c *C) {
+	type testCase struct {
+		input       string
+		expected    string
+		expectError bool
+	}
+	testCases := map[string]testCase{
+		"hex mask lowercase": {
+			input:    "0xff",
+			expected: "0xff",
+		},
+		"hex mask uppercase": {
+			input:    "0xFF",
+			expected: "0xFF",
+		},
+		"hex mask single": {
+			input:    "0x1",
+			expected: "0x1",
+		},
+		"cpu list single": {
+			input:    "0",
+			expected: "0x1",
+		},
+		"cpu list range": {
+			input:    "0-3",
+			expected: "0xf",
+		},
+		"cpu list mixed": {
+			input:    "1-3,5",
+			expected: "0x2e",
+		},
+		"cpu list beyond 64": {
+			input:    "64,65",
+			expected: "0x30000000000000000",
+		},
+		"hex mask zero": {
+			input:       "0x0",
+			expectError: true,
+		},
+		"hex mask large": {
+			input:    "0xffffffffffffffffffffffffffffffff",
+			expected: "0xffffffffffffffffffffffffffffffff",
+		},
+		"hex mask exceeds max cpu": {
+			input:       "0x" + strings.Repeat("f", 257), // 1028 bits, exceeds maxCPU (1023)
+			expectError: true,
+		},
+		"empty string": {
+			input:       "",
+			expectError: true,
+		},
+		"invalid hex": {
+			input:       "0xZZ",
+			expectError: true,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		result, err := NormalizeCPUMask(testCase.input)
+		if testCase.expectError {
+			c.Assert(err, NotNil, Commentf("Expected error for test case: %s", testName))
+		} else {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+			c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
+		}
+	}
+}
+
+func (s *TestSuite) TestIsHexCPUMask(c *C) {
+	type testCase struct {
+		input    string
+		expected bool
+	}
+	testCases := map[string]testCase{
+		"valid 0x1":      {input: "0x1", expected: true},
+		"valid 0xff":     {input: "0xff", expected: true},
+		"valid 0xFF":     {input: "0xFF", expected: true},
+		"valid 0X1":      {input: "0X1", expected: true},
+		"just 0x":        {input: "0x", expected: false},
+		"no prefix":      {input: "ff", expected: false},
+		"cpu list":       {input: "1-3,5", expected: false},
+		"decimal number": {input: "123", expected: false},
+		"empty":          {input: "", expected: false},
+		"invalid hex":    {input: "0xGG", expected: false},
+	}
+
+	for testName, testCase := range testCases {
+		result := IsHexCPUMask(testCase.input)
+		c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
 }
