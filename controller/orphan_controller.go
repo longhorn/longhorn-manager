@@ -618,7 +618,6 @@ func (oc *OrphanController) updateDataCleanableCondition(orphan *longhorn.Orphan
 	if orphan.Spec.Type == longhorn.OrphanTypeReplicaData {
 		reason = oc.checkOrphanedReplicaDataCleanable(node, orphan)
 	}
-
 	return nil
 }
 
@@ -641,6 +640,11 @@ func (oc *OrphanController) checkOrphanedReplicaDataCleanable(node *longhorn.Nod
 
 	if disk.EvictionRequested {
 		return longhorn.OrphanConditionTypeDataCleanableReasonDiskEvicted
+	}
+
+	exists, _ := datastore.IsLabelLonghornDeleteCustomResourceOnlyExisting(orphan)
+	if exists {
+		return longhorn.OrphanConditionTypeDataCleanableReasonSkipped
 	}
 
 	return ""
