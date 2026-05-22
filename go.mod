@@ -20,6 +20,12 @@ toolchain go1.26.2
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
+	github.com/longhorn/longhorn-instance-manager => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20260521022758-0e27b6a83648
+	github.com/longhorn/longhorn-spdk-engine => github.com/shuo-wu/longhorn-spdk-engine v0.0.0-20260521022454-3875644b9655
+	github.com/longhorn/types => github.com/shuo-wu/types v0.0.0-20260520061331-62909b877202
+)
+
+replace (
 	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
 	k8s.io/api => k8s.io/api v0.36.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.0
@@ -75,7 +81,7 @@ require (
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20260503.0.20260514055128-ec3f7dbb512f
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260503.0.20260515063452-1ecf693e484f
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260515051212-7e0ddb934b91
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260519092406-0325a68a645d
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.1
@@ -138,7 +144,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260514154143-1dfb06f48eeb // indirect
+	github.com/longhorn/types v0.0.0-20260518231842-9b3691cc0a26 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect

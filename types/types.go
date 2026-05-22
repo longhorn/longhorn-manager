@@ -213,6 +213,16 @@ const (
 	LonghornLabelExportFromVolume                 = "export-from-volume"
 	LonghornLabelSnapshotForExportingBackingImage = "for-exporting-backing-image"
 
+	// LonghornLabelLinkedCloneSourceVolume is stamped on linked-clone volumes to
+	// enable efficient index-based lookups by source volume name.
+	LonghornLabelLinkedCloneSourceVolume = "linked-clone-source-volume"
+	// LonghornLabelLinkedCloneSourceSnapshot is stamped on linked-clone volumes to
+	// enable efficient index-based lookups by source snapshot name.
+	LonghornLabelLinkedCloneSourceSnapshot = "linked-clone-source-snapshot"
+	// LonghornLabelLinkedCloneSrcReplica is stamped on linked-clone replicas to
+	// enable efficient index-based lookups by source replica name.
+	LonghornLabelLinkedCloneSrcReplica = "linked-clone-src-replica"
+
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
 	KubernetesTopologyRegionLabelKey      = "topology.kubernetes.io/region"
@@ -638,6 +648,30 @@ func GetBackupVolumeLabels(volumeName string) map[string]string {
 func GetVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelVolume: volumeName,
+	}
+}
+
+// GetLinkedCloneSourceVolumeLabel returns the label map used to stamp a linked-clone
+// volume with its source volume name, enabling efficient index-based lookups.
+func GetLinkedCloneSourceVolumeLabel(srcVolumeName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLinkedCloneSourceVolume): srcVolumeName,
+	}
+}
+
+// GetLinkedCloneSourceSnapshotLabel returns the label map used to stamp a linked-clone
+// volume with its source snapshot name, enabling efficient index-based lookups.
+func GetLinkedCloneSourceSnapshotLabel(srcSnapshotName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLinkedCloneSourceSnapshot): srcSnapshotName,
+	}
+}
+
+// GetLinkedCloneSrcReplicaLabel returns the label map used to stamp a linked-clone
+// replica with its source replica name, enabling efficient index-based lookups.
+func GetLinkedCloneSrcReplicaLabel(srcReplicaName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLinkedCloneSrcReplica): srcReplicaName,
 	}
 }
 

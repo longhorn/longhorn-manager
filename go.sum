@@ -180,14 +180,8 @@ github.com/longhorn/go-spdk-helper v0.6.2-0.20260514102642-789b2a1cb467 h1:qwlSB
 github.com/longhorn/go-spdk-helper v0.6.2-0.20260514102642-789b2a1cb467/go.mod h1:ZxbMkGsbC2TpzuGLjn9yXXExolt8/F3dl/C8O9/Qa7s=
 github.com/longhorn/longhorn-engine v1.12.0-dev-20260503.0.20260514055128-ec3f7dbb512f h1:R76xekZfQKZTJrWs74QD4YLhXTiGEEUJr5aEjKGoh3k=
 github.com/longhorn/longhorn-engine v1.12.0-dev-20260503.0.20260514055128-ec3f7dbb512f/go.mod h1:WGxRiCkfdUBxNymnS8BaNBB9HXTQjJqUquptuUtM9+o=
-github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260503.0.20260515063452-1ecf693e484f h1:vhjzzzNVVnJL2bpxTlfhc72str5cjFpFNX1+sj7OZOk=
-github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260503.0.20260515063452-1ecf693e484f/go.mod h1:sZnbcjSZKgMhuRk2k7JeHjS7YjhON7qKvjPj+N5XpQk=
 github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2 h1:fE8sadYwAkWi0euk5igkN8AYj5sCDQ8+jURXRFw8ESM=
 github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2/go.mod h1:EA3kkZCaW8MvzI2fRpeC1BuSiMN0bEuOlLIl7B0NQkY=
-github.com/longhorn/longhorn-spdk-engine v0.0.0-20260515051212-7e0ddb934b91 h1:r+7KHgr5H33Mp6GEodYfGcj5ky7GT0LdVBDdcVyhwKQ=
-github.com/longhorn/longhorn-spdk-engine v0.0.0-20260515051212-7e0ddb934b91/go.mod h1:QozLt4bqxOnl69J8/o+zbMc40iQHzKfVO1v7zmfW31w=
-github.com/longhorn/types v0.0.0-20260514154143-1dfb06f48eeb h1:kj/ag7xC8l9QewJ6tpZAWCYRgipYwIOkqPoqY52utW4=
-github.com/longhorn/types v0.0.0-20260514154143-1dfb06f48eeb/go.mod h1:iY4stwsoG8OwvR0WSZr+YeSOr4YNnoX9+GoG3u+uDFw=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=
@@ -264,6 +258,12 @@ github.com/shirou/gopsutil/v3 v3.24.5 h1:i0t8kL+kQTvpAYToeuiVk3TgDeKOFioZO3Ztz/i
 github.com/shirou/gopsutil/v3 v3.24.5/go.mod h1:bsoOS1aStSs9ErQ1WWfxllSeS1K5D+U30r2NfcubMVk=
 github.com/shirou/gopsutil/v4 v4.25.10 h1:at8lk/5T1OgtuCp+AwrDofFRjnvosn0nkN2OLQ6g8tA=
 github.com/shirou/gopsutil/v4 v4.25.10/go.mod h1:+kSwyC8DRUD9XXEHCAFjK+0nuArFJM0lva+StQAcskM=
+github.com/shuo-wu/longhorn-instance-manager v0.0.0-20260521022758-0e27b6a83648 h1:eRCrqSoFkmy92yX6Rvk+llm/DT7QrE2zwn3Spy5fMvU=
+github.com/shuo-wu/longhorn-instance-manager v0.0.0-20260521022758-0e27b6a83648/go.mod h1:SL7gnKdvT0+3bD7eOIqvfYeOu0/DtWfw9rNdeVK+jJY=
+github.com/shuo-wu/longhorn-spdk-engine v0.0.0-20260521022454-3875644b9655 h1:vlVnKfFJt0JZCsSzzf5Ns2Qpdyl3P6wD7fzyhAF97/s=
+github.com/shuo-wu/longhorn-spdk-engine v0.0.0-20260521022454-3875644b9655/go.mod h1:BANL2DlQOwpCxR9Ev2unqraNTs8h4QkfmffKCtukxKI=
+github.com/shuo-wu/types v0.0.0-20260520061331-62909b877202 h1:jdqKYXeP2J5GrM8+dDo/3AERrH3iZyXhjq2TmeuKvok=
+github.com/shuo-wu/types v0.0.0-20260520061331-62909b877202/go.mod h1:iY4stwsoG8OwvR0WSZr+YeSOr4YNnoX9+GoG3u+uDFw=
 github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
 github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
 github.com/slok/goresilience v0.2.0 h1:dagdIiWlhTm7BK/r/LRKz+zvw0SCNk+nHf7obdsbzxQ=
