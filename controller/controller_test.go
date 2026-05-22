@@ -154,6 +154,15 @@ func newDefaultInstanceManagerImageSetting() *longhorn.Setting {
 	}
 }
 
+func newV2InstanceManagerUpgradeTimeoutSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameV2InstanceManagerUpgradeTimeout),
+		},
+		Value: "60", // 60 minutes default
+	}
+}
+
 func newEngineImage(image string, state longhorn.EngineImageState) *longhorn.EngineImage {
 	return &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{

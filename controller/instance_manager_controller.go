@@ -201,6 +201,7 @@ func NewInstanceManagerController(
 		return nil, err
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeControlInformer.HasSynced)
 
 	return imc, nil
 }
@@ -415,6 +416,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	}
 
 	if err := imc.syncOrphans(im); err != nil {
+		return err
+	}
+
+	if err := imc.syncInstanceManagerUpgrade(im); err != nil {
 		return err
 	}
 
@@ -2918,4 +2923,99 @@ func isReplicaInTransitionState(replica *longhorn.Replica) bool {
 	}
 
 	return false
+}
+
+// syncInstanceManagerUpgrade ensures an InstanceManagerUpgradeControl CR exists
+// (and has the correct targetImage) when any running v2 AllInOne IM is behind
+// the default image. The InstanceManagerUpgradeControlController takes it from
+// there, orchestrating the rolling per-node upgrade.
+func (imc *InstanceManagerController) syncInstanceManagerUpgrade(im *longhorn.InstanceManager) error {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) || im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+		return nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil
+	}
+
+	defaultIMImage, err := imc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+	if im.Spec.Image == defaultIMImage {
+		return nil
+	}
+
+	log := getLoggerForInstanceManager(imc.logger, im)
+
+	// Check if the control CR already exists.
+	imuc, existingErr := imc.ds.GetInstanceManagerUpgradeControl(types.InstanceManagerUpgradeControlName)
+	if existingErr != nil && !datastore.ErrorIsNotFound(existingErr) {
+		return existingErr
+	}
+
+	// Get the start time setting.
+	startTimeSetting, err := imc.ds.GetSetting(types.SettingNameV2InstanceManagerUpgradeStartTime)
+	if err != nil {
+		return err
+	}
+	startTime := startTimeSetting.Value
+
+	if datastore.ErrorIsNotFound(existingErr) {
+		// Create the singleton control CR.
+		imuc := &longhorn.InstanceManagerUpgradeControl{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: types.InstanceManagerUpgradeControlName,
+			},
+			Spec: longhorn.InstanceManagerUpgradeControlSpec{
+				TargetImage: defaultIMImage,
+				StartAt:     startTime,
+			},
+		}
+		log.Infof("Creating InstanceManagerUpgradeControl for target image %v with start time %v", defaultIMImage, startTime)
+		if _, err := imc.ds.CreateInstanceManagerUpgradeControl(imuc); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+
+	// Check if the upgrade has already started. Treat only an assigned current
+	// node or an explicitly in-progress node as started, so terminal states from
+	// a previous cycle do not block StartAt updates for a new target image.
+	upgradeStarted := imuc.Status.CurrentNode != ""
+	if !upgradeStarted {
+		for _, info := range imuc.Status.Nodes {
+			if info.State == longhorn.NodeUpgradeStateInProgress {
+				upgradeStarted = true
+				break
+			}
+		}
+	}
+
+	// Update targetImage and startAt if they have changed.
+	needsUpdate := false
+	if imuc.Spec.TargetImage != defaultIMImage {
+		log.Infof("Updating InstanceManagerUpgradeControl target image from %v to %v",
+			imuc.Spec.TargetImage, defaultIMImage)
+		imuc.Spec.TargetImage = defaultIMImage
+		needsUpdate = true
+	}
+
+	// Only update start time if the upgrade hasn't started yet.
+	if !upgradeStarted && imuc.Spec.StartAt != startTime {
+		log.Infof("Updating InstanceManagerUpgradeControl start time from %v to %v",
+			imuc.Spec.StartAt, startTime)
+		imuc.Spec.StartAt = startTime
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		if _, err := imc.ds.UpdateInstanceManagerUpgradeControl(imuc); err != nil {
+			return err
+		}
+	}
+	return nil
 }
