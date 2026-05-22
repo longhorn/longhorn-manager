@@ -685,7 +685,7 @@ func (nc *NodeController) enqueueIMUPreUpgradeSnapshotHash(obj interface{}) {
 			nc.logger.WithError(err).Warnf("Failed to get pre-upgrade snapshot %v for volume %v", reloc.SnapshotName, volumeName)
 			continue
 		}
-		if !snapshot.Status.UserCreated || snapshot.Status.Checksum != "" {
+		if snapshot.Status.Checksum != "" {
 			continue
 		}
 

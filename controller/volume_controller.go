@@ -5584,7 +5584,7 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 			return nil
 		}
 
-		currentEngine, extras, err := datastore.GetNewCurrentEngineAndExtras(v, es)
+		currentEngine, extras, err := pickCurrentEngineForV2SwitchoverCleanup(v, es, efs)
 		if err != nil {
 			log.WithError(err).Warn("Failed to finalize the engine switchover")
 			return nil
@@ -5835,10 +5835,14 @@ func pickCurrentEngineForV2SwitchoverCleanup(v *longhorn.Volume, es map[string]*
 
 func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Volume, targetNodeID string, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
 	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"migrationNodeID": targetNodeID, "migrationEngine": migrationEngine.Name})
-	waitForTargetReplicaAttachmentDuringLiveUpgradeRestore := types.IsDataEngineV2(v.Spec.DataEngine) &&
-		hasActiveInstanceManagerUpgradeOnNode(c.ds, targetNodeID) &&
-		currentEngine.Spec.NodeID != "" &&
-		currentEngine.Spec.NodeID != targetNodeID
+	waitForTargetReplicaAttachmentDuringLiveUpgradeRestore := false
+	if types.IsDataEngineV2(v.Spec.DataEngine) && currentEngine.Spec.NodeID != "" && currentEngine.Spec.NodeID != targetNodeID {
+		activeUpgrade, err := hasActiveInstanceManagerUpgradeOnNode(c.ds, targetNodeID)
+		if err != nil {
+			return false, false, errors.Wrapf(err, "failed to determine if node %v has an active instance manager upgrade", targetNodeID)
+		}
+		waitForTargetReplicaAttachmentDuringLiveUpgradeRestore = activeUpgrade
+	}
 
 	// Check the migration engine current status
 	if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != targetNodeID {
