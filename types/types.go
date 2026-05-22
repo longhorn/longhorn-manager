@@ -223,6 +223,8 @@ const (
 
 	KubernetesClusterAutoscalerSafeToEvictKey = "cluster-autoscaler.kubernetes.io/safe-to-evict"
 
+	KubernetesServiceName = "kubernetes.io/service-name"
+
 	LonghornDriverName = "driver.longhorn.io"
 
 	DefaultDiskPrefix = "default-disk-"
