@@ -1004,6 +1004,20 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 			},
 		},
 
+		"scheduled start time in the future → idle until start time": {
+			imuc: func() *longhorn.InstanceManagerUpgradeControl {
+				imuc := newIMUC(TestTargetImage)
+				imuc.Spec.StartAt = time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339)
+				return imuc
+			}(),
+			sourceIMs: []*longhorn.InstanceManager{
+				newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage,
+					longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			},
+			expectedCurrentNode: "",
+			expectedIMUCreated:  false,
+		},
+
 		"current node missing from status → repaired without starting another node in same reconcile": {
 			imuc: func() *longhorn.InstanceManagerUpgradeControl {
 				imuc := newIMUC(TestTargetImage)

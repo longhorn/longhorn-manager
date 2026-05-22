@@ -499,7 +499,7 @@ func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *
 	err = engineFrontendIndexer.Update(createdEngineFrontend)
 	c.Assert(err, IsNil)
 
-	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, true)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
 
 	createdEngineFrontend.Spec.Frontend = longhorn.VolumeFrontendBlockDev
 	createdEngineFrontend.Status.CurrentState = longhorn.InstanceStateUnknown
@@ -507,15 +507,15 @@ func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *
 	err = engineFrontendIndexer.Update(createdEngineFrontend)
 	c.Assert(err, IsNil)
 
-	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, false)
 
-	imu := newIMU("test-imu-node-2", TestNode2, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+	imu := newIMU("test-imu-node-1", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
 	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
 	c.Assert(err, IsNil)
 	err = imuIndexer.Add(createdIMU)
 	c.Assert(err, IsNil)
 
-	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, true)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
 }
 
 func (s *TestSuite) TestShouldDoDetachSkipsDuringV2LiveUpgradeSwitchover(c *C) {

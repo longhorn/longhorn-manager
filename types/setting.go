@@ -1743,7 +1743,7 @@ var (
 		DisplayName: "V2 Instance Manager Upgrade Start Time",
 		Description: "In RFC3339 format. Specifies when the rolling upgrade of V2 instance managers should begin. " +
 			"This provides flexibility for scheduling the upgrade at a preferred time. If empty, the upgrade starts immediately. " +
-			"Once an upgrade has started, changes to this setting are ignored.\n\n" +
+			"Changes to this setting are ignored while an upgrade is actively in progress.\n\n" +
 			"Example: 2026-04-20T15:00:00Z\n\n",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,

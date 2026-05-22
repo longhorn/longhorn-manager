@@ -121,13 +121,21 @@ func hasActiveInstanceManagerUpgradeOnNode(ds *datastore.DataStore, nodeID strin
 		return false, err
 	}
 
+	return hasActiveInstanceManagerUpgradeOnNodeFromList(imus, nodeID), nil
+}
+
+func hasActiveInstanceManagerUpgradeOnNodeFromList(imus []*longhorn.InstanceManagerUpgrade, nodeID string) bool {
+	if nodeID == "" {
+		return false
+	}
+
 	for _, imu := range imus {
 		if imu.Spec.NodeID == nodeID && types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
-			return true, nil
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nodeID, disableFrontend string, attacherType longhorn.AttacherType) {
