@@ -194,6 +194,7 @@ const (
 	LonghornLabelCRDAPIVersion              = "crd-api-version"
 	LonghornLabelVolumeAccessMode           = "volume-access-mode"
 	LonghornLabelFollowGlobalSetting        = "follow-global-setting"
+	LonghornLabelSystemBackup               = "system-backup"
 	LonghornLabelSystemRestore              = "system-restore"
 	LonghornLabelLastSkippedSystemRestore   = "last-skipped-system-restored"
 	LonghornLabelLastSkippedSystemRestoreAt = "last-skipped-system-restored-at"
@@ -713,6 +714,10 @@ func GetRecoveryBackendConfigMapLabels() map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelRecoveryBackend
 	return labels
+}
+
+func GetSystemBackupLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelSystemBackup)
 }
 
 func GetSystemRestoreInProgressLabel() map[string]string {
