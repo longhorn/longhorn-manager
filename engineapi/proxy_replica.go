@@ -6,14 +6,14 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func (p *Proxy) ReplicaAdd(obj DataEngineObject, replicaName, replicaAddress string, restore, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) (err error) {
+func (p *Proxy) ReplicaAdd(obj DataEngineObject, replicaName, replicaAddress string, restore, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string) (err error) {
 	var currentSize int64
 	if e, ok := obj.(*longhorn.Engine); ok {
 		currentSize = e.Status.CurrentSize
 	}
 	return p.grpcClient.ReplicaAdd(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj),
 		replicaName, replicaAddress, restore, obj.GetVolumeSize(), currentSize,
-		int(replicaFileSyncHTTPClientTimeout), fastSync, localSync, grpcTimeoutSeconds)
+		int(replicaFileSyncHTTPClientTimeout), fastSync, localSync, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, grpcTimeoutSeconds)
 }
 
 func (p *Proxy) ReplicaRemove(e *longhorn.Engine, address, replicaName string) (err error) {

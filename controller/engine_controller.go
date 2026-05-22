@@ -2161,6 +2161,11 @@ type rebuildContext struct {
 	fastReplicaRebuild   bool
 	grpcTimeoutSeconds   int64
 	fileSyncHTTPClientTO int64
+	// linkedCloneSrcReplicaName is the source replica name for a linked-clone rebuild.
+	// Set from replica.Spec.LinkedCloneSrcReplicaName; empty for non-clone rebuilds.
+	linkedCloneSrcReplicaName    string
+	linkedCloneSrcEngineName    string
+	linkedCloneSrcEngineAddress string
 }
 
 func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, addr string) (err error) {
@@ -2339,6 +2344,25 @@ func (ec *EngineController) prepareRebuildContext(
 		return nil, err
 	}
 
+	// For V2 linked-clone rebuilds, pass the src replica name to the DST replica so it can
+	// deterministically locate its local clone entrypoint (no ambiguous LVS scan).
+	// Also resolve the src engine name and address so RebuildingDstFinish can verify the
+	// src replica is RW before connecting the entrypoint.
+	if types.IsDataEngineV2(e.Spec.DataEngine) && rc.replica.Spec.LinkedCloneSrcReplicaName != "" {
+		rc.linkedCloneSrcReplicaName = rc.replica.Spec.LinkedCloneSrcReplicaName
+
+		srcReplica, err := ec.ds.GetReplica(rc.linkedCloneSrcReplicaName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get linked-clone src replica %v for rebuild context of replica %v", rc.linkedCloneSrcReplicaName, replicaName)
+		}
+		srcEngine, err := ec.ds.GetEngineRO(srcReplica.Spec.EngineName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get engine %v for linked-clone src replica %v", srcReplica.Spec.EngineName, rc.linkedCloneSrcReplicaName)
+		}
+		rc.linkedCloneSrcEngineName = srcEngine.Name
+		rc.linkedCloneSrcEngineAddress = imutil.GetURL(srcEngine.Status.StorageIP, srcEngine.Status.Port)
+	}
+
 	succeeded = true
 	return rc, nil
 }
@@ -2376,7 +2400,7 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 		// TODO: Before calling ReplicaAdd for the v2 frontend path, fetch the
 		// latest size/currentSize from currentEngine and pass them through once
 		// the proxy API consumes those fields for EngineFrontend-based rebuild.
-		replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, nil, 0, rc.grpcTimeoutSeconds)
+		replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, nil, 0, rc.grpcTimeoutSeconds, rc.linkedCloneSrcReplicaName, rc.linkedCloneSrcEngineName, rc.linkedCloneSrcEngineAddress)
 		switch {
 		case replicaAddErr == nil:
 			// ok
@@ -2397,12 +2421,12 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 			if rc.engine.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-				replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, true, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, 0)
+				replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, true, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, 0, rc.linkedCloneSrcReplicaName, rc.linkedCloneSrcEngineName, rc.linkedCloneSrcEngineAddress)
 			}
 		} else {
 			ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-			replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds)
+			replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds, rc.linkedCloneSrcReplicaName, rc.linkedCloneSrcEngineName, rc.linkedCloneSrcEngineAddress)
 		}
 	}
 
