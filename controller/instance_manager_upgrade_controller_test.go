@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"time"
 
-	. "gopkg.in/check.v1"
-
 	"github.com/sirupsen/logrus"
 
-	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -156,20 +156,20 @@ func newTestReplicaForIMU(name, nodeID, volumeName string, healthy bool) *longho
 				types.LonghornLabelVolume: volumeName,
 			},
 		},
-			Spec: longhorn.ReplicaSpec{
-				InstanceSpec: longhorn.InstanceSpec{
-					NodeID:     nodeID,
-					VolumeName: volumeName,
-				},
-				FailedAt:  failedAt,
-				HealthyAt: healthyAt,
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: volumeName,
 			},
-			Status: longhorn.ReplicaStatus{
-				InstanceStatus: longhorn.InstanceStatus{
-					CurrentState: currentState,
-				},
+			FailedAt:  failedAt,
+			HealthyAt: healthyAt,
+		},
+		Status: longhorn.ReplicaStatus{
+			InstanceStatus: longhorn.InstanceStatus{
+				CurrentState: currentState,
 			},
-		}
+		},
+	}
 }
 
 func newTestIMForNode(name, nodeID, image string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType, state longhorn.InstanceManagerState) *longhorn.InstanceManager {
@@ -287,11 +287,11 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			expectedState: longhorn.InstanceManagerUpgradeStatePending,
 		},
 
-			"pending: no healthy replica on other node (single replica) → stay Pending": {
-				imu:      newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
-				sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
-				volumes: []*longhorn.Volume{
-					newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode),
+		"pending: no healthy replica on other node (single replica) → stay Pending": {
+			imu:      newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
+			sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			volumes: []*longhorn.Volume{
+				newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode),
 			},
 			engines: []*longhorn.Engine{
 				newTestEngineForIMU(TestEngineNameIMU, TestSourceNode, TestVolumeName2, longhorn.InstanceStateRunning),
@@ -299,34 +299,34 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			replicas: []*longhorn.Replica{
 				// Only replica is on the source node — no temp node available
 				newTestReplicaForIMU(TestReplicaName2, TestSourceNode, TestVolumeName2, true),
-				},
-				expectedState: longhorn.InstanceManagerUpgradeStatePending,
 			},
+			expectedState: longhorn.InstanceManagerUpgradeStatePending,
+		},
 
-			"pending: healthy replica on other node but not running → stay Pending": {
-				imu:      newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
-				sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
-				volumes: []*longhorn.Volume{
-					newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode),
-				},
-				engines: []*longhorn.Engine{
-					newTestEngineForIMU(TestEngineNameIMU, TestSourceNode, TestVolumeName2, longhorn.InstanceStateRunning),
-				},
-				replicas: []*longhorn.Replica{
-					func() *longhorn.Replica {
-						r := newTestReplicaForIMU(TestReplicaName2, TestTempNode, TestVolumeName2, true)
-						r.Status.CurrentState = longhorn.InstanceStateStopped
-						return r
-					}(),
-				},
-				tempIM:        newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
-				expectedState: longhorn.InstanceManagerUpgradeStatePending,
+		"pending: healthy replica on other node but not running → stay Pending": {
+			imu:      newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
+			sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			volumes: []*longhorn.Volume{
+				newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode),
 			},
+			engines: []*longhorn.Engine{
+				newTestEngineForIMU(TestEngineNameIMU, TestSourceNode, TestVolumeName2, longhorn.InstanceStateRunning),
+			},
+			replicas: []*longhorn.Replica{
+				func() *longhorn.Replica {
+					r := newTestReplicaForIMU(TestReplicaName2, TestTempNode, TestVolumeName2, true)
+					r.Status.CurrentState = longhorn.InstanceStateStopped
+					return r
+				}(),
+			},
+			tempIM:        newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			expectedState: longhorn.InstanceManagerUpgradeStatePending,
+		},
 
-			"pending: engine running, temp node available → RelocatingEngines": {
-				imu:      newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
-				sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
-				volumes: []*longhorn.Volume{
+		"pending: engine running, temp node available → RelocatingEngines": {
+			imu:      newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
+			sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			volumes: []*longhorn.Volume{
 				newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode),
 			},
 			engines: []*longhorn.Engine{
@@ -710,7 +710,7 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewSimpleClientset()
+		lhClient := lhfake.NewClientset()
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
@@ -1094,7 +1094,7 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 		fmt.Printf("testing IMUC: %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewSimpleClientset()
+		lhClient := lhfake.NewClientset()
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
