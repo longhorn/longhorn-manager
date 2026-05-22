@@ -21,9 +21,10 @@ package v1beta2
 import (
 	http "net/http"
 
+	rest "k8s.io/client-go/rest"
+
 	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	scheme "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/scheme"
-	rest "k8s.io/client-go/rest"
 )
 
 type LonghornV1beta2Interface interface {

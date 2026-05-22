@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -26,8 +28,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -664,17 +664,18 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 
 		var spec *longhorn.InstanceSpec
 		var status *longhorn.InstanceStatus
-		if tc.instanceType == longhorn.InstanceTypeEngine {
+		switch tc.instanceType {
+		case longhorn.InstanceTypeEngine:
 			e, ok := tc.obj.(*longhorn.Engine)
 			c.Assert(ok, Equals, true)
 			spec = &e.Spec.InstanceSpec
 			status = &e.Status.InstanceStatus
-		} else if tc.instanceType == longhorn.InstanceTypeEngineFrontend {
+		case longhorn.InstanceTypeEngineFrontend:
 			ef, ok := tc.obj.(*longhorn.EngineFrontend)
 			c.Assert(ok, Equals, true)
 			spec = &ef.Spec.InstanceSpec
 			status = &ef.Status.InstanceStatus
-		} else {
+		default:
 			r, ok := tc.obj.(*longhorn.Replica)
 			c.Assert(ok, Equals, true)
 			spec = &r.Spec.InstanceSpec
