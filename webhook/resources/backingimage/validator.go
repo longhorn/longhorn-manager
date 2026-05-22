@@ -7,6 +7,8 @@ import (
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
+	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
@@ -16,8 +18,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-
-	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
 )
 
 type backingImageValidator struct {
@@ -47,6 +47,10 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 	backingImage, ok := newObj.(*longhorn.BackingImage)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
+	}
+
+	if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
+		return werror.NewInvalidError("v2 backing image is not supported", "")
 	}
 
 	if backingImage.Spec.Secret != "" || backingImage.Spec.SecretNamespace != "" {
