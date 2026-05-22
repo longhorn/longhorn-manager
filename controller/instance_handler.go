@@ -357,7 +357,13 @@ func (h *InstanceHandler) shouldTolerateIMUnavailableForLiveUpgrade(obj runtime.
 		return false
 	}
 
-	return hasActiveInstanceManagerUpgradeOnNode(h.ds, spec.NodeID)
+	active, err := hasActiveInstanceManagerUpgradeOnNode(h.ds, spec.NodeID)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade", spec.NodeID)
+		return false
+	}
+
+	return active
 }
 
 func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProcess, status *longhorn.InstanceStatus) {

@@ -2110,12 +2110,11 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
 }
 
-// TestProcessEngineSwitchoverCleanupUsesActiveEngine verifies that once
-// switchover is already completed, the cleanup branch uses the Active flag to
-// choose the current engine even if multiple engines temporarily share the same
-// node. This covers reverse-switchover recovery where a remount/reattach can
-// leave both engines on the target node.
-func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
+// TestProcessEngineSwitchoverCleanupUsesEngineFrontend verifies that once
+// switchover is already completed, the cleanup branch uses the EngineFrontend's
+// target engine as the source of truth for v2 cleanup even if volume status and
+// engine Active flags are not enough to disambiguate both engines.
+func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesEngineFrontend(c *C) {
 	vc, lhClient, engineIndexer, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
 	// Switchover is already complete from the volume's perspective.
@@ -2125,12 +2124,13 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	v.Status.CurrentNodeID = TestNode1
 
 	// Both engines are temporarily on the target engine node after a reverse
-	// switchover/remount cycle, but only the new current engine is Active.
+	// switchover/remount cycle, and neither Active flag is reliable enough to
+	// pick the serving engine.
 	currentEngine.Spec.Active = false
 	currentEngine.Spec.NodeID = TestNode2
 	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
-	migrationEngine.Spec.Active = true
+	migrationEngine.Spec.Active = false
 	migrationEngine.Spec.NodeID = TestNode2
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
@@ -2166,8 +2166,9 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	err = vc.processEngineSwitchover(v, es, rs, efs)
 	c.Assert(err, IsNil)
 
-	// The inactive extra engine should be cleaned up instead of being treated as
-	// a second current engine just because it shares the same NodeID.
+	// The old engine should be cleaned up based on the EngineFrontend's selected
+	// engine instead of being treated as a second current engine just because it
+	// shares the same NodeID.
 	c.Assert(len(es), Equals, 1)
 	c.Assert(es[migrationEngine.Name], NotNil)
 	c.Assert(es[currentEngine.Name], IsNil)

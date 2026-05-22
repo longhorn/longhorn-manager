@@ -201,7 +201,9 @@ type InstanceManagerUpgradeControllerTestCase struct {
 	imu       *longhorn.InstanceManagerUpgrade
 	sourceIM  *longhorn.InstanceManager // IM on source node (nil = not found)
 	tempIM    *longhorn.InstanceManager // IM on temp node (nil = not found)
-	volumes   []*longhorn.Volume        // Volumes for IMU tests
+	settings  []*longhorn.Setting
+	snapshots []*longhorn.Snapshot
+	volumes   []*longhorn.Volume // Volumes for IMU tests
 	engines   []*longhorn.Engine
 	replicas  []*longhorn.Replica
 	otherIMUs []*longhorn.InstanceManagerUpgrade // other IMUs in the cluster
@@ -362,6 +364,97 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			},
 			engines: []*longhorn.Engine{
 				// Engine still on source node — not yet directed
+				newTestEngineForIMU(TestEngineNameIMU, TestSourceNode, TestVolumeName2, longhorn.InstanceStateRunning),
+			},
+			expectedState: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+			expectedVolumeEngineNodeIDs: map[string]string{
+				TestVolumeName2: TestTempNode,
+			},
+		},
+
+		"relocating: pre-upgrade snapshot checksum pending → wait before relocating": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+				imu.Status.StartedAt = util.Now()
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {
+						OriginalNodeID:  TestSourceNode,
+						TemporaryNodeID: TestTempNode,
+						SnapshotName:    "pre-upgrade-snapshot-pending",
+					},
+				}
+				return imu
+			}(),
+			settings: []*longhorn.Setting{
+				newSetting(string(types.SettingNameFastReplicaRebuildEnabled), "{\"v1\":\"true\",\"v2\":\"true\"}"),
+				newSetting(string(types.SettingNameTakeSnapshotBeforeV2DataEngineUpgrade), "true"),
+			},
+			snapshots: []*longhorn.Snapshot{
+				func() *longhorn.Snapshot {
+					snapshot := newSnapshot("pre-upgrade-snapshot-pending")
+					snapshot.Spec.Volume = TestVolumeName2
+					snapshot.Status.Parent = "volume-head"
+					snapshot.Status.UserCreated = true
+					snapshot.Status.ReadyToUse = true
+					return snapshot
+				}(),
+			},
+			sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			tempIM:   newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			volumes: []*longhorn.Volume{
+				func() *longhorn.Volume {
+					v := newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode)
+					v.Spec.SnapshotDataIntegrity = longhorn.SnapshotDataIntegrityEnabled
+					return v
+				}(),
+			},
+			engines: []*longhorn.Engine{
+				newTestEngineForIMU(TestEngineNameIMU, TestSourceNode, TestVolumeName2, longhorn.InstanceStateRunning),
+			},
+			expectedState: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+			expectedVolumeEngineNodeIDs: map[string]string{
+				TestVolumeName2: TestSourceNode,
+			},
+		},
+
+		"relocating: pre-upgrade snapshot checksum ready → relocation proceeds": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+				imu.Status.StartedAt = util.Now()
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {
+						OriginalNodeID:  TestSourceNode,
+						TemporaryNodeID: TestTempNode,
+						SnapshotName:    "pre-upgrade-snapshot-ready",
+					},
+				}
+				return imu
+			}(),
+			settings: []*longhorn.Setting{
+				newSetting(string(types.SettingNameFastReplicaRebuildEnabled), "{\"v1\":\"true\",\"v2\":\"true\"}"),
+				newSetting(string(types.SettingNameTakeSnapshotBeforeV2DataEngineUpgrade), "true"),
+			},
+			snapshots: []*longhorn.Snapshot{
+				func() *longhorn.Snapshot {
+					snapshot := newSnapshot("pre-upgrade-snapshot-ready")
+					snapshot.Spec.Volume = TestVolumeName2
+					snapshot.Status.Parent = "volume-head"
+					snapshot.Status.UserCreated = true
+					snapshot.Status.ReadyToUse = true
+					snapshot.Status.Checksum = "abc123"
+					return snapshot
+				}(),
+			},
+			sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			tempIM:   newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			volumes: []*longhorn.Volume{
+				func() *longhorn.Volume {
+					v := newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode)
+					v.Spec.SnapshotDataIntegrity = longhorn.SnapshotDataIntegrityEnabled
+					return v
+				}(),
+			},
+			engines: []*longhorn.Engine{
 				newTestEngineForIMU(TestEngineNameIMU, TestSourceNode, TestVolumeName2, longhorn.InstanceStateRunning),
 			},
 			expectedState: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
@@ -710,7 +803,7 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewClientset()
+		lhClient := lhfake.NewSimpleClientset() //nolint:staticcheck // generated fake field manager does not support these CRDs in this test harness
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
@@ -719,6 +812,7 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 		engineIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
 		replicaIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		snapshotIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
 		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
@@ -727,16 +821,17 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 
 		// Settings
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
-		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
 		upgradeTimeoutSetting := newV2InstanceManagerUpgradeTimeoutSetting()
-		upgradeTimeoutSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), upgradeTimeoutSetting, metav1.CreateOptions{})
-		c.Assert(err, IsNil)
 		err = sIndexer.Add(upgradeTimeoutSetting)
 		c.Assert(err, IsNil)
+
+		for _, setting := range tc.settings {
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
 
 		// IMU under test
 		imu, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), tc.imu, metav1.CreateOptions{})
@@ -773,6 +868,13 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			v, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = vIndexer.Add(v)
+			c.Assert(err, IsNil)
+		}
+
+		for _, snapshot := range tc.snapshots {
+			snapshot, err = lhClient.LonghornV1beta2().Snapshots(TestNamespace).Create(context.TODO(), snapshot, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = snapshotIndexer.Add(snapshot)
 			c.Assert(err, IsNil)
 		}
 
@@ -1094,7 +1196,7 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 		fmt.Printf("testing IMUC: %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
-		lhClient := lhfake.NewClientset()
+		lhClient := lhfake.NewSimpleClientset() //nolint:staticcheck // generated fake field manager does not support these CRDs in this test harness
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())

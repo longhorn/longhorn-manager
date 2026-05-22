@@ -679,7 +679,12 @@ func (vac *VolumeAttachmentController) shouldKeepAttachedDuringV2LiveUpgradeSwit
 			continue
 		}
 		checkedNodes[nodeID] = struct{}{}
-		if hasActiveInstanceManagerUpgradeOnNode(vac.ds, nodeID) {
+		active, err := hasActiveInstanceManagerUpgradeOnNode(vac.ds, nodeID)
+		if err != nil {
+			vac.logger.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade during v2 live-upgrade switchover; keeping the volume attached conservatively", nodeID)
+			return true
+		}
+		if active {
 			return true
 		}
 	}
@@ -1074,7 +1079,12 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 		}
 		if types.IsDataEngineV2(volume.Spec.DataEngine) {
 			if !isEngineFrontendReadyForNode(efs, node) {
-				if !hasActiveInstanceManagerUpgradeOnNode(vac.ds, node) || !isEngineFrontendTemporarilyAvailableForNode(efs, node) {
+				activeUpgrade, err := hasActiveInstanceManagerUpgradeOnNode(vac.ds, node)
+				if err != nil {
+					vac.logger.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade while evaluating engine frontend availability; assuming upgrade is active conservatively", node)
+					activeUpgrade = true
+				}
+				if !activeUpgrade || !isEngineFrontendTemporarilyAvailableForNode(efs, node) {
 					continue
 				}
 			}
