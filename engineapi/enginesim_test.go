@@ -3,9 +3,9 @@ package engineapi
 import (
 	"testing"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-
 	. "gopkg.in/check.v1"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 var (
@@ -64,7 +64,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas, HasLen, 1)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
 
-	_ = sim.ReplicaAdd(e, "", Replica3Addr, false, false, nil, 30, 0)
+	_ = sim.ReplicaAdd(e, "", Replica3Addr, false, false, nil, 30, 0, "", "", "")
 	replicas, err = sim.ReplicaList(e)
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
