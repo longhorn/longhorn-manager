@@ -503,7 +503,9 @@ func (vbc *VolumeRebuildingController) isVolumeReplicasHealthy(numberOfReplicas 
 
 	healthyCount := 0
 	for _, replica := range replicas {
-		if replica.Spec.NodeID != replica.Status.OwnerID {
+		// Replicas will assigned with a nodeID as the owner after creation before volume is attaching to a node.
+		// They should be counted as healthy.
+		if replica.Spec.NodeID != "" && replica.Spec.NodeID != replica.Status.OwnerID {
 			continue
 		}
 		if replica.Spec.FailedAt != "" {
