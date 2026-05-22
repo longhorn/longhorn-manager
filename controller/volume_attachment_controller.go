@@ -670,6 +670,12 @@ func (vac *VolumeAttachmentController) shouldKeepAttachedDuringV2LiveUpgradeSwit
 		return false
 	}
 
+	imus, err := vac.ds.ListInstanceManagerUpgradesRO()
+	if err != nil {
+		vac.logger.WithError(err).Warn("Failed to list instance manager upgrades during v2 live-upgrade switchover evaluation; keeping the volume attached conservatively")
+		return true
+	}
+
 	checkedNodes := map[string]struct{}{}
 	for _, nodeID := range []string{vol.Spec.NodeID, vol.Spec.EngineNodeID, vol.Status.CurrentEngineNodeID} {
 		if nodeID == "" {
@@ -679,12 +685,7 @@ func (vac *VolumeAttachmentController) shouldKeepAttachedDuringV2LiveUpgradeSwit
 			continue
 		}
 		checkedNodes[nodeID] = struct{}{}
-		active, err := hasActiveInstanceManagerUpgradeOnNode(vac.ds, nodeID)
-		if err != nil {
-			vac.logger.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade during v2 live-upgrade switchover; keeping the volume attached conservatively", nodeID)
-			return true
-		}
-		if active {
+		if hasActiveInstanceManagerUpgradeOnNodeFromList(imus, nodeID) {
 			return true
 		}
 	}
@@ -1052,7 +1053,7 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 			return false
 		}
 		efForNode, err = getEngineFrontendForNode(efs, node)
-		if err != nil || !isEngineFrontendReady(efForNode) {
+		if err != nil || efForNode == nil {
 			return false
 		}
 	}
@@ -1079,6 +1080,11 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 		}
 		if types.IsDataEngineV2(volume.Spec.DataEngine) {
 			if !isEngineFrontendReadyForNode(efs, node) {
+				// During a live-upgrade handoff the EngineFrontend can be
+				// temporarily Unknown on the queried node even though the
+				// volume should remain available there. Outside that upgrade
+				// window, activeUpgrade stays false and this fallback will not
+				// make the volume available.
 				activeUpgrade, err := hasActiveInstanceManagerUpgradeOnNode(vac.ds, node)
 				if err != nil {
 					vac.logger.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade while evaluating engine frontend availability; assuming upgrade is active conservatively", node)

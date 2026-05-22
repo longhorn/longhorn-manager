@@ -4650,6 +4650,9 @@ func isEngineFrontendTemporarilyAvailableForNode(efs map[string]*longhorn.Engine
 		return true
 	}
 
+	// The live-upgrade tolerance path keeps Endpoint populated while the EF is
+	// temporarily marked Unknown, so a non-disabled frontend can still be
+	// treated as available during the IM restart handoff window.
 	return ef.Status.Endpoint != ""
 }
 

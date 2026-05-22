@@ -19,11 +19,9 @@ type InstanceManagerUpgradeSpec struct {
 	// NodeID is the node where the source instance manager is running.
 	// Engines managed by the source instance manager are temporarily relocated
 	// away from this node during the upgrade and restored to it afterward.
-	// +optional
 	NodeID string `json:"nodeID"`
 
 	// TargetImage is the desired instance manager image after upgrade.
-	// +optional
 	TargetImage string `json:"targetImage"`
 }
 
@@ -38,7 +36,7 @@ type InstanceManagerUpgradeStatus struct {
 	State InstanceManagerUpgradeState `json:"state,omitempty"`
 
 	// Engines records the relocation plan for each engine managed by the source
-	// instance manager. The map key is the engine name.
+	// instance manager. The map key is the volume name.
 	// +optional
 	// +nullable
 	Engines map[string]EngineRelocation `json:"engines,omitempty"`

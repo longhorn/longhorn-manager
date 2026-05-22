@@ -85,9 +85,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
 		if tolerateIMUnavailableForLiveUpgrade {
-			if status.CurrentState != longhorn.InstanceStateUnknown {
-				log.Warnf("Keeping engine frontend %v in UNKNOWN while instance manager %v is unavailable during live upgrade", instanceName, im.Name)
-			}
+			h.recordLiveUpgradeToleration(obj, log,
+				"Keeping engine frontend %v in UNKNOWN while instance manager %v is unavailable during live upgrade",
+				instanceName, im.Name)
 			status.CurrentState = longhorn.InstanceStateUnknown
 			status.IP = ""
 			status.StorageIP = ""
@@ -117,9 +117,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if tolerateIMUnavailableForLiveUpgrade {
-			if status.CurrentState != longhorn.InstanceStateUnknown {
-				log.Warnf("Keeping engine frontend %v in UNKNOWN while instance manager %v is starting during live upgrade", instanceName, im.Name)
-			}
+			h.recordLiveUpgradeToleration(obj, log,
+				"Keeping engine frontend %v in UNKNOWN while instance manager %v is starting during live upgrade",
+				instanceName, im.Name)
 			status.CurrentState = longhorn.InstanceStateUnknown
 			status.CurrentImage = ""
 			status.IP = ""
@@ -156,7 +156,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 			status.InstanceManagerName != "" &&
 			im != nil &&
 			status.InstanceManagerName != im.Name {
-			log.Warnf("EngineFrontend %v not found in replacement instance manager %v during live upgrade, marking it stopped for recreation", instanceName, im.Name)
+			h.recordLiveUpgradeToleration(obj, log,
+				"EngineFrontend %v not found in replacement instance manager %v during live upgrade, marking it stopped for recreation",
+				instanceName, im.Name)
 			status.Started = false
 			status.Starting = false
 			status.CurrentState = longhorn.InstanceStateStopped
@@ -345,6 +347,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 	}
 }
 
+func (h *InstanceHandler) recordLiveUpgradeToleration(obj runtime.Object, log *logrus.Entry, format string, args ...interface{}) {
+	log.Warnf(format, args...)
+	if h.eventRecorder != nil {
+		h.eventRecorder.Eventf(obj, corev1.EventTypeWarning, constant.EventReasonUpdate, format, args...)
+	}
+}
+
 func (h *InstanceHandler) shouldTolerateIMUnavailableForLiveUpgrade(obj runtime.Object, spec *longhorn.InstanceSpec, im *longhorn.InstanceManager, status *longhorn.InstanceStatus) bool {
 	if spec == nil || status == nil || !status.Started || spec.NodeID == "" || !types.IsDataEngineV2(spec.DataEngine) {
 		return false
@@ -359,7 +368,7 @@ func (h *InstanceHandler) shouldTolerateIMUnavailableForLiveUpgrade(obj runtime.
 
 	active, err := hasActiveInstanceManagerUpgradeOnNode(h.ds, spec.NodeID)
 	if err != nil {
-		logrus.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade", spec.NodeID)
+		logrus.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade; not tolerating IM unavailability without an explicit active-upgrade signal", spec.NodeID)
 		return false
 	}
 

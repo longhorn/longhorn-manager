@@ -2453,6 +2453,9 @@ spec:
                 description: TargetImage is the desired instance manager image after
                   upgrade.
                 type: string
+            required:
+            - nodeID
+            - targetImage
             type: object
           status:
             description: InstanceManagerUpgradeStatus defines the observed state of
@@ -2526,7 +2529,7 @@ spec:
                   type: object
                 description: |-
                   Engines records the relocation plan for each engine managed by the source
-                  instance manager. The map key is the engine name.
+                  instance manager. The map key is the volume name.
                 nullable: true
                 type: object
               errorMsg:

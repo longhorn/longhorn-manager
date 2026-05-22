@@ -7270,7 +7270,7 @@ func (s *DataStore) GetDataEngineObject(engine *longhorn.Engine) (longhorn.DataE
 }
 
 func checkInstanceManagerUpgrade(imu *longhorn.InstanceManagerUpgrade) error {
-	if imu.Name == "" {
+	if imu.Name == "" || imu.Spec.NodeID == "" || imu.Spec.TargetImage == "" {
 		return fmt.Errorf("BUG: missing required field %+v", imu)
 	}
 	return nil

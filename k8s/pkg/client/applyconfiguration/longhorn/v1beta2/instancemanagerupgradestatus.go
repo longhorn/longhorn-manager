@@ -32,7 +32,7 @@ type InstanceManagerUpgradeStatusApplyConfiguration struct {
 	// State indicates the overall progress of the instance manager upgrade.
 	State *longhornv1beta2.InstanceManagerUpgradeState `json:"state,omitempty"`
 	// Engines records the relocation plan for each engine managed by the source
-	// instance manager. The map key is the engine name.
+	// instance manager. The map key is the volume name.
 	Engines map[string]EngineRelocationApplyConfiguration `json:"engines,omitempty"`
 	// StartedAt records when the upgrade transitioned out of Pending and began
 	// active work. It is used to enforce the upgrade timeout. This timestamp is
