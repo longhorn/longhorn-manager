@@ -280,3 +280,12 @@ func isRevisionedEngineImage(image string) bool {
 	tag := image[lastColonIndex+1:]
 	return engineImageRevisionTagRegex.MatchString(tag)
 }
+
+func getContainerArgValue(args []string, flag string) string {
+	for i, arg := range args {
+		if arg == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
