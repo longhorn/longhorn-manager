@@ -222,7 +222,9 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
-		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion
+		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -657,12 +659,45 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		log.WithError(err).Warnf("Failed to sync date engine CPU mask to instance manager pod %v", im.Name)
 	}
 
-	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
+	// hugepageSettingApplied: true means the pod is safe to keep (either settings
+	// are synced, or node lacks capacity making deletion unsafe). false means settings
+	// are not synced AND node has enough capacity, so deletion is safe to proceed.
+	// hugepageSettingsSynced: true means the pod's hugepage limit and --spdk-memory-size
+	// arg match the current settings. false means they differ or could not be verified.
+	hugepageSettingApplied, hugepageSettingsSynced, err := imc.isHugepageSettingApplied(im)
+	if err != nil {
+		// Fail safe on verification errors: keep the pod deletion-blocked, but do not
+		// claim the hugepage settings are synced when capacity/sync could not be verified.
+		hugepageSettingApplied = true
+		hugepageSettingsSynced = false
+		log.WithError(err).Warnf("Failed to check hugepage setting applied state for instance manager pod %v", im.Name)
+	}
+
+	isSettingSynced, unSyncedSettings, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
 	if err != nil {
 		return err
 	}
 
-	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	// When hugepage settings are not synced and the pod is eligible for deletion,
+	// decide whether to block or allow based on node hugepage capacity.
+	if !hugepageSettingsSynced && !isPodDeletedOrNotRunning && !areInstancesRunningInPod {
+		unSyncedSettings = append(unSyncedSettings, types.SettingNameDataEngineHugepageEnabled, types.SettingNameDataEngineMemorySize)
+
+		if hugepageSettingApplied {
+			// Node lacks sufficient hugepage capacity or capacity could not be verified.
+			// Block ALL pod deletion to avoid leaving the replacement pod unschedulable (Pending).
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced,
+				fmt.Sprintf("Settings %v are not synced; skipping pod deletion because sufficient hugepage capacity for rescheduling cannot be confirmed", unSyncedSettings))
+			log.Warnf("Skipping deletion of instance manager pod %v because sufficient hugepage capacity for rescheduling cannot be confirmed", im.Name)
+			return nil
+		}
+
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, fmt.Sprintf("Settings %v are not synced", unSyncedSettings))
+	}
+
+	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied && hugepageSettingApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
 		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
 		isPodDeletionNotRequired {
@@ -673,7 +708,7 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		log.Warnf("Instance manager pod %v is deleted or not running, recreating the pod", im.Name)
 	} else {
 		log.Warnf("Deleting instance manager pod %v because some danger zone settings are not synced since no instances are running and the following conditions are met: "+
-			"setting is not synced (%v) or data engine CPU mask is not applied (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied)
+			"setting is not synced (%v) or data engine CPU mask is not applied (%v) or hugepage setting is not applied (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied, !hugepageSettingApplied)
 	}
 
 	if err := imc.cleanupInstanceManagerPod(im.Name); err != nil {
@@ -746,31 +781,31 @@ func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.Instanc
 	return nil
 }
 
-func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *longhorn.InstanceManager) (isSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod bool, err error) {
+func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *longhorn.InstanceManager) (isSynced bool, unSyncedDangerSettings []types.SettingName, isPodDeletedOrNotRunning, areInstancesRunningInPod bool, err error) {
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-		return false, true, false, nil
+		return false, nil, true, false, nil
 	}
 
 	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceEngineFrontends, im.Status.InstanceReplicas) {
 		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
-			return false, false, true, nil
+			return false, nil, false, true, nil
 		}
 	}
 
 	pod, err := imc.ds.GetPodRO(im.Namespace, im.Name)
 	if err != nil {
-		return false, false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+		return false, nil, false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
 	}
 	if pod == nil {
-		return false, true, false, nil
+		return false, nil, true, false, nil
 	}
 
-	unSyncedDangerSettings := []types.SettingName{}
+	unSyncedDangerSettings = []types.SettingName{}
 	for settingName := range types.GetDangerZoneSettings() {
 		isSettingSynced := true
 		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
 		if err != nil {
-			return false, false, false, err
+			return false, nil, false, false, err
 		}
 		switch settingName {
 		case types.SettingNameTaintToleration:
@@ -796,7 +831,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
 		}
 		if err != nil {
-			return false, false, false, err
+			return false, nil, false, false, err
 		}
 		if !isSettingSynced {
 			unSyncedDangerSettings = append(unSyncedDangerSettings, settingName)
@@ -805,12 +840,12 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 	if len(unSyncedDangerSettings) > 0 {
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
 			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, fmt.Sprintf("Settings %v are not synced", unSyncedDangerSettings))
-		return false, false, false, nil
+		return false, unSyncedDangerSettings, false, false, nil
 	}
 
 	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
 		longhorn.ConditionStatusTrue, "", "")
-	return true, false, false, nil
+	return true, nil, false, false, nil
 }
 
 func (imc *InstanceManagerController) isSettingTaintTolerationSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -941,6 +976,162 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 	}
 
 	return im.Status.DataEngineStatus.V2.InterruptModeEnabled == settingValue, nil
+}
+
+// isHugepageSettingApplied checks whether hugepage-related settings are effectively
+// applied to the IM pod. It returns:
+//   - applied: true if the pod should be considered safe to keep (settings synced,
+//     or node lacks capacity making deletion unsafe)
+//   - synced: true if the pod's hugepage limit and --spdk-memory-size arg match
+//     the current settings
+//
+// applied is true (consider safe to keep) if:
+//   - The data engine is V1 (hugepages not used)
+//   - The IM is not running
+//   - The pod's hugepage limit and --spdk-memory-size arg match the current settings
+//   - The settings are NOT synced but the node lacks sufficient total hugepage
+//     capacity to reschedule the pod, making deletion unsafe
+func (imc *InstanceManagerController) isHugepageSettingApplied(im *longhorn.InstanceManager) (applied, synced bool, err error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, true, nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return true, true, nil
+	}
+
+	pod, err := imc.ds.GetPodRO(im.Namespace, im.Name)
+	if err != nil {
+		return false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+	}
+	if pod == nil {
+		return true, true, nil
+	}
+
+	limitSynced, err := imc.isSettingHugepageLimitSynced(im, pod)
+	if err != nil {
+		return false, false, err
+	}
+
+	argSynced, err := imc.isSettingMemorySizeArgSynced(im, pod)
+	if err != nil {
+		return false, false, err
+	}
+
+	if limitSynced && argSynced {
+		return true, true, nil
+	}
+
+	// Settings not synced - check if the node has enough total hugepage capacity
+	// to safely reschedule the pod after deletion.
+	nodeHasCapacity, err := imc.nodeHasEnoughHugepageTotalCapacity(im)
+	if err != nil {
+		return false, false, err
+	}
+
+	// If the node doesn't have enough total capacity, deletion would leave the
+	// IM pod unschedulable (Pending). Return applied=true to prevent deletion,
+	// but synced=false so the condition reflects the actual state.
+	return !nodeHasCapacity, false, nil
+}
+
+// isSettingHugepageLimitSynced checks whether the pod's hugepages-2Mi resource limit
+// matches the expected value derived from the hugepage-enabled and memory-size settings.
+func (imc *InstanceManagerController) isSettingHugepageLimitSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	expectedHugepage := int64(0)
+	if hugepageEnabled {
+		expectedHugepage = memorySize
+	}
+	expectedHugepageQuantity := fmt.Sprintf("%dMi", expectedHugepage)
+	expectedQuantity, err := resource.ParseQuantity(expectedHugepageQuantity)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse expected hugepage quantity %q", expectedHugepageQuantity)
+	}
+	currentQuantity := pod.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")]
+	return currentQuantity.Cmp(expectedQuantity) == 0, nil
+}
+
+// isSettingMemorySizeArgSynced checks whether the pod's --spdk-memory-size argument
+// matches the current memory-size setting value.
+func (imc *InstanceManagerController) isSettingMemorySizeArgSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	currentMemorySize := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-memory-size")
+	expectedMemorySize := fmt.Sprintf("%d", memorySize)
+	return currentMemorySize == expectedMemorySize, nil
+}
+
+// nodeHasEnoughHugepageTotalCapacity checks whether the node's total allocatable
+// (or capacity) hugepages meet the required memory size. It does NOT account for
+// hugepages already consumed by other pods on the node. This means a true result
+// is necessary but not sufficient for the new IM pod to be schedulable. A false
+// result, however, guarantees the pod cannot schedule and deletion should be skipped.
+func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *longhorn.InstanceManager) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	if !hugepageEnabled {
+		return true, nil
+	}
+
+	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	kubeNode, err := imc.ds.GetKubernetesNodeRO(im.Spec.NodeID)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get kubernetes node %v for hugepage check", im.Spec.NodeID)
+	}
+
+	hugepagesResourceName := corev1.ResourceName("hugepages-2Mi")
+	hugepages2MiAllocatable, exists := kubeNode.Status.Allocatable[hugepagesResourceName]
+	if !exists {
+		hugepages2MiAllocatable = kubeNode.Status.Capacity[hugepagesResourceName]
+	}
+
+	requiredHugePagesQuantity := fmt.Sprintf("%dMi", memorySize)
+	requiredHugePages, err := resource.ParseQuantity(requiredHugePagesQuantity)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse required hugepages quantity for memory size %v", memorySize)
+	}
+
+	return hugepages2MiAllocatable.Cmp(requiredHugePages) >= 0, nil
 }
 
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {
