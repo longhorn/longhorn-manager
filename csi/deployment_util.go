@@ -166,9 +166,10 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 
 type resourceCreateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
 type resourceDeleteFunc func(kubeClient *clientset.Clientset, name, namespace string) error
+type resourceUpdateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
 
 func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
-	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
+	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc, updateFunc resourceUpdateFunc) (err error) {
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
@@ -205,6 +206,14 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 			logrus.Infof("Detected %v %v CSI Git commit %v version %v has already been deployed",
 				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion])
 			return nil
+		}
+		// For Deployments, update in-place to let Kubernetes perform a rolling update,
+		// which respects maxUnavailable and avoids a 0-replica window.
+		// For other resource types (DaemonSet, CSIDriver), fall back to delete+recreate.
+		if updateFunc != nil && existingMeta.GetDeletionTimestamp() == nil {
+			objMeta.SetResourceVersion(existingMeta.GetResourceVersion())
+			logrus.Infof("Updating %s %s", resource, name)
+			return updateFunc(kubeClient, obj)
 		}
 		// otherwise clean up the old deployment
 		if err := cleanup(kubeClient, obj, resource, deleteFunc, getFunc); err != nil {
@@ -357,6 +366,15 @@ func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) e
 		return fmt.Errorf("failed to convert back the object")
 	}
 	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
+	return err
+}
+
+func deploymentUpdateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
+	o, ok := obj.(*appsv1.Deployment)
+	if !ok {
+		return fmt.Errorf("failed to convert object to *appsv1.Deployment for update, got %T", obj)
+	}
+	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Update(context.TODO(), o, metav1.UpdateOptions{})
 	return err
 }
 
