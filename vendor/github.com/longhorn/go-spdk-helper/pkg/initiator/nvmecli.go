@@ -10,6 +10,8 @@ import (
 	commonns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/go-spdk-helper/pkg/types"
+
+	spdkutil "github.com/longhorn/go-spdk-helper/pkg/util"
 )
 
 const (
@@ -234,9 +236,13 @@ func getHostID(executor *commonns.Executor) (string, error) {
 }
 
 func discovery(hostID, hostNQN, ip, port string, executor *commonns.Executor) ([]DiscoveryPageEntry, error) {
+	ip = spdkutil.NormalizeNvmeAddr(ip)
+
 	opts := []string{
 		"discover",
 		"-t", DefaultTransportType,
+		// nvme-cli -a accepts bare IPv6 (no brackets). net.SplitHostPort callers
+		// upstream strip brackets; util.NormalizeNvmeAddr is a safety net.
 		"-a", ip,
 		"-s", port,
 		"-o", "json",
@@ -303,6 +309,8 @@ func discovery(hostID, hostNQN, ip, port string, executor *commonns.Executor) ([
 }
 
 func connect(hostID, hostNQN, nqn, transpotType, ip, port string, executor *commonns.Executor) (string, error) {
+	ip = spdkutil.NormalizeNvmeAddr(ip)
+
 	var err error
 
 	opts := []string{
@@ -322,6 +330,8 @@ func connect(hostID, hostNQN, nqn, transpotType, ip, port string, executor *comm
 		opts = append(opts, "-q", hostNQN)
 	}
 	if ip != "" {
+		// nvme-cli -a accepts bare IPv6 (no brackets). net.SplitHostPort callers
+		// upstream strip brackets; util.NormalizeNvmeAddr is a safety net.
 		opts = append(opts, "-a", ip)
 	}
 	if port != "" {
@@ -402,8 +412,9 @@ func extractJSONString(str string) (string, error) {
 	return "", fmt.Errorf("invalid JSON string")
 }
 
-// GetIPAndPortFromControllerAddress returns the IP and port from the controller address
+// GetIPAndPortFromControllerAddress returns the IP and port from the controller address.
 // Input can be either "traddr=10.42.2.18 trsvcid=20006" or "traddr=10.42.2.18,trsvcid=20006"
+// for IPv4, or "traddr=fd00::1 trsvcid=20006" for IPv6 (traddr may contain colons).
 func GetIPAndPortFromControllerAddress(address string) (string, string) {
 	var traddr, trsvcid string
 
@@ -412,7 +423,7 @@ func GetIPAndPortFromControllerAddress(address string) (string, string) {
 	})
 
 	for _, part := range parts {
-		keyVal := strings.Split(part, "=")
+		keyVal := strings.SplitN(part, "=", 2)
 		if len(keyVal) == 2 {
 			key := strings.TrimSpace(keyVal[0])
 			value := strings.TrimSpace(keyVal[1])
