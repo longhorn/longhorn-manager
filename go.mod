@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.26.0
 
-toolchain go1.26.2
+toolchain go1.26.3
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -100,7 +100,7 @@ require (
 	k8s.io/kubernetes v1.36.0
 	k8s.io/metrics v0.36.0
 	k8s.io/mount-utils v0.36.1
-	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
+	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2
 	sigs.k8s.io/controller-runtime v0.24.0
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0
 )
