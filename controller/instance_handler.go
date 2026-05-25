@@ -85,8 +85,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
 		if tolerateIMUnavailableForLiveUpgrade {
-			h.recordLiveUpgradeToleration(obj, log,
-				"Keeping engine frontend %v in UNKNOWN while instance manager %v is unavailable during live upgrade",
+			log.Debugf("Keeping engine frontend %v in UNKNOWN while instance manager %v is unavailable during live upgrade",
 				instanceName, im.Name)
 			status.CurrentState = longhorn.InstanceStateUnknown
 			status.IP = ""
@@ -117,8 +116,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if tolerateIMUnavailableForLiveUpgrade {
-			h.recordLiveUpgradeToleration(obj, log,
-				"Keeping engine frontend %v in UNKNOWN while instance manager %v is starting during live upgrade",
+			log.Debugf("Keeping engine frontend %v in UNKNOWN while instance manager %v is starting during live upgrade",
 				instanceName, im.Name)
 			status.CurrentState = longhorn.InstanceStateUnknown
 			status.CurrentImage = ""
@@ -156,8 +154,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 			status.InstanceManagerName != "" &&
 			im != nil &&
 			status.InstanceManagerName != im.Name {
-			h.recordLiveUpgradeToleration(obj, log,
-				"EngineFrontend %v not found in replacement instance manager %v during live upgrade, marking it stopped for recreation",
+			log.Debugf("EngineFrontend %v not found in replacement instance manager %v during live upgrade, marking it stopped for recreation",
 				instanceName, im.Name)
 			status.Started = false
 			status.Starting = false
@@ -344,13 +341,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj r
 		status.UblkID = 0
 		status.UUID = ""
 		h.resetInstanceErrorCondition(status)
-	}
-}
-
-func (h *InstanceHandler) recordLiveUpgradeToleration(obj runtime.Object, log *logrus.Entry, format string, args ...interface{}) {
-	log.Warnf(format, args...)
-	if h.eventRecorder != nil {
-		h.eventRecorder.Eventf(obj, corev1.EventTypeWarning, constant.EventReasonUpdate, format, args...)
 	}
 }
 

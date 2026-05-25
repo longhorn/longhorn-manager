@@ -34,9 +34,10 @@ type InstanceManagerUpgradeStatusApplyConfiguration struct {
 	// Engines records the relocation plan for each engine managed by the source
 	// instance manager. The map key is the volume name.
 	Engines map[string]EngineRelocationApplyConfiguration `json:"engines,omitempty"`
-	// StartedAt records when the upgrade transitioned out of Pending and began
-	// active work. It is used to enforce the upgrade timeout. This timestamp is
-	// set once and never reset, providing a single global timeline for the entire upgrade.
+	// StartedAt records when the upgrade first entered a timed wait or active
+	// execution phase. It is used to enforce the upgrade timeout. This
+	// timestamp is set once and never reset, providing a single global timeline
+	// for the timed portion of the upgrade.
 	StartedAt *string `json:"startedAt,omitempty"`
 	// AbortRequested is set by the controller when an abort condition is detected
 	// (e.g., timeout, target image change). This is controller-owned state.

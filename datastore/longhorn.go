@@ -716,26 +716,38 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
-		// Check if upgrade has already started - if so, prevent changing start time
+		// Check if the singleton IMUC reports an in-progress upgrade.
 		imuc, err := s.GetInstanceManagerUpgradeControlRO(types.InstanceManagerUpgradeControlName)
 		if err != nil {
-			if ErrorIsNotFound(err) {
-				// No upgrade control exists yet, allow setting the start time
-				return nil
+			if !ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "failed to check upgrade status for setting %v", name)
 			}
-			return errors.Wrapf(err, "failed to check upgrade status for setting %v", name)
+		} else {
+			if imuc.Status.CurrentNode != "" {
+				return errors.Errorf("cannot update %v setting while upgrade is actively in progress on node %v", name, imuc.Status.CurrentNode)
+			}
+
+			// Additionally check if any node is in the in-progress state.
+			// We only block updates during active upgrades, not when all nodes are
+			// in terminal states from a previous upgrade cycle.
+			for nodeID, info := range imuc.Status.Nodes {
+				if info.State == longhorn.NodeUpgradeStateInProgress {
+					return errors.Errorf("cannot update %v setting while upgrade is actively in progress on node %v", name, nodeID)
+				}
+			}
 		}
 
-		if imuc.Status.CurrentNode != "" {
-			return errors.Errorf("cannot update %v setting while upgrade is actively in progress on node %v", name, imuc.Status.CurrentNode)
+		// Also block updates if any per-node IMU is actively relocating,
+		// waiting, restoring, or already stuck in a timed Pending wait, even if
+		// the singleton IMUC is missing.
+		imus, err := s.ListInstanceManagerUpgradesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list instance manager upgrades for setting %v", name)
 		}
-
-		// Additionally check if any node is in the in-progress state.
-		// We only block updates during active upgrades, not when all nodes are
-		// in terminal states (completed/failed/converged) from a previous upgrade cycle.
-		for nodeID, info := range imuc.Status.Nodes {
-			if info.State == longhorn.NodeUpgradeStateInProgress {
-				return errors.Errorf("cannot update %v setting while upgrade is actively in progress on node %v", name, nodeID)
+		for _, imu := range imus {
+			if types.IsActiveInstanceManagerUpgradeState(imu.Status.State) ||
+				(imu.Status.State == longhorn.InstanceManagerUpgradeStatePending && imu.Status.StartedAt != "") {
+				return errors.Errorf("cannot update %v setting while upgrade is actively in progress for node %v (IMU %v)", name, imu.Spec.NodeID, imu.Name)
 			}
 		}
 	}

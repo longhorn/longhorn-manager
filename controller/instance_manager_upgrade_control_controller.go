@@ -37,8 +37,6 @@ const (
 	// imucMaxNodeRetries is the maximum number of automatic retries for a single
 	// node's upgrade before the entire control CR stops attempting that node.
 	imucMaxNodeRetries = 5
-
-	defaultIMUNodeUpgradeTimeoutMinutes = 60
 )
 
 // InstanceManagerUpgradeControlController reconciles the singleton
@@ -207,7 +205,7 @@ func (c *InstanceManagerUpgradeControlController) isResponsibleFor(imuc *longhor
 	return isControllerResponsibleFor(c.controllerID, c.ds, imuc.Name, "", imuc.Status.OwnerID)
 }
 
-func (c *InstanceManagerUpgradeControlController) syncIMUC(key string) error {
+func (c *InstanceManagerUpgradeControlController) syncIMUC(key string) (err error) {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
@@ -243,11 +241,10 @@ func (c *InstanceManagerUpgradeControlController) syncIMUC(key string) error {
 	existingStatus := imuc.Status.DeepCopy()
 
 	defer func() {
-		if !reflect.DeepEqual(existingStatus, &imuc.Status) {
-			_, updateErr := c.ds.UpdateInstanceManagerUpgradeControlStatus(imuc)
-			if updateErr != nil {
+		if err == nil && !reflect.DeepEqual(existingStatus, &imuc.Status) {
+			if _, updateErr := c.ds.UpdateInstanceManagerUpgradeControlStatus(imuc); updateErr != nil {
 				log.WithError(updateErr).Warn("Failed to update InstanceManagerUpgradeControl status in deferred update")
-				return
+				err = updateErr
 			}
 		}
 	}()
@@ -267,8 +264,12 @@ func (c *InstanceManagerUpgradeControlController) syncIMUC(key string) error {
 // reconcile is the flat, stateless reconcile function. It returns true when
 // a node upgrade is actively in progress (so the caller requeues periodically).
 func (c *InstanceManagerUpgradeControlController) reconcile(imuc *longhorn.InstanceManagerUpgradeControl, log *logrus.Entry) (bool, error) {
-	// Respect the scheduled start time.
-	if imuc.Spec.StartAt != "" {
+	if imuc.Status.Nodes == nil {
+		imuc.Status.Nodes = make(map[string]longhorn.NodeUpgradeInfo)
+	}
+
+	// Respect the scheduled start time only before any node upgrade has started.
+	if imuc.Spec.StartAt != "" && !hasStartedNodeUpgrade(imuc) {
 		startAt, err := util.ParseTime(imuc.Spec.StartAt)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to parse startAt %v", imuc.Spec.StartAt)
@@ -278,10 +279,6 @@ func (c *InstanceManagerUpgradeControlController) reconcile(imuc *longhorn.Insta
 			c.queue.AddAfter(c.namespace+"/"+imuc.Name, time.Until(startAt))
 			return false, nil
 		}
-	}
-
-	if imuc.Status.Nodes == nil {
-		imuc.Status.Nodes = make(map[string]longhorn.NodeUpgradeInfo)
 	}
 
 	repairedCurrentNode, err := c.repairIMUCInvariants(imuc, log)
@@ -505,9 +502,11 @@ func (c *InstanceManagerUpgradeControlController) processCurrentNode(imuc *longh
 	imu, err := c.ds.GetInstanceManagerUpgrade(nodeInfo.IMUName)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			// IMU was deleted externally — reset the node to pending so it can be retried.
+			// IMU was deleted externally. Reset the node to pending but preserve
+			// the retry count so repeated external deletions cannot bypass the
+			// per-node retry limit.
 			log.Warnf("IMU %v for node %v was deleted externally, resetting node to pending", nodeInfo.IMUName, nodeID)
-			if err := c.resetNodeToPending(imuc, nodeID, 0); err != nil {
+			if err := c.resetNodeToPending(imuc, nodeID, nodeInfo.RetryCount); err != nil {
 				return false, err
 			}
 			return false, nil
@@ -544,38 +543,9 @@ func (c *InstanceManagerUpgradeControlController) processCurrentNode(imuc *longh
 		return false, c.handleNodeFailure(imuc, nodeID, imu.Status.ErrorMsg, log)
 	}
 
-	// For non-terminal states, enforce timeout and target-image-change checks.
-
-	// Enforce the node upgrade timeout.
-	if nodeInfo.StartedAt != "" {
-		startedAt, err := util.ParseTime(nodeInfo.StartedAt)
-		if err != nil {
-			log.Warnf("Failed to parse StartedAt %v for node %v: %v", nodeInfo.StartedAt, nodeID, err)
-		} else {
-			// Read the timeout setting (in minutes)
-			timeoutMinutes, err := c.ds.GetSettingAsInt(types.SettingNameV2InstanceManagerUpgradeTimeout)
-			if err != nil {
-				log.WithError(err).Warnf("Failed to get %v setting, using default %d minutes", types.SettingNameV2InstanceManagerUpgradeTimeout, defaultIMUNodeUpgradeTimeoutMinutes)
-				timeoutMinutes = defaultIMUNodeUpgradeTimeoutMinutes
-			}
-			nodeUpgradeTimeout := time.Duration(timeoutMinutes) * time.Minute
-
-			if time.Since(startedAt) > nodeUpgradeTimeout {
-				if !imu.Status.AbortRequested {
-					log.Warnf("Node %v upgrade timed out after %v, aborting IMU %v", nodeID, nodeUpgradeTimeout, imu.Name)
-					imu.Status.AbortRequested = true
-					imu.Status.AbortReason = "timeout"
-					if _, err := c.ds.UpdateInstanceManagerUpgradeStatus(imu); err != nil {
-						return false, errors.Wrapf(err, "failed to set AbortRequested on IMU %v due to timeout", imu.Name)
-					}
-				}
-				// Wait for IMU to restore engines and reach the Failed state.
-				return true, nil
-			}
-		}
-	}
-
-	// Abort if the target image changed since this IMU was created.
+	// For non-terminal states, only enforce target-image changes here. The IMU
+	// controller owns timeout detection so there is a single writer for timeout
+	// abort transitions.
 	if imu.Spec.TargetImage != imuc.Spec.TargetImage {
 		if !imu.Status.AbortRequested {
 			log.Infof("Target image changed (%v → %v), aborting IMU %v",
@@ -653,13 +623,17 @@ func (c *InstanceManagerUpgradeControlController) recoverOrphanedNodes(
 		// Try to abort the orphaned IMU to ensure clean state
 		if nodeInfo.IMUName != "" {
 			imu, err := c.ds.GetInstanceManagerUpgrade(nodeInfo.IMUName)
-			if err == nil && imu.Status.State != longhorn.InstanceManagerUpgradeStateCompleted &&
+			if err != nil {
+				if !datastore.ErrorIsNotFound(err) {
+					return errors.Wrapf(err, "failed to get orphaned IMU %v for node %v", nodeInfo.IMUName, nodeID)
+				}
+			} else if imu.Status.State != longhorn.InstanceManagerUpgradeStateCompleted &&
 				imu.Status.State != longhorn.InstanceManagerUpgradeStateFailed {
 				log.Infof("Aborting orphaned IMU %v for node %v", imu.Name, nodeID)
 				imu.Status.AbortRequested = true
 				imu.Status.AbortReason = "orphaned-imu"
 				if _, err := c.ds.UpdateInstanceManagerUpgradeStatus(imu); err != nil {
-					log.WithError(err).Warnf("Failed to abort orphaned IMU %v", imu.Name)
+					return errors.Wrapf(err, "failed to abort orphaned IMU %v", imu.Name)
 				}
 			}
 		}
@@ -739,6 +713,9 @@ func (c *InstanceManagerUpgradeControlController) ensureIMUForNode(targetImage, 
 		return "", err
 	}
 	for _, imu := range imus {
+		if imu.DeletionTimestamp != nil {
+			continue
+		}
 		if imu.Spec.NodeID == nodeID && imu.Spec.TargetImage == targetImage &&
 			imu.Status.State != longhorn.InstanceManagerUpgradeStateFailed &&
 			imu.Status.State != longhorn.InstanceManagerUpgradeStateCompleted {
@@ -791,7 +768,7 @@ func (c *InstanceManagerUpgradeControlController) pickNextPendingNode(imuc *long
 				// The node is in a terminal state, but its actual IM is not running the target image.
 				// This occurs if the global TargetImage changed or the node's IM was manually reverted.
 				c.logger.Infof("Node %v is in state %v but IM is not on target image %v, resetting to pending", im.Spec.NodeID, info.State, imuc.Spec.TargetImage)
-				if err := c.resetNodeToPending(imuc, im.Spec.NodeID, 0); err != nil {
+				if err := c.resetNodeToPending(imuc, im.Spec.NodeID, info.RetryCount); err != nil {
 					c.logger.WithError(err).Warnf("Failed to reset node %v to pending", im.Spec.NodeID)
 					continue
 				}
@@ -821,5 +798,17 @@ func (c *InstanceManagerUpgradeControlController) pickNextPendingNode(imuc *long
 }
 
 func generateIMUName(nodeID string) string {
-	return fmt.Sprintf("upgrade-%v-%v-%v", nodeID, time.Now().Format("20060102150405"), util.RandomID()[:4])
+	return util.AutoCorrectName(fmt.Sprintf("upgrade-%s-%s", nodeID, time.Now().UTC().Format("20060102150405")), datastore.NameMaximumLength)
+}
+
+func hasStartedNodeUpgrade(imuc *longhorn.InstanceManagerUpgradeControl) bool {
+	if imuc.Status.CurrentNode != "" {
+		return true
+	}
+	for _, info := range imuc.Status.Nodes {
+		if info.State == longhorn.NodeUpgradeStateInProgress {
+			return true
+		}
+	}
+	return false
 }

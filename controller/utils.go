@@ -121,10 +121,10 @@ func hasActiveInstanceManagerUpgradeOnNode(ds *datastore.DataStore, nodeID strin
 		return false, err
 	}
 
-	return hasActiveInstanceManagerUpgradeOnNodeFromList(imus, nodeID), nil
+	return hasVisibleInstanceManagerUpgradeOnNodeFromList(imus, nodeID), nil
 }
 
-func hasActiveInstanceManagerUpgradeOnNodeFromList(imus []*longhorn.InstanceManagerUpgrade, nodeID string) bool {
+func hasVisibleInstanceManagerUpgradeOnNodeFromList(imus []*longhorn.InstanceManagerUpgrade, nodeID string) bool {
 	if nodeID == "" {
 		return false
 	}

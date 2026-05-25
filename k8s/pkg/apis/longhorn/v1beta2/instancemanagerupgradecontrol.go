@@ -14,9 +14,6 @@ const (
 	NodeUpgradeStateCompleted = NodeUpgradeState("completed")
 	// NodeUpgradeStateFailed means the node upgrade failed and retries are exhausted.
 	NodeUpgradeStateFailed = NodeUpgradeState("failed")
-	// NodeUpgradeStateConverged means the node was already running the target image;
-	// no upgrade was necessary.
-	NodeUpgradeStateConverged = NodeUpgradeState("converged")
 )
 
 // InstanceManagerUpgradeControlSpec defines the desired state of the
@@ -94,8 +91,9 @@ type NodeUpgradeInfo struct {
 
 // InstanceManagerUpgradeControl is the singleton Longhorn CR that orchestrates
 // rolling live-upgrades of v2 instance managers across all cluster nodes.
-// It is created and maintained by the instance manager controller; users interact
-// with it by updating Spec.TargetImage or Spec.StartAt.
+// It is created and maintained by the instance manager controller. Spec.TargetImage
+// reflects the desired image for the cycle, while Spec.StartAt is reconciled
+// from the v2-instance-manager-upgrade-start-time setting until the upgrade starts.
 type InstanceManagerUpgradeControl struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

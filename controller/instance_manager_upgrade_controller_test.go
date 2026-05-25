@@ -14,8 +14,11 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"k8s.io/apimachinery/pkg/runtime"
+
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -35,6 +38,7 @@ const (
 	TestSourceIMName  = "instance-manager-source"
 	TestTargetIMName  = "instance-manager-target"
 	TestTempIMName    = "instance-manager-temp"
+	TestTempNode2     = "test-node-name-3"
 	TestSourceImage   = TestInstanceManagerImage      // stale image
 	TestTargetImage   = TestExtraInstanceManagerImage // new image
 	TestSourceNode    = TestNode1
@@ -198,21 +202,26 @@ func newTestIMForNode(name, nodeID, image string, imType longhorn.InstanceManage
 
 type InstanceManagerUpgradeControllerTestCase struct {
 	// Initial state
-	imu       *longhorn.InstanceManagerUpgrade
-	sourceIM  *longhorn.InstanceManager // IM on source node (nil = not found)
-	tempIM    *longhorn.InstanceManager // IM on temp node (nil = not found)
-	settings  []*longhorn.Setting
-	snapshots []*longhorn.Snapshot
-	volumes   []*longhorn.Volume // Volumes for IMU tests
-	engines   []*longhorn.Engine
-	replicas  []*longhorn.Replica
-	otherIMUs []*longhorn.InstanceManagerUpgrade // other IMUs in the cluster
+	imu             *longhorn.InstanceManagerUpgrade
+	sourceIM        *longhorn.InstanceManager // IM on source node (nil = not found)
+	tempIM          *longhorn.InstanceManager // IM on temp node (nil = not found)
+	settings        []*longhorn.Setting
+	snapshots       []*longhorn.Snapshot
+	volumes         []*longhorn.Volume // Volumes for IMU tests
+	engines         []*longhorn.Engine
+	replicas        []*longhorn.Replica
+	otherIMUs       []*longhorn.InstanceManagerUpgrade // other IMUs in the cluster
+	updateVolumeErr error
 
 	// Expected outcome
 	expectedState               longhorn.InstanceManagerUpgradeState
 	expectedVolumeEngineNodeIDs map[string]string // volumeName -> expected Spec.EngineNodeID after reconcile
+	expectedSnapshotNames       map[string]string // volumeName -> expected snapshot name stored in relocation status
+	expectedSnapshotCount       int
+	expectedStartedAt           bool
 	expectedAbort               bool
 	expectedErrorMsg            string
+	expectedSyncError           string
 }
 
 func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
@@ -243,9 +252,21 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 		},
 
 		"pending: source IM not running → stay Pending": {
-			imu:           newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
-			sourceIM:      newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateError),
-			expectedState: longhorn.InstanceManagerUpgradeStatePending,
+			imu:               newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
+			sourceIM:          newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateError),
+			expectedState:     longhorn.InstanceManagerUpgradeStatePending,
+			expectedStartedAt: true,
+		},
+
+		"pending: abort requested → Failed": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending)
+				imu.Status.AbortRequested = true
+				imu.Status.AbortReason = "timeout"
+				return imu
+			}(),
+			expectedState:    longhorn.InstanceManagerUpgradeStateFailed,
+			expectedErrorMsg: "upgrade aborted: timeout",
 		},
 
 		"pending: source IM already running target image → Completed": {
@@ -289,7 +310,7 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			expectedState: longhorn.InstanceManagerUpgradeStatePending,
 		},
 
-		"pending: no healthy replica on other node (single replica) → stay Pending": {
+		"pending: no replica on other node (single replica) → Failed": {
 			imu:      newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending),
 			sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
 			volumes: []*longhorn.Volume{
@@ -302,7 +323,8 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 				// Only replica is on the source node — no temp node available
 				newTestReplicaForIMU(TestReplicaName2, TestSourceNode, TestVolumeName2, true),
 			},
-			expectedState: longhorn.InstanceManagerUpgradeStatePending,
+			expectedState:    longhorn.InstanceManagerUpgradeStateFailed,
+			expectedErrorMsg: "upgrade requirement unsupported: cannot find temporary node for engine test-volume-engine-imu (volume test-volume-imu): upgrade requirement unsupported: no replica exists on nodes other than source node test-node-name-1 for volume test-volume-imu; single-replica or co-located volumes are not supported for live upgrade",
 		},
 
 		"pending: healthy replica on other node but not running → stay Pending": {
@@ -321,8 +343,9 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 					return r
 				}(),
 			},
-			tempIM:        newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
-			expectedState: longhorn.InstanceManagerUpgradeStatePending,
+			tempIM:            newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			expectedState:     longhorn.InstanceManagerUpgradeStatePending,
+			expectedStartedAt: true,
 		},
 
 		"pending: engine running, temp node available → RelocatingEngines": {
@@ -463,6 +486,55 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			},
 		},
 
+		"relocating: reuse deterministic pre-upgrade snapshot after deferred status write was missed": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+				imu.Status.StartedAt = util.Now()
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {
+						OriginalNodeID:  TestSourceNode,
+						TemporaryNodeID: TestTempNode,
+					},
+				}
+				return imu
+			}(),
+			settings: []*longhorn.Setting{
+				newSetting(string(types.SettingNameFastReplicaRebuildEnabled), "{\"v1\":\"true\",\"v2\":\"true\"}"),
+				newSetting(string(types.SettingNameTakeSnapshotBeforeV2DataEngineUpgrade), "true"),
+			},
+			snapshots: []*longhorn.Snapshot{
+				func() *longhorn.Snapshot {
+					snapshot := newSnapshot(getPreUpgradeSnapshotName(TestIMUName, TestVolumeName2))
+					snapshot.Spec.Volume = TestVolumeName2
+					snapshot.Status.Parent = "volume-head"
+					snapshot.Status.UserCreated = true
+					snapshot.Status.ReadyToUse = true
+					snapshot.Status.Checksum = "abc123"
+					return snapshot
+				}(),
+			},
+			sourceIM: newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			tempIM:   newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			volumes: []*longhorn.Volume{
+				func() *longhorn.Volume {
+					v := newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode)
+					v.Spec.SnapshotDataIntegrity = longhorn.SnapshotDataIntegrityEnabled
+					return v
+				}(),
+			},
+			engines: []*longhorn.Engine{
+				newTestEngineForIMU(TestEngineNameIMU, TestSourceNode, TestVolumeName2, longhorn.InstanceStateRunning),
+			},
+			expectedState: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+			expectedVolumeEngineNodeIDs: map[string]string{
+				TestVolumeName2: TestTempNode,
+			},
+			expectedSnapshotNames: map[string]string{
+				TestVolumeName2: getPreUpgradeSnapshotName(TestIMUName, TestVolumeName2),
+			},
+			expectedSnapshotCount: 1,
+		},
+
 		"relocating: engine directed and Running on temp node → WaitingForSourceIM": {
 			imu: func() *longhorn.InstanceManagerUpgrade {
 				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
@@ -547,8 +619,12 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			replicas: []*longhorn.Replica{
 				newTestReplicaForIMU(TestReplicaName2, TestTempNode, TestVolumeName2, true),
 			},
-			// No new temp node available — selectTemporaryNode returns error → wait
-			expectedState: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+			expectedState:    longhorn.InstanceManagerUpgradeStateRestoringEngines,
+			expectedAbort:    true,
+			expectedErrorMsg: "upgrade aborted: no-temporary-node",
+			expectedVolumeEngineNodeIDs: map[string]string{
+				TestVolumeName2: TestSourceNode,
+			},
 		},
 
 		// -----------------------------------------------------------------
@@ -567,8 +643,58 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			volumes: []*longhorn.Volume{
 				newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestTempNode),
 			},
+			tempIM: newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage,
+				longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
 			// sourceIM is nil (old IM is gone), no new IM with target image
 			expectedState: longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
+		},
+
+		"waiting: temp IM down after relocation → replan from temp A to temp B without source IM": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+				imu.Status.StartedAt = util.Now()
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {OriginalNodeID: TestSourceNode, TemporaryNodeID: TestTempNode},
+				}
+				return imu
+			}(),
+			volumes: []*longhorn.Volume{
+				newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestTempNode),
+			},
+			tempIM: newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage,
+				longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateError),
+			sourceIM: newTestIMForNode(TestTargetIMName, TestTempNode2, TestSourceImage,
+				longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			replicas: []*longhorn.Replica{
+				newTestReplicaForIMU(TestReplicaName2, TestTempNode, TestVolumeName2, true),
+				newTestReplicaForIMU(TestReplicaName3, TestTempNode2, TestVolumeName2, true),
+			},
+			expectedState: longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
+			expectedVolumeEngineNodeIDs: map[string]string{
+				TestVolumeName2: TestTempNode2,
+			},
+		},
+
+		"waiting: temp IM down without replacement and revert update fails → return error": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+				imu.Status.StartedAt = util.Now()
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {OriginalNodeID: TestSourceNode, TemporaryNodeID: TestTempNode},
+				}
+				return imu
+			}(),
+			volumes: []*longhorn.Volume{
+				newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestTempNode),
+			},
+			tempIM: newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage,
+				longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateError),
+			replicas: []*longhorn.Replica{
+				newTestReplicaForIMU(TestReplicaName2, TestSourceNode, TestVolumeName2, true),
+			},
+			updateVolumeErr:   fmt.Errorf("update volume failed"),
+			expectedState:     longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
+			expectedSyncError: "failed to revert volume test-volume-imu to original node test-node-name-1",
 		},
 
 		"waiting: target IM now Running, has engines → RestoringEngines": {
@@ -714,6 +840,25 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			expectedState: longhorn.InstanceManagerUpgradeStateCompleted,
 		},
 
+		"waiting-healthy: timeout elapsed → stay WaitingForHealthyVolumes": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes)
+				imu.Status.StartedAt = time.Now().Add(-(60*time.Minute + time.Minute)).UTC().Format(time.RFC3339)
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {OriginalNodeID: TestSourceNode, TemporaryNodeID: TestTempNode},
+				}
+				return imu
+			}(),
+			volumes: []*longhorn.Volume{
+				func() *longhorn.Volume {
+					v := newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode)
+					v.Status.Robustness = longhorn.VolumeRobustnessDegraded
+					return v
+				}(),
+			},
+			expectedState: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes,
+		},
+
 		// -----------------------------------------------------------------
 		// Abort cases
 		// -----------------------------------------------------------------
@@ -747,6 +892,35 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			expectedAbort: true,
 		},
 
+		"relocating: temp IM lost and no new temp node → abort and restore": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+				imu.Status.StartedAt = util.Now()
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {OriginalNodeID: TestSourceNode, TemporaryNodeID: TestTempNode},
+				}
+				return imu
+			}(),
+			volumes: []*longhorn.Volume{
+				func() *longhorn.Volume {
+					v := newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestSourceNode)
+					v.Spec.EngineNodeID = TestTempNode
+					return v
+				}(),
+			},
+			replicas: []*longhorn.Replica{
+				newTestReplicaForIMU(TestReplicaName2, TestSourceNode, TestVolumeName2, true),
+			},
+			tempIM: newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage,
+				longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateError),
+			expectedState:    longhorn.InstanceManagerUpgradeStateRestoringEngines,
+			expectedAbort:    true,
+			expectedErrorMsg: "upgrade aborted: no-temporary-node",
+			expectedVolumeEngineNodeIDs: map[string]string{
+				TestVolumeName2: TestSourceNode,
+			},
+		},
+
 		"waiting-for-source-im: abort requested → RestoringEngines": {
 			imu: func() *longhorn.InstanceManagerUpgrade {
 				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
@@ -761,6 +935,35 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 				newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestTempNode),
 			},
 			expectedState: longhorn.InstanceManagerUpgradeStateRestoringEngines,
+		},
+
+		"waiting-for-source-im: temp IM lost and no new temp node → abort and restore": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+				imu.Status.StartedAt = util.Now()
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName2: {OriginalNodeID: TestSourceNode, TemporaryNodeID: TestTempNode},
+				}
+				return imu
+			}(),
+			volumes: []*longhorn.Volume{
+				func() *longhorn.Volume {
+					v := newTestVolumeForIMU(TestVolumeName2, TestSourceNode, TestTempNode)
+					v.Status.CurrentEngineNodeID = TestTempNode
+					return v
+				}(),
+			},
+			replicas: []*longhorn.Replica{
+				newTestReplicaForIMU(TestReplicaName2, TestSourceNode, TestVolumeName2, true),
+			},
+			tempIM: newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage,
+				longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateError),
+			expectedState:    longhorn.InstanceManagerUpgradeStateRestoringEngines,
+			expectedAbort:    true,
+			expectedErrorMsg: "upgrade aborted: no-temporary-node",
+			expectedVolumeEngineNodeIDs: map[string]string{
+				TestVolumeName2: TestSourceNode,
+			},
 		},
 
 		"restoring: timed out after abort → Failed": {
@@ -816,8 +1019,13 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
-		imuc, error := newTestIMUController(lhClient, kubeClient, extensionsClient, informerFactories, tc.imu.Status.OwnerID)
-		c.Assert(error, IsNil)
+		imuc, controllerErr := newTestIMUController(lhClient, kubeClient, extensionsClient, informerFactories, tc.imu.Status.OwnerID)
+		c.Assert(controllerErr, IsNil)
+		if tc.updateVolumeErr != nil {
+			lhClient.PrependReactor("update", "volumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, tc.updateVolumeErr
+			})
+		}
 
 		// Settings
 		imImageSetting := newDefaultInstanceManagerImageSetting()
@@ -896,6 +1104,11 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 
 		// Run reconcile
 		err = imuc.syncInstanceManagerUpgrade(getKey(tc.imu, c))
+		if tc.expectedSyncError != "" {
+			c.Assert(err, NotNil)
+			c.Assert(err.Error(), Matches, ".*"+tc.expectedSyncError+".*")
+			continue
+		}
 		c.Assert(err, IsNil)
 
 		// Fetch updated IMU from fake client
@@ -911,6 +1124,23 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 			c.Assert(updatedIMU.Status.ErrorMsg, Equals, tc.expectedErrorMsg,
 				Commentf("test case %q: expected error %q, got %q", name, tc.expectedErrorMsg, updatedIMU.Status.ErrorMsg))
 		}
+		if tc.expectedStartedAt {
+			c.Assert(updatedIMU.Status.StartedAt, Not(Equals), "",
+				Commentf("test case %q: expected StartedAt to be set", name))
+		}
+		for volumeName, expectedSnapshotName := range tc.expectedSnapshotNames {
+			reloc, exists := updatedIMU.Status.Engines[volumeName]
+			c.Assert(exists, Equals, true,
+				Commentf("test case %q: expected relocation plan for volume %q", name, volumeName))
+			c.Assert(reloc.SnapshotName, Equals, expectedSnapshotName,
+				Commentf("test case %q: volume %q: expected snapshot name %q, got %q", name, volumeName, expectedSnapshotName, reloc.SnapshotName))
+		}
+		if tc.expectedSnapshotCount != 0 {
+			snapshotList, err := lhClient.LonghornV1beta2().Snapshots(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(len(snapshotList.Items), Equals, tc.expectedSnapshotCount,
+				Commentf("test case %q: expected %d snapshots, got %d", name, tc.expectedSnapshotCount, len(snapshotList.Items)))
+		}
 
 		// Check volume Spec.EngineNodeID updates
 		for volumeName, expectedNodeID := range tc.expectedVolumeEngineNodeIDs {
@@ -920,6 +1150,76 @@ func (s *TestSuite) TestSyncInstanceManagerUpgrade(c *C) {
 				Commentf("test case %q: volume %q: expected EngineNodeID %v, got %v", name, volumeName, expectedNodeID, updatedVolume.Spec.EngineNodeID))
 		}
 	}
+}
+
+func (s *TestSuite) TestEnqueueInstanceManagerChangeForPendingIMU(c *C) {
+	datastore.SkipListerCheck = true
+	defer func() { datastore.SkipListerCheck = false }()
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset() //nolint:staticcheck // generated fake field manager does not support these CRDs in this test harness
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imuc, err := newTestIMUController(lhClient, kubeClient, extensionsClient, informerFactories, TestSourceNode)
+	c.Assert(err, IsNil)
+
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+	pendingIMU := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending)
+	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), pendingIMU, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imuIndexer.Add(createdIMU)
+	c.Assert(err, IsNil)
+
+	// IM on a different node becomes available; Pending IMU should be re-enqueued
+	// so temporary-node preconditions are re-evaluated promptly.
+	changedIM := newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning)
+	imuc.enqueueInstanceManagerChange(changedIM)
+
+	c.Assert(imuc.queue.Len(), Equals, 1)
+	item, shutdown := imuc.queue.Get()
+	c.Assert(shutdown, Equals, false)
+	c.Assert(item, Equals, TestNamespace+"/"+TestIMUName)
+	imuc.queue.Done(item)
+}
+
+func (s *TestSuite) TestEnqueueInstanceManagerChangeForTemporaryNode(c *C) {
+	datastore.SkipListerCheck = true
+	defer func() { datastore.SkipListerCheck = false }()
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset() //nolint:staticcheck // generated fake field manager does not support these CRDs in this test harness
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imuc, err := newTestIMUController(lhClient, kubeClient, extensionsClient, informerFactories, TestSourceNode)
+	c.Assert(err, IsNil)
+
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+	relocatingIMU := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+	relocatingIMU.Status.Engines = map[string]longhorn.EngineRelocation{
+		TestVolumeName2: {
+			OriginalNodeID:  TestSourceNode,
+			TemporaryNodeID: TestTempNode,
+		},
+	}
+	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), relocatingIMU, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imuIndexer.Add(createdIMU)
+	c.Assert(err, IsNil)
+
+	// IM on the planned temporary node changes; the IMU should be re-enqueued so
+	// relocation/readiness can be re-evaluated.
+	changedIM := newTestIMForNode(TestTempIMName, TestTempNode, TestSourceImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning)
+	imuc.enqueueInstanceManagerChange(changedIM)
+
+	c.Assert(imuc.queue.Len(), Equals, 1)
+	item, shutdown := imuc.queue.Get()
+	c.Assert(shutdown, Equals, false)
+	c.Assert(item, Equals, TestNamespace+"/"+TestIMUName)
+	imuc.queue.Done(item)
 }
 
 // ---------------------------------------------------------------------------
@@ -975,6 +1275,7 @@ type IMUCTestCase struct {
 	expectedIMUCreated  bool   // whether a new IMU CR should be created
 	expectedIMUCount    int
 	expectedNodeStates  map[string]longhorn.NodeUpgradeState
+	expectedRetryCount  map[string]int
 	expectedAbortOnIMU  string // name of IMU that should have Abort=true set
 }
 
@@ -1016,6 +1317,34 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 			},
 			expectedCurrentNode: "",
 			expectedIMUCreated:  false,
+		},
+
+		"scheduled start time in the future but current node already in progress → continue processing": {
+			imuc: func() *longhorn.InstanceManagerUpgradeControl {
+				imuc := newIMUC(TestTargetImage)
+				imuc.Spec.StartAt = time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339)
+				imuc.Status.CurrentNode = TestSourceNode
+				imuc.Status.Nodes = map[string]longhorn.NodeUpgradeInfo{
+					TestSourceNode: {
+						State:     longhorn.NodeUpgradeStateInProgress,
+						IMUName:   TestIMUName,
+						StartedAt: util.Now(),
+					},
+				}
+				return imuc
+			}(),
+			sourceIMs: []*longhorn.InstanceManager{
+				newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage,
+					longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			},
+			existingIMUs: []*longhorn.InstanceManagerUpgrade{
+				newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM),
+			},
+			expectedCurrentNode: TestSourceNode,
+			expectedIMUCreated:  false,
+			expectedNodeStates: map[string]longhorn.NodeUpgradeState{
+				TestSourceNode: longhorn.NodeUpgradeStateInProgress,
+			},
 		},
 
 		"current node missing from status → repaired without starting another node in same reconcile": {
@@ -1126,9 +1455,10 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 				imuc.Status.CurrentNode = TestSourceNode
 				imuc.Status.Nodes = map[string]longhorn.NodeUpgradeInfo{
 					TestSourceNode: {
-						State:     longhorn.NodeUpgradeStateInProgress,
-						IMUName:   TestIMUName, // IMU not created in fake client — deleted
-						StartedAt: util.Now(),
+						State:      longhorn.NodeUpgradeStateInProgress,
+						IMUName:    TestIMUName, // IMU not created in fake client — deleted
+						StartedAt:  util.Now(),
+						RetryCount: 3,
 					},
 				}
 				return imuc
@@ -1143,27 +1473,27 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 			expectedNodeStates: map[string]longhorn.NodeUpgradeState{
 				TestSourceNode: longhorn.NodeUpgradeStateInProgress,
 			},
+			expectedRetryCount: map[string]int{
+				TestSourceNode: 3,
+			},
 		},
 
-		"timeout elapsed → AbortRequested set on active IMU": {
-			imuc: func() *longhorn.InstanceManagerUpgradeControl {
-				imuc := newIMUC(TestTargetImage)
-				imuc.Status.CurrentNode = TestSourceNode
-				imuc.Status.Nodes = map[string]longhorn.NodeUpgradeInfo{
-					TestSourceNode: {
-						State:   longhorn.NodeUpgradeStateInProgress,
-						IMUName: TestIMUName,
-						// Set StartedAt to 61 minutes ago to trigger timeout (default timeout is 60 minutes)
-						StartedAt: time.Now().Add(-61 * time.Minute).UTC().Format(time.RFC3339),
-					},
-				}
-				return imuc
-			}(),
-			existingIMUs: []*longhorn.InstanceManagerUpgrade{
-				newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines),
+		"deleting IMU is not reused for a new node attempt": {
+			imuc: newIMUC(TestTargetImage),
+			sourceIMs: []*longhorn.InstanceManager{
+				newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage,
+					longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
 			},
-			expectedCurrentNode: TestSourceNode, // still active, waiting for Failed
-			expectedAbortOnIMU:  TestIMUName,
+			existingIMUs: []*longhorn.InstanceManagerUpgrade{
+				func() *longhorn.InstanceManagerUpgrade {
+					imu := newIMU(TestIMUName, TestSourceNode, TestTargetImage, longhorn.InstanceManagerUpgradeStatePending)
+					now := metav1.NewTime(time.Now())
+					imu.DeletionTimestamp = &now
+					return imu
+				}(),
+			},
+			expectedCurrentNode: TestSourceNode,
+			expectedIMUCreated:  true,
 			expectedNodeStates: map[string]longhorn.NodeUpgradeState{
 				TestSourceNode: longhorn.NodeUpgradeStateInProgress,
 			},
@@ -1202,6 +1532,31 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 			expectedIMUCreated:  true,           // new IMU created with updated target image
 			expectedNodeStates: map[string]longhorn.NodeUpgradeState{
 				TestSourceNode: longhorn.NodeUpgradeStateInProgress, // picked up again for new attempt
+			},
+		},
+
+		"terminal node with stale IM image → retry count preserved when restarting upgrade": {
+			imuc: func() *longhorn.InstanceManagerUpgradeControl {
+				imuc := newIMUC(TestTargetImage)
+				imuc.Status.Nodes = map[string]longhorn.NodeUpgradeInfo{
+					TestSourceNode: {
+						State:      longhorn.NodeUpgradeStateCompleted,
+						RetryCount: 3,
+					},
+				}
+				return imuc
+			}(),
+			sourceIMs: []*longhorn.InstanceManager{
+				newTestIMForNode(TestSourceIMName, TestSourceNode, TestSourceImage,
+					longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2, longhorn.InstanceManagerStateRunning),
+			},
+			expectedCurrentNode: TestSourceNode,
+			expectedIMUCreated:  true,
+			expectedNodeStates: map[string]longhorn.NodeUpgradeState{
+				TestSourceNode: longhorn.NodeUpgradeStateInProgress,
+			},
+			expectedRetryCount: map[string]int{
+				TestSourceNode: 3,
 			},
 		},
 	}
@@ -1265,6 +1620,13 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 			c.Assert(info.State, Equals, expectedState,
 				Commentf("test case %q: node %q: expected state %v, got %v", name, nodeID, expectedState, info.State))
 		}
+		for nodeID, expectedRetryCount := range tc.expectedRetryCount {
+			info, ok := updatedIMUC.Status.Nodes[nodeID]
+			c.Assert(ok, Equals, true,
+				Commentf("test case %q: node %q not found in status for retry count", name, nodeID))
+			c.Assert(info.RetryCount, Equals, expectedRetryCount,
+				Commentf("test case %q: node %q: expected retry count %d, got %d", name, nodeID, expectedRetryCount, info.RetryCount))
+		}
 
 		// Check whether a new IMU was created (beyond the pre-existing ones)
 		allIMUs, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).List(context.TODO(), metav1.ListOptions{})
@@ -1287,4 +1649,59 @@ func (s *TestSuite) TestSyncIMUC(c *C) {
 				Commentf("test case %q: expected AbortRequested=true on IMU %q", name, tc.expectedAbortOnIMU))
 		}
 	}
+}
+
+func (s *TestSuite) TestSyncIMUCRecoverOrphanedNodeAbortFailureReturnsError(c *C) {
+	datastore.SkipListerCheck = true
+	defer func() { datastore.SkipListerCheck = false }()
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset() //nolint:staticcheck // generated fake field manager does not support these CRDs in this test harness
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imucIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgradeControls().Informer().GetIndexer()
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+	imuccController, err := newTestIMUCController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	imuc := newIMUC(TestTargetImage)
+	imuc.Status.Nodes = map[string]longhorn.NodeUpgradeInfo{
+		TestSourceNode: {
+			State:   longhorn.NodeUpgradeStatePending,
+			IMUName: "",
+		},
+		TestTempNode: {
+			State:   longhorn.NodeUpgradeStateInProgress,
+			IMUName: TestIMUName,
+		},
+	}
+
+	createdIMUC, err := lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(TestNamespace).Create(context.TODO(), imuc, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imucIndexer.Add(createdIMUC)
+	c.Assert(err, IsNil)
+
+	orphanedIMU := newIMU(TestIMUName, TestTempNode, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), orphanedIMU, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imuIndexer.Add(createdIMU)
+	c.Assert(err, IsNil)
+
+	lhClient.PrependReactor("update", "instancemanagerupgrades", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" {
+			return false, nil, nil
+		}
+		return true, nil, fmt.Errorf("injected abort status update failure")
+	})
+
+	err = imuccController.syncIMUC(TestNamespace + "/" + types.InstanceManagerUpgradeControlName)
+	c.Assert(err, NotNil)
+
+	updatedIMUC, getErr := lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(TestNamespace).Get(
+		context.TODO(), types.InstanceManagerUpgradeControlName, metav1.GetOptions{})
+	c.Assert(getErr, IsNil)
+	c.Assert(updatedIMUC.Status.Nodes[TestTempNode].State, Equals, longhorn.NodeUpgradeStateInProgress)
+	c.Assert(updatedIMUC.Status.Nodes[TestTempNode].IMUName, Equals, TestIMUName)
 }
