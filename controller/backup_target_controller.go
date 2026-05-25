@@ -361,7 +361,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		}
 	}
 
-	// start a BackupStoreTimer and keep it in a map[string]*BackupStoreTimer
+	// stopTimer mutates bsTimerMap and requires the caller to hold bsTimerMapLock.
 	stopTimer := func(backupTargetName string) {
 		_, exists := btc.bsTimerMap[backupTargetName]
 		if exists {
@@ -404,9 +404,10 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 	btc.bsTimerMapLock.Unlock()
 
-	// Check the controller should run synchronization
-	if !backupTarget.Status.LastSyncedAt.IsZero() &&
-		!backupTarget.Spec.SyncRequestedAt.After(backupTarget.Status.LastSyncedAt.Time) {
+	// Check the controller should run synchronization.
+	// An empty backup target URL must still be reconciled so the controller can
+	// clear stale availability from the previous valid configuration.
+	if !isBackupTargetSyncRequired(backupTarget) {
 		return nil
 	}
 
@@ -445,9 +446,12 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	if backupTarget.Spec.BackupTargetURL == "" {
+		btc.bsTimerMapLock.Lock()
 		stopTimer(backupTarget.Name)
+		btc.bsTimerMapLock.Unlock()
 
 		backupTarget.Status.Available = false
+		backupTarget.Status.LastSyncedAt = metav1.Time{}
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable, "backup target URL is empty")
@@ -506,6 +510,28 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	return nil
+}
+
+func isBackupTargetSyncRequired(backupTarget *longhorn.BackupTarget) bool {
+	if backupTarget == nil {
+		return false
+	}
+
+	if backupTarget.Spec.BackupTargetURL == "" {
+		return true
+	}
+
+	// LastSyncedAt is reset to zero when the URL is cleared, so this check
+	// naturally handles the empty-to-non-empty URL transition without needing
+	// a blanket !Available bypass (which would cause repeated network calls
+	// against persistently unreachable targets on every reconcile).
+	// For unreachable targets, the BackupStoreTimer drives periodic retries
+	// via SyncRequestedAt.
+	if backupTarget.Status.LastSyncedAt.IsZero() {
+		return true
+	}
+
+	return backupTarget.Spec.SyncRequestedAt.After(backupTarget.Status.LastSyncedAt.Time)
 }
 
 func (btc *BackupTargetController) cleanUpAllBackupRelatedResources(backupTargetName string) error {
