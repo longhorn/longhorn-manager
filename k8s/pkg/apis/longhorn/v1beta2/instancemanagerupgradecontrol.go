@@ -48,8 +48,9 @@ type InstanceManagerUpgradeControlStatus struct {
 	// +optional
 	CurrentNode string `json:"currentNode,omitempty"`
 
-	// Nodes holds the upgrade status for every node in the cluster.
-	// The map is pre-populated with all nodes when a new cycle starts.
+	// Nodes holds the upgrade status for nodes participating in the current or
+	// most recent upgrade cycle. Entries are added as nodes are discovered to
+	// require upgrade or are processed by the controller.
 	// +optional
 	// +nullable
 	Nodes map[string]NodeUpgradeInfo `json:"nodes,omitempty"`

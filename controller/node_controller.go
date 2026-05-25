@@ -1203,6 +1203,22 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	imTypeDataEngines := nc.getImTypeDataEngines(node)
 
+	hasCurrentV2EngineOnNode := map[string]bool{}
+	if needsV2VolumeLookup(imTypeDataEngines) {
+		volumes, err := nc.ds.ListVolumesRO()
+		if err != nil {
+			return err
+		}
+		for _, vol := range volumes {
+			if !types.IsDataEngineV2(vol.Spec.DataEngine) {
+				continue
+			}
+			if vol.Status.CurrentEngineNodeID != "" {
+				hasCurrentV2EngineOnNode[vol.Status.CurrentEngineNodeID] = true
+			}
+		}
+	}
+
 	for imType, dataEngines := range imTypeDataEngines {
 		for _, dataEngine := range dataEngines {
 			defaultInstanceManagerCreated := false
@@ -1249,15 +1265,8 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						// so only running engines on this node block cleanup of an old
 						// IM. Use the volume's CurrentEngineNodeID as the authoritative
 						// signal: if any volume still has its engine here, keep the IM.
-						volumes, err := nc.ds.ListVolumesRO()
-						if err != nil {
-							return err
-						}
-						for _, vol := range volumes {
-							if vol.Status.CurrentEngineNodeID == node.Name {
-								cleanupRequired = false
-								break
-							}
+						if hasCurrentV2EngineOnNode[node.Name] {
+							cleanupRequired = false
 						}
 
 						// Additionally, if a live upgrade is in progress, only allow cleanup
@@ -2392,4 +2401,15 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 
 	// Case 3: New request → allow
 	return true, nil
+}
+
+func needsV2VolumeLookup(imTypeDataEngines map[longhorn.InstanceManagerType][]longhorn.DataEngineType) bool {
+	for _, dataEngines := range imTypeDataEngines {
+		for _, dataEngine := range dataEngines {
+			if types.IsDataEngineV2(dataEngine) {
+				return true
+			}
+		}
+	}
+	return false
 }
