@@ -69,7 +69,7 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if !backupTarget.Status.Available {
+	if backupTarget.Spec.BackupTargetURL == "" || !backupTarget.Status.Available {
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
 
