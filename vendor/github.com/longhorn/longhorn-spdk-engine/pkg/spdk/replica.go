@@ -4062,14 +4062,6 @@ func (r *Replica) BackupRestore(spdkClient *spdkclient.Client, backupUrl, snapsh
 
 	isFullRestore := newRestore.LastRestored == ""
 
-	defer func() {
-		go func() {
-			if err := r.completeBackupRestore(spdkClient, isFullRestore); err != nil {
-				r.log.WithError(err).Warn("Replica failed to complete backup restore")
-			}
-		}()
-	}()
-
 	if isFullRestore {
 		r.log.Infof("Starting a new full restore for backup %v", backupUrl)
 		if err := r.backupRestore(backupUrl, newRestore.LvolName, concurrentLimit); err != nil {
@@ -4083,6 +4075,12 @@ func (r *Replica) BackupRestore(spdkClient *spdkclient.Client, backupUrl, snapsh
 		}
 		r.log.Infof("Successfully initiated incremental restore for %v to %v", backupUrl, newRestore.LvolName)
 	}
+
+	go func() {
+		if err := r.completeBackupRestore(spdkClient, isFullRestore); err != nil {
+			r.log.WithError(err).Warn("Replica failed to complete backup restore")
+		}
+	}()
 
 	return nil
 

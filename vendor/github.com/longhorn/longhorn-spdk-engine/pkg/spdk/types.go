@@ -88,6 +88,10 @@ var (
 	// ErrRecoverDeviceNotFound indicates the NVMe device was not found on the
 	// host during recovery. The persisted record should be removed.
 	ErrRecoverDeviceNotFound = errors.New("device not found on host during recovery")
+	// ErrRecoveryCancelled indicates that recovery was aborted because a
+	// concurrent operation (e.g. EngineFrontendCreate) changed the ef state
+	// from Pending, meaning host-level operations should not proceed.
+	ErrRecoveryCancelled = errors.New("recovery cancelled by concurrent operation")
 )
 
 var (
