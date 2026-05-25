@@ -661,14 +661,7 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 func (nc *NodeController) enqueueIMUPreUpgradeSnapshotHash(obj interface{}) {
 	imu, ok := obj.(*longhorn.InstanceManagerUpgrade)
 	if !ok {
-		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			return
-		}
-		imu, ok = deletedState.Obj.(*longhorn.InstanceManagerUpgrade)
-		if !ok {
-			return
-		}
+		return
 	}
 
 	for volumeName, reloc := range imu.Status.Engines {
@@ -1176,14 +1169,54 @@ func (nc *NodeController) getProtectedV2InstanceManagerNodes() (map[string]struc
 	return protectedNodes, nil
 }
 
-func (nc *NodeController) shouldPreserveOldV2InstanceManagerDuringUpgrade(nodeName string) (bool, error) {
-	protectedNodes, err := nc.getProtectedV2InstanceManagerNodes()
+// shouldPreserveOldV2InstanceManager returns true if old v2 IMs should be
+// preserved on this node. This happens when either:
+// - the node is still the authoritative current-engine node for a v2 volume, or
+// - the node is protected during a live upgrade (temporary relocation target)
+func (nc *NodeController) shouldPreserveOldV2InstanceManager(node *longhorn.Node, imTypeDataEngines map[longhorn.InstanceManagerType][]longhorn.DataEngineType) (bool, error) {
+	hasV2DataEngine := false
+	for _, dataEngines := range imTypeDataEngines {
+		for _, dataEngine := range dataEngines {
+			if types.IsDataEngineV2(dataEngine) {
+				hasV2DataEngine = true
+				break
+			}
+		}
+		if hasV2DataEngine {
+			break
+		}
+	}
+	if !hasV2DataEngine {
+		return false, nil
+	}
+
+	// Use volume.Status.CurrentEngineNodeID as the authoritative volume-level
+	// signal rather than engine.Spec.NodeID. During relocation/switchover,
+	// engine.Spec.NodeID (desired state) may point to the new node before the
+	// switchover completes, while CurrentEngineNodeID (observed state) still
+	// points to the old node. Old IM cleanup must follow the current-engine
+	// owner, not intermediate desired placement.
+	volumes, err := nc.ds.ListVolumesRO()
 	if err != nil {
 		return false, err
 	}
 
-	_, shouldPreserve := protectedNodes[nodeName]
-	return shouldPreserve, nil
+	for _, vol := range volumes {
+		if !types.IsDataEngineV2(vol.Spec.DataEngine) {
+			continue
+		}
+		if vol.Status.CurrentEngineNodeID == node.Name {
+			return true, nil
+		}
+	}
+
+	protectedNodes, err := nc.getProtectedV2InstanceManagerNodes()
+	if err != nil {
+		return false, err
+	}
+	_, isProtected := protectedNodes[node.Name]
+
+	return isProtected, nil
 }
 
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
@@ -1203,20 +1236,9 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	imTypeDataEngines := nc.getImTypeDataEngines(node)
 
-	hasCurrentV2EngineOnNode := map[string]bool{}
-	if needsV2VolumeLookup(imTypeDataEngines) {
-		volumes, err := nc.ds.ListVolumesRO()
-		if err != nil {
-			return err
-		}
-		for _, vol := range volumes {
-			if !types.IsDataEngineV2(vol.Spec.DataEngine) {
-				continue
-			}
-			if vol.Status.CurrentEngineNodeID != "" {
-				hasCurrentV2EngineOnNode[vol.Status.CurrentEngineNodeID] = true
-			}
-		}
+	shouldPreserveOldV2IM, err := nc.shouldPreserveOldV2InstanceManager(node, imTypeDataEngines)
+	if err != nil {
+		return err
 	}
 
 	for imType, dataEngines := range imTypeDataEngines {
@@ -1265,25 +1287,10 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						// so only running engines on this node block cleanup of an old
 						// IM. Use the volume's CurrentEngineNodeID as the authoritative
 						// signal: if any volume still has its engine here, keep the IM.
-						if hasCurrentV2EngineOnNode[node.Name] {
+						// Additionally, preserve old IMs on temporary relocation nodes
+						// while a live upgrade is in progress.
+						if shouldPreserveOldV2IM {
 							cleanupRequired = false
-						}
-
-						// Additionally, if a live upgrade is in progress, only allow cleanup
-						// on the node currently being upgraded. This prevents deleting old IMs
-						// on non-current nodes, which would break volumes when both the upgrade
-						// node and another node have their IMs terminating simultaneously.
-						if cleanupRequired {
-							preserveDuringUpgrade, err := nc.shouldPreserveOldV2InstanceManagerDuringUpgrade(node.Name)
-							if err != nil {
-								return err
-							}
-							if preserveDuringUpgrade {
-								// An upgrade is active on a different node, preserve this old IM
-								cleanupRequired = false
-								log.Debugf("Preserving old instance manager %v on node %v because a live upgrade is active on another node",
-									im.Name, node.Name)
-							}
 						}
 					} else {
 						// v1: any running instance blocks cleanup.
@@ -2401,15 +2408,4 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 
 	// Case 3: New request → allow
 	return true, nil
-}
-
-func needsV2VolumeLookup(imTypeDataEngines map[longhorn.InstanceManagerType][]longhorn.DataEngineType) bool {
-	for _, dataEngines := range imTypeDataEngines {
-		for _, dataEngine := range dataEngines {
-			if types.IsDataEngineV2(dataEngine) {
-				return true
-			}
-		}
-	}
-	return false
 }

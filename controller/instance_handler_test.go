@@ -841,6 +841,84 @@ func (s *TestSuite) TestReconcileInstanceStateEngineFrontendLiveUpgradeTolerance
 	}
 }
 
+func (s *TestSuite) TestReconcileInstanceStateEngineFrontendLiveUpgradeToleranceDoesNotEmitEvent(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+	fakeRecorder := record.NewFakeRecorder(10)
+	h := NewInstanceHandler(datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories), &MockInstanceManagerHandler{}, fakeRecorder)
+
+	ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(eiIndexer.Add(ei), IsNil)
+
+	imImageSetting := newDefaultInstanceManagerImageSetting()
+	imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(sIndexer.Add(imImageSetting), IsNil)
+
+	v2DataEngineSetting := initSettingsNameValue(string(types.SettingNameV2DataEngine), "true")
+	v2DataEngineSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), v2DataEngineSetting, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(sIndexer.Add(v2DataEngineSetting), IsNil)
+
+	im := newInstanceManager(
+		TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1,
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{
+			ExistingInstance: {
+				Spec: longhorn.InstanceProcessSpec{Name: ExistingInstance},
+				Status: longhorn.InstanceProcessStatus{
+					State:     longhorn.InstanceStateRunning,
+					PortStart: TestPort1,
+				},
+			},
+		},
+		map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeV2,
+		TestInstanceManagerImage,
+		true,
+	)
+	createdIM, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(imIndexer.Add(createdIM), IsNil)
+
+	imu := newIMU("test-imu", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(imuIndexer.Add(createdIMU), IsNil)
+
+	pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, createdIM.Name, createdIM.Namespace, createdIM.Spec.NodeID)
+	c.Assert(pIndexer.Add(pod), IsNil)
+	_, err = kubeClient.CoreV1().Pods(createdIM.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	node, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(nodeIndexer.Add(node), IsNil)
+
+	ef := newEngineFrontend(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning)
+	err = h.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus)
+	c.Assert(err, IsNil)
+	c.Assert(ef.Status.CurrentState, Equals, longhorn.InstanceStateUnknown)
+
+	select {
+	case event := <-fakeRecorder.Events:
+		c.Fatalf("expected no live-upgrade toleration event, got %v", event)
+	default:
+	}
+}
+
 func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
 	fakeRecorder := record.NewFakeRecorder(5)
 	h := &InstanceHandler{

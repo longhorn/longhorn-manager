@@ -29,8 +29,9 @@ import (
 //
 // InstanceManagerUpgradeControl is the singleton Longhorn CR that orchestrates
 // rolling live-upgrades of v2 instance managers across all cluster nodes.
-// It is created and maintained by the instance manager controller; users interact
-// with it by updating Spec.TargetImage or Spec.StartAt.
+// It is created and maintained by the instance manager controller. Spec.TargetImage
+// reflects the desired image for the cycle, while Spec.StartAt is reconciled
+// from the v2-instance-manager-upgrade-start-time setting until the upgrade starts.
 type InstanceManagerUpgradeControlApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

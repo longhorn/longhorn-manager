@@ -261,18 +261,6 @@ const (
 	CSISidecarPortNameSnapshotter = "csi-snapshotter"
 )
 
-func IsActiveInstanceManagerUpgradeState(state longhorn.InstanceManagerUpgradeState) bool {
-	switch state {
-	case longhorn.InstanceManagerUpgradeStateRelocatingEngines,
-		longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
-		longhorn.InstanceManagerUpgradeStateRestoringEngines,
-		longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes:
-		return true
-	default:
-		return false
-	}
-}
-
 const (
 	RecurringJobParameterFullBackupInterval = "full-backup-interval"
 	RecurringJobParameterVolumeBackupPolicy = "volume-backup-policy"
@@ -1490,4 +1478,16 @@ func GetBackingImageMonitorName(imName string) string {
 
 func GetV2BackingImageWithDiskUUIDName(biName, v2DiskUUID string) string {
 	return fmt.Sprintf("%v-%v", biName, v2DiskUUID)
+}
+
+func IsActiveInstanceManagerUpgradeState(state longhorn.InstanceManagerUpgradeState) bool {
+	switch state {
+	case longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
+		longhorn.InstanceManagerUpgradeStateRestoringEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes:
+		return true
+	default:
+		return false
+	}
 }

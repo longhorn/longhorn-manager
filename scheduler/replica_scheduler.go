@@ -219,15 +219,15 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, 
 	if types.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
 		imuList, err := rcs.ds.ListInstanceManagerUpgradesRO()
 		if err != nil {
-			// Fail conservatively: if we cannot determine which nodes are upgrading,
-			// reject all nodes to avoid scheduling replicas onto upgrading instance managers.
-			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
-				errors.Wrapf(err, "failed to list instance manager upgrades for scheduling replica %v", schedulingReplica.Name))
-			return map[string]*longhorn.Node{}, errs
-		}
-		for _, imu := range imuList {
-			if types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
-				nodesUnderUpgrade[imu.Spec.NodeID] = true
+			// Fail open on lister/cache issues. The upgrade-node exclusion is a
+			// best-effort protection and should not block all v2 replica
+			// scheduling cluster-wide when IMUs cannot be listed temporarily.
+			logrus.WithError(err).Warnf("Failed to list instance manager upgrades while scheduling replica %v, continuing without upgrade-node exclusion", schedulingReplica.Name)
+		} else {
+			for _, imu := range imuList {
+				if types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
+					nodesUnderUpgrade[imu.Spec.NodeID] = true
+				}
 			}
 		}
 	}

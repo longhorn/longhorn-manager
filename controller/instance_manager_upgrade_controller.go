@@ -16,12 +16,11 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-
-	bsutil "github.com/longhorn/backupstore/util"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -42,6 +41,7 @@ const (
 // volume, no healthy replica on another node). Callers that want to wait
 // rather than propagate should check with errors.Is(err, errUpgradePrecondition).
 var errUpgradePrecondition = errors.New("upgrade precondition not met")
+var errUpgradeUnsupported = errors.New("upgrade requirement unsupported")
 
 type InstanceManagerUpgradeController struct {
 	*baseController
@@ -220,6 +220,26 @@ func (imuc *InstanceManagerUpgradeController) enqueueInstanceManagerChange(obj i
 	for _, imu := range imus {
 		if imu.Spec.NodeID == im.Spec.NodeID {
 			imuc.enqueueInstanceManagerUpgrade(imu)
+			continue
+		}
+
+		// Re-evaluate Pending IMUs when any v2 AllInOne IM changes, since a
+		// newly Running IM on another node may now satisfy the temporary-node
+		// preconditions. Also watch IMs on already planned temporary nodes so
+		// relocation/readiness can progress promptly without waiting for an
+		// unrelated IMU/volume event to requeue the upgrade.
+		if im.Spec.Type == longhorn.InstanceManagerTypeAllInOne &&
+			types.IsDataEngineV2(im.Spec.DataEngine) &&
+			imu.Status.State == longhorn.InstanceManagerUpgradeStatePending {
+			imuc.enqueueInstanceManagerUpgrade(imu)
+			continue
+		}
+
+		for _, reloc := range imu.Status.Engines {
+			if reloc.TemporaryNodeID == im.Spec.NodeID {
+				imuc.enqueueInstanceManagerUpgrade(imu)
+				break
+			}
 		}
 	}
 }
@@ -281,7 +301,7 @@ func (imuc *InstanceManagerUpgradeController) enqueueEngineChange(obj interface{
 	}
 }
 
-func (imuc *InstanceManagerUpgradeController) syncInstanceManagerUpgrade(key string) error {
+func (imuc *InstanceManagerUpgradeController) syncInstanceManagerUpgrade(key string) (err error) {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
@@ -321,7 +341,9 @@ func (imuc *InstanceManagerUpgradeController) syncInstanceManagerUpgrade(key str
 
 	defer func() {
 		if err == nil && !reflect.DeepEqual(existingStatus, &imu.Status) {
-			_, err = imuc.ds.UpdateInstanceManagerUpgradeStatus(imu)
+			if _, updateErr := imuc.ds.UpdateInstanceManagerUpgradeStatus(imu); updateErr != nil {
+				err = updateErr
+			}
 		}
 	}()
 
@@ -337,7 +359,8 @@ func (imuc *InstanceManagerUpgradeController) syncInstanceManagerUpgrade(key str
 
 	// Re-enqueue periodically to renew the lease and enforce the upgrade timeout
 	// while the upgrade is in a transient state.
-	if types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
+	if imu.Status.State == longhorn.InstanceManagerUpgradeStatePending ||
+		types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
 		imuc.queue.AddAfter(key, instanceManagerUpgradeRequeueAfter)
 	}
 
@@ -357,19 +380,22 @@ func (imuc *InstanceManagerUpgradeController) reconcileStateMachine(imu *longhor
 		fallthrough
 
 	case longhorn.InstanceManagerUpgradeStatePending:
+		if imu.Status.AbortRequested {
+			imuc.markAborted(imu, log,
+				"Abort requested (%s) while pending, marking upgrade as failed",
+				longhorn.InstanceManagerUpgradeStateFailed)
+			return nil
+		}
 		return imuc.reconcilePending(imu, log)
 
 	case longhorn.InstanceManagerUpgradeStateRelocatingEngines:
 		// If an abort is requested, skip relocation and begin restoring engines.
 		// Note: We no longer reset StartedAt here. The single global timeout applies
 		// to the entire upgrade lifecycle, providing predictable timeout behavior.
-		if imuc.shouldAbort(imu) {
-			reason := imuc.getIMUAbortReason(imu)
-			log.Infof("Abort requested (%s), transitioning to restore engines to original positions", reason)
-			imu.Status.State = longhorn.InstanceManagerUpgradeStateRestoringEngines
-			if imu.Status.ErrorMsg == "" {
-				imu.Status.ErrorMsg = fmt.Sprintf("upgrade aborted: %s", reason)
-			}
+		if imu.Status.AbortRequested {
+			imuc.markAborted(imu, log,
+				"Abort requested (%s), transitioning to restore engines to original positions",
+				longhorn.InstanceManagerUpgradeStateRestoringEngines)
 			return nil
 		}
 		return imuc.reconcileRelocatingEngines(imu, log)
@@ -378,13 +404,10 @@ func (imuc *InstanceManagerUpgradeController) reconcileStateMachine(imu *longhor
 		// If an abort is requested, begin restoring engines.
 		// Note: We no longer reset StartedAt here. The single global timeout applies
 		// to the entire upgrade lifecycle, providing predictable timeout behavior.
-		if imuc.shouldAbort(imu) {
-			reason := imuc.getIMUAbortReason(imu)
-			log.Infof("Abort requested (%s) while waiting for source IM, transitioning to restore engines", reason)
-			imu.Status.State = longhorn.InstanceManagerUpgradeStateRestoringEngines
-			if imu.Status.ErrorMsg == "" {
-				imu.Status.ErrorMsg = fmt.Sprintf("upgrade aborted: %s", reason)
-			}
+		if imu.Status.AbortRequested {
+			imuc.markAborted(imu, log,
+				"Abort requested (%s) while waiting for source IM, transitioning to restore engines",
+				longhorn.InstanceManagerUpgradeStateRestoringEngines)
 			return nil
 		}
 		return imuc.reconcileWaitingForSourceIM(imu, log)
@@ -403,12 +426,6 @@ func (imuc *InstanceManagerUpgradeController) reconcileStateMachine(imu *longhor
 	}
 }
 
-// shouldAbort checks if the upgrade should be aborted due to controller-detected
-// conditions (e.g., timeout, target image change).
-func (imuc *InstanceManagerUpgradeController) shouldAbort(imu *longhorn.InstanceManagerUpgrade) bool {
-	return imu.Status.AbortRequested
-}
-
 func (imuc *InstanceManagerUpgradeController) getIMUAbortReason(imu *longhorn.InstanceManagerUpgrade) string {
 	if imu.Status.AbortReason != "" {
 		return imu.Status.AbortReason
@@ -416,18 +433,34 @@ func (imuc *InstanceManagerUpgradeController) getIMUAbortReason(imu *longhorn.In
 	return "aborted"
 }
 
+func (imuc *InstanceManagerUpgradeController) markAborted(
+	imu *longhorn.InstanceManagerUpgrade,
+	log *logrus.Entry,
+	message string,
+	nextState longhorn.InstanceManagerUpgradeState,
+) {
+	reason := imuc.getIMUAbortReason(imu)
+	log.Infof(message, reason)
+	imu.Status.State = nextState
+	if imu.Status.ErrorMsg == "" {
+		imu.Status.ErrorMsg = fmt.Sprintf("upgrade aborted: %s", reason)
+	}
+}
+
 func (imuc *InstanceManagerUpgradeController) enforceUpgradeTimeout(
 	imu *longhorn.InstanceManagerUpgrade,
 	log *logrus.Entry,
 ) (bool, error) {
-	if !types.IsActiveInstanceManagerUpgradeState(imu.Status.State) || imu.Status.StartedAt == "" {
+	if (imu.Status.State != longhorn.InstanceManagerUpgradeStatePending &&
+		!types.IsActiveInstanceManagerUpgradeState(imu.Status.State)) || imu.Status.StartedAt == "" {
 		return false, nil
 	}
 
 	// If already aborting (in RestoringEngines state with AbortRequested set),
 	// skip timeout enforcement to allow the restore process to complete.
 	// Otherwise timeout would block restore progress indefinitely.
-	if imu.Status.State == longhorn.InstanceManagerUpgradeStateRestoringEngines && imu.Status.AbortRequested {
+	if (imu.Status.State == longhorn.InstanceManagerUpgradeStateRestoringEngines && imu.Status.AbortRequested) ||
+		imu.Status.State == longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes {
 		return false, nil
 	}
 
@@ -509,14 +542,21 @@ func (imuc *InstanceManagerUpgradeController) reconcilePending(imu *longhorn.Ins
 	if sourceIM.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		log.Debugf("Source IM %v is not running (state: %v), waiting before building relocation plan",
 			sourceIM.Name, sourceIM.Status.CurrentState)
+		imuc.markStartedAt(imu)
 		return nil
 	}
 
 	plan, err := imuc.buildEngineRelocationPlan(imu)
 	if err != nil {
+		if errors.Is(err, errUpgradeUnsupported) {
+			imu.Status.ErrorMsg = err.Error()
+			imu.Status.State = longhorn.InstanceManagerUpgradeStateFailed
+			return nil
+		}
 		if errors.Is(err, errUpgradePrecondition) {
 			// Recoverable: wait for preconditions (e.g. degraded volume rebuilding, no temp node yet).
 			log.WithError(err).Debug("Engine relocation plan blocked by precondition, waiting")
+			imuc.markStartedAt(imu)
 			return nil
 		}
 		return err
@@ -584,7 +624,24 @@ func (imuc *InstanceManagerUpgradeController) reconcileRelocatingEngines(imu *lo
 		// Check whether the temporary node's IM is still healthy. If it is
 		// down, re-select a new temporary node rather than waiting for timeout.
 		if volume.Spec.EngineNodeID == reloc.TemporaryNodeID {
-			imuc.maybeReplanVolume(imu, volumeName, reloc, volume, log)
+			abortUpgrade, newTempNode, err := imuc.handleTemporaryNodeFailureForVolume(imu, volumeName, reloc, volume, log)
+			if err != nil {
+				return err
+			}
+			if abortUpgrade {
+				log.Warnf("Aborting upgrade after volume %v lost all temporary-node options", volumeName)
+				imu.Status.AbortRequested = true
+				imu.Status.AbortReason = "no-temporary-node"
+				imu.Status.ErrorMsg = "upgrade aborted: no-temporary-node"
+				imu.Status.State = longhorn.InstanceManagerUpgradeStateRestoringEngines
+				return nil
+			}
+			if newTempNode != "" && volume.Spec.EngineNodeID != newTempNode {
+				volume.Spec.EngineNodeID = newTempNode
+				if _, err := imuc.ds.UpdateVolume(volume); err != nil {
+					return errors.Wrapf(err, "failed to redirect volume %v to new temporary node %v", volumeName, newTempNode)
+				}
+			}
 			// IM is up — switchover is still in progress; wait.
 			continue
 		}
@@ -602,12 +659,14 @@ func (imuc *InstanceManagerUpgradeController) reconcileRelocatingEngines(imu *lo
 			continue
 		}
 
-		// The EngineFrontend (NVMe-oF initiator) switchover requires that the
-		// source IM to be Running — it calls it via gRPC to suspend I/O,
-		// switch the target IP, and resume. If the source IM is down we must
-		// wait: redirecting the engine spec would start the SPDK target on the
-		// temp node but the EF could never reconnect to it, leaving the volume
-		// in a worse state.
+		// The first source->temporary relocation requires the source IM to be
+		// Running — the EngineFrontend (NVMe-oF initiator) uses it via gRPC to
+		// suspend I/O, switch the target IP, and resume. If the source IM is
+		// down we must wait: redirecting the engine spec would start the SPDK
+		// target on the temp node but the EF could never reconnect to it,
+		// leaving the volume in a worse state. This gate applies only to the
+		// initial relocation away from the source node; temp->temp re-plans
+		// after relocation are handled separately in WaitingForSourceIM.
 		sourceIMReady, err := imuc.ds.CheckInstanceManagersReadiness(longhorn.DataEngineTypeV2, imu.Spec.NodeID)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to check source IM readiness before relocating volume %v, waiting", volumeName)
@@ -648,8 +707,11 @@ func (imuc *InstanceManagerUpgradeController) reconcileRelocatingEngines(imu *lo
 // reconcileWaitingForSourceIM waits for the source node to have a running
 // instance manager with the target image, then advances to RestoringEngines.
 // While waiting it also monitors the temporary nodes: if a temp node's IM goes
-// down, the affected engine is re-planned to a new healthy node so that I/O is
-// not interrupted for the full timeout period.
+// down after relocation has already completed, the affected engine is
+// re-planned from one temporary node to another healthy one so that I/O is not
+// interrupted for the full timeout period. Unlike the initial source->temp
+// relocation, this temp->temp redirect does not require source IM
+// participation because the volume has already left the source node.
 func (imuc *InstanceManagerUpgradeController) reconcileWaitingForSourceIM(imu *longhorn.InstanceManagerUpgrade, log *logrus.Entry) error {
 	// Check temp node health for each engine. If a temp node/IM has gone down,
 	// re-plan the affected volume to a new healthy node.
@@ -665,7 +727,28 @@ func (imuc *InstanceManagerUpgradeController) reconcileWaitingForSourceIM(imu *l
 			}
 			return err
 		}
-		imuc.maybeReplanVolume(imu, volumeName, reloc, volume, log)
+		abortUpgrade, newTempNode, err := imuc.handleTemporaryNodeFailureForVolume(imu, volumeName, reloc, volume, log)
+		if err != nil {
+			return err
+		}
+		if abortUpgrade {
+			log.Warnf("Aborting upgrade while waiting for source IM after volume %v lost all temporary-node options", volumeName)
+			imu.Status.AbortRequested = true
+			imu.Status.AbortReason = "no-temporary-node"
+			imu.Status.ErrorMsg = "upgrade aborted: no-temporary-node"
+			imu.Status.State = longhorn.InstanceManagerUpgradeStateRestoringEngines
+			return nil
+		}
+		if newTempNode != "" && volume.Spec.EngineNodeID != newTempNode {
+			log.Infof("Re-directing volume %v to new temporary node %v (was %v) while waiting for source IM upgrade",
+				volumeName, newTempNode, reloc.TemporaryNodeID)
+			volume.Spec.EngineNodeID = newTempNode
+			if _, err := imuc.ds.UpdateVolume(volume); err != nil {
+				return errors.Wrapf(err, "failed to redirect volume %v to new temporary node %v", volumeName, newTempNode)
+			}
+			imuc.eventRecorder.Eventf(imu, corev1.EventTypeNormal, constant.EventReasonUpdate,
+				"Redirecting volume %v to new temporary node %v during wait for source IM upgrade", volumeName, newTempNode)
+		}
 	}
 
 	ims, err := imuc.ds.ListInstanceManagersByNodeRO(imu.Spec.NodeID, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
@@ -741,13 +824,10 @@ func (imuc *InstanceManagerUpgradeController) reconcileRestoringEngines(imu *lon
 
 	if allRestored {
 		// Check if this restore is due to an abort (user or controller-requested)
-		if imuc.shouldAbort(imu) {
-			reason := imuc.getIMUAbortReason(imu)
-			log.Infof("All engines restored to original nodes after abort (%s), marking upgrade as failed", reason)
-			imu.Status.State = longhorn.InstanceManagerUpgradeStateFailed
-			if imu.Status.ErrorMsg == "" {
-				imu.Status.ErrorMsg = fmt.Sprintf("upgrade aborted: %s", reason)
-			}
+		if imu.Status.AbortRequested {
+			imuc.markAborted(imu, log,
+				"All engines restored to original nodes after abort (%s), marking upgrade as failed",
+				longhorn.InstanceManagerUpgradeStateFailed)
 		} else {
 			// Normal restore after successful relocation - verify volume health before completion
 			log.Infof("All engines restored to original nodes, waiting for volumes to become healthy")
@@ -778,14 +858,14 @@ func (imuc *InstanceManagerUpgradeController) reconcileWaitingForHealthyVolumes(
 			log.Debugf("Volume %v engine not yet on original node %v (current: %v), waiting",
 				volumeName, reloc.OriginalNodeID, volume.Status.CurrentEngineNodeID)
 			allHealthy = false
-			break
+			continue
 		}
 
 		if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 			log.Debugf("Volume %v not yet healthy (robustness: %v), waiting",
 				volumeName, volume.Status.Robustness)
 			allHealthy = false
-			break
+			continue
 		}
 
 	}
@@ -817,8 +897,9 @@ func (imuc *InstanceManagerUpgradeController) isUpgradeAlreadyConverged(imu *lon
 }
 
 // markStartedAt stamps the current time into StartedAt if it has not been set
-// yet. This records when the upgrade transitioned out of Pending so the
-// timeout can be measured from actual start rather than creation time.
+// yet. This records when the upgrade first enters a timed wait or active
+// execution phase so the timeout is measured from real progress/wait time
+// rather than object creation time.
 func (imuc *InstanceManagerUpgradeController) markStartedAt(imu *longhorn.InstanceManagerUpgrade) {
 	if imu.Status.StartedAt == "" {
 		imu.Status.StartedAt = util.Now()
@@ -863,8 +944,12 @@ func (imuc *InstanceManagerUpgradeController) buildEngineRelocationPlan(imu *lon
 
 		tempNode, err := imuc.selectTemporaryNode(imu.Spec.NodeID, engine.Spec.VolumeName, plan)
 		if err != nil {
+			errType := errUpgradePrecondition
+			if errors.Is(err, errUpgradeUnsupported) {
+				errType = errUpgradeUnsupported
+			}
 			return nil, fmt.Errorf("%w: cannot find temporary node for engine %v (volume %v): %v",
-				errUpgradePrecondition, engine.Name, engine.Spec.VolumeName, err)
+				errType, engine.Name, engine.Spec.VolumeName, err)
 		}
 
 		// Use volume.Name as the key since engine names change during safe v2 switchover migrations
@@ -877,43 +962,48 @@ func (imuc *InstanceManagerUpgradeController) buildEngineRelocationPlan(imu *lon
 	return plan, nil
 }
 
-// maybeReplanVolume checks whether the temporary node assigned to a volume is
-// still healthy. If the temp node's IM is down, it selects a new healthy temp
-// node and updates the relocation plan. The volume's Spec.EngineNodeID is updated on
-// the next reconcile when the normal relocation branch detects the mismatch.
-// If no new candidate is available, the volume stays on the current plan and
-// waits (timeout will eventually fire).
-func (imuc *InstanceManagerUpgradeController) maybeReplanVolume(
+// handleTemporaryNodeFailureForVolume checks whether the temporary node assigned
+// to a volume is still usable. If the temp node's IM is down, it selects a new
+// healthy temp node and updates the relocation plan, returning the replacement
+// node ID so the caller can decide when to redirect volume.Spec.EngineNodeID.
+// If no new candidate is available, the volume is directed back to the
+// original node and the caller should abort this IMU attempt so a later IMUC
+// retry can restart from a clean state.
+func (imuc *InstanceManagerUpgradeController) handleTemporaryNodeFailureForVolume(
 	imu *longhorn.InstanceManagerUpgrade,
 	volumeName string,
 	reloc longhorn.EngineRelocation,
 	volume *longhorn.Volume,
 	log *logrus.Entry,
-) {
+) (bool, string, error) {
 	imReady, err := imuc.ds.CheckInstanceManagersReadiness(longhorn.DataEngineTypeV2, reloc.TemporaryNodeID)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to check IM readiness on temporary node %v for volume %v", reloc.TemporaryNodeID, volumeName)
-		return
+		if datastore.ErrorIsNotFound(err) || types.ErrorIsNotFound(err) {
+			log.WithError(err).Warnf("Temporary node %v no longer has a running IM for volume %v, re-evaluating relocation", reloc.TemporaryNodeID, volumeName)
+		} else {
+			log.WithError(err).Warnf("Failed to check IM readiness on temporary node %v for volume %v", reloc.TemporaryNodeID, volumeName)
+			return false, "", nil
+		}
 	}
-	if imReady {
-		return
+	if err == nil && imReady {
+		return false, "", nil
 	}
 
 	newTempNode, err := imuc.selectTemporaryNode(imu.Spec.NodeID, volumeName, imu.Status.Engines)
 	if err != nil || newTempNode == reloc.TemporaryNodeID {
-		// No alternative temp node — revert the volume back to the original node
-		// immediately rather than waiting for the configured upgrade timeout.
+		// No alternative temp node — return the volume to the original node and
+		// abort this upgrade attempt rather than letting reconcile flip-flop
+		// EngineNodeID or wait indefinitely for the source IM upgrade to finish.
 		if volume.Spec.EngineNodeID != reloc.OriginalNodeID {
 			log.WithError(err).Warnf("No new temporary node for volume %v, reverting to original node %v", volumeName, reloc.OriginalNodeID)
 			volume.Spec.EngineNodeID = reloc.OriginalNodeID
 			if _, updateErr := imuc.ds.UpdateVolume(volume); updateErr != nil {
-				log.WithError(updateErr).Warnf("Failed to revert volume %v to original node %v", volumeName, reloc.OriginalNodeID)
-				return
+				return false, "", errors.Wrapf(updateErr, "failed to revert volume %v to original node %v", volumeName, reloc.OriginalNodeID)
 			}
 			imuc.eventRecorder.Eventf(imu, corev1.EventTypeWarning, constant.EventReasonUpdate,
 				"No temporary node available for volume %v, reverting to original node %v", volumeName, reloc.OriginalNodeID)
 		}
-		return
+		return true, "", nil
 	}
 
 	updatedReloc := reloc
@@ -922,6 +1012,7 @@ func (imuc *InstanceManagerUpgradeController) maybeReplanVolume(
 	log.Infof("Re-planning volume %v: temp node %v is down, new temp node %v", volumeName, reloc.TemporaryNodeID, newTempNode)
 	imuc.eventRecorder.Eventf(imu, corev1.EventTypeNormal, constant.EventReasonUpdate,
 		"Re-planning volume %v to new temporary node %v", volumeName, newTempNode)
+	return false, newTempNode, nil
 }
 
 // selectTemporaryNode picks a relocation target for one engine frontend. The
@@ -939,6 +1030,7 @@ func (imuc *InstanceManagerUpgradeController) selectTemporaryNode(sourceNodeID, 
 		return "", errors.Wrapf(err, "failed to list replicas for volume %v", volumeName)
 	}
 
+	replicaNodes := map[string]struct{}{}
 	// Collect nodes that have a healthy and currently running replica, excluding
 	// the source node. Historical replica health alone is not sufficient for
 	// live upgrade safety if the replica process is no longer running.
@@ -947,6 +1039,7 @@ func (imuc *InstanceManagerUpgradeController) selectTemporaryNode(sourceNodeID, 
 		if r.Spec.NodeID == sourceNodeID || r.Spec.NodeID == "" {
 			continue
 		}
+		replicaNodes[r.Spec.NodeID] = struct{}{}
 		if r.Status.CurrentState != longhorn.InstanceStateRunning {
 			continue
 		}
@@ -956,9 +1049,14 @@ func (imuc *InstanceManagerUpgradeController) selectTemporaryNode(sourceNodeID, 
 		healthyReplicaNodes[r.Spec.NodeID] = struct{}{}
 	}
 
+	if len(replicaNodes) == 0 {
+		return "", fmt.Errorf("%w: no replica exists on nodes other than source node %v for volume %v; single-replica or co-located volumes are not supported for live upgrade",
+			errUpgradeUnsupported, sourceNodeID, volumeName)
+	}
+
 	if len(healthyReplicaNodes) == 0 {
 		return "", fmt.Errorf("no healthy replica found on nodes other than source node %v for volume %v; "+
-			"single-replica or all-same-node volumes are not supported for live upgrade", sourceNodeID, volumeName)
+			"waiting for another replica node to become healthy", sourceNodeID, volumeName)
 	}
 
 	var candidates []string
@@ -966,7 +1064,7 @@ func (imuc *InstanceManagerUpgradeController) selectTemporaryNode(sourceNodeID, 
 	for nodeID := range healthyReplicaNodes {
 		ims, err := imuc.ds.ListInstanceManagersByNodeRO(nodeID, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
 		if err != nil {
-			continue
+			return "", errors.Wrapf(err, "failed to list v2 instance managers on candidate temporary node %v for volume %v", nodeID, volumeName)
 		}
 		for _, im := range ims {
 			if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
@@ -988,18 +1086,21 @@ func (imuc *InstanceManagerUpgradeController) selectTemporaryNode(sourceNodeID, 
 func (imuc *InstanceManagerUpgradeController) chooseBestTemporaryNode(candidates []string, currentPlan map[string]longhorn.EngineRelocation) string {
 	usage := make(map[string]int)
 	for _, nodeID := range candidates {
-		usage[nodeID] = 0
 		// Start with the number of engines currently running on this node
 		// (which represents the number of attached volumes).
+		engines, err := imuc.ds.ListEnginesByNodeRO(nodeID)
+		if err != nil {
+			imuc.logger.WithError(err).Warnf("Failed to list engines for node %v when choosing best temporary node, deprioritizing this node", nodeID)
+			// Set a very high usage to deprioritize this node (rather than skipping it entirely,
+			// which would cause issues if all candidates fail).
+			usage[nodeID] = 1<<31 - 1 // MaxInt32
+			continue
+		}
 		count := 0
-		if engines, err := imuc.ds.ListEnginesByNodeRO(nodeID); err == nil {
-			for _, e := range engines {
-				if types.IsDataEngineV2(e.Spec.DataEngine) {
-					count++
-				}
+		for _, e := range engines {
+			if types.IsDataEngineV2(e.Spec.DataEngine) {
+				count++
 			}
-		} else {
-			imuc.logger.WithError(err).Warnf("Failed to list engines for node %v when choosing best temporary node", nodeID)
 		}
 		usage[nodeID] = count
 	}
@@ -1062,42 +1163,62 @@ func (imuc *InstanceManagerUpgradeController) ensurePreUpgradeSnapshot(volumeNam
 
 	// If a snapshot was already created, check if its checksum is ready.
 	if reloc.SnapshotName != "" {
-		snapshot, err := imuc.ds.GetSnapshot(reloc.SnapshotName)
-		if err != nil {
-			if datastore.ErrorIsNotFound(err) {
-				// Snapshot was deleted externally; clear the name so we create a new one below.
-				reloc.SnapshotName = ""
-				imu.Status.Engines[volumeName] = reloc
-			} else {
-				return false, errors.Wrapf(err, "failed to get pre-upgrade snapshot %v for volume %v", reloc.SnapshotName, volumeName)
-			}
-		} else {
-			if snapshot.Status.ReadyToUse && snapshot.Status.Checksum != "" {
-				return true, nil
-			}
-			log.Debugf("Waiting for pre-upgrade snapshot %v of volume %v (checksum computation in progress)", reloc.SnapshotName, volumeName)
-			return false, nil
+		snapshotReady, err := imuc.isPreUpgradeSnapshotReady(volumeName, reloc.SnapshotName, log)
+		if err == nil || !datastore.ErrorIsNotFound(err) {
+			return snapshotReady, err
 		}
+		// Snapshot was deleted externally; clear the name so we recreate the
+		// deterministic pre-upgrade snapshot below.
+		reloc.SnapshotName = ""
+		imu.Status.Engines[volumeName] = reloc
 	}
 
-	// No snapshot yet; create one non-blocking. The status update (SnapshotName
-	// persisted in imu.Status.Engines) is written by the deferred status save in
-	// syncInstanceManagerUpgrade.
-	snapshotName := bsutil.GenerateName(fmt.Sprintf("upgrade-snapshot-%s", volumeName))
-	snapshotCR := &longhorn.Snapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: snapshotName,
-		},
-		Spec: longhorn.SnapshotSpec{
-			Volume:         volumeName,
-			CreateSnapshot: true,
-		},
+	snapshotName := getPreUpgradeSnapshotName(imu.Name, volumeName)
+	_, err = imuc.ds.GetSnapshot(snapshotName)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return false, errors.Wrapf(err, "failed to get pre-upgrade snapshot %v for volume %v", snapshotName, volumeName)
+		}
+
+		snapshotCR := &longhorn.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: snapshotName,
+			},
+			Spec: longhorn.SnapshotSpec{
+				Volume:         volumeName,
+				CreateSnapshot: true,
+			},
+		}
+		_, err = imuc.ds.CreateSnapshot(snapshotCR)
+		if err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return false, errors.Wrapf(err, "failed to create pre-upgrade snapshot for volume %v", volumeName)
+			}
+			_, err = imuc.ds.GetSnapshot(snapshotName)
+			if err != nil && !datastore.ErrorIsNotFound(err) {
+				return false, errors.Wrapf(err, "failed to get existing pre-upgrade snapshot %v for volume %v", snapshotName, volumeName)
+			}
+		}
+		log.Infof("Created pre-upgrade snapshot %v for volume %v", snapshotName, volumeName)
 	}
-	if _, err := imuc.ds.CreateSnapshot(snapshotCR); err != nil {
-		return false, errors.Wrapf(err, "failed to create pre-upgrade snapshot for volume %v", volumeName)
-	}
+
 	reloc.SnapshotName = snapshotName
 	imu.Status.Engines[volumeName] = reloc
-	log.Infof("Created pre-upgrade snapshot %v for volume %v, waiting for checksum computation", snapshotName, volumeName)
+	return imuc.isPreUpgradeSnapshotReady(volumeName, snapshotName, log)
+}
+
+func (imuc *InstanceManagerUpgradeController) isPreUpgradeSnapshotReady(volumeName, snapshotName string, log *logrus.Entry) (bool, error) {
+	snapshot, err := imuc.ds.GetSnapshot(snapshotName)
+	if err != nil {
+		return false, err
+	}
+	if snapshot.Status.ReadyToUse && snapshot.Status.Checksum != "" {
+		return true, nil
+	}
+	log.Debugf("Waiting for pre-upgrade snapshot %v of volume %v (checksum computation in progress)", snapshotName, volumeName)
 	return false, nil
+}
+
+func getPreUpgradeSnapshotName(imuName, volumeName string) string {
+	return fmt.Sprintf("upgrade-snapshot-%s", util.GetStringChecksumSHA224(imuName + "/" + volumeName)[:16])
 }

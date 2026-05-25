@@ -2786,7 +2786,7 @@ func (imc *InstanceManagerController) syncInstanceManagerUpgrade(im *longhorn.In
 
 	if datastore.ErrorIsNotFound(existingErr) {
 		// Create the singleton control CR.
-		imuc := &longhorn.InstanceManagerUpgradeControl{
+		newIMUC := &longhorn.InstanceManagerUpgradeControl{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: types.InstanceManagerUpgradeControlName,
 			},
@@ -2796,7 +2796,7 @@ func (imc *InstanceManagerController) syncInstanceManagerUpgrade(im *longhorn.In
 			},
 		}
 		log.Infof("Creating InstanceManagerUpgradeControl for target image %v with start time %v", defaultIMImage, startTime)
-		if _, err := imc.ds.CreateInstanceManagerUpgradeControl(imuc); err != nil {
+		if _, err := imc.ds.CreateInstanceManagerUpgradeControl(newIMUC); err != nil {
 			if apierrors.IsAlreadyExists(err) {
 				return nil
 			}
@@ -2827,7 +2827,9 @@ func (imc *InstanceManagerController) syncInstanceManagerUpgrade(im *longhorn.In
 		needsUpdate = true
 	}
 
-	// Only update start time if the upgrade hasn't started yet.
+	// Before the upgrade starts, Spec.StartAt is treated as a controller-owned
+	// projection of the v2-instance-manager-upgrade-start-time setting rather
+	// than a separate user-editable source of truth.
 	if !upgradeStarted && imuc.Spec.StartAt != startTime {
 		log.Infof("Updating InstanceManagerUpgradeControl start time from %v to %v",
 			imuc.Spec.StartAt, startTime)

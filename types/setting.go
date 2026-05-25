@@ -1756,7 +1756,8 @@ var (
 	SettingDefinitionV2InstanceManagerUpgradeTimeout = SettingDefinition{
 		DisplayName: "V2 Instance Manager Upgrade Timeout",
 		Description: "In minutes. Since the V2 instance manager is upgraded node by node, an unexpected issue on one node could block upgrades on the remaining nodes. " +
-			"This timeout defines how long an upgrade process can run on a single node before it is aborted, allowing other nodes to continue their upgrade process. " +
+			"This timeout defines how long the timed phases of a single-node upgrade can run before the upgrade is aborted, allowing other nodes to continue their upgrade process. " +
+			"It applies while the upgrade is waiting in Pending, relocating engines, waiting for the source instance manager, or restoring engines, but not while waiting for post-restore volume health. " +
 			"The default value is 60 minutes.\n\n" +
 			"**Important**: Changes to this setting take effect immediately and apply to all in-flight upgrade operations. " +
 			"Increasing the timeout gives more time to struggling upgrades; decreasing it may cause currently running upgrades to abort if they exceed the new limit.\n\n",

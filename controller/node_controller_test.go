@@ -2000,6 +2000,67 @@ func (s *NodeControllerSuite) TestSyncInstanceManagers(c *C) {
 	}
 }
 
+func (s *NodeControllerSuite) TestShouldPreserveOldV2InstanceManager(c *C) {
+	volumeIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+
+	vol := newTestVolumeForIMU(TestVolumeName, TestNode2, TestNode2)
+	createdVol, err := s.lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), vol, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(volumeIndexer.Add(createdVol), IsNil)
+
+	testCases := map[string]struct {
+		imu              *longhorn.InstanceManagerUpgrade
+		expectedPreserve bool
+	}{
+		"active IMU temporary node preserves old v2 IM": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName+"-active", TestNode2, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName: {
+						OriginalNodeID:  TestNode2,
+						TemporaryNodeID: TestNode1,
+					},
+				}
+				return imu
+			}(),
+			expectedPreserve: true,
+		},
+		"terminal IMU no longer preserves old v2 IM": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName+"-completed", TestNode2, TestTargetImage, longhorn.InstanceManagerUpgradeStateCompleted)
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName: {
+						OriginalNodeID:  TestNode2,
+						TemporaryNodeID: TestNode1,
+					},
+				}
+				return imu
+			}(),
+			expectedPreserve: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		imuIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+		for _, obj := range imuIndexer.List() {
+			c.Assert(imuIndexer.Delete(obj), IsNil)
+		}
+
+		createdIMU, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), tc.imu, metav1.CreateOptions{})
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		c.Assert(imuIndexer.Add(createdIMU), IsNil, Commentf("case=%s", name))
+
+		preserve, err := s.controller.shouldPreserveOldV2InstanceManager(
+			newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			map[longhorn.InstanceManagerType][]longhorn.DataEngineType{
+				longhorn.InstanceManagerTypeAllInOne: {longhorn.DataEngineTypeV2},
+			},
+		)
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		c.Assert(preserve, Equals, tc.expectedPreserve, Commentf("case=%s", name))
+	}
+}
+
 func (s *NodeControllerSuite) TestKubeNodeNFSCapabilityCondition(c *C) {
 	var err error
 
@@ -2216,50 +2277,6 @@ CONFIG_NFS_V4_2=y`
 			}
 		}(testCase.setup, testCase.expectConditionStatus, testCase.expectConditionReason)
 	}
-}
-
-func (s *NodeControllerSuite) TestShouldPreserveOldV2InstanceManagerOnProtectedTemporaryNode(c *C) {
-	activeIMU := newIMU("upgrade-node-1", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
-	activeIMU.Status.Engines = map[string]longhorn.EngineRelocation{
-		"volume-a": {
-			OriginalNodeID:  TestNode1,
-			TemporaryNodeID: TestNode2,
-		},
-	}
-
-	fixture := &NodeControllerFixture{
-		lhIMUs: map[string]*longhorn.InstanceManagerUpgrade{
-			activeIMU.Name: activeIMU,
-		},
-	}
-
-	s.initTest(c, fixture)
-
-	preserve, err := s.controller.shouldPreserveOldV2InstanceManagerDuringUpgrade(TestNode2)
-	c.Assert(err, IsNil)
-	c.Assert(preserve, Equals, true)
-}
-
-func (s *NodeControllerSuite) TestShouldNotPreserveOldV2InstanceManagerOnUpgradeSourceNode(c *C) {
-	activeIMU := newIMU("upgrade-node-1", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
-	activeIMU.Status.Engines = map[string]longhorn.EngineRelocation{
-		"volume-a": {
-			OriginalNodeID:  TestNode1,
-			TemporaryNodeID: TestNode2,
-		},
-	}
-
-	fixture := &NodeControllerFixture{
-		lhIMUs: map[string]*longhorn.InstanceManagerUpgrade{
-			activeIMU.Name: activeIMU,
-		},
-	}
-
-	s.initTest(c, fixture)
-
-	preserve, err := s.controller.shouldPreserveOldV2InstanceManagerDuringUpgrade(TestNode1)
-	c.Assert(err, IsNil)
-	c.Assert(preserve, Equals, false)
 }
 
 func (s *NodeControllerSuite) TestShouldConsiderOnDemandRequest(c *C) {

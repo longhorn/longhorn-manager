@@ -176,6 +176,7 @@ func NewVolumeController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.EngineFrontendInformer.HasSynced)
+	c.cacheSyncs = append(c.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
 
 	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolumesForShareManager,

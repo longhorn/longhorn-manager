@@ -108,6 +108,7 @@ func NewLonghornVolumeAttachmentController(
 		return nil, err
 	}
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.EngineFrontendInformer.HasSynced)
+	vac.cacheSyncs = append(vac.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
 
 	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vac.enqueueNodeChange(cur) },
@@ -685,7 +686,7 @@ func (vac *VolumeAttachmentController) shouldKeepAttachedDuringV2LiveUpgradeSwit
 			continue
 		}
 		checkedNodes[nodeID] = struct{}{}
-		if hasActiveInstanceManagerUpgradeOnNodeFromList(imus, nodeID) {
+		if hasVisibleInstanceManagerUpgradeOnNodeFromList(imus, nodeID) {
 			return true
 		}
 	}
