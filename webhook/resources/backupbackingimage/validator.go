@@ -71,7 +71,7 @@ func (bbi *backupBackingImageValidator) Create(request *admission.Request, newOb
 		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backupTargetName, err), "")
 	}
 
-	if !backupTarget.Status.Available {
+	if backupTarget.Spec.BackupTargetURL == "" || !backupTarget.Status.Available {
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
 
