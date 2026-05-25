@@ -15,6 +15,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
@@ -283,11 +284,124 @@ func TestGetCapacity(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestParseNodeID(t *testing.T) {
 	for _, test := range []struct {
 		topology *csi.Topology
 		err      error
 		nodeID   string
+=======
+func TestIsBackupTargetUnavailableForBackup(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		backupTarget *longhornclient.BackupTarget
+		expected     bool
+	}{
+		{
+			name:     "nil target",
+			expected: true,
+		},
+		{
+			name: "empty url",
+			backupTarget: &longhornclient.BackupTarget{
+				BackupTargetURL: "",
+				Available:       true,
+			},
+			expected: true,
+		},
+		{
+			name: "unavailable target",
+			backupTarget: &longhornclient.BackupTarget{
+				BackupTargetURL: "s3://backupbucket@us-east-1/backupstore",
+				Available:       false,
+			},
+			expected: true,
+		},
+		{
+			name: "configured available target",
+			backupTarget: &longhornclient.BackupTarget{
+				BackupTargetURL: "s3://backupbucket@us-east-1/backupstore",
+				Available:       true,
+			},
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := isBackupTargetUnavailableForBackup(tc.backupTarget)
+			if actual != tc.expected {
+				t.Fatalf("expected %v, got %v", tc.expected, actual)
+			}
+		})
+	}
+}
+
+func TestGetCapacityPerZone(t *testing.T) {
+	// Zone A: 3 nodes, 2 disks each
+	//   node-a0: disk0(max=2000, reserved=200, scheduled=0) + disk1(max=1000, reserved=100, scheduled=0)
+	//   node-a1: disk0(max=3000, reserved=300, scheduled=500) + disk1(max=1500, reserved=150, scheduled=0)
+	//   node-a2: disk0(max=1800, reserved=100, scheduled=200) + disk1(max=2200, reserved=200, scheduled=100)
+	//
+	// Zone B: 3 nodes, 2 disks each
+	//   node-b0: disk0(max=5000, reserved=500, scheduled=1000) + disk1(max=3000, reserved=300, scheduled=0)
+	//   node-b1: disk0(max=1000, reserved=100, scheduled=0) + disk1(max=800, reserved=100, scheduled=0)
+	//   node-b2: disk0(max=4000, reserved=400, scheduled=2000) + disk1(max=2000, reserved=200, scheduled=500)
+
+	zoneANodes := []*longhorn.Node{
+		newNode("node-a0", "", "zone-a", true, true, true, false),
+		newNode("node-a1", "", "zone-a", true, true, true, false),
+		newNode("node-a2", "", "zone-a", true, true, true, false),
+	}
+	zoneADisks := [][]*disk{
+		{newDisk(2000, 200, 0, "", false, true, true, false), newDisk(1000, 100, 0, "", false, true, true, false)},
+		{newDisk(3000, 300, 500, "", false, true, true, false), newDisk(1500, 150, 0, "", false, true, true, false)},
+		{newDisk(1800, 100, 200, "", false, true, true, false), newDisk(2200, 200, 100, "", false, true, true, false)},
+	}
+
+	zoneBNodes := []*longhorn.Node{
+		newNode("node-b0", "", "zone-b", true, true, true, false),
+		newNode("node-b1", "", "zone-b", true, true, true, false),
+		newNode("node-b2", "", "zone-b", true, true, true, false),
+	}
+	zoneBDisks := [][]*disk{
+		{newDisk(5000, 500, 1000, "", false, true, true, false), newDisk(3000, 300, 0, "", false, true, true, false)},
+		{newDisk(1000, 100, 0, "", false, true, true, false), newDisk(800, 100, 0, "", false, true, true, false)},
+		{newDisk(4000, 400, 2000, "", false, true, true, false), newDisk(2000, 200, 500, "", false, true, true, false)},
+	}
+
+	// Per-node available capacity (over-provisioning=100%):
+	//   schedulable per disk = (max - reserved) * 100/100 - scheduled
+	//
+	// Zone A:
+	//   node-a0: (2000-200)-0=1800, (1000-100)-0=900     → available=2700, maxVol=1800
+	//   node-a1: (3000-300)-500=2200, (1500-150)-0=1350   → available=3550, maxVol=2200
+	//   node-a2: (1800-100)-200=1500, (2200-200)-100=1900 → available=3400, maxVol=1900
+	//   Zone total: available=9650, maxVol=max(1800,2200,1900)=2200
+	//
+	// Zone B:
+	//   node-b0: (5000-500)-1000=3500, (3000-300)-0=2700   → available=6200, maxVol=3500
+	//   node-b1: (1000-100)-0=900, (800-100)-0=700         → available=1600, maxVol=900
+	//   node-b2: (4000-400)-2000=1600, (2000-200)-500=1300 → available=2900, maxVol=1600
+	//   Zone total: available=10700, maxVol=max(3500,900,1600)=3500
+
+	allNodes := append(zoneANodes, zoneBNodes...)
+	allDisks := append(zoneADisks, zoneBDisks...)
+	var objs []runtime.Object
+	for i, node := range allNodes {
+		addDisksToNode(node, allDisks[i])
+		objs = append(objs, node)
+	}
+	objs = append(objs,
+		newSetting(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"),
+		newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"),
+		newSetting(string(types.SettingNameStorageOverProvisioningPercentage), "100"),
+	)
+	cs := newTestControllerServer(t, objs...)
+
+	for _, tc := range []struct {
+		zone              string
+		expectedAvailable int64
+		expectedMaxVol    int64
+>>>>>>> d363ef6a (fix: reject backup operations for unset backup targets)
 	}{
 		{
 			err: fmt.Errorf("missing accessible topology request parameter"),

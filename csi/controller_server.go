@@ -19,12 +19,23 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+<<<<<<< HEAD
 
 	"k8s.io/client-go/rest"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+=======
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	"k8s.io/client-go/rest"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+>>>>>>> d363ef6a (fix: reject backup operations for unset backup targets)
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -1006,7 +1017,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 	if existBackupTarget == nil {
 		return nil, status.Errorf(codes.NotFound, "backup target %s not found", existVol.BackupTargetName)
 	}
-	if !existBackupTarget.Available {
+	if isBackupTargetUnavailableForBackup(existBackupTarget) {
 		return nil, status.Errorf(codes.Aborted, "backup target %s is not available", existVol.BackupTargetName)
 	}
 
@@ -1067,6 +1078,10 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(existVol.Name, snapshotID, snapshotCR.CreationTime,
 		existVol.Size, backup.State == string(longhorn.BackupStateCompleted))
 	return rsp, nil
+}
+
+func isBackupTargetUnavailableForBackup(backupTarget *longhornclient.BackupTarget) bool {
+	return backupTarget == nil || backupTarget.BackupTargetURL == "" || !backupTarget.Available
 }
 
 func createSnapshotResponseForSnapshotTypeLonghornSnapshot(sourceVolumeName, snapshotID string, snapshotCR *longhornclient.SnapshotCR) *csi.CreateSnapshotResponse {
