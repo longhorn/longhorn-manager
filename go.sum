@@ -245,10 +245,10 @@ github.com/rancher/dynamiclistener v0.8.1 h1:3F+NO4BzfNokyxk9YwklIuoqXjwaAp9rE5K
 github.com/rancher/dynamiclistener v0.8.1/go.mod h1:5MQbIxCYXROxeXaagcx2dvlV0+j7pKOcMMQoI1wHRDA=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b h1:so40GMVZOZkQeIbAzaZRq6wDrMErvRLuXNsGTRZUpg8=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b/go.mod h1:7oQvGNiJsGvrUgB+7AH8bmdzuR0uhULfwKb43Ht0hUk=
-github.com/rancher/lasso v0.2.7 h1:N56Pm8KJSk7gRVYILSGb35QBfjcDDeGFMfwUCivsbeg=
-github.com/rancher/lasso v0.2.7/go.mod h1:L3ol8PdO21KoMhNa3RWjpR3ZBnE70JCAod1nJuOvT1E=
-github.com/rancher/wrangler/v3 v3.6.0 h1:pY5zWfRAij29x6VquOgvigONxQB8/b5ep2Gjt/r7QY4=
-github.com/rancher/wrangler/v3 v3.6.0/go.mod h1:faWkkqF2HwWxEiK+pwuYE1mbOvs+BNEnVXVGHJT8bbw=
+github.com/rancher/lasso v0.2.9 h1:5Xk9Qid+YDOLpa6s5xalcSR0cA5BMbgWcaOZ8kdNU7k=
+github.com/rancher/lasso v0.2.9/go.mod h1:PMtxoVahRQvhEAi1HVOfyLDe1CrtGwTqOtkPVjSSkns=
+github.com/rancher/wrangler/v3 v3.7.0 h1:rB6GJpnc4Kz8lWuAH3wZwQPgJqPGOu43Aih6147uZB8=
+github.com/rancher/wrangler/v3 v3.7.0/go.mod h1:kqldrBWdHR5zIipX/nr8yuZBFqFrL7GfVP1uwVJSWPQ=
 github.com/robfig/cron v1.2.0 h1:ZjScXvvxeQ63Dbyxy76Fj3AT3Ut0aKsyd2/tl3DTMuQ=
 github.com/robfig/cron v1.2.0/go.mod h1:JGuDeoQd7Z6yL4zQhZ3OPEVHB7fL6Ka6skscFHfmt2k=
 github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
