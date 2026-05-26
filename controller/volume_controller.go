@@ -413,7 +413,6 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			for _, ef := range engineFrontends {
 				if ef.DeletionTimestamp == nil {
 					ef.Spec.DesireState = longhorn.InstanceStateStopped
-					ef.Spec.NodeID = ""
 					if err := c.deleteEngineFrontend(ef, engineFrontends); err != nil {
 						return err
 					}
@@ -440,7 +439,6 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			if e.DeletionTimestamp == nil {
 				if types.IsDataEngineV2(volume.Spec.DataEngine) {
 					e.Spec.DesireState = longhorn.InstanceStateStopped
-					e.Spec.NodeID = ""
 					if err := c.deleteEngine(e, engines); err != nil {
 						return err
 					}
@@ -478,7 +476,6 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			if r.DeletionTimestamp == nil {
 				if types.IsDataEngineV2(volume.Spec.DataEngine) {
 					r.Spec.DesireState = longhorn.InstanceStateStopped
-					r.Spec.NodeID = ""
 					if err := c.deleteReplica(r, replicas); err != nil {
 						return err
 					}
