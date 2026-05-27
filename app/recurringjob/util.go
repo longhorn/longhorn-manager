@@ -157,7 +157,7 @@ func sliceStringSafely(s string, begin, end int) string {
 }
 
 func systemBackupsToNameWithTimestamps(systemBackupList *longhorn.SystemBackupList) []NameWithTimestamp {
-	result := []NameWithTimestamp{}
+	result := make([]NameWithTimestamp, 0, len(systemBackupList.Items))
 	for _, systemBackup := range systemBackupList.Items {
 		// Status.CreatedAt is only written by the controller on the successful
 		// upload path. SystemBackups in Error state, and SystemBackups that
