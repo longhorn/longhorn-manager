@@ -88,6 +88,94 @@ func (s *TestSuite) TestIsEngineFrontendTargetInitialized(c *C) {
 	c.Assert(isEngineFrontendTargetInitialized("10.0.0.1", 9502), Equals, true)
 }
 
+func (s *TestSuite) TestShouldExecuteEngineFrontendSwitchover(c *C) {
+	testCases := map[string]struct {
+		ef       *longhorn.EngineFrontend
+		volume   *longhorn.Volume
+		expected bool
+	}{
+		"nil engine frontend": {
+			expected: false,
+		},
+		"no target change": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			expected: false,
+		},
+		"target change without volume switchover intent": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			volume:   &longhorn.Volume{},
+			expected: false,
+		},
+		"target change without volume object": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			expected: false,
+		},
+		"target change with volume switchover intent": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			volume: &longhorn.Volume{
+				Status: longhorn.VolumeStatus{
+					SwitchoverState: longhorn.VolumeSwitchoverStateSwitchingOver,
+				},
+			},
+			expected: true,
+		},
+		"in progress switchover keeps running without volume lookup": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:        TestIP1,
+					TargetPort:      TestPort1,
+					SwitchoverPhase: longhorn.EngineFrontendSwitchoverPhasePreparing,
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Assert(shouldExecuteEngineFrontendSwitchover(tc.ef, tc.volume), Equals, tc.expected, Commentf("case=%s", name))
+	}
+}
+
 func (s *TestSuite) TestIsEngineFrontendEndpointRequired(c *C) {
 	c.Assert(isEngineFrontendEndpointRequired(nil), Equals, false)
 
