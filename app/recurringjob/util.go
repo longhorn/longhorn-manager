@@ -159,9 +159,20 @@ func sliceStringSafely(s string, begin, end int) string {
 func systemBackupsToNameWithTimestamps(systemBackupList *longhorn.SystemBackupList) []NameWithTimestamp {
 	result := []NameWithTimestamp{}
 	for _, systemBackup := range systemBackupList.Items {
+		// Status.CreatedAt is only written by the controller on the successful
+		// upload path. SystemBackups in Error state, and SystemBackups that
+		// have just been created but whose status write has not yet landed,
+		// have a zero Status.CreatedAt — which sorts to the front in
+		// filterExpiredItems and causes the newest CR to be pruned instead
+		// of an older one. Fall back to metadata.creationTimestamp, which is
+		// always set by the apiserver, for those cases.
+		ts := systemBackup.Status.CreatedAt.Time
+		if ts.IsZero() {
+			ts = systemBackup.CreationTimestamp.Time
+		}
 		result = append(result, NameWithTimestamp{
 			Name:      systemBackup.Name,
-			Timestamp: systemBackup.Status.CreatedAt.Time,
+			Timestamp: ts,
 		})
 	}
 	return result
