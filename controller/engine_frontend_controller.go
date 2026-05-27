@@ -998,6 +998,18 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 		return nil
 	}
 
+	// Persist basic status (endpoint, paths, target) before proceeding to
+	// expansion-related calls. VolumeFrontendGet below may fail when engine
+	// and EF are on different nodes, and the deferred update skips writes on
+	// error. Flushing here ensures the volume controller can see the endpoint
+	// and complete the attach flow.
+	if !reflect.DeepEqual(existingEF.Status, ef.Status) {
+		if _, err := m.ds.UpdateEngineFrontendStatus(ef); err != nil {
+			return err
+		}
+		existingEF = ef.DeepCopy()
+	}
+
 	volume, err := m.ds.GetVolumeRO(ef.Spec.VolumeName)
 	if err != nil {
 		if !datastore.ErrorIsNotFound(err) {
