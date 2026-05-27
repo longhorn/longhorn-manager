@@ -430,7 +430,23 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
 		switchoverInProgress := ef.Status.SwitchoverPhase != longhorn.EngineFrontendSwitchoverPhaseNone
 
-		if targetChanged || switchoverInProgress {
+		// Only execute the ANA multipath switchover when the volume controller
+		// has explicitly signaled switchover intent (SwitchoverState != Empty).
+		// A target IP change without switchover intent (e.g. engine restart on
+		// the same node) is handled by NVMe multipath auto-reconnection and
+		// does not require an explicit ANA state transition.
+		var volume *longhorn.Volume
+		if targetChanged && !switchoverInProgress {
+			volume, err = efc.ds.GetVolumeRO(ef.Spec.VolumeName)
+			if err != nil && !datastore.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "failed to get volume %v for engine frontend switchover evaluation", ef.Spec.VolumeName)
+			}
+			if datastore.ErrorIsNotFound(err) {
+				log.WithField("volume", ef.Spec.VolumeName).Warn("Volume not found while evaluating engine frontend target change, skipping switchover")
+			}
+		}
+
+		if shouldExecuteEngineFrontendSwitchover(ef, volume) {
 			im, err := efc.ds.GetInstanceManager(ef.Status.InstanceManagerName)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get instance manager %v for target switchover", ef.Status.InstanceManagerName)
@@ -487,6 +503,9 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 				log.Infof("Successfully switched over target for engine frontend %v to %v", ef.Name, targetAddress)
 				efc.eventRecorder.Eventf(ef, corev1.EventTypeNormal, constant.EventReasonSwitchover, "Successfully switched over target to %v", targetAddress)
 			}
+		} else if targetChanged {
+			log.Debugf("Target changed (spec=%v:%v status=%v:%v) but switchover not executed (volume SwitchoverState is empty), waiting for data-plane path convergence",
+				ef.Spec.TargetIP, ef.Spec.TargetPort, ef.Status.TargetIP, ef.Status.TargetPort)
 		}
 	} // end switchover block
 
@@ -1182,6 +1201,24 @@ func getEngineFrontendTargetFromPaths(activePath string, targetPort int32, paths
 
 func isEngineFrontendTargetInitialized(targetIP string, targetPort int) bool {
 	return targetIP != "" && targetPort != 0
+}
+
+func shouldExecuteEngineFrontendSwitchover(ef *longhorn.EngineFrontend, volume *longhorn.Volume) bool {
+	if ef == nil {
+		return false
+	}
+
+	targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
+	switchoverInProgress := ef.Status.SwitchoverPhase != longhorn.EngineFrontendSwitchoverPhaseNone
+	if switchoverInProgress {
+		return true
+	}
+
+	if !targetChanged {
+		return false
+	}
+
+	return volume != nil && volume.Status.SwitchoverState != longhorn.VolumeSwitchoverStateEmpty
 }
 
 // v2ExpansionInProgressMsg matches the SPDK engine's ErrExpansionInProgress
