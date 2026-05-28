@@ -11,6 +11,7 @@ import (
 	"github.com/avast/retry-go/v4"
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 
 	commonns "github.com/longhorn/go-common-libs/ns"
 	commontypes "github.com/longhorn/go-common-libs/types"
@@ -512,14 +513,53 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 	return dmDeviceIsBusy, nil
 }
 
+func (i *Initiator) isEndpointValid() bool {
+	if i.dev == nil {
+		return false
+	}
+
+	var st unix.Stat_t
+	if err := unix.Stat(i.Endpoint, &st); err != nil {
+		i.logger.WithError(err).Warnf("Failed to stat endpoint %v, removing and recreating", i.Endpoint)
+		return false
+	}
+
+	if (st.Mode & unix.S_IFMT) != unix.S_IFBLK {
+		i.logger.Warnf("Endpoint %v exists but is not a block device (mode=0x%x), removing stale entry",
+			i.Endpoint, st.Mode)
+		return false
+	}
+
+	actualMajor := int(unix.Major(st.Rdev))
+	actualMinor := int(unix.Minor(st.Rdev))
+	if actualMajor != i.dev.Export.Major || actualMinor != i.dev.Export.Minor {
+		i.logger.Warnf("Endpoint %v has stale major:minor %d:%d, expected %d:%d",
+			i.Endpoint, actualMajor, actualMinor, i.dev.Export.Major, i.dev.Export.Minor)
+		return false
+	}
+
+	return true
+}
+
 func (i *Initiator) createEndpoint() error {
 	exist, err := i.isEndpointExist()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check if endpoint %v exists for NVMe/TCP initiator %s", i.Endpoint, i.Name)
 	}
 	if exist {
-		i.logger.Infof("Skipping endpoint %v creation for NVMe/TCP initiator", i.Endpoint)
-		return nil
+		if i.dev != nil {
+			if i.isEndpointValid() {
+				i.logger.Infof("Reusing existing valid endpoint %v for NVMe/TCP initiator", i.Endpoint)
+				i.isUp = true
+				return nil
+			}
+			if removeErr := util.RemoveDevice(i.Endpoint); removeErr != nil {
+				return errors.Wrapf(removeErr, "failed to remove stale endpoint %v for NVMe/TCP initiator %s", i.Endpoint, i.Name)
+			}
+		} else {
+			i.logger.Infof("Skipping endpoint %v creation for NVMe/TCP initiator (no dev info to validate)", i.Endpoint)
+			return nil
+		}
 	}
 
 	if err := i.makeEndpoint(); err != nil {
