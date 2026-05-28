@@ -155,7 +155,7 @@ func (s *TestSuite) TestShouldExecuteEngineFrontendSwitchover(c *C) {
 			},
 			expected: true,
 		},
-		"in progress switchover keeps running without volume lookup": {
+		"in progress switchover stops when volume is nil": {
 			ef: &longhorn.EngineFrontend{
 				Spec: longhorn.EngineFrontendSpec{
 					TargetIP:   TestIP2,
@@ -167,7 +167,45 @@ func (s *TestSuite) TestShouldExecuteEngineFrontendSwitchover(c *C) {
 					SwitchoverPhase: longhorn.EngineFrontendSwitchoverPhasePreparing,
 				},
 			},
+			expected: false,
+		},
+		"in progress switchover continues with active volume switchover state": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:        TestIP1,
+					TargetPort:      TestPort1,
+					SwitchoverPhase: longhorn.EngineFrontendSwitchoverPhasePreparing,
+				},
+			},
+			volume: &longhorn.Volume{
+				Status: longhorn.VolumeStatus{
+					SwitchoverState: longhorn.VolumeSwitchoverStateSwitchingOver,
+				},
+			},
 			expected: true,
+		},
+		"stale switchover phase cleared when volume SwitchoverState is empty": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:        TestIP1,
+					TargetPort:      TestPort1,
+					SwitchoverPhase: longhorn.EngineFrontendSwitchoverPhaseSwitching,
+				},
+			},
+			volume: &longhorn.Volume{
+				Status: longhorn.VolumeStatus{
+					SwitchoverState: longhorn.VolumeSwitchoverStateEmpty,
+				},
+			},
+			expected: false,
 		},
 	}
 
