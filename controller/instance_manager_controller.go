@@ -822,6 +822,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingNodeSelectorSynced(setting, pod)
 		case types.SettingNameGuaranteedInstanceManagerCPU:
 			isSettingSynced, err = imc.isSettingGuaranteedInstanceManagerCPUSynced(setting, pod)
+		case types.SettingNameInstanceManagerResourceLimits:
+			isSettingSynced, err = imc.isSettingInstanceManagerResourceLimitsSynced(setting, pod)
 		case types.SettingNamePriorityClass:
 			isSettingSynced, err = imc.isSettingPriorityClassSynced(setting, pod)
 		case types.SettingNameStorageNetwork:
@@ -883,6 +885,21 @@ func (imc *InstanceManagerController) isSettingNodeSelectorSynced(setting *longh
 }
 
 func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	// When instance-manager-resource-limits is set, it fully overrides the CPU request
+	// derived from guaranteed-instance-manager-cpu. The resource-limits sync check
+	// (isSettingInstanceManagerResourceLimitsSynced) handles the comparison; this one is not applicable.
+	overrideSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameInstanceManagerResourceLimits)
+	if err != nil {
+		return false, err
+	}
+	override, err := types.UnmarshalInstanceManagerResourceLimits(overrideSetting.Value)
+	if err != nil {
+		return false, err
+	}
+	if override != nil {
+		return true, nil
+	}
+
 	lhNode, err := imc.ds.GetNode(pod.Spec.NodeName)
 	if err != nil {
 		return false, err
@@ -897,6 +914,18 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 	}
 	podResourceReq := pod.Spec.Containers[0].Resources
 	return IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq), nil
+}
+
+// isSettingInstanceManagerResourceLimitsSynced returns true when the IM pod's CPU and memory
+// requests/limits match the instance-manager-resource-limits setting. When the setting is
+// unset/empty, this check is a no-op. hugepages-2Mi is ignored because it is managed via
+// data-engine-memory-size.
+func (imc *InstanceManagerController) isSettingInstanceManagerResourceLimitsSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	override, err := types.UnmarshalInstanceManagerResourceLimits(setting.Value)
+	if err != nil {
+		return false, err
+	}
+	return IsInstanceManagerResourcesSynced(override, pod.Spec.Containers[0].Resources), nil
 }
 
 func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -1746,13 +1775,12 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	}
 
 	// Apply resource requirements to newly created Instance Manager Pods.
-	cpuResourceReq, err := GetInstanceManagerCPURequirement(imc.ds, im.Name)
+	resourceReq, err := GetInstanceManagerResourceRequirements(imc.ds, im.Name)
 	if err != nil {
 		return nil, err
 	}
-	// Do nothing for the CPU requests if the value is 0.
-	if cpuResourceReq != nil {
-		podSpec.Spec.Containers[0].Resources = *cpuResourceReq
+	if resourceReq != nil {
+		podSpec.Spec.Containers[0].Resources = *resourceReq
 	}
 
 	return podSpec, nil
@@ -1958,10 +1986,23 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		podSpec.Spec.Containers[0].Args = args
 
-		if podSpec.Spec.Containers[0].Resources.Requests == nil {
-			podSpec.Spec.Containers[0].Resources.Requests = corev1.ResourceList{}
+		// Default V2 memory request of 128Mi only applies when the instance-manager-resource-limits
+		// setting is fully unset. When that setting is set, the user owns CPU and memory entirely
+		// (even if they didn't specify a memory request in the override — e.g., a "limits only" value).
+		overrideSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameInstanceManagerResourceLimits)
+		if err != nil {
+			return nil, err
 		}
-		podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
+		override, err := types.UnmarshalInstanceManagerResourceLimits(overrideSetting.Value)
+		if err != nil {
+			return nil, err
+		}
+		if override == nil {
+			if podSpec.Spec.Containers[0].Resources.Requests == nil {
+				podSpec.Spec.Containers[0].Resources.Requests = corev1.ResourceList{}
+			}
+			podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
+		}
 
 		if podSpec.Spec.Containers[0].Resources.Limits == nil {
 			podSpec.Spec.Containers[0].Resources.Limits = corev1.ResourceList{}
