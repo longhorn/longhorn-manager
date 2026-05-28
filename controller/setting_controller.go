@@ -368,6 +368,7 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		types.SettingNameV1DataEngine,
 		types.SettingNameV2DataEngine,
 		types.SettingNameGuaranteedInstanceManagerCPU,
+		types.SettingNameInstanceManagerResourceLimits,
 	}
 
 	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
@@ -380,6 +381,12 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		case types.SettingNameGuaranteedInstanceManagerCPU:
 			for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
 				if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
+					return err
+				}
+			}
+		case types.SettingNameInstanceManagerResourceLimits:
+			for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+				if err := sc.updateInstanceManagerResources(dataEngine); err != nil {
 					return err
 				}
 			}
@@ -1406,6 +1413,19 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 
 // updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
 func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
+	// When instance-manager-resource-limits is set, it fully overrides the CPU request derived
+	// from guaranteed-instance-manager-cpu. Skip this rollout — the resource-limits setting has
+	// its own rollout path (updateInstanceManagerResources).
+	overrideSetting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameInstanceManagerResourceLimits)
+	if err != nil {
+		return err
+	}
+	if override, err := types.UnmarshalInstanceManagerResourceLimits(overrideSetting.Value); err != nil {
+		return err
+	} else if override != nil {
+		return nil
+	}
+
 	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
@@ -1454,6 +1474,70 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 
 	for _, pod := range notUpdatedPods {
 		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
+		if err := sc.ds.DeletePod(pod.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// updateInstanceManagerResources rolls instance manager pods whose CPU/memory requests or limits
+// no longer match the instance-manager-resource-limits setting. Like updateInstanceManagerCPURequest,
+// it requires all engine instances for the data engine to be stopped before deleting pods.
+func (sc *SettingController) updateInstanceManagerResources(dataEngine longhorn.DataEngineType) error {
+	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
+	if err != nil {
+		return errors.Wrap(err, "failed to list instance manager pods for resource limits update")
+	}
+	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
+	if err != nil {
+		return err
+	}
+
+	overrideSetting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameInstanceManagerResourceLimits)
+	if err != nil {
+		return err
+	}
+	override, err := types.UnmarshalInstanceManagerResourceLimits(overrideSetting.Value)
+	if err != nil {
+		return err
+	}
+
+	// When override is nil (setting cleared), IsInstanceManagerResourcesSynced flags any pod
+	// that still carries stale CPU/memory limits — those pods will be rolled to drop them.
+	notUpdatedPods := []*corev1.Pod{}
+	for _, imPod := range imPodList {
+		if _, exists := imMap[imPod.Name]; !exists {
+			continue
+		}
+		lhNode, err := sc.ds.GetNode(imPod.Spec.NodeName)
+		if err != nil {
+			return err
+		}
+		if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+		if IsInstanceManagerResourcesSynced(override, imPod.Spec.Containers[0].Resources) {
+			continue
+		}
+		notUpdatedPods = append(notUpdatedPods, imPod)
+	}
+
+	if len(notUpdatedPods) == 0 {
+		return nil
+	}
+
+	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameInstanceManagerResourceLimits, dataEngine)
+	}
+	if !stopped {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameInstanceManagerResourceLimits, dataEngine)}
+	}
+
+	for _, pod := range notUpdatedPods {
+		sc.logger.Infof("Deleting instance manager pod %v to apply %v", pod.Name, types.SettingNameInstanceManagerResourceLimits)
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}

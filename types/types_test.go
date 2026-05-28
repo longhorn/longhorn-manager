@@ -544,3 +544,82 @@ func (s *TestSuite) TestIsHexCPUMask(c *C) {
 		c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
 }
+func (s *TestSuite) TestUnmarshalInstanceManagerResourceLimits(c *C) {
+	type testCase struct {
+		input       string
+		expectNil   bool
+		expectError bool
+	}
+	testCases := map[string]testCase{
+		"empty string returns nil (disabled)": {
+			input:     "",
+			expectNil: true,
+		},
+		"whitespace string returns nil (disabled)": {
+			input:     "   ",
+			expectNil: true,
+		},
+		"newline/tab string returns nil (disabled)": {
+			input:     "\n\t  \r\n",
+			expectNil: true,
+		},
+		"value with leading and trailing newline parses fine": {
+			input: "\n  " + `{"requests":{"cpu":"100m","memory":"128Mi"}}` + "\n",
+		},
+		"valid requests and limits": {
+			input: `{"requests":{"cpu":"100m","memory":"128Mi"},"limits":{"cpu":"200m","memory":"256Mi"}}`,
+		},
+		"requests only": {
+			input: `{"requests":{"cpu":"500m","memory":"256Mi"}}`,
+		},
+		"limits only": {
+			input: `{"limits":{"cpu":"2","memory":"2Gi"}}`,
+		},
+		"hugepages-2Mi rejected in requests": {
+			input:       `{"requests":{"hugepages-2Mi":"2Gi"}}`,
+			expectError: true,
+		},
+		"hugepages-2Mi rejected in limits": {
+			input:       `{"limits":{"hugepages-2Mi":"2Gi"}}`,
+			expectError: true,
+		},
+		"unsupported resource rejected": {
+			input:       `{"requests":{"ephemeral-storage":"1Gi"}}`,
+			expectError: true,
+		},
+		"cpu request exceeds cpu limit rejected": {
+			input:       `{"requests":{"cpu":"500m"},"limits":{"cpu":"100m"}}`,
+			expectError: true,
+		},
+		"memory request exceeds memory limit rejected": {
+			input:       `{"requests":{"memory":"512Mi"},"limits":{"memory":"256Mi"}}`,
+			expectError: true,
+		},
+		"malformed JSON rejected": {
+			input:       `{not json}`,
+			expectError: true,
+		},
+		"claims field rejected (DynamicResourceAllocation)": {
+			input:       `{"claims":[{"name":"gpu"}]}`,
+			expectError: true,
+		},
+		"unknown top-level field rejected": {
+			input:       `{"requestsTypo":{"cpu":"100m"}}`,
+			expectError: true,
+		},
+	}
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v\n", testName)
+		got, err := UnmarshalInstanceManagerResourceLimits(testCase.input)
+		if testCase.expectError {
+			c.Assert(err, NotNil, Commentf("Expected error for test case: %s", testName))
+			continue
+		}
+		c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		if testCase.expectNil {
+			c.Assert(got, IsNil, Commentf("Expected nil result for test case: %s", testName))
+		} else {
+			c.Assert(got, NotNil, Commentf("Expected non-nil result for test case: %s", testName))
+		}
+	}
+}
