@@ -435,8 +435,13 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		// A target IP change without switchover intent (e.g. engine restart on
 		// the same node) is handled by NVMe multipath auto-reconnection and
 		// does not require an explicit ANA state transition.
+		//
+		// Also fetch the volume when a switchover is already in progress to
+		// validate that the volume controller still wants the switchover.
+		// After auto-salvage or recovery the volume clears SwitchoverState
+		// but the EF's SwitchoverPhase may remain stale.
 		var volume *longhorn.Volume
-		if targetChanged && !switchoverInProgress {
+		if targetChanged || switchoverInProgress {
 			volume, err = efc.ds.GetVolumeRO(ef.Spec.VolumeName)
 			if err != nil && !datastore.ErrorIsNotFound(err) {
 				return errors.Wrapf(err, "failed to get volume %v for engine frontend switchover evaluation", ef.Spec.VolumeName)
@@ -503,6 +508,14 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 				log.Infof("Successfully switched over target for engine frontend %v to %v", ef.Name, targetAddress)
 				efc.eventRecorder.Eventf(ef, corev1.EventTypeNormal, constant.EventReasonSwitchover, "Successfully switched over target to %v", targetAddress)
 			}
+		} else if switchoverInProgress {
+			// shouldExecuteEngineFrontendSwitchover returned false while a
+			// switchover phase was still set. This means the volume no longer
+			// requires the switchover (e.g., after auto-salvage cleared
+			// SwitchoverState). Clear the stale phase.
+			log.Warnf("Clearing stale switchover phase %v: volume SwitchoverState is empty, switchover no longer required",
+				ef.Status.SwitchoverPhase)
+			ef.Status.SwitchoverPhase = longhorn.EngineFrontendSwitchoverPhaseNone
 		} else if targetChanged {
 			log.Debugf("Target changed (spec=%v:%v status=%v:%v) but switchover not executed (volume SwitchoverState is empty), waiting for data-plane path convergence",
 				ef.Spec.TargetIP, ef.Spec.TargetPort, ef.Status.TargetIP, ef.Status.TargetPort)
@@ -1223,6 +1236,14 @@ func shouldExecuteEngineFrontendSwitchover(ef *longhorn.EngineFrontend, volume *
 	targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
 	switchoverInProgress := ef.Status.SwitchoverPhase != longhorn.EngineFrontendSwitchoverPhaseNone
 	if switchoverInProgress {
+		// An in-progress switchover should only continue if the volume
+		// controller still has an active switchover state. If the volume's
+		// SwitchoverState is Empty (e.g., cleared after auto-salvage or
+		// recovery), this SwitchoverPhase is stale and must not proceed —
+		// the old engine may already be gone.
+		if volume == nil || volume.Status.SwitchoverState == longhorn.VolumeSwitchoverStateEmpty {
+			return false
+		}
 		return true
 	}
 
