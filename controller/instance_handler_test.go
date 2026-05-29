@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -26,8 +28,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -127,6 +127,52 @@ func newEngine(name, currentImage, imName, nodeName, ip string, port int, starte
 				Started:             started,
 				Conditions:          conditions,
 			},
+		},
+	}
+}
+
+func newEngineFrontend(name, currentImage, imName, nodeName, ip string, port int, started bool, currentState, desireState longhorn.InstanceState) *longhorn.EngineFrontend {
+	var conditions []longhorn.Condition
+	conditions = types.SetCondition(conditions,
+		longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusTrue,
+		"", "")
+
+	conditions = types.SetCondition(conditions,
+		imtypes.EngineConditionFilesystemReadOnly, longhorn.ConditionStatusFalse,
+		"", "")
+
+	return &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels:    types.GetVolumeLabels(TestVolumeName),
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  TestVolumeName,
+				VolumeSize:  TestVolumeSize,
+				DesireState: desireState,
+				NodeID:      nodeName,
+				Image:       TestEngineImage,
+				DataEngine:  longhorn.DataEngineTypeV2,
+			},
+			Frontend:   longhorn.VolumeFrontendBlockDev,
+			EngineName: "test-engine",
+			Active:     true,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			InstanceStatus: longhorn.InstanceStatus{
+				OwnerID:             TestOwnerID1,
+				CurrentState:        currentState,
+				CurrentImage:        currentImage,
+				InstanceManagerName: imName,
+				IP:                  ip,
+				StorageIP:           ip,
+				Port:                port,
+				Started:             started,
+				Conditions:          conditions,
+			},
+			Endpoint: "/dev/longhorn/" + TestVolumeName,
 		},
 	}
 }
@@ -649,6 +695,137 @@ func newTestInstanceHandler(lhClient *lhfake.Clientset, kubeClient *fake.Clients
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	fakeRecorder := record.NewFakeRecorder(100)
 	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
+}
+
+func (s *TestSuite) TestReconcileEngineFrontendToleratesIMUnavailableInSplitTopology(c *C) {
+	testCases := map[string]struct {
+		instanceManager *longhorn.InstanceManager
+		volume          *longhorn.Volume
+		expectedState   longhorn.InstanceState
+	}{
+		"split topology during switchover keeps unknown when IM is unavailable": {
+			instanceManager: newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateStopped,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeV2,
+				TestInstanceManagerImage,
+				false,
+			),
+			volume: func() *longhorn.Volume {
+				v := newVolume(TestVolumeName, 1)
+				v.Spec.DataEngine = longhorn.DataEngineTypeV2
+				v.Spec.NodeID = TestNode1
+				v.Spec.EngineNodeID = TestNode2
+				v.Status.CurrentNodeID = TestNode1
+				v.Status.CurrentEngineNodeID = TestNode1
+				v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateSwitchingOver
+				return v
+			}(),
+			expectedState: longhorn.InstanceStateUnknown,
+		},
+		"split topology during switchover keeps unknown after engine already moved": {
+			instanceManager: newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateStopped,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeV2,
+				TestInstanceManagerImage,
+				false,
+			),
+			volume: func() *longhorn.Volume {
+				v := newVolume(TestVolumeName, 1)
+				v.Spec.DataEngine = longhorn.DataEngineTypeV2
+				v.Spec.NodeID = TestNode1
+				v.Spec.EngineNodeID = TestNode2
+				v.Status.CurrentNodeID = TestNode1
+				v.Status.CurrentEngineNodeID = TestNode2
+				v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateSwitchingOver
+				return v
+			}(),
+			expectedState: longhorn.InstanceStateUnknown,
+		},
+		"split topology after switchover keeps unknown when IM is unavailable": {
+			instanceManager: newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateStopped,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeV2,
+				TestInstanceManagerImage,
+				false,
+			),
+			volume: func() *longhorn.Volume {
+				v := newVolume(TestVolumeName, 1)
+				v.Spec.DataEngine = longhorn.DataEngineTypeV2
+				v.Spec.NodeID = TestNode1
+				v.Spec.EngineNodeID = TestNode2
+				v.Status.CurrentNodeID = TestNode1
+				v.Status.CurrentEngineNodeID = TestNode2
+				return v
+			}(),
+			expectedState: longhorn.InstanceStateUnknown,
+		},
+		"without split topology it still becomes error": {
+			instanceManager: newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateStopped,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeV2,
+				TestInstanceManagerImage,
+				false,
+			),
+			volume: func() *longhorn.Volume {
+				v := newVolume(TestVolumeName, 1)
+				v.Spec.DataEngine = longhorn.DataEngineTypeV2
+				v.Spec.NodeID = TestNode1
+				v.Status.CurrentNodeID = TestNode1
+				v.Status.CurrentEngineNodeID = TestNode1
+				return v
+			}(),
+			expectedState: longhorn.InstanceStateError,
+		},
+	}
+
+	for name, tc := range testCases {
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		h := newTestInstanceHandler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+		im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), tc.instanceManager, metav1.CreateOptions{})
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+
+		volume, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		err = volumeIndexer.Add(volume)
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+
+		node, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		err = nodeIndexer.Add(node)
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+
+		ef := newEngineFrontend(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning)
+		err = h.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus)
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		c.Assert(ef.Status.CurrentState, Equals, tc.expectedState, Commentf("case=%s", name))
+	}
 }
 
 func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
