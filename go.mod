@@ -66,7 +66,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/henrygd/beszel v0.18.2
 	github.com/jinzhu/copier v0.4.0
-	github.com/kubernetes-csi/csi-lib-utils v0.23.2
+	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
 	github.com/longhorn/backupstore v0.0.0-20260502085909-21ee466f5a8a
 	github.com/longhorn/go-common-libs v0.0.0-20260502161928-1e84fa75a8f1
