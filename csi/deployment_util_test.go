@@ -1,14 +1,22 @@
 package csi
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 
 	longhornmeta "github.com/longhorn/longhorn-manager/meta"
 )
@@ -275,5 +283,132 @@ func TestDeployUsesUpdateFuncInsteadOfDeleteRecreate(t *testing.T) {
 	if capturedResourceVersion != existingResourceVersion {
 		t.Errorf("expected ResourceVersion %q to be copied to new object, got %q",
 			existingResourceVersion, capturedResourceVersion)
+	}
+}
+
+func TestDeploymentUpdateFuncRetriesOnConflict(t *testing.T) {
+	const (
+		name      = "csi-attacher"
+		namespace = "longhorn-system"
+	)
+
+	existing := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       namespace,
+			ResourceVersion: "rv-1",
+			Labels: map[string]string{
+				"app": "old",
+			},
+			Annotations: map[string]string{
+				"old": "annotation",
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: name, Image: "old-image:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	desired := existing.DeepCopy()
+	desired.ResourceVersion = "stale"
+	desired.Labels = map[string]string{"app": "new"}
+	desired.Annotations = map[string]string{"new": "annotation"}
+	desired.Spec.Template.Spec.Containers[0].Image = "new-image:v2"
+
+	current := existing.DeepCopy()
+	updateCalls := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apis/apps/v1/namespaces/"+namespace+"/deployments/"+name {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			if err := json.NewEncoder(w).Encode(current); err != nil {
+				t.Fatalf("failed to write GET response: %v", err)
+			}
+		case http.MethodPut:
+			updateCalls++
+
+			var updatedDeployment appsv1.Deployment
+			if err := json.NewDecoder(r.Body).Decode(&updatedDeployment); err != nil {
+				t.Fatalf("failed to decode update request: %v", err)
+			}
+
+			if updateCalls == 1 {
+				if updatedDeployment.ResourceVersion != "rv-1" {
+					t.Fatalf("expected first retry to use latest resourceVersion rv-1, got %q", updatedDeployment.ResourceVersion)
+				}
+
+				current = current.DeepCopy()
+				current.ResourceVersion = "rv-2"
+				w.WriteHeader(http.StatusConflict)
+				if err := json.NewEncoder(w).Encode(apierrors.NewConflict(appsv1.Resource("deployments"), name, nil).ErrStatus); err != nil {
+					t.Fatalf("failed to write conflict response: %v", err)
+				}
+				return
+			}
+
+			if updatedDeployment.ResourceVersion != "rv-2" {
+				t.Fatalf("expected retry to refresh resourceVersion to rv-2, got %q", updatedDeployment.ResourceVersion)
+			}
+			if !reflect.DeepEqual(updatedDeployment.Labels, desired.Labels) {
+				t.Fatalf("expected labels %#v, got %#v", desired.Labels, updatedDeployment.Labels)
+			}
+			if !reflect.DeepEqual(updatedDeployment.Annotations, desired.Annotations) {
+				t.Fatalf("expected annotations %#v, got %#v", desired.Annotations, updatedDeployment.Annotations)
+			}
+			if !reflect.DeepEqual(updatedDeployment.Spec, desired.Spec) {
+				t.Fatalf("expected spec %#v, got %#v", desired.Spec, updatedDeployment.Spec)
+			}
+
+			current = updatedDeployment.DeepCopy()
+			if err := json.NewEncoder(w).Encode(current); err != nil {
+				t.Fatalf("failed to write update response: %v", err)
+			}
+		default:
+			t.Fatalf("unexpected method %q", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	kubeClient, err := clientset.NewForConfig(&rest.Config{
+		Host:    server.URL,
+		APIPath: "/apis",
+		ContentConfig: rest.ContentConfig{
+			ContentType:          "application/json",
+			AcceptContentTypes:   "application/json",
+			GroupVersion:         &schema.GroupVersion{Group: "apps", Version: "v1"},
+			NegotiatedSerializer: scheme.Codecs.WithoutConversion(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create clientset: %v", err)
+	}
+
+	if err := deploymentUpdateFunc(kubeClient, desired); err != nil {
+		t.Fatalf("deploymentUpdateFunc() returned unexpected error: %v", err)
+	}
+
+	if updateCalls != 2 {
+		t.Fatalf("expected update to be attempted twice, got %d", updateCalls)
+	}
+
+	if !reflect.DeepEqual(current.Labels, desired.Labels) {
+		t.Fatalf("expected persisted labels %#v, got %#v", desired.Labels, current.Labels)
+	}
+	if !reflect.DeepEqual(current.Annotations, desired.Annotations) {
+		t.Fatalf("expected persisted annotations %#v, got %#v", desired.Annotations, current.Annotations)
+	}
+	if !reflect.DeepEqual(current.Spec, desired.Spec) {
+		t.Fatalf("expected persisted spec %#v, got %#v", desired.Spec, current.Spec)
 	}
 }

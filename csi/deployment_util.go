@@ -21,6 +21,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -374,8 +375,20 @@ func deploymentUpdateFunc(kubeClient *clientset.Clientset, obj runtime.Object) e
 	if !ok {
 		return fmt.Errorf("failed to convert object to *appsv1.Deployment for update, got %T", obj)
 	}
-	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Update(context.TODO(), o, metav1.UpdateOptions{})
-	return err
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, err := kubeClient.AppsV1().Deployments(o.Namespace).Get(context.TODO(), o.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		latest = latest.DeepCopy()
+		latest.Annotations = o.Annotations
+		latest.Labels = o.Labels
+		latest.Spec = o.Spec
+
+		_, err = kubeClient.AppsV1().Deployments(o.Namespace).Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
 }
 
 func deploymentDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
