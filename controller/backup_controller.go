@@ -1161,6 +1161,15 @@ func (bc *BackupController) setInprogressDeletionMap(backupURL string, state lon
 	bc.deletingMapLock.Lock()
 	defer bc.deletingMapLock.Unlock()
 
+	if bc.inProgressDeletingMap[backupURL] == nil {
+		// The entry was removed by the reconcile cleanup path before this
+		// update path acquired the lock. Both the deferred panic-recover and
+		// the regular error path can call this setter after reconcile
+		// observed the deletion as terminal and removed the entry. Returning
+		// here matches the existence check the reconcile read path already
+		// performs in handleBackupDeletionInBackupStore.
+		return
+	}
 	bc.inProgressDeletingMap[backupURL].State = state
 	bc.inProgressDeletingMap[backupURL].ErrorMessage = errMsg
 }
