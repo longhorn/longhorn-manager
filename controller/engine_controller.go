@@ -2374,6 +2374,15 @@ func (ec *EngineController) prepareRebuildContext(
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get engine %v for linked-clone src replica %v", srcReplica.Spec.EngineName, rc.linkedCloneSrcReplicaName)
 		}
+		// Guard: if the src engine is not yet running (e.g. still recovering after
+		// an instance manager crash), its StorageIP/Port are stale or zero.
+		// Returning an error here keeps the rebuild deferred (no replica is harmed)
+		// and the engine controller retries on the next reconcile cycle once the
+		// src engine has come back up and reported a valid address.
+		if srcEngine.Status.CurrentState != longhorn.InstanceStateRunning {
+			return nil, fmt.Errorf("linked-clone src engine %v (for src replica %v) is not yet running (state %v): deferring rebuild until src engine recovers",
+				srcEngine.Name, rc.linkedCloneSrcReplicaName, srcEngine.Status.CurrentState)
+		}
 		rc.linkedCloneSrcEngineName = srcEngine.Name
 		rc.linkedCloneSrcEngineAddress = imutil.GetURL(srcEngine.Status.StorageIP, srcEngine.Status.Port)
 	}
