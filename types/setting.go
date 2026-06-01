@@ -1791,13 +1791,13 @@ var (
 
 	SettingDefinitionDataEngineCPUMask = SettingDefinition{
 		DisplayName:        "Data Engine CPU Mask",
-		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the number of assigned cores does not exceed the guaranteed Instance Manager CPUs for the V2 Data Engine. Accepts hex mask format (e.g., 0x1, 0xff) or CPU list format (e.g., 1-3,5,7). CPU list format is automatically converted to hex mask. The default value is 0x1.\n\n",
+		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the assigned CPU cores do not exceed the guaranteed CPUs allocated to the V2 Data Engine Instance Manager. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. When only a single core is assigned, heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and operational stability. Accepts either hexadecimal CPU masks (for example, 0x3 or 0xff) or CPU list format (for example, 0-1,2,5). CPU lists are automatically converted to hexadecimal masks. The default value is 0x3.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"0x1\"}", longhorn.DataEngineTypeV2),
+		Default:            fmt.Sprintf("{%q:\"0x3\"}", longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionDataEngineInterruptModeEnabled = SettingDefinition{
