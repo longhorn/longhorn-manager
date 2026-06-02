@@ -63,6 +63,11 @@ const (
 
 	ValueFloatRangeMinimum = "minimum"
 	ValueFloatRangeMaximum = "maximum"
+
+	// SpdkDefaultIobufLargePoolSize is SPDK's built-in default large_pool_count. A
+	// data-engine-iobuf-large-pool-size value not greater than this is a no-op (SPDK
+	// keeps its default), so only a larger value is passed through to override it.
+	SpdkDefaultIobufLargePoolSize = 1024
 )
 
 type SettingName string
@@ -156,6 +161,7 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameDataEngineHugepageEnabled                                = SettingName("data-engine-hugepage-enabled")
 	SettingNameDataEngineMemorySize                                     = SettingName("data-engine-memory-size")
+	SettingNameDataEngineIobufLargePoolSize                             = SettingName("data-engine-iobuf-large-pool-size")
 	SettingNameDataEngineCPUMask                                        = SettingName("data-engine-cpu-mask")
 	SettingNameDataEngineNumberOfCPUCores                               = SettingName("data-engine-number-of-cpu-cores")
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
@@ -280,6 +286,7 @@ var (
 		SettingNameV2DataEngine,
 		SettingNameDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize,
+		SettingNameDataEngineIobufLargePoolSize,
 		SettingNameDataEngineCPUMask,
 		SettingNameDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel,
@@ -444,6 +451,7 @@ var (
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameDataEngineHugepageEnabled:                                SettingDefinitionDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize:                                     SettingDefinitionDataEngineMemorySize,
+		SettingNameDataEngineIobufLargePoolSize:                             SettingDefinitionDataEngineIobufLargePoolSize,
 		SettingNameDataEngineCPUMask:                                        SettingDefinitionDataEngineCPUMask,
 		SettingNameDataEngineNumberOfCPUCores:                               SettingDefinitionDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
@@ -1792,6 +1800,25 @@ var (
 		Default:            fmt.Sprintf("{%q:\"2048\"}", longhorn.DataEngineTypeV2),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
+		},
+	}
+
+	SettingDefinitionDataEngineIobufLargePoolSize = SettingDefinition{
+		DisplayName: "Data Engine iobuf Large Pool Size",
+		Description: "Applies only to the V2 Data Engine. Sets the SPDK iobuf large buffer pool size (`large_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
+			"  - `0` (default): keep SPDK's built-in default (1024); behavior is unchanged. \n\n" +
+			"  - A larger value relieves NVMe-oF TCP large-buffer exhaustion (the `large_pool` `retry` / `NEED_BUFFER` stalls) under heavy mixed read/write workloads whose I/O size exceeds the iobuf small buffer size (8 KiB), e.g. 16 KiB database pages. Values not greater than 1024 keep the SPDK default. \n\n" +
+			"  - Larger values consume more hugepage memory: each large buffer is 132 KiB, so the large pool uses `large_pool_count x 132 KiB` (1024 -> 132 MiB, 4096 -> 528 MiB, 16384 -> ~2 GiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
+			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool size takes effect.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+			ValueIntRangeMaximum: 65536,
 		},
 	}
 
