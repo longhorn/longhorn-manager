@@ -221,6 +221,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufLargePoolSize ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize
@@ -837,6 +838,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			}
 		case types.SettingNameDataEngineInterruptModeEnabled:
 			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
+		case types.SettingNameDataEngineIobufLargePoolSize:
+			isSettingSynced, err = imc.isSettingIobufLargePoolSizeSynced(im, pod)
 		}
 		if err != nil {
 			return false, nil, false, false, err
@@ -1140,6 +1143,32 @@ func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *lon
 	}
 
 	return hugepages2MiAllocatable.Cmp(requiredHugePages) >= 0, nil
+}
+
+// isSettingIobufLargePoolSizeSynced checks whether the pod's --spdk-iobuf-large-pool-size
+// argument matches the current setting. A value not greater than SPDK's default
+// (types.SpdkDefaultIobufLargePoolSize) means the flag is omitted from the pod args, so an
+// absent flag is considered synced; this prevents recreating existing pods that predate the setting.
+func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	iobufLargePoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	expected := ""
+	if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
+		expected = fmt.Sprintf("%d", iobufLargePoolSize)
+	}
+	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-large-pool-size")
+	return current == expected, nil
 }
 
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {
@@ -1928,16 +1957,32 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			hugepage = memory
 		}
 
+		// iobuf large pool size (large_pool_count) for the SPDK target. A value not
+		// greater than SPDK's built-in default (types.SpdkDefaultIobufLargePoolSize) is
+		// a no-op, so the flag is omitted and behavior is unchanged. A larger value is
+		// consumed by the instance-manager launch wrapper, which generates an SPDK
+		// startup JSON config (the iobuf pool can only be sized during spdk_tgt startup).
+		iobufLargePoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
+		}
+
 		args := []string{
 			"start-spdk-tgt",
 			"--spdk-log", logFlags,
 			"--spdk-cpumask", cpuMask,
 			"--spdk-core-number", fmt.Sprintf("%d", spdkCoreNumber),
 			"--spdk-memory-size", fmt.Sprintf("%d", memory),
+		}
+		// Must precede "daemon" so the launch wrapper consumes it as an SPDK option.
+		if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
+			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
+		}
+		args = append(args,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
-			"--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
+			"--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort))
 
 		interruptMode, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, dataEngine)
 		if err != nil {
