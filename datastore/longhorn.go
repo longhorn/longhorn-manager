@@ -690,6 +690,26 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return fmt.Errorf("%s should be between 2 and 250", name)
 		}
 
+	case types.SettingNameDataEngineIobufLargePoolSize:
+		definition, ok := types.GetSettingDefinition(types.SettingNameDataEngineIobufLargePoolSize)
+		if !ok {
+			return fmt.Errorf("setting %v is not found", types.SettingNameDataEngineIobufLargePoolSize)
+		}
+		values, err := types.ParseDataEngineSpecificSetting(definition, value)
+		if err != nil {
+			return err
+		}
+		// A value of 0 keeps SPDK's default; only a value greater than the default
+		// actually changes the pool. Reject the in-between range so it does not silently
+		// become a no-op.
+		for dataEngine, v := range values {
+			size := v.(int64)
+			if size > 0 && size <= types.SpdkDefaultIobufLargePoolSize {
+				return fmt.Errorf("%v for data engine %v must be 0 (keep the SPDK default) or greater than %v; values in between are no-ops",
+					name, dataEngine, types.SpdkDefaultIobufLargePoolSize)
+			}
+		}
+
 	case types.SettingNameDefaultLonghornStaticStorageClass:
 		definition, ok := types.GetSettingDefinition(types.SettingNameDefaultLonghornStaticStorageClass)
 		if !ok {
