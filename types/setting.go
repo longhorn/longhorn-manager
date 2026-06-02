@@ -1274,7 +1274,7 @@ var (
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, the instance manager pod using this global setting will be automatically restarted without instances running on the instance manager. \n\n" +
-			"  - For the v2 Data Engine, the Storage Performance Development Kit (SPDK) target daemon inside each instance manager pod uses one or more dedicated CPU cores. Setting a minimum CPU usage is critical to maintaining stability during periods of high node load.",
+			"  - For the V2 Data Engine, the Storage Performance Development Kit (SPDK) target daemon inside each instance manager pod uses one or more dedicated CPU cores. Setting a minimum CPU usage is critical to maintaining stability during periods of high node load.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeFloat,
 		Required:           true,
@@ -1753,8 +1753,8 @@ var (
 
 	SettingDefinitionV2DataEngine = SettingDefinition{
 		DisplayName: "V2 Data Engine",
-		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the Technical Preview phase and should be explored extensively before being used in production environments.\n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
+		Description: "This setting allows users to activate V2 Data Engine which is based on SPDK.\n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V2 volumes. \n\n" +
 			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the Storage Performance Development Kit (SPDK) target daemon running within each instance-manager pod. The the SPDK target daemon is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
@@ -1804,7 +1804,7 @@ var (
 		DisplayName: "Enable Interrupt Mode for Data Engine",
 		Description: "Specifies whether the Storage Performance Development Kit (SPDK) target daemon should run in interrupt mode. " +
 			"This setting is applicable only when the V2 Data Engine is enabled. \n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V2 volumes. \n\n" +
 			"  - `true`: Enables interrupt mode, which may reduce CPU usage. \n\n" +
 			"  - `false`: Uses polling mode for maximum performance. \n\n",
 		Category:           SettingCategoryDangerZone,
@@ -1987,7 +1987,7 @@ var (
 
 	SettingDefinitionLogPath = SettingDefinition{
 		DisplayName:        "Log Path",
-		Description:        "Specifies the directory on the host where Longhorn stores log files for the instance manager pod. Currently, it is only used for instance manager pods in the v2 data engine.",
+		Description:        "Specifies the directory on the host where Longhorn stores log files for the instance manager pod. Currently, it is only used for instance manager pods in the V2 Data Engine.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
