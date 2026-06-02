@@ -281,6 +281,9 @@ func isRevisionedEngineImage(image string) bool {
 	return engineImageRevisionTagRegex.MatchString(tag)
 }
 
+// getContainerArgValue returns the value following the given flag in a container's
+// args (e.g. for flag "--spdk-iobuf-large-pool-size" it returns the next element).
+// It returns an empty string if the flag is absent or has no following value.
 func getContainerArgValue(args []string, flag string) string {
 	for i, arg := range args {
 		if arg == flag && i+1 < len(args) {
