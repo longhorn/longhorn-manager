@@ -18,28 +18,47 @@ func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		err = errors.Wrap(err, "failed to get disk service client")
 	}()
 
-	isInstanceManagerRunning := im.Status.CurrentState == longhorn.InstanceManagerStateRunning
-	if !isInstanceManagerRunning {
-		err = errors.Errorf("%v instance manager is in %v state, not running state", im.Name, im.Status.CurrentState)
-		return nil, err
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil, errors.Errorf("%v instance manager is in %v state, not running state",
+			im.Name, im.Status.CurrentState)
+	}
+	if im.Status.IP == "" {
+		return nil, errors.Errorf("%v instance manager status IP is missing", im.Name)
 	}
 
-	hasIP := im.Status.IP != ""
-	if !hasIP {
-		err = errors.Errorf("%v instance manager status IP is missing", im.Name)
-		return nil, err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
 	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDiskServiceDefaultPort)
-	client, err := imclient.NewDiskServiceClient(ctx, cancel, endpoint, nil)
+
+	caFile, certFile, keyFile, peerName := imTLSFiles()
+
+	newClient := func() (*imclient.DiskServiceClient, error) {
+		ctx, cancel := context.WithCancel(context.Background())
+		return imclient.NewDiskServiceClientWithTLS(ctx, cancel, endpoint,
+			caFile, certFile, keyFile, peerName)
+	}
+
+	buildPlain := func() (*imclient.DiskServiceClient, error) {
+		ctx, cancel := context.WithCancel(context.Background())
+		return imclient.NewDiskServiceClient(ctx, cancel, endpoint, nil)
+	}
+
+	checkVersion := func(c *imclient.DiskServiceClient) error {
+		_, err := c.VersionGet()
+		return err
+	}
+
+	grpcClient, err := newIMClient(
+		newClient,
+		buildPlain,
+		checkVersion,
+		logger, im.Name, im.Status.IP, "disk service",
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	return &DiskService{
 		logger:              logger,
-		grpcClient:          client,
+		grpcClient:          grpcClient,
 		instanceManagerName: im.Name,
 	}, nil
 }

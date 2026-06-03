@@ -66,12 +66,31 @@ type Server struct {
 	currentBdevIostat *spdktypes.BdevIostatResponse
 	bdevMetricMap     map[string]*spdkrpc.Metrics
 
+	// volumeHostLocksMu protects the volumeHostLocks map itself.
+	volumeHostLocksMu sync.Mutex
+	// volumeHostLocks serializes host-level NVMe/dm operations for the same
+	// volume. Recovery and all frontend lifecycle RPCs that mutate host
+	// NVMe controllers or dm devices (create, delete, suspend, resume,
+	// expand, switchover) acquire the per-volume lock so that these
+	// operations cannot overlap on one volume.
+	//
+	// Entries are reference-counted and removed when the last holder
+	// releases, so the map is bounded by the number of concurrently
+	// active volumes rather than growing monotonically.
+	volumeHostLocks map[string]*volumeHostLockEntry
+
 	// metadataDir is the base path for persisting engine frontend records
 	// (e.g. /var/lib/longhorn). If empty, persistence is disabled.
 	metadataDir string
+
+	newServiceClient ServiceClientFactory
 }
 
-func NewServer(ctx context.Context, portStart, portEnd int32) (*Server, error) {
+func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient ServiceClientFactory) (*Server, error) {
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
+
 	cli, err := spdkclient.NewClient(ctx)
 	if err != nil {
 		return nil, err
@@ -122,7 +141,10 @@ func NewServer(ctx context.Context, portStart, portEnd int32) (*Server, error) {
 		broadcastChs: broadcastChs,
 		updateChs:    updateChs,
 
-		metadataDir: types.MetadataDir,
+		volumeHostLocks: map[string]*volumeHostLockEntry{},
+
+		metadataDir:      types.MetadataDir,
+		newServiceClient: newServiceClient,
 	}
 	s.hotplugActive.Store(true)
 
@@ -143,7 +165,11 @@ func NewServer(ctx context.Context, portStart, portEnd int32) (*Server, error) {
 	// RecoverFromHost do not block on the unbuffered channel.
 	go s.broadcasting()
 
-	s.recoverEngineFrontends()
+	// Run engine frontend recovery asynchronously so that gRPC servers can
+	// start listening immediately. This prevents the liveness probe from
+	// killing the pod when recovery takes longer than the probe threshold
+	// (e.g. when persisted targets are unreachable).
+	go s.recoverEngineFrontends(ctx)
 
 	// TODO: There is no need to maintain the replica map in cache when we can use one SPDK JSON API call to fetch the Lvol tree/chain info
 	go s.monitoring()
@@ -425,7 +451,11 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 				logrus.WithError(err).Warnf("failed to retrieve backing image UUID attribute for snapshot %v", alias)
 				continue
 			}
-			backingImage := NewBackingImage(s.ctx, backingImageName, backingImageUUID, lvsUUID, size, expectedChecksum, s.updateChs[types.InstanceTypeBackingImage])
+			backingImage := NewBackingImage(s.ctx, backingImageName, backingImageUUID, lvsUUID, size, expectedChecksum,
+				s.updateChs[types.InstanceTypeBackingImage],
+				func(address string) (backingImageServiceClient, error) {
+					return s.newServiceClient(address)
+				})
 			backingImage.Alias = alias
 			backingImage.State = types.BackingImageStatePending
 			state.backingImageForSync[lvolName] = backingImage
@@ -434,7 +464,7 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
 			actualSize := bdevLvol.DriverSpecific.Lvol.NumAllocatedClusters * uint64(defaultClusterSize)
-			state.replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica])
+			state.replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient)
 			state.replicaMapForSync[lvolName] = state.replicaMap[lvolName]
 			logrus.Infof("Detected one possible existing replica %s(%s) with disk %s(%s), spec size %d, actual size %d", bdevLvol.Aliases[0], bdevLvol.UUID, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize)
 		}
@@ -524,16 +554,16 @@ func (s *Server) broadcasting() {
 	}
 }
 
-func (s *Server) Subscribe(instanceType types.InstanceType) (<-chan interface{}, error) {
+func (s *Server) Subscribe(ctx context.Context, instanceType types.InstanceType) (<-chan interface{}, error) {
 	switch instanceType {
 	case types.InstanceTypeEngine:
-		return s.broadcasters[types.InstanceTypeEngine].Subscribe(context.TODO(), s.engineBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeEngine].Subscribe(ctx, s.engineBroadcastConnector)
 	case types.InstanceTypeEngineFrontend:
-		return s.broadcasters[types.InstanceTypeEngineFrontend].Subscribe(context.TODO(), s.engineFrontendBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeEngineFrontend].Subscribe(ctx, s.engineFrontendBroadcastConnector)
 	case types.InstanceTypeReplica:
-		return s.broadcasters[types.InstanceTypeReplica].Subscribe(context.TODO(), s.replicaBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeReplica].Subscribe(ctx, s.replicaBroadcastConnector)
 	case types.InstanceTypeBackingImage:
-		return s.broadcasters[types.InstanceTypeBackingImage].Subscribe(context.TODO(), s.backingImageBroadcastConnector)
+		return s.broadcasters[types.InstanceTypeBackingImage].Subscribe(ctx, s.backingImageBroadcastConnector)
 	}
 	return nil, fmt.Errorf("invalid instance type %v for subscription", instanceType)
 }
@@ -609,7 +639,7 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 	if !exists {
 		return nil, fmt.Errorf("lvstore %v(%v) does not exist for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
 	}
-	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica]), nil
+	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient), nil
 }
 
 func (s *Server) getBackingImage(backingImageName, lvsUUID string) (backingImage *BackingImage, err error) {
@@ -658,9 +688,12 @@ func toSwitchOverGRPCError(err error, format string, args ...interface{}) error 
 // wrapper proceeds with work() without suspension. This is safe because an
 // unreachable frontend means there is no active I/O to quiesce, and not
 // running the work would leak SPDK resources (detach controller, stop expose).
-func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, log *logrus.Entry) replicaAddFrontendSuspendResumeWrapper {
+func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, log *logrus.Entry, newServiceClient ServiceClientFactory) replicaAddFrontendSuspendResumeWrapper {
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
 	return func(work func() error) error {
-		efClient, err := GetServiceClient(efAddress)
+		efClient, err := newServiceClient(efAddress)
 		if err != nil {
 			// Cannot connect to the EF node at all — proceed without suspension.
 			log.WithError(err).Warnf("Engine frontend %s at %s is unreachable, proceeding without suspension", efName, efAddress)
@@ -719,7 +752,11 @@ func (s *Server) newBackingImage(req *spdkrpc.BackingImageCreateRequest) (*Backi
 		if err != nil || !exists {
 			return nil, err
 		}
-		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum, s.updateChs[types.InstanceTypeBackingImage])
+		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum,
+			s.updateChs[types.InstanceTypeBackingImage],
+			func(address string) (backingImageServiceClient, error) {
+				return s.newServiceClient(address)
+			})
 	}
 
 	return s.backingImageMap[backingImageSnapLvolName], nil
@@ -812,6 +849,46 @@ func setNvmeHotPlug(spdkClient *spdkclient.Client, enable bool) (success bool) {
 		return false
 	}
 	return true
+}
+
+// volumeHostLockEntry is a reference-counted per-volume mutex.
+type volumeHostLockEntry struct {
+	mu       sync.Mutex
+	refCount int32
+}
+
+// acquireVolumeHostLock atomically looks up (or creates) the per-volume lock,
+// increments its reference count, and acquires the mutex. The returned
+// function releases the mutex and decrements the reference count; when the
+// count reaches zero the entry is removed from the map, bounding memory to
+// the number of concurrently active volumes.
+func (s *Server) acquireVolumeHostLock(volumeName string) func() {
+	s.volumeHostLocksMu.Lock()
+	if s.volumeHostLocks == nil {
+		s.volumeHostLocks = map[string]*volumeHostLockEntry{}
+	}
+	entry, ok := s.volumeHostLocks[volumeName]
+	if !ok {
+		entry = &volumeHostLockEntry{}
+		s.volumeHostLocks[volumeName] = entry
+	}
+	atomic.AddInt32(&entry.refCount, 1)
+	s.volumeHostLocksMu.Unlock()
+
+	entry.mu.Lock()
+
+	return func() {
+		entry.mu.Unlock()
+		if atomic.AddInt32(&entry.refCount, -1) == 0 {
+			s.volumeHostLocksMu.Lock()
+			// Re-check under map lock: another goroutine may have
+			// incremented refCount between our Add and this Lock.
+			if atomic.LoadInt32(&entry.refCount) == 0 {
+				delete(s.volumeHostLocks, volumeName)
+			}
+			s.volumeHostLocksMu.Unlock()
+		}
+	}
 }
 
 // engineFrontendByVolumeName returns the first engine frontend that matches
@@ -913,7 +990,7 @@ func (s *Server) GetReplicaStruct(name string) *Replica {
 // recoverEngineFrontends loads persisted engine frontend records from disk
 // and attempts to recover them by detecting existing NVMe initiators on the host.
 // This is called during server startup to restore state after instance-manager restart.
-func (s *Server) recoverEngineFrontends() {
+func (s *Server) recoverEngineFrontends(ctx context.Context) {
 	if s.metadataDir == "" {
 		return
 	}
@@ -930,16 +1007,33 @@ func (s *Server) recoverEngineFrontends() {
 
 	logrus.Infof("Recovering %d engine frontend(s) from persisted records", len(records))
 
+	// recoveryEfs keeps our own references to efs inserted during the
+	// insertion loop. The recovery loop uses these instead of reading
+	// from engineFrontendMap, which avoids accidentally operating on a
+	// NEW ef registered by a concurrent EngineFrontendCreate.
+	recoveryEfs := make(map[string]*EngineFrontend, len(records))
+
 	s.Lock()
-	spdkClient := s.spdkClient
 	for _, record := range records {
 		if _, exists := s.engineFrontendMap[record.Name]; exists {
 			logrus.Infof("Engine frontend %s already exists in map, skipping recovery", record.Name)
 			continue
 		}
 
+		// Check volume uniqueness — a concurrent frontend lifecycle RPC may
+		// already have registered an in-memory frontend for this volume while
+		// we were loading records from disk. Skip recovery so we do not race
+		// that in-memory owner on the host. The on-disk record may already
+		// belong to the in-memory frontend or may still be stale from the old
+		// one; reconciliation stays with the live frontend instance.
+		if existing := s.engineFrontendByVolumeName(record.VolumeName); existing != nil {
+			logrus.Warnf("Engine frontend %s already exists for volume %s, skipping recovery of %s",
+				existing.Name, record.VolumeName, record.Name)
+			continue
+		}
+
 		ef := NewEngineFrontend(record.Name, record.EngineName, record.VolumeName,
-			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend])
+			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 		ef.metadataDir = s.metadataDir
 		ef.VolumeNQN = record.VolumeNQN
 		ef.VolumeNGUID = record.VolumeNGUID
@@ -978,6 +1072,7 @@ func (s *Server) recoverEngineFrontends() {
 		}
 
 		s.engineFrontendMap[record.Name] = ef
+		recoveryEfs[record.Name] = ef
 
 		logrus.Infof("Recovered engine frontend %s for volume %s from persisted record", record.Name, record.VolumeName)
 	}
@@ -986,20 +1081,47 @@ func (s *Server) recoverEngineFrontends() {
 	// Attempt to recover each frontend's initiator state from the host.
 	// This is done outside the server lock to avoid holding it during potentially
 	// slow NVMe device discovery operations.
+	// Use recoveryEfs (our own references) rather than reading from engineFrontendMap
+	// to avoid accidentally calling RecoverFromHost/Delete on a NEW ef that a
+	// concurrent EngineFrontendCreate registered under the same name.
 	for _, record := range records {
-		s.RLock()
-		ef := s.engineFrontendMap[record.Name]
-		s.RUnlock()
+		select {
+		case <-ctx.Done():
+			logrus.Info("Engine frontend recovery cancelled by context")
+			return
+		default:
+		}
 
+		ef := recoveryEfs[record.Name]
 		if ef == nil {
 			continue
 		}
 
-		if err := ef.RecoverFromHost(spdkClient); err != nil {
-			if errors.Is(err, ErrRecoverDeviceNotFound) {
+		// Hold the per-volume host lock for the entire recovery lifecycle
+		// (RecoverFromHost + cleanup/Delete) so that a concurrent
+		// EngineFrontendCreate for the same volume cannot start its own
+		// host NVMe/dm operations until both recovery AND cleanup finish.
+		// Releasing the lock before Delete would allow Create to race with
+		// the old ef's initiator.Stop(), which could disconnect an NVMe
+		// controller that the new ef's Create() just connected (they share
+		// the same subsystem NQN derived from the volume name).
+		unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
+
+		// Read spdkClient fresh each iteration — clientReconnect() can
+		// replace s.spdkClient and close the old one concurrently.
+		s.RLock()
+		spdkClient := s.spdkClient
+		s.RUnlock()
+
+		recoverErr := ef.RecoverFromHost(spdkClient)
+
+		if recoverErr != nil {
+			if errors.Is(recoverErr, ErrRecoverDeviceNotFound) {
 				logrus.Warnf("Removing engine frontend %s from map: device not found on host", record.Name)
+			} else if errors.Is(recoverErr, ErrRecoveryCancelled) {
+				logrus.Infof("Recovery of engine frontend %s cancelled: evicted by concurrent operation", record.Name)
 			} else {
-				logrus.WithError(err).Warnf("Removing engine frontend %s from map: recovery failed", record.Name)
+				logrus.WithError(recoverErr).Warnf("Removing engine frontend %s from map: recovery failed", record.Name)
 			}
 
 			// Properly shut down the frontend instance (close stopCh,
@@ -1011,9 +1133,34 @@ func (s *Server) recoverEngineFrontends() {
 				logrus.WithError(deleteErr).Warnf("Failed to clean up engine frontend %s during recovery removal", record.Name)
 			}
 
+			// Only remove from map if this entry still belongs to us.
+			// A concurrent EngineFrontendCreate may have already evicted
+			// us and registered a new frontend under the same name.
 			s.Lock()
-			delete(s.engineFrontendMap, record.Name)
+			if s.engineFrontendMap[record.Name] == ef {
+				delete(s.engineFrontendMap, record.Name)
+			}
 			s.Unlock()
+		} else {
+			// Recovery succeeded — verify the ef was not superseded by a
+			// concurrent EngineFrontendCreate while RecoverFromHost was running.
+			s.RLock()
+			current := s.engineFrontendMap[record.Name]
+			s.RUnlock()
+
+			if current != ef {
+				logrus.Warnf("Engine frontend %s was superseded during recovery, cleaning up recovered resources", record.Name)
+				// The eviction path in EngineFrontendCreate already decided
+				// whether metadataDir should be kept (pre-create eviction,
+				// where no new record exists yet) or cleared (post-create
+				// eviction with successful Create, where a new record was
+				// written). Respect that decision — do not override here.
+				if deleteErr := ef.Delete(spdkClient); deleteErr != nil {
+					logrus.WithError(deleteErr).Warnf("Failed to clean up superseded engine frontend %s", record.Name)
+				}
+			}
 		}
+
+		unlockVolumeHost()
 	}
 }

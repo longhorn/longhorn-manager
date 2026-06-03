@@ -38,7 +38,7 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount)
+		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient)
 		e = s.engineMap[req.Name]
 	}
 
@@ -68,8 +68,8 @@ func (s *Server) EngineSnapshotMaxCountSet(ctx context.Context, req *spdkrpc.Eng
 // EngineDelete deletes an engine
 func (s *Server) EngineDelete(ctx context.Context, req *spdkrpc.EngineDeleteRequest) (ret *emptypb.Empty, err error) {
 	s.RLock()
-	e := s.engineMap[req.Name]
 	spdkClient := s.spdkClient
+	e := s.engineMap[req.Name]
 	s.RUnlock()
 
 	defer func() {
@@ -175,13 +175,18 @@ func (s *Server) EngineFrontendSwitchOver(ctx context.Context, req *spdkrpc.Engi
 			ef = frontend
 		}
 	}
-	spdkClient := s.spdkClient
 	s.RUnlock()
 
 	if ef == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine frontend or engine %v for target switchover", req.Name)
 	}
 
+	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
+	defer unlockVolumeHost()
+
+	s.RLock()
+	spdkClient := s.spdkClient
+	s.RUnlock()
 	if err := ef.SwitchOverTarget(spdkClient, req.EngineName, req.TargetAddress, req.SwitchoverPhase); err != nil {
 		return nil, toSwitchOverGRPCError(err, "failed to switch over target for %s", req.Name)
 	}
@@ -261,7 +266,7 @@ func (s *Server) EngineList(ctx context.Context, req *emptypb.Empty) (*spdkrpc.E
 
 // EngineWatch returns a stream of engine updates
 func (s *Server) EngineWatch(req *emptypb.Empty, srv spdkrpc.SPDKService_EngineWatchServer) error {
-	responseCh, err := s.Subscribe(types.InstanceTypeEngine)
+	responseCh, err := s.Subscribe(srv.Context(), types.InstanceTypeEngine)
 	if err != nil {
 		return err
 	}
@@ -327,7 +332,7 @@ func (s *Server) EngineReplicaAdd(ctx context.Context, req *spdkrpc.EngineReplic
 			"replicaName":    req.ReplicaName,
 			"engineFrontend": efName,
 		})
-		frontendSuspendResumeWrapper = buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress, log)
+		frontendSuspendResumeWrapper = buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress, log, s.newServiceClient)
 	}
 
 	if err := e.ReplicaAdd(spdkClient, req.ReplicaName, req.ReplicaAddress, req.FastSync, frontendSuspendResumeWrapper); err != nil {
@@ -613,6 +618,7 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 		types.DefaultUblkQueueDepth,
 		types.DefaultUblkNumberOfQueue,
 		throwawayUpdateCh,
+		s.newServiceClient,
 	)
 
 	logrus.WithFields(logrus.Fields{

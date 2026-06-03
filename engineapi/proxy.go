@@ -2,7 +2,6 @@ package engineapi
 
 import (
 	"context"
-	"path/filepath"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -10,7 +9,6 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -82,62 +80,28 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		return nil, err
 	}
 
-	initProxyTLSClient := func(ip string) (proxyClient *imclient.ProxyClient, err error) {
-		defer func() {
-			if err != nil && proxyClient != nil {
-				if closeErr := proxyClient.Close(); closeErr != nil {
-					logrus.WithError(closeErr).WithField("ip", ip).Warn("Failed to close proxy client")
-				}
-				proxyClient = nil
-			}
-		}()
+	caFile, certFile, keyFile, peerName := imTLSFiles()
 
-		// check for tls cert file presence
+	newClient := func() (*imclient.ProxyClient, error) {
 		ctx, cancel := context.WithCancel(context.Background())
-		proxyClient, err = imclient.NewProxyClientWithTLS(ctx,
-			cancel,
-			ip,
-			InstanceManagerProxyServiceDefaultPort,
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
-			"longhorn-backend.longhorn-system",
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to load Instance Manager Proxy Client TLS files")
-		}
-		if err = proxyClient.CheckConnection(); err != nil {
-			return proxyClient, errors.Wrap(err, "failed to check Instance Manager Proxy Client with TLS connection")
-		}
-
-		return proxyClient, nil
+		return imclient.NewProxyClientWithTLS(ctx, cancel, im.Status.IP,
+			InstanceManagerProxyServiceDefaultPort, caFile, certFile, keyFile, peerName)
 	}
 
-	proxyClient, err := initProxyTLSClient(im.Status.IP)
-	defer func() {
-		if err != nil && proxyClient != nil {
-			if closeErr := proxyClient.Close(); closeErr != nil {
-				logrus.WithError(closeErr).WithField("ip", im.Status.IP).Warn("Failed to close proxy client")
-			}
-			proxyClient = nil
-		}
-	}()
-	if err != nil {
-		logrus.WithError(err).Tracef("Falling back to non-tls client for Proxy Service Client for %v IP %v",
-			im.Name, im.Status.IP)
-		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
-		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
+	buildPlain := func() (*imclient.ProxyClient, error) {
 		ctx, cancel := context.WithCancel(context.Background())
-		proxyClient, err = imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort, nil)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to initialize Proxy Service Client for %v IP %v",
-				im.Name, im.Status.IP)
-		}
+		return imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort, nil)
+	}
 
-		if err = proxyClient.CheckConnection(); err != nil {
-			return nil, errors.Wrapf(err, "failed to check Proxy Service Client connection for %v IP %v",
-				im.Name, im.Status.IP)
-		}
+	proxyClient, err := newIMClient(
+		newClient,
+		buildPlain,
+		nil, // no version check needed for proxy; CheckConnection is sufficient
+		logrus.StandardLogger(), im.Name, im.Status.IP, "proxy",
+	)
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"failed to initialize proxy client for %v IP %v", im.Name, im.Status.IP)
 	}
 
 	proxyConnCounter.IncreaseCount()

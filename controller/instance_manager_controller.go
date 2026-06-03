@@ -38,6 +38,7 @@ import (
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -1985,7 +1986,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podEnv := []corev1.EnvVar{
 		{
 			Name:  "TLS_DIR",
-			Value: types.TLSDirectoryInContainer,
+			Value: imtypes.TLSDirectoryInContainer,
 		},
 		{
 			Name: types.EnvPodIP,
@@ -2030,7 +2031,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name:      "unix-domain-socket",
 		},
 		{
-			MountPath: types.TLSDirectoryInContainer,
+			MountPath: imtypes.TLSDirectoryInContainer,
 			Name:      "longhorn-grpc-tls",
 		},
 		{

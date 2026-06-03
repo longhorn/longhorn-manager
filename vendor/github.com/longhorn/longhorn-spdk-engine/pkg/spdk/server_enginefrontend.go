@@ -27,12 +27,18 @@ func (s *Server) EngineFrontendSuspend(ctx context.Context, req *spdkrpc.EngineF
 
 	s.RLock()
 	ef := s.engineFrontendMap[req.Name]
-	spdkClient := s.spdkClient
 	s.RUnlock()
 
 	if ef == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine frontend %v for suspension", req.Name)
 	}
+
+	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
+	defer unlockVolumeHost()
+
+	s.RLock()
+	spdkClient := s.spdkClient
+	s.RUnlock()
 
 	err = ef.Suspend(spdkClient)
 	if err != nil {
@@ -50,12 +56,18 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 
 	s.RLock()
 	ef := s.engineFrontendMap[req.Name]
-	spdkClient := s.spdkClient
 	s.RUnlock()
 
 	if ef == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine frontend %v for resumption", req.Name)
 	}
+
+	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
+	defer unlockVolumeHost()
+
+	s.RLock()
+	spdkClient := s.spdkClient
+	s.RUnlock()
 
 	err = ef.Resume(spdkClient)
 	if err != nil {
@@ -183,7 +195,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 	efAddress := net.JoinHostPort(localIP, strconv.Itoa(types.SPDKServicePort))
 
 	// Create a gRPC client to the (potentially remote) Engine node.
-	engineClient, err := GetServiceClient(engineServiceAddress)
+	engineClient, err := s.newServiceClient(engineServiceAddress)
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to get SPDK client for engine %s at %s: %v", engineName, engineServiceAddress, err)
 	}
@@ -220,24 +232,9 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "frontend %v is not supported", req.Frontend)
 	}
 
-	s.Lock()
-	_, ok := s.engineFrontendMap[req.Name]
-	if ok {
-		s.Unlock()
-		return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend %v already exists", req.Name)
-	}
-	if existing := s.engineFrontendByVolumeName(req.VolumeName); existing != nil {
-		s.Unlock()
-		return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend %v already exists for volume %v", existing.Name, req.VolumeName)
-	}
-
-	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
-		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend])
-	ef.metadataDir = s.metadataDir
-
-	spdkClient := s.spdkClient
-	s.Unlock()
-
+	// Derive and validate targetAddress BEFORE evicting any Pending recovery
+	// ef, so that a malformed address does not permanently cancel a valid
+	// ongoing recovery.
 	targetAddress := req.TargetAddress
 	// When disableFrontend=True, the manager passes an empty target address
 	// because the engine's NVMe-oF target port is 0 (no listener exposed).
@@ -250,8 +247,80 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 			targetAddress = net.JoinHostPort(podIP, strconv.Itoa(types.SPDKServicePort))
 		}
 	}
+	// Validate the address format. ef.Create() would reject this with a hard
+	// error (ErrEngineFrontendCreateInvalidArgument), but at that point we
+	// may have already evicted a Pending recovery ef.
+	if _, _, splitErr := splitHostPort(targetAddress); splitErr != nil {
+		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid target address %v: %v", targetAddress, splitErr)
+	}
+
+	s.Lock()
+
+	var evictedEfs []*EngineFrontend
+
+	if existing, ok := s.engineFrontendMap[req.Name]; ok {
+		// If the conflicting ef is still recovering (Pending state from
+		// async recovery), the new Create takes priority — evict it.
+		// We only mark state and remove from map here; the recovery
+		// goroutine will detect the state/map change and handle Delete
+		// sequentially after RecoverFromHost returns, avoiding concurrent
+		// access to the initiator.
+		//
+		// Keep metadataDir intact for now. After Create() we decide:
+		// - Create succeeded → clear metadataDir so the old ef's Delete
+		//   does not remove the NEW persistence record (same volumeName key).
+		// - Create failed with runtime error → keep metadataDir so Delete
+		//   removes the stale old record that would cause bad recovery.
+		existing.Lock()
+		if existing.State == types.InstanceStatePending {
+			existing.State = types.InstanceStateTerminating
+			existing.Unlock()
+			delete(s.engineFrontendMap, req.Name)
+			evictedEfs = append(evictedEfs, existing)
+		} else {
+			existing.Unlock()
+			s.Unlock()
+			return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend %v already exists", req.Name)
+		}
+	}
+	if existing := s.engineFrontendByVolumeName(req.VolumeName); existing != nil {
+		existing.Lock()
+		if existing.State == types.InstanceStatePending {
+			existing.State = types.InstanceStateTerminating
+			existing.Unlock()
+			delete(s.engineFrontendMap, existing.Name)
+			evictedEfs = append(evictedEfs, existing)
+		} else {
+			existing.Unlock()
+			s.Unlock()
+			return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend %v already exists for volume %v", existing.Name, req.VolumeName)
+		}
+	}
+
+	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
+		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+	ef.metadataDir = s.metadataDir
+
+	s.Unlock()
+
+	// Hold the per-volume host lock so that if the async recovery goroutine
+	// is still performing host NVMe/dm operations for this volume, we wait
+	// for it to finish before starting our own. The lock is held through
+	// map registration so that a second concurrent Create for the same
+	// volume cannot start host operations before we register.
+	unlockVolumeHost := s.acquireVolumeHostLock(req.VolumeName)
+	defer unlockVolumeHost()
+
+	s.RLock()
+	spdkClient := s.spdkClient
+	s.RUnlock()
 
 	ret, createErr := ef.Create(spdkClient, targetAddress)
+	for _, evicted := range evictedEfs {
+		if createErr == nil && evicted.VolumeName == req.VolumeName {
+			evicted.setMetadataDir("")
+		}
+	}
 
 	// Distinguish hard errors (validation / precondition) from runtime
 	// failures (e.g. NVMe initiator can't connect).  Hard errors are
@@ -261,6 +330,26 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	if createErr != nil &&
 		(errors.Is(createErr, ErrEngineFrontendCreateInvalidArgument) ||
 			errors.Is(createErr, ErrEngineFrontendCreatePrecondition)) {
+		// Hard error — Create did not mutate anything.  Restore the
+		// evicted efs so valid ongoing recoveries are not permanently lost.
+		if len(evictedEfs) > 0 {
+			s.Lock()
+			for _, evicted := range evictedEfs {
+				evicted.Lock()
+				evicted.State = types.InstanceStatePending
+				evicted.Unlock()
+				// Only restore if both the name and volume slots are still free.
+				// A concurrent Create for the same volume (different name) could
+				// have registered while we were in-flight, and blindly restoring
+				// would violate the one-ef-per-volume map invariant.
+				if _, taken := s.engineFrontendMap[evicted.Name]; !taken {
+					if s.engineFrontendByVolumeName(evicted.VolumeName) == nil {
+						s.engineFrontendMap[evicted.Name] = evicted
+					}
+				}
+			}
+			s.Unlock()
+		}
 		return nil, toEngineFrontendCreateGRPCError(createErr, "failed to create engine frontend %v", req.Name)
 	}
 
@@ -278,6 +367,35 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		winner = existing
 	}
 	if duplicateName || duplicateVolume {
+		// If the conflicting ef is still recovering (inserted by async
+		// recovery between our first check and now), the new Create wins.
+		// Only mark state and remove from map; the recovery goroutine
+		// will handle Delete sequentially after RecoverFromHost returns.
+		if winner != nil {
+			winner.Lock()
+			if winner.State == types.InstanceStatePending {
+				winner.State = types.InstanceStateTerminating
+				// Only clear metadataDir when Create succeeded AND the winner
+				// shares the same volumeName. Records are keyed by volumeName,
+				// so only same-volume records collide. Different-volume winners
+				// must keep metadataDir so Delete removes their own record.
+				if createErr == nil && winner.VolumeName == ef.VolumeName {
+					winner.setMetadataDirLocked("")
+				}
+				winner.Unlock()
+
+				delete(s.engineFrontendMap, winner.Name)
+				s.engineFrontendMap[req.Name] = ef
+				s.Unlock()
+
+				if createErr != nil {
+					return ef.Get(), nil
+				}
+				return ret, nil
+			}
+			winner.Unlock()
+		}
+
 		s.Unlock()
 		// The race loser holds a fully-created frontend with real SPDK
 		// resources (bdevs, NVMe controllers, etc.). Clean them up so
@@ -288,7 +406,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		// When volumeNames differ, each has its own directory and the
 		// loser should clean up its own record.
 		if winner != nil && ef.VolumeName == winner.VolumeName {
-			ef.metadataDir = ""
+			ef.setMetadataDir("")
 		}
 		if deleteErr := ef.Delete(spdkClient); deleteErr != nil {
 			logrus.WithError(deleteErr).Warnf("Failed to clean up race-loser engine frontend %v", req.Name)
@@ -299,10 +417,12 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		// Hold the winner's read lock to prevent concurrent mutations
 		// (e.g. Delete, switchover) from racing with the field reads
 		// inside saveEngineFrontendRecord.
-		if winner != nil && winner.metadataDir != "" && ef.VolumeName == winner.VolumeName {
+		if winner != nil && ef.VolumeName == winner.VolumeName {
 			winner.RLock()
-			if err := saveEngineFrontendRecord(winner.metadataDir, winner); err != nil {
-				logrus.WithError(err).Warnf("Failed to re-persist winner engine frontend %v record after race", winner.Name)
+			if metadataDir := winner.metadataDir; metadataDir != "" {
+				if err := saveEngineFrontendRecord(metadataDir, winner); err != nil {
+					logrus.WithError(err).Warnf("Failed to re-persist winner engine frontend %v record after race", winner.Name)
+				}
 			}
 			winner.RUnlock()
 		}
@@ -327,7 +447,6 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 func (s *Server) EngineFrontendDelete(ctx context.Context, req *spdkrpc.EngineFrontendDeleteRequest) (ret *emptypb.Empty, err error) {
 	s.RLock()
 	ef := s.engineFrontendMap[req.Name]
-	spdkClient := s.spdkClient
 	s.RUnlock()
 
 	defer func() {
@@ -343,6 +462,13 @@ func (s *Server) EngineFrontendDelete(ctx context.Context, req *spdkrpc.EngineFr
 	if ef == nil {
 		return &emptypb.Empty{}, nil
 	}
+
+	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
+	defer unlockVolumeHost()
+
+	s.RLock()
+	spdkClient := s.spdkClient
+	s.RUnlock()
 
 	if err := ef.Delete(spdkClient); err != nil {
 		return nil, toEngineFrontendLifecycleGRPCError(err, "failed to delete engine frontend %v", req.Name)
@@ -384,7 +510,7 @@ func (s *Server) EngineFrontendList(ctx context.Context, req *emptypb.Empty) (*s
 
 // EngineFrontendWatch watches engine frontends.
 func (s *Server) EngineFrontendWatch(req *emptypb.Empty, srv spdkrpc.SPDKService_EngineFrontendWatchServer) error {
-	responseCh, err := s.Subscribe(types.InstanceTypeEngineFrontend)
+	responseCh, err := s.Subscribe(srv.Context(), types.InstanceTypeEngineFrontend)
 	if err != nil {
 		return err
 	}
@@ -424,7 +550,6 @@ func (s *Server) EngineFrontendExpand(ctx context.Context, req *spdkrpc.EngineFr
 
 	s.RLock()
 	ef := s.engineFrontendMap[req.Name]
-	spdkClient := s.spdkClient
 	s.RUnlock()
 
 	if ef == nil {
@@ -434,6 +559,13 @@ func (s *Server) EngineFrontendExpand(ctx context.Context, req *spdkrpc.EngineFr
 	if types.IsUblkFrontend(ef.Frontend) {
 		return nil, grpcstatus.Errorf(grpccodes.Unimplemented, "cannot expand ublk frontend engine %v", ef.Name)
 	}
+
+	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
+	defer unlockVolumeHost()
+
+	s.RLock()
+	spdkClient := s.spdkClient
+	s.RUnlock()
 
 	err = ef.Expand(ctx, spdkClient, req.Size)
 	if err != nil {
