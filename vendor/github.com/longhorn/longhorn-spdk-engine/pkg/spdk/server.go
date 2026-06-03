@@ -82,9 +82,15 @@ type Server struct {
 	// metadataDir is the base path for persisting engine frontend records
 	// (e.g. /var/lib/longhorn). If empty, persistence is disabled.
 	metadataDir string
+
+	newServiceClient ServiceClientFactory
 }
 
-func NewServer(ctx context.Context, portStart, portEnd int32) (*Server, error) {
+func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient ServiceClientFactory) (*Server, error) {
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
+
 	cli, err := spdkclient.NewClient(ctx)
 	if err != nil {
 		return nil, err
@@ -137,7 +143,8 @@ func NewServer(ctx context.Context, portStart, portEnd int32) (*Server, error) {
 
 		volumeHostLocks: map[string]*volumeHostLockEntry{},
 
-		metadataDir: types.MetadataDir,
+		metadataDir:      types.MetadataDir,
+		newServiceClient: newServiceClient,
 	}
 	s.hotplugActive.Store(true)
 
@@ -444,7 +451,11 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 				logrus.WithError(err).Warnf("failed to retrieve backing image UUID attribute for snapshot %v", alias)
 				continue
 			}
-			backingImage := NewBackingImage(s.ctx, backingImageName, backingImageUUID, lvsUUID, size, expectedChecksum, s.updateChs[types.InstanceTypeBackingImage])
+			backingImage := NewBackingImage(s.ctx, backingImageName, backingImageUUID, lvsUUID, size, expectedChecksum,
+				s.updateChs[types.InstanceTypeBackingImage],
+				func(address string) (backingImageServiceClient, error) {
+					return s.newServiceClient(address)
+				})
 			backingImage.Alias = alias
 			backingImage.State = types.BackingImageStatePending
 			state.backingImageForSync[lvolName] = backingImage
@@ -453,7 +464,7 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
 			actualSize := bdevLvol.DriverSpecific.Lvol.NumAllocatedClusters * uint64(defaultClusterSize)
-			state.replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica])
+			state.replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient)
 			state.replicaMapForSync[lvolName] = state.replicaMap[lvolName]
 			logrus.Infof("Detected one possible existing replica %s(%s) with disk %s(%s), spec size %d, actual size %d", bdevLvol.Aliases[0], bdevLvol.UUID, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize)
 		}
@@ -628,7 +639,7 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 	if !exists {
 		return nil, fmt.Errorf("lvstore %v(%v) does not exist for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
 	}
-	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica]), nil
+	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient), nil
 }
 
 func (s *Server) getBackingImage(backingImageName, lvsUUID string) (backingImage *BackingImage, err error) {
@@ -677,9 +688,12 @@ func toSwitchOverGRPCError(err error, format string, args ...interface{}) error 
 // wrapper proceeds with work() without suspension. This is safe because an
 // unreachable frontend means there is no active I/O to quiesce, and not
 // running the work would leak SPDK resources (detach controller, stop expose).
-func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, log *logrus.Entry) replicaAddFrontendSuspendResumeWrapper {
+func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, log *logrus.Entry, newServiceClient ServiceClientFactory) replicaAddFrontendSuspendResumeWrapper {
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
 	return func(work func() error) error {
-		efClient, err := GetServiceClient(efAddress)
+		efClient, err := newServiceClient(efAddress)
 		if err != nil {
 			// Cannot connect to the EF node at all — proceed without suspension.
 			log.WithError(err).Warnf("Engine frontend %s at %s is unreachable, proceeding without suspension", efName, efAddress)
@@ -738,7 +752,11 @@ func (s *Server) newBackingImage(req *spdkrpc.BackingImageCreateRequest) (*Backi
 		if err != nil || !exists {
 			return nil, err
 		}
-		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum, s.updateChs[types.InstanceTypeBackingImage])
+		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum,
+			s.updateChs[types.InstanceTypeBackingImage],
+			func(address string) (backingImageServiceClient, error) {
+				return s.newServiceClient(address)
+			})
 	}
 
 	return s.backingImageMap[backingImageSnapLvolName], nil
@@ -1015,7 +1033,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 		}
 
 		ef := NewEngineFrontend(record.Name, record.EngineName, record.VolumeName,
-			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend])
+			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 		ef.metadataDir = s.metadataDir
 		ef.VolumeNQN = record.VolumeNQN
 		ef.VolumeNGUID = record.VolumeNGUID

@@ -168,6 +168,8 @@ type Engine struct {
 	// identically, but all other Engine operations would stall for 10+
 	// seconds on same-node NVMe-oF ETIMEDOUT.
 	replicaAddFinishUnlockedHook func()
+
+	newServiceClient ServiceClientFactory
 }
 
 type EngineReplicaStatus struct {
@@ -176,7 +178,7 @@ type EngineReplicaStatus struct {
 	Mode     types.Mode
 }
 
-func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, snapshotMaxCount int32) *Engine {
+func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, snapshotMaxCount int32, newServiceClient ServiceClientFactory) *Engine {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"engineName": engineName,
 		"volumeName": volumeName,
@@ -187,6 +189,10 @@ func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineU
 		log.Infof("Rounded up spec size from %v to %v since the spec size should be multiple of MiB", specSize, roundedSpecSize)
 	}
 	log.WithField("specSize", roundedSpecSize)
+
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 
@@ -216,6 +222,8 @@ func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineU
 		UpdateCh: engineUpdateCh,
 
 		log: safelog.NewSafeLogger(log),
+
+		newServiceClient: newServiceClient,
 	}
 	e.replicaAdder = &realReplicaAdder{e: e}
 	return e
@@ -499,7 +507,7 @@ func (e *Engine) validateReplicaSize(replicaAddressMap map[string]string) error 
 }
 
 func (e *Engine) getReplicaSpecSize(replicaName, replicaAddr string) (uint64, error) {
-	replicaClient, err := GetServiceClient(replicaAddr)
+	replicaClient, err := e.newServiceClient(replicaAddr)
 	if err != nil {
 		return 0, err
 	}
@@ -538,7 +546,7 @@ func (e *Engine) filterSalvageCandidates(replicaAddressMap map[string]string) (m
 	for replicaName, replicaAddress := range replicaAddressMap {
 		func() {
 			// Get service client for the current replica.
-			replicaServiceCli, err := GetServiceClient(replicaAddress)
+			replicaServiceCli, err := e.newServiceClient(replicaAddress)
 			if err != nil {
 				e.log.WithError(err).Warnf("Skipping salvage for replica %s with address %s due to failed to get replica service client", replicaName, replicaAddress)
 				return
@@ -1163,11 +1171,11 @@ func (e *Engine) getSrcAndDstReplicaClients(srcReplicaName, srcReplicaAddress, d
 		}
 	}()
 
-	srcReplicaServiceCli, err = GetServiceClient(srcReplicaAddress)
+	srcReplicaServiceCli, err = e.newServiceClient(srcReplicaAddress)
 	if err != nil {
 		return
 	}
-	dstReplicaServiceCli, err = GetServiceClient(dstReplicaAddress)
+	dstReplicaServiceCli, err = e.newServiceClient(dstReplicaAddress)
 	return
 }
 
@@ -1622,7 +1630,7 @@ func (e *Engine) getReplicaClients() (replicaClients map[string]*client.SPDKClie
 		if replicaStatus.Address == "" {
 			continue
 		}
-		c, err := GetServiceClient(replicaStatus.Address)
+		c, err := e.newServiceClient(replicaStatus.Address)
 		if err != nil {
 			e.closeReplicaClients(replicaClients)
 			return nil, err
@@ -1871,7 +1879,7 @@ func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress str
 
 	e.log.Infof("Selecting replica %v with address %v as dst replica for cloning", dstReplicaName, dstReplicaAddr)
 
-	dstReplicaServiceCli, err := GetServiceClient(dstReplicaAddr)
+	dstReplicaServiceCli, err := e.newServiceClient(dstReplicaAddr)
 	if err != nil {
 		return err
 	}
@@ -1887,7 +1895,7 @@ func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress str
 		return err
 	}
 
-	srcEngineServiceCli, err := GetServiceClient(srcEngineAddress)
+	srcEngineServiceCli, err := e.newServiceClient(srcEngineAddress)
 	if err != nil {
 		return err
 	}
@@ -1953,7 +1961,7 @@ func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress str
 }
 
 func (e *Engine) getReplicaSnapshotHashStatus(replicaName, replicaAddress, snapshotName string) (*spdkrpc.ReplicaSnapshotHashStatusResponse, error) {
-	replicaServiceCli, err := GetServiceClient(replicaAddress)
+	replicaServiceCli, err := e.newServiceClient(replicaAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -1973,7 +1981,7 @@ func (e *Engine) ReplicaList(spdkClient *spdkclient.Client) (ret map[string]*api
 	replicas := map[string]*api.Replica{}
 
 	for name, replicaStatus := range e.ReplicaStatusMap {
-		replicaServiceCli, err := GetServiceClient(replicaStatus.Address)
+		replicaServiceCli, err := e.newServiceClient(replicaStatus.Address)
 		if err != nil {
 			e.log.WithError(err).Errorf("Failed to get service client for replica %s with address %s during list replicas", name, replicaStatus.Address)
 			continue
@@ -2039,7 +2047,7 @@ func (e *Engine) BackupCreate(backupName, volumeName, engineName, snapshotName, 
 
 	e.log.Infof("Creating backup %s for volume %s on replica %s address %s", backupName, volumeName, replicaName, replicaAddress)
 
-	replicaServiceCli, err := GetServiceClient(replicaAddress)
+	replicaServiceCli, err := e.newServiceClient(replicaAddress)
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "%v", err)
 	}
@@ -2093,7 +2101,7 @@ func (e *Engine) BackupStatus(backupName, replicaAddress string) (*spdkrpc.Backu
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "replica address %s is not found in engine %s for getting backup %v status", replicaAddress, e.Name, backupName)
 	}
 
-	replicaServiceCli, err := GetServiceClient(replicaAddress)
+	replicaServiceCli, err := e.newServiceClient(replicaAddress)
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "%v", err)
 	}
@@ -3209,7 +3217,7 @@ func (e *Engine) ensureReplicaModeForInfoUpdate(replicaName string, replicaStatu
 //  3. If the replica is RW, resolve its ancestor (backing image snapshot / oldest snapshot / head)
 //     based on current global context (hasBackingImage, hasSnapshot).
 func (e *Engine) inspectReplicaForInfoUpdate(replicaName string, replicaStatus *EngineReplicaStatus, hasBackingImage bool, hasSnapshot bool) (*replicaInspection, bool) {
-	replicaServiceCli, err := GetServiceClient(replicaStatus.Address)
+	replicaServiceCli, err := e.newServiceClient(replicaStatus.Address)
 	if err != nil {
 		e.log.WithError(err).Errorf("Engine failed to get service client for replica %s with address %s, will skip this replica and continue info update for other replicas", replicaName, replicaStatus.Address)
 		return nil, false

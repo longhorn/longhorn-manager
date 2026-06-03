@@ -1,6 +1,7 @@
 package spdk
 
 import (
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -293,6 +294,25 @@ func GetTmpSnapNameForCloningLvol(replicaName string) string {
 
 func GetNvmfEndpoint(nqn, ip string, port int32) string {
 	return fmt.Sprintf("nvmf://%s:%d/%s", ip, port, nqn)
+}
+
+// ServiceClientFactory creates an SPDK gRPC client for the given address.
+type ServiceClientFactory func(address string) (*client.SPDKClient, error)
+
+// NewServiceClientFactory returns a ServiceClientFactory that uses the given TLS config.
+// A nil tlsConfig produces plaintext connections (equivalent to GetServiceClient).
+func NewServiceClientFactory(tlsConfig *tls.Config) ServiceClientFactory {
+	if tlsConfig == nil {
+		return GetServiceClient
+	}
+	return func(address string) (*client.SPDKClient, error) {
+		ip, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		addr := net.JoinHostPort(ip, strconv.Itoa(types.SPDKServicePort))
+		return client.NewSPDKClientWithTLSConfig(addr, tlsConfig)
+	}
 }
 
 func GetServiceClient(address string) (*client.SPDKClient, error) {

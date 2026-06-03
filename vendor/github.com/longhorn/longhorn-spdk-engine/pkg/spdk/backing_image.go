@@ -62,7 +62,8 @@ type BackingImage struct {
 
 	UpdateCh chan interface{}
 
-	log *safelog.SafeLogger
+	newServiceClient func(address string) (backingImageServiceClient, error)
+	log              *safelog.SafeLogger
 }
 
 func ServiceBackingImageToProtoBackingImage(bi *BackingImage) *spdkrpc.BackingImage {
@@ -85,11 +86,20 @@ func ServiceBackingImageToProtoBackingImage(bi *BackingImage) *spdkrpc.BackingIm
 	return res
 }
 
-func NewBackingImage(ctx context.Context, backingImageName, backingImageUUID, lvsUUID string, size uint64, checksum string, updateCh chan interface{}) *BackingImage {
+func NewBackingImage(ctx context.Context, backingImageName, backingImageUUID, lvsUUID string,
+	size uint64, checksum string, updateCh chan interface{},
+	newServiceClient func(address string) (backingImageServiceClient, error)) *BackingImage {
+
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"backingImagename": backingImageName,
 		"lvsUUID":          lvsUUID,
 	})
+
+	if newServiceClient == nil {
+		newServiceClient = func(address string) (backingImageServiceClient, error) {
+			return GetServiceClient(address)
+		}
+	}
 
 	return &BackingImage{
 		ctx:              ctx,
@@ -100,6 +110,7 @@ func NewBackingImage(ctx context.Context, backingImageName, backingImageUUID, lv
 		ExpectedChecksum: checksum,
 		State:            types.BackingImageStateStarting,
 		UpdateCh:         updateCh,
+		newServiceClient: newServiceClient,
 		log:              safelog.NewSafeLogger(log),
 	}
 }
@@ -681,7 +692,7 @@ func (bi *BackingImage) prepareFromSync(targetFh *os.File, fromAddress, srcLvsUU
 	if fromAddress == "" || srcLvsUUID == "" {
 		return errors.Wrapf(err, "missing required source backing image service address %v or source lvsUUID %v", fromAddress, srcLvsUUID)
 	}
-	srcBackingImageServiceCli, err := backingImageGetServiceClient(fromAddress)
+	srcBackingImageServiceCli, err := bi.newServiceClient(fromAddress)
 	if err != nil {
 		return errors.Wrapf(err, "failed to init the source backing image spdk service client")
 	}

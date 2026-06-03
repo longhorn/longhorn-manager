@@ -69,7 +69,6 @@ var (
 	}
 	backingImageExposeSnapshotLvolBdev       = exposeSnapshotLvolBdev
 	backingImageStopExposeBdev               = func(cli *spdkclient.Client, nqn string) error { return cli.StopExposeBdev(nqn) }
-	backingImageGetServiceClient             = func(address string) (backingImageServiceClient, error) { return GetServiceClient(address) }
 	backingImageDiscoverAndConnectNVMeTarget = discoverAndConnectNVMeTarget
 )
 

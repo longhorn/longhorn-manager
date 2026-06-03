@@ -114,6 +114,8 @@ type Replica struct {
 	log *safelog.SafeLogger
 
 	// TODO: Record error message
+
+	newServiceClient ServiceClientFactory
 }
 
 type LvolHashStatus struct {
@@ -240,7 +242,11 @@ func ServiceReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 	return res
 }
 
-func NewReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specSize uint64, snapshotChecksumEnabled bool, updateCh chan interface{}) *Replica {
+func NewReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specSize uint64, snapshotChecksumEnabled bool, updateCh chan interface{}, newServiceClient ServiceClientFactory) *Replica {
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
+
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"replicaName": replicaName,
 		"lvsName":     lvsName,
@@ -287,6 +293,8 @@ func NewReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specS
 		UpdateCh: updateCh,
 
 		log: safelog.NewSafeLogger(log),
+
+		newServiceClient: newServiceClient,
 	}
 }
 
@@ -2017,7 +2025,7 @@ func (r *Replica) SnapshotCloneDstStart(spdkClient *spdkclient.Client, snapshotN
 				"src replica IP %v", r.IP, srcReplicaIP)
 		}
 
-		srcReplicaServiceCli, err := GetServiceClient(r.snapshotCloningDstCache.srcReplicaAddress)
+		srcReplicaServiceCli, err := r.newServiceClient(r.snapshotCloningDstCache.srcReplicaAddress)
 		if err != nil {
 			return err
 		}
@@ -2063,7 +2071,7 @@ func (r *Replica) SnapshotCloneDstStart(spdkClient *spdkclient.Client, snapshotN
 	dstCloningLvolAddress := net.JoinHostPort(r.IP, strconv.Itoa(int(r.snapshotCloningDstCache.cloningPort)))
 
 	// Ask src replica to start cloning
-	srcReplicaServiceCli, err := GetServiceClient(r.snapshotCloningDstCache.srcReplicaAddress)
+	srcReplicaServiceCli, err := r.newServiceClient(r.snapshotCloningDstCache.srcReplicaAddress)
 	if err != nil {
 		return err
 	}
@@ -2097,7 +2105,7 @@ func (r *Replica) monitorSnapshotClone(spdkCli *spdkclient.Client, ctx context.C
 	defer func() {
 		ticker.Stop()
 		// Best-effort: tell src to finish.
-		if srcReplicaCli, err := GetServiceClient(srcReplicaAddress); err != nil {
+		if srcReplicaCli, err := r.newServiceClient(srcReplicaAddress); err != nil {
 			r.log.WithError(err).Errorf("Clone dst replica failed to create src replica %s client to finish snapshot %s cloning", srcReplicaName, snapshotName)
 		} else {
 			if err := srcReplicaCli.ReplicaSnapshotCloneSrcFinish(srcReplicaName, r.Name); err != nil {
@@ -2147,7 +2155,7 @@ func (r *Replica) monitorSnapshotClone(spdkCli *spdkclient.Client, ctx context.C
 			setStatus(types.ProgressStateError, "failed to check ReplicaSnapshotCloneSrcStatusCheck: "+reason)
 			return
 		case <-ticker.C:
-			srcReplicaCli, err := GetServiceClient(srcReplicaAddress)
+			srcReplicaCli, err := r.newServiceClient(srcReplicaAddress)
 			if err != nil {
 				retries++
 				if retries > maxRetries {
@@ -3655,7 +3663,7 @@ func (r *Replica) RebuildingDstShallowCopyStart(spdkClient *spdkclient.Client, s
 		}
 	}()
 
-	srcReplicaServiceCli, err := GetServiceClient(r.rebuildingDstCache.srcReplicaAddress)
+	srcReplicaServiceCli, err := r.newServiceClient(r.rebuildingDstCache.srcReplicaAddress)
 	if err != nil {
 		return err
 	}
@@ -3751,7 +3759,7 @@ func (r *Replica) RebuildingDstShallowCopyCheck(spdkClient *spdkclient.Client) (
 	// If the processing shallow copy is already state complete or error, we cannot send the check request to the src replica again as spdk_tgt of the src replica has cleaned up the shallow copy op.
 	if r.rebuildingDstCache.rebuildingState == types.ProgressStateInProgress &&
 		r.rebuildingDstCache.processingState != types.ProgressStateComplete && r.rebuildingDstCache.processingState != types.ProgressStateError {
-		srcReplicaServiceCli, err := GetServiceClient(r.rebuildingDstCache.srcReplicaAddress)
+		srcReplicaServiceCli, err := r.newServiceClient(r.rebuildingDstCache.srcReplicaAddress)
 		if err != nil {
 			return nil, err
 		}

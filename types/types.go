@@ -126,6 +126,7 @@ const (
 	TLSCAFile               = "ca.crt"
 	TLSCertFile             = "tls.crt"
 	TLSKeyFile              = "tls.key"
+	TLSPeerName             = "longhorn-backend.longhorn-system"
 
 	DefaultBackupTargetName = "default"
 

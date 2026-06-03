@@ -195,7 +195,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 	efAddress := net.JoinHostPort(localIP, strconv.Itoa(types.SPDKServicePort))
 
 	// Create a gRPC client to the (potentially remote) Engine node.
-	engineClient, err := GetServiceClient(engineServiceAddress)
+	engineClient, err := s.newServiceClient(engineServiceAddress)
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to get SPDK client for engine %s at %s: %v", engineName, engineServiceAddress, err)
 	}
@@ -298,7 +298,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	}
 
 	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
-		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend])
+		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 	ef.metadataDir = s.metadataDir
 
 	s.Unlock()
