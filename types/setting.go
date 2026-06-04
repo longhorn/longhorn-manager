@@ -180,6 +180,7 @@ const (
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
 	SettingNameCSIAllowedTopologyKeys                                   = SettingName("csi-allowed-topology-keys")
 	SettingNameCSIStorageCapacityTracking                               = SettingName("csi-storage-capacity-tracking")
+	SettingNameAllowLiveEngineUpgradeOnSameImageCommit                  = SettingName("allow-live-engine-upgrade-on-same-image-commit")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -307,6 +308,7 @@ var (
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
 		SettingNameCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking,
+		SettingNameAllowLiveEngineUpgradeOnSameImageCommit,
 	}
 )
 
@@ -468,6 +470,7 @@ var (
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
 		SettingNameCSIAllowedTopologyKeys:                                   SettingDefinitionCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking:                               SettingDefinitionCSIStorageCapacityTracking,
+		SettingNameAllowLiveEngineUpgradeOnSameImageCommit:                  SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -2042,6 +2045,21 @@ var (
 		DisplayName: "CSI Storage Capacity Tracking",
 		Description: "Controls CSI storage capacity tracking, which allows the kube-scheduler to filter " +
 			"nodes that cannot fit the requested volume.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
+	}
+
+	SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit = SettingDefinition{
+		DisplayName: "Allow Live Engine Upgrade On Same Image Commit",
+		Description: "This setting allows live engine upgrades between engine images that share the same git commit but differ in image tag " +
+			"(e.g. 1.10.2 to 1.10.2-4.12 or 1.10.2-4.12 to 1.10.2-4.20). " +
+			"Normally, when the image tag differs the automatic upgrade path governed by concurrent-automatic-engine-upgrade-per-node-limit handles the live upgrade. " +
+			"This setting covers the edge case where the git commit is identical across both images. " +
+			"When disabled, such upgrades are delayed until the volume is detached.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
