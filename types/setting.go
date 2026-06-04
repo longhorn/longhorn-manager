@@ -146,6 +146,7 @@ const (
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
+	SettingNameAllowLiveEngineUpgradeOnSameImageCommit                  = SettingName("allow-live-engine-upgrade-on-same-image-commit")
 
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
@@ -251,6 +252,7 @@ var (
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
+		SettingNameAllowLiveEngineUpgradeOnSameImageCommit,
 	}
 )
 
@@ -381,6 +383,7 @@ var (
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
+		SettingNameAllowLiveEngineUpgradeOnSameImageCommit:                  SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1591,6 +1594,20 @@ var (
 			"- **true**: Enables offline replica rebuilding for all detached volumes, unless overridden by individual volume settings. \n\n" +
 			"- **false**: Disables offline replica rebuilding globally, unless overridden by individual volume settings. \n\n" +
 			"**Note:** Offline rebuilding applies only when a volume is detached. Volumes in a faulted state will not trigger offline rebuilding.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
+
+	SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit = SettingDefinition{
+		DisplayName: "Allow Live Engine Upgrade On Same Image Commit",
+		Description: "This setting allows live engine upgrades between engine images that share the same git commit but differ in image tag " +
+			"(e.g. 1.10.2 to 1.10.2-4.12 or 1.10.2-4.12 to 1.10.2-4.20). " +
+			"Normally, when the image tag differs the automatic upgrade path governed by concurrent-automatic-engine-upgrade-per-node-limit handles the live upgrade. " +
+			"This setting covers the edge case where the git commit is identical across both images. " +
+			"When disabled, such upgrades are delayed until the volume is detached.",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeBool,
 		Required: true,
