@@ -110,7 +110,7 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 	}
 }
 
-func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, client *lhclientset.Clientset) ([]longhorn.Volume, error) {
+func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, client lhclientset.Interface) ([]longhorn.Volume, error) {
 	logger := logrus.StandardLogger()
 
 	label := fmt.Sprintf("%s=%s",
@@ -126,7 +126,7 @@ func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, 
 	return volumes.Items, nil
 }
 
-func getSettingAsBoolean(name types.SettingName, namespace string, client *lhclientset.Clientset) (bool, error) {
+func getSettingAsBoolean(name types.SettingName, namespace string, client lhclientset.Interface) (bool, error) {
 	obj, err := client.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
 	if err != nil {
 		return false, err
