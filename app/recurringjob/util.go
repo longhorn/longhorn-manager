@@ -64,7 +64,7 @@ func filterExpiredItems(nts []NameWithTimestamp, retainCount int) []string {
 }
 
 func snapshotCRsToNameWithTimestamps(snapshotCRs []longhornclient.SnapshotCR) []NameWithTimestamp {
-	result := []NameWithTimestamp{}
+	result := make([]NameWithTimestamp, 0, len(snapshotCRs))
 	for _, snapshotCR := range snapshotCRs {
 		t, err := time.Parse(time.RFC3339, snapshotCR.CrCreationTime)
 		if err != nil {
