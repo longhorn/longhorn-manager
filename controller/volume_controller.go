@@ -3296,8 +3296,15 @@ func (c *VolumeController) checkOldAndNewEngineImagesForLiveUpgrade(v *longhorn.
 		return errors.Wrapf(err, "engine live upgrade to %v, but the image wasn't ready", newImage.Spec.Image)
 	}
 
-	if oldImage.Status.GitCommit == newImage.Status.GitCommit && !isRevisionedEngineImage(newImage.Spec.Image) {
-		return fmt.Errorf("engine image %v and %v are identical, delay upgrade until detach for volume", oldImage.Spec.Image, newImage.Spec.Image)
+	if oldImage.Status.GitCommit == newImage.Status.GitCommit {
+		allowSameCommitUpgrade, err := c.ds.GetSettingAsBool(types.SettingNameAllowLiveEngineUpgradeOnSameImageCommit)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get setting %v", types.SettingNameAllowLiveEngineUpgradeOnSameImageCommit)
+		}
+		if !allowSameCommitUpgrade || !isRevisionedEngineImage(newImage.Spec.Image) {
+			return fmt.Errorf("engine images %v and %v share the same git commit (setting %v=%v, revisioned=%v), delay upgrade until detach for volume",
+				oldImage.Spec.Image, newImage.Spec.Image, types.SettingNameAllowLiveEngineUpgradeOnSameImageCommit, allowSameCommitUpgrade, isRevisionedEngineImage(newImage.Spec.Image))
+		}
 	}
 
 	if oldImage.Status.ControllerAPIVersion > newImage.Status.ControllerAPIVersion ||

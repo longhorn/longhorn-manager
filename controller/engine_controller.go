@@ -2128,10 +2128,19 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 			return err
 		}
 
-		// Revisioned engine images may keep the same engine git commit while still
-		// representing a distinct image artifact that should follow the regular
-		// upgrade flow, e.g. 1.10.2 -> 1.10.2-4.12 or 1.10.2-4.12 -> 1.10.2-4.20.
-		if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit || isRevisionedEngineImage(e.Spec.Image) {
+		// Engine images may keep the same git commit while still representing a
+		// distinct image artifact (revisioned tag) that can follow the regular upgrade flow
+		// when the allow-live-engine-upgrade-on-same-image-commit setting is enabled,
+		// e.g. 1.10.2 -> 1.10.2-4.12 or 1.10.2-4.12 -> 1.10.2-4.20.
+		shouldUpgrade := version.ClientVersion.GitCommit != version.ServerVersion.GitCommit
+		if !shouldUpgrade && isRevisionedEngineImage(e.Spec.Image) {
+			allowSameCommitUpgrade, err := ec.ds.GetSettingAsBool(types.SettingNameAllowLiveEngineUpgradeOnSameImageCommit)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get setting %v", types.SettingNameAllowLiveEngineUpgradeOnSameImageCommit)
+			}
+			shouldUpgrade = allowSameCommitUpgrade
+		}
+		if shouldUpgrade {
 			log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 			if err := ec.UpgradeEngineInstance(e, log); err != nil {
 				return err
