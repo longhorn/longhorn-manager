@@ -160,13 +160,13 @@ const (
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
-
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
-	SettingNameBackupTarget                 = SettingName("backup-target")
-	SettingNameBackupTargetCredentialSecret = SettingName("backup-target-credential-secret")
-	SettingNameBackupstorePollInterval      = SettingName("backupstore-poll-interval")
+	SettingNameBackupTarget                            = SettingName("backup-target")
+	SettingNameBackupTargetCredentialSecret            = SettingName("backup-target-credential-secret")
+	SettingNameBackupstorePollInterval                 = SettingName("backupstore-poll-interval")
+	SettingNameAllowLiveEngineUpgradeOnSameImageCommit = SettingName("allow-live-engine-upgrade-on-same-image-commit")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -279,6 +279,7 @@ var (
 		SettingNameDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath,
+		SettingNameAllowLiveEngineUpgradeOnSameImageCommit,
 	}
 )
 
@@ -425,6 +426,7 @@ var (
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
+		SettingNameAllowLiveEngineUpgradeOnSameImageCommit:                  SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1771,6 +1773,21 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            DefaultLogDirectoryOnHost,
+	}
+
+	SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit = SettingDefinition{
+		DisplayName: "Allow Live Engine Upgrade On Same Image Commit",
+		Description: "This setting allows live engine upgrades between engine images that share the same git commit but differ in image tag " +
+			"(e.g. 1.10.2 to 1.10.2-4.12 or 1.10.2-4.12 to 1.10.2-4.20). " +
+			"Normally, when the image tag differs the automatic upgrade path governed by concurrent-automatic-engine-upgrade-per-node-limit handles the live upgrade. " +
+			"This setting covers the edge case where the git commit is identical across both images. " +
+			"When disabled, such upgrades are delayed until the volume is detached.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 )
 
