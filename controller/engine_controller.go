@@ -1377,32 +1377,36 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}
 
-	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive {
-		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
-			return err
+	// Only query clone status and trigger cloning when a clone request is active.
+	// RequestedDataSource is cleared once the clone is no longer in Initiated state.
+	if engine.Spec.RequestedDataSource != "" {
+		var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
+		if types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive {
+			if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
+				return err
+			}
 		}
-	}
 
-	engine.Status.CloneStatus = snapshotCloneStatusMap
+		engine.Status.CloneStatus = snapshotCloneStatusMap
 
-	needClone, err := preCloneCheck(engine)
-	if err != nil {
-		return err
-	}
-	if needClone {
-		allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
+		needClone, err := preCloneCheck(engine)
 		if err != nil {
-			return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
-		}
-
-		if !allowSnapshotClone {
-			m.logger.Debugf("Delaying snapshot clone since snapshot purge is in progress beyond the concurrent limit")
-			return nil
-		}
-
-		if err = cloneSnapshot(engine, engineClientProxy, m.ds); err != nil {
 			return err
+		}
+		if needClone {
+			allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
+			if err != nil {
+				return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
+			}
+
+			if !allowSnapshotClone {
+				m.logger.Debugf("Delaying snapshot clone since snapshot purge is in progress beyond the concurrent limit")
+				return nil
+			}
+
+			if err = cloneSnapshot(engine, engineClientProxy, m.ds); err != nil {
+				return err
+			}
 		}
 	}
 
