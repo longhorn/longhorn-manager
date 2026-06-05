@@ -1820,6 +1820,27 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			failedUsableReplicas := map[string]*longhorn.Replica{}
 			dataExists := false
 
+			// For linked-clone volumes, verify the source volume still exists before
+			// considering any replica as a salvage candidate. SPDK prevents deletion
+			// of a parent lvol while child lvols reference it, so the CoW chain on
+			// disk is intact as long as the source volume has not been removed.
+			// Use the immutable label (stamped at admission) rather than
+			// CloneStatus.SourceVolume which may not be populated yet when salvage runs.
+			srcVolumeGone := false
+			if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+				srcVolName := v.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceVolume)]
+				if srcVolName != "" {
+					if _, srcVolErr := c.ds.GetVolumeRO(srcVolName); srcVolErr != nil {
+						if apierrors.IsNotFound(srcVolErr) {
+							log.Warnf("Skipping salvage: source volume %v no longer exists", srcVolName)
+							srcVolumeGone = true
+						} else {
+							log.WithError(srcVolErr).Warnf("Failed to get source volume %v for linked-clone salvage check", srcVolName)
+						}
+					}
+				}
+			}
+
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" {
 					continue
@@ -1827,6 +1848,24 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				dataExists = true
 				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
 					continue
+				}
+				// Skip salvage of linked-clone replicas when the source volume is gone.
+				if srcVolumeGone {
+					continue
+				}
+				// For a linked-clone replica, also verify its source replica is healthy.
+				// If it is still rebuilding or failed, the CoW chain may not be accessible
+				// yet — skip this candidate and retry on the next reconcile.
+				if r.Spec.LinkedCloneSrcReplicaName != "" {
+					srcReplica, srcRepErr := c.ds.GetReplicaRO(r.Spec.LinkedCloneSrcReplicaName)
+					if srcRepErr != nil {
+						log.WithField("replica", r.Name).WithError(srcRepErr).Warnf("Failed to get source replica %v for linked-clone salvage check", r.Spec.LinkedCloneSrcReplicaName)
+						continue
+					}
+					if !isHealthyAndActiveReplica(srcReplica, false) {
+						log.WithField("replica", r.Name).Debugf("Skipping salvage: source replica %v is not healthy yet", r.Spec.LinkedCloneSrcReplicaName)
+						continue
+					}
 				}
 				if isDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
 					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to check if node %v is still running for failed replica", r.Spec.NodeID)
