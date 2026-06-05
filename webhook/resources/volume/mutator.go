@@ -231,27 +231,26 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	moreLabels[types.LonghornLabelBackupTarget] = backupTargetName
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
 
-	// For linked-clone volumes, override spec.size to the source snapshot's RestoreSize
-	// so that the clone is always sized to match the data in the snapshot.
-	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone && volume.Spec.DataSource != "" {
+	// For linked-clone volumes, fill spec.size from the source snapshot RestoreSize
+	// when the user leaves it unset. The validator rejects explicit sizes that do
+	// not match.
+	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone && volume.Spec.DataSource != "" && size == 0 {
 		srcVolName := types.GetVolumeName(volume.Spec.DataSource)
-		if srcVolName != "" {
-			overrideSize := int64(0)
-			if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
-				if snap, snapErr := v.ds.GetSnapshotRO(snapName); snapErr == nil && snap.Status.RestoreSize > 0 {
-					overrideSize = snap.Status.RestoreSize
-				}
+		if srcVolName == "" {
+			return nil, werror.NewInvalidError(fmt.Sprintf("cannot parse source volume name from dataSource %v", volume.Spec.DataSource), ".spec.dataSource")
+		}
+		if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
+			if snap, snapErr := v.ds.GetSnapshotRO(snapName); snapErr == nil && snap.Status.RestoreSize > 0 {
+				size = snap.Status.RestoreSize
 			}
-			if overrideSize == 0 {
-				// Fallback: use source volume's spec.size (covers vol:// and unsynced snapshots).
-				if srcVol, srcErr := v.ds.GetVolumeRO(srcVolName); srcErr == nil {
-					overrideSize = srcVol.Spec.Size
-				}
+		}
+		if size == 0 {
+			// RestoreSize not yet synced; fall back to the source volume spec.size.
+			srcVol, srcErr := v.ds.GetVolumeRO(srcVolName)
+			if srcErr != nil {
+				return nil, werror.NewInvalidError(errors.Wrapf(srcErr, "failed to get source volume %v", srcVolName).Error(), ".spec.dataSource")
 			}
-			if overrideSize > 0 {
-				logrus.Infof("Override size of linked-clone volume %v to %v from source %v", name, overrideSize, srcVolName)
-				size = overrideSize
-			}
+			size = srcVol.Spec.Size
 		}
 	}
 
