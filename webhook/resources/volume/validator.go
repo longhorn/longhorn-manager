@@ -157,6 +157,9 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		if err := v.validateLinkedCloneInstanceManagerVersion(volume); err != nil {
 			return err
 		}
+		if err := v.validateLinkedCloneSize(volume); err != nil {
+			return err
+		}
 	}
 
 	if err := verifyVolumeDataSource(v.ds, volume); err != nil {
@@ -658,6 +661,41 @@ func (v *volumeValidator) validateLinkedCloneInstanceManagerVersion(vol *longhor
 	return werror.NewForbiddenError(fmt.Sprintf(
 		"cannot create linked-clone volume %v: no instance manager with proxy API version >= %d found; upgrade instance managers first",
 		vol.Name, engineapi.MinProxyAPIVersionForNReplicaLinkedClone))
+}
+
+// validateLinkedCloneSize rejects a linked-clone volume creation when spec.size
+// is set to a value that does not match the source snapshot RestoreSize.
+// spec.size == 0 is always accepted; the mutator fills it in automatically.
+// Falls back to the source volume spec.size when RestoreSize is not yet synced.
+func (v *volumeValidator) validateLinkedCloneSize(vol *longhorn.Volume) error {
+	if vol.Spec.Size == 0 {
+		return nil // mutator will fill in the correct size
+	}
+	snapName := types.GetSnapshotName(vol.Spec.DataSource)
+	if snapName == "" {
+		return nil // vol:// dataSource has no snapshot to validate against
+	}
+	snap, err := v.ds.GetSnapshotRO(snapName)
+	if err != nil {
+		return werror.NewInternalError(errors.Wrapf(err, "failed to get source snapshot %v", snapName).Error())
+	}
+	expectedSize := snap.Status.RestoreSize
+	if expectedSize == 0 {
+		// RestoreSize not yet synced; fall back to the source volume spec.size.
+		srcVolName := types.GetVolumeName(vol.Spec.DataSource)
+		if srcVolName != "" {
+			srcVol, srcErr := v.ds.GetVolumeRO(srcVolName)
+			if srcErr == nil {
+				expectedSize = srcVol.Spec.Size
+			}
+		}
+	}
+	if expectedSize > 0 && vol.Spec.Size != expectedSize {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"spec.size %d does not match source snapshot %v RestoreSize %d; leave spec.size unset to inherit the correct size automatically",
+			vol.Spec.Size, snapName, expectedSize), ".spec.size")
+	}
+	return nil
 }
 
 // validateLinkedCloneReplicaCountIncrease rejects an attempt to raise the
