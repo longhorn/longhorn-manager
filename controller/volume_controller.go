@@ -1239,6 +1239,18 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
+		// Do not clean up a replica that is still referenced by linked-clone replicas.
+		// The clone replica depends on this replica's data remaining intact until the
+		// clone replica itself is removed or rebuilt.
+		cloneReplicas, err := c.ds.ListLinkedCloneReplicasBySrcReplicaRO(r.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list linked-clone replicas for replica %v", r.Name)
+		}
+		if len(cloneReplicas) > 0 {
+			log.WithField("replica", r.Name).Debug("Skipping cleanup: replica is the source of linked-clone replica(s)")
+			continue
+		}
+
 		if c.shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
 			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 			if err := c.deleteReplica(r, rs); err != nil {
@@ -1388,6 +1400,10 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 	}
 
 	if chosenReplica != nil {
+		// TODO: consider skipping deletion if chosenReplica is the source of
+		// linked-clone replicas (ListLinkedCloneReplicasBySrcReplicaRO), but
+		// doing so may interfere with auto-balance behaviour. Needs further
+		// investigation before enabling.
 		if err := c.deleteReplica(chosenReplica, rs); err != nil {
 			return false, err
 		}
