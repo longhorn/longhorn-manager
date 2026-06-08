@@ -2,7 +2,6 @@ package metricscollector
 
 import (
 	"context"
-	"os"
 	"strings"
 	"sync"
 
@@ -33,7 +32,6 @@ type NodeCollector struct {
 	storageUsageMetric       metricInfo
 	storageReservationMetric metricInfo
 	storageScheduledMetric   metricInfo
-	distroMetric             metricInfo
 }
 
 func NewNodeCollector(
@@ -147,16 +145,6 @@ func NewNodeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	nc.distroMetric = metricInfo{
-		Desc: prometheus.NewDesc(
-			prometheus.BuildFQName(longhornName, subsystemNode, "distro_info"),
-			"Information about the Longhorn distro on this node",
-			[]string{nodeLabel, "distro"},
-			nil,
-		),
-		Type: prometheus.GaugeValue,
-	}
-
 	return nc
 }
 
@@ -171,7 +159,6 @@ func (nc *NodeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nc.storageUsageMetric.Desc
 	ch <- nc.storageReservationMetric.Desc
 	ch <- nc.storageScheduledMetric.Desc
-	ch <- nc.distroMetric.Desc
 }
 
 func (nc *NodeCollector) Collect(ch chan<- prometheus.Metric) {
@@ -205,12 +192,6 @@ func (nc *NodeCollector) Collect(ch chan<- prometheus.Metric) {
 	go func() {
 		defer wg.Done()
 		nc.collectNodeStorage(ch)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		nc.collectDistro(ch)
 	}()
 
 	wg.Wait()
@@ -353,19 +334,4 @@ func (nc *NodeCollector) collectNodeStorage(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(nc.storageUsageMetric.Desc, nc.storageUsageMetric.Type, float64(storageUsage), nc.currentNodeID)
 	ch <- prometheus.MustNewConstMetric(nc.storageReservationMetric.Desc, nc.storageReservationMetric.Type, float64(storageReservation), nc.currentNodeID)
 	ch <- prometheus.MustNewConstMetric(nc.storageScheduledMetric.Desc, nc.storageScheduledMetric.Type, float64(storageScheduled), nc.currentNodeID)
-}
-
-func (nc *NodeCollector) collectDistro(ch chan<- prometheus.Metric) {
-	defer func() {
-		if err := recover(); err != nil {
-			nc.logger.WithField("error", err).Warn("Panic during collecting metrics")
-		}
-	}()
-
-	distro := strings.TrimSpace(os.Getenv(types.EnvDistro))
-	if distro == "" {
-		distro = "unknown"
-	}
-
-	ch <- prometheus.MustNewConstMetric(nc.distroMetric.Desc, nc.distroMetric.Type, 1, nc.currentNodeID, strings.ToLower(distro))
 }

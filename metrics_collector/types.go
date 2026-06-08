@@ -51,6 +51,7 @@ const (
 	frontendLabel           = "frontend"
 	imageLabel              = "image"
 	modeLabel               = "mode"
+	distroLabel             = "distro"
 )
 
 type metricInfo struct {
