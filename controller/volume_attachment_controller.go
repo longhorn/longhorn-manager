@@ -454,9 +454,29 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 	// Found one csi attachmentTicket that is requesting volume to attach to the current node
 
 	if attachmentTicket := getCSIAttachmentTicketNotRequestingNode(vol.Spec.NodeID, va, vol); attachmentTicket != nil {
+		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+
+		// Require the target node to be fully Ready before starting migration.
+		// If migration is initiated while the target node's instance manager is still
+		// initializing (e.g., after a node restart), the engine controller may fail to
+		// take stable CR ownership, causing rapid ownership flapping between nodes.
+		// During that window, the volume controller's cleanup logic can misidentify the
+		// engine actively serving I/O as an "extra" and delete it, causing immediate I/O
+		// failure for the workload. Deferring migration until Ready=True ensures the
+		// node's controllers are stable before a migration engine is created.
+		targetNode, err := vac.ds.GetNodeRO(attachmentTicket.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get node %v for migration readiness check", attachmentTicket.NodeID)
+			return
+		}
+		readyCond := types.GetCondition(targetNode.Status.Conditions, longhorn.NodeConditionTypeReady)
+		if readyCond.Status != longhorn.ConditionStatusTrue {
+			log.Infof("Pending migration attachment ticket %v: target node %v not ready (reason: %v)", attachmentTicket.ID, attachmentTicket.NodeID, readyCond.Reason)
+			return
+		}
+
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
 		vol.Spec.MigrationNodeID = attachmentTicket.NodeID
-		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
 		log.Info("Starting migration")
 	}
 }
