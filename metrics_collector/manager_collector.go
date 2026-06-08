@@ -3,7 +3,6 @@ package metricscollector
 import (
 	"context"
 	"os"
-	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -20,11 +19,9 @@ type ManagerCollector struct {
 
 	kubeMetricsClient *metricsclientset.Clientset
 	namespace         string
-	distro            string
 
 	cpuUsageMetric    metricInfo
 	memoryUsageMetric metricInfo
-	distroMetric      metricInfo
 }
 
 func NewManagerCollector(
@@ -39,12 +36,6 @@ func NewManagerCollector(
 		kubeMetricsClient: kubeMetricsClient,
 		namespace:         namespace,
 	}
-
-	distro := strings.TrimSpace(os.Getenv(types.EnvDistro))
-	if distro == "" {
-		distro = "unknown"
-	}
-	mc.distro = strings.ToLower(distro)
 
 	mc.cpuUsageMetric = metricInfo{
 		Desc: prometheus.NewDesc(
@@ -66,23 +57,12 @@ func NewManagerCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	mc.distroMetric = metricInfo{
-		Desc: prometheus.NewDesc(
-			prometheus.BuildFQName(longhornName, subsystemManager, "distro_info"),
-			"Information about the Longhorn distro in this cluster",
-			[]string{distroLabel},
-			nil,
-		),
-		Type: prometheus.GaugeValue,
-	}
-
 	return mc
 }
 
 func (mc *ManagerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- mc.cpuUsageMetric.Desc
 	ch <- mc.memoryUsageMetric.Desc
-	ch <- mc.distroMetric.Desc
 }
 
 func (mc *ManagerCollector) Collect(ch chan<- prometheus.Metric) {
@@ -91,8 +71,6 @@ func (mc *ManagerCollector) Collect(ch chan<- prometheus.Metric) {
 			mc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
-
-	ch <- prometheus.MustNewConstMetric(mc.distroMetric.Desc, mc.distroMetric.Type, 1, mc.distro)
 
 	enabled := true
 	if v, err := mc.ds.GetSettingAsBool(types.SettingNameKubernetesMetricsServerMetricsEnabled); err != nil {
