@@ -1388,6 +1388,8 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
+	ClusterInfoLonghornDistro = util.StructName("LonghornDistro")
+
 	ClusterInfoBackingImageCount      = util.StructName("LonghornBackingImageCount")
 	ClusterInfoOrphanCount            = util.StructName("LonghornOrphanCount")
 	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeBytes")
@@ -1424,7 +1426,6 @@ const (
 	ClusterInfoHostArch          = util.StructName("HostArch")
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
-	ClusterInfoLonghornDistro    = util.StructName("LonghornDistro")
 
 	ClusterInfoLonghornImageRegistry = util.StructName("LonghornImageRegistry")
 
@@ -1493,6 +1494,8 @@ func (info *ClusterInfo) collectClusterScope() {
 	if err := info.collectBackupTargetInfo(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect Longhorn backup target info")
 	}
+
+	info.collectLonghornDistro()
 }
 
 func (info *ClusterInfo) collectNamespace() error {
@@ -1876,8 +1879,6 @@ func (info *ClusterInfo) collectBackupTargetInfo() error {
 }
 
 func (info *ClusterInfo) collectNodeScope() {
-	info.collectLonghornDistro()
-
 	if err := info.collectHostArch(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect host architecture")
 	}
