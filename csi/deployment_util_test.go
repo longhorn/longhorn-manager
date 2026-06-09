@@ -3,8 +3,14 @@ package csi
 import (
 	"testing"
 
+	"k8s.io/apimachinery/pkg/runtime"
+
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+
+	longhornmeta "github.com/longhorn/longhorn-manager/meta"
 )
 
 func TestNeedToUpdatePodAntiAffinity(t *testing.T) {
@@ -176,5 +182,89 @@ func sampleHardAntiAffinityDeployment() *appsv1.Deployment {
 				AnnotationCSIPodAntiAffinityPreset: CSIPodAntiAffinityPresetHard,
 			},
 		},
+	}
+}
+
+// TestDeployUsesUpdateFuncInsteadOfDeleteRecreate verifies that deploy() calls
+// updateFunc rather than deleteFunc when updateFunc
+// is provided and an existing object is found with a different image.
+// The existing object's annotations match longhornmeta.GitCommit/Version so
+// that the update is triggered only by the image change (needToUpdateImage),
+// not by an annotation mismatch.
+func TestDeployUsesUpdateFuncInsteadOfDeleteRecreate(t *testing.T) {
+	const existingResourceVersion = "rv-42"
+
+	// existing object returned by getFunc — same annotations as the compiled binary
+	// but different image, so the update path is triggered by needToUpdateImage
+	existing := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "csi-attacher",
+			ResourceVersion: existingResourceVersion,
+			Annotations: map[string]string{
+				AnnotationCSIGitCommit: longhornmeta.GitCommit,
+				AnnotationCSIVersion:   longhornmeta.Version,
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "csi-attacher", Image: "old-image:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	// new object we want to deploy — different image; annotations will be overwritten
+	// by deploy() with longhornmeta.GitCommit/Version before comparison
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "csi-attacher",
+			Annotations: map[string]string{},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "csi-attacher", Image: "new-image:v2"},
+					},
+				},
+			},
+		},
+	}
+
+	createCalled := false
+	deleteCalled := false
+	updateCalled := false
+
+	fakeCreate := func(_ *clientset.Clientset, _ runtime.Object) error {
+		createCalled = true
+		return nil
+	}
+	fakeDelete := func(_ *clientset.Clientset, _, _ string) error {
+		deleteCalled = true
+		return nil
+	}
+	fakeGet := func(_ *clientset.Clientset, _, _ string) (runtime.Object, error) {
+		return existing, nil
+	}
+	fakeUpdate := func(_ *clientset.Clientset, obj runtime.Object) error {
+		updateCalled = true
+		return nil
+	}
+
+	err := deploy(nil, desired, "deployment", fakeCreate, fakeDelete, fakeGet, fakeUpdate)
+	if err != nil {
+		t.Fatalf("deploy() returned unexpected error: %v", err)
+	}
+	if !updateCalled {
+		t.Error("expected updateFunc to be called, but it was not")
+	}
+	if deleteCalled {
+		t.Error("expected deleteFunc NOT to be called, but it was")
+	}
+	if createCalled {
+		t.Error("expected createFunc NOT to be called, but it was")
 	}
 }
