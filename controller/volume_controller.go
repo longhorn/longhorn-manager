@@ -2461,6 +2461,12 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if r.Spec.NodeID == "" {
 			continue
 		}
+		// For v2, exclude a replica pending deletion from the engine's replica address map so the engine
+		// removes its base bdev from the RAID before the replica instance is torn down. The replica
+		// controller defers the instance deletion until that removal completes.
+		if types.IsDataEngineV2(v.Spec.DataEngine) && r.DeletionTimestamp != nil {
+			continue
+		}
 		if r.Spec.Image != v.Status.CurrentImage {
 			continue
 		}
