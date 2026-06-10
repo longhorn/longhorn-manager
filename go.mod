@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.26
+go 1.26.0
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -65,14 +65,14 @@ require (
 	github.com/henrygd/beszel v0.18.2
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
-	github.com/longhorn/backing-image-manager v1.12.0-rc3
-	github.com/longhorn/backupstore v0.0.0-20260512085050-2a21a780e44c
-	github.com/longhorn/go-common-libs v0.0.0-20260512083219-bb6c10ce1050
+	github.com/longhorn/backing-image-manager v1.12.0-rc4
+	github.com/longhorn/backupstore v0.0.0-20260525102750-1ed7dde50b68
+	github.com/longhorn/go-common-libs v0.0.0-20260525102658-c0739cd3e2c2
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
 	github.com/longhorn/go-spdk-helper v0.6.2
-	github.com/longhorn/longhorn-engine v1.12.0-rc3
+	github.com/longhorn/longhorn-engine v1.12.0-rc4
 	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260525050219-fb0cdba4a1f0
-	github.com/longhorn/longhorn-share-manager v1.12.0-rc3
+	github.com/longhorn/longhorn-share-manager v1.12.0-rc4
 	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260525042301-0b3274770e7d
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
@@ -83,7 +83,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.35.0
+	golang.org/x/mod v0.36.0
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sys v0.44.0
 	golang.org/x/time v0.15.0
@@ -136,7 +136,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260514154143-1dfb06f48eeb // indirect
+	github.com/longhorn/types v0.0.0-20260522011813-8f1780fad833 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
@@ -152,7 +152,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
+	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
