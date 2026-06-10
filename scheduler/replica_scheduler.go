@@ -146,18 +146,28 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 	}
 
 	linkedClone := volume.Spec.CloneMode == longhorn.CloneModeLinkedClone
-	linkedCloneSrcReplicaNodes := map[string]bool{}
-	linkedCloneSrcReplicaDisks := map[string]bool{}
+	srcNodeDiskMap := map[string]map[string]struct{}{}
 	if linkedClone {
-		linkedCloneSrcReplicaNodes, linkedCloneSrcReplicaDisks, err = rcs.getSrcReplicaNodesAndDisks(volume)
+		var err error
+		srcNodeDiskMap, err = rcs.buildLinkedCloneSrcNodeDiskMap(replica, volume)
 		if err != nil {
 			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
-				errors.Wrapf(err, "failed to list replicas of the src volume of volume %v", replica.Spec.VolumeName))
+				errors.Wrapf(err, "failed to build src node disk map for linked-clone replica %v", replica.Name))
+			return nil, errs
+		}
+		for nodeName := range nodes {
+			if _, ok := srcNodeDiskMap[nodeName]; !ok {
+				delete(nodes, nodeName)
+			}
+		}
+		if len(nodes) == 0 {
+			errs.Append(longhorn.ErrorReplicaScheduleLinkedCloneNotSatisfied,
+				fmt.Errorf("failed to find schedulable nodes for linked-clone replica %v", replica.Name))
 			return nil, errs
 		}
 	}
 
-	nodeCandidates, errs := rcs.getNodeCandidates(nodes, replica, linkedClone, linkedCloneSrcReplicaNodes)
+	nodeCandidates, errs := rcs.getNodeCandidates(nodes, replica)
 
 	if len(nodeCandidates) == 0 {
 		return nil, errs
@@ -178,8 +188,8 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 				continue
 			}
 			if linkedClone {
-				if _, ok := linkedCloneSrcReplicaDisks[diskStatus.DiskUUID]; !ok {
-					continue // only disks that host the source replicas
+				if _, ok := srcNodeDiskMap[node.Name][diskStatus.DiskUUID]; !ok {
+					continue // only disks hosting a source replica
 				}
 			}
 			disks[diskStatus.DiskUUID] = struct{}{}
@@ -190,27 +200,50 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 	return rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true, false)
 }
 
-func (rcs *ReplicaScheduler) getSrcReplicaNodesAndDisks(volume *longhorn.Volume) (map[string]bool, map[string]bool, error) {
-	srcRNodes := map[string]bool{}
-	srcRDisks := map[string]bool{}
+// buildLinkedCloneSrcNodeDiskMap returns a map of nodeID → diskID for healthy
+// source replicas that a linked-clone replica may co-locate with.
+// If LinkedCloneSrcReplicaName is set, only that replica's node+disk is returned
+// (hard constraint). Otherwise all healthy src volume replicas are returned.
+func (rcs *ReplicaScheduler) buildLinkedCloneSrcNodeDiskMap(replica *longhorn.Replica, volume *longhorn.Volume) (map[string]map[string]struct{}, error) {
+	if replica.Spec.LinkedCloneSrcReplicaName != "" {
+		srcReplica, err := rcs.ds.GetReplicaRO(replica.Spec.LinkedCloneSrcReplicaName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get source replica %v for linked-clone replica %v",
+				replica.Spec.LinkedCloneSrcReplicaName, replica.Name)
+		}
+		if srcReplica.Spec.NodeID == "" || srcReplica.Spec.DiskID == "" ||
+			srcReplica.Spec.FailedAt != "" || srcReplica.Spec.HealthyAt == "" ||
+			srcReplica.Spec.EvictionRequested {
+			return map[string]map[string]struct{}{}, nil
+		}
+		return map[string]map[string]struct{}{
+			srcReplica.Spec.NodeID: {srcReplica.Spec.DiskID: {}},
+		}, nil
+	}
+
 	srcVolName := types.GetVolumeName(volume.Spec.DataSource)
 	srcRs, err := rcs.ds.ListVolumeReplicasRO(srcVolName)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+
+	nodeDiskMap := map[string]map[string]struct{}{}
 	for _, r := range srcRs {
 		if r.Spec.NodeID != "" &&
 			r.Spec.DiskID != "" &&
 			r.Spec.FailedAt == "" &&
-			r.Spec.HealthyAt != "" {
-			srcRNodes[r.Spec.NodeID] = true
-			srcRDisks[r.Spec.DiskID] = true
+			r.Spec.HealthyAt != "" &&
+			!r.Spec.EvictionRequested {
+			if nodeDiskMap[r.Spec.NodeID] == nil {
+				nodeDiskMap[r.Spec.NodeID] = map[string]struct{}{}
+			}
+			nodeDiskMap[r.Spec.NodeID][r.Spec.DiskID] = struct{}{}
 		}
 	}
-	return srcRNodes, srcRDisks, nil
+	return nodeDiskMap, nil
 }
 
-func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica, linkedClone bool, linkedCloneSrcReplicaNodes map[string]bool) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
+func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
 	errs = multierr.NewMultiError()
 
 	// If the replica has a hard node affinity, filter nodes based on that.
@@ -223,19 +256,6 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, 
 		}
 		nodes = map[string]*longhorn.Node{}
 		nodes[schedulingReplica.Spec.HardNodeAffinity] = node
-	}
-
-	if linkedClone {
-		for nodeName := range nodes {
-			if _, ok := linkedCloneSrcReplicaNodes[nodeName]; !ok {
-				delete(nodeCandidates, nodeName)
-			}
-		}
-		if len(nodes) == 0 {
-			errs.Append(longhorn.ErrorReplicaScheduleLinkedCloneNotSatisfied,
-				fmt.Errorf("failed to find nodes for scheduling linked-cloned replica %v", schedulingReplica.Name))
-			return map[string]*longhorn.Node{}, errs
-		}
 	}
 
 	if len(nodes) == 0 {
@@ -1140,6 +1160,25 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 	}
 	if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return false, nil
+	}
+
+	// For linked-clone replicas, the src replica must be healthy on the same disk.
+	// RebuildingDstFinish calls repairCloneEntrypoint which needs the src replica's
+	// LVS present on this node to re-create the entrypoint snapshot. If the src
+	// replica is absent or unhealthy, defer reuse until it recovers.
+	if r.Spec.LinkedCloneSrcReplicaName != "" {
+		srcReplica, err := rcs.ds.GetReplicaRO(r.Spec.LinkedCloneSrcReplicaName)
+		if err != nil {
+			logrus.Warnf("Failed to get src replica %v for linked-clone replica %v: %v",
+				r.Spec.LinkedCloneSrcReplicaName, r.Name, err)
+			return false, nil
+		}
+		if srcReplica.Spec.NodeID != r.Spec.NodeID || srcReplica.Spec.DiskID != r.Spec.DiskID {
+			return false, nil
+		}
+		if srcReplica.Spec.FailedAt != "" || srcReplica.Spec.HealthyAt == "" {
+			return false, nil
+		}
 	}
 
 	return true, nil

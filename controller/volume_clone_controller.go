@@ -180,7 +180,7 @@ func (vcc *VolumeCloneController) syncHandler(key string) (err error) {
 }
 
 func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
-	vol, err := vcc.ds.GetVolume(volName)
+	vol, err := vcc.ds.GetVolumeRO(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -224,7 +224,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	}
 
 	// case 2: this volume is source of a clone
-	vols, err := vcc.ds.ListVolumes()
+	vols, err := vcc.ds.ListVolumesRO()
 	if err != nil {
 		return err
 	}

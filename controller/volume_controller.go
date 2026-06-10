@@ -987,31 +987,51 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		// replicas will be started by ReconcileVolumeState() later
 	}
 
-	// While volume is in cloning process, there will only 1 replica so e.Status.CloneStatus will have length of 1
-	for _, status := range e.Status.CloneStatus {
-		if status == nil {
-			continue
+	// Aggregate clone statuses across all replicas. For linked-clone volumes
+	// all N replicas perform SnapshotCloneDst in parallel; for deep-copy clone
+	// there is exactly 1 replica at this stage.
+	if isCloneTargetCopyInProgress(v) {
+		total, complete, errored := 0, 0, 0
+		var firstError string
+		for _, status := range e.Status.CloneStatus {
+			if status == nil {
+				continue
+			}
+			total++
+			switch status.State {
+			case engineapi.ProcessStateComplete:
+				complete++
+			case engineapi.ProcessStateError:
+				errored++
+				if firstError == "" {
+					firstError = status.Error
+				}
+			}
 		}
 
-		if !isCloneTargetCopyInProgress(v) {
-			// No longer need to sync up with the engine because the volume has reach reached copy-complete
-			continue
-		}
-
-		switch status.State {
-		case engineapi.ProcessStateComplete:
+		if errored > 0 {
+			if v.Spec.CloneMode != longhorn.CloneModeLinkedClone || complete == 0 {
+				v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
+				c.eventRecorder.Eventf(
+					v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
+					"failed to clone snapshot %v with clone mode %v from source volume %v: %v",
+					v.Status.CloneStatus.Snapshot, v.Spec.CloneMode, v.Status.CloneStatus.SourceVolume, firstError,
+				)
+			} else {
+				// For linked-clone: at least one replica completed the clone; failed replicas
+				// can be rebuilt from the successful ones via normal Longhorn replica rebuild.
+				v.Status.CloneStatus.State = longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
+				c.eventRecorder.Eventf(
+					v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCopyCompleteAwaitingHealthy,
+					"partially cloned snapshot %v with clone mode %v from source volume %v (%v/%v replicas succeeded); failed replicas will be rebuilt",
+					v.Status.CloneStatus.Snapshot, v.Spec.CloneMode, v.Status.CloneStatus.SourceVolume, complete, total)
+			}
+		} else if total > 0 && complete == total {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
 			c.eventRecorder.Eventf(
 				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCopyCompleteAwaitingHealthy,
 				"copied the data from snapshot %v of the source volume %v. Waiting for volume to be fully HA before marking the clone as completed",
 				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
-		case engineapi.ProcessStateError:
-			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
-			c.eventRecorder.Eventf(
-				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
-				"failed to clone snapshot %v from source volume %v: %v",
-				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error,
-			)
 		}
 	}
 
@@ -1219,6 +1239,18 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
+		// Do not clean up a replica that is still referenced by linked-clone replicas.
+		// The clone replica depends on this replica's data remaining intact until the
+		// clone replica itself is removed or rebuilt.
+		cloneReplicas, err := c.ds.ListLinkedCloneReplicasBySrcReplicaRO(r.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list linked-clone replicas for replica %v", r.Name)
+		}
+		if len(cloneReplicas) > 0 {
+			log.WithField("replica", r.Name).Debug("Skipping cleanup: replica is the source of linked-clone replica(s)")
+			continue
+		}
+
 		if c.shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
 			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 			if err := c.deleteReplica(r, rs); err != nil {
@@ -1368,6 +1400,10 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 	}
 
 	if chosenReplica != nil {
+		// TODO: consider skipping deletion if chosenReplica is the source of
+		// linked-clone replicas (ListLinkedCloneReplicasBySrcReplicaRO), but
+		// doing so may interfere with auto-balance behaviour. Needs further
+		// investigation before enabling.
 		if err := c.deleteReplica(chosenReplica, rs); err != nil {
 			return false, err
 		}
@@ -1731,6 +1767,10 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
+	if err := c.syncLinkedCloneReplicaSourceFields(v, rs); err != nil {
+		return err
+	}
+
 	if err := c.updateRequestedDataSourceForVolumeCloning(v, e); err != nil {
 		return err
 	}
@@ -1796,6 +1836,27 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			failedUsableReplicas := map[string]*longhorn.Replica{}
 			dataExists := false
 
+			// For linked-clone volumes, verify the source volume still exists before
+			// considering any replica as a salvage candidate. SPDK prevents deletion
+			// of a parent lvol while child lvols reference it, so the CoW chain on
+			// disk is intact as long as the source volume has not been removed.
+			// Use the immutable label (stamped at admission) rather than
+			// CloneStatus.SourceVolume which may not be populated yet when salvage runs.
+			srcVolumeGone := false
+			if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+				srcVolName := v.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceVolume)]
+				if srcVolName != "" {
+					if _, srcVolErr := c.ds.GetVolumeRO(srcVolName); srcVolErr != nil {
+						if apierrors.IsNotFound(srcVolErr) {
+							log.Warnf("Skipping salvage: source volume %v no longer exists", srcVolName)
+							srcVolumeGone = true
+						} else {
+							log.WithError(srcVolErr).Warnf("Failed to get source volume %v for linked-clone salvage check", srcVolName)
+						}
+					}
+				}
+			}
+
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" {
 					continue
@@ -1803,6 +1864,24 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				dataExists = true
 				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
 					continue
+				}
+				// Skip salvage of linked-clone replicas when the source volume is gone.
+				if srcVolumeGone {
+					continue
+				}
+				// For a linked-clone replica, also verify its source replica is healthy.
+				// If it is still rebuilding or failed, the CoW chain may not be accessible
+				// yet — skip this candidate and retry on the next reconcile.
+				if r.Spec.LinkedCloneSrcReplicaName != "" {
+					srcReplica, srcRepErr := c.ds.GetReplicaRO(r.Spec.LinkedCloneSrcReplicaName)
+					if srcRepErr != nil {
+						log.WithField("replica", r.Name).WithError(srcRepErr).Warnf("Failed to get source replica %v for linked-clone salvage check", r.Spec.LinkedCloneSrcReplicaName)
+						continue
+					}
+					if !isHealthyAndActiveReplica(srcReplica, false) {
+						log.WithField("replica", r.Name).Debugf("Skipping salvage: source replica %v is not healthy yet", r.Spec.LinkedCloneSrcReplicaName)
+						continue
+					}
 				}
 				if isDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
 					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to check if node %v is still running for failed replica", r.Spec.NodeID)
@@ -3784,19 +3863,24 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 		}
 	}
 
-	// Only create 1 replica while volume is in cloning process
-	if isCloneTargetNotCompletedAndNotCopyCompleted(v) {
+	// Only create 1 replica during deep-copy clone to prevent data inconsistency.
+	// Linked-clone uses a fast metadata operation (BdevLvolSetParent) and supports
+	// N simultaneous replicas when the instance manager proxy API supports DstReplicaSrcReplicaPairMap
+	// (proxy API >= MinProxyAPIVersionForNReplicaLinkedClone). In that case the engine receives an
+	// explicit dst→src map from the manager and clones all N replicas in one SnapshotClone call.
+	linkedCloneAllowsN := false
+	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && e != nil {
+		im, imErr := c.ds.GetInstanceManagerByInstance(e)
+		if imErr == nil && im != nil && im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
+			linkedCloneAllowsN = true
+		}
+	}
+	if isCloneTargetNotCompletedAndNotCopyCompleted(v) && !linkedCloneAllowsN {
 		if usableCount == 0 {
 			return 1, ""
 		}
 		return 0, ""
 	}
-	newVolume := len(rs) == 0
-	// For linked-cloned volume, never create new replica after the first time
-	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && !newVolume {
-		return 0, ""
-	}
-
 	switch {
 	case v.Spec.NumberOfReplicas < usableCount:
 		return 0, ""
@@ -4431,6 +4515,105 @@ func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 	return false
 }
 
+func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+	if v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+	// Snapshot must be resolved before we can assign src replica fields.
+	if v.Status.CloneStatus.Snapshot == "" {
+		return nil
+	}
+
+	srcVolName := types.GetVolumeName(v.Spec.DataSource)
+	srcReplicas, err := c.ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list replicas for source volume %v", srcVolName)
+	}
+
+	// Count how many clone replicas already reference each src replica (for load balancing)
+	srcReplicaCloneCount := map[string]int{}
+	for _, r := range rs {
+		if r.Spec.LinkedCloneSrcReplicaName != "" {
+			srcReplicaCloneCount[r.Spec.LinkedCloneSrcReplicaName]++
+		}
+	}
+
+	for _, r := range rs {
+		if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+			continue // not scheduled yet
+		}
+		if r.Spec.LinkedCloneSrcReplicaName != "" {
+			continue // already set, immutable
+		}
+		if r.Spec.FailedAt != "" {
+			continue // already failed, skip to avoid redundant updates and duplicate events
+		}
+
+		// Find healthy src replicas on the same node+disk
+		var candidates []*longhorn.Replica
+		for _, sr := range srcReplicas {
+			if sr.Spec.NodeID == r.Spec.NodeID &&
+				sr.Spec.DiskID == r.Spec.DiskID &&
+				sr.Spec.FailedAt == "" &&
+				sr.Spec.HealthyAt != "" &&
+				!sr.Spec.EvictionRequested {
+				candidates = append(candidates, sr)
+			}
+		}
+		if len(candidates) == 0 {
+			// Check if any src replica exists on this disk at all (even unhealthy ones).
+			hasSrcOnDisk := false
+			for _, sr := range srcReplicas {
+				if sr.Spec.NodeID == r.Spec.NodeID && sr.Spec.DiskID == r.Spec.DiskID {
+					hasSrcOnDisk = true
+					break
+				}
+			}
+			if !hasSrcOnDisk {
+				// The src replica was deleted during the scheduling window.
+				// Fail this clone replica so the volume controller cleans it up
+				// and schedules a replacement on an available src replica.
+				setReplicaFailedAt(r, c.nowHandler())
+				if _, err := c.ds.UpdateReplica(r); err != nil {
+					return errors.Wrapf(err, "failed to mark stranded clone replica %v as failed", r.Name)
+				}
+				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailed,
+					"clone replica %v marked as failed: source replica on disk %v node %v was removed during scheduling window",
+					r.Name, r.Spec.DiskID, r.Spec.NodeID)
+			}
+			// else: src exists but is temporarily unhealthy; will retry on next reconcile
+			continue
+		}
+
+		// Pick the src replica with the fewest existing clone replicas (load balancing)
+		best := candidates[0]
+		for _, candidate := range candidates[1:] {
+			if srcReplicaCloneCount[candidate.Name] < srcReplicaCloneCount[best.Name] {
+				best = candidate
+			}
+		}
+
+		// Set fields and label
+		existingReplica := r.DeepCopy()
+		r.Spec.LinkedCloneSrcReplicaName = best.Name
+
+		// Update the linked-clone-src-replica label
+		if r.Labels == nil {
+			r.Labels = map[string]string{}
+		}
+		r.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)] = best.Name
+
+		if !reflect.DeepEqual(existingReplica.Spec, r.Spec) || !reflect.DeepEqual(existingReplica.Labels, r.Labels) {
+			if _, err := c.ds.UpdateReplica(r); err != nil {
+				return errors.Wrapf(err, "failed to update replica %v with linked-clone source fields", r.Name)
+			}
+			// Update local count so subsequent loop iterations use updated counts
+			srcReplicaCloneCount[best.Name]++
+		}
+	}
+	return nil
+}
+
 func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to checkAndInitVolumeClone for volume %v", v.Name)
@@ -4503,6 +4686,19 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 			return errors.Wrapf(err, "failed to create snapshot of source volume %v", sourceVol.Name)
 		}
 		snapshotName = snapshot.Name
+	}
+
+	// Persist the entrypoint snapshot label to enable webhook protection.
+	// UpdateVolume is required because syncVolume only saves status.
+	labelKey := types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)
+	if v.Labels == nil {
+		v.Labels = map[string]string{}
+	}
+	if v.Labels[labelKey] == "" {
+		v.Labels[labelKey] = snapshotName
+		if _, err := c.ds.UpdateVolume(v); err != nil {
+			return errors.Wrapf(err, "failed to persist linked-clone source snapshot label on volume %v", v.Name)
+		}
 	}
 
 	// Store data into the volume clone status. Make sure that the created snapshot

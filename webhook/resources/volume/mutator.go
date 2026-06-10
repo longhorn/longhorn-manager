@@ -203,6 +203,29 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	moreLabels[types.LonghornLabelBackupTarget] = backupTargetName
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
 
+	// For linked-clone volumes, fill spec.size from the source snapshot RestoreSize
+	// when the user leaves it unset. The validator rejects explicit sizes that do
+	// not match.
+	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone && volume.Spec.DataSource != "" && size == 0 {
+		srcVolName := types.GetVolumeName(volume.Spec.DataSource)
+		if srcVolName == "" {
+			return nil, werror.NewInvalidError(fmt.Sprintf("cannot parse source volume name from dataSource %v", volume.Spec.DataSource), ".spec.dataSource")
+		}
+		if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
+			if snap, snapErr := v.ds.GetSnapshotRO(snapName); snapErr == nil && snap.Status.RestoreSize > 0 {
+				size = snap.Status.RestoreSize
+			}
+		}
+		if size == 0 {
+			// RestoreSize not yet synced; fall back to the source volume spec.size.
+			srcVol, srcErr := v.ds.GetVolumeRO(srcVolName)
+			if srcErr != nil {
+				return nil, werror.NewInvalidError(errors.Wrapf(srcErr, "failed to get source volume %v", srcVolName).Error(), ".spec.dataSource")
+			}
+			size = srcVol.Spec.Size
+		}
+	}
+
 	// Round up the size to the unit in bytes
 	newSize := util.RoundUpSize(size)
 	if newSize != size {
@@ -255,6 +278,17 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	if volume.Spec.DataSource != "" {
 		if volume.Spec.CloneMode == longhorn.CloneModeNone {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeFullCopy))
+		}
+		if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			// Stamp source labels so the deletion webhook can protect the entrypoint
+			// snapshot. For vol:// datasources the snapshot is auto-created later
+			// and its label is stamped by the volume controller.
+			if srcVolName := types.GetVolumeName(volume.Spec.DataSource); srcVolName != "" {
+				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceVolume)] = srcVolName
+			}
+			if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
+				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)] = snapName
+			}
 		}
 	}
 
