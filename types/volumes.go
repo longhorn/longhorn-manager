@@ -12,10 +12,9 @@ const (
 )
 
 func IsVolumeReady(v *longhorn.Volume, vrs []*longhorn.Replica, volOp string) (ready bool, msg string) {
-	var allReplicaScheduled = true
-	if len(vrs) == 0 {
-		allReplicaScheduled = false
-	}
+	// EC (sharded) volumes use ShardGroup/Shard CRs instead of Replica CRs, so an
+	// empty replica list is expected and must not block readiness.
+	allReplicaScheduled := v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded || len(vrs) > 0
 	for _, r := range vrs {
 		if r.Spec.NodeID == "" {
 			allReplicaScheduled = false
