@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -51,6 +52,15 @@ type ShardGroupController struct {
 	ds        *datastore.DataStore
 	scheduler *scheduler.ShardScheduler
 
+	// rebuildingLock guards inProgressRebuildingMap so the per-node rebuild limit is
+	// checked and reserved atomically across the controller's parallel workers.
+	rebuildingLock sync.Mutex
+	// inProgressRebuildingMap maps a ShardGroup name to the time a rebuild was reserved
+	// for it. A reservation bridges the lag between issuing the rebuild RPC and the
+	// durable RebuildInProgress flag becoming visible; it is dropped once the flag
+	// appears or after shardRebuildReservationTTL.
+	inProgressRebuildingMap map[string]time.Time
+
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -88,6 +98,8 @@ func NewShardGroupController(
 		ds:        ds,
 		scheduler: scheduler.NewShardScheduler(ds),
 
+		inProgressRebuildingMap: map[string]time.Time{},
+
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-shard-group-controller"}),
 	}
@@ -95,7 +107,7 @@ func NewShardGroupController(
 	var err error
 	if _, err = ds.ShardGroupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueShardGroup,
-		UpdateFunc: func(old, cur interface{}) { c.enqueueShardGroup(cur) },
+		UpdateFunc: c.enqueueShardGroupOnUpdate,
 		DeleteFunc: c.enqueueShardGroup,
 	}); err != nil {
 		return nil, err
@@ -142,6 +154,48 @@ func (c *ShardGroupController) enqueueShardGroup(obj interface{}) {
 		return
 	}
 	c.queue.Add(key)
+}
+
+// enqueueShardGroupOnUpdate re-enqueues the changed ShardGroup, and when a rebuild
+// just finished on it (RebuildInProgress went true -> false), also wakes the other
+// groups on the same engine node so a rebuild the per-node limit deferred can take
+// the freed slot without waiting for the next resync.
+func (c *ShardGroupController) enqueueShardGroupOnUpdate(old, cur interface{}) {
+	c.enqueueShardGroup(cur)
+
+	oldShardGroup, ok := old.(*longhorn.ShardGroup)
+	if !ok {
+		return
+	}
+	curShardGroup, ok := cur.(*longhorn.ShardGroup)
+	if !ok {
+		return
+	}
+	if oldShardGroup.Status.RebuildInProgress && !curShardGroup.Status.RebuildInProgress {
+		c.enqueueRebuildCandidatesOnNode(curShardGroup.Spec.NodeID)
+	}
+}
+
+// enqueueRebuildCandidatesOnNode wakes every ShardGroup on the given engine node that
+// still needs a rebuild (degraded or with a failed shard), so a rebuild deferred by
+// the concurrent-rebuild limit starts as soon as a running one frees a slot.
+func (c *ShardGroupController) enqueueRebuildCandidatesOnNode(nodeID string) {
+	if nodeID == "" {
+		return
+	}
+	shardGroups, err := c.ds.ListShardGroupsRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list shard groups to wake rebuild candidates on node %v: %v", nodeID, err))
+		return
+	}
+	for _, shardGroup := range shardGroups {
+		if shardGroup.Spec.NodeID != nodeID {
+			continue
+		}
+		if shardGroup.Status.State == longhorn.ShardGroupStateDegraded || shardGroup.Status.FailedCount > 0 {
+			c.enqueueShardGroup(shardGroup)
+		}
+	}
 }
 
 func (c *ShardGroupController) enqueueShardGroupForShard(obj interface{}) {
@@ -846,8 +900,18 @@ func (c *ShardGroupController) triggerShardRebuild(rctx *sgReconcileCtx, shard *
 		return nil
 	}
 
+	canRebuild, err := c.canStartShardRebuild(shardGroup)
+	if err != nil {
+		return err
+	}
+	if !canRebuild {
+		log.Debugf("Concurrent rebuild limit reached on engine node %v; deferring rebuild for shard slot %v",
+			shardGroup.Spec.NodeID, shard.Spec.SlotIndex)
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
-	_, err := rctx.spdkClient.ShardGroupShardRebuildStart(ctx, &spdkrpc.ShardGroupShardRebuildStartRequest{
+	_, err = rctx.spdkClient.ShardGroupShardRebuildStart(ctx, &spdkrpc.ShardGroupShardRebuildStartRequest{
 		ShardGroupName: rctx.shardGroup.Name,
 	})
 	cancel()
@@ -1304,6 +1368,93 @@ func (c *ShardGroupController) getVolumeSize(shardGroup *longhorn.ShardGroup) (u
 		return 0, fmt.Errorf("volume %v has no size set yet", shardGroup.Spec.VolumeName)
 	}
 	return uint64(vol.Spec.Size), nil
+}
+
+// shardRebuildReservationTTL bounds how long an in-memory rebuild reservation is held
+// before the durable RebuildInProgress flag confirms it. It only needs to exceed the lag
+// between issuing the rebuild RPC and that flag becoming visible in the informer cache
+// (normally seconds); the generous value just bounds how long a reservation lingers if a
+// rebuild is issued but SPDK never reports it running.
+const shardRebuildReservationTTL = 2 * time.Minute
+
+// canStartShardRebuild reports whether the concurrent-replica-rebuild-per-node limit
+// allows starting a new EC shard rebuild on the shardGroup's engine node, and reserves a
+// slot when it does. The counted unit is one ShardGroup rebuild (which may move up to
+// parity-m slots at once): ShardGroup.Status.RebuildInProgress is true iff a rebuild is
+// really running, and it is attributed to the engine node (Spec.NodeID).
+//
+// A ShardGroup is owned by exactly one controller (the manager on its engine node), so a
+// per-controller lock plus an in-memory reservation makes the limit strict across the
+// controller's parallel workers. The reservation bridges the lag between issuing the
+// rebuild RPC and RebuildInProgress becoming visible in the informer cache: it counts a
+// just-allowed rebuild for a sibling worker that a bare cache count would miss. Once the
+// durable flag appears the reservation is dropped and the flag carries the count; a
+// reservation that never confirms is expired after shardRebuildReservationTTL. On a
+// controller restart the map is empty and the count falls back to the durable flag.
+//
+// Residual (parity with the replica rebuild limiter): the reservation is in-memory, so a
+// crash in the reserve-to-durable window, or an engine-node failover with two owners, can
+// transiently allow one extra rebuild. syncECHealth's idempotent restart heals it. Both
+// bound quickly and match how RAID1 replica rebuilds behave.
+func (c *ShardGroupController) canStartShardRebuild(shardGroup *longhorn.ShardGroup) (bool, error) {
+	limit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
+	if err != nil {
+		return false, err
+	}
+	if limit < 1 {
+		return true, nil
+	}
+
+	c.rebuildingLock.Lock()
+	defer c.rebuildingLock.Unlock()
+
+	shardGroups, err := c.ds.ListShardGroupsRO()
+	if err != nil {
+		return false, err
+	}
+
+	onNode := map[string]*longhorn.ShardGroup{}
+	for _, other := range shardGroups {
+		if other.Spec.NodeID == shardGroup.Spec.NodeID {
+			onNode[other.Name] = other
+		}
+	}
+
+	// Count rebuilds actually running on the node (durable RebuildInProgress), and drop any
+	// reservation now covered by that flag - a reservation only bridges the pre-flag lag.
+	count := 0
+	for name, other := range onNode {
+		if other.Status.RebuildInProgress {
+			count++
+			delete(c.inProgressRebuildingMap, name)
+		}
+	}
+
+	// Count reservations still bridging the lag; expire ones whose group is gone or that
+	// never became a running rebuild within the TTL.
+	for name, reservedAt := range c.inProgressRebuildingMap {
+		if _, ok := onNode[name]; !ok || time.Since(reservedAt) > shardRebuildReservationTTL {
+			delete(c.inProgressRebuildingMap, name)
+			continue
+		}
+		count++
+	}
+
+	// This group already holds a slot (running or reserved): allow it idempotently, without
+	// consuming a second slot.
+	if shardGroup.Status.RebuildInProgress {
+		return true, nil
+	}
+	if _, reserved := c.inProgressRebuildingMap[shardGroup.Name]; reserved {
+		return true, nil
+	}
+
+	if count >= int(limit) {
+		return false, nil
+	}
+
+	c.inProgressRebuildingMap[shardGroup.Name] = time.Now()
+	return true, nil
 }
 
 func (c *ShardGroupController) isResponsibleFor(shardGroup *longhorn.ShardGroup) bool {
