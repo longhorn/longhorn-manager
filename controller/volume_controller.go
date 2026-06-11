@@ -761,6 +761,10 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}()
 
+	if isECVolume(v) {
+		return c.reconcileECVolumeRobustness(v)
+	}
+
 	// Aggregate replica wait for backing image condition
 	aggregatedReplicaWaitForBackingImageError := multierr.NewMultiError()
 	waitForBackingImage := false
@@ -2221,7 +2225,14 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 		efs[ef.Name] = ef
 	}
 
-	if len(rs) == 0 {
+	if isECVolume(v) {
+		// For EC volumes, the ShardGroup CR (and its child Shard CRs) replace the
+		// Replica CRs of a RAID1 volume. The ShardGroup controller drives shard
+		// placement, instance provisioning, and ShardGroup-process lifecycle.
+		if err := c.reconcileShardGroup(v); err != nil {
+			return false, e, err
+		}
+	} else if len(rs) == 0 {
 		// first time creation
 		if err = c.replenishReplicas(v, e, rs, ""); err != nil {
 			return false, e, err
@@ -2351,40 +2362,59 @@ func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string
 	}
 }
 
-func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
-	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
-	numSnapshots := len(e.Status.Snapshots) - 1 // Counting volume-head here would be confusing.
+// reconcileECScheduledCondition sets the Scheduled condition from shard placement:
+// the volume is Scheduled only once all k+m shards exist and each has a node.
+// Shards are placed asynchronously by the ShardGroup controller, so an incomplete
+// volume is Scheduled=False and requeued.
+func (c *VolumeController) reconcileECScheduledCondition(v *longhorn.Volume, log *logrus.Entry) error {
+	shards, err := c.ds.ListShardsByShardGroup(v.Name)
+	if err != nil {
+		return err
+	}
 
-	snapshotCountThreshold := c.getSnapshotCountThreshold(v, log)
-	countExceededThreshold := numSnapshots >= snapshotCountThreshold
-
-	var snapshotTotalSize int64
-	if v.Spec.SnapshotMaxSize != 0 {
-		var err error
-		snapshotTotalSize, err = c.getSnapshotTotalSize(e, log)
-		if err != nil {
-			return err
+	totalSlots := v.Spec.DataLayout.DataChunks + v.Spec.DataLayout.ParityChunks
+	placedShards := 0
+	for _, shard := range shards {
+		if shard.Spec.NodeID != "" {
+			placedShards++
 		}
 	}
 
-	sizeExceededThreshold := v.Spec.SnapshotMaxSize != 0 && snapshotTotalSize >= v.Spec.SnapshotMaxSize
-
-	if countExceededThreshold || sizeExceededThreshold {
-		warningMessages := []string{}
-		if countExceededThreshold {
-			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots count is %v at or over the warning threshold %v", numSnapshots, snapshotCountThreshold))
-		}
-		if sizeExceededThreshold {
-			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots total size is %v at or over the warning threshold %v", snapshotTotalSize, v.Spec.SnapshotMaxSize))
-		}
+	failureMessage := ""
+	if placedShards < totalSlots {
+		failureMessage = "not all EC shards are scheduled to a node yet"
+		log.Debugf("EC volume has %v/%v shards placed; marking Scheduled=False", placedShards, totalSlots)
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
-			longhorn.VolumeConditionReasonTooManySnapshots,
-			strings.Join(warningMessages, "; "))
+			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+			longhorn.VolumeConditionReasonShardSchedulingFailure, failureMessage)
+		c.enqueueVolumeAfter(v, 30*time.Second)
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
-			"", "")
+			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
+	}
+
+	// Mirror the RAID1 path: reflect the scheduling result onto the PV annotation
+	// (empty clears it), so kubectl describe pv shows the same signal for EC volumes.
+	if err := c.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
+		log.WithError(err).Warnf("Failed to update PV annotation for volume %v", v.Name)
+	}
+
+	return nil
+}
+
+func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
+	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
+	// EC volumes have no Replica CRs, so replica scheduling does not apply. Derive
+	// Scheduled from shard placement instead, then fall through to snapshot conditions.
+	if isECVolume(v) {
+		if err := c.reconcileECScheduledCondition(v, log); err != nil {
+			return err
+		}
+		return c.reconcileTooManySnapshotsCondition(v, e, log)
+	}
+
+	if err := c.reconcileTooManySnapshotsCondition(v, e, log); err != nil {
+		return err
 	}
 
 	scheduled := true
@@ -2494,10 +2524,11 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	return nil
 }
 
-// reconcileECVolumeSnapshotCondition handles the TooManySnapshots condition
-// for EC volumes. This is extracted from reconcileVolumeCondition so the EC
-// early-return still evaluates snapshot thresholds.
-func (c *VolumeController) reconcileECVolumeSnapshotCondition(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) error {
+// reconcileTooManySnapshotsCondition evaluates the snapshot count/size thresholds
+// and sets the TooManySnapshots volume condition accordingly. It is shared by the
+// normal reconcileVolumeCondition path and the EC early-return path, which skips
+// the replica-scheduling logic but still needs the snapshot condition.
+func (c *VolumeController) reconcileTooManySnapshotsCondition(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) error {
 	numSnapshots := len(e.Status.Snapshots) - 1
 
 	snapshotCountThreshold := c.getSnapshotCountThreshold(v, log)
@@ -2569,6 +2600,10 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 	if isVolumeOfflineUpgrade(v) {
 		log.Info("Waiting for offline volume upgrade to finish")
 		return nil
+	}
+
+	if isECVolume(v) {
+		return c.openVolumeDependentResourcesEC(v, e, efs, log)
 	}
 
 	for _, r := range rs {
@@ -2850,15 +2885,17 @@ func (c *VolumeController) openVolumeDependentResourcesEC(v *longhorn.Volume, e 
 		ef.Spec.VolumeSize = v.Spec.Size
 		ef.Spec.Size = v.Spec.Size
 		if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" &&
-			(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty) {
+			(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty || v.Spec.Frontend == longhorn.VolumeFrontendUblk) {
 			ef.Spec.NodeID = v.Spec.NodeID
 			ef.Spec.Frontend = v.Spec.Frontend
 			ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
 			ef.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
 			ef.Spec.DisableFrontend = v.Status.FrontendDisabled
 			ef.Spec.DesireState = longhorn.InstanceStateRunning
-			if !switchoverInProgress {
-				ef.Spec.TargetIP = e.Status.IP
+			// The v2 engine exposes its NVMe-TCP target on StorageIP, so the initiator
+			// must dial StorageIP, not the pod IP.
+			if !switchoverInProgress && e.Status.StorageIP != "" {
+				ef.Spec.TargetIP = e.Status.StorageIP
 				ef.Spec.TargetPort = e.Status.Port
 				ef.Spec.EngineName = e.Name
 			}
@@ -2910,6 +2947,26 @@ func shouldRejectEngineNodeMismatch(v *longhorn.Volume, e *longhorn.Engine, swit
 }
 
 func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) bool {
+	// EC volumes have no Replica CRs - only require engine (and EF for v2) running.
+	if isECVolume(v) {
+		if e.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false
+		}
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil || ef == nil {
+			return false
+		}
+		if ef.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false
+		}
+		if !ef.Spec.DisableFrontend &&
+			ef.Spec.Frontend != longhorn.VolumeFrontendEmpty &&
+			ef.Status.Endpoint == "" {
+			return false
+		}
+		return true
+	}
+
 	// At least 1 replica should be running
 	hasRunningReplica := false
 	for _, r := range rs {
@@ -3108,7 +3165,31 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		v.Status.ActualSize = actualSize
 	}
 
-	if e == nil || rs == nil {
+	if e == nil {
+		return nil
+	}
+
+	// EC volumes have no Replica CRs - expansion is driven through engine
+	// and EngineFrontend only.
+	if isECVolume(v) {
+		if e.Spec.VolumeSize == v.Spec.Size {
+			return nil
+		}
+		log.Infof("Expanding EC volume from size %v to size %v", e.Spec.VolumeSize, v.Spec.Size)
+		v.Status.ExpansionRequired = true
+		e.Spec.VolumeSize = v.Spec.Size
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil {
+			return err
+		}
+		if ef != nil {
+			ef.Spec.VolumeSize = v.Spec.Size
+			ef.Spec.Size = v.Spec.Size
+		}
+		return nil
+	}
+
+	if rs == nil {
 		return nil
 	}
 	if e.Spec.VolumeSize == v.Spec.Size {
@@ -3347,6 +3428,14 @@ func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longho
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) error {
+	// EC volumes use ShardGroup/Shard CRs for fault tolerance - the ShardGroup
+	// controller manages shard placement and rebuild internally. There is no
+	// per-replica replenishment for EC; m parity chunks already absorb up to m
+	// shard failures before any rebuild is even needed.
+	if isECVolume(v) {
+		return nil
+	}
+
 	concurrentRebuildingLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
 	if err != nil {
 		return err
