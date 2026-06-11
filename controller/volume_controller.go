@@ -223,6 +223,18 @@ func NewVolumeController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SettingInformer.HasSynced)
 
+	// EC attach waits on ShardGroup readiness in openVolumeDependentResourcesEC.
+	// Watch the ShardGroup so the volume re-reconciles the moment its shards come
+	// up, instead of waiting for the periodic resync.
+	if _, err = ds.ShardGroupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueVolumeForShardGroup,
+		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumeForShardGroup(cur) },
+		DeleteFunc: c.enqueueVolumeForShardGroup,
+	}); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.ShardGroupInformer.HasSynced)
+
 	return c, nil
 }
 
@@ -2219,6 +2231,112 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 	return isNewVolume, e, nil
 }
 
+// isECVolume returns true when the Volume has DataLayout.Type=sharded.
+// EC volumes bypass replica-related reconcile paths and use ShardGroup/Shard
+// CRs instead.
+func isECVolume(v *longhorn.Volume) bool {
+	return v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded
+}
+
+// ECAutoSalvageRetryInterval gates how often handleECAutoSalvage will trigger
+// a re-attach on a Faulted EC volume. Without a cooldown, a permanently
+// unrecoverable shard set (failedCount > m and shards stay down) would loop
+// the volume between Faulted -> Detached -> Re-attached -> Faulted on every
+// reconcile tick. 5 minutes matches the default RAID1 auto-salvage cadence.
+const ECAutoSalvageRetryInterval = 5 * time.Minute
+
+// reconcileECVolumeRobustness sets Volume.Status.Robustness from the ShardGroup
+// CR's overall State. It is the EC version of what ReconcileEngineReplicaState
+// does for RAID1, which sets robustness from the per-replica states.
+//
+// Mapping:
+//
+//	ShardGroup.Status.State    -> Volume.Status.Robustness
+//	healthy                       Healthy
+//	degraded                      Degraded   (1..m slots failed, still serving)
+//	rebuilding                    Degraded   (slot REPLACING, fault tolerance reduced)
+//	growing                       Healthy    (expansion in progress; no health impact)
+//	offline                       Faulted    (>m slots failed, I/O rejected)
+//	"" (uninitialised)            Unknown
+func (c *VolumeController) reconcileECVolumeRobustness(v *longhorn.Volume) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			// ShardGroup not yet created (very early in volume lifecycle).
+			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+			return nil
+		}
+		return err
+	}
+	switch sg.Status.State {
+	case longhorn.ShardGroupStateHealthy, longhorn.ShardGroupStateGrowing:
+		v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+	case longhorn.ShardGroupStateDegraded, longhorn.ShardGroupStateRebuilding:
+		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
+	case longhorn.ShardGroupStateOffline:
+		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+	default:
+		v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+	}
+	return nil
+}
+
+// reconcileShardGroup ensures a ShardGroup CR exists for the volume and that
+// Spec.NodeID tracks Volume.Spec.NodeID. The ShardGroup process must be
+// provisioned BEFORE the engine can start (the engine consumes the ShardGroup
+// endpoint as its single upstream), so we cannot wait for Engine.Spec.NodeID -
+// that field is only set after the engine is being started, which is after
+// openVolumeDependentResources has gated on ShardGroup.Status.ProcessState.
+// Volume.Spec.NodeID is set earlier in the attach flow (by VolumeAttachment
+// processing), giving the ShardGroup process time to come up before the
+// engine reads its endpoint.
+//
+// Spec.NodeID is set on first attach and NOT cleared on detach - the
+// ShardGroup process keeps running across detach to preserve the lvstore +
+// head lvol on the encoded shard blocks for fast re-attach. It only changes
+// on engine-node failover (when v.Spec.NodeID changes to a new node).
+//
+// The Volume controller is the sole writer of Spec.NodeID; the ShardGroup
+// controller reads it but never modifies it.
+func (c *VolumeController) reconcileShardGroup(v *longhorn.Volume) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	if sg == nil {
+		sg = &longhorn.ShardGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: v.Name,
+				Labels: map[string]string{
+					types.LonghornLabelVolume: v.Name,
+				},
+				OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
+			},
+			Spec: longhorn.ShardGroupSpec{
+				VolumeName:   v.Name,
+				DataChunks:   v.Spec.DataLayout.DataChunks,
+				ParityChunks: v.Spec.DataLayout.ParityChunks,
+				StripSizeKB:  v.Spec.DataLayout.StripSizeKB,
+				NodeID:       v.Spec.NodeID,
+			},
+		}
+		if _, err := c.ds.CreateShardGroup(sg); err != nil && !apierrors.IsAlreadyExists(err) {
+			return errors.Wrapf(err, "failed to create ShardGroup for volume %v", v.Name)
+		}
+		return nil
+	}
+
+	if sg.Spec.NodeID != v.Spec.NodeID && v.Spec.NodeID != "" {
+		fresh := sg.DeepCopy()
+		fresh.Spec.NodeID = v.Spec.NodeID
+		if _, err := c.ds.UpdateShardGroup(fresh); err != nil {
+			return errors.Wrapf(err, "failed to update ShardGroup.Spec.NodeID for volume %v", v.Name)
+		}
+	}
+	return nil
+}
+
 func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string]*longhorn.Replica) {
 	needReplicaLogs := false
 	for _, r := range rs {
@@ -2371,6 +2489,47 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 
 	if err := c.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
 		log.WithError(err).Warnf("Failed to update PV annotation for volume %v", v.Name)
+	}
+
+	return nil
+}
+
+// reconcileECVolumeSnapshotCondition handles the TooManySnapshots condition
+// for EC volumes. This is extracted from reconcileVolumeCondition so the EC
+// early-return still evaluates snapshot thresholds.
+func (c *VolumeController) reconcileECVolumeSnapshotCondition(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) error {
+	numSnapshots := len(e.Status.Snapshots) - 1
+
+	snapshotCountThreshold := c.getSnapshotCountThreshold(v, log)
+	countExceededThreshold := numSnapshots >= snapshotCountThreshold
+
+	var snapshotTotalSize int64
+	if v.Spec.SnapshotMaxSize != 0 {
+		var err error
+		snapshotTotalSize, err = c.getSnapshotTotalSize(e, log)
+		if err != nil {
+			return err
+		}
+	}
+
+	sizeExceededThreshold := v.Spec.SnapshotMaxSize != 0 && snapshotTotalSize >= v.Spec.SnapshotMaxSize
+
+	if countExceededThreshold || sizeExceededThreshold {
+		warningMessages := []string{}
+		if countExceededThreshold {
+			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots count is %v at or over the warning threshold %v", numSnapshots, snapshotCountThreshold))
+		}
+		if sizeExceededThreshold {
+			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots total size is %v at or over the warning threshold %v", snapshotTotalSize, v.Spec.SnapshotMaxSize))
+		}
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
+			longhorn.VolumeConditionReasonTooManySnapshots,
+			strings.Join(warningMessages, "; "))
+	} else {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
+			"", "")
 	}
 
 	return nil
@@ -2583,6 +2742,125 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 					ef.Spec.TargetPort = e.Status.Port
 					ef.Spec.EngineName = e.Name
 				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// openVolumeDependentResourcesEC is the EC-volume variant of openVolumeDependentResources.
+// EC volumes do not have Replica CRs - the ShardGroup CR (and the long-lived
+// ShardGroup process it owns) provides the single upstream NVMe-oF endpoint
+// that the engine consumes. From the engine's perspective this is structurally
+// identical to a single-replica RAID1 setup: one entry in ReplicaAddressMap,
+// keyed by a stable name, pointing at "ip:port".
+//
+// Readiness gating: defers engine start until ShardGroup.Status.ProcessState ==
+// Running and the full NVMe-oF endpoint (StorageIP, Port, NQN) is populated. The
+// ShardGroup controller's syncProcess drives the process up; this function silently
+// waits otherwise.
+func (c *VolumeController) openVolumeDependentResourcesEC(v *longhorn.Volume, e *longhorn.Engine, efs map[string]*longhorn.EngineFrontend, log *logrus.Entry) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			log.Debugf("ShardGroup for volume %v not yet created; waiting", v.Name)
+			return nil
+		}
+		return err
+	}
+
+	// Readiness gate: ProcessState=Running plus a complete NVMe-oF endpoint
+	// (IP, Port, NQN). The endpoint fields are populated together by
+	// refreshShardGroupProcessStatus once the SPDK service exposes the head
+	// lvol; checking all three defends against partial-state races where
+	// ProcessState advances ahead of the endpoint.
+	if sg.Status.ProcessState != longhorn.InstanceStateRunning ||
+		sg.Status.StorageIP == "" || sg.Status.Port == 0 || sg.Status.NQN == "" {
+		log.Debugf("ShardGroup process for volume %v not yet ready (state=%v ip=%v port=%v nqn=%v); waiting",
+			v.Name, sg.Status.ProcessState, sg.Status.StorageIP, sg.Status.Port, sg.Status.NQN)
+		return nil
+	}
+
+	// Freshness gate: Status must reflect the current Spec.NodeID. On engine-
+	// node re-bind, reconcileShardGroup writes the new Spec.NodeID in the
+	// same volume reconcile pass that gets here, but Status (IP/Port/NQN/
+	// InstanceManagerName) still references the old node until ShardGroup-
+	// Controller.syncProcess runs clearShardGroupProcessStatus and re-
+	// provisions. Consuming stale Status here would commit the old endpoint
+	// to e.Spec.ReplicaAddressMap and point the engine at the about-to-be-
+	// torn-down ShardGroup process. Resolve Status.InstanceManagerName ->
+	// IM -> IM.Spec.NodeID and require a match. An empty InstanceManagerName
+	// is already covered by the earlier gate (all endpoint fields would be
+	// clear too), so the check is conditioned on it being set.
+	if sg.Status.InstanceManagerName != "" {
+		im, err := c.ds.GetInstanceManagerRO(sg.Status.InstanceManagerName)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		// im == nil: old IM already gone (drained / deleted). Status is
+		// definitively stale; ShardGroupController will clear it on its
+		// next reconcile (oldIM == nil branch in syncProcess).
+		// im != nil but NodeID mismatch: re-bind in progress; wait for
+		// ShardGroupController to tear down the old binding and re-
+		// provision on Spec.NodeID.
+		if im == nil || im.Spec.NodeID != sg.Spec.NodeID {
+			boundNode := ""
+			if im != nil {
+				boundNode = im.Spec.NodeID
+			}
+			log.Debugf("ShardGroup for volume %v Status still bound to IM %v (node %v) while Spec.NodeID is %v; waiting for re-bind",
+				v.Name, sg.Status.InstanceManagerName, boundNode, sg.Spec.NodeID)
+			return nil
+		}
+	}
+
+	targetEngineNodeID := v.Spec.NodeID
+	if v.Spec.EngineNodeID != "" {
+		targetEngineNodeID = v.Spec.EngineNodeID
+	}
+
+	switchoverInProgress := isV2EngineSwitchoverInProgress(v, e, targetEngineNodeID)
+	if shouldRejectEngineNodeMismatch(v, e, switchoverInProgress) {
+		return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
+			e.Spec.NodeID, v.Status.CurrentNodeID)
+	}
+
+	if e.Spec.NodeID == "" || e.Spec.NodeID == targetEngineNodeID {
+		e.Spec.NodeID = targetEngineNodeID
+	}
+
+	// Single-entry address map keyed by the ShardGroup name. The engine's
+	// raid1 layer aggregates one base bdev for EC, exactly the same code path
+	// it uses for a single-replica RAID1 volume.
+	e.Spec.ReplicaAddressMap = map[string]string{
+		sg.Name: imutil.GetURL(sg.Status.StorageIP, int(sg.Status.Port)),
+	}
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Spec.DisableFrontend = v.Status.FrontendDisabled
+	e.Spec.Frontend = v.Spec.Frontend
+	e.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+	e.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+
+	ef, err := pickCurrentEngineFrontend(v, efs)
+	if err != nil {
+		return err
+	}
+	if ef != nil {
+		ef.Spec.VolumeSize = v.Spec.Size
+		ef.Spec.Size = v.Spec.Size
+		if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" &&
+			(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty) {
+			ef.Spec.NodeID = v.Spec.NodeID
+			ef.Spec.Frontend = v.Spec.Frontend
+			ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+			ef.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+			ef.Spec.DisableFrontend = v.Status.FrontendDisabled
+			ef.Spec.DesireState = longhorn.InstanceStateRunning
+			if !switchoverInProgress {
+				ef.Spec.TargetIP = e.Status.IP
+				ef.Spec.TargetPort = e.Status.Port
+				ef.Spec.EngineName = e.Name
 			}
 		}
 	}
@@ -4785,6 +5063,28 @@ func (c *VolumeController) enqueueVolumeAfter(obj interface{}, duration time.Dur
 	}
 
 	c.queue.AddAfter(key, duration)
+}
+
+// enqueueVolumeForShardGroup enqueues the volume that owns the given ShardGroup.
+// A ShardGroup maps to exactly one volume, so there is no fan-out.
+func (c *VolumeController) enqueueVolumeForShardGroup(obj interface{}) {
+	sg, ok := obj.(*longhorn.ShardGroup)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		sg, ok = deletedState.Obj.(*longhorn.ShardGroup)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShardGroup object: %#v", deletedState.Obj))
+			return
+		}
+	}
+	if sg.Spec.VolumeName == "" {
+		return
+	}
+	c.queue.Add(sg.Namespace + "/" + sg.Spec.VolumeName)
 }
 
 func (c *VolumeController) enqueueControlleeChange(obj interface{}) {
