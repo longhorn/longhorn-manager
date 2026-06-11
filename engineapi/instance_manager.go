@@ -76,7 +76,7 @@ func (c *InstanceManagerClient) Close() error {
 
 func GetDeprecatedInstanceManagerBinary(image string) string {
 	cname := types.GetImageCanonicalName(image)
-	return filepath.Join(types.EngineBinaryDirectoryOnHost, cname, DeprecatedInstanceManagerBinaryName)
+	return filepath.Join(types.GetEngineBinaryDirectoryOnHost(), cname, DeprecatedInstanceManagerBinaryName)
 }
 
 func CheckInstanceManagerCompatibility(imMinVersion, imVersion int) error {

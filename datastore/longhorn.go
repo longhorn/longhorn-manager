@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -660,6 +661,24 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			_, err = s.ValidateV2DataEngineEnabled(dataEngineEnabled)
 			if err != nil {
 				return err
+			}
+		}
+
+	case types.SettingNameDefaultDataPath:
+		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultDataPath)
+		if err != nil {
+			return err
+		}
+
+		oldPath := filepath.Clean(strings.TrimSpace(old.Value))
+		newPath := filepath.Clean(strings.TrimSpace(value))
+		if oldPath != newPath {
+			nodes, err := s.ListNodesRO()
+			if err != nil {
+				return err
+			}
+			if len(nodes) != 0 {
+				return errors.Errorf("cannot change %v after Longhorn has been initialized", types.SettingNameDefaultDataPath)
 			}
 		}
 
