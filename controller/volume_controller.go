@@ -1773,11 +1773,17 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
 
 	// Clear SalvageRequested flag if SalvageExecuted flag has been set.
+	// SalvageRequested is RAID1-only (the engine uses it to filter replicas at
+	// startup); EC volumes do not use this flag.
 	if e.Spec.SalvageRequested && e.Status.SalvageExecuted {
 		e.Spec.SalvageRequested = false
 	}
 
-	if isAutoSalvageNeeded(rs) {
+	if isECVolume(v) {
+		if err := c.handleECAutoSalvage(v); err != nil {
+			return err
+		}
+	} else if isAutoSalvageNeeded(rs) {
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 		// If the volume is faulted, we don't need to have RWX fast failover.
 		// If shareManager is delinquent, clear both delinquent and stale state.
@@ -2249,12 +2255,26 @@ func isECVolume(v *longhorn.Volume) bool {
 	return v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded
 }
 
-// ECAutoSalvageRetryInterval gates how often handleECAutoSalvage will trigger
-// a re-attach on a Faulted EC volume. Without a cooldown, a permanently
-// unrecoverable shard set (failedCount > m and shards stay down) would loop
-// the volume between Faulted -> Detached -> Re-attached -> Faulted on every
-// reconcile tick. 5 minutes matches the default RAID1 auto-salvage cadence.
-const ECAutoSalvageRetryInterval = 5 * time.Minute
+// handleECAutoSalvage handles an EC volume whose ShardGroup is offline: it clears any
+// RWX delinquent/stale state so a faulted RWX volume does not get stuck waiting on the
+// share manager. Volume.Status.Robustness and the offline->recovered remount are owned
+// by reconcileECVolumeRobustness, which runs earlier in the same reconcile pass.
+func (c *VolumeController) handleECAutoSalvage(v *longhorn.Volume) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			// ShardGroup not yet created - nothing to handle.
+			return nil
+		}
+		return err
+	}
+
+	if sg.Status.State != longhorn.ShardGroupStateOffline {
+		return nil
+	}
+
+	return c.handleDelinquentAndStaleStateForFaultedRWXVolume(v)
+}
 
 // reconcileECVolumeRobustness sets Volume.Status.Robustness from the ShardGroup
 // CR's overall State. It is the EC version of what ReconcileEngineReplicaState
@@ -2269,6 +2289,10 @@ const ECAutoSalvageRetryInterval = 5 * time.Minute
 //	growing                       Healthy    (expansion in progress; no health impact)
 //	offline                       Faulted    (>m slots failed, I/O rejected)
 //	"" (uninitialised)            Unknown
+//
+// It also requests the offline->recovered remount here rather than in
+// handleECAutoSalvage: this runs first in the reconcile pass and overwrites Robustness,
+// so the prior Faulted value is only observable at this point.
 func (c *VolumeController) reconcileECVolumeRobustness(v *longhorn.Volume) error {
 	sg, err := c.ds.GetShardGroupRO(v.Name)
 	if err != nil {
@@ -2279,6 +2303,8 @@ func (c *VolumeController) reconcileECVolumeRobustness(v *longhorn.Volume) error
 		}
 		return err
 	}
+
+	previousRobustness := v.Status.Robustness
 	switch sg.Status.State {
 	case longhorn.ShardGroupStateHealthy, longhorn.ShardGroupStateGrowing:
 		v.Status.Robustness = longhorn.VolumeRobustnessHealthy
@@ -2288,6 +2314,17 @@ func (c *VolumeController) reconcileECVolumeRobustness(v *longhorn.Volume) error
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 	default:
 		v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+	}
+
+	// The ShardGroup just left offline. If the volume faulted during that offline
+	// window and has since detached, request a remount so KubernetesPodController
+	// restarts the workload pod and it re-attaches to the recovered volume.
+	if previousRobustness == longhorn.VolumeRobustnessFaulted &&
+		v.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
+		v.Status.State == longhorn.VolumeStateDetached {
+		v.Status.RemountRequestedAt = c.nowHandler()
+		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount,
+			"Volume %v requested remount at %v after its EC ShardGroup recovered", v.Name, v.Status.RemountRequestedAt)
 	}
 	return nil
 }
