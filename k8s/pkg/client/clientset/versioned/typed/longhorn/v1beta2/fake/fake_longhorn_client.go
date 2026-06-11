@@ -19,10 +19,9 @@ limitations under the License.
 package fake
 
 import (
+	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta2"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
-
-	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta2"
 )
 
 type FakeLonghornV1beta2 struct {
@@ -91,6 +90,14 @@ func (c *FakeLonghornV1beta2) Replicas(namespace string) v1beta2.ReplicaInterfac
 
 func (c *FakeLonghornV1beta2) Settings(namespace string) v1beta2.SettingInterface {
 	return newFakeSettings(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) Shards(namespace string) v1beta2.ShardInterface {
+	return newFakeShards(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) ShardGroups(namespace string) v1beta2.ShardGroupInterface {
+	return newFakeShardGroups(c, namespace)
 }
 
 func (c *FakeLonghornV1beta2) ShareManagers(namespace string) v1beta2.ShareManagerInterface {
