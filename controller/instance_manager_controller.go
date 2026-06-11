@@ -555,6 +555,8 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		im.Status.InstanceEngines = nil
 		im.Status.InstanceEngineFrontends = nil
 		im.Status.InstanceReplicas = nil
+		im.Status.InstanceShards = nil
+		im.Status.InstanceShardGroups = nil
 		im.Status.BackingImages = nil
 	}
 	return nil
@@ -2319,6 +2321,12 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 		case longhorn.OrphanTypeReplicaInstance:
 			_, instanceExist = im.Status.InstanceReplicas[instanceName]
 			instanceCRScheduledBack, err = imc.isReplicaOnInstanceManager(instanceManager, instanceName)
+		case longhorn.OrphanTypeShardInstance:
+			_, instanceExist = im.Status.InstanceShards[instanceName]
+			instanceCRScheduledBack, err = imc.isShardOnInstanceManager(instanceManager, instanceName)
+		case longhorn.OrphanTypeShardGroupInstance:
+			_, instanceExist = im.Status.InstanceShardGroups[instanceName]
+			instanceCRScheduledBack, err = imc.isShardGroupCRPresent(instanceName)
 		}
 		if err != nil {
 			errs.Append("errors", errors.Wrapf(err, "failed to check if instance %v is scheduled on instance manager %v", instanceName, instanceManager))
@@ -2412,6 +2420,44 @@ func (imc *InstanceManagerController) isReplicaOnInstanceManager(instanceManager
 		return false, nil
 	}
 	return imc.isInstanceOnInstanceManager(instanceManager, &existReplica.Status.InstanceStatus), nil
+}
+
+// isShardOnInstanceManager reports whether the shard is scheduled in the given instance manager.
+// A Shard CR carries no instance-manager name, so the instance manager is resolved from the
+// shard's scheduled node (Spec.NodeID), which is immutable once set.
+func (imc *InstanceManagerController) isShardOnInstanceManager(instanceManager, instanceName string) (bool, error) {
+	shard, err := imc.ds.GetShardRO(instanceName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Shard CR not found - the instance is orphaned, not scheduled here.
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to check if shard instance %q is scheduled on instance manager %q", instanceName, instanceManager)
+	}
+	if shard.Spec.NodeID == "" {
+		// Not yet scheduled to a node; cannot be confirmed on this instance manager.
+		return false, nil
+	}
+	scheduledInstanceManager, err := imc.ds.GetInstanceManagerByInstanceRO(shard)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to resolve instance manager for shard %q", instanceName)
+	}
+	return scheduledInstanceManager.Name == instanceManager, nil
+}
+
+// isShardGroupCRPresent returns true when a ShardGroup CR exists with the given
+// name (which equals the volume name). Used by the orphan deletion path: a
+// ShardGroup-instance Orphan can be removed once the ShardGroup CR is back,
+// indicating the process has been re-adopted by the controller.
+func (imc *InstanceManagerController) isShardGroupCRPresent(shardGroupName string) (bool, error) {
+	_, err := imc.ds.GetShardGroupRO(shardGroupName)
+	if err == nil {
+		return true, nil
+	}
+	if datastore.ErrorIsNotFound(err) {
+		return false, nil
+	}
+	return false, errors.Wrapf(err, "failed to check if ShardGroup CR %q is present", shardGroupName)
 }
 
 func (imc *InstanceManagerController) isInstanceOnInstanceManager(instanceManager string, status *longhorn.InstanceStatus) bool {
@@ -2659,19 +2705,23 @@ func (m *InstanceManagerMonitor) syncInstances(im *longhorn.InstanceManager, ins
 func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, instanceMap instanceProcessMap) bool {
 	switch {
 	default:
-		engineProcesses, engineFrontendProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
+		engineProcesses, engineFrontendProcesses, replicaProcesses, shardProcesses, shardGroupProcesses := m.categorizeProcesses(instanceMap)
 
 		// reflect.DeepEqual treats the two maps `var m1 map[string]process` and `m2 := map[string]process` as different maps.
 		// Therefore, to prevent unnecessary updates, we must check both that the length of the maps is zero and that the maps are identical.
 		if ((len(im.Status.InstanceEngines) == 0 && len(engineProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngines, engineProcesses)) &&
 			((len(im.Status.InstanceEngineFrontends) == 0 && len(engineFrontendProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngineFrontends, engineFrontendProcesses)) &&
-			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcesses)) {
+			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcesses)) &&
+			((len(im.Status.InstanceShards) == 0 && len(shardProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceShards, shardProcesses)) &&
+			((len(im.Status.InstanceShardGroups) == 0 && len(shardGroupProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceShardGroups, shardGroupProcesses)) {
 			return false
 		}
 
 		im.Status.InstanceEngines = engineProcesses
 		im.Status.InstanceEngineFrontends = engineFrontendProcesses
 		im.Status.InstanceReplicas = replicaProcesses
+		im.Status.InstanceShards = shardProcesses
+		im.Status.InstanceShardGroups = shardGroupProcesses
 	}
 	return true
 }
@@ -2689,7 +2739,7 @@ func (m *InstanceManagerMonitor) StopMonitorWithLock() {
 }
 
 func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, instanceMap instanceProcessMap) {
-	engineProcesses, _, replicaProcesses := m.categorizeProcesses(instanceMap)
+	engineProcesses, _, replicaProcesses, shardProcesses, shardGroupProcesses := m.categorizeProcesses(instanceMap)
 	existOrphansList, err := m.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
 	if err != nil {
 		m.logger.WithError(err).Errorf("Failed to list orphans on node %s", im.Spec.NodeID)
@@ -2701,8 +2751,10 @@ func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, insta
 	}
 
 	// exam instances and create orphan CRs
-	m.createOrphanForInstances(existOrphans, im, engineProcesses, longhorn.OrphanTypeEngineInstance, m.isEngineOrphaned)
-	m.createOrphanForInstances(existOrphans, im, replicaProcesses, longhorn.OrphanTypeReplicaInstance, m.isReplicaOrphaned)
+	m.createOrphanForInstances(existOrphans, im, engineProcesses, longhorn.OrphanTypeEngineInstance, m.isEngineOrphaned, longhorn.DataEngineTypeV1)
+	m.createOrphanForInstances(existOrphans, im, replicaProcesses, longhorn.OrphanTypeReplicaInstance, m.isReplicaOrphaned, longhorn.DataEngineTypeV1)
+	m.createOrphanForInstances(existOrphans, im, shardProcesses, longhorn.OrphanTypeShardInstance, m.isShardOrphaned, longhorn.DataEngineTypeV2)
+	m.createOrphanForInstances(existOrphans, im, shardGroupProcesses, longhorn.OrphanTypeShardGroupInstance, m.isShardGroupInstanceOrphaned, longhorn.DataEngineTypeV2)
 }
 
 // isEngineOrphaned returns true only when it is very certain that an engine is scheduled on another instance manager
@@ -2768,7 +2820,7 @@ func (m *InstanceManagerMonitor) isInstanceOrphanedInInstanceManager(status *lon
 	}
 }
 
-func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[string]bool, im *longhorn.InstanceManager, instanceMap instanceProcessMap, orphanType longhorn.OrphanType, orphanFilter func(instanceName, instanceManager string) (bool, error)) {
+func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[string]bool, im *longhorn.InstanceManager, instanceMap instanceProcessMap, orphanType longhorn.OrphanType, orphanFilter func(instanceName, instanceManager string) (bool, error), expectedDataEngine longhorn.DataEngineType) {
 	for instanceName, instance := range instanceMap {
 		if instance.Status.State == longhorn.InstanceStateStarting ||
 			instance.Status.State == longhorn.InstanceStateStopping ||
@@ -2777,8 +2829,8 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 			// Stopping, Stopped: Terminating. No orphan CR needed, and the orphaned instances will be cleanup by instance manager after stopped.
 			continue
 		}
-		if instance.Spec.DataEngine != longhorn.DataEngineTypeV1 {
-			m.logger.Debugf("Skipping orphan creation, instance %s is not data engine v1", instanceName)
+		if instance.Spec.DataEngine != expectedDataEngine {
+			m.logger.Debugf("Skipping orphan creation, instance %s is not data engine %s", instanceName, expectedDataEngine)
 			continue
 		}
 		if instance.Status.UUID == "" {
@@ -2832,10 +2884,12 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 	return m.ds.CreateOrphan(orphan)
 }
 
-func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap, instanceProcessMap) {
+func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap, instanceProcessMap, instanceProcessMap, instanceProcessMap) {
 	engineProcesses := make(instanceProcessMap)
 	engineFrontendProcesses := make(instanceProcessMap)
 	replicaProcesses := make(instanceProcessMap)
+	shardProcesses := make(instanceProcessMap)
+	shardGroupProcesses := make(instanceProcessMap)
 	for name, process := range instanceMap {
 		switch process.Status.Type {
 		case longhorn.InstanceTypeEngine:
@@ -2844,9 +2898,55 @@ func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcess
 			engineFrontendProcesses[name] = process
 		case longhorn.InstanceTypeReplica:
 			replicaProcesses[name] = process
+		case longhorn.InstanceType(engineapi.InstanceTypeShard):
+			shardProcesses[name] = process
+		case longhorn.InstanceType(engineapi.InstanceTypeShardGroup):
+			shardGroupProcesses[name] = process
 		}
 	}
-	return engineProcesses, engineFrontendProcesses, replicaProcesses
+	return engineProcesses, engineFrontendProcesses, replicaProcesses, shardProcesses, shardGroupProcesses
+}
+
+// isShardOrphaned reports whether a running shard process is stranded: its Shard CR is gone,
+// or the CR is now on a different instance manager than the process runs in. A Shard CR carries
+// no instance-manager name, so the instance manager is resolved from the shard's scheduled node
+// (Spec.NodeID). Spec.NodeID is immutable (relocation deletes and recreates the Shard CR), so
+// unlike the replica path it needs no transition guard.
+func (m *InstanceManagerMonitor) isShardOrphaned(instanceName, instanceManager string) (bool, error) {
+	shard, err := m.ds.GetShardRO(instanceName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Shard CR not found - instance is orphaned.
+			return true, nil
+		}
+		return false, err
+	}
+	if shard.Spec.NodeID == "" {
+		// Not yet scheduled to a node; treat as not orphaned to avoid deleting a
+		// process that is still being placed.
+		return false, nil
+	}
+	scheduledInstanceManager, err := m.ds.GetInstanceManagerByInstanceRO(shard)
+	if err != nil {
+		return false, err
+	}
+	return scheduledInstanceManager.Name != instanceManager, nil
+}
+
+// isShardGroupInstanceOrphaned returns true when a running ShardGroup process
+// has no matching ShardGroup CR. The ShardGroup process name equals the
+// volume name (and the ShardGroup CR name), so a missing CR with the same
+// name means the process is stranded - typically left behind by a manager
+// crash mid-deletion or a manual CR delete.
+func (m *InstanceManagerMonitor) isShardGroupInstanceOrphaned(instanceName, _ string) (bool, error) {
+	_, err := m.ds.GetShardGroupRO(instanceName)
+	if err == nil {
+		return false, nil
+	}
+	if apierrors.IsNotFound(err) {
+		return true, nil
+	}
+	return false, err
 }
 
 func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {
