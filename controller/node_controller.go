@@ -978,6 +978,14 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				}
 			}
 
+			shards, err := nc.ds.ListShardsByDiskUUID(diskStatus.DiskUUID)
+			if err != nil {
+				return err
+			}
+			for _, shard := range shards {
+				storageScheduled += shard.Spec.Size
+			}
+
 			diskStatus.StorageScheduled = storageScheduled
 			diskStatus.ScheduledReplica = scheduledReplica
 			diskStatus.ScheduledBackingImage = scheduledBackingImage
