@@ -1378,7 +1378,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive {
+	if !isECVolume(volume) && (types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive) {
 		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
 			return err
 		}
