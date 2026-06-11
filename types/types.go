@@ -48,6 +48,8 @@ const (
 	LonghornKindSystemBackup        = "SystemBackup"
 	LonghornKindSystemRestore       = "SystemRestore"
 	LonghornKindOrphan              = "Orphan"
+	LonghornKindShardGroup          = "ShardGroup"
+	LonghornKindShard               = "Shard"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -100,6 +102,31 @@ const (
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
 )
 
+// ECMaxBaseBdevs is the maximum number of base bdevs (k+m) an EC array may have.
+// Matches the SPDK bdev_ec compile-time constant EC_MAX_BASE_BDEVS (ISA-L Reed-Solomon
+// requires n = k+m <= 255; Longhorn caps it at 32 for operational sanity).
+const ECMaxBaseBdevs = 32
+
+// ValidateECParameters validates the erasure-coding parameters shared by sharded
+// Volumes (spec.dataLayout) and ShardGroups (spec): k=dataChunks, m=parityChunks,
+// and the EC chunk size. Kept in one place so the bounds cannot drift between the
+// Volume and ShardGroup admission webhooks.
+func ValidateECParameters(dataChunks, parityChunks, stripSizeKB int) error {
+	if dataChunks < 1 {
+		return fmt.Errorf("dataChunks must be >= 1, got %v", dataChunks)
+	}
+	if parityChunks < 1 {
+		return fmt.Errorf("parityChunks must be >= 1, got %v", parityChunks)
+	}
+	if dataChunks+parityChunks > ECMaxBaseBdevs {
+		return fmt.Errorf("dataChunks (%v) + parityChunks (%v) must be <= %v (Longhorn EC base bdev cap)", dataChunks, parityChunks, ECMaxBaseBdevs)
+	}
+	if stripSizeKB < 4 || stripSizeKB > 1024 || (stripSizeKB&(stripSizeKB-1)) != 0 {
+		return fmt.Errorf("stripSizeKB must be a power of two in [4, 1024], got %v", stripSizeKB)
+	}
+	return nil
+}
+
 const (
 	DefaultAPIPort                   = 9500
 	DefaultConversionWebhookPort     = 9501
@@ -136,6 +163,8 @@ const (
 	LonghornInstanceManagerKey = "longhorninstancemanager"
 	LonghornEngineKey          = "longhornengine"
 	LonghornReplicaKey         = "longhornreplica"
+	LonghornShardKey           = "longhornshard"
+	LonghornShardGroupKey      = "longhornshardgroup"
 	LonghornDiskUUIDKey        = "longhorndiskuuid"
 
 	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
@@ -178,6 +207,7 @@ const (
 	LonghornLabelInstanceManagerImage       = "instance-manager-image"
 	LonghornLabelVolume                     = "longhornvolume"
 	LonghornLabelVolumeEncrypted            = "volume-encrypted"
+	LonghornLabelShardGroup                 = "shardgroup"
 	LonghornLabelShareManager               = "share-manager"
 	LonghornLabelShareManagerImage          = "share-manager-image"
 	LonghornLabelShareManagerConfigMap      = "share-manager-configmap"
@@ -241,6 +271,13 @@ const (
 	DefaultRecurringJobConcurrency = 10
 
 	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
+
+	// ShardAnnotationIntentionalDelete marks a Shard CR whose deletion is admin-driven
+	// (kubectl delete, eviction, drain) rather than caused by a real failure. The
+	// ShardGroup controller force-fails the slot via ShardGroupShardForceFail and
+	// records the slot in ShardGroup.Status.IntentionalDeleteSlots so the replacement
+	// Shard CR bypasses the failure-recovery debounce.
+	ShardAnnotationIntentionalDelete = "longhorn.io/intentional-delete"
 
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
@@ -645,6 +682,12 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	}
 }
 
+func GetShardGroupLabels(shardGroupName string) map[string]string {
+	return map[string]string{
+		LonghornLabelShardGroup: shardGroupName,
+	}
+}
+
 func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {
 	if isGroup {
 		return GetRecurringJobLabelKey(LonghornLabelRecurringJobGroup, name)
@@ -710,6 +753,26 @@ func GetOrphanLabelsForOrphanedReplicaInstance(nodeID, instanceManager, replicaN
 	labels[LonghornInstanceManagerKey] = instanceManager
 	labels[LonghornReplicaKey] = replicaName
 	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeReplicaInstance)
+	return labels
+}
+
+func GetOrphanLabelsForOrphanedShardInstance(nodeID, instanceManager, shardName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
+	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
+	labels[LonghornShardKey] = shardName
+	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeShardInstance)
+	return labels
+}
+
+func GetOrphanLabelsForOrphanedShardGroupInstance(nodeID, instanceManager, shardGroupName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
+	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
+	labels[LonghornShardGroupKey] = shardGroupName
+	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeShardGroupInstance)
 	return labels
 }
 
