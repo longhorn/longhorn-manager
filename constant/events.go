@@ -77,4 +77,6 @@ const (
 	EventReasonOrphanCleanupCompleted = "OrphanCleanupCompleted"
 
 	EventReasonStaleInstance = "StaleInstance"
+
+	EventReasonShardFailed = "ShardFailed"
 )

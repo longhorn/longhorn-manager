@@ -28,6 +28,7 @@ import (
 
 	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/scheduler"
@@ -446,6 +447,12 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 
 	// Step 1: ensure Shard CRs match spec.
 	if err := c.syncShards(rctx); err != nil {
+		return err
+	}
+
+	// Step 2: pull the latest EC health state from SPDK into Shard CR statuses
+	// before the per-shard loop dispatches on them.
+	if err := c.syncECHealth(rctx); err != nil {
 		return err
 	}
 
@@ -1362,6 +1369,122 @@ func (c *ShardGroupController) getVolumeSize(shardGroup *longhorn.ShardGroup) (u
 	return uint64(vol.Spec.Size), nil
 }
 
+// syncECHealth queries the SPDK service for the current EC slot states and updates
+// the Shard CR statuses and the ShardGroup rebuild flag. It also restarts an
+// interrupted rebuild if needed.
+func (c *ShardGroupController) syncECHealth(rctx *sgReconcileCtx) error {
+	if rctx.engine == nil || rctx.spdkClient == nil {
+		return nil
+	}
+
+	shardGroup := rctx.shardGroup
+	log := rctx.log
+
+	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	defer cancel()
+
+	protoShardGroup, err := rctx.spdkClient.ShardGroupGet(ctx, &spdkrpc.ShardGroupGetRequest{Name: shardGroup.Name})
+	if err != nil {
+		log.WithError(err).Warn("Failed to get ShardGroup EC state from SPDK; skipping EC health sync")
+		return nil
+	}
+
+	ecStatus := protoShardGroup.GetEcStatus()
+
+	slotMap := make(map[uint32]*spdkrpc.EcSlot, len(ecStatus.GetSlots()))
+	for _, slot := range ecStatus.GetSlots() {
+		slotMap[slot.GetSlotIndex()] = slot
+	}
+
+	shards, err := c.ds.ListShardsByShardGroup(shardGroup.Name)
+	if err != nil {
+		return err
+	}
+
+	anyReplacing := false
+
+	for _, shard := range shards {
+		slot, ok := slotMap[uint32(shard.Spec.SlotIndex)]
+		if !ok {
+			continue
+		}
+
+		newState := ecSlotStateToShardState(slot.GetState())
+		if newState == longhorn.ShardStateReplacing {
+			anyReplacing = true
+		}
+
+		rebuildProgress := 0
+		if ecStatus.GetRebuildInProgress() {
+			progress := ecStatus.GetRebuildProgress()
+			if progress != nil && progress.GetCurrentSlot() == uint32(shard.Spec.SlotIndex) {
+				rebuildProgress = int(progress.GetPercentComplete())
+			}
+		}
+
+		needsTimestamp := newState == longhorn.ShardStateFailed && shard.Status.LastFailureTimestamp == ""
+		if shard.Status.State == newState && shard.Status.RebuildProgress == rebuildProgress && !needsTimestamp {
+			continue
+		}
+
+		fresh, err := c.ds.GetShard(shard.Name)
+		if err != nil {
+			return err
+		}
+		fresh.Status.State = newState
+		fresh.Status.RebuildProgress = rebuildProgress
+		if newState == longhorn.ShardStateFailed {
+			// Start the replace delay (LastFailureTimestamp) only for a shard with
+			// a running instance, so a brief failure does not trigger a replace. A
+			// failed shard with no StorageIP is the not-yet-provisioned replacement
+			// for an already-failed slot, which reconcileFailedShard provisions
+			// before replacing - so do not start the delay here.
+			if fresh.Status.LastFailureTimestamp == "" && fresh.Status.StorageIP != "" {
+				fresh.Status.LastFailureTimestamp = util.Now()
+				c.eventRecorder.Eventf(shardGroup, corev1.EventTypeWarning, constant.EventReasonShardFailed,
+					"shard %v (slot %v) of volume %v failed", fresh.Name, fresh.Spec.SlotIndex, shardGroup.Spec.VolumeName)
+			}
+		} else {
+			fresh.Status.LastFailureTimestamp = ""
+			// Clear the in-flight replace marker now that SPDK has advanced the slot out
+			// of Failed; reconcileFailedShard may re-set it if the slot regresses.
+			fresh.Status.ReplaceTriggered = false
+		}
+		if _, err := c.ds.UpdateShardStatus(fresh); err != nil {
+			return errors.Wrapf(err, "failed to update shard %v status", fresh.Name)
+		}
+	}
+
+	shardGroup.Status.RebuildInProgress = ecStatus.GetRebuildInProgress()
+	shardGroup.Status.ScrubInProgress = ecStatus.GetScrubProgress() != nil
+	shardGroup.Status.WIBDirtyRegion = int(ecStatus.GetWibStatus().GetDirtyRegions())
+
+	// A replace and its rebuild are two separate RPCs, so a crash between them
+	// can leave a slot marked replacing with no rebuild running. Restart the
+	// rebuild when that happens (subject to the concurrent-rebuild limit).
+	if anyReplacing && !ecStatus.GetRebuildInProgress() {
+		canRebuild, err := c.canStartShardRebuild(shardGroup)
+		if err != nil {
+			log.WithError(err).Warn("Failed to check rebuild limit before restarting an interrupted rebuild; will retry")
+		} else if !canRebuild {
+			log.Debugf("Concurrent rebuild limit reached on engine node %v; deferring the interrupted-rebuild restart", shardGroup.Spec.NodeID)
+		} else {
+			log.Info("Restarting interrupted shard rebuild")
+			rebuildCtx, rebuildCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+			defer rebuildCancel()
+			if _, err := rctx.spdkClient.ShardGroupShardRebuildStart(rebuildCtx, &spdkrpc.ShardGroupShardRebuildStartRequest{
+				ShardGroupName: rctx.shardGroup.Name,
+			}); err != nil {
+				log.WithError(err).Warn("Failed to restart shard rebuild; will retry")
+			} else {
+				shardGroup.Status.RebuildInProgress = true
+			}
+		}
+	}
+
+	return nil
+}
+
 // shardRebuildReservationTTL bounds how long an in-memory rebuild reservation is held
 // before the durable RebuildInProgress flag confirms it. It only needs to exceed the lag
 // between issuing the rebuild RPC and that flag becoming visible in the informer cache
@@ -1447,6 +1570,20 @@ func (c *ShardGroupController) canStartShardRebuild(shardGroup *longhorn.ShardGr
 
 	c.inProgressRebuildingMap[shardGroup.Name] = time.Now()
 	return true, nil
+}
+
+// ecSlotStateToShardState maps an SPDK EcSlotState proto enum to a Longhorn ShardState.
+func ecSlotStateToShardState(s spdkrpc.EcSlotState) longhorn.ShardState {
+	switch s {
+	case spdkrpc.EcSlotState_EC_SLOT_STATE_NORMAL:
+		return longhorn.ShardStateNormal
+	case spdkrpc.EcSlotState_EC_SLOT_STATE_FAILED:
+		return longhorn.ShardStateFailed
+	case spdkrpc.EcSlotState_EC_SLOT_STATE_REPLACING:
+		return longhorn.ShardStateReplacing
+	default:
+		return longhorn.ShardStateFailed
+	}
 }
 
 func (c *ShardGroupController) isResponsibleFor(shardGroup *longhorn.ShardGroup) bool {
