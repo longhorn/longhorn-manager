@@ -50,6 +50,8 @@ const (
 	InstanceTypeEngine         = "engine"
 	InstanceTypeReplica        = "replica"
 	InstanceTypeEngineFrontend = "engine-frontend"
+	InstanceTypeShard          = "shard"
+	InstanceTypeShardGroup     = "shardgroup"
 )
 
 const (

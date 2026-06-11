@@ -57,7 +57,6 @@ require (
 	github.com/cockroachdb/errors v1.13.0
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/docker/go-connections v0.7.0
-	github.com/go-co-op/gocron/v2 v2.21.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
@@ -67,13 +66,13 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
 	github.com/longhorn/backupstore v0.0.0-20260525102750-1ed7dde50b68
-	github.com/longhorn/go-common-libs v0.0.0-20260525102658-c0739cd3e2c2
-	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
+	github.com/longhorn/go-common-libs v0.0.0-20260624092814-b3e1f4451fb9
+	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.6.3-0.20260628115240-ebdbbdcde6a9
-	github.com/longhorn/longhorn-engine v1.12.0-dev-20260503.0.20260514055128-ec3f7dbb512f
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260614.0.20260627042506-a6cd158c63e7
 	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260614
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260614
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260614.0.20260618083513-3367e7cd2b7b
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
@@ -84,12 +83,12 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.10.1
 	golang.org/x/mod v0.37.0
-	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.46.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.36.2
 	k8s.io/apiextensions-apiserver v0.36.2
 	k8s.io/apimachinery v0.36.2
@@ -141,7 +140,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260522011813-8f1780fad833 // indirect
+	github.com/longhorn/types v0.0.0-20260602074022-85db2ba11d69 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
@@ -208,10 +207,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.50.0 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0
-	golang.org/x/term v0.42.0 // indirect
+	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.38.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -226,3 +225,11 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/longhorn/go-spdk-helper => ../go-spdk-helper
+
+replace github.com/longhorn/longhorn-spdk-engine => ../longhorn-spdk-engine
+
+replace github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
+
+replace github.com/longhorn/types => ../types
