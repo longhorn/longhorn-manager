@@ -283,6 +283,47 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.DataEngine = driver
 	}
 
+	layoutType, hasLayoutType := volOptions["dataLayout.type"]
+	layoutMode, hasLayoutMode := volOptions["dataLayout.mode"]
+	dataChunksRaw, hasDataChunks := volOptions["dataLayout.dataChunks"]
+	parityChunksRaw, hasParityChunks := volOptions["dataLayout.parityChunks"]
+	stripSizeKBRaw, hasStripSizeKB := volOptions["dataLayout.stripSizeKB"]
+
+	if hasLayoutType || hasLayoutMode || hasDataChunks || hasParityChunks || hasStripSizeKB {
+		vol.DataLayout = &longhornclient.VolumeDataLayout{}
+		if hasLayoutType {
+			vol.DataLayout.Type = layoutType
+		}
+		if hasLayoutMode {
+			vol.DataLayout.Mode = layoutMode
+		}
+		if hasDataChunks {
+			dataChunks, err := strconv.Atoi(dataChunksRaw)
+			if err != nil {
+				return nil, errors.Wrap(err, "invalid parameter dataLayout.dataChunks")
+			}
+			vol.DataLayout.DataChunks = int64(dataChunks)
+		}
+		if hasParityChunks {
+			parityChunks, err := strconv.Atoi(parityChunksRaw)
+			if err != nil {
+				return nil, errors.Wrap(err, "invalid parameter dataLayout.parityChunks")
+			}
+			vol.DataLayout.ParityChunks = int64(parityChunks)
+		}
+		if hasStripSizeKB {
+			stripSizeKB, err := strconv.Atoi(stripSizeKBRaw)
+			if err != nil {
+				return nil, errors.Wrap(err, "invalid parameter dataLayout.stripSizeKB")
+			}
+			vol.DataLayout.StripSizeKB = int64(stripSizeKB)
+		}
+
+		if vol.DataLayout.Type == string(longhorn.VolumeDataLayoutTypeSharded) && vol.DataLayout.Mode == "" {
+			vol.DataLayout.Mode = string(longhorn.VolumeDataLayoutModeErasureCoding)
+		}
+	}
+
 	if freezeFilesystemForSnapshot, ok := volOptions["freezeFilesystemForSnapshot"]; ok {
 		if err := types.ValidateFreezeFilesystemForSnapshot(longhorn.FreezeFilesystemForSnapshot(freezeFilesystemForSnapshot)); err != nil {
 			return nil, errors.Wrap(err, "invalid parameter freezeFilesystemForSnapshot")
