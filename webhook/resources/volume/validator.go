@@ -185,6 +185,37 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
+	if err := validateDataLayout(volume.Spec.DataEngine, volume.Spec.DataLayout); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.dataLayout")
+	}
+
+	if volume.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded {
+		if volume.Spec.NumberOfReplicas != 1 {
+			return werror.NewInvalidError("spec.numberOfReplicas must be 1 for EC (sharded) volumes; fault tolerance is provided by spec.dataLayout.parityChunks", "spec.numberOfReplicas")
+		}
+		if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
+			return werror.NewInvalidError("spec.dataLocality must be \"disabled\" for EC (sharded) volumes; data chunks are distributed across k+m nodes by design", "spec.dataLocality")
+		}
+		// The following features have no EC implementation in the initial release.
+		// Each is undefined behavior at runtime if allowed through, so reject at
+		// admission to turn silent breakage into a clear error.
+		if volume.Spec.Standby {
+			return werror.NewInvalidError("spec.standby is not supported for EC (sharded) volumes", "spec.standby")
+		}
+		if volume.Spec.DataSource != "" {
+			return werror.NewInvalidError("spec.dataSource is not supported for EC (sharded) volumes", "spec.dataSource")
+		}
+		if volume.Spec.FromBackup != "" {
+			return werror.NewInvalidError("spec.fromBackup is not supported for EC (sharded) volumes", "spec.fromBackup")
+		}
+		if volume.Spec.BackingImage != "" {
+			return werror.NewInvalidError("spec.backingImage is not supported for EC (sharded) volumes", "spec.backingImage")
+		}
+		if volume.Spec.Migratable {
+			return werror.NewInvalidError("spec.migratable is not supported for EC (sharded) volumes", "spec.migratable")
+		}
+	}
+
 	if err := datastore.CheckVolume(volume); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
@@ -700,6 +731,31 @@ func validateRecurringJobLabels(vol *longhorn.Volume) error {
 		return werror.NewInvalidError(fmt.Sprintf("cannot add recurring jobs to linked-clone volume: %+v ", jobLabels), ".metadata.label")
 	}
 
+	return nil
+}
+
+func validateDataLayout(dataEngine longhorn.DataEngineType, layout longhorn.VolumeDataLayout) error {
+	switch layout.Type {
+	case "", longhorn.VolumeDataLayoutTypeReplicated:
+		if layout.DataChunks != 0 || layout.ParityChunks != 0 || layout.StripSizeKB != 0 {
+			return fmt.Errorf("EC params (dataChunks, parityChunks, stripSizeKB) must be 0 for non-sharded volumes")
+		}
+		if layout.Mode != "" && layout.Mode != longhorn.VolumeDataLayoutModeRaid1 {
+			return fmt.Errorf("spec.dataLayout.mode %v is not valid for non-sharded volumes", layout.Mode)
+		}
+	case longhorn.VolumeDataLayoutTypeSharded:
+		if !types.IsDataEngineV2(dataEngine) {
+			return fmt.Errorf("sharded data layout requires V2 data engine")
+		}
+		if layout.Mode != longhorn.VolumeDataLayoutModeErasureCoding {
+			return fmt.Errorf("spec.dataLayout.mode must be %v when type is %v", longhorn.VolumeDataLayoutModeErasureCoding, longhorn.VolumeDataLayoutTypeSharded)
+		}
+		if err := types.ValidateECParameters(layout.DataChunks, layout.ParityChunks, layout.StripSizeKB); err != nil {
+			return fmt.Errorf("spec.dataLayout: %v", err)
+		}
+	default:
+		return fmt.Errorf("invalid spec.dataLayout.type %v", layout.Type)
+	}
 	return nil
 }
 
