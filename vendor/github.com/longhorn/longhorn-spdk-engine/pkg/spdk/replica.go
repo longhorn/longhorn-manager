@@ -942,21 +942,32 @@ func (r *Replica) validateAndSyncLvstore(spdkClient *spdkclient.Client) error {
 	return nil
 }
 
-// getRootLvolName relies on the lvol name to identify if a lvol belongs to the replica,
-// then figuring out whether it is the root by checking the parent
+// getRootLvolName finds the root of the snapshot tree by walking backward from
+// the head via BaseSnapshot until it reaches a lvol whose parent is empty or
+// not a replica snapshot (e.g., backing image). If the head has no replica-snapshot
+// parent, the head itself is the root (no snapshots connected).
 func getRootLvolName(replicaName string, bdevLvolMap map[string]*spdktypes.BdevInfo) (rootLvolName string) {
-	for lvolName, bdevLvol := range bdevLvolMap {
-		if lvolName != replicaName && !IsReplicaSnapshotLvol(replicaName, lvolName) {
-			continue
-		}
-		// Consider that a backing image can be the parent of the replica root
-		if bdevLvol.DriverSpecific.Lvol.BaseSnapshot != "" && IsReplicaSnapshotLvol(replicaName, bdevLvol.DriverSpecific.Lvol.BaseSnapshot) {
-			continue
-		}
-		return lvolName
+	headBdevLvol := bdevLvolMap[replicaName]
+	if headBdevLvol == nil {
+		logrus.Warnf("getRootLvolName: replica=%s head not found in bdevLvolMap", replicaName)
+		return ""
 	}
 
-	return ""
+	cur := headBdevLvol
+	curName := replicaName
+	for {
+		parent := cur.DriverSpecific.Lvol.BaseSnapshot
+		if parent == "" || !IsReplicaSnapshotLvol(replicaName, parent) {
+			return curName
+		}
+		parentBdev := bdevLvolMap[parent]
+		if parentBdev == nil {
+			logrus.Warnf("getRootLvolName: replica=%s parent %s not in bdevLvolMap, treating %s as root", replicaName, parent, curName)
+			return curName
+		}
+		cur = parentBdev
+		curName = parent
+	}
 }
 
 func constructSnapshotLvolMap(replicaName string, bdevLvolMap map[string]*spdktypes.BdevInfo) (res map[string]*Lvol, err error) {
@@ -1111,18 +1122,19 @@ func (r *Replica) Create(spdkClient *spdkclient.Client, portCount int32, superio
 		return nil, err
 	}
 
-	// In case of failed replica reuse/restart being errored by r.validateAndUpdate(), we should make sure the caches are correct.
-	// Also handle the case where an existing replica was discovered after reboot but construct() wasn't called yet.
-	if r.State == types.InstanceStatePending && (r.reconstructRequired || len(r.SnapshotLvolMap) == 0) {
+	// Reconstruct SnapshotLvolMap from SPDK if it's known stale or uninitialized.
+	if r.reconstructRequired || (r.State == types.InstanceStatePending && len(r.SnapshotLvolMap) == 0) {
 		bdevLvolMap, err := GetBdevLvolMapWithFilter(spdkClient, r.replicaLvolFilter)
 		if err != nil {
 			return nil, err
 		}
-		r.log.Info("Constructing replica state from SPDK for pending replica")
+		r.log.Infof("Constructing replica state from SPDK for replica in state %s", r.State)
 		if err := r.construct(bdevLvolMap); err != nil {
 			return nil, err
 		}
-		r.State = types.InstanceStateStopped
+		if r.State == types.InstanceStatePending {
+			r.State = types.InstanceStateStopped
+		}
 	}
 
 	if err := r.prepareIPAndPorts(portCount, superiorPortAllocator); err != nil {
@@ -1187,6 +1199,9 @@ func (r *Replica) Delete(spdkClient *spdkclient.Client, cleanupRequired bool, su
 	updateRequired := false
 
 	r.Lock()
+
+	wasRebuilding := r.isRebuilding
+
 	defer func() {
 		// Considering that there may be still pending validations, it's better to update the state after the deletion.
 		prevState := r.State
@@ -1219,6 +1234,11 @@ func (r *Replica) Delete(spdkClient *spdkclient.Client, cleanupRequired bool, su
 		}
 
 		if prevState == types.InstanceStateError {
+			r.reconstructRequired = true
+		}
+
+		// Rebuild interrupted — SnapshotLvolMap is stale.
+		if r.State == types.InstanceStateStopped && wasRebuilding && !cleanupRequired {
 			r.reconstructRequired = true
 		}
 
@@ -3147,6 +3167,10 @@ func (r *Replica) RebuildingDstStart(spdkClient *spdkclient.Client, srcReplicaNa
 	}
 	r.IsExposed = true
 	dstHeadLvolAddress := net.JoinHostPort(r.IP, strconv.Itoa(int(r.PortStart)))
+
+	// Snapshots may be deleted below hence this cache will become stale.
+	// On success, RebuildingDstFinish→construct() clears this flag.
+	r.reconstructRequired = true
 
 	// Delete extra snapshots if any
 	//rebuildingLvolName := GetReplicaRebuildingLvolName(r.Name)
