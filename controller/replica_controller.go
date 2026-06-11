@@ -745,7 +745,7 @@ func engineStillHasReplica(e *longhorn.Engine, r *longhorn.Replica) bool {
 }
 
 func deleteUnixSocketFile(volumeName string) error {
-	return os.RemoveAll(filepath.Join(types.UnixDomainSocketDirectoryOnHost, volumeName+filepath.Ext(".sock")))
+	return os.RemoveAll(filepath.Join(types.GetUnixDomainSocketDirectoryOnHost(), volumeName+filepath.Ext(".sock")))
 }
 
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
