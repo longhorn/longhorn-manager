@@ -991,6 +991,18 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				}
 			}
 
+			// Shards add to StorageScheduled but have no per-shard breakdown map like
+			// ScheduledReplica/ScheduledBackingImage, so on a disk holding shards
+			// StorageScheduled will exceed those two maps by the shard bytes - that gap
+			// is expected, not a miscount.
+			shards, err := nc.ds.ListShardsByDiskUUID(diskStatus.DiskUUID)
+			if err != nil {
+				return err
+			}
+			for _, shard := range shards {
+				storageScheduled += shard.Spec.Size
+			}
+
 			diskStatus.StorageScheduled = storageScheduled
 			diskStatus.ScheduledReplica = scheduledReplica
 			diskStatus.ScheduledBackingImage = scheduledBackingImage
