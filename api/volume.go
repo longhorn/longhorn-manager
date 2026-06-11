@@ -226,6 +226,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		ReplicaZoneSoftAntiAffinity:     volume.ReplicaZoneSoftAntiAffinity,
 		ReplicaDiskSoftAntiAffinity:     volume.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                      volume.DataEngine,
+		DataLayout:                      volume.DataLayout,
 		FreezeFilesystemForSnapshot:     volume.FreezeFilesystemForSnapshot,
 		BackupTargetName:                volume.BackupTargetName,
 		OfflineRebuilding:               volume.OfflineRebuilding,

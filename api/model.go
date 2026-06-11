@@ -67,6 +67,7 @@ type Volume struct {
 	UblkNumberOfQueue               int                                    `json:"ublkNumberOfQueue"`
 	FreezeFilesystemForSnapshot     longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
 	BackupTargetName                string                                 `json:"backupTargetName"`
+	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -764,6 +765,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateOfflineRebuildingInput", UpdateOfflineRebuildingInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
+	schemas.AddType("volumeDataLayout", longhorn.VolumeDataLayout{})
 	schemas.AddType("empty", Empty{})
 
 	schemas.AddType("volumeRecurringJob", VolumeRecurringJob{})
@@ -1376,6 +1378,10 @@ func volumeSchema(volume *client.Schema) {
 	dataEngine.Default = longhorn.DataEngineTypeV1
 	volume.ResourceFields["dataEngine"] = dataEngine
 
+	dataLayout := volume.ResourceFields["dataLayout"]
+	dataLayout.Create = true
+	volume.ResourceFields["dataLayout"] = dataLayout
+
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
@@ -1764,6 +1770,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		RestoreVolumeRecurringJob:       v.Spec.RestoreVolumeRecurringJob,
 		FreezeFilesystemForSnapshot:     v.Spec.FreezeFilesystemForSnapshot,
 		BackupTargetName:                v.Spec.BackupTargetName,
+		DataLayout:                      v.Spec.DataLayout,
 
 		State:                       v.Status.State,
 		Robustness:                  v.Status.Robustness,
