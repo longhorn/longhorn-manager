@@ -3,11 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -18,15 +21,15 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
+
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
-
-	. "gopkg.in/check.v1"
 )
 
 // ShardGroupControllerSuite covers the syncProcess paths that do not require
@@ -481,6 +484,84 @@ func (s *ShardGroupControllerSuite) TestClearCompletedIntentionalDeleteSlotsDrop
 	c.Assert(s.controller.clearCompletedIntentionalDeleteSlots(rctx), IsNil)
 
 	c.Assert(created.Status.IntentionalDeleteSlots, DeepEquals, []int{1, 2})
+}
+
+// fakeECHealthClient is a minimal SPDKServiceClient stub for syncECHealth tests.
+// Only ShardGroupGet is implemented; any other method call panics on the nil
+// embedded interface, which is the intended fail-loud behavior.
+type fakeECHealthClient struct {
+	spdkrpc.SPDKServiceClient
+
+	shardGroupResp *spdkrpc.ShardGroup
+	err            error
+}
+
+func (f *fakeECHealthClient) ShardGroupGet(_ context.Context, _ *spdkrpc.ShardGroupGetRequest, _ ...grpc.CallOption) (*spdkrpc.ShardGroup, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.shardGroupResp, nil
+}
+
+// TestDegradedReadEIOEvent verifies the DegradedReadEIO handling: when
+// DegradedReadEioDirty is 0, no event fires and the DegradedRead condition is
+// False; when it is non-zero, one Warning event fires with the correct reason and
+// volume name, and the DegradedRead condition is set True.
+func (s *ShardGroupControllerSuite) TestDegradedReadEIOEvent(c *C) {
+	recorder := s.controller.eventRecorder.(*record.FakeRecorder)
+
+	// Case 1: counter zero - no event expected.
+	sg0 := newTestShardGroup("vol-eio-zero", 4, 2, TestNode1)
+	created0, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg0, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	rctx0 := &sgReconcileCtx{
+		shardGroup: created0,
+		engine:     &longhorn.Engine{},
+		spdkClient: &fakeECHealthClient{
+			shardGroupResp: &spdkrpc.ShardGroup{
+				EcStatus: &spdkrpc.EcStatus{DegradedReadEioDirty: 0},
+			},
+		},
+		log: logrus.NewEntry(logrus.StandardLogger()),
+	}
+	c.Assert(s.controller.syncECHealth(rctx0), IsNil)
+	select {
+	case event := <-recorder.Events:
+		c.Fatalf("expected no event but received: %v", event)
+	default:
+	}
+	cond0 := types.GetCondition(created0.Status.Conditions, longhorn.ShardGroupConditionTypeDegradedRead)
+	c.Assert(cond0.Status, Equals, longhorn.ConditionStatusFalse)
+
+	// Case 2: counter non-zero - Warning event with DegradedReadEIO reason.
+	sg1 := newTestShardGroup("vol-eio-nonzero", 4, 2, TestNode1)
+	created1, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg1, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	rctx1 := &sgReconcileCtx{
+		shardGroup: created1,
+		engine:     &longhorn.Engine{},
+		spdkClient: &fakeECHealthClient{
+			shardGroupResp: &spdkrpc.ShardGroup{
+				EcStatus: &spdkrpc.EcStatus{DegradedReadEioDirty: 3},
+			},
+		},
+		log: logrus.NewEntry(logrus.StandardLogger()),
+	}
+	c.Assert(s.controller.syncECHealth(rctx1), IsNil)
+	select {
+	case event := <-recorder.Events:
+		c.Assert(strings.Contains(event, constant.EventReasonDegradedReadEIO), Equals, true)
+		c.Assert(strings.Contains(event, created1.Spec.VolumeName), Equals, true)
+	default:
+		c.Fatal("expected DegradedReadEIO Warning event but none fired")
+	}
+	cond1 := types.GetCondition(created1.Status.Conditions, longhorn.ShardGroupConditionTypeDegradedRead)
+	c.Assert(cond1.Status, Equals, longhorn.ConditionStatusTrue)
+	c.Assert(cond1.Reason, Equals, longhorn.ShardGroupConditionReasonDegradedReadEIO)
 }
 
 // TestConcurrentShardRebuildLimit verifies the per-node rebuild limit is enforced
