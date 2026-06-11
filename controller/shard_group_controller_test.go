@@ -2,8 +2,12 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -15,10 +19,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	. "gopkg.in/check.v1"
 )
@@ -215,6 +221,266 @@ func (s *ShardGroupControllerSuite) TestClearShardGroupProcessStatusPreservesLvs
 	// encoded shards and survives any IM/process teardown.
 	c.Assert(sg.Status.LvstoreUUID, Equals, "deadbeef")
 	c.Assert(sg.Status.HeadLvolUUID, Equals, "cafebabe")
+}
+
+// TestClearShardGroupProcessStatusZerosIntentionalDeleteSlots verifies the
+// defensive clear of ShardGroup.Status.IntentionalDeleteSlots on process
+// teardown / re-bind. Without this, a stale bypass entry from a pre-rebind
+// force-fail would erroneously skip the debounce on an unintentional failure
+// targeting the same slot index after the rebind.
+func (s *ShardGroupControllerSuite) TestClearShardGroupProcessStatusZerosIntentionalDeleteSlots(c *C) {
+	sg := newTestShardGroup("vol-clear-intent", 2, 1, TestNode1)
+	sg.Status.IntentionalDeleteSlots = []int{1, 2}
+	sg.Status.ProcessState = longhorn.InstanceStateRunning
+
+	rctx := &sgReconcileCtx{
+		shardGroup: sg,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+
+	s.controller.clearShardGroupProcessStatus(rctx)
+
+	c.Assert(sg.Status.IntentionalDeleteSlots, IsNil)
+}
+
+// fakeForceFailClient is a minimal SPDKServiceClient stub for forceFailIfIntentional
+// tests. Embedding the interface satisfies the type without implementing every
+// method; only ShardGroupShardForceFail is overridden, and any unexpected method
+// call would panic on the nil embedded interface - which is the intended fail-loud
+// behavior for tests that should not exercise other RPCs.
+type fakeForceFailClient struct {
+	spdkrpc.SPDKServiceClient
+
+	called   int
+	lastReq  *spdkrpc.ShardGroupShardForceFailRequest
+	respCode codes.Code // codes.OK means success
+}
+
+func (f *fakeForceFailClient) ShardGroupShardForceFail(ctx context.Context, in *spdkrpc.ShardGroupShardForceFailRequest, opts ...grpc.CallOption) (*spdkrpc.ShardGroupShardForceFailResponse, error) {
+	f.called++
+	f.lastReq = in
+	if f.respCode != codes.OK {
+		return nil, status.Error(f.respCode, "fake error")
+	}
+	return &spdkrpc.ShardGroupShardForceFailResponse{
+		SlotState: spdkrpc.EcSlotState_EC_SLOT_STATE_FAILED,
+	}, nil
+}
+
+func newTestShard(sg *longhorn.ShardGroup, slotIndex int, state longhorn.ShardState) *longhorn.Shard {
+	return &longhorn.Shard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      newShardName(sg.Name, slotIndex),
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.ShardSpec{
+			ShardGroupName: sg.Name,
+			SlotIndex:      slotIndex,
+		},
+		Status: longhorn.ShardStatus{
+			State: state,
+		},
+	}
+}
+
+func newShardName(sgName string, slot int) string {
+	return fmt.Sprintf("%s-%d", sgName, slot)
+}
+
+// TestForceFailIfIntentionalNoOpWhenSpdkClientNil verifies the fast path is
+// skipped silently when the engine is detached (no SPDK client). Slow path
+// proceeds via the existing cleanupShard logic.
+func (s *ShardGroupControllerSuite) TestForceFailIfIntentionalNoOpWhenSpdkClientNil(c *C) {
+	sg := newTestShardGroup("vol-no-spdk", 2, 1, TestNode1)
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	shard := newTestShard(created, 0, longhorn.ShardStateNormal)
+
+	rctx := &sgReconcileCtx{
+		shardGroup: created,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+		// spdkClient deliberately nil
+	}
+
+	c.Assert(s.controller.forceFailIfIntentional(rctx, shard), IsNil)
+	c.Assert(created.Status.IntentionalDeleteSlots, IsNil)
+}
+
+// TestForceFailIfIntentionalNoOpWhenSlotFailed verifies the fast path is a
+// no-op when the slot is already FAILED - no acceleration is needed and the
+// standard slow path (cleanupShard -> InstanceDelete) handles teardown.
+func (s *ShardGroupControllerSuite) TestForceFailIfIntentionalNoOpWhenSlotFailed(c *C) {
+	sg := newTestShardGroup("vol-slot-failed", 2, 1, TestNode1)
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	shard := newTestShard(created, 0, longhorn.ShardStateFailed)
+
+	fake := &fakeForceFailClient{}
+	rctx := &sgReconcileCtx{
+		shardGroup: created,
+		spdkClient: fake,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+
+	c.Assert(s.controller.forceFailIfIntentional(rctx, shard), IsNil)
+	c.Assert(fake.called, Equals, 0)
+	c.Assert(created.Status.IntentionalDeleteSlots, IsNil)
+}
+
+// TestForceFailIfIntentionalRecordsSlotAndCallsRPC verifies the happy path:
+// slot Normal + spdk client present -> annotation set on Shard, slot recorded
+// in Status.IntentionalDeleteSlots, and ShardGroupShardForceFail issued.
+func (s *ShardGroupControllerSuite) TestForceFailIfIntentionalRecordsSlotAndCallsRPC(c *C) {
+	sg := newTestShardGroup("vol-force-fail", 2, 1, TestNode1)
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	shard := newTestShard(created, 1, longhorn.ShardStateNormal)
+	createdShard, err := s.lhClient.LonghornV1beta2().Shards(TestNamespace).Create(
+		context.TODO(), shard, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(s.lhShardIndexer.Add(createdShard), IsNil)
+
+	fake := &fakeForceFailClient{respCode: codes.OK}
+	rctx := &sgReconcileCtx{
+		shardGroup: created,
+		spdkClient: fake,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+
+	c.Assert(s.controller.forceFailIfIntentional(rctx, createdShard), IsNil)
+
+	// RPC was called with the right arguments.
+	c.Assert(fake.called, Equals, 1)
+	c.Assert(fake.lastReq.ShardGroupName, Equals, "vol-force-fail")
+	c.Assert(fake.lastReq.ShardName, Equals, createdShard.Name)
+
+	// Slot recorded in status (so the replacement bypasses the debounce).
+	c.Assert(created.Status.IntentionalDeleteSlots, DeepEquals, []int{1})
+
+	// Annotation persisted on the dying Shard CR.
+	persisted, err := s.lhClient.LonghornV1beta2().Shards(TestNamespace).Get(
+		context.TODO(), createdShard.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(persisted.Annotations[types.ShardAnnotationIntentionalDelete], Equals, "true")
+}
+
+// TestForceFailIfIntentionalFallsThroughOnFailedPrecondition verifies that a
+// FailedPrecondition from spdk-engine (e.g. the slot is already mid-failure) does
+// not surface as an error: the slow path proceeds and the slot is still recorded.
+func (s *ShardGroupControllerSuite) TestForceFailIfIntentionalFallsThroughOnFailedPrecondition(c *C) {
+	sg := newTestShardGroup("vol-failed-precond", 2, 1, TestNode1)
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	shard := newTestShard(created, 0, longhorn.ShardStateNormal)
+	createdShard, err := s.lhClient.LonghornV1beta2().Shards(TestNamespace).Create(
+		context.TODO(), shard, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(s.lhShardIndexer.Add(createdShard), IsNil)
+
+	fake := &fakeForceFailClient{respCode: codes.FailedPrecondition}
+	rctx := &sgReconcileCtx{
+		shardGroup: created,
+		spdkClient: fake,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+
+	// FailedPrecondition must not surface as an error to the caller (cleanupShard).
+	c.Assert(s.controller.forceFailIfIntentional(rctx, createdShard), IsNil)
+	c.Assert(fake.called, Equals, 1)
+	// Slot is recorded before the RPC, so the replacement still skips the debounce.
+	c.Assert(created.Status.IntentionalDeleteSlots, DeepEquals, []int{0})
+}
+
+// TestForceFailIfIntentionalPropagatesUnexpectedRPCError checks that an RPC error other
+// than FailedPrecondition propagates to the caller, and that the slot is still recorded
+// because recording happens before the RPC.
+func (s *ShardGroupControllerSuite) TestForceFailIfIntentionalPropagatesUnexpectedRPCError(c *C) {
+	sg := newTestShardGroup("vol-rpc-error", 2, 1, TestNode1)
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	shard := newTestShard(created, 0, longhorn.ShardStateNormal)
+	createdShard, err := s.lhClient.LonghornV1beta2().Shards(TestNamespace).Create(
+		context.TODO(), shard, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(s.lhShardIndexer.Add(createdShard), IsNil)
+
+	fake := &fakeForceFailClient{respCode: codes.Internal}
+	rctx := &sgReconcileCtx{
+		shardGroup: created,
+		spdkClient: fake,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+
+	// An unexpected RPC error must propagate so the reconcile retries.
+	c.Assert(s.controller.forceFailIfIntentional(rctx, createdShard), NotNil)
+	c.Assert(fake.called, Equals, 1)
+	// Slot is recorded before the RPC is attempted.
+	c.Assert(created.Status.IntentionalDeleteSlots, DeepEquals, []int{0})
+}
+
+// TestShouldDelayReplaceBypassesForIntentionalSlot verifies that the debounce
+// is skipped for slots in IntentionalDeleteSlots even when LastFailureTimestamp
+// is fresh and the replenishment-wait setting would otherwise force a delay.
+func (s *ShardGroupControllerSuite) TestShouldDelayReplaceBypassesForIntentionalSlot(c *C) {
+	sg := newTestShardGroup("vol-bypass", 2, 1, TestNode1)
+	sg.Status.IntentionalDeleteSlots = []int{2}
+
+	shard := newTestShard(sg, 2, longhorn.ShardStateFailed)
+	// Freshly observed failure - without the bypass, shouldDelayReplace would
+	// return true and stall the replace until the replenishment interval elapses.
+	shard.Status.LastFailureTimestamp = util.Now()
+
+	rctx := &sgReconcileCtx{
+		shardGroup: sg,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+
+	c.Assert(s.controller.shouldDelayReplace(rctx, shard), Equals, false)
+}
+
+// TestClearCompletedIntentionalDeleteSlotsDropsHealthySlots verifies that
+// once a replacement Shard CR reaches Normal+StorageIP, its slot is removed
+// from ShardGroup.Status.IntentionalDeleteSlots so the bypass does not
+// linger past the recovery cycle.
+func (s *ShardGroupControllerSuite) TestClearCompletedIntentionalDeleteSlotsDropsHealthySlots(c *C) {
+	sg := newTestShardGroup("vol-clear-completed", 2, 1, TestNode1)
+	sg.Status.IntentionalDeleteSlots = []int{0, 1, 2}
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	// slot 0: replacement shard is Normal with StorageIP - should drop.
+	healthy := newTestShard(created, 0, longhorn.ShardStateNormal)
+	healthy.Status.StorageIP = "10.0.0.10"
+
+	// slot 1: replacement shard exists but is still Failed - should keep.
+	stillFailing := newTestShard(created, 1, longhorn.ShardStateFailed)
+	stillFailing.Status.StorageIP = "10.0.0.11"
+
+	// slot 2: replacement shard not yet provisioned (missing from map) - should keep.
+
+	rctx := &sgReconcileCtx{
+		shardGroup: created,
+		shards: map[string]*longhorn.Shard{
+			healthy.Name:      healthy,
+			stillFailing.Name: stillFailing,
+		},
+		log: logrus.NewEntry(logrus.StandardLogger()),
+	}
+
+	c.Assert(s.controller.clearCompletedIntentionalDeleteSlots(rctx), IsNil)
+
+	c.Assert(created.Status.IntentionalDeleteSlots, DeepEquals, []int{1, 2})
 }
 
 // TestConcurrentShardRebuildLimit verifies the per-node rebuild limit is enforced
