@@ -65,14 +65,14 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20260618071319-84c767bdab16
-	github.com/longhorn/go-common-libs v0.0.0-20260709061022-21a84065aa86
+	github.com/longhorn/backupstore v0.0.0-20260709065232-ca96411485d4
+	github.com/longhorn/go-common-libs v0.0.0-20260712050051-67a253016448
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.6.3-0.20260712050109-6357546afe9a
-	github.com/longhorn/longhorn-engine v1.12.0-dev-20260503.0.20260514055128-ec3f7dbb512f
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260628
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260714061654-fac6a1ce8f5e
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260628
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260714055101-73cc68c78d23
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
@@ -140,7 +140,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260608145242-38c27234df4b // indirect
+	github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect

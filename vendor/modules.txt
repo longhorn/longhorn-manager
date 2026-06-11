@@ -271,8 +271,8 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20260618071319-84c767bdab16
-## explicit; go 1.25.0
+# github.com/longhorn/backupstore v0.0.0-20260709065232-ca96411485d4
+## explicit; go 1.25.10
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
 github.com/longhorn/backupstore/common
@@ -280,7 +280,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20260709061022-21a84065aa86
+# github.com/longhorn/go-common-libs v0.0.0-20260712050051-67a253016448
 ## explicit; go 1.25.10
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -313,14 +313,14 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.12.0-dev-20260503.0.20260514055128-ec3f7dbb512f
+# github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260628
+# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260714061654-fac6a1ce8f5e
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -331,7 +331,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260628
+# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260714055101-73cc68c78d23
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -345,7 +345,7 @@ github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/virtio-scsi
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/pkg/util
 github.com/longhorn/longhorn-spdk-engine/pkg/util/broadcaster
-# github.com/longhorn/types v0.0.0-20260608145242-38c27234df4b
+# github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f
 ## explicit; go 1.25.0
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
