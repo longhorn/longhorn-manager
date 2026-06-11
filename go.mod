@@ -54,7 +54,7 @@ replace (
 )
 
 require (
-	github.com/cockroachdb/errors v1.13.0
+	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/docker/go-connections v0.7.0
 	github.com/go-co-op/gocron v1.37.0
@@ -66,14 +66,14 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0
-	github.com/longhorn/backupstore v0.0.0-20260618071319-84c767bdab16
-	github.com/longhorn/go-common-libs v0.0.0-20260624092814-b3e1f4451fb9
+	github.com/longhorn/backupstore v0.0.0-20260709065232-ca96411485d4
+	github.com/longhorn/go-common-libs v0.0.0-20260712050051-67a253016448
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.6.3-0.20260601101353-0be728aae70e
-	github.com/longhorn/longhorn-engine v1.12.0
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260610152927-9413e0e85310
+	github.com/longhorn/go-spdk-helper v0.6.3-0.20260712050109-6357546afe9a
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260714234530-1c3d02a7ecf5
 	github.com/longhorn/longhorn-share-manager v1.12.0
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260608053552-39853298356c
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260714091810-bb3f7589ea5f
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
@@ -85,7 +85,7 @@ require (
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.36.0
 	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sys v0.45.0
+	golang.org/x/sys v0.46.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -136,7 +136,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260602074022-85db2ba11d69 // indirect
+	github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
@@ -208,7 +208,7 @@ require (
 	go.uber.org/multierr v1.11.0
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.21.0
 	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af

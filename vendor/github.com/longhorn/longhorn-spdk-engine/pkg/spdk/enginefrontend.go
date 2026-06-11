@@ -748,7 +748,7 @@ func (ef *EngineFrontend) Delete(spdkClient *spdkclient.Client) (err error) {
 	ef.log.WithField("hasInitiator", ef.initiator != nil).Info("Deleting engine frontend")
 
 	if ef.initiator != nil {
-		if _, err := ef.initiator.Stop(spdkClient, true, true, true); err != nil {
+		if _, err := ef.initiator.Stop(spdkClient, true, false, false); err != nil {
 			return err
 		}
 		ef.initiator = nil
