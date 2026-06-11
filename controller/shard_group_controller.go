@@ -1588,6 +1588,28 @@ func (c *ShardGroupController) syncECHealth(rctx *sgReconcileCtx) error {
 	shardGroup.Status.ScrubInProgress = ecStatus.GetScrubProgress() != nil
 	shardGroup.Status.WIBDirtyRegion = int(ecStatus.GetWibStatus().GetDirtyRegions())
 
+	// DegradedReadEioDirty only goes up until the ShardGroup process is recreated, so
+	// record it as a durable condition instead of re-emitting a Warning every reconcile
+	// (Kubernetes events are dropped after about an hour and on restart). The condition
+	// tracks the counter: it stays set until a recreated process resets it to zero.
+	// Emit a single event when the condition first turns on.
+	if degradedReadCount := ecStatus.GetDegradedReadEioDirty(); degradedReadCount > 0 {
+		alreadyDegraded := types.GetCondition(shardGroup.Status.Conditions,
+			longhorn.ShardGroupConditionTypeDegradedRead).Status == longhorn.ConditionStatusTrue
+		message := fmt.Sprintf("%v degraded read(s) returned EIO on WIB-dirty stripe(s); "+
+			"a disk failure coincided with a crash-recovery scrub window", degradedReadCount)
+		shardGroup.Status.Conditions = types.SetCondition(shardGroup.Status.Conditions,
+			longhorn.ShardGroupConditionTypeDegradedRead, longhorn.ConditionStatusTrue,
+			longhorn.ShardGroupConditionReasonDegradedReadEIO, message)
+		if !alreadyDegraded {
+			c.eventRecorder.Eventf(shardGroup, corev1.EventTypeWarning,
+				constant.EventReasonDegradedReadEIO, "EC volume %v: %v", shardGroup.Spec.VolumeName, message)
+		}
+	} else {
+		shardGroup.Status.Conditions = types.SetCondition(shardGroup.Status.Conditions,
+			longhorn.ShardGroupConditionTypeDegradedRead, longhorn.ConditionStatusFalse, "", "")
+	}
+
 	// A replace and its rebuild are two separate RPCs, so a crash between them
 	// can leave a slot marked replacing with no rebuild running. Restart the
 	// rebuild when that happens (subject to the concurrent-rebuild limit).
