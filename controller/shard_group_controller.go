@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -11,7 +12,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -486,6 +489,10 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 		return err
 	}
 
+	if err := c.clearCompletedIntentionalDeleteSlots(rctx); err != nil {
+		return err
+	}
+
 	// Step 5: derive ShardGroup status from the current shard snapshot. Must
 	// run before syncProcess: the readiness gate reads Status.ECShardAddressMap.
 	if err := c.syncStatus(rctx); err != nil {
@@ -539,6 +546,10 @@ func (c *ShardGroupController) reconcileShard(rctx *sgReconcileCtx, shard *longh
 func (c *ShardGroupController) cleanupShard(rctx *sgReconcileCtx, shard *longhorn.Shard) error {
 	log := rctx.log.WithField("shard", shard.Name)
 
+	if err := c.forceFailIfIntentional(rctx, shard); err != nil {
+		return err
+	}
+
 	if shard.Spec.NodeID != "" {
 		instanceManager, err := c.ds.GetInstanceManagerByInstance(shard)
 		if err != nil && !datastore.ErrorIsNotFound(err) {
@@ -561,6 +572,90 @@ func (c *ShardGroupController) cleanupShard(rctx *sgReconcileCtx, shard *longhor
 	}
 
 	return c.ds.RemoveFinalizerForShard(shard)
+}
+
+// forceFailIfIntentional drives a NORMAL slot to FAILED via ShardGroupShardForceFail
+// before its NVMe-oF subsystem is torn down, so admin-driven Shard CR deletes
+// (kubectl delete, eviction, drain) skip the ~120s ctrlr_loss_timeout_sec wait the
+// standard recovery path would otherwise hit. It also records the slot in
+// IntentionalDeleteSlots so shouldDelayReplace does not delay its replacement.
+//
+// It is a no-op (the slow path still runs) when the SPDK client is unavailable, the
+// slot is not NORMAL, or a rebuild is already in flight (FailedPrecondition).
+//
+// Eviction reaches this through cleanupShard, so drain and eviction need no separate wiring.
+func (c *ShardGroupController) forceFailIfIntentional(rctx *sgReconcileCtx, shard *longhorn.Shard) error {
+	if rctx.spdkClient == nil {
+		return nil
+	}
+
+	if shard.Status.State != longhorn.ShardStateNormal {
+		// Status.State is refreshed by syncECHealth on every reconcile tick, so it
+		// is at most one tick stale here and lets us skip an extra ShardGroupGet RPC
+		// on the cleanup hot path.
+		return nil
+	}
+
+	log := rctx.log.WithField("shard", shard.Name)
+
+	// Annotate the dying Shard CR so operators and downstream tooling can
+	// distinguish admin-driven from failure-driven deletes. The annotation is
+	// idempotent: an already-set annotation passes through Update unchanged.
+	if shard.Annotations == nil || shard.Annotations[types.ShardAnnotationIntentionalDelete] != "true" {
+		fresh, err := c.ds.GetShard(shard.Name)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		if fresh.Annotations == nil {
+			fresh.Annotations = map[string]string{}
+		}
+		if fresh.Annotations[types.ShardAnnotationIntentionalDelete] != "true" {
+			fresh.Annotations[types.ShardAnnotationIntentionalDelete] = "true"
+			updated, err := c.ds.UpdateShard(fresh)
+			if err != nil {
+				return errors.Wrapf(err, "failed to mark shard %v as intentional-delete", shard.Name)
+			}
+			// shard is this reconcile's own copy in rctx.shards, so it is safe to copy
+			// the saved shard into it, letting later steps in this pass see the
+			// intentional-delete annotation.
+			*shard = *updated
+		}
+	}
+
+	// Record the slot in IntentionalDeleteSlots before the RPC so a manager
+	// crash mid-sequence still leaves the bypass armed for the replacement.
+	shardGroup := rctx.shardGroup
+	if !slices.Contains(shardGroup.Status.IntentionalDeleteSlots, shard.Spec.SlotIndex) {
+		shardGroup.Status.IntentionalDeleteSlots = append(shardGroup.Status.IntentionalDeleteSlots, shard.Spec.SlotIndex)
+		updated, err := c.ds.UpdateShardGroupStatus(shardGroup)
+		if err != nil {
+			return errors.Wrapf(err, "failed to record intentional-delete slot %v on ShardGroup %v",
+				shard.Spec.SlotIndex, shardGroup.Name)
+		}
+		*shardGroup = *updated
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	_, err := rctx.spdkClient.ShardGroupShardForceFail(ctx, &spdkrpc.ShardGroupShardForceFailRequest{
+		ShardGroupName: shardGroup.Name,
+		ShardName:      shard.Name,
+	})
+	cancel()
+	if err != nil {
+		if status.Code(err) == codes.FailedPrecondition {
+			// Rebuild in flight, or shard_name no longer bound to the slot.
+			// Either way, slow path is correct on this tick; revisit next cycle.
+			log.WithError(err).Info("ShardGroupShardForceFail rejected by spdk-engine; falling through to slow path")
+			return nil
+		}
+		return errors.Wrapf(err, "ShardGroupShardForceFail for shard %v", shard.Name)
+	}
+
+	log.Infof("Force-failed slot %v ahead of intentional Shard CR delete", shard.Spec.SlotIndex)
+	return nil
 }
 
 // scheduleShards assigns NodeID/DiskUUID/Size to any Shard CRs that have not yet
@@ -795,7 +890,13 @@ func (c *ShardGroupController) reconcileFailedShard(rctx *sgReconcileCtx, shard 
 // shouldDelayReplace returns true while the replenishment-wait interval has not yet
 // elapsed since the shard's last failure, so a transient outage has time to
 // self-heal before a replace is triggered.
+//
+// Slots in ShardGroup.Status.IntentionalDeleteSlots skip the delay: an admin-driven
+// delete (kubectl delete, eviction, drain) is not transient.
 func (c *ShardGroupController) shouldDelayReplace(rctx *sgReconcileCtx, shard *longhorn.Shard) bool {
+	if slices.Contains(rctx.shardGroup.Status.IntentionalDeleteSlots, shard.Spec.SlotIndex) {
+		return false
+	}
 	if shard.Status.LastFailureTimestamp == "" {
 		return false
 	}
@@ -1355,6 +1456,12 @@ func (c *ShardGroupController) teardownShardGroupProcess(rctx *sgReconcileCtx, c
 // the persistent on-disk head lvol encoded across the shards (see syncProcess
 // salvage handling). It is cleared only when the ShardGroup CR is garbage-collected
 // on volume delete.
+//
+// IntentionalDeleteSlots is also cleared defensively: the slot mapping in the
+// fresh process is rebuilt from scratch, so any stale bypass entry from a
+// pre-rebind force-fail has no meaningful target. Without this clear, an
+// unintentional failure on the same slot index post-rebind would erroneously
+// skip the replace delay.
 func (c *ShardGroupController) clearShardGroupProcessStatus(rctx *sgReconcileCtx) {
 	shardGroup := rctx.shardGroup
 	shardGroup.Status.InstanceManagerName = ""
@@ -1362,6 +1469,7 @@ func (c *ShardGroupController) clearShardGroupProcessStatus(rctx *sgReconcileCtx
 	shardGroup.Status.Port = 0
 	shardGroup.Status.NQN = ""
 	shardGroup.Status.ProcessState = ""
+	shardGroup.Status.IntentionalDeleteSlots = nil
 }
 
 // getVolumeSize returns the user-visible size for the ShardGroup's volume.
@@ -1495,6 +1603,39 @@ func (c *ShardGroupController) syncECHealth(rctx *sgReconcileCtx) error {
 		}
 	}
 
+	return nil
+}
+
+// clearCompletedIntentionalDeleteSlots drops a slot from
+// Status.IntentionalDeleteSlots once its replacement Shard CR is Normal with a
+// StorageIP set: the shouldDelayReplace bypass is no longer needed once the
+// replacement has rejoined the array.
+func (c *ShardGroupController) clearCompletedIntentionalDeleteSlots(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	if len(shardGroup.Status.IntentionalDeleteSlots) == 0 {
+		return nil
+	}
+
+	remaining := shardGroup.Status.IntentionalDeleteSlots[:0:0]
+	for _, slot := range shardGroup.Status.IntentionalDeleteSlots {
+		shardName := fmt.Sprintf("%s-%d", shardGroup.Name, slot)
+		shard, ok := rctx.shards[shardName]
+		if !ok || shard.DeletionTimestamp != nil {
+			remaining = append(remaining, slot)
+			continue
+		}
+		if shard.Status.StorageIP == "" || shard.Status.State != longhorn.ShardStateNormal {
+			remaining = append(remaining, slot)
+			continue
+		}
+		rctx.log.Infof("Clearing intentional-delete tracking for slot %v (replacement shard %v healthy)", slot, shard.Name)
+	}
+
+	if len(remaining) == len(shardGroup.Status.IntentionalDeleteSlots) {
+		return nil
+	}
+	// Persisted by the deferred end-of-reconcile update.
+	shardGroup.Status.IntentionalDeleteSlots = remaining
 	return nil
 }
 
