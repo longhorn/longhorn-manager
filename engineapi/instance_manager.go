@@ -16,6 +16,7 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -39,6 +40,15 @@ const (
 
 	DefaultPortArg         = "--listen,:"
 	DefaultTerminateSignal = "SIGHUP"
+
+	// InstanceTypeShard is the instance type string for EC shard instances.
+	// Mirrors longhorn-instance-manager/pkg/types.InstanceTypeShard.
+	InstanceTypeShard = "shard"
+
+	// InstanceTypeShardGroup is the instance type string for the long-lived
+	// ShardGroup process that owns the EC volume's bdev_ec, lvol store, head lvol,
+	// and NVMe-oF export. Mirrors longhorn-instance-manager/pkg/types.InstanceTypeShardGroup.
+	InstanceTypeShardGroup = "shardgroup"
 
 	// IncompatibleInstanceManagerAPIVersion means the instance manager version in v0.7.0
 	IncompatibleInstanceManagerAPIVersion = -1
@@ -647,6 +657,103 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 			DiskName:         req.DiskName,
 			DiskUUID:         req.Replica.Spec.DiskID,
 			BackingImageName: req.Replica.Spec.BackingImage,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// ShardInstanceCreateRequest carries the parameters for creating a shard instance.
+type ShardInstanceCreateRequest struct {
+	Shard   *longhorn.Shard
+	LvsName string
+	LvsUUID string
+}
+
+// ShardInstanceCreate creates a new shard instance on the InstanceManager running on the shard's node.
+func (c *InstanceManagerClient) ShardInstanceCreate(req *ShardInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(longhorn.DataEngineTypeV2),
+		DataEngine:         string(longhorn.DataEngineTypeV2),
+		Name:               req.Shard.Name,
+		InstanceType:       InstanceTypeShard,
+		VolumeName:         req.Shard.Spec.ShardGroupName,
+		Size:               uint64(req.Shard.Spec.Size),
+		PortCount:          DefaultReplicaPortCountV2,
+		PortArgs:           []string{DefaultPortArg},
+		Shard: imclient.ShardCreateRequest{
+			LvsName:   req.LvsName,
+			LvsUUID:   req.LvsUUID,
+			SlotIndex: uint32(req.Shard.Spec.SlotIndex),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// ShardGroupInstanceCreateRequest carries the parameters for provisioning a ShardGroup
+// process, which owns an EC volume's storage (its lvstore) the way a Replica process owns
+// a RAID1 volume's data.
+type ShardGroupInstanceCreateRequest struct {
+	ShardGroup *longhorn.ShardGroup
+	Size       uint64
+
+	// ShardAddressMap maps each shard slot index to its NVMe-oF address `ip:port`, matching
+	// the ECShardAddressMap on the ShardGroup status.
+	ShardAddressMap map[string]string
+
+	// SalvageRequested is set on re-bind after engine-node failover, so the SPDK service
+	// reuses the existing lvstore instead of creating a new one.
+	SalvageRequested bool
+}
+
+// ShardGroupInstanceCreate creates a ShardGroup process instance on the InstanceManager
+// running on ShardGroup.Spec.NodeID. Internally the SPDK service connects to all k+m
+// shard NVMe-oF endpoints, builds bdev_ec, creates the lvol store and head lvol, and
+// exports the head lvol via NVMe-oF for the engine to consume.
+func (c *InstanceManagerClient) ShardGroupInstanceCreate(req *ShardGroupInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	shards := make(map[string]*imrpc.ShardEndpoint, len(req.ShardAddressMap))
+	for slotStr, addr := range req.ShardAddressMap {
+		slot, err := strconv.ParseUint(slotStr, 10, 32)
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid slot index %q for shardgroup %v", slotStr, req.ShardGroup.Name)
+		}
+		// shards is keyed by the Shard CR name `<shardGroupName>-<slotIndex>`, the same key the
+		// controller uses for shard replace and force-fail lookups.
+		shardName := fmt.Sprintf("%s-%d", req.ShardGroup.Name, slot)
+		shards[shardName] = &imrpc.ShardEndpoint{
+			Address:   addr,
+			SlotIndex: uint32(slot),
+		}
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(longhorn.DataEngineTypeV2),
+		DataEngine:         string(longhorn.DataEngineTypeV2),
+		Name:               req.ShardGroup.Name,
+		InstanceType:       InstanceTypeShardGroup,
+		VolumeName:         req.ShardGroup.Spec.VolumeName,
+		Size:               req.Size,
+		PortCount:          DefaultEnginePortCount,
+		PortArgs:           []string{DefaultPortArg},
+		ShardGroup: imclient.ShardGroupCreateRequest{
+			DataChunks:       uint32(req.ShardGroup.Spec.DataChunks),
+			ParityChunks:     uint32(req.ShardGroup.Spec.ParityChunks),
+			StripSizeKb:      uint32(req.ShardGroup.Spec.StripSizeKB),
+			Shards:           shards,
+			SalvageRequested: req.SalvageRequested,
 		},
 	})
 	if err != nil {
