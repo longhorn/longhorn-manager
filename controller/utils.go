@@ -69,6 +69,16 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	return false
 }
 
+func hasShardEvictionRequested(shards map[string]*longhorn.Shard) bool {
+	for _, s := range shards {
+		if s.Spec.EvictionRequested {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.Image
 }

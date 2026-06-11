@@ -79,6 +79,15 @@ func NewVolumeEvictionController(
 	}
 	vec.cacheSyncs = append(vec.cacheSyncs, ds.VolumeInformer.HasSynced)
 
+	if _, err = ds.ShardGroupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    vec.enqueueVolumeForShardGroup,
+		UpdateFunc: func(old, cur interface{}) { vec.enqueueVolumeForShardGroup(cur) },
+		DeleteFunc: vec.enqueueVolumeForShardGroup,
+	}); err != nil {
+		return nil, err
+	}
+	vec.cacheSyncs = append(vec.cacheSyncs, ds.ShardGroupInformer.HasSynced)
+
 	// TODO: do we need to watch replica CR?
 
 	return vec, nil
@@ -182,6 +191,11 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 		return err
 	}
 
+	shards, err := vec.ds.ListShardsByVolume(vol.Name)
+	if err != nil {
+		return err
+	}
+
 	va, err := vec.ds.GetLHVolumeAttachmentByVolumeName(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -210,6 +224,8 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 		if vec.hasDiskCandidateForReplicaEviction(replicas, vol) {
 			createOrUpdateAttachmentTicket(va, evictingAttachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeEvictionController)
 		}
+	} else if hasShardEvictionRequested(shards) || vec.hasShardRelocationInProgress(volName) {
+		createOrUpdateAttachmentTicket(va, evictingAttachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeEvictionController)
 	} else {
 		delete(va.Spec.AttachmentTickets, evictingAttachmentTicketID)
 	}
@@ -236,6 +252,37 @@ func (vec *VolumeEvictionController) hasDiskCandidateForReplicaEviction(replicas
 
 	vec.logger.Infof("Found disk candidates for evicting replicas of volume %q", volume.Name)
 	return true
+}
+
+// hasShardRelocationInProgress returns true when the ShardGroup for the volume has
+// slots in EvictingSlots, meaning a shard's old CR has been deleted but its
+// replacement rebuild has not yet completed.
+func (vec *VolumeEvictionController) hasShardRelocationInProgress(volName string) bool {
+	sg, err := vec.ds.GetShardGroupRO(volName)
+	if err != nil || sg == nil {
+		return false
+	}
+	return len(sg.Status.EvictingSlots) > 0
+}
+
+func (vec *VolumeEvictionController) enqueueVolumeForShardGroup(obj interface{}) {
+	sg, ok := obj.(*longhorn.ShardGroup)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		sg, ok = deletedState.Obj.(*longhorn.ShardGroup)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShardGroup object: %#v", deletedState.Obj))
+			return
+		}
+	}
+	if sg.Spec.VolumeName == "" {
+		return
+	}
+	vec.queue.Add(sg.Namespace + "/" + sg.Spec.VolumeName)
 }
 
 func (vec *VolumeEvictionController) isResponsibleFor(vol *longhorn.Volume) bool {
