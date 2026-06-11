@@ -353,6 +353,12 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 		return nil
 	}
 
+	// EC (sharded) volumes have no replicas; their shard rebuilds run through the
+	// ShardGroup controller, so this replica offline-rebuilding flow does not apply.
+	if isECVolume(vol) {
+		return nil
+	}
+
 	if !vbc.isResponsibleFor(vol) {
 		return nil
 	}
