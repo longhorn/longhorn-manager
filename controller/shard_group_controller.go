@@ -485,6 +485,10 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 	}
 
 	// Step 4: group-level operations that need a consistent view of all shards.
+	if err := c.syncShardGrow(rctx); err != nil {
+		return err
+	}
+
 	if err := c.syncShardRebuildQoS(rctx); err != nil {
 		return err
 	}
@@ -1636,6 +1640,138 @@ func (c *ShardGroupController) clearCompletedIntentionalDeleteSlots(rctx *sgReco
 	}
 	// Persisted by the deferred end-of-reconcile update.
 	shardGroup.Status.IntentionalDeleteSlots = remaining
+	return nil
+}
+
+// countFailedShards counts the currently failed shards from rctx. Status.FailedCount is written
+// only by syncStatus at the end of the reconcile, so reading it earlier would miss a slot that
+// just failed this tick.
+func (c *ShardGroupController) countFailedShards(rctx *sgReconcileCtx) int {
+	failed := 0
+	for _, shard := range rctx.shards {
+		if shard.Status.State == longhorn.ShardStateFailed {
+			failed++
+		}
+	}
+	return failed
+}
+
+// syncShardGrow detects a volume expansion request and drives the two-step
+// shard-then-engine resize sequence. It is idempotent.
+func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	if rctx.engine == nil || rctx.spdkClient == nil {
+		return nil
+	}
+	if shardGroup.Status.RebuildInProgress || c.countFailedShards(rctx) > 0 {
+		return nil
+	}
+
+	log := rctx.log
+
+	volume, err := c.ds.GetVolumeRO(shardGroup.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	defer cancel()
+
+	precheckResp, err := rctx.spdkClient.EngineExpandPrecheck(ctx, &spdkrpc.EngineExpandPrecheckRequest{
+		Name: rctx.engine.Name,
+		Size: uint64(volume.Spec.Size),
+	})
+	if err != nil {
+		log.WithError(err).Warn("EngineExpandPrecheck failed; skipping expansion")
+		return nil
+	}
+
+	if !precheckResp.GetExpansionRequired() {
+		if shardGroup.Status.GrowInProgress {
+			log.Info("EC volume expansion completed")
+			shardGroup.Status.GrowInProgress = false
+		}
+		return nil
+	}
+
+	log.Infof("Expanding EC volume to %v bytes", volume.Spec.Size)
+	shardGroup.Status.GrowInProgress = true
+
+	// ShardExpand must be called on each shard node's instance manager SPDK service:
+	// the engine cannot resize a remote lvol directly via its own SPDK connection.
+	// Per-shard size derivation (and MiB alignment) lives in scheduler.ComputeShardSize
+	// so create-time and expand-time paths stay byte-identical.
+	shardSize := uint64(scheduler.ComputeShardSize(volume.Spec.Size, shardGroup.Spec.DataChunks, shardGroup.Spec.StripSizeKB))
+	for _, shard := range rctx.shards {
+		shardSPDKClient, shardConn, err := c.dialSPDK(shard.Spec.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Cannot connect to SPDK service for shard %v; will retry", shard.Name)
+			return nil
+		}
+
+		expandCtx, expandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+		_, expandErr := shardSPDKClient.ShardExpand(expandCtx, &spdkrpc.ShardExpandRequest{
+			Name: shard.Name,
+			Size: shardSize,
+		})
+		expandCancel()
+		shardConn.Close() //nolint:errcheck
+		if expandErr != nil {
+			log.WithError(expandErr).Warnf("Failed to expand shard %v; will retry", shard.Name)
+			return nil
+		}
+
+		// Persist the new size to the Shard CR after the SPDK-side resize
+		// succeeds, like scheduleShards which records placement in the CR.
+		// Spec.Size is the source of truth for idempotent re-create
+		// (ShardInstanceCreate forwards it as the instance Size), so a stale
+		// value would re-provision the shard at the old, pre-expansion size.
+		// Updating per-shard rather than after the whole loop keeps the CR
+		// consistent with on-disk state if a later shard's ShardExpand fails
+		// and the function returns early.
+		if shard.Spec.Size != int64(shardSize) {
+			fresh, err := c.ds.GetShard(shard.Name)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to refetch shard %v to persist expanded size; will retry", shard.Name)
+				return nil
+			}
+			if fresh.Spec.Size != int64(shardSize) {
+				fresh.Spec.Size = int64(shardSize)
+				if _, err := c.ds.UpdateShard(fresh); err != nil {
+					log.WithError(err).Warnf("Failed to update shard %v Spec.Size after expansion; will retry", shard.Name)
+					return nil
+				}
+			}
+		}
+	}
+
+	// ShardGroupExpand resizes the EC bdev, lvstore, and head lvol in the
+	// ShardGroup process. The head-lvol resize reaches the engine only
+	// asynchronously, via an NVMe attribute-changed event (AER_NS_ATTR_CHANGED)
+	// that the engine's nvme initiator picks up to grow its view, so the
+	// EngineExpand call below polls until it lands.
+	sgExpandCtx, sgExpandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	_, sgExpandErr := rctx.spdkClient.ShardGroupExpand(sgExpandCtx, &spdkrpc.ShardGroupExpandRequest{
+		Name: shardGroup.Name,
+		Size: uint64(volume.Spec.Size),
+	})
+	sgExpandCancel()
+	if sgExpandErr != nil {
+		log.WithError(sgExpandErr).Warn("ShardGroupExpand failed; will retry")
+		return nil
+	}
+
+	engineExpandCtx, engineExpandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	defer engineExpandCancel()
+	if _, err := rctx.spdkClient.EngineExpand(engineExpandCtx, &spdkrpc.EngineExpandRequest{
+		Name: rctx.engine.Name,
+		Size: uint64(volume.Spec.Size),
+	}); err != nil {
+		log.WithError(err).Warn("EngineExpand failed; will retry")
+		return nil
+	}
+
+	log.Infof("EC volume expansion to %v bytes initiated", volume.Spec.Size)
 	return nil
 }
 
