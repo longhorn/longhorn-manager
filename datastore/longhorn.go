@@ -4826,6 +4826,10 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		name = obj.Name
 		dataEngine = obj.Spec.DataEngine
 		nodeID = obj.Spec.NodeID
+	case *longhorn.Shard:
+		name = obj.Name
+		dataEngine = longhorn.DataEngineTypeV2 // shards are always V2
+		nodeID = obj.Spec.NodeID
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
@@ -7308,4 +7312,274 @@ func (s *DataStore) GetDataEngineObject(engine *longhorn.Engine) (longhorn.DataE
 		return s.GetVolumeCurrentEngineFrontend(engine.Spec.VolumeName)
 	}
 	return engine, nil
+}
+
+// CreateShardGroup creates a Longhorn ShardGroup resource and verifies creation.
+// Callers are responsible for setting volume labels on sg before calling.
+func (s *DataStore) CreateShardGroup(sg *longhorn.ShardGroup) (*longhorn.ShardGroup, error) {
+	ret, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Create(context.TODO(), sg, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "shard group", func(name string) (k8sruntime.Object, error) {
+		return s.GetShardGroupRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.ShardGroup)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for shard group")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateShardGroup updates Longhorn ShardGroup and verifies update
+func (s *DataStore) UpdateShardGroup(sg *longhorn.ShardGroup) (*longhorn.ShardGroup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Update(context.TODO(), sg, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(sg.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardGroupRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateShardGroupStatus updates Longhorn ShardGroup status and verifies update
+func (s *DataStore) UpdateShardGroupStatus(sg *longhorn.ShardGroup) (*longhorn.ShardGroup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).UpdateStatus(context.TODO(), sg, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(sg.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardGroupRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForShardGroup will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForShardGroup(obj *longhorn.ShardGroup) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for shard group %v", obj.Name)
+	}
+	return nil
+}
+
+// GetShardGroup gets ShardGroup for the given name and namespace and returns a new ShardGroup object
+func (s *DataStore) GetShardGroup(name string) (*longhorn.ShardGroup, error) {
+	resultRO, err := s.GetShardGroupRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// GetShardGroupRO gets ShardGroup for the given name and namespace.
+// The returned object MUST NOT be modified.
+func (s *DataStore) GetShardGroupRO(name string) (*longhorn.ShardGroup, error) {
+	return s.shardGroupLister.ShardGroups(s.namespace).Get(name)
+}
+
+func (s *DataStore) listShardGroups(selector labels.Selector) (map[string]*longhorn.ShardGroup, error) {
+	list, err := s.shardGroupLister.ShardGroups(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.ShardGroup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListShardGroups returns a map of all ShardGroups in the namespace
+func (s *DataStore) ListShardGroups() (map[string]*longhorn.ShardGroup, error) {
+	return s.listShardGroups(labels.Everything())
+}
+
+// ListShardGroupsRO returns a list of all ShardGroups in the namespace.
+// The returned objects MUST NOT be modified.
+func (s *DataStore) ListShardGroupsRO() ([]*longhorn.ShardGroup, error) {
+	return s.shardGroupLister.ShardGroups(s.namespace).List(labels.Everything())
+}
+
+// CreateShard creates a Longhorn Shard resource and verifies creation.
+// Callers are responsible for setting volume and shardgroup labels on shard before calling.
+func (s *DataStore) CreateShard(shard *longhorn.Shard) (*longhorn.Shard, error) {
+	if err := labelNode(shard.Spec.NodeID, shard); err != nil {
+		return nil, err
+	}
+	if err := labelDiskUUID(shard.Spec.DiskUUID, shard); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).Create(context.TODO(), shard, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "shard", func(name string) (k8sruntime.Object, error) {
+		return s.GetShardRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Shard)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for shard")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateShard updates Longhorn Shard and verifies update
+func (s *DataStore) UpdateShard(shard *longhorn.Shard) (*longhorn.Shard, error) {
+	if err := labelNode(shard.Spec.NodeID, shard); err != nil {
+		return nil, err
+	}
+	if err := labelDiskUUID(shard.Spec.DiskUUID, shard); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).Update(context.TODO(), shard, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(shard.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateShardStatus updates Longhorn Shard status and verifies update
+func (s *DataStore) UpdateShardStatus(shard *longhorn.Shard) (*longhorn.Shard, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).UpdateStatus(context.TODO(), shard, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(shard.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteShard won't result in immediate deletion since finalizer was set by default
+func (s *DataStore) DeleteShard(name string) error {
+	return s.lhClient.LonghornV1beta2().Shards(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForShard will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForShard(obj *longhorn.Shard) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for shard %v", obj.Name)
+	}
+	return nil
+}
+
+// GetShard gets Shard for the given name and namespace and returns a new Shard object
+func (s *DataStore) GetShard(name string) (*longhorn.Shard, error) {
+	resultRO, err := s.GetShardRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// GetShardRO gets Shard for the given name and namespace.
+// The returned object MUST NOT be modified.
+func (s *DataStore) GetShardRO(name string) (*longhorn.Shard, error) {
+	return s.shardLister.Shards(s.namespace).Get(name)
+}
+
+func (s *DataStore) listShards(selector labels.Selector) (map[string]*longhorn.Shard, error) {
+	list, err := s.shardLister.Shards(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Shard{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListShards returns a map of all Shards in the namespace
+func (s *DataStore) ListShards() (map[string]*longhorn.Shard, error) {
+	return s.listShards(labels.Everything())
+}
+
+// ListShardsByVolume returns a map of Shards belonging to the given volume
+func (s *DataStore) ListShardsByVolume(volumeName string) (map[string]*longhorn.Shard, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(selector)
+}
+
+// ListShardsByShardGroup returns a map of Shards belonging to the given ShardGroup
+func (s *DataStore) ListShardsByShardGroup(sgName string) (map[string]*longhorn.Shard, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetShardGroupLabels(sgName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(selector)
+}
+
+// ListShardsByNode returns a map of Shards on the given node
+func (s *DataStore) ListShardsByNode(nodeName string) (map[string]*longhorn.Shard, error) {
+	nodeSelector, err := getNodeSelector(nodeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(nodeSelector)
+}
+
+func (s *DataStore) ListShardsByDiskUUID(uuid string) (map[string]*longhorn.Shard, error) {
+	diskSelector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornDiskUUIDKey: uuid,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(diskSelector)
 }
