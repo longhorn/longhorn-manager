@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -17,6 +18,8 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -382,7 +385,55 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 		}
 	}()
 
-	return nil
+	// Step 1: ensure Shard CRs match spec.
+	if err := c.syncShards(rctx); err != nil {
+		return err
+	}
+
+	// Step 3: fetch the shard list (after syncShards + syncECHealth), schedule any
+	// unplaced shards, then run the single per-shard reconcile loop.
+	shards, err := c.ds.ListShardsByShardGroup(shardGroup.Name)
+	if err != nil {
+		return err
+	}
+	rctx.shards = shards
+
+	for _, shard := range shards {
+		if err := c.reconcileShard(rctx, shard); err != nil {
+			return err
+		}
+	}
+
+	// Step 5: derive ShardGroup status from the current shard snapshot.
+	return c.syncStatus(rctx)
+}
+
+// reconcileShard is the single dispatch table for per-shard work. Cases are evaluated
+// in priority order; the first matching case wins.
+func (c *ShardGroupController) reconcileShard(rctx *sgReconcileCtx, shard *longhorn.Shard) error {
+	if shard.Status.Role == "" {
+		fresh, err := c.ds.GetShard(shard.Name)
+		if err != nil {
+			return err
+		}
+		if fresh.Status.Role == "" {
+			if fresh.Spec.SlotIndex < rctx.shardGroup.Spec.DataChunks {
+				fresh.Status.Role = longhorn.ShardRoleData
+			} else {
+				fresh.Status.Role = longhorn.ShardRoleParity
+			}
+			if _, err := c.ds.UpdateShardStatus(fresh); err != nil {
+				return errors.Wrapf(err, "failed to set role for shard %v", shard.Name)
+			}
+		}
+	}
+
+	switch {
+	case shard.DeletionTimestamp != nil:
+		return c.cleanupShard(rctx, shard)
+	default:
+		return nil
+	}
 }
 
 // cleanupShard tears down the SPDK instance for a deleted Shard CR and removes its finalizer.
@@ -436,6 +487,125 @@ func (c *ShardGroupController) cleanupShardGroup(rctx *sgReconcileCtx) error {
 
 	log.Info("All shards cleaned up, removing ShardGroup finalizer")
 	return c.ds.RemoveFinalizerForShardGroup(shardGroup)
+}
+
+// syncShards ensures the correct number of Shard CRs exist for this ShardGroup.
+func (c *ShardGroupController) syncShards(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	totalSlots := shardGroup.Spec.DataChunks + shardGroup.Spec.ParityChunks
+	if totalSlots == 0 {
+		return nil
+	}
+
+	existing, err := c.ds.ListShardsByShardGroup(shardGroup.Name)
+	if err != nil {
+		return err
+	}
+
+	bySlot := make(map[int]*longhorn.Shard, len(existing))
+	for _, shard := range existing {
+		bySlot[shard.Spec.SlotIndex] = shard
+	}
+
+	for slot := 0; slot < totalSlots; slot++ {
+		if _, ok := bySlot[slot]; ok {
+			continue
+		}
+
+		labels := types.GetShardGroupLabels(shardGroup.Name)
+		if shardGroup.Spec.VolumeName != "" {
+			for k, v := range types.GetVolumeLabels(shardGroup.Spec.VolumeName) {
+				labels[k] = v
+			}
+		}
+
+		// Status.Role is set later by reconcileShard, not at creation: the Shard
+		// status subresource strips Status on Create.
+		shard := &longhorn.Shard{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", shardGroup.Name, slot),
+				Namespace: shardGroup.Namespace,
+				Labels:    labels,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: longhorn.SchemeGroupVersion.String(),
+						Kind:       types.LonghornKindShardGroup,
+						Name:       shardGroup.Name,
+						UID:        shardGroup.UID,
+					},
+				},
+			},
+			Spec: longhorn.ShardSpec{
+				ShardGroupName: shardGroup.Name,
+				SlotIndex:      slot,
+				Size:           0,
+			},
+		}
+
+		if _, err := c.ds.CreateShard(shard); err != nil && !apierrors.IsAlreadyExists(err) {
+			return errors.Wrapf(err, "failed to create shard for slot %v of shard group %v", slot, shardGroup.Name)
+		}
+	}
+
+	return nil
+}
+
+// syncStatus derives ShardGroup status from the shard snapshot in rctx.
+func (c *ShardGroupController) syncStatus(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	totalSlots := shardGroup.Spec.DataChunks + shardGroup.Spec.ParityChunks
+	shardRefs := make([]string, totalSlots)
+	failedCount := 0
+	addrMap := make(map[string]string, totalSlots)
+
+	for _, shard := range rctx.shards {
+		slotIndex := shard.Spec.SlotIndex
+		if slotIndex >= 0 && slotIndex < totalSlots {
+			shardRefs[slotIndex] = shard.Name
+		}
+		if shard.Status.State == longhorn.ShardStateFailed {
+			failedCount++
+		}
+		// Build the canonical slot-to-address map. Only include shards in ShardStateNormal
+		// with non-empty StorageIP/Port - a stale-but-non-empty address from a stopped
+		// SPDK process must not pass downstream readiness checks.
+		if shard.Status.State != longhorn.ShardStateNormal {
+			continue
+		}
+		if shard.Status.StorageIP == "" || shard.Status.Port == 0 {
+			continue
+		}
+		addrMap[strconv.Itoa(slotIndex)] = fmt.Sprintf("%s:%d", shard.Status.StorageIP, shard.Status.Port)
+	}
+
+	shardGroup.Status.ShardRefs = shardRefs
+	shardGroup.Status.FailedCount = failedCount
+	shardGroup.Status.ECShardAddressMap = addrMap
+	shardGroup.Status.State = c.deriveState(shardGroup.Spec.ParityChunks, failedCount)
+
+	// While a rebuild is in progress, report Rebuilding: fault tolerance is reduced
+	// until it completes.
+	if shardGroup.Status.RebuildInProgress && shardGroup.Status.State != longhorn.ShardGroupStateOffline {
+		shardGroup.Status.State = longhorn.ShardGroupStateRebuilding
+	}
+
+	// GrowInProgress is only meaningful when the array is fully healthy.
+	if shardGroup.Status.GrowInProgress && shardGroup.Status.State == longhorn.ShardGroupStateHealthy {
+		shardGroup.Status.State = longhorn.ShardGroupStateGrowing
+	}
+
+	return nil
+}
+
+func (c *ShardGroupController) deriveState(parityChunks, failedCount int) longhorn.ShardGroupState {
+	switch {
+	case failedCount == 0:
+		return longhorn.ShardGroupStateHealthy
+	case failedCount <= parityChunks:
+		return longhorn.ShardGroupStateDegraded
+	default:
+		return longhorn.ShardGroupStateOffline
+	}
 }
 
 // resolveEngine returns the active Engine CR for the ShardGroup's volume on the engine
