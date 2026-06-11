@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -457,6 +458,11 @@ func (c *ShardGroupController) reconcileShard(rctx *sgReconcileCtx, shard *longh
 	case shard.Spec.NodeID == "":
 		// Unscheduled; scheduleShards will assign placement next cycle.
 		return nil
+	case shard.Status.State == longhorn.ShardStateFailed:
+		return c.reconcileFailedShard(rctx, shard)
+	case shard.Status.State == longhorn.ShardStateReplacing:
+		// ShardGroupShardReplace in flight; syncECHealth advances state.
+		return nil
 	default:
 		// State == "" (fresh CR) or Normal: ensure the shard instance is running.
 		return c.syncShardInstance(rctx, shard)
@@ -682,6 +688,175 @@ func (c *ShardGroupController) markShardInstanceNotRunning(rctx *sgReconcileCtx,
 	// so syncStatus counts this failure in the derived ShardGroup state this pass
 	// instead of a tick later.
 	*shard = *updated
+	return nil
+}
+
+// reconcileFailedShard runs the two-step recovery (replace, then rebuild) for a
+// Shard CR whose SPDK slot syncECHealth marked FAILED. The steps are separate so
+// each SPDK RPC is issued at most once per failure:
+//
+//  1. Replace: call ShardGroupShardReplace and set ReplaceTriggered. Skipped on
+//     later cycles until syncECHealth clears the flag when the slot leaves Failed.
+//  2. Rebuild: call ShardGroupShardRebuildStart once the replace is in flight. If
+//     the controller crashes between the two, syncECHealth restarts the rebuild.
+func (c *ShardGroupController) reconcileFailedShard(rctx *sgReconcileCtx, shard *longhorn.Shard) error {
+	if rctx.engine == nil || rctx.spdkClient == nil {
+		return nil
+	}
+	if shard.Spec.NodeID == "" {
+		// No node assigned yet; scheduleShards will place it next cycle.
+		return nil
+	}
+	if shard.Status.StorageIP == "" {
+		// No instance yet; provision it first so ShardGroupShardReplace gets a valid address.
+		return c.syncShardInstance(rctx, shard)
+	}
+
+	if !shard.Status.ReplaceTriggered {
+		if c.shouldDelayReplace(rctx, shard) {
+			return nil
+		}
+		if err := c.triggerShardReplace(rctx, shard); err != nil {
+			return err
+		}
+		// ReplaceTriggered is now set on the shard; fall through to attempt rebuild start
+		// in the same cycle so a healthy controller path has minimum latency.
+	}
+
+	return c.triggerShardRebuild(rctx, shard)
+}
+
+// shouldDelayReplace returns true while the replenishment-wait interval has not yet
+// elapsed since the shard's last failure, so a transient outage has time to
+// self-heal before a replace is triggered.
+func (c *ShardGroupController) shouldDelayReplace(rctx *sgReconcileCtx, shard *longhorn.Shard) bool {
+	if shard.Status.LastFailureTimestamp == "" {
+		return false
+	}
+	failedAt, err := util.ParseTime(shard.Status.LastFailureTimestamp)
+	if err != nil {
+		return false
+	}
+	waitInterval, err := c.ds.GetSettingAsInt(types.SettingNameReplicaReplenishmentWaitInterval)
+	if err != nil {
+		return false
+	}
+	if time.Since(failedAt) < time.Duration(waitInterval)*time.Second {
+		rctx.log.Debugf("Shard %v failed at %v; deferring replacement until %vs replenishment interval elapses",
+			shard.Name, shard.Status.LastFailureTimestamp, waitInterval)
+		return true
+	}
+	return false
+}
+
+// triggerShardReplace issues ShardGroupShardReplace for a failed shard and sets
+// ReplaceTriggered on success. If the RPC fails, the Shard CR is deleted so
+// syncShards re-provisions a fresh replacement next cycle.
+//
+// The live port is re-read from the IM first, because the IM may have re-allocated
+// PortStart since Shard.Status.Port was cached. If the instance is no longer
+// Running, the Shard CR is deleted (same re-provision path) rather than replacing
+// with a stale address.
+func (c *ShardGroupController) triggerShardReplace(rctx *sgReconcileCtx, shard *longhorn.Shard) error {
+	log := rctx.log
+
+	livePort, isRunning, err := c.getLiveShardPort(shard)
+	if err != nil {
+		return errors.Wrapf(err, "failed to verify live shard %v address before replace", shard.Name)
+	}
+	if !isRunning {
+		log.Warnf("Shard %v instance is not Running before replace; deleting CR for fresh re-provisioning", shard.Name)
+		if delErr := c.ds.DeleteShard(shard.Name); delErr != nil && !datastore.ErrorIsNotFound(delErr) {
+			return errors.Wrapf(delErr, "failed to delete shard %v for re-provisioning", shard.Name)
+		}
+		return nil
+	}
+
+	shardAddress := fmt.Sprintf("%s:%d", shard.Status.StorageIP, livePort)
+	log.Infof("Replacing failed shard slot %v with instance at %v", shard.Spec.SlotIndex, shardAddress)
+
+	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	_, err = rctx.spdkClient.ShardGroupShardReplace(ctx, &spdkrpc.ShardGroupShardReplaceRequest{
+		ShardGroupName: rctx.shardGroup.Name,
+		ShardName:      shard.Name,
+		ShardAddress:   shardAddress,
+	})
+	cancel()
+
+	if err != nil {
+		log.WithError(err).Warnf("ShardGroupShardReplace failed for shard %v; deleting CR for re-provisioning", shard.Name)
+		if delErr := c.ds.DeleteShard(shard.Name); delErr != nil && !datastore.ErrorIsNotFound(delErr) {
+			return errors.Wrapf(delErr, "failed to delete shard %v for re-provisioning", shard.Name)
+		}
+		return nil
+	}
+
+	fresh, err := c.ds.GetShard(shard.Name)
+	if err != nil {
+		return err
+	}
+	fresh.Status.ReplaceTriggered = true
+	updated, err := c.ds.UpdateShardStatus(fresh)
+	if err != nil {
+		return errors.Wrapf(err, "failed to mark shard %v as replace-triggered", shard.Name)
+	}
+	// shard is this reconcile's own copy in rctx.shards, so it is safe to copy the
+	// saved shard into it. Later steps in this pass read rctx.shards and will see
+	// ReplaceTriggered set. That makes shard newer than the other shards in the map.
+	*shard = *updated
+	return nil
+}
+
+// getLiveShardPort fetches the shard's live PortStart from its InstanceManager.
+// Returns (port, true, nil) when the instance is Running; (0, false, nil) when
+// the instance is missing or in any non-Running state; (_, _, err) on transport
+// errors that the caller should treat as transient.
+func (c *ShardGroupController) getLiveShardPort(shard *longhorn.Shard) (int32, bool, error) {
+	instanceManager, err := c.ds.GetInstanceManagerByInstance(shard)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	instanceManagerClient, err := engineapi.NewInstanceManagerClient(instanceManager, false)
+	if err != nil {
+		return 0, false, err
+	}
+	defer func() {
+		_ = instanceManagerClient.Close()
+	}()
+	instance, err := instanceManagerClient.InstanceGet(longhorn.DataEngineTypeV2, shard.Name, engineapi.InstanceTypeShard)
+	if err != nil || instance == nil || instance.Status.State != longhorn.InstanceStateRunning {
+		return 0, false, nil
+	}
+	return int32(instance.Status.PortStart), true, nil
+}
+
+// triggerShardRebuild issues ShardGroupShardRebuildStart once a shard replace is in flight.
+// It respects the concurrent-rebuild-per-node limit; if the controller crashes between the
+// replace and this call, syncECHealth restarts the rebuild.
+func (c *ShardGroupController) triggerShardRebuild(rctx *sgReconcileCtx, shard *longhorn.Shard) error {
+	shardGroup := rctx.shardGroup
+	log := rctx.log
+
+	// A rebuild is group-level. Once one failed shard this cycle has started it, the
+	// remaining failed shards do not need to re-issue the same RPC.
+	if shardGroup.Status.RebuildInProgress {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	_, err := rctx.spdkClient.ShardGroupShardRebuildStart(ctx, &spdkrpc.ShardGroupShardRebuildStartRequest{
+		ShardGroupName: rctx.shardGroup.Name,
+	})
+	cancel()
+
+	if err != nil {
+		log.WithError(err).Warnf("ShardGroupShardRebuildStart failed after replacing shard %v; syncECHealth will restart it", shard.Name)
+	} else {
+		shardGroup.Status.RebuildInProgress = true
+	}
 	return nil
 }
 
