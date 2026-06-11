@@ -437,6 +437,7 @@ type EngineInstanceCreateRequest struct {
 	EngineReplicaTimeout             int64
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
+	DataLayoutType                   imrpc.DataLayoutType
 	EngineCLIAPIVersion              int
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
@@ -489,6 +490,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Size:               uint64(req.Engine.Spec.VolumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
+		DataLayoutType:     req.DataLayoutType,
 
 		Binary:     binary,
 		BinaryArgs: args,
