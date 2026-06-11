@@ -94,6 +94,9 @@ type VolumeSpecApplyConfiguration struct {
 	// If SnapshotHashingRequestedAt differs from LastOnDemandSnapshotHashingCompleteAt, it indicates that a hashing request
 	// is still in progress, and a new request will be rejected.
 	SnapshotHashingRequestedAt *string `json:"snapshotHashingRequestedAt,omitempty"`
+	// DataLayout declares the user's intended data layout (topology type, protection mode, and EC parameters).
+	// The entire struct is immutable after creation.
+	DataLayout *VolumeDataLayoutApplyConfiguration `json:"dataLayout,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with
@@ -439,5 +442,13 @@ func (b *VolumeSpecApplyConfiguration) WithRebuildConcurrentSyncLimit(value int)
 // If called multiple times, the SnapshotHashingRequestedAt field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithSnapshotHashingRequestedAt(value string) *VolumeSpecApplyConfiguration {
 	b.SnapshotHashingRequestedAt = &value
+	return b
+}
+
+// WithDataLayout sets the DataLayout field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DataLayout field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithDataLayout(value *VolumeDataLayoutApplyConfiguration) *VolumeSpecApplyConfiguration {
+	b.DataLayout = value
 	return b
 }
