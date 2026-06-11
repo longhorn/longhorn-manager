@@ -197,6 +197,7 @@ const (
 const (
 	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
 	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonShardSchedulingFailure          = "ShardSchedulingFailure"
 	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
 	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
