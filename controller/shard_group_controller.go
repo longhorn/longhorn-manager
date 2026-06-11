@@ -493,6 +493,10 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 		return err
 	}
 
+	if err := c.reconcileEvictedShards(rctx); err != nil {
+		return err
+	}
+
 	if err := c.clearCompletedIntentionalDeleteSlots(rctx); err != nil {
 		return err
 	}
@@ -1597,6 +1601,70 @@ func (c *ShardGroupController) syncECHealth(rctx *sgReconcileCtx) error {
 				shardGroup.Status.RebuildInProgress = true
 			}
 		}
+	}
+
+	return nil
+}
+
+// reconcileEvictedShards relocates shards off a draining node or disk, one per reconcile tick.
+// It records each evicted slot in Status.EvictingSlots and clears it once the replacement is
+// Normal, so VolumeEvictionController knows when the eviction is done. The replacement itself is
+// created and rebuilt by scheduleShards and reconcileFailedShard, not here.
+func (c *ShardGroupController) reconcileEvictedShards(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	log := rctx.log
+	shards := rctx.shards
+
+	// Phase 1: clear slots whose replacement is Normal. Runs even while another shard
+	// is failed or rebuilding, so a finished eviction is not stuck reported in-progress.
+	remaining := shardGroup.Status.EvictingSlots[:0:0]
+	for _, slot := range shardGroup.Status.EvictingSlots {
+		shardName := fmt.Sprintf("%s-%d", shardGroup.Name, slot)
+		shard, ok := shards[shardName]
+		if !ok || shard.DeletionTimestamp != nil {
+			remaining = append(remaining, slot)
+			continue
+		}
+		if shard.Status.StorageIP == "" || shard.Status.State != longhorn.ShardStateNormal {
+			remaining = append(remaining, slot)
+			continue
+		}
+		log.Infof("Shard eviction complete for slot %v (shard %v on node %v)", slot, shard.Name, shard.Spec.NodeID)
+	}
+	shardGroup.Status.EvictingSlots = remaining
+
+	// Phase 2: if any replacement is still in flight, wait.
+	if len(shardGroup.Status.EvictingSlots) > 0 {
+		return nil
+	}
+
+	// Phase 3: evict the next pending shard (one per tick). Evicting reduces fault
+	// tolerance, so only start one while the group is healthy and bound to a node.
+	if shardGroup.Spec.NodeID == "" || shardGroup.Status.RebuildInProgress || c.countFailedShards(rctx) > 0 {
+		return nil
+	}
+	for _, shard := range shards {
+		if !shard.Spec.EvictionRequested || shard.DeletionTimestamp != nil {
+			continue
+		}
+
+		log.Infof("Evicting shard %v (slot %v) from node %v", shard.Name, shard.Spec.SlotIndex, shard.Spec.NodeID)
+		shardGroup.Status.EvictingSlots = append(shardGroup.Status.EvictingSlots, shard.Spec.SlotIndex)
+
+		// Persist EvictingSlots before deleting the Shard CR so tracking is not lost
+		// if the shard deletion succeeds but the end-of-cycle status write later fails.
+		updatedShardGroup, err := c.ds.UpdateShardGroupStatus(shardGroup)
+		if err != nil {
+			return errors.Wrapf(err, "failed to persist evicting slot %v in ShardGroup status", shard.Spec.SlotIndex)
+		}
+		*shardGroup = *updatedShardGroup
+
+		if err := c.ds.DeleteShard(shard.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to delete shard %v for eviction", shard.Name)
+		}
+		c.eventRecorder.Eventf(shardGroup, corev1.EventTypeNormal, constant.EventReasonEvictionUserRequested,
+			"evicting shard %v (slot %v) from node %v", shard.Name, shard.Spec.SlotIndex, shard.Spec.NodeID)
+		return nil
 	}
 
 	return nil
