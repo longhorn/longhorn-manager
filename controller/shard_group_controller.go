@@ -419,8 +419,16 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 		}
 	}
 
-	// Step 5: derive ShardGroup status from the current shard snapshot.
-	return c.syncStatus(rctx)
+	// Step 5: derive ShardGroup status from the current shard snapshot. Must
+	// run before syncProcess: the readiness gate reads Status.ECShardAddressMap.
+	if err := c.syncStatus(rctx); err != nil {
+		return err
+	}
+
+	// Step 6: provision and monitor the long-lived ShardGroup process. Must run
+	// after syncStatus, which fills Status.ECShardAddressMap that the readiness
+	// gate checks; until the shards are ready this is a no-op.
+	return c.syncProcess(rctx)
 }
 
 // reconcileShard is the single dispatch table for per-shard work. Cases are evaluated
@@ -682,6 +690,15 @@ func (c *ShardGroupController) cleanupShardGroup(rctx *sgReconcileCtx) error {
 	shardGroup := rctx.shardGroup
 	log := rctx.log
 
+	// Tear down the long-lived ShardGroup process first with cleanupRequired=true
+	// so the SPDK service authorizes bdev_lvol_delete + bdev_lvol_delete_lvstore
+	// + bdev_ec_delete (full destruction). Must complete before shard teardown
+	// so the ShardGroup process disconnects from the shard NVMe-oF endpoints
+	// before the shards' SPDK instances stop.
+	if err := c.teardownShardGroupProcess(rctx, true); err != nil {
+		return err
+	}
+
 	shards, err := c.ds.ListShardsByShardGroup(shardGroup.Name)
 	if err != nil {
 		return err
@@ -876,6 +893,242 @@ func (c *ShardGroupController) dialSPDK(nodeID string) (spdkrpc.SPDKServiceClien
 	}
 
 	return spdkrpc.NewSPDKServiceClient(conn), conn, nil
+}
+
+// syncProcess provisions and monitors the long-lived ShardGroup process that
+// owns the EC volume's bdev_ec, lvstore, head lvol, and NVMe-oF export. The
+// lvstore and head lvol live on the encoded shard blocks, so they survive
+// detach, IM restart, and engine-node failover, which makes fast re-attach
+// possible.
+func (c *ShardGroupController) syncProcess(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	log := rctx.log
+
+	// Deletion is handled by cleanupShardGroup off the deletion path, not here.
+	if shardGroup.DeletionTimestamp != nil {
+		return nil
+	}
+
+	// Volume controller has not bound the ShardGroup to a node yet (initial
+	// detached state of a freshly-created CR). Idle until first attach.
+	if shardGroup.Spec.NodeID == "" {
+		return nil
+	}
+
+	// Salvage discriminator: a ShardGroup that was already created
+	// (HeadLvolUUID populated) must be re-provisioned with salvage=true.
+	//
+	// salvage=false against an existing lvstore fails: bdev_ec_create
+	// auto-imports it, then bdev_lvol_create_lvstore returns -EPERM because the
+	// bdev is already claimed by the lvol module.
+	//
+	// HeadLvolUUID is the signal rather than LvstoreUUID only because it is
+	// already returned in InstanceResponse.Status.Uuid; LvstoreUUID would need
+	// a proto extension. Both mean the lvstore exists on the shards.
+	salvage := shardGroup.Status.HeadLvolUUID != ""
+
+	// Re-bind: the process is currently bound to an InstanceManager whose
+	// NodeID no longer matches Spec.NodeID. Tear down on the old IM with
+	// cleanup=false (preserves lvstore on encoded blocks); the salvage flag
+	// above already handles re-discovery on the new node.
+	if shardGroup.Status.InstanceManagerName != "" {
+		oldIM, err := c.ds.GetInstanceManagerRO(shardGroup.Status.InstanceManagerName)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		switch {
+		case oldIM == nil:
+			log.Warnf("ShardGroup process IM %v not found; clearing stale binding (salvage=%v)",
+				shardGroup.Status.InstanceManagerName, salvage)
+			c.clearShardGroupProcessStatus(rctx)
+		case oldIM.Spec.NodeID != shardGroup.Spec.NodeID:
+			log.Infof("ShardGroup process bound to node %v but Spec.NodeID is %v; re-binding (preserve lvstore)",
+				oldIM.Spec.NodeID, shardGroup.Spec.NodeID)
+			if err := c.teardownShardGroupProcessOnIM(rctx, oldIM, false); err != nil {
+				return err
+			}
+			c.clearShardGroupProcessStatus(rctx)
+		}
+	}
+
+	// Readiness gate (a): all k+m slots have an address.
+	expected := shardGroup.Spec.DataChunks + shardGroup.Spec.ParityChunks
+	if len(shardGroup.Status.ECShardAddressMap) != expected {
+		log.Debugf("ShardGroup process readiness gate: %v/%v shard addresses ready; waiting",
+			len(shardGroup.Status.ECShardAddressMap), expected)
+		return nil
+	}
+
+	// Readiness gate (b): every Shard CR is observed Normal. An address can
+	// outlive the instance that served it, so a full address map alone is not
+	// liveness.
+	for _, shard := range rctx.shards {
+		if shard.Status.State != longhorn.ShardStateNormal {
+			log.Debugf("ShardGroup process readiness gate: shard %v state=%v; waiting",
+				shard.Name, shard.Status.State)
+			return nil
+		}
+	}
+
+	// Find the IM on Spec.NodeID. GetRunningInstanceManagerByNodeRO returns
+	// only IMs in the Running state, so a transient IM-pod restart appears as
+	// NotFound and we silently retry.
+	im, err := c.ds.GetRunningInstanceManagerByNodeRO(shardGroup.Spec.NodeID, longhorn.DataEngineTypeV2)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			log.Debugf("InstanceManager on node %v not running yet; will retry", shardGroup.Spec.NodeID)
+			return nil
+		}
+		return err
+	}
+
+	imClient, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create instance manager client for ShardGroup %v", shardGroup.Name)
+	}
+	defer func() {
+		if closeErr := imClient.Close(); closeErr != nil {
+			log.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}()
+
+	instance, err := imClient.InstanceGet(longhorn.DataEngineTypeV2, shardGroup.Name, engineapi.InstanceTypeShardGroup)
+	// Provision when there is no running instance on this IM:
+	//   1. err != nil (gRPC NotFound): no record at all.
+	//   2. State == Stopped: a prior teardown with cleanupRequired=false left a
+	//      Stopped record; re-creating drives it back to Running.
+	needCreate := err != nil || instance.Status.State == longhorn.InstanceStateStopped
+	if needCreate {
+		size, sizeErr := c.getVolumeSize(shardGroup)
+		if sizeErr != nil {
+			return errors.Wrapf(sizeErr, "failed to look up volume size for ShardGroup %v", shardGroup.Name)
+		}
+		instance, err = imClient.ShardGroupInstanceCreate(&engineapi.ShardGroupInstanceCreateRequest{
+			ShardGroup:       shardGroup,
+			Size:             size,
+			ShardAddressMap:  shardGroup.Status.ECShardAddressMap,
+			SalvageRequested: salvage,
+		})
+		if err != nil {
+			return errors.Wrapf(err, "failed to create ShardGroup process for %v on %v", shardGroup.Name, shardGroup.Spec.NodeID)
+		}
+		log.Infof("Created ShardGroup process for %v on node %v (salvage=%v, size=%v)",
+			shardGroup.Name, shardGroup.Spec.NodeID, salvage, size)
+	}
+
+	return c.refreshShardGroupProcessStatus(rctx, im, instance)
+}
+
+// refreshShardGroupProcessStatus copies live process state into ShardGroup.Status
+// fields. Called every reconcile tick (whether the process was just provisioned
+// or has been Running for many cycles) so transient IM port re-allocations and
+// state transitions are picked up promptly.
+func (c *ShardGroupController) refreshShardGroupProcessStatus(rctx *sgReconcileCtx, im *longhorn.InstanceManager, instance *longhorn.InstanceProcess) error {
+	shardGroup := rctx.shardGroup
+
+	imPod, err := c.ds.GetPodRO(im.Namespace, im.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get pod for instance manager %v", im.Name)
+	}
+	storageIP := c.ds.GetIPFromPodByCNISetting(imPod, types.SettingNameStorageNetwork)
+
+	shardGroup.Status.InstanceManagerName = im.Name
+	shardGroup.Status.StorageIP = storageIP
+	shardGroup.Status.Port = int32(instance.Status.PortStart)
+	shardGroup.Status.NQN = instance.Status.Endpoint
+	shardGroup.Status.ProcessState = instance.Status.State
+	// The IM sets instance.Status.UUID = shardGroup.HeadLvolUUID for shardgroup-type
+	// instances, so this records the head lvol identity, not a generic process UUID.
+	// syncProcess reads it to decide salvage.
+	shardGroup.Status.HeadLvolUUID = instance.Status.UUID
+	return nil
+}
+
+// teardownShardGroupProcessOnIM tears down the ShardGroup process on the given
+// InstanceManager. Used both for re-bind (cleanupRequired=false) and for delete
+// (cleanupRequired=true, called by cleanupShardGroup).
+//
+// cleanupRequired=false preserves lvstore + head lvol on the encoded shard
+// blocks: the SPDK service unexposes the NVMe-oF target and disconnects from
+// shards but does NOT call bdev_lvol_delete or bdev_lvol_delete_lvstore. The
+// next ShardGroupInstanceCreate with SalvageRequested=true will re-attach.
+//
+// cleanupRequired=true authorises full destruction. Used only on volume delete.
+func (c *ShardGroupController) teardownShardGroupProcessOnIM(rctx *sgReconcileCtx, im *longhorn.InstanceManager, cleanupRequired bool) error {
+	shardGroup := rctx.shardGroup
+	imClient, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create instance manager client for ShardGroup %v teardown", shardGroup.Name)
+	}
+	defer func() {
+		if closeErr := imClient.Close(); closeErr != nil {
+			rctx.log.WithError(closeErr).Warn("Failed to close instance manager client during teardown")
+		}
+	}()
+
+	if err := imClient.InstanceDelete(longhorn.DataEngineTypeV2, shardGroup.Name, "", engineapi.InstanceTypeShardGroup, "", cleanupRequired); err != nil {
+		if !types.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to delete ShardGroup process %v on %v (cleanupRequired=%v)",
+				shardGroup.Name, im.Spec.NodeID, cleanupRequired)
+		}
+	}
+	rctx.log.Infof("Tore down ShardGroup process %v on %v (cleanupRequired=%v)", shardGroup.Name, im.Spec.NodeID, cleanupRequired)
+	return nil
+}
+
+// teardownShardGroupProcess tears down the process on the IM currently named in
+// Status.InstanceManagerName. Called from cleanupShardGroup with
+// cleanupRequired=true. No-op if no IM is named.
+func (c *ShardGroupController) teardownShardGroupProcess(rctx *sgReconcileCtx, cleanupRequired bool) error {
+	shardGroup := rctx.shardGroup
+	if shardGroup.Status.InstanceManagerName == "" {
+		return nil
+	}
+	im, err := c.ds.GetInstanceManagerRO(shardGroup.Status.InstanceManagerName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			c.clearShardGroupProcessStatus(rctx)
+			return nil
+		}
+		return err
+	}
+	if err := c.teardownShardGroupProcessOnIM(rctx, im, cleanupRequired); err != nil {
+		return err
+	}
+	c.clearShardGroupProcessStatus(rctx)
+	return nil
+}
+
+// clearShardGroupProcessStatus zeroes the in-memory runtime fields after a
+// process teardown. HeadLvolUUID is intentionally NOT zeroed here: it identifies
+// the persistent on-disk head lvol encoded across the shards (see syncProcess
+// salvage handling). It is cleared only when the ShardGroup CR is garbage-collected
+// on volume delete.
+func (c *ShardGroupController) clearShardGroupProcessStatus(rctx *sgReconcileCtx) {
+	shardGroup := rctx.shardGroup
+	shardGroup.Status.InstanceManagerName = ""
+	shardGroup.Status.StorageIP = ""
+	shardGroup.Status.Port = 0
+	shardGroup.Status.NQN = ""
+	shardGroup.Status.ProcessState = ""
+}
+
+// getVolumeSize returns the user-visible size for the ShardGroup's volume.
+// The ShardGroup process uses this to size the head lvol exposed to the engine.
+//
+// Returns an error when Spec.Size is not yet populated, so syncProcess defers
+// provisioning by one reconcile tick rather than silently creating a zero-sized
+// head lvol - a race that can occur if syncProcess wins against the Volume
+// CSI ControllerCreateVolume path setting Spec.Size.
+func (c *ShardGroupController) getVolumeSize(shardGroup *longhorn.ShardGroup) (uint64, error) {
+	vol, err := c.ds.GetVolumeRO(shardGroup.Spec.VolumeName)
+	if err != nil {
+		return 0, err
+	}
+	if vol.Spec.Size <= 0 {
+		return 0, fmt.Errorf("volume %v has no size set yet", shardGroup.Spec.VolumeName)
+	}
+	return uint64(vol.Spec.Size), nil
 }
 
 func (c *ShardGroupController) isResponsibleFor(shardGroup *longhorn.ShardGroup) bool {
