@@ -224,6 +224,26 @@ func IsProbablyReplicaName(name string) bool {
 	return matched
 }
 
+func ParseShardLvolName(name string) (volumeName string, slotIndex uint32, err error) {
+	rest := strings.TrimPrefix(name, "shard-")
+	if rest == name {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: missing 'shard-' prefix", name)
+	}
+	lastDash := strings.LastIndex(rest, "-")
+	if lastDash < 0 {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: cannot find slot index separator", name)
+	}
+	idx, err := strconv.ParseUint(rest[lastDash+1:], 10, 32)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: slot index is not a valid uint32: %w", name, err)
+	}
+	volumeName = rest[:lastDash]
+	if volumeName == "" {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: empty volume name", name)
+	}
+	return volumeName, uint32(idx), nil
+}
+
 func GetBackingImageSnapLvolName(backingImageName string, lvsUUID string) string {
 	return fmt.Sprintf("bi-%s-disk-%s", backingImageName, lvsUUID)
 }

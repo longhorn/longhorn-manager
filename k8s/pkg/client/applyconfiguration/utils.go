@@ -19,12 +19,13 @@ limitations under the License.
 package applyconfiguration
 
 import (
-	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	internal "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration/internal"
-	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration/longhorn/v1beta2"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	managedfields "k8s.io/apimachinery/pkg/util/managedfields"
+
+	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	internal "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration/internal"
+	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration/longhorn/v1beta2"
 )
 
 // ForKind returns an apply configuration type for the given GroupVersionKind, or nil if no
