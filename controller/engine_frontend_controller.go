@@ -25,6 +25,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -699,6 +700,16 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		return nil, errors.Wrapf(err, "failed to update engine frontend %v status.starting to true", efName)
 	}
 
+	engine, err := efc.ds.GetEngine(ef.Spec.EngineName)
+	if err != nil {
+		return nil, err
+	}
+
+	volume, err := efc.ds.GetVolume(engine.Spec.VolumeName)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create initiator instance via Instance Manager
 	// Note: This requires Instance Manager to have EngineFrontendInstanceCreate method
 	return c.EngineFrontendInstanceCreate(&engineapi.EngineFrontendInstanceCreateRequest{
@@ -709,6 +720,8 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		TargetIP:          ef.Spec.TargetIP,
 		TargetPort:        ef.Spec.TargetPort,
 		EngineName:        ef.Spec.EngineName,
+		Encrypted:         volume.Spec.Encrypted,
+		FromBackup:        volume.Spec.FromBackup != "",
 	})
 }
 
@@ -1071,11 +1084,8 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 				return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
 			}
 			defer engineClientProxy.Close()
-			cliAPIVersion, err := m.ds.GetDataEngineImageCLIAPIVersion(ef.Status.CurrentImage, ef.Spec.DataEngine)
-			if err != nil {
-				return err
-			}
-			expectedExpansionSize, err := util.GetActualBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
+
+			expectedExpansionSize, err := util.GetActualBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize)
 			if err != nil {
 				return err
 			}
@@ -1100,6 +1110,13 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 			"requestedSize":     ef.Spec.Size,
 			"expansionRequired": volume.Status.ExpansionRequired,
 		}).Trace("Skip engine frontend expansion because volume expansion is not required")
+		if volume.Spec.Encrypted {
+			desiredSize := ef.Spec.Size
+			if desiredSize == 0 {
+				desiredSize = ef.Spec.VolumeSize
+			}
+			ef.Status.CurrentSize = desiredSize
+		}
 	}
 
 	return nil
