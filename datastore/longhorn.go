@@ -2859,7 +2859,7 @@ func (s *DataStore) IsDataEngineImageReady(image, volumeName, nodeID string, dat
 		return false, errors.Wrapf(err, "failed to check data engine image readiness of node %v", nodeID)
 	}
 
-	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal || dataLocality == longhorn.DataLocalityBestEffort {
+	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal || dataLocality == longhorn.DataLocalityBestEffort || types.IsDataEngineV2(dataEngine) {
 		return isReady, nil
 	}
 
