@@ -33,6 +33,8 @@ type InstanceManagerStatusApplyConfiguration struct {
 	InstanceEngines         map[string]InstanceProcessApplyConfiguration        `json:"instanceEngines,omitempty"`
 	InstanceEngineFrontends map[string]InstanceProcessApplyConfiguration        `json:"instanceEngineFrontends,omitempty"`
 	InstanceReplicas        map[string]InstanceProcessApplyConfiguration        `json:"instanceReplicas,omitempty"`
+	InstanceShards          map[string]InstanceProcessApplyConfiguration        `json:"instanceShards,omitempty"`
+	InstanceShardGroups     map[string]InstanceProcessApplyConfiguration        `json:"instanceShardGroups,omitempty"`
 	BackingImages           map[string]BackingImageV2CopyInfoApplyConfiguration `json:"backingImages,omitempty"`
 	IP                      *string                                             `json:"ip,omitempty"`
 	APIMinVersion           *int                                                `json:"apiMinVersion,omitempty"`
@@ -115,6 +117,34 @@ func (b *InstanceManagerStatusApplyConfiguration) WithInstanceReplicas(entries m
 	}
 	for k, v := range entries {
 		b.InstanceReplicas[k] = v
+	}
+	return b
+}
+
+// WithInstanceShards puts the entries into the InstanceShards field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the InstanceShards field,
+// overwriting an existing map entries in InstanceShards field with the same key.
+func (b *InstanceManagerStatusApplyConfiguration) WithInstanceShards(entries map[string]InstanceProcessApplyConfiguration) *InstanceManagerStatusApplyConfiguration {
+	if b.InstanceShards == nil && len(entries) > 0 {
+		b.InstanceShards = make(map[string]InstanceProcessApplyConfiguration, len(entries))
+	}
+	for k, v := range entries {
+		b.InstanceShards[k] = v
+	}
+	return b
+}
+
+// WithInstanceShardGroups puts the entries into the InstanceShardGroups field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the InstanceShardGroups field,
+// overwriting an existing map entries in InstanceShardGroups field with the same key.
+func (b *InstanceManagerStatusApplyConfiguration) WithInstanceShardGroups(entries map[string]InstanceProcessApplyConfiguration) *InstanceManagerStatusApplyConfiguration {
+	if b.InstanceShardGroups == nil && len(entries) > 0 {
+		b.InstanceShardGroups = make(map[string]InstanceProcessApplyConfiguration, len(entries))
+	}
+	for k, v := range entries {
+		b.InstanceShardGroups[k] = v
 	}
 	return b
 }

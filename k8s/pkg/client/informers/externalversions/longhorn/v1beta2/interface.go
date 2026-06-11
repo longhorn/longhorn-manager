@@ -56,6 +56,10 @@ type Interface interface {
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
 	Settings() SettingInformer
+	// Shards returns a ShardInformer.
+	Shards() ShardInformer
+	// ShardGroups returns a ShardGroupInformer.
+	ShardGroups() ShardGroupInformer
 	// ShareManagers returns a ShareManagerInformer.
 	ShareManagers() ShareManagerInformer
 	// Snapshots returns a SnapshotInformer.
@@ -161,6 +165,16 @@ func (v *version) Replicas() ReplicaInformer {
 // Settings returns a SettingInformer.
 func (v *version) Settings() SettingInformer {
 	return &settingInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Shards returns a ShardInformer.
+func (v *version) Shards() ShardInformer {
+	return &shardInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// ShardGroups returns a ShardGroupInformer.
+func (v *version) ShardGroups() ShardGroupInformer {
+	return &shardGroupInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // ShareManagers returns a ShareManagerInformer.
