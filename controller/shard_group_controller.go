@@ -28,7 +28,9 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -46,6 +48,7 @@ type ShardGroupController struct {
 	eventRecorder record.EventRecorder
 
 	ds        *datastore.DataStore
+	scheduler *scheduler.ShardScheduler
 
 	cacheSyncs []cache.InformerSynced
 }
@@ -82,6 +85,7 @@ func NewShardGroupController(
 		controllerID: controllerID,
 
 		ds:        ds,
+		scheduler: scheduler.NewShardScheduler(ds),
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-shard-group-controller"}),
@@ -398,6 +402,17 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 	}
 	rctx.shards = shards
 
+	if err := c.scheduleShards(rctx); err != nil {
+		return err
+	}
+
+	// Re-fetch after scheduleShards so reconcileShard sees the up-to-date NodeID/DiskUUID/Size.
+	shards, err = c.ds.ListShardsByShardGroup(shardGroup.Name)
+	if err != nil {
+		return err
+	}
+	rctx.shards = shards
+
 	for _, shard := range shards {
 		if err := c.reconcileShard(rctx, shard); err != nil {
 			return err
@@ -431,8 +446,12 @@ func (c *ShardGroupController) reconcileShard(rctx *sgReconcileCtx, shard *longh
 	switch {
 	case shard.DeletionTimestamp != nil:
 		return c.cleanupShard(rctx, shard)
-	default:
+	case shard.Spec.NodeID == "":
+		// Unscheduled; scheduleShards will assign placement next cycle.
 		return nil
+	default:
+		// State == "" (fresh CR) or Normal: ensure the shard instance is running.
+		return c.syncShardInstance(rctx, shard)
 	}
 }
 
@@ -462,6 +481,200 @@ func (c *ShardGroupController) cleanupShard(rctx *sgReconcileCtx, shard *longhor
 	}
 
 	return c.ds.RemoveFinalizerForShard(shard)
+}
+
+// scheduleShards assigns NodeID/DiskUUID/Size to any Shard CRs that have not yet
+// been placed. Hard anti-affinity is enforced: each shard lands on a distinct node.
+func (c *ShardGroupController) scheduleShards(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	log := rctx.log
+
+	volume, err := c.ds.GetVolumeRO(shardGroup.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
+	usedNodes := map[string]bool{}
+	for _, shard := range rctx.shards {
+		if shard.Spec.NodeID != "" {
+			usedNodes[shard.Spec.NodeID] = true
+		}
+	}
+
+	// List schedulable nodes at most once per reconcile: only if a shard needs placing,
+	// then reuse that snapshot instead of deep-copying the node set for every shard.
+	var nodes map[string]*longhorn.Node
+	for _, shard := range rctx.shards {
+		if shard.DeletionTimestamp != nil || shard.Spec.NodeID != "" {
+			continue
+		}
+
+		if nodes == nil {
+			nodes, err = c.scheduler.ListSchedulableNodes()
+			if err != nil {
+				return err
+			}
+		}
+
+		placement, skipReasons, err := c.scheduler.ScheduleShard(shardGroup, volume, usedNodes, nodes)
+		if err != nil {
+			return errors.Wrapf(err, "failed to schedule shard %v", shard.Name)
+		}
+		if placement == nil {
+			// ScheduleShard adds a reason for each node/disk it rejects, so an empty
+			// set means there were no nodes to consider at all - log that explicitly
+			// instead of a blank JoinReasons().
+			if len(skipReasons) == 0 {
+				log.Warnf("No schedulable node available for shard %v; will retry", shard.Name)
+			} else {
+				log.Warnf("No schedulable node or disk for shard %v: %v; will retry", shard.Name, skipReasons.JoinReasons())
+				log.Debugf("Shard %v could not be placed on any disk: %v", shard.Name, skipReasons.Error())
+			}
+			continue
+		}
+
+		fresh, err := c.ds.GetShard(shard.Name)
+		if err != nil {
+			return err
+		}
+		fresh.Spec.NodeID = placement.NodeID
+		fresh.Spec.DiskUUID = placement.DiskUUID
+		fresh.Spec.DiskPath = placement.DiskPath
+		fresh.Spec.Size = placement.Size
+		if _, err := c.ds.UpdateShard(fresh); err != nil {
+			return errors.Wrapf(err, "failed to update shard %v after scheduling", shard.Name)
+		}
+		usedNodes[placement.NodeID] = true
+	}
+
+	return nil
+}
+
+// syncShardInstance creates or refreshes the SPDK shard instance for a scheduled
+// Shard CR. Each cycle issues a live InstanceGet so a Stopped or Error instance
+// transitions the Shard CR to ShardStateFailed (driving reconcileFailedShard via
+// the dispatch switch); a Running instance refreshes Status.StorageIP/Port from
+// the authoritative source so any IM-side port re-allocation is picked up.
+func (c *ShardGroupController) syncShardInstance(rctx *sgReconcileCtx, shard *longhorn.Shard) error {
+	log := rctx.log
+
+	instanceManager, err := c.ds.GetInstanceManagerByInstance(shard)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			log.Debugf("Instance manager for shard %v not found yet; will retry", shard.Name)
+			return nil
+		}
+		return err
+	}
+
+	instanceManagerClient, err := engineapi.NewInstanceManagerClient(instanceManager, false)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create instance manager client for shard %v", shard.Name)
+	}
+	defer func() {
+		if closeErr := instanceManagerClient.Close(); closeErr != nil {
+			log.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}()
+
+	lvsName, lvsUUID, err := c.getDiskLvsInfo(shard)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get lvstore info for shard %v", shard.Name)
+	}
+
+	instance, err := instanceManagerClient.InstanceGet(longhorn.DataEngineTypeV2, shard.Name, engineapi.InstanceTypeShard)
+	if err != nil {
+		instance, err = instanceManagerClient.ShardInstanceCreate(&engineapi.ShardInstanceCreateRequest{
+			Shard:   shard,
+			LvsName: lvsName,
+			LvsUUID: lvsUUID,
+		})
+		if err != nil {
+			return errors.Wrapf(err, "failed to create instance for shard %v", shard.Name)
+		}
+	}
+
+	if instance == nil || instance.Status.State != longhorn.InstanceStateRunning {
+		return c.markShardInstanceNotRunning(rctx, shard, instance)
+	}
+
+	instanceManagerPod, err := c.ds.GetPodRO(instanceManager.Namespace, instanceManager.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get pod for instance manager %v", instanceManager.Name)
+	}
+	storageIP := c.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	livePort := int32(instance.Status.PortStart)
+
+	fresh, err := c.ds.GetShard(shard.Name)
+	if err != nil {
+		return err
+	}
+
+	needsUpdate := false
+	if fresh.Status.StorageIP != storageIP {
+		fresh.Status.StorageIP = storageIP
+		needsUpdate = true
+	}
+	if fresh.Status.Port != livePort {
+		fresh.Status.Port = livePort
+		needsUpdate = true
+	}
+	if fresh.Status.State != longhorn.ShardStateNormal && fresh.Status.State != longhorn.ShardStateReplacing {
+		// First Running observation, or recovery from a prior Failed state.
+		fresh.Status.State = longhorn.ShardStateNormal
+		needsUpdate = true
+	}
+	if !needsUpdate {
+		return nil
+	}
+	updated, err := c.ds.UpdateShardStatus(fresh)
+	if err != nil {
+		return errors.Wrapf(err, "failed to update shard %v status after instance start", shard.Name)
+	}
+	// shard is this reconcile's own copy in rctx.shards; write the saved status back
+	// so syncStatus builds ECShardAddressMap from the refreshed StorageIP/Port/State
+	// this pass instead of a tick later.
+	*shard = *updated
+	return nil
+}
+
+// markShardInstanceNotRunning transitions a Shard CR to ShardStateFailed when its
+// SPDK instance is no longer Running. LastFailureTimestamp is set on the first
+// transition so the replace delay starts from the actual failure, not
+// from a later cycle that re-observes the same dead instance.
+func (c *ShardGroupController) markShardInstanceNotRunning(rctx *sgReconcileCtx, shard *longhorn.Shard, instance *longhorn.InstanceProcess) error {
+	instanceState := longhorn.InstanceState("")
+	if instance != nil {
+		instanceState = instance.Status.State
+	}
+
+	fresh, err := c.ds.GetShard(shard.Name)
+	if err != nil {
+		return err
+	}
+
+	needsUpdate := false
+	if fresh.Status.State != longhorn.ShardStateFailed {
+		rctx.log.Warnf("Shard %v instance is not Running (state=%v); marking shard as Failed", shard.Name, instanceState)
+		fresh.Status.State = longhorn.ShardStateFailed
+		needsUpdate = true
+	}
+	if fresh.Status.LastFailureTimestamp == "" {
+		fresh.Status.LastFailureTimestamp = util.Now()
+		needsUpdate = true
+	}
+	if !needsUpdate {
+		return nil
+	}
+	updated, err := c.ds.UpdateShardStatus(fresh)
+	if err != nil {
+		return errors.Wrapf(err, "failed to mark shard %v as failed (instance state=%v)", shard.Name, instanceState)
+	}
+	// shard is this reconcile's own copy in rctx.shards; write the saved status back
+	// so syncStatus counts this failure in the derived ShardGroup state this pass
+	// instead of a tick later.
+	*shard = *updated
+	return nil
 }
 
 // cleanupShardGroup deletes all owned Shard CRs and removes the finalizer once done.
@@ -606,6 +819,20 @@ func (c *ShardGroupController) deriveState(parityChunks, failedCount int) longho
 	default:
 		return longhorn.ShardGroupStateOffline
 	}
+}
+
+// getDiskLvsInfo returns the SPDK lvstore name and UUID for the disk hosting the shard.
+func (c *ShardGroupController) getDiskLvsInfo(shard *longhorn.Shard) (lvsName, lvsUUID string, err error) {
+	node, err := c.ds.GetNodeRO(shard.Spec.NodeID)
+	if err != nil {
+		return "", "", err
+	}
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == shard.Spec.DiskUUID {
+			return diskStatus.DiskName, diskStatus.DiskUUID, nil
+		}
+	}
+	return "", "", fmt.Errorf("cannot find disk for shard %v (diskUUID %v)", shard.Name, shard.Spec.DiskUUID)
 }
 
 // resolveEngine returns the active Engine CR for the ShardGroup's volume on the engine
