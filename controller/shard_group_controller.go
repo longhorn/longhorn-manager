@@ -481,6 +481,11 @@ func (c *ShardGroupController) reconcile(shardGroupName string) (err error) {
 		}
 	}
 
+	// Step 4: group-level operations that need a consistent view of all shards.
+	if err := c.syncShardRebuildQoS(rctx); err != nil {
+		return err
+	}
+
 	// Step 5: derive ShardGroup status from the current shard snapshot. Must
 	// run before syncProcess: the readiness gate reads Status.ECShardAddressMap.
 	if err := c.syncStatus(rctx); err != nil {
@@ -1482,6 +1487,57 @@ func (c *ShardGroupController) syncECHealth(rctx *sgReconcileCtx) error {
 		}
 	}
 
+	return nil
+}
+
+// syncShardRebuildQoS applies the volume's rebuild bandwidth limit to the EC engine
+// while a shard rebuild is active.
+func (c *ShardGroupController) syncShardRebuildQoS(rctx *sgReconcileCtx) error {
+	shardGroup := rctx.shardGroup
+	if !shardGroup.Status.RebuildInProgress || rctx.engine == nil || rctx.spdkClient == nil {
+		return nil
+	}
+
+	log := rctx.log
+
+	globalQoS, err := c.ds.GetSettingAsIntByDataEngine(
+		types.SettingNameReplicaRebuildingBandwidthLimit,
+		longhorn.DataEngineTypeV2,
+	)
+	if err != nil {
+		return err
+	}
+
+	volume, err := c.ds.GetVolumeRO(shardGroup.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
+	effectiveMBps := globalQoS
+	if volume.Spec.ReplicaRebuildingBandwidthLimit > 0 {
+		effectiveMBps = volume.Spec.ReplicaRebuildingBandwidthLimit
+	}
+
+	// Convert MiB/s -> stripes/sec. One stripe spans all k+m shards:
+	// stripe_bytes = strip_size_kb * 1024 * (k+m).
+	var maxStripesPerSec uint32
+	totalChunks := shardGroup.Spec.DataChunks + shardGroup.Spec.ParityChunks
+	if effectiveMBps > 0 && shardGroup.Spec.StripSizeKB > 0 && totalChunks > 0 {
+		maxStripesPerSec = uint32((effectiveMBps * 1024 * 1024) / int64(shardGroup.Spec.StripSizeKB*1024*totalChunks))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	defer cancel()
+
+	if _, err := rctx.spdkClient.ShardGroupShardRebuildQosSet(ctx, &spdkrpc.ShardGroupShardRebuildQosSetRequest{
+		ShardGroupName:   rctx.shardGroup.Name,
+		MaxStripesPerSec: maxStripesPerSec,
+	}); err != nil {
+		log.WithError(err).Warn("Failed to set rebuild QoS; will retry")
+		return nil
+	}
+
+	log.Debugf("Set rebuild QoS to %v MBps (%v stripes/sec)", effectiveMBps, maxStripesPerSec)
 	return nil
 }
 
