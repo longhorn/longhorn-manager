@@ -639,6 +639,50 @@ type Orphan struct {
 	longhorn.OrphanSpec
 }
 
+type ShardGroup struct {
+	client.Resource
+	Name                string                   `json:"name"`
+	VolumeName          string                   `json:"volumeName"`
+	DataChunks          int                      `json:"dataChunks"`
+	ParityChunks        int                      `json:"parityChunks"`
+	StripSizeKB         int                      `json:"stripSizeKB"`
+	NodeID              string                   `json:"nodeID"`
+	InstanceManagerName string                   `json:"instanceManagerName"`
+	OwnerID             string                   `json:"ownerID"`
+	State               longhorn.ShardGroupState `json:"state"`
+	FailedCount         int                      `json:"failedCount"`
+	ShardRefs           []string                 `json:"shardRefs"`
+	ECShardAddressMap   map[string]string        `json:"ecShardAddressMap"`
+	ScrubInProgress     bool                     `json:"scrubInProgress"`
+	RebuildInProgress   bool                     `json:"rebuildInProgress"`
+	GrowInProgress      bool                     `json:"growInProgress"`
+	ProcessState        longhorn.InstanceState   `json:"processState"`
+	StorageIP           string                   `json:"storageIP"`
+	Port                int32                    `json:"port"`
+	NQN                 string                   `json:"nqn"`
+	LvstoreUUID         string                   `json:"lvstoreUUID"`
+	HeadLvolUUID        string                   `json:"headLvolUUID"`
+}
+
+type Shard struct {
+	client.Resource
+	Name                 string              `json:"name"`
+	ShardGroupName       string              `json:"shardGroupName"`
+	SlotIndex            int                 `json:"slotIndex"`
+	Size                 string              `json:"size"`
+	NodeID               string              `json:"nodeID"`
+	DiskPath             string              `json:"diskPath"`
+	DiskUUID             string              `json:"diskUUID"`
+	EvictionRequested    bool                `json:"evictionRequested"`
+	OwnerID              string              `json:"ownerID"`
+	State                longhorn.ShardState `json:"state"`
+	Role                 longhorn.ShardRole  `json:"role"`
+	StorageIP            string              `json:"storageIP"`
+	Port                 int32               `json:"port"`
+	RebuildProgress      int                 `json:"rebuildProgress"`
+	LastFailureTimestamp string              `json:"lastFailureTimestamp"`
+}
+
 type VolumeRecurringJob struct {
 	client.Resource
 	longhorn.VolumeRecurringJob
@@ -772,6 +816,9 @@ func NewSchema() *client.Schemas {
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
 	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
 	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
+
+	schemas.AddType("shardGroup", ShardGroup{})
+	schemas.AddType("shard", Shard{})
 
 	return schemas
 }
@@ -2514,6 +2561,76 @@ func toOrphanCollection(orphans map[string]*longhorn.Orphan) *client.GenericColl
 		data = append(data, toOrphanResource(orphan))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "orphan"}}
+}
+
+func toShardGroupResource(sg *longhorn.ShardGroup) *ShardGroup {
+	return &ShardGroup{
+		Resource: client.Resource{
+			Id:   sg.Name,
+			Type: "shardGroup",
+		},
+		Name:                sg.Name,
+		VolumeName:          sg.Spec.VolumeName,
+		DataChunks:          sg.Spec.DataChunks,
+		ParityChunks:        sg.Spec.ParityChunks,
+		StripSizeKB:         sg.Spec.StripSizeKB,
+		NodeID:              sg.Spec.NodeID,
+		InstanceManagerName: sg.Status.InstanceManagerName,
+		OwnerID:             sg.Status.OwnerID,
+		State:               sg.Status.State,
+		FailedCount:         sg.Status.FailedCount,
+		ShardRefs:           sg.Status.ShardRefs,
+		ECShardAddressMap:   sg.Status.ECShardAddressMap,
+		ScrubInProgress:     sg.Status.ScrubInProgress,
+		RebuildInProgress:   sg.Status.RebuildInProgress,
+		GrowInProgress:      sg.Status.GrowInProgress,
+		ProcessState:        sg.Status.ProcessState,
+		StorageIP:           sg.Status.StorageIP,
+		Port:                sg.Status.Port,
+		NQN:                 sg.Status.NQN,
+		LvstoreUUID:         sg.Status.LvstoreUUID,
+		HeadLvolUUID:        sg.Status.HeadLvolUUID,
+	}
+}
+
+func toShardGroupCollection(sgs map[string]*longhorn.ShardGroup) *client.GenericCollection {
+	var data []interface{}
+	for _, sg := range sgs {
+		data = append(data, toShardGroupResource(sg))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "shardGroup"}}
+}
+
+func toShardResource(s *longhorn.Shard) *Shard {
+	return &Shard{
+		Resource: client.Resource{
+			Id:   s.Name,
+			Type: "shard",
+		},
+		Name:                 s.Name,
+		ShardGroupName:       s.Spec.ShardGroupName,
+		SlotIndex:            s.Spec.SlotIndex,
+		Size:                 strconv.FormatInt(s.Spec.Size, 10),
+		NodeID:               s.Spec.NodeID,
+		DiskPath:             s.Spec.DiskPath,
+		DiskUUID:             s.Spec.DiskUUID,
+		EvictionRequested:    s.Spec.EvictionRequested,
+		OwnerID:              s.Status.OwnerID,
+		State:                s.Status.State,
+		Role:                 s.Status.Role,
+		StorageIP:            s.Status.StorageIP,
+		Port:                 s.Status.Port,
+		RebuildProgress:      s.Status.RebuildProgress,
+		LastFailureTimestamp: s.Status.LastFailureTimestamp,
+	}
+}
+
+func toShardCollection(shards map[string]*longhorn.Shard) *client.GenericCollection {
+	var data []interface{}
+	for _, s := range shards {
+		data = append(data, toShardResource(s))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "shard"}}
 }
 
 func toVolumeAttachmentResource(volumeAttachment *longhorn.VolumeAttachment) *VolumeAttachment {
