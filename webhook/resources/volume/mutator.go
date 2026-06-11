@@ -98,22 +98,32 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	if volume.Spec.NumberOfReplicas == 0 {
-		numberOfReplicas, err := v.getDefaultReplicaCount(volume.Spec.DataEngine)
-		if err != nil {
-			err = errors.Wrap(err, "failed to get valid number for setting default replica count")
-			return nil, werror.NewInvalidError(err.Error(), "")
+		// EC (sharded) volumes require exactly one replica; fault tolerance comes from
+		// parity chunks, so the validator rejects any other count.
+		numberOfReplicas := 1
+		if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+			count, err := v.getDefaultReplicaCount(volume.Spec.DataEngine)
+			if err != nil {
+				return nil, werror.NewInvalidError(errors.Wrap(err, "failed to get valid number for setting default replica count").Error(), "")
+			}
+			numberOfReplicas = count
+			logrus.Infof("Using the default number of replicas %v", numberOfReplicas)
 		}
-		logrus.Infof("Using the default number of replicas %v", numberOfReplicas)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/numberOfReplicas", "value": %v}`, numberOfReplicas))
 	}
 
 	if string(volume.Spec.DataLocality) == "" {
-		defaultDataLocality, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name)
-			return nil, werror.NewInvalidError(err.Error(), "")
+		// EC (sharded) volumes distribute chunks across k+m nodes, so the validator
+		// requires data locality disabled regardless of the cluster default.
+		dataLocality := string(longhorn.DataLocalityDisabled)
+		if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+			setting, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
+			if err != nil {
+				return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name).Error(), "")
+			}
+			dataLocality = setting
 		}
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, defaultDataLocality))
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, dataLocality))
 	}
 
 	if string(volume.Spec.AccessMode) == "" {
