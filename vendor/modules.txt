@@ -1,12 +1,6 @@
 # github.com/0xPolygon/polygon-edge v1.3.3
 ## explicit; go 1.20
 github.com/0xPolygon/polygon-edge/consensus/polybft/bitmap
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.16.0
-## explicit; go 1.18
-# github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0
-## explicit; go 1.18
-# github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.5.0
-## explicit; go 1.18
 # github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 ## explicit; go 1.16
 github.com/Azure/go-ansiterm
@@ -31,46 +25,6 @@ github.com/avast/retry-go
 # github.com/avast/retry-go/v4 v4.7.0
 ## explicit; go 1.20
 github.com/avast/retry-go/v4
-# github.com/aws/aws-sdk-go-v2 v1.41.7
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.10
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/config v1.32.17
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/credentials v1.19.16
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.19.8
-## explicit; go 1.22
-# github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.1.21
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.23
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.23
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.24
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.9
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.15
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.23
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.23
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/signin v1.0.11
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/sso v1.30.17
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.21
-## explicit; go 1.24
-# github.com/aws/aws-sdk-go-v2/service/sts v1.42.1
-## explicit; go 1.24
-# github.com/aws/smithy-go v1.25.1
-## explicit; go 1.24
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -193,8 +147,6 @@ github.com/gliderlabs/ssh
 # github.com/go-co-op/gocron v1.37.0
 ## explicit; go 1.16
 github.com/go-co-op/gocron
-# github.com/go-co-op/gocron/v2 v2.21.2
-## explicit; go 1.21.4
 # github.com/go-logr/logr v1.4.3
 ## explicit; go 1.18
 github.com/go-logr/logr
@@ -251,8 +203,6 @@ github.com/go-openapi/swag/yamlutils
 # github.com/godbus/dbus/v5 v5.2.2
 ## explicit; go 1.20
 github.com/godbus/dbus/v5
-# github.com/gofrs/flock v0.13.0
-## explicit; go 1.24.0
 # github.com/gogo/protobuf v1.3.2
 ## explicit; go 1.15
 github.com/gogo/protobuf/gogoproto
@@ -357,7 +307,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.6.3-0.20260601101353-0be728aae70e
+# github.com/longhorn/go-spdk-helper v0.6.3-0.20260608140737-6ec09d37e413
 ## explicit; go 1.25.3
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -398,8 +348,6 @@ github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/virtio-scsi
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/pkg/util
 github.com/longhorn/longhorn-spdk-engine/pkg/util/broadcaster
-# github.com/longhorn/sparse-tools v0.0.0-20260423074222-280e61de741a
-## explicit; go 1.24.0
 # github.com/longhorn/types v0.0.0-20260522011813-8f1780fad833
 ## explicit; go 1.24.0
 github.com/longhorn/types/pkg/generated/bimrpc
@@ -491,8 +439,6 @@ github.com/rancher/dynamiclistener/server
 github.com/rancher/dynamiclistener/storage/file
 github.com/rancher/dynamiclistener/storage/kubernetes
 github.com/rancher/dynamiclistener/storage/memory
-# github.com/rancher/go-fibmap v0.0.0-20160418233256-5fc9f8c1ed47
-## explicit
 # github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 ## explicit
 github.com/rancher/go-rancher/api
@@ -596,8 +542,6 @@ github.com/tklauser/numcpus
 # github.com/urfave/cli v1.22.17
 ## explicit; go 1.11
 github.com/urfave/cli
-# github.com/urfave/cli/v3 v3.9.0
-## explicit; go 1.22
 # github.com/x448/float16 v0.8.4
 ## explicit; go 1.11
 github.com/x448/float16
