@@ -36,7 +36,7 @@ replace (
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.36.1
 	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.36.1
 	k8s.io/endpointslice => k8s.io/endpointslice v0.36.1
-	k8s.io/externaljwt => k8s.io/externaljwt v0.36.1
+	k8s.io/externaljwt => k8s.io/externaljwt v0.36.2
 	k8s.io/kms => k8s.io/kms v0.36.1
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.36.1
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.36.1
@@ -46,7 +46,7 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.36.1
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
 	k8s.io/metrics => k8s.io/metrics v0.36.1
-	k8s.io/mount-utils => k8s.io/mount-utils v0.36.1
+	k8s.io/mount-utils => k8s.io/mount-utils v0.36.2
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.36.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.36.1
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.36.1
@@ -97,7 +97,7 @@ require (
 	k8s.io/client-go v0.36.1
 	k8s.io/kubernetes v1.36.1
 	k8s.io/metrics v0.36.1
-	k8s.io/mount-utils v0.36.1
+	k8s.io/mount-utils v0.36.2
 	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0
