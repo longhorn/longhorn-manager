@@ -1333,6 +1333,7 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 		types.CSIProvisionerName,
 		types.CSIResizerName,
 		types.CSISnapshotterName,
+		types.CSIHealthMonitorName,
 	}
 	wait := false
 	for _, name := range deploymentsToClean {
