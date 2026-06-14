@@ -110,11 +110,33 @@ func supportBundleFormatter(request *types.APIRequest, resource *types.RawResour
 	resource.AddAction(request, "download")
 }
 
+var volumeActionNames = []string{
+	"attach", "detach", "salvage", "activate", "expand", "cancelExpansion",
+	"offlineReplicaRebuilding",
+	"snapshotCreate", "snapshotDelete", "snapshotRevert", "snapshotBackup",
+	"snapshotGet", "snapshotList", "snapshotPurge",
+	"snapshotCRCreate", "snapshotCRList", "snapshotCRGet", "snapshotCRDelete",
+	"recurringJobAdd", "recurringJobDelete", "recurringJobList",
+	"replicaRemove", "engineUpgrade",
+	"updateReplicaCount", "updateDataLocality", "updateAccessMode",
+	"updateUnmapMarkSnapChainRemoved",
+	"updateSnapshotMaxCount", "updateSnapshotMaxSize",
+	"updateReplicaRebuildingBandwidthLimit",
+	"updateUblkQueueDepth", "updateUblkNumberOfQueue",
+	"updateReplicaSoftAntiAffinity", "updateReplicaZoneSoftAntiAffinity",
+	"updateReplicaDiskSoftAntiAffinity",
+	"updateReplicaAutoBalance", "updateRebuildConcurrentSyncLimit",
+	"updateSnapshotDataIntegrity", "updateBackupCompressionMethod",
+	"updateFreezeFilesystemForSnapshot", "updateBackupTargetName",
+	"pvCreate", "pvcCreate", "trimFilesystem",
+}
+
 func registerVolumeSchema(steve *steveserver.Server) {
 	steve.SchemaFactory.AddTemplate(schema.Template{
 		ID:        "longhorn.io.volume",
 		Formatter: volumeFormatter,
 		Customize: func(apiSchema *types.APISchema) {
+			apiSchema.ActionHandlers = bridgeMap("volumes", "name", volumeActionNames...)
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"attach": {
 					Input: "attachInput",
@@ -245,6 +267,7 @@ func registerNodeSchema(steve *steveserver.Server) {
 		Formatter: nodeFormatter,
 		Customize: func(apiSchema *types.APISchema) {
 			logrus.Infof("Customizing Node schema: %s", apiSchema.ID)
+			apiSchema.ActionHandlers = bridgeMap("nodes", "name", "diskUpdate")
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"diskUpdate": {
 					Input: "diskUpdateInput",
@@ -259,6 +282,9 @@ func registerBackingImageSchema(steve *steveserver.Server) {
 		ID:        "longhorn.io.backingimage",
 		Formatter: backingImageFormatter,
 		Customize: func(apiSchema *types.APISchema) {
+			apiSchema.ActionHandlers = bridgeMap("backingimages", "name",
+				"backingImageCleanup", "backingImageUpload",
+				"backupBackingImageCreate", "updateMinNumberOfCopies")
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"backingImageCleanup": {
 					Input: "backingImageCleanupInput",
@@ -298,6 +324,9 @@ func registerBackupVolumeSchema(steve *steveserver.Server) {
 		ID:        "longhorn.io.backupvolume",
 		Formatter: backupVolumeFormatter,
 		Customize: func(apiSchema *types.APISchema) {
+			apiSchema.ActionHandlers = bridgeMap("backupvolumes", "backupVolumeName",
+				"backupList", "backupListByVolume", "backupGet",
+				"backupDelete", "backupVolumeSync")
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"backupList":         {},
 				"backupListByVolume": {},
@@ -318,6 +347,8 @@ func registerBackupTargetSchema(steve *steveserver.Server) {
 		ID:        "longhorn.io.backuptarget",
 		Formatter: backupTargetFormatter,
 		Customize: func(apiSchema *types.APISchema) {
+			apiSchema.ActionHandlers = bridgeMap("backuptargets", "backupTargetName",
+				"backupTargetSync", "backupTargetUpdate")
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"backupTargetSync":   {},
 				"backupTargetUpdate": {},
@@ -331,6 +362,8 @@ func registerBackupBackingImageSchema(steve *steveserver.Server) {
 		ID:        "longhorn.io.backupbackingimage",
 		Formatter: backupBackingImageFormatter,
 		Customize: func(apiSchema *types.APISchema) {
+			apiSchema.ActionHandlers = bridgeMap("backupbackingimages", "name",
+				"backupBackingImageRestore")
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"backupBackingImageRestore": {
 					Input: "backupBackingImageRestoreInput",

@@ -75,3 +75,11 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) SimplifiedHandler(namespace string) http.Handler {
 	return SimplifiedPathMiddleware(namespace, s.Server)
 }
+
+// SetLegacyHandler registers Longhorn's legacy HTTP router so that Steve
+// action handlers (POST ?action=*) can forward into the existing
+// /v1/{resource}/{name}?action=... endpoints that hold the real action logic.
+// Must be called after the legacy router has been constructed.
+func (s *Server) SetLegacyHandler(h http.Handler) {
+	SetLegacyHandler(h)
+}

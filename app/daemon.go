@@ -375,7 +375,7 @@ func startManager(c *cli.Context) error {
 
 	// Initialize Steve server for Steve-style API endpoints
 	// Steve automatically discovers all CRDs and serves them in Steve format
-	steveServer, err := initSteveServer(ctx, kubeconfigPath, logger)
+	steveServer, steveRESTConfig, err := initSteveServer(ctx, kubeconfigPath, logger)
 	if err != nil {
 		logger.WithError(err).Warn("Failed to initialize Steve server, Steve API will not be available")
 	}
@@ -386,6 +386,23 @@ func startManager(c *cli.Context) error {
 		// Use SimplifiedHandler for cleaner URLs:
 		// /v1/volumes/{name}?action=attach instead of /v1/longhorn.io.volumes/longhorn-system/{name}?action=attach
 		router = api.NewRouterWithSteve(server, steveServer.SimplifiedHandler(podNamespace))
+		// Wire the legacy router into Steve so that POST ?action=* on Steve
+		// URLs forwards to the existing /v1/{resource}/{name}?action=...
+		// endpoints that own the real action logic.
+		steveServer.SetLegacyHandler(router)
+
+		// Register a management.cattle.io/v3 APIService so Rancher routes
+		// /v1/longhorn.io.* requests through the aggregation tunnel to this
+		// Steve handler. Rancher reacts by creating the aggregation Secret.
+		if err := steve.CreateAPIService(ctx, steveRESTConfig, podNamespace); err != nil {
+			logger.WithError(err).Warn("Failed to create APIService for Steve aggregation")
+		}
+
+		// Watch the aggregation Secret in the pod namespace. When Rancher
+		// populates it, longhorn-manager connects via WebSocket tunnel.
+		if err := steve.StartAggregation(ctx, steveRESTConfig, podNamespace, steve.AggregationSecretName(), steveServer.Handler()); err != nil {
+			logger.WithError(err).Warn("Failed to start Steve aggregation watcher")
+		}
 	} else {
 		router = api.NewRouter(server)
 	}
@@ -464,10 +481,10 @@ func initDaemonNode(ds *datastore.DataStore, nodeName string) error {
 // initSteveServer initializes a Steve server that provides Steve-style API endpoints
 // for Longhorn CRDs. Steve automatically discovers all CRDs from the Kubernetes API
 // and serves them in Steve format (e.g., /v1/steve/longhorn.io.volumes).
-func initSteveServer(ctx context.Context, kubeconfigPath string, logger *logrus.Entry) (*steve.Server, error) {
+func initSteveServer(ctx context.Context, kubeconfigPath string, logger *logrus.Entry) (*steve.Server, *rest.Config, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to build kubeconfig for Steve server")
+		return nil, nil, errors.Wrap(err, "failed to build kubeconfig for Steve server")
 	}
 
 	config.QPS = types.KubeAPIQPS
@@ -475,10 +492,10 @@ func initSteveServer(ctx context.Context, kubeconfigPath string, logger *logrus.
 
 	steveServer, err := steve.New(ctx, config, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create Steve server")
+		return nil, nil, errors.Wrap(err, "failed to create Steve server")
 	}
 
 	logger.Info("Steve server initialized - API available at /apis/v1/")
 
-	return steveServer, nil
+	return steveServer, config, nil
 }
