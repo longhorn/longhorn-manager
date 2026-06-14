@@ -102,11 +102,11 @@ require (
 )
 
 require (
-	github.com/go-co-op/gocron v1.37.0
 	github.com/go-co-op/gocron/v2 v2.21.2
-	github.com/urfave/cli v1.22.17
+	github.com/go-co-op/gocron/v2 v2.21.2
 	github.com/urfave/cli/v3 v3.9.0
-	gopkg.in/yaml.v2 v2.4.0
+	github.com/urfave/cli/v3 v3.9.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
