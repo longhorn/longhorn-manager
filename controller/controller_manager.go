@@ -28,7 +28,11 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-// StartControllers initiates all Longhorn component controllers and monitors to manage the creating, updating, and deletion of Longhorn resources
+// StartControllers runs the DaemonSet's node-local controllers.
+// The cluster-wide-Pod-informer controllers (KubernetesPV/Pod) are
+// started separately by app.startManager (consolidated mode) or by
+// app.startGlobalManager (split mode) via the StartGlobalControllers*
+// wrappers below.
 func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, instanceManagerImage,
 	kubeconfigPath, version string, proxyConnCounter util.Counter, snapshotConcurrentLimiter *SnapshotConcurrentLimiter) (*WebsocketController, error) {
@@ -157,16 +161,8 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 		return nil, err
 	}
 
-	// Kubernetes controllers
-	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
-	if err != nil {
-		return nil, err
-	}
+	// Kubernetes controllers (excluding PV and Pod — see StartGlobalControllers)
 	kubernetesNodeController, err := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
-	if err != nil {
-		return nil, err
-	}
-	kubernetesPodController, err := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
 	if err != nil {
 		return nil, err
 	}
@@ -218,16 +214,57 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeCloneController.Run(Workers, stopCh)
 	go volumeExpansionController.Run(Workers, stopCh)
 
-	// Start goroutines for Kubernetes controllers
-	go kubernetesPVController.Run(Workers, stopCh)
+	// Start goroutines for Kubernetes controllers (excluding PV and Pod)
 	go kubernetesNodeController.Run(Workers, stopCh)
-	go kubernetesPodController.Run(Workers, stopCh)
 	go kubernetesConfigMapController.Run(Workers, stopCh)
 	go kubernetesSecretController.Run(Workers, stopCh)
 	go kubernetesPDBController.Run(Workers, stopCh)
 	go kubernetesEndpointController.Run(Workers, stopCh)
 
 	return websocketController, nil
+}
+
+// StartGlobalControllersInDaemonSet runs the cluster-wide-Pod-informer
+// controllers (KubernetesPV/Pod) inside the longhorn-manager DaemonSet
+// process in consolidated mode (no separate global manager Deployment).
+// The controllers are constructed with globalManagerEnabled=false so
+// per-CR-owner sharding guards stay active and N daemons don't race on
+// the same reconcile.
+func StartGlobalControllersInDaemonSet(logger logrus.FieldLogger, clients *client.Clients,
+	controllerID string) error {
+	return startGlobalControllers(logger, clients, controllerID, false)
+}
+
+// StartGlobalControllersInDeployment runs the cluster-wide-Pod-informer
+// controllers inside the longhorn-global-manager Deployment process
+// (split mode, leader-elected singleton). The controllers are
+// constructed with globalManagerEnabled=true so sharding guards are
+// skipped — the leader is the single writer.
+func StartGlobalControllersInDeployment(logger logrus.FieldLogger, clients *client.Clients,
+	controllerID string) error {
+	return startGlobalControllers(logger, clients, controllerID, true)
+}
+
+func startGlobalControllers(logger logrus.FieldLogger, clients *client.Clients,
+	controllerID string, globalManagerEnabled bool) error {
+	kubeClient := clients.K8s
+	ds := clients.Datastore
+	scheme := clients.Scheme
+	stopCh := clients.StopCh
+
+	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID, globalManagerEnabled)
+	if err != nil {
+		return err
+	}
+	kubernetesPodController, err := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID, globalManagerEnabled)
+	if err != nil {
+		return err
+	}
+
+	go kubernetesPVController.Run(Workers, stopCh)
+	go kubernetesPodController.Run(Workers, stopCh)
+
+	return nil
 }
 
 func ParseResourceRequirement(val string) (*corev1.ResourceRequirements, error) {

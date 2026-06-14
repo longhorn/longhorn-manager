@@ -134,8 +134,47 @@ type DataStore struct {
 	extensionsClient apiextensionsclientset.Interface
 }
 
-// NewDataStore creates new DataStore object
+// NewDataStore creates a new DataStore with the cluster-wide PodInformer.
+// Retained for backward compatibility; equivalent to NewDataStoreForGlobal.
+// Callers that intend to drop the cluster-wide Pod watch should use
+// NewDataStoreForNodeLocal instead.
 func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	return NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+}
+
+// NewDataStoreForGlobal creates a DataStore intended for the
+// longhorn-global-manager process. PodInformer is backed by the
+// cluster-wide KubeInformerFactory.
+func NewDataStoreForGlobal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	pi := informerFactories.KubeInformerFactory.Core().V1().Pods()
+	attachPodInformer(ds, pi.Lister(), pi.Informer())
+	return ds
+}
+
+// NewDataStoreForNodeLocal — DaemonSet running with --node-local-only.
+// PodInformer is namespace-filtered (longhorn-system) — sufficient
+// because every in-DaemonSet Pod consumer filters down to that
+// namespace anyway.
+func NewDataStoreForNodeLocal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	pi := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Pods()
+	attachPodInformer(ds, pi.Lister(), pi.Informer())
+	return ds
+}
+
+// attachPodInformer wires the chosen Pod informer into a DataStore that
+// was constructed by newDataStoreCommon (which leaves Pod fields unset).
+func attachPodInformer(ds *DataStore, podLister corelisters.PodLister, podSharedInformer cache.SharedInformer) {
+	ds.podLister = podLister
+	ds.PodInformer = podSharedInformer
+	ds.cacheSyncs = append(ds.cacheSyncs, podSharedInformer.HasSynced)
+}
+
+// newDataStoreCommon builds the DataStore with every informer other
+// than PodInformer. The two public wrappers attach the appropriate Pod
+// informer (cluster-wide or namespace-filtered) afterward.
+func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
 	cacheSyncs := []cache.InformerSynced{}
 
 	// Longhorn Informers
@@ -187,8 +226,9 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
 
 	// Kube Informers
-	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
-	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
+	// Pod informer is intentionally NOT created here — it is attached
+	// later by NewDataStoreForGlobal (cluster-wide) or
+	// NewDataStoreForNodeLocal (namespace-filtered) via attachPodInformer.
 	kubeNodeInformer := informerFactories.KubeInformerFactory.Core().V1().Nodes()
 	cacheSyncs = append(cacheSyncs, kubeNodeInformer.Informer().HasSynced)
 	persistentVolumeInformer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes()
@@ -277,9 +317,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		lhVolumeAttachmentLister:       lhVolumeAttachmentInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVolumeAttachmentInformer.Informer(),
 
-		kubeClient:                    kubeClient,
-		podLister:                     podInformer.Lister(),
-		PodInformer:                   podInformer.Informer(),
+		kubeClient: kubeClient,
+		// podLister and PodInformer are populated by attachPodInformer().
 		persistentVolumeLister:        persistentVolumeInformer.Lister(),
 		PersistentVolumeInformer:      persistentVolumeInformer.Informer(),
 		persistentVolumeClaimLister:   persistentVolumeClaimInformer.Lister(),

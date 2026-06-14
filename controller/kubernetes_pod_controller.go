@@ -38,6 +38,10 @@ const (
 	remountRequestDelayDuration = 5 * time.Second
 )
 
+// KubernetesPodController is a global-scope controller hosted by
+// longhorn-global-manager in split topology; future waves may
+// regroup these under a `global/` directory or filename prefix.
+// See enhancements/20260506-global-longhorn-manager.md.
 type KubernetesPodController struct {
 	*baseController
 
@@ -49,6 +53,11 @@ type KubernetesPodController struct {
 
 	ds *datastore.DataStore
 
+	// globalManagerEnabled — true: hosted as singleton in
+	// longhorn-global-manager (sharding guards skipped); false: in
+	// DaemonSet (sharding guards apply to avoid N daemons racing).
+	globalManagerEnabled bool
+
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -57,7 +66,8 @@ func NewKubernetesPodController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	controllerID string) (*KubernetesPodController, error) {
+	controllerID string,
+	globalManagerEnabled bool) (*KubernetesPodController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -72,6 +82,8 @@ func NewKubernetesPodController(
 		controllerID: controllerID,
 
 		ds: ds,
+
+		globalManagerEnabled: globalManagerEnabled,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-kubernetes-pod-controller"}),
@@ -366,8 +378,14 @@ func (kc *KubernetesPodController) isControllerInBlacklist(resource *metav1.Owne
 // cleanupForceDeletedPodResources removes stale resources left behind when a pod
 // is force-deleted (i.e., deletion grace period is zero).
 func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
-	if !isControllerResponsibleFor(kc.controllerID, kc.ds, pod.Name, "", pod.Spec.NodeName) {
-		return nil
+	// Consolidated: shard by pod node. Split: skip — and skipping
+	// IsNodeDownOrDeletedOrMissingManager is safe here because
+	// force-delete (DeletionGracePeriodSeconds==0, checked below)
+	// already implies the node is gone.
+	if !kc.globalManagerEnabled {
+		if !isControllerResponsibleFor(kc.controllerID, kc.ds, pod.Name, "", pod.Spec.NodeName) {
+			return nil
+		}
 	}
 
 	if pod.DeletionTimestamp.IsZero() {
@@ -616,8 +634,10 @@ func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *corev1.Pod) ([
 // handlePodDeletionIfVolumeRequestRemount will delete the pod which is using a volume that has requested remount.
 // By deleting the consuming pod, Kubernetes will recreated them, reattaches, and remounts the volume.
 func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *corev1.Pod) error {
-	// Only handle pod that is on the same node as this manager
-	if pod.Spec.NodeName != kc.controllerID {
+	// In consolidated mode, only the daemon on the pod's node performs
+	// the remount delete (per-node sharding). In split mode, the
+	// global manager leader is the single executor.
+	if !kc.globalManagerEnabled && pod.Spec.NodeName != kc.controllerID {
 		return nil
 	}
 
@@ -785,7 +805,10 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 	}
 
 	if isCSIPluginPod(pod) {
-		if pod.Spec.NodeName == kc.controllerID {
+		// Split mode: the leader must enqueue every node's CSI plugin
+		// pod because handleWorkloadPodDeletionIfCSIPluginPodIsDown
+		// keys off csiPod.Spec.NodeName itself.
+		if kc.globalManagerEnabled || pod.Spec.NodeName == kc.controllerID {
 			kc.queue.Add(key)
 		}
 		return

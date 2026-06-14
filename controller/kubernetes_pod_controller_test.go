@@ -36,7 +36,7 @@ func newTestKubernetesPodController(
 	informerFactories *util.InformerFactories, controllerID string) (*KubernetesPodController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
-	kc, err := NewKubernetesPodController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, controllerID)
+	kc, err := NewKubernetesPodController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, controllerID, false /* globalManagerEnabled */)
 	if err != nil {
 		return nil, err
 	}

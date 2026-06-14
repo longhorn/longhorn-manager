@@ -7,9 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
+	. "gopkg.in/check.v1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes/fake"
@@ -21,10 +19,12 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -172,7 +172,7 @@ func newTestKubernetesPVController(lhClient *lhfake.Clientset, kubeClient *fake.
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
-	kc, err := NewKubernetesPVController(logger, ds, scheme.Scheme, kubeClient, TestNode1)
+	kc, err := NewKubernetesPVController(logger, ds, scheme.Scheme, kubeClient, TestNode1, false /* globalManagerEnabled */)
 	if err != nil {
 		return nil, err
 	}
