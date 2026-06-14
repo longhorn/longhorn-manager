@@ -49,7 +49,7 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 	}
 }
 
-func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
+func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj runtime.Object, im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
 	defer func() {
 		if status.CurrentState == longhorn.InstanceStateStopped && !status.Starting {
 			status.InstanceManagerName = ""
@@ -60,6 +60,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	if im != nil {
 		isDelinquent, _ = h.ds.IsNodeDelinquent(im.Spec.NodeID, spec.VolumeName)
 	}
+	tolerateIMUnavailable := h.shouldTolerateEngineFrontendIMUnavailableInSplitTopology(obj, spec, status)
 
 	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown || isDelinquent {
 		if status.Started {
@@ -71,11 +72,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			status.CurrentState = longhorn.InstanceStateStopped
 			status.CurrentImage = ""
 		}
-		status.IP = ""
-		status.StorageIP = ""
-		status.Port = 0
-		status.UblkID = 0
-		status.UUID = ""
+		h.resetInstanceConnectionStatusFields(status)
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -83,6 +80,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped ||
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
+		if tolerateIMUnavailable {
+			status.CurrentState = longhorn.InstanceStateUnknown
+			status.CurrentImage = ""
+			h.resetInstanceConnectionStatusFields(status)
+			h.resetInstanceErrorCondition(status)
+			return
+		}
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
@@ -92,27 +96,26 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			status.CurrentState = longhorn.InstanceStateStopped
 		}
 		status.CurrentImage = ""
-		status.IP = ""
-		status.StorageIP = ""
-		status.Port = 0
-		status.UblkID = 0
-		status.UUID = ""
+		h.resetInstanceConnectionStatusFields(status)
 		h.resetInstanceErrorCondition(status)
 		return
 	}
 
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
+		if tolerateIMUnavailable {
+			status.CurrentState = longhorn.InstanceStateUnknown
+			status.CurrentImage = ""
+			h.resetInstanceConnectionStatusFields(status)
+			h.resetInstanceErrorCondition(status)
+			return
+		}
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since the starting instance manager %v shouldn't contain the running instance %v", im.Name, instanceName)
 			}
 			status.CurrentState = longhorn.InstanceStateError
 			status.CurrentImage = ""
-			status.IP = ""
-			status.StorageIP = ""
-			status.Port = 0
-			status.UblkID = 0
-			status.UUID = ""
+			h.resetInstanceConnectionStatusFields(status)
 			h.resetInstanceErrorCondition(status)
 		}
 		return
@@ -120,6 +123,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 
 	instance, exists := instances[instanceName]
 	if !exists {
+		if tolerateIMUnavailable {
+			status.CurrentState = longhorn.InstanceStateUnknown
+			status.CurrentImage = ""
+			h.resetInstanceConnectionStatusFields(status)
+			h.resetInstanceErrorCondition(status)
+			return
+		}
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
 				log.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
@@ -129,11 +139,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			status.CurrentState = longhorn.InstanceStateStopped
 		}
 		status.CurrentImage = ""
-		status.IP = ""
-		status.StorageIP = ""
-		status.Port = 0
-		status.UblkID = 0
-		status.UUID = ""
+		h.resetInstanceConnectionStatusFields(status)
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -153,11 +159,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	case longhorn.InstanceStateStarting:
 		status.CurrentState = longhorn.InstanceStateStarting
 		status.CurrentImage = ""
-		status.IP = ""
-		status.StorageIP = ""
-		status.Port = 0
-		status.UblkID = 0
-		status.UUID = ""
+		h.resetInstanceConnectionStatusFields(status)
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
@@ -262,11 +264,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			status.CurrentState = longhorn.InstanceStateStopping
 		}
 		status.CurrentImage = ""
-		status.IP = ""
-		status.StorageIP = ""
-		status.Port = 0
-		status.UblkID = 0
-		status.UUID = ""
+		h.resetInstanceConnectionStatusFields(status)
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateStopped:
 		if status.Started {
@@ -275,11 +273,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			status.CurrentState = longhorn.InstanceStateStopped
 		}
 		status.CurrentImage = ""
-		status.IP = ""
-		status.StorageIP = ""
-		status.Port = 0
-		status.UblkID = 0
-		status.UUID = ""
+		h.resetInstanceConnectionStatusFields(status)
 		h.resetInstanceErrorCondition(status)
 	default:
 		if status.CurrentState != longhorn.InstanceStateError {
@@ -287,11 +281,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 		}
 		status.CurrentState = longhorn.InstanceStateError
 		status.CurrentImage = ""
-		status.IP = ""
-		status.StorageIP = ""
-		status.Port = 0
-		status.UblkID = 0
-		status.UUID = ""
+		h.resetInstanceConnectionStatusFields(status)
 		h.resetInstanceErrorCondition(status)
 	}
 }
@@ -304,6 +294,41 @@ func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProces
 		}
 		status.Conditions = types.SetCondition(status.Conditions, condition, conditionStatus, "", "")
 	}
+}
+
+// shouldTolerateEngineFrontendIMUnavailableInSplitTopology returns true when a
+// v2 EngineFrontend should stay in Unknown instead of entering recreate flow.
+func (h *InstanceHandler) shouldTolerateEngineFrontendIMUnavailableInSplitTopology(obj runtime.Object, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) bool {
+	if spec == nil || status == nil || !status.Started || spec.NodeID == "" || !types.IsDataEngineV2(spec.DataEngine) {
+		return false
+	}
+
+	ef, ok := obj.(*longhorn.EngineFrontend)
+	if !ok {
+		return false
+	}
+
+	volume, err := h.ds.GetVolumeRO(spec.VolumeName)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			logrus.WithError(err).Warnf("Failed to get volume %v while evaluating engine frontend IM tolerance", spec.VolumeName)
+		}
+		return false
+	}
+
+	if volume.Status.CurrentNodeID == "" || volume.Status.CurrentNodeID != spec.NodeID {
+		return false
+	}
+
+	return isEngineFrontendInSplitTopology(volume, ef, spec.NodeID)
+}
+
+func (h *InstanceHandler) resetInstanceConnectionStatusFields(status *longhorn.InstanceStatus) {
+	status.IP = ""
+	status.StorageIP = ""
+	status.Port = 0
+	status.UblkID = 0
+	status.UUID = ""
 }
 
 // resetInstanceErrorCondition resets the error condition to false when the instance is not running
@@ -463,7 +488,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		return fmt.Errorf("unknown instance desire state: desire %v", spec.DesireState)
 	}
 
-	h.syncStatusWithInstanceManager(log, im, instanceName, spec, status, instances)
+	h.syncStatusWithInstanceManager(log, runtimeObj, im, instanceName, spec, status, instances)
 
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
