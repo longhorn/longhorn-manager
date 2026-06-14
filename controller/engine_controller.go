@@ -728,6 +728,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		UpgradeRequired:                  false,
 		InitiatorAddress:                 instanceManagerStorageIP,
 		TargetAddress:                    instanceManagerStorageIP,
+		FromBackup:                       v.Spec.FromBackup != "",
 	})
 }
 
@@ -1251,6 +1252,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	removeInvalidEngineOpStatus(engine)
 
 	// align 'engine.Status.CurrentSize' to 'engine.Spec.VolumeSize' if the backend size is expected.
+	if types.IsDataEngineV2(engine.Spec.DataEngine) && volume.Spec.Encrypted && cliAPIVersion == 0 {
+		cliAPIVersion = lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize
+	}
 	expectedBackendSize, err := util.GetActualBackendSize(engine.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
 	if err != nil {
 		return err
