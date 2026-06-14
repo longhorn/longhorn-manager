@@ -429,11 +429,15 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.Sy
 									Name:  "NODE_NAME",
 									Value: c.controllerID,
 								},
+								{
+									Name:  types.LonghornDataPathEnv,
+									Value: types.GetLonghornDataPath(),
+								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "engine",
-									MountPath: types.EngineBinaryDirectoryOnHost,
+									MountPath: types.GetEngineBinaryDirectoryOnHost(),
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
@@ -446,7 +450,7 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.Sy
 							Name: "engine",
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
-									Path: types.EngineBinaryDirectoryOnHost,
+									Path: types.GetEngineBinaryDirectoryOnHost(),
 								},
 							},
 						},

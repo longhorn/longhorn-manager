@@ -2,6 +2,8 @@ package types
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -27,6 +29,40 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
+	c.Assert(os.Unsetenv(LonghornDataPathEnv), IsNil)
+}
+
+func (s *TestSuite) TearDownTest(c *C) {
+	c.Assert(os.Unsetenv(LonghornDataPathEnv), IsNil)
+}
+
+func (s *TestSuite) TestGetLonghornDataPath(c *C) {
+	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+
+	customPath := "/data/longhorn/"
+	c.Assert(os.Setenv(LonghornDataPathEnv, customPath), IsNil)
+	c.Assert(GetLonghornDataPath(), Equals, filepath.Clean(customPath))
+
+	c.Assert(os.Setenv(LonghornDataPathEnv, "relative/path"), IsNil)
+	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+
+	c.Assert(os.Setenv(LonghornDataPathEnv, string(filepath.Separator)), IsNil)
+	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+
+	c.Assert(os.Setenv(LonghornDataPathEnv, "/dev/nvme0n1"), IsNil)
+	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+}
+
+func (s *TestSuite) TestContainerPathHelpersUseReplicaHostPrefix(c *C) {
+	customPath := "/data/longhorn"
+	image := "longhornio/longhorn-engine:v1.9.0"
+
+	c.Assert(os.Setenv(LonghornDataPathEnv, customPath), IsNil)
+
+	c.Assert(GetUnixDomainSocketDirectoryInContainer(), Equals,
+		filepath.Join(ReplicaHostPrefix, "data/longhorn", UnixDomainSocketDirectorySubpath))
+	c.Assert(GetEngineBinaryDirectoryForReplicaManagerContainer(image), Equals,
+		filepath.Join(ReplicaHostPrefix, "data/longhorn", EngineBinaryDirectorySubpath, GetImageCanonicalName(image)))
 }
 
 func (s *TestSuite) TestParseToleration(c *C) {

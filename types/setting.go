@@ -548,7 +548,7 @@ var (
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
 		DisplayName:        "Default Data Path",
-		Description:        "Default path to use for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, while a path to a block device indicates a block-type disk used by the V2 Data Engine.",
+		Description:        "Default path to use for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, while a path to a block device indicates a block-type disk used by the V2 Data Engine. When this setting is a block device path, only data-plane semantics apply; runtime and control-plane paths such as engine binaries, metadata, sockets, and logs still require a directory-based root.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1996,7 +1996,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            DefaultLogDirectoryOnHost,
+		Default:            GetDefaultLogDirectoryOnHost(),
 	}
 
 	SettingDefinitionNodeDiskHealthMonitoring = SettingDefinition{

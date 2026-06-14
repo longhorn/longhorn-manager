@@ -902,7 +902,7 @@ func (imc *InstanceManagerController) isSettingLogPathSynced(setting *longhorn.S
 
 	logPath := setting.Value
 	if logPath == "" {
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	}
 
 	normalizedLogPath := filepath.Clean(logPath)
@@ -1823,7 +1823,7 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 	}
 
 	if logPath == "" || logPath == string(filepath.Separator) {
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	} else {
 		logPath = filepath.Clean(logPath)
 	}
@@ -1831,16 +1831,16 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 	parent := filepath.Dir(logPath)
 	if parent == "." || parent == string(filepath.Separator) {
 		imc.logger.Warnf("Log path %q is not a valid directory, using default log directory", logPath)
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	}
 
 	if st, err := lhns.Stat(parent); err != nil {
 		imc.logger.WithError(err).Warnf("Failed to stat parent of log path %q, using default log directory", logPath)
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	} else {
 		if !st.IsDir() {
 			imc.logger.Warnf("Parent of log path %q is not a directory, using default log directory", logPath)
-			logPath = types.DefaultLogDirectoryOnHost
+			logPath = types.GetDefaultLogDirectoryOnHost()
 		}
 		imc.logger.Infof("Using log path %q", logPath)
 	}
@@ -2000,6 +2000,10 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name:  types.EnvDataEngine,
 			Value: string(dataEngine),
 		},
+		{
+			Name:  types.LonghornDataPathEnv,
+			Value: types.GetLonghornDataPath(),
+		},
 	}
 	if tz := os.Getenv(types.EnvTZ); tz != "" {
 		podEnv = append(podEnv, corev1.EnvVar{
@@ -2027,7 +2031,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
-			MountPath: types.UnixDomainSocketDirectoryInContainer,
+			MountPath: types.GetUnixDomainSocketDirectoryInContainer(),
 			Name:      "unix-domain-socket",
 		},
 		{
@@ -2053,7 +2057,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "engine-binaries",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.EngineBinaryDirectoryOnHost,
+					Path: types.GetEngineBinaryDirectoryOnHost(),
 				},
 			},
 		},
@@ -2061,7 +2065,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "metadata",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.MetadataDirectoryOnHost,
+					Path: types.GetMetadataDirectoryOnHost(),
 					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
@@ -2070,7 +2074,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "unix-domain-socket",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.UnixDomainSocketDirectoryOnHost,
+					Path: types.GetUnixDomainSocketDirectoryOnHost(),
 				},
 			},
 		},
