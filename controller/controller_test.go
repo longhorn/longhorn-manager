@@ -11,6 +11,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/controller"
@@ -26,8 +28,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -151,6 +151,15 @@ func newDefaultInstanceManagerImageSetting() *longhorn.Setting {
 			Name: string(types.SettingNameDefaultInstanceManagerImage),
 		},
 		Value: TestInstanceManagerImage,
+	}
+}
+
+func newV2InstanceManagerUpgradeTimeoutSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameV2InstanceManagerUpgradeTimeout),
+		},
+		Value: "60", // 60 minutes default
 	}
 }
 

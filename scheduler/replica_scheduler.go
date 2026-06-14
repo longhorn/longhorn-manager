@@ -213,6 +213,25 @@ func (rcs *ReplicaScheduler) getSrcReplicaNodesAndDisks(volume *longhorn.Volume)
 func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica, linkedClone bool, linkedCloneSrcReplicaNodes map[string]bool) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
 	errs = multierr.NewMultiError()
 
+	// For v2 data engine, build a set of nodes with active InstanceManagerUpgrades once
+	// to avoid O(nodes * upgrades) list operations in the per-node loop.
+	nodesUnderUpgrade := map[string]bool{}
+	if types.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
+		imuList, err := rcs.ds.ListInstanceManagerUpgradesRO()
+		if err != nil {
+			// Fail open on lister/cache issues. The upgrade-node exclusion is a
+			// best-effort protection and should not block all v2 replica
+			// scheduling cluster-wide when IMUs cannot be listed temporarily.
+			logrus.WithError(err).Warnf("Failed to list instance manager upgrades while scheduling replica %v, continuing without upgrade-node exclusion", schedulingReplica.Name)
+		} else {
+			for _, imu := range imuList {
+				if types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
+					nodesUnderUpgrade[imu.Spec.NodeID] = true
+				}
+			}
+		}
+	}
+
 	// If the replica has a hard node affinity, filter nodes based on that.
 	if schedulingReplica.Spec.HardNodeAffinity != "" {
 		node, exist := nodes[schedulingReplica.Spec.HardNodeAffinity]
@@ -278,6 +297,13 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, 
 			}
 			log.Debugf("Excluding node in node candidates because data engine image on node is not ready")
 			continue
+		}
+
+		if types.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
+			if nodesUnderUpgrade[node.Name] {
+				log.Debugf("Excluding node %v from candidates because it has an active instance manager upgrade", node.Name)
+				continue
+			}
 		}
 
 		nodeCandidates[node.Name] = node

@@ -1,9 +1,10 @@
 package v1beta2
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn"
 )
@@ -43,6 +44,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&EngineImageList{},
 		&InstanceManager{},
 		&InstanceManagerList{},
+		&InstanceManagerUpgrade{},
+		&InstanceManagerUpgradeList{},
+		&InstanceManagerUpgradeControl{},
+		&InstanceManagerUpgradeControlList{},
 		&Node{},
 		&NodeList{},
 		&Orphan{},
