@@ -1343,6 +1343,93 @@ func (s *TestSuite) TestGetSnapshotCountThresholdFallback(c *C) {
 	c.Assert(threshold, Equals, specMaxCount)
 }
 
+func (s *TestSuite) TestShouldCleanUpFailedReplica(c *C) {
+	// 1. Setup the mock environment
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	now := time.Now()
+
+	// 2. Define the test cases
+	tests := []struct {
+		name                             string
+		volume                           *longhorn.Volume
+		replica                          *longhorn.Replica
+		staleReplicaTimeoutSetting       int
+		replenishmentWaitIntervalSetting int
+		expected                         bool
+	}{
+		{
+			name: "Scenario 1: Volume Spec overrides Global Setting",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 10},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-15 * time.Minute).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       60,
+			replenishmentWaitIntervalSetting: 0,
+			expected:                         true,
+		},
+		{
+			name: "Scenario 2: Global used when Spec is 0",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 0},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-15 * time.Minute).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       30,
+			replenishmentWaitIntervalSetting: 0,
+			expected:                         false,
+		},
+		{
+			name: "Scenario 3: Max with Replenishment Interval (Safety)",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 1},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-3 * time.Minute).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       1,
+			replenishmentWaitIntervalSetting: 600, // 10 mins
+			expected:                         false,
+		},
+		{
+			name: "Scenario 4: Rounding up seconds to minutes (Stable)",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{StaleReplicaTimeout: 0},
+			},
+			replica: &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					FailedAt: now.Add(-110 * time.Second).Format(time.RFC3339),
+				},
+			},
+			staleReplicaTimeoutSetting:       0,
+			replenishmentWaitIntervalSetting: 61,
+			expected:                         false,
+		},
+	}
+
+	// 3. Run the cases
+	for _, tc := range tests {
+		// We pass 1 for safeAsLastReplicaCount to bypass the "last replica" protection logic
+		result := vc.shouldCleanUpFailedReplica(tc.volume, tc.replica, 1, tc.staleReplicaTimeoutSetting, tc.replenishmentWaitIntervalSetting)
+		c.Assert(result, Equals, tc.expected, Commentf("Failed case: %v", tc.name))
+	}
+}
+
 func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
 	// We have to skip lister check for unit tests
 	// Because the changes written through the API won't be reflected in the listers
