@@ -156,23 +156,19 @@ func sliceStringSafely(s string, begin, end int) string {
 	return s[begin:end]
 }
 
-func systemBackupsToNameWithTimestamps(systemBackupList *longhorn.SystemBackupList) []NameWithTimestamp {
-	result := make([]NameWithTimestamp, 0, len(systemBackupList.Items))
-	for _, systemBackup := range systemBackupList.Items {
-		// Status.CreatedAt is only written by the controller on the successful
-		// upload path. SystemBackups in Error state, and SystemBackups that
-		// have just been created but whose status write has not yet landed,
-		// have a zero Status.CreatedAt — which sorts to the front in
-		// filterExpiredItems and causes the newest CR to be pruned instead
-		// of an older one. Fall back to metadata.creationTimestamp, which is
-		// always set by the apiserver, for those cases.
-		ts := systemBackup.Status.CreatedAt.Time
-		if ts.IsZero() {
-			ts = systemBackup.CreationTimestamp.Time
-		}
+// systemBackupsToNameWithTimestamps maps SystemBackups to NameWithTimestamp by
+// Status.CreatedAt for retention sorting. Callers must pre-filter to the states
+// eligible for retention (see (*SystemBackupJob).cleanup). Status.CreatedAt is
+// only written on the successful upload path, so SystemBackups in Error state
+// carry a zero timestamp; that zero intentionally sorts ahead of successful
+// (Ready) backups in filterExpiredItems, so failed backups are pruned before
+// successful ones (longhorn/longhorn#13203).
+func systemBackupsToNameWithTimestamps(systemBackups []longhorn.SystemBackup) []NameWithTimestamp {
+	result := make([]NameWithTimestamp, 0, len(systemBackups))
+	for _, systemBackup := range systemBackups {
 		result = append(result, NameWithTimestamp{
 			Name:      systemBackup.Name,
-			Timestamp: ts,
+			Timestamp: systemBackup.Status.CreatedAt.Time,
 		})
 	}
 	return result

@@ -45,8 +45,9 @@ func newLabeledSystemBackup(name, jobName string, creationTime, statusCreatedAt 
 
 // newSystemBackupJobForTest wires a SystemBackupJob to a fake Longhorn clientset
 // seeded with the given SystemBackups. This exercises the real cleanup() path
-// (ListSystemBackup -> systemBackupsToNameWithTimestamps -> filterExpiredItems
-// -> DeleteSystemBackup) without needing a cluster.
+// (ListSystemBackup -> filter retention-eligible states ->
+// systemBackupsToNameWithTimestamps -> filterExpiredItems -> DeleteSystemBackup)
+// without needing a cluster.
 func newSystemBackupJobForTest(retain int, objs ...*longhorn.SystemBackup) *SystemBackupJob {
 	runtimeObjs := make([]runtime.Object, 0, len(objs))
 	for _, o := range objs {
@@ -85,17 +86,12 @@ func remainingSystemBackupNames(t *testing.T, job *SystemBackupJob) []string {
 func TestSystemBackupJobCleanup(t *testing.T) {
 	base := time.Date(2026, 5, 20, 1, 0, 0, 0, time.UTC)
 
-	t.Run("retains_newest_error_cr_and_prunes_oldest_ready", func(t *testing.T) {
-		// Regression for longhorn/longhorn#13203.
-		// Three CRs owned by the job: two older successful ones (Ready, with
-		// Status.CreatedAt populated by the controller) and the newest one in
-		// Error state, whose Status.CreatedAt is still the zero value. With
-		// retain=2, cleanup() must prune the OLDEST Ready CR and keep the newest
-		// Error CR.
-		//
-		// Pre-fix, the Error CR's zero Status.CreatedAt (year 1) sorted to the
-		// front of filterExpiredItems, so cleanup() pruned the newest CR and
-		// silently kept two stale ones.
+	t.Run("prunes_error_backup_before_ready", func(t *testing.T) {
+		// longhorn/longhorn#13203, resolved per @derekbit's guidance: only Ready
+		// and Error are eligible for retention, and an Error backup (zero
+		// Status.CreatedAt) sorts first, so it is pruned before any successful
+		// Ready backup. With retain=2 and two Ready + one newest Error, the Error
+		// CR is removed and both Ready CRs are kept.
 		oldReady := newLabeledSystemBackup("daily-old-ready", testSystemBackupJob,
 			base, base.Add(8*time.Minute), longhorn.SystemBackupStateReady)
 		midReady := newLabeledSystemBackup("daily-mid-ready", testSystemBackupJob,
@@ -107,10 +103,55 @@ func TestSystemBackupJobCleanup(t *testing.T) {
 
 		job.cleanup()
 
-		assert.ElementsMatch(t, []string{"daily-mid-ready", "daily-new-error"},
+		assert.ElementsMatch(t, []string{"daily-old-ready", "daily-mid-ready"},
 			remainingSystemBackupNames(t, job),
-			"retain=2 must keep the two newest CRs by creation time (including the "+
-				"Error CR) and prune the oldest Ready CR (longhorn/longhorn#13203)")
+			"the Error CR is pruned before either Ready CR; successful backups are kept")
+	})
+
+	t.Run("skips_in_flight_system_backups", func(t *testing.T) {
+		// In-flight backups (anything not Ready/Error) must never be deleted, and
+		// must not count toward retain. With retain=1 and two Ready + one
+		// Generating, retention applies only to the two terminal Ready CRs (the
+		// oldest is pruned); the Generating CR is left untouched.
+		oldReady := newLabeledSystemBackup("daily-old-ready", testSystemBackupJob,
+			base, base.Add(8*time.Minute), longhorn.SystemBackupStateReady)
+		newReady := newLabeledSystemBackup("daily-new-ready", testSystemBackupJob,
+			base.Add(24*time.Hour), base.Add(24*time.Hour+8*time.Minute), longhorn.SystemBackupStateReady)
+		inFlight := newLabeledSystemBackup("daily-in-flight", testSystemBackupJob,
+			base.Add(48*time.Hour), time.Time{}, longhorn.SystemBackupStateGenerating)
+
+		job := newSystemBackupJobForTest(1, oldReady, newReady, inFlight)
+
+		job.cleanup()
+
+		assert.ElementsMatch(t, []string{"daily-new-ready", "daily-in-flight"},
+			remainingSystemBackupNames(t, job),
+			"in-flight CR is skipped (kept, not counted); only the oldest terminal "+
+				"Ready CR is pruned under retain=1")
+	})
+
+	t.Run("repeated_failures_do_not_evict_ready_backups", func(t *testing.T) {
+		// Safety property behind dropping the creationTimestamp fallback: during a
+		// backup-target outage, consecutive failed runs produce Error CRs. They
+		// must be pruned before successful backups so retention never erodes the
+		// usable (Ready) backups. retain=2 with two Ready + two Error keeps both
+		// Ready CRs and prunes both Error CRs.
+		ready1 := newLabeledSystemBackup("daily-ready-1", testSystemBackupJob,
+			base, base.Add(8*time.Minute), longhorn.SystemBackupStateReady)
+		ready2 := newLabeledSystemBackup("daily-ready-2", testSystemBackupJob,
+			base.Add(24*time.Hour), base.Add(24*time.Hour+8*time.Minute), longhorn.SystemBackupStateReady)
+		error1 := newLabeledSystemBackup("daily-error-1", testSystemBackupJob,
+			base.Add(48*time.Hour), time.Time{}, longhorn.SystemBackupStateError)
+		error2 := newLabeledSystemBackup("daily-error-2", testSystemBackupJob,
+			base.Add(72*time.Hour), time.Time{}, longhorn.SystemBackupStateError)
+
+		job := newSystemBackupJobForTest(2, ready1, ready2, error1, error2)
+
+		job.cleanup()
+
+		assert.ElementsMatch(t, []string{"daily-ready-1", "daily-ready-2"},
+			remainingSystemBackupNames(t, job),
+			"both Error CRs are pruned; successful Ready backups are never evicted by failures")
 	})
 
 	t.Run("ignores_system_backups_owned_by_other_jobs", func(t *testing.T) {
@@ -135,8 +176,8 @@ func TestSystemBackupJobCleanup(t *testing.T) {
 	})
 
 	t.Run("no_deletion_when_within_retain", func(t *testing.T) {
-		// retain >= number of owned CRs: nothing is expired. The Error CR with a
-		// zero Status.CreatedAt must not trip an accidental deletion here either.
+		// retain >= number of owned terminal CRs: nothing is expired. The Error CR
+		// with a zero Status.CreatedAt must not trip an accidental deletion here.
 		ready := newLabeledSystemBackup("a-ready", testSystemBackupJob,
 			base, base.Add(8*time.Minute), longhorn.SystemBackupStateReady)
 		errored := newLabeledSystemBackup("b-error", testSystemBackupJob,

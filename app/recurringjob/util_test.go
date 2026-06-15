@@ -27,80 +27,61 @@ func newSystemBackup(name string, creationTime time.Time, statusCreatedAt time.T
 func TestSystemBackupsToNameWithTimestamps(t *testing.T) {
 	base := time.Date(2026, 5, 20, 1, 0, 0, 0, time.UTC)
 
-	t.Run("all_status_created_at_set_uses_status", func(t *testing.T) {
-		// Happy path: every SystemBackup reached Ready and has Status.CreatedAt
-		// populated by the controller. The returned timestamps should match
-		// Status.CreatedAt for each entry (not metadata.creationTimestamp).
-		list := &longhorn.SystemBackupList{
-			Items: []longhorn.SystemBackup{
-				newSystemBackup("daily-1", base, base.Add(8*time.Minute), longhorn.SystemBackupStateReady),
-				newSystemBackup("daily-2", base.Add(24*time.Hour), base.Add(24*time.Hour+6*time.Minute), longhorn.SystemBackupStateReady),
-			},
+	t.Run("uses_status_created_at", func(t *testing.T) {
+		// Ready backups have Status.CreatedAt populated by the controller; the
+		// returned timestamps should match Status.CreatedAt for each entry.
+		systemBackups := []longhorn.SystemBackup{
+			newSystemBackup("daily-1", base, base.Add(8*time.Minute), longhorn.SystemBackupStateReady),
+			newSystemBackup("daily-2", base.Add(24*time.Hour), base.Add(24*time.Hour+6*time.Minute), longhorn.SystemBackupStateReady),
 		}
 
-		got := systemBackupsToNameWithTimestamps(list)
+		got := systemBackupsToNameWithTimestamps(systemBackups)
 
 		assert.Len(t, got, 2)
 		byName := map[string]time.Time{}
 		for _, n := range got {
 			byName[n.Name] = n.Timestamp
 		}
-		assert.Equal(t, base.Add(8*time.Minute), byName["daily-1"], "should use Status.CreatedAt when set")
-		assert.Equal(t, base.Add(24*time.Hour+6*time.Minute), byName["daily-2"], "should use Status.CreatedAt when set")
+		assert.Equal(t, base.Add(8*time.Minute), byName["daily-1"])
+		assert.Equal(t, base.Add(24*time.Hour+6*time.Minute), byName["daily-2"])
 	})
 
-	t.Run("zero_status_created_at_falls_back_to_metadata_creation_timestamp", func(t *testing.T) {
-		// Regression test for longhorn/longhorn#13203.
-		// A SystemBackup in Error state, or one whose status write has not
-		// yet landed when ListSystemBackup runs, has a zero
-		// Status.CreatedAt. Without the fallback, this CR would sort to
-		// position 0 (year-1 < any real time) in filterExpiredItems, and
-		// `retain: N` would prune it instead of an older successful CR.
+	t.Run("error_backup_keeps_zero_timestamp", func(t *testing.T) {
+		// Status.CreatedAt is only set on the successful upload path, so an Error
+		// backup carries a zero timestamp. We deliberately do not fall back to
+		// metadata.creationTimestamp: the zero value sorts ahead of successful
+		// (Ready) backups in filterExpiredItems, so failed backups are pruned
+		// first and never evict a successful one (longhorn/longhorn#13203).
 		errored := newSystemBackup("daily-stuck", base, time.Time{}, longhorn.SystemBackupStateError)
-		list := &longhorn.SystemBackupList{Items: []longhorn.SystemBackup{errored}}
 
-		got := systemBackupsToNameWithTimestamps(list)
+		got := systemBackupsToNameWithTimestamps([]longhorn.SystemBackup{errored})
 
 		if assert.Len(t, got, 1) {
-			assert.False(t, got[0].Timestamp.IsZero(),
-				"Timestamp must not be zero when Status.CreatedAt is unset; "+
-					"otherwise the CR sorts to the front in filterExpiredItems "+
-					"and gets pruned ahead of older successful CRs (longhorn/longhorn#13203)")
-			assert.Equal(t, base, got[0].Timestamp,
-				"should fall back to metadata.creationTimestamp when Status.CreatedAt is zero")
+			assert.True(t, got[0].Timestamp.IsZero(),
+				"Error backup must keep a zero timestamp so it sorts (and prunes) ahead of Ready backups")
 		}
 	})
 
-	t.Run("mixed_zero_and_set_status_created_at_sorts_correctly", func(t *testing.T) {
-		// End-to-end demonstration that filterExpiredItems pairs correctly
-		// with the fallback. With retain=2 and three CRs (two old/Ready, one
-		// new/Error), the Error CR must be retained — it is the newest.
-		//
-		// Pre-fix behavior: the Error CR with zero Status.CreatedAt sorted to
-		// position 0 and was pruned, leaving the two older Ready CRs.
-		// Post-fix behavior: the Error CR uses its metadata.creationTimestamp
-		// (newest), sorts to the end, and is retained — the oldest Ready CR
-		// is pruned instead.
+	t.Run("error_is_pruned_before_ready", func(t *testing.T) {
+		// With retain=2 and two Ready + one Error, the Error backup (zero
+		// Status.CreatedAt) sorts first and is the one pruned; both successful
+		// Ready backups are retained.
 		oldReady := newSystemBackup("daily-old-ready",
 			base, base.Add(8*time.Minute), longhorn.SystemBackupStateReady)
 		midReady := newSystemBackup("daily-mid-ready",
 			base.Add(24*time.Hour), base.Add(24*time.Hour+8*time.Minute), longhorn.SystemBackupStateReady)
 		newError := newSystemBackup("daily-new-error",
 			base.Add(48*time.Hour), time.Time{}, longhorn.SystemBackupStateError)
-		list := &longhorn.SystemBackupList{
-			Items: []longhorn.SystemBackup{oldReady, midReady, newError},
-		}
 
-		expired := filterExpiredItems(systemBackupsToNameWithTimestamps(list), 2)
+		expired := filterExpiredItems(systemBackupsToNameWithTimestamps(
+			[]longhorn.SystemBackup{oldReady, midReady, newError}), 2)
 
-		assert.Equal(t, []string{"daily-old-ready"}, expired,
-			"retain=2 must prune the oldest CR by creation order, not the "+
-				"Error CR with zero Status.CreatedAt (longhorn/longhorn#13203)")
+		assert.Equal(t, []string{"daily-new-error"}, expired,
+			"the Error backup is pruned before either Ready backup")
 	})
 
-	t.Run("empty_list", func(t *testing.T) {
-		got := systemBackupsToNameWithTimestamps(&longhorn.SystemBackupList{})
-		assert.Empty(t, got)
+	t.Run("empty", func(t *testing.T) {
+		assert.Empty(t, systemBackupsToNameWithTimestamps(nil))
 	})
 }
 
@@ -142,12 +123,11 @@ func TestFilterExpiredItems(t *testing.T) {
 		assert.Empty(t, expired)
 	})
 
-	t.Run("zero_timestamp_sorts_first_demonstrating_pre_fix_bug", func(t *testing.T) {
-		// Demonstrates the underlying sort behavior that motivated the fix:
-		// a zero time.Time sorts before any real timestamp, so a NameWithTimestamp
-		// with zero Timestamp is always considered "oldest" by filterExpiredItems.
-		// This is correct for filterExpiredItems in isolation — the bug was in
-		// the caller, which fed it zero timestamps for new-but-Error CRs.
+	t.Run("zero_timestamp_sorts_first", func(t *testing.T) {
+		// A zero time.Time sorts before any real timestamp, so an entry with a
+		// zero Timestamp is always treated as the oldest and pruned first. For
+		// system backups this is intentional: Error backups carry a zero
+		// Status.CreatedAt and must be pruned ahead of successful (Ready) ones.
 		nts := []NameWithTimestamp{
 			{Name: "newest-real", Timestamp: base.Add(48 * time.Hour)},
 			{Name: "older-real", Timestamp: base},
