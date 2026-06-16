@@ -601,6 +601,11 @@ func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.Volum
 
 func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
 	log := getLoggerForLHVolumeAttachment(vac.logger, va)
+	// For auto salvage logic
+	// TODO: create Auto Salvage controller to handle this logic instead of AD controller
+	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		return true
+	}
 	if vac.shouldKeepAttachedDuringV2LiveUpgradeSwitchover(vol) {
 		log.WithFields(logrus.Fields{
 			"attachmentNodeID":    vol.Spec.NodeID,
@@ -608,11 +613,6 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 			"currentEngineNodeID": vol.Status.CurrentEngineNodeID,
 		}).Info("Skipping volume detach while v2 engine switchover is in progress during live upgrade")
 		return false
-	}
-	// For auto salvage logic
-	// TODO: create Auto Salvage controller to handle this logic instead of AD controller
-	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
-		return true
 	}
 	if util.IsMigratableVolume(vol) && util.IsVolumeMigrating(vol) {
 		// if the volume is migrating, the detachment will be handled by handleVolumeMigration()

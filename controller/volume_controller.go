@@ -5762,6 +5762,12 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	// Step 3: Wait for the EF controller to finish the multipath/ANA switchover.
 	// The old engine is intentionally kept running until the EngineFrontend
 	// status moves to the new target.
+	if ef.Status.CurrentState == longhorn.InstanceStateError {
+		log.Warn("EngineFrontend entered error during engine switchover, reverting to preserve data path")
+		revertRequired = true
+		return nil
+	}
+
 	if ef.Status.TargetIP != newTargetIP || ef.Status.TargetPort != newTargetPort {
 		log.Info("Waiting for EngineFrontend controller to complete the switchover to migration engine")
 		return nil
