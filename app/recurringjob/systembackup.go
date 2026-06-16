@@ -106,7 +106,18 @@ func (job *SystemBackupJob) cleanup() {
 		return
 	}
 
-	expiredSystemBackups := filterExpiredItems(systemBackupsToNameWithTimestamps(systemBackupList), job.retain)
+	// Only consider system backups that have reached a state eligible for
+	// retention (Ready or Error). Skipping the others means a backup that is
+	// still in flight is never deleted mid-creation, and does not count toward
+	// the retain quota.
+	retainableSystemBackups := make([]longhorn.SystemBackup, 0, len(systemBackupList.Items))
+	for _, systemBackup := range systemBackupList.Items {
+		if isSystemBackupEligibleForRetention(systemBackup.Status.State) {
+			retainableSystemBackups = append(retainableSystemBackups, systemBackup)
+		}
+	}
+
+	expiredSystemBackups := filterExpiredItems(systemBackupsToNameWithTimestamps(retainableSystemBackups), job.retain)
 	for _, systemBackupName := range expiredSystemBackups {
 		job.logger.Infof("Deleting system backup %v", systemBackupName)
 		err = job.DeleteSystemBackup(systemBackupName)
@@ -114,6 +125,17 @@ func (job *SystemBackupJob) cleanup() {
 			job.logger.WithError(err).Warnf("Failed to delete system backup %v", systemBackupName)
 		}
 	}
+}
+
+// isSystemBackupEligibleForRetention reports whether a SystemBackup should be
+// considered by retention cleanup. Only the completed terminal states Ready and
+// Error participate: in-flight backups (Syncing, Generating, Uploading, ...) are
+// skipped so a backup that is still being created is never deleted, and Deleting
+// backups are already on their way out. (The controller's systemBackupInFinalState
+// additionally treats Deleting as final; retention deliberately does not, to
+// avoid counting or re-deleting it.)
+func isSystemBackupEligibleForRetention(state longhorn.SystemBackupState) bool {
+	return state == longhorn.SystemBackupStateReady || state == longhorn.SystemBackupStateError
 }
 
 func (job *SystemBackupJob) waitForSystemBackupToStates(expectedStates []longhorn.SystemBackupState) (err error) {
