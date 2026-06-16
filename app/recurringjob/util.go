@@ -64,7 +64,7 @@ func filterExpiredItems(nts []NameWithTimestamp, retainCount int) []string {
 }
 
 func snapshotCRsToNameWithTimestamps(snapshotCRs []longhornclient.SnapshotCR) []NameWithTimestamp {
-	result := []NameWithTimestamp{}
+	result := make([]NameWithTimestamp, 0, len(snapshotCRs))
 	for _, snapshotCR := range snapshotCRs {
 		t, err := time.Parse(time.RFC3339, snapshotCR.CrCreationTime)
 		if err != nil {
@@ -110,7 +110,7 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 	}
 }
 
-func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, client *lhclientset.Clientset) ([]longhorn.Volume, error) {
+func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, client lhclientset.Interface) ([]longhorn.Volume, error) {
 	logger := logrus.StandardLogger()
 
 	label := fmt.Sprintf("%s=%s",
@@ -126,7 +126,7 @@ func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, 
 	return volumes.Items, nil
 }
 
-func getSettingAsBoolean(name types.SettingName, namespace string, client *lhclientset.Clientset) (bool, error) {
+func getSettingAsBoolean(name types.SettingName, namespace string, client lhclientset.Interface) (bool, error) {
 	obj, err := client.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
 	if err != nil {
 		return false, err
@@ -156,9 +156,16 @@ func sliceStringSafely(s string, begin, end int) string {
 	return s[begin:end]
 }
 
-func systemBackupsToNameWithTimestamps(systemBackupList *longhorn.SystemBackupList) []NameWithTimestamp {
-	result := []NameWithTimestamp{}
-	for _, systemBackup := range systemBackupList.Items {
+// systemBackupsToNameWithTimestamps maps SystemBackups to NameWithTimestamp by
+// Status.CreatedAt for retention sorting. Callers must pre-filter to the states
+// eligible for retention (see (*SystemBackupJob).cleanup). Status.CreatedAt is
+// only written on the successful upload path, so SystemBackups in Error state
+// carry a zero timestamp; that zero intentionally sorts ahead of successful
+// (Ready) backups in filterExpiredItems, so failed backups are pruned before
+// successful ones (longhorn/longhorn#13203).
+func systemBackupsToNameWithTimestamps(systemBackups []longhorn.SystemBackup) []NameWithTimestamp {
+	result := make([]NameWithTimestamp, 0, len(systemBackups))
+	for _, systemBackup := range systemBackups {
 		result = append(result, NameWithTimestamp{
 			Name:      systemBackup.Name,
 			Timestamp: systemBackup.Status.CreatedAt.Time,
