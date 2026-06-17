@@ -1575,7 +1575,7 @@ const (
 	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
 
 	ClusterInfoV2DataEngineCPUCores       = util.StructName("LonghornV2DataEngineCpuCores")
-	ClusterInfoV2DataEngineHugepageSize   = util.StructName("LonghornV2DataEngineHugepageSizeMib")
+	ClusterInfoV2DataEngineHugepageSize   = util.StructName("LonghornV2DataEngineHugepageSize")
 	ClusterInfoV2DataEngineHugepageEnable = util.StructName("LonghornV2DataEngineHugepageEnabled")
 
 	ClusterInfoBackupTargetSchemeCountFmt                            = "LonghornBackupTarget%sCount"
