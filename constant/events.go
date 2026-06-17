@@ -30,6 +30,8 @@ const (
 	EventReasonRestoredFmt   = "Restored %v"
 	EventReasonFailedRestore = "FailedRestore"
 
+	EventReasonFailedFilesystemTrim = "FailedFilesystemTrim"
+
 	EventReasonFailedExpansion    = "FailedExpansion"
 	EventReasonSucceededExpansion = "SucceededExpansion"
 	EventReasonCanceledExpansion  = "CanceledExpansion"
