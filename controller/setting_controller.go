@@ -1612,7 +1612,6 @@ const (
 	ClusterInfoNodeDiskCountFmt = "LonghornNodeDisk%sCount"
 
 	ClusterInfoBlockTypeDiskDriverCountFmt = "LonghornBlockTypeDiskDriver%sCount"
-	ClusterInfoDiskTypeCountFmt            = "LonghornDiskType%sCount"
 )
 
 // ClusterInfo struct is used to collect information about the cluster.
@@ -2107,10 +2106,6 @@ func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectBlockTypeDiskDriverCount(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect block-type disk driver count")
 	}
-
-	if err := info.collectDiskTypeCount(); err != nil {
-		info.logger.WithError(err).Warn("Failed to collect disk type count")
-	}
 }
 
 func (info *ClusterInfo) collectLonghornDistro() {
@@ -2277,31 +2272,6 @@ func (info *ClusterInfo) collectBlockTypeDiskDriverCount() error {
 			driver = types.ValueUnknown
 		}
 		structMap[util.StructName(fmt.Sprintf(ClusterInfoBlockTypeDiskDriverCountFmt, util.ConvertToCamel(driver, "-")))]++
-	}
-
-	for structName, value := range structMap {
-		info.structFields.fields.Append(structName, value)
-	}
-
-	return nil
-}
-
-func (info *ClusterInfo) collectDiskTypeCount() error {
-	node, err := info.ds.GetNodeRO(info.controllerID)
-	if err != nil {
-		return err
-	}
-
-	structMap := make(map[util.StructName]int)
-	for _, diskStatus := range node.Status.DiskStatus {
-		if diskStatus == nil {
-			continue
-		}
-		diskType := string(diskStatus.Type)
-		if diskType == "" {
-			diskType = types.ValueUnknown
-		}
-		structMap[util.StructName(fmt.Sprintf(ClusterInfoDiskTypeCountFmt, util.ConvertToCamel(diskType, "-")))]++
 	}
 
 	for structName, value := range structMap {
