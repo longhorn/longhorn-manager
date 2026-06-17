@@ -24,31 +24,24 @@ func registerSchemaTemplates(steve *steveserver.Server) {
 	logrus.Info("Finished registering Longhorn Steve schema templates")
 }
 
-// volumeFormatter adds action URLs to volume resources
+// volumeFormatter adds state-aware action URLs to volume resources so the
+// backend is the single source of truth for which actions are currently valid.
+// The action set is derived from the volume's status.state and status.robustness,
+// matching the legacy /v1 API (api.toVolumeResource).
 func volumeFormatter(request *types.APIRequest, resource *types.RawResource) {
 	logrus.Debugf("volumeFormatter called for resource: %s", resource.ID)
+
+	data := resource.APIObject.Data()
+	state := data.String("status", "state")
+	robustness := data.String("status", "robustness")
+
+	names := volumeActionsForState(state, robustness)
+
 	// Initialize the Actions map - this is required before calling AddAction
-	resource.Actions = make(map[string]string, 20)
-	resource.AddAction(request, "attach")
-	resource.AddAction(request, "detach")
-	resource.AddAction(request, "salvage")
-	resource.AddAction(request, "activate")
-	resource.AddAction(request, "expand")
-	resource.AddAction(request, "cancelExpansion")
-	resource.AddAction(request, "snapshotCreate")
-	resource.AddAction(request, "snapshotDelete")
-	resource.AddAction(request, "snapshotRevert")
-	resource.AddAction(request, "snapshotBackup")
-	resource.AddAction(request, "snapshotList")
-	resource.AddAction(request, "snapshotPurge")
-	resource.AddAction(request, "recurringJobAdd")
-	resource.AddAction(request, "recurringJobDelete")
-	resource.AddAction(request, "recurringJobList")
-	resource.AddAction(request, "replicaRemove")
-	resource.AddAction(request, "engineUpgrade")
-	resource.AddAction(request, "pvCreate")
-	resource.AddAction(request, "pvcCreate")
-	resource.AddAction(request, "trimFilesystem")
+	resource.Actions = make(map[string]string, len(names))
+	for _, name := range names {
+		resource.AddAction(request, name)
+	}
 }
 
 // nodeFormatter adds action URLs to node resources
