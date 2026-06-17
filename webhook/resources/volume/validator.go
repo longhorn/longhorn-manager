@@ -391,6 +391,13 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 	}
 
 	for _, replica := range replicaMap {
+		// An empty DiskID means the replica has not been scheduled to a disk yet.
+		// This can happen for newly created volumes that have never been attached.
+		// Since there is no underlying disk filesystem to check for size compatibility,
+		// it is safe to skip the validation for these unscheduled replicas.
+		if replica.Spec.DiskID == "" {
+			continue
+		}
 		diskUUID := replica.Spec.DiskID
 		node, diskName, err := v.ds.GetReadyDiskNode(diskUUID)
 		if err != nil {
