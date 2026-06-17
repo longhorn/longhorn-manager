@@ -68,6 +68,82 @@ func TestGetRegistry(t *testing.T) {
 	}
 }
 
+func TestCountCPUCoresFromMask(t *testing.T) {
+	tests := []struct {
+		name string
+		mask string
+		want int
+	}{
+		{
+			name: "empty string",
+			mask: "",
+			want: 0,
+		},
+		{
+			name: "single core 0x1",
+			mask: "0x1",
+			want: 1,
+		},
+		{
+			name: "two cores 0x3",
+			mask: "0x3",
+			want: 2,
+		},
+		{
+			name: "four cores 0xf",
+			mask: "0xf",
+			want: 4,
+		},
+		{
+			name: "eight cores 0xff",
+			mask: "0xff",
+			want: 8,
+		},
+		{
+			name: "non-contiguous bits 0xa5",
+			mask: "0xa5",
+			want: 4,
+		},
+		{
+			name: "uppercase prefix 0X0F",
+			mask: "0X0F",
+			want: 4,
+		},
+		{
+			name: "no prefix plain hex ff",
+			mask: "ff",
+			want: 8,
+		},
+		{
+			name: "large mask 0xffffffff",
+			mask: "0xffffffff",
+			want: 32,
+		},
+		{
+			name: "whitespace around mask",
+			mask: "  0xff  ",
+			want: 8,
+		},
+		{
+			name: "invalid hex string",
+			mask: "xyz",
+			want: 0,
+		},
+		{
+			name: "single bit high position 0x100",
+			mask: "0x100",
+			want: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := countCPUCoresFromMask(tt.mask); got != tt.want {
+				t.Errorf("countCPUCoresFromMask(%q) = %v, want %v", tt.mask, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUpdateEngineImagePodLivenessProbes(t *testing.T) {
 	originalSkipListerCheck := datastore.SkipListerCheck
 	datastore.SkipListerCheck = true
