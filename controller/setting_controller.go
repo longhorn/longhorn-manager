@@ -2265,6 +2265,9 @@ func (info *ClusterInfo) collectBlockTypeDiskDriverCount() error {
 
 	structMap := make(map[util.StructName]int)
 	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus == nil {
+			continue
+		}
 		if diskStatus.Type != longhorn.DiskTypeBlock {
 			continue
 		}
@@ -2291,6 +2294,9 @@ func (info *ClusterInfo) collectDiskTypeCount() error {
 
 	structMap := make(map[util.StructName]int)
 	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus == nil {
+			continue
+		}
 		diskType := string(diskStatus.Type)
 		if diskType == "" {
 			diskType = types.ValueUnknown
