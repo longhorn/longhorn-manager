@@ -2,12 +2,14 @@ package backingimage
 
 import (
 	"fmt"
+	"net/url"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
+	lhnet "github.com/longhorn/go-common-libs/net"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -38,6 +40,7 @@ func (b *backingImageValidator) Resource() admission.Resource {
 		ObjectType: &longhorn.BackingImage{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 			admissionregv1.Delete,
 		},
 	}
@@ -90,9 +93,7 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		}
 		return b.validateCloneParameters(sourceBackingImage, backingImage)
 	case longhorn.BackingImageDataSourceTypeDownload:
-		if backingImage.Spec.SourceParameters[longhorn.DataSourceTypeDownloadParameterURL] == "" {
-			return werror.NewInvalidError(fmt.Sprintf("invalid parameter %+v for source type %v", backingImage.Spec.SourceParameters, backingImage.Spec.SourceType), "")
-		}
+		return b.validateDownloadParameters(backingImage)
 	case longhorn.BackingImageDataSourceTypeUpload:
 	case longhorn.BackingImageDataSourceTypeExportFromVolume:
 		volumeName := backingImage.Spec.SourceParameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
@@ -159,6 +160,9 @@ func (b *backingImageValidator) Update(request *admission.Request, oldObj runtim
 		}
 	}
 
+	if backingImage.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload {
+		return b.validateDownloadParameters(backingImage)
+	}
 	return nil
 }
 
@@ -221,5 +225,23 @@ func (b *backingImageValidator) validateCloneParameters(sourceBackingImage, targ
 		}
 	}
 
+	return nil
+}
+
+func (b *backingImageValidator) validateDownloadParameters(backingImage *longhorn.BackingImage) error {
+	downloadURLStr := backingImage.Spec.SourceParameters[longhorn.DataSourceTypeDownloadParameterURL]
+	if downloadURLStr == "" {
+		return werror.NewInvalidError("download URL is not provided", fmt.Sprintf("spec.sourceParameters[%s]", longhorn.DataSourceTypeDownloadParameterURL))
+	}
+	urlParts, err := url.ParseRequestURI(downloadURLStr)
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("invalid download URL: %s", err.Error()), fmt.Sprintf("spec.sourceParameters[%s]", longhorn.DataSourceTypeDownloadParameterURL))
+	}
+	if urlParts.Scheme != "http" && urlParts.Scheme != "https" {
+		return werror.NewInvalidError(fmt.Sprintf("invalid download URL scheme %q", urlParts.Scheme), fmt.Sprintf("spec.sourceParameters[%s]", longhorn.DataSourceTypeDownloadParameterURL))
+	}
+	if lhnet.IsLoopbackHost(urlParts.Hostname()) {
+		return werror.NewInvalidError("download URL must not target a loopback address", fmt.Sprintf("spec.sourceParameters[%s]", longhorn.DataSourceTypeDownloadParameterURL))
+	}
 	return nil
 }
