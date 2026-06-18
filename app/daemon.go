@@ -16,6 +16,7 @@ import (
 	"github.com/urfave/cli"
 
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
@@ -30,6 +31,7 @@ import (
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/api"
+	"github.com/longhorn/longhorn-manager/api/steve"
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
@@ -296,6 +298,11 @@ func startManager(c *cli.Context) error {
 		return fmt.Errorf("failed to detect the node IP")
 	}
 
+	podNamespace, err := util.GetRequiredEnv(types.EnvPodNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to detect the pod namespace")
+	}
+
 	ctx := signals.SetupSignalContext()
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
@@ -366,8 +373,39 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	// Initialize Steve server for Steve-style API endpoints
+	// Steve automatically discovers all CRDs and serves them in Steve format
+	steveServer, steveRESTConfig, err := initSteveServer(ctx, kubeconfigPath, logger)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to initialize Steve server, Steve API will not be available")
+	}
+
 	server := api.NewServer(m, wsc)
-	router := http.Handler(api.NewRouter(server))
+	var router http.Handler
+	if steveServer != nil {
+		// Use SimplifiedHandler for cleaner URLs:
+		// /v1/volumes/{name}?action=attach instead of /v1/longhorn.io.volumes/longhorn-system/{name}?action=attach
+		router = api.NewRouterWithSteve(server, steveServer.SimplifiedHandler(podNamespace))
+		// Wire the legacy router into Steve so that POST ?action=* on Steve
+		// URLs forwards to the existing /v1/{resource}/{name}?action=...
+		// endpoints that own the real action logic.
+		steveServer.SetLegacyHandler(router)
+
+		// Register a management.cattle.io/v3 APIService so Rancher routes
+		// /v1/longhorn.io.* requests through the aggregation tunnel to this
+		// Steve handler. Rancher reacts by creating the aggregation Secret.
+		if err := steve.CreateAPIService(ctx, steveRESTConfig, podNamespace); err != nil {
+			logger.WithError(err).Warn("Failed to create APIService for Steve aggregation")
+		}
+
+		// Watch the aggregation Secret in the pod namespace. When Rancher
+		// populates it, longhorn-manager connects via WebSocket tunnel.
+		if err := steve.StartAggregation(ctx, steveRESTConfig, podNamespace, steve.AggregationSecretName(), steveServer.AggregationHandler()); err != nil {
+			logger.WithError(err).Warn("Failed to start Steve aggregation watcher")
+		}
+	} else {
+		router = api.NewRouter(server)
+	}
 	router = util.FilteredLoggingHandler(os.Stdout, router)
 	router = handlers.ProxyHeaders(router)
 
@@ -438,4 +476,26 @@ func initDaemonNode(ds *datastore.DataStore, nodeName string) error {
 		return err
 	}
 	return nil
+}
+
+// initSteveServer initializes a Steve server that provides Steve-style API endpoints
+// for Longhorn CRDs. Steve automatically discovers all CRDs from the Kubernetes API
+// and serves them in Steve format (e.g., /v1/steve/longhorn.io.volumes).
+func initSteveServer(ctx context.Context, kubeconfigPath string, logger *logrus.Entry) (*steve.Server, *rest.Config, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to build kubeconfig for Steve server")
+	}
+
+	config.QPS = types.KubeAPIQPS
+	config.Burst = types.KubeAPIBurst
+
+	steveServer, err := steve.New(ctx, config, nil)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to create Steve server")
+	}
+
+	logger.Info("Steve server initialized - API available at /apis/v1/")
+
+	return steveServer, config, nil
 }
