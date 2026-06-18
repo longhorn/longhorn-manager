@@ -1921,6 +1921,7 @@ func setupSwitchoverTestInfra(c *C) (
 	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
 	currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
 	currentEngine.Status.IP = "10.0.0.1"
+	currentEngine.Status.StorageIP = "10.1.0.1"
 	currentEngine.Status.Port = 8501
 
 	// Migration engine — running on node2
@@ -1931,6 +1932,7 @@ func setupSwitchoverTestInfra(c *C) (
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 	migrationEngine.Status.CurrentState = longhorn.InstanceStateRunning
 	migrationEngine.Status.IP = "10.0.0.2"
+	migrationEngine.Status.StorageIP = "10.1.0.2"
 	migrationEngine.Status.Port = 8502
 
 	// Replica — assigned to the current engine, and also used for migration.
@@ -1951,7 +1953,7 @@ func setupSwitchoverTestInfra(c *C) (
 
 	// EF — Spec already points to migration engine target (from a prior cycle).
 	ef = newEngineFrontendForVolume(v, currentEngine.Name, TestNode1, "")
-	ef.Spec.TargetIP = migrationEngine.Status.IP
+	ef.Spec.TargetIP = migrationEngine.Status.StorageIP
 	ef.Spec.TargetPort = migrationEngine.Status.Port
 	ef.Spec.EngineName = migrationEngine.Name
 
@@ -1968,7 +1970,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetS
 	// still shows the old target because the direct multipath/ANA switchover
 	// has not completed yet.
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.TargetIP = currentEngine.Status.IP
+	ef.Status.TargetIP = currentEngine.Status.StorageIP
 	ef.Status.TargetPort = currentEngine.Status.Port
 
 	es := map[string]*longhorn.Engine{
@@ -1993,7 +1995,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 
 	// EF switchover is complete: both Spec and Status show the new target.
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.TargetIP = migrationEngine.Status.IP
+	ef.Status.TargetIP = migrationEngine.Status.StorageIP
 	ef.Status.TargetPort = migrationEngine.Status.Port
 
 	es := map[string]*longhorn.Engine{
@@ -2046,11 +2048,11 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
 	// The cleanup branch does not consult EF state, but keep the object valid.
-	ef.Spec.TargetIP = migrationEngine.Status.IP
+	ef.Spec.TargetIP = migrationEngine.Status.StorageIP
 	ef.Spec.TargetPort = migrationEngine.Status.Port
 	ef.Spec.EngineName = migrationEngine.Name
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.TargetIP = migrationEngine.Status.IP
+	ef.Status.TargetIP = migrationEngine.Status.StorageIP
 	ef.Status.TargetPort = migrationEngine.Status.Port
 
 	// Persist the engine objects in the fake datastore so cleanup can update and
@@ -2457,6 +2459,7 @@ func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 	migrationEngine.Status.CurrentState = longhorn.InstanceStateRunning
 	migrationEngine.Status.IP = randomIP()
+	migrationEngine.Status.StorageIP = randomIP()
 	migrationEngine.Status.Port = randomPort()
 
 	migrationReplica := currentReplica.DeepCopy()
@@ -2503,7 +2506,8 @@ func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {
 	c.Assert(migrationEngineFrontend.Spec.NodeID, Equals, TestNode2)
 	c.Assert(migrationEngineFrontend.Spec.EngineName, Equals, migrationEngine.Name)
 	c.Assert(migrationEngineFrontend.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
-	c.Assert(migrationEngineFrontend.Spec.TargetIP, Equals, migrationEngine.Status.IP)
+	c.Assert(migrationEngineFrontend.Spec.TargetIP, Equals, migrationEngine.Status.StorageIP)
+	c.Assert(migrationEngineFrontend.Spec.TargetIP, Not(Equals), migrationEngine.Status.IP)
 	c.Assert(migrationEngineFrontend.Spec.TargetPort, Equals, migrationEngine.Status.Port)
 }
 
