@@ -49,7 +49,7 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 	}
 }
 
-func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
+func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, obj runtime.Object, im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
 	defer func() {
 		if status.CurrentState == longhorn.InstanceStateStopped && !status.Starting {
 			status.InstanceManagerName = ""
@@ -60,6 +60,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	if im != nil {
 		isDelinquent, _ = h.ds.IsNodeDelinquent(im.Spec.NodeID, spec.VolumeName)
 	}
+	tolerateIMUnavailableForLiveUpgrade := h.shouldTolerateIMUnavailableForLiveUpgrade(obj, spec, im, status)
 
 	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown || isDelinquent {
 		if status.Started {
@@ -83,6 +84,18 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped ||
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
+		if tolerateIMUnavailableForLiveUpgrade {
+			log.Debugf("Keeping engine frontend %v in UNKNOWN while instance manager %v is unavailable during live upgrade",
+				instanceName, im.Name)
+			status.CurrentState = longhorn.InstanceStateUnknown
+			status.IP = ""
+			status.StorageIP = ""
+			status.Port = 0
+			status.UblkID = 0
+			status.UUID = ""
+			h.resetInstanceErrorCondition(status)
+			return
+		}
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
@@ -102,6 +115,19 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	}
 
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
+		if tolerateIMUnavailableForLiveUpgrade {
+			log.Debugf("Keeping engine frontend %v in UNKNOWN while instance manager %v is starting during live upgrade",
+				instanceName, im.Name)
+			status.CurrentState = longhorn.InstanceStateUnknown
+			status.CurrentImage = ""
+			status.IP = ""
+			status.StorageIP = ""
+			status.Port = 0
+			status.UblkID = 0
+			status.UUID = ""
+			h.resetInstanceErrorCondition(status)
+			return
+		}
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since the starting instance manager %v shouldn't contain the running instance %v", im.Name, instanceName)
@@ -120,6 +146,28 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 
 	instance, exists := instances[instanceName]
 	if !exists {
+		// During a v2 live upgrade, the old IM may disappear before the EF
+		// process is recreated on the replacement IM for the same node. In
+		// that handoff window, mark the EF stopped so the next reconcile can
+		// recreate it on the new IM rather than treating it as a fatal crash.
+		if tolerateIMUnavailableForLiveUpgrade &&
+			status.InstanceManagerName != "" &&
+			im != nil &&
+			status.InstanceManagerName != im.Name {
+			log.Debugf("EngineFrontend %v not found in replacement instance manager %v during live upgrade, marking it stopped for recreation",
+				instanceName, im.Name)
+			status.Started = false
+			status.Starting = false
+			status.CurrentState = longhorn.InstanceStateStopped
+			status.CurrentImage = ""
+			status.IP = ""
+			status.StorageIP = ""
+			status.Port = 0
+			status.UblkID = 0
+			status.UUID = ""
+			h.resetInstanceErrorCondition(status)
+			return
+		}
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
 				log.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
@@ -296,6 +344,27 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	}
 }
 
+func (h *InstanceHandler) shouldTolerateIMUnavailableForLiveUpgrade(obj runtime.Object, spec *longhorn.InstanceSpec, im *longhorn.InstanceManager, status *longhorn.InstanceStatus) bool {
+	if spec == nil || status == nil || !status.Started || spec.NodeID == "" || !types.IsDataEngineV2(spec.DataEngine) {
+		return false
+	}
+
+	if _, ok := obj.(*longhorn.EngineFrontend); !ok {
+		return false
+	}
+	if im != nil && spec.NodeID != im.Spec.NodeID {
+		return false
+	}
+
+	active, err := hasActiveInstanceManagerUpgradeOnNode(h.ds, spec.NodeID)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade; not tolerating IM unavailability without an explicit active-upgrade signal", spec.NodeID)
+		return false
+	}
+
+	return active
+}
+
 func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProcess, status *longhorn.InstanceStatus) {
 	for condition, flag := range instance.Status.Conditions {
 		conditionStatus := longhorn.ConditionStatusFalse
@@ -463,7 +532,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		return fmt.Errorf("unknown instance desire state: desire %v", spec.DesireState)
 	}
 
-	h.syncStatusWithInstanceManager(log, im, instanceName, spec, status, instances)
+	h.syncStatusWithInstanceManager(log, runtimeObj, im, instanceName, spec, status, instances)
 
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
@@ -547,7 +616,9 @@ func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhor
 		return nil
 	}
 	isStoppedV2Engine := types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)
-	if !types.ErrorIsNotFound(err) && !isStoppedV2Engine {
+	// If the instance process is not found OR the IM CR itself is not found (deleted),
+	// proceed to create the instance on the current (default) IM.
+	if !types.ErrorIsNotFound(err) && !datastore.ErrorIsNotFound(err) && !isStoppedV2Engine {
 		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
 	}
 

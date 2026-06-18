@@ -21,9 +21,10 @@ package externalversions
 import (
 	fmt "fmt"
 
-	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
+
+	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -75,6 +76,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().EngineImages().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("instancemanagers"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().InstanceManagers().Informer()}, nil
+	case v1beta2.SchemeGroupVersion.WithResource("instancemanagerupgrades"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().InstanceManagerUpgrades().Informer()}, nil
+	case v1beta2.SchemeGroupVersion.WithResource("instancemanagerupgradecontrols"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().InstanceManagerUpgradeControls().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("nodes"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().Nodes().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("orphans"):

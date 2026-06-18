@@ -189,6 +189,14 @@ func NewNodeController(
 	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
+	if _, err = ds.InstanceManagerUpgradeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    nc.enqueueIMUPreUpgradeSnapshotHash,
+		UpdateFunc: func(old, cur interface{}) { nc.enqueueIMUPreUpgradeSnapshotHash(cur) },
+	}); err != nil {
+		return nil, err
+	}
+	nc.cacheSyncs = append(nc.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
+
 	return nc, nil
 }
 
@@ -645,6 +653,44 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 	nc.enqueueSnapshotHashEvent(currentSnapshot, volume)
 }
 
+// enqueueIMUPreUpgradeSnapshotHash is called when an InstanceManagerUpgrade
+// is created or updated. For each engine relocation that has a pre-upgrade
+// snapshot without a checksum yet, it directly enqueues the specific snapshot
+// for hashing — bypassing the dataIntegrityImmediateChecking gate and without
+// touching SnapshotHashingRequestedAt (which would hash all snapshots).
+func (nc *NodeController) enqueueIMUPreUpgradeSnapshotHash(obj interface{}) {
+	imu, ok := obj.(*longhorn.InstanceManagerUpgrade)
+	if !ok {
+		return
+	}
+
+	for volumeName, reloc := range imu.Status.Engines {
+		if reloc.SnapshotName == "" {
+			continue
+		}
+
+		snapshot, err := nc.ds.GetSnapshotRO(reloc.SnapshotName)
+		if err != nil {
+			nc.logger.WithError(err).Warnf("Failed to get pre-upgrade snapshot %v for volume %v", reloc.SnapshotName, volumeName)
+			continue
+		}
+		if snapshot.Status.Checksum != "" {
+			continue
+		}
+
+		volume, err := nc.ds.GetVolumeRO(volumeName)
+		if err != nil {
+			nc.logger.WithError(err).Warnf("Failed to get volume %v for pre-upgrade snapshot hashing", volumeName)
+			continue
+		}
+		if volume.Status.OwnerID != nc.controllerID {
+			continue
+		}
+
+		nc.enqueueSnapshotHashEvent(snapshot, volume)
+	}
+}
+
 func (nc *NodeController) enqueueSnapshotHashEvent(currentSnapshot *longhorn.Snapshot, volume *longhorn.Volume) {
 	nc.snapshotChangeEventQueueLock.Lock()
 	defer nc.snapshotChangeEventQueueLock.Unlock()
@@ -1098,6 +1144,81 @@ func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
 	return nil
 }
 
+func (nc *NodeController) getProtectedV2InstanceManagerNodes() (map[string]struct{}, error) {
+	imus, err := nc.ds.ListInstanceManagerUpgradesRO()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list instance manager upgrades")
+	}
+
+	protectedNodes := map[string]struct{}{}
+	for _, imu := range imus {
+		if !types.IsActiveInstanceManagerUpgradeState(imu.Status.State) {
+			continue
+		}
+		for _, reloc := range imu.Status.Engines {
+			// Only preserve temporary nodes. The source/original node must still be
+			// allowed to clean up its old IM after engines move away, otherwise the
+			// replacement IM cannot be created and the live upgrade deadlocks in
+			// WaitingForSourceIM.
+			if reloc.TemporaryNodeID != "" {
+				protectedNodes[reloc.TemporaryNodeID] = struct{}{}
+			}
+		}
+	}
+
+	return protectedNodes, nil
+}
+
+// shouldPreserveOldV2InstanceManager returns true if old v2 IMs should be
+// preserved on this node. This happens when either:
+// - the node is still the authoritative current-engine node for a v2 volume, or
+// - the node is protected during a live upgrade (temporary relocation target)
+func (nc *NodeController) shouldPreserveOldV2InstanceManager(node *longhorn.Node, imTypeDataEngines map[longhorn.InstanceManagerType][]longhorn.DataEngineType) (bool, error) {
+	hasV2DataEngine := false
+	for _, dataEngines := range imTypeDataEngines {
+		for _, dataEngine := range dataEngines {
+			if types.IsDataEngineV2(dataEngine) {
+				hasV2DataEngine = true
+				break
+			}
+		}
+		if hasV2DataEngine {
+			break
+		}
+	}
+	if !hasV2DataEngine {
+		return false, nil
+	}
+
+	// Use volume.Status.CurrentEngineNodeID as the authoritative volume-level
+	// signal rather than engine.Spec.NodeID. During relocation/switchover,
+	// engine.Spec.NodeID (desired state) may point to the new node before the
+	// switchover completes, while CurrentEngineNodeID (observed state) still
+	// points to the old node. Old IM cleanup must follow the current-engine
+	// owner, not intermediate desired placement.
+	volumes, err := nc.ds.ListVolumesRO()
+	if err != nil {
+		return false, err
+	}
+
+	for _, vol := range volumes {
+		if !types.IsDataEngineV2(vol.Spec.DataEngine) {
+			continue
+		}
+		if vol.Status.CurrentEngineNodeID == node.Name {
+			return true, nil
+		}
+	}
+
+	protectedNodes, err := nc.getProtectedV2InstanceManagerNodes()
+	if err != nil {
+		return false, err
+	}
+	_, isProtected := protectedNodes[node.Name]
+
+	return isProtected, nil
+}
+
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
@@ -1114,6 +1235,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	}
 
 	imTypeDataEngines := nc.getImTypeDataEngines(node)
+
+	shouldPreserveOldV2IM, err := nc.shouldPreserveOldV2InstanceManager(node, imTypeDataEngines)
+	if err != nil {
+		return err
+	}
 
 	for imType, dataEngines := range imTypeDataEngines {
 		for _, dataEngine := range dataEngines {
@@ -1156,9 +1282,21 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						}
 					}
 				} else {
-					// Clean up old instance managers if there is no running instance.
-					if runningOrStartingInstanceFound {
-						cleanupRequired = false
+					if types.IsDataEngineV2(dataEngine) {
+						// For v2, replicas and EngineFrontends survive an IM restart,
+						// so only running engines on this node block cleanup of an old
+						// IM. Use the volume's CurrentEngineNodeID as the authoritative
+						// signal: if any volume still has its engine here, keep the IM.
+						// Additionally, preserve old IMs on temporary relocation nodes
+						// while a live upgrade is in progress.
+						if shouldPreserveOldV2IM {
+							cleanupRequired = false
+						}
+					} else {
+						// v1: any running instance blocks cleanup.
+						if runningOrStartingInstanceFound {
+							cleanupRequired = false
+						}
 					}
 
 					if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {

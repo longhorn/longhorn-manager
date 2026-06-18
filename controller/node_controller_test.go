@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+
 	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -79,6 +80,8 @@ type NodeControllerSuite struct {
 	lhReplicaIndexer         cache.Indexer
 	lhSettingsIndexer        cache.Indexer
 	lhInstanceManagerIndexer cache.Indexer
+	lhIMUIndexer             cache.Indexer
+	lhIMUCIndexer            cache.Indexer
 	lhOrphanIndexer          cache.Indexer
 
 	podIndexer  cache.Indexer
@@ -96,6 +99,8 @@ type NodeControllerFixture struct {
 	lhReplicas         []*longhorn.Replica
 	lhSettings         map[string]*longhorn.Setting
 	lhInstanceManagers map[string]*longhorn.InstanceManager
+	lhIMUs             map[string]*longhorn.InstanceManagerUpgrade
+	lhIMUCs            map[string]*longhorn.InstanceManagerUpgradeControl
 	lhOrphans          map[string]*longhorn.Orphan
 	pods               map[string]*corev1.Pod
 	nodes              map[string]*corev1.Node
@@ -128,6 +133,8 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 	s.lhReplicaIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 	s.lhSettingsIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 	s.lhInstanceManagerIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	s.lhIMUIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	s.lhIMUCIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgradeControls().Informer().GetIndexer()
 	s.lhOrphanIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Orphans().Informer().GetIndexer()
 
 	s.podIndexer = s.informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
@@ -1993,6 +2000,67 @@ func (s *NodeControllerSuite) TestSyncInstanceManagers(c *C) {
 	}
 }
 
+func (s *NodeControllerSuite) TestShouldPreserveOldV2InstanceManager(c *C) {
+	volumeIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+
+	vol := newTestVolumeForIMU(TestVolumeName, TestNode2, TestNode2)
+	createdVol, err := s.lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), vol, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(volumeIndexer.Add(createdVol), IsNil)
+
+	testCases := map[string]struct {
+		imu              *longhorn.InstanceManagerUpgrade
+		expectedPreserve bool
+	}{
+		"active IMU temporary node preserves old v2 IM": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName+"-active", TestNode2, TestTargetImage, longhorn.InstanceManagerUpgradeStateRelocatingEngines)
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName: {
+						OriginalNodeID:  TestNode2,
+						TemporaryNodeID: TestNode1,
+					},
+				}
+				return imu
+			}(),
+			expectedPreserve: true,
+		},
+		"terminal IMU no longer preserves old v2 IM": {
+			imu: func() *longhorn.InstanceManagerUpgrade {
+				imu := newIMU(TestIMUName+"-completed", TestNode2, TestTargetImage, longhorn.InstanceManagerUpgradeStateCompleted)
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{
+					TestVolumeName: {
+						OriginalNodeID:  TestNode2,
+						TemporaryNodeID: TestNode1,
+					},
+				}
+				return imu
+			}(),
+			expectedPreserve: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		imuIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+		for _, obj := range imuIndexer.List() {
+			c.Assert(imuIndexer.Delete(obj), IsNil)
+		}
+
+		createdIMU, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), tc.imu, metav1.CreateOptions{})
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		c.Assert(imuIndexer.Add(createdIMU), IsNil, Commentf("case=%s", name))
+
+		preserve, err := s.controller.shouldPreserveOldV2InstanceManager(
+			newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			map[longhorn.InstanceManagerType][]longhorn.DataEngineType{
+				longhorn.InstanceManagerTypeAllInOne: {longhorn.DataEngineTypeV2},
+			},
+		)
+		c.Assert(err, IsNil, Commentf("case=%s", name))
+		c.Assert(preserve, Equals, tc.expectedPreserve, Commentf("case=%s", name))
+	}
+}
+
 func (s *NodeControllerSuite) TestKubeNodeNFSCapabilityCondition(c *C) {
 	var err error
 
@@ -2438,6 +2506,22 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 		c.Assert(err, IsNil)
 		c.Assert(im, NotNil)
 		err = s.lhInstanceManagerIndexer.Add(im)
+		c.Assert(err, IsNil)
+	}
+
+	for _, imu := range fixture.lhIMUs {
+		upgrade, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(upgrade, NotNil)
+		err = s.lhIMUIndexer.Add(upgrade)
+		c.Assert(err, IsNil)
+	}
+
+	for _, imuc := range fixture.lhIMUCs {
+		control, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(TestNamespace).Create(context.TODO(), imuc, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(control, NotNil)
+		err = s.lhIMUCIndexer.Add(control)
 		c.Assert(err, IsNil)
 	}
 

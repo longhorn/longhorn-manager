@@ -19,9 +19,10 @@ limitations under the License.
 package fake
 
 import (
-	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta2"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+
+	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta2"
 )
 
 type FakeLonghornV1beta2 struct {
@@ -70,6 +71,14 @@ func (c *FakeLonghornV1beta2) EngineImages(namespace string) v1beta2.EngineImage
 
 func (c *FakeLonghornV1beta2) InstanceManagers(namespace string) v1beta2.InstanceManagerInterface {
 	return newFakeInstanceManagers(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) InstanceManagerUpgrades(namespace string) v1beta2.InstanceManagerUpgradeInterface {
+	return newFakeInstanceManagerUpgrades(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) InstanceManagerUpgradeControls(namespace string) v1beta2.InstanceManagerUpgradeControlInterface {
+	return newFakeInstanceManagerUpgradeControls(c, namespace)
 }
 
 func (c *FakeLonghornV1beta2) Nodes(namespace string) v1beta2.NodeInterface {

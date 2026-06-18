@@ -108,6 +108,7 @@ func NewLonghornVolumeAttachmentController(
 		return nil, err
 	}
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.EngineFrontendInformer.HasSynced)
+	vac.cacheSyncs = append(vac.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
 
 	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vac.enqueueNodeChange(cur) },
@@ -605,6 +606,14 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return true
 	}
+	if vac.shouldKeepAttachedDuringV2LiveUpgradeSwitchover(vol) {
+		log.WithFields(logrus.Fields{
+			"attachmentNodeID":    vol.Spec.NodeID,
+			"engineNodeID":        vol.Spec.EngineNodeID,
+			"currentEngineNodeID": vol.Status.CurrentEngineNodeID,
+		}).Info("Skipping volume detach while v2 engine switchover is in progress during live upgrade")
+		return false
+	}
 	if util.IsMigratableVolume(vol) && util.IsVolumeMigrating(vol) {
 		// if the volume is migrating, the detachment will be handled by handleVolumeMigration()
 		return false
@@ -639,6 +648,47 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	if !hasUninterruptibleTicket(currentAttachmentTickets, vol) && hasWorkloadTicket(attachmentTicketsOnOtherNodes, longhorn.AnyValue) {
 		log.Info("Workload attachment ticket interrupted snapshot/backup attachment tickets")
 		return true
+	}
+
+	return false
+}
+
+// During a v2 live upgrade, the instance manager being replaced can belong to the
+// current engine node rather than the workload attachment node. Keep the volume
+// attached while the engine is switching over so the old IM disappearing does not
+// trigger a detach in the middle of the handoff. Outside this upgrade window, the
+// normal detach logic below still applies.
+func (vac *VolumeAttachmentController) shouldKeepAttachedDuringV2LiveUpgradeSwitchover(vol *longhorn.Volume) bool {
+	if !types.IsDataEngineV2(vol.Spec.DataEngine) {
+		return false
+	}
+
+	isAttachedOnCurrentNode := vol.Spec.NodeID != "" && vol.Spec.NodeID == vol.Status.CurrentNodeID
+	isEngineSwitchoverInProgress := vol.Spec.EngineNodeID != "" &&
+		vol.Status.CurrentEngineNodeID != "" &&
+		vol.Spec.EngineNodeID != vol.Status.CurrentEngineNodeID
+	if !isAttachedOnCurrentNode || !isEngineSwitchoverInProgress {
+		return false
+	}
+
+	imus, err := vac.ds.ListInstanceManagerUpgradesRO()
+	if err != nil {
+		vac.logger.WithError(err).Warn("Failed to list instance manager upgrades during v2 live-upgrade switchover evaluation; keeping the volume attached conservatively")
+		return true
+	}
+
+	checkedNodes := map[string]struct{}{}
+	for _, nodeID := range []string{vol.Spec.NodeID, vol.Spec.EngineNodeID, vol.Status.CurrentEngineNodeID} {
+		if nodeID == "" {
+			continue
+		}
+		if _, exists := checkedNodes[nodeID]; exists {
+			continue
+		}
+		checkedNodes[nodeID] = struct{}{}
+		if hasVisibleInstanceManagerUpgradeOnNodeFromList(imus, nodeID) {
+			return true
+		}
 	}
 
 	return false
@@ -1004,7 +1054,7 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 			return false
 		}
 		efForNode, err = getEngineFrontendForNode(efs, node)
-		if err != nil || !isEngineFrontendReady(efForNode) {
+		if err != nil || efForNode == nil {
 			return false
 		}
 	}
@@ -1028,6 +1078,23 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 		}
 		if !hasAvailableReplica {
 			continue
+		}
+		if types.IsDataEngineV2(volume.Spec.DataEngine) {
+			if !isEngineFrontendReadyForNode(efs, node) {
+				// During a live-upgrade handoff the EngineFrontend can be
+				// temporarily Unknown on the queried node even though the
+				// volume should remain available there. Outside that upgrade
+				// window, activeUpgrade stays false and this fallback will not
+				// make the volume available.
+				activeUpgrade, err := hasActiveInstanceManagerUpgradeOnNode(vac.ds, node)
+				if err != nil {
+					vac.logger.WithError(err).Warnf("Failed to determine if node %v has an active instance manager upgrade while evaluating engine frontend availability; assuming upgrade is active conservatively", node)
+					activeUpgrade = true
+				}
+				if !activeUpgrade || !isEngineFrontendTemporarilyAvailableForNode(efs, node) {
+					continue
+				}
+			}
 		}
 		return true
 	}

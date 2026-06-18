@@ -1638,6 +1638,95 @@ func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2SupportsSplitFront
 	c.Assert(replica.Spec.MigrationEngineName, Equals, migrationEngine.Name)
 }
 
+func (s *TestSuite) TestPrepareReplicasAndEngineForTargetNodeWaitsOnlyDuringLiveUpgradeRestore(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+	for _, nodeName := range []string{TestNode1, TestNode2} {
+		node := newNode(nodeName, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = nodeIndexer.Add(createdNode)
+		c.Assert(err, IsNil)
+	}
+
+	newRestoreSetup := func() (*longhorn.Volume, *longhorn.Engine, *longhorn.Engine, *longhorn.Replica, *longhorn.Replica, map[string]*longhorn.Replica) {
+		v := newVolume(TestVolumeName, 1)
+		v.Spec.DataEngine = longhorn.DataEngineTypeV2
+		v.Spec.NodeID = TestNode1
+		v.Spec.EngineNodeID = TestNode1
+
+		currentEngine := newEngineForVolume(v)
+		currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+		currentEngine.Spec.NodeID = TestNode2
+		currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
+
+		sourceReplica := newReplicaForVolume(v, currentEngine, TestNode2, TestDiskID2)
+		sourceReplica.Spec.DesireState = longhorn.InstanceStateRunning
+		sourceReplica.Status.CurrentState = longhorn.InstanceStateRunning
+		sourceReplica.Status.IP = randomIP()
+		sourceReplica.Status.StorageIP = sourceReplica.Status.IP
+		sourceReplica.Status.Port = randomPort()
+
+		targetReplica := newReplicaForVolume(v, currentEngine, TestNode1, TestDiskID1)
+		targetReplica.Spec.DesireState = longhorn.InstanceStateRunning
+		targetReplica.Status.CurrentState = longhorn.InstanceStateRunning
+		targetReplica.Status.IP = randomIP()
+		targetReplica.Status.StorageIP = targetReplica.Status.IP
+		targetReplica.Status.Port = randomPort()
+
+		currentEngine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+			sourceReplica.Name: longhorn.ReplicaModeRW,
+		}
+
+		migrationEngine := newEngineForVolume(v)
+		migrationEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+		migrationEngine.Spec.Active = false
+		migrationEngine.Spec.NodeID = TestNode1
+		migrationEngine.Spec.DesireState = longhorn.InstanceStateStopped
+		migrationEngine.Status.CurrentState = longhorn.InstanceStateStopped
+
+		rs := map[string]*longhorn.Replica{
+			sourceReplica.Name: sourceReplica,
+			targetReplica.Name: targetReplica,
+		}
+
+		return v, currentEngine, migrationEngine, sourceReplica, targetReplica, rs
+	}
+
+	v, currentEngine, migrationEngine, sourceReplica, _, rs := newRestoreSetup()
+	ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode1, currentEngine, migrationEngine, rs)
+	c.Assert(err, IsNil)
+	c.Assert(ready, Equals, false)
+	c.Assert(revertRequired, Equals, false)
+	c.Assert(len(migrationEngine.Spec.ReplicaAddressMap), Equals, 1)
+	c.Assert(sourceReplica.Spec.MigrationEngineName, Equals, migrationEngine.Name)
+
+	imu := newIMU("test-imu-node-1", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStateRestoringEngines)
+	createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imuIndexer.Add(createdIMU)
+	c.Assert(err, IsNil)
+
+	v, currentEngine, migrationEngine, sourceReplica, _, rs = newRestoreSetup()
+	ready, revertRequired, err = vc.prepareReplicasAndEngineForTargetNode(v, TestNode1, currentEngine, migrationEngine, rs)
+	c.Assert(err, IsNil)
+	c.Assert(ready, Equals, false)
+	c.Assert(revertRequired, Equals, false)
+	c.Assert(len(migrationEngine.Spec.ReplicaAddressMap), Equals, 0)
+	c.Assert(sourceReplica.Spec.MigrationEngineName, Equals, "")
+}
+
 func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2RequiresEngineFrontendEndpoint(c *C) {
 	vc := &VolumeController{}
 
@@ -2021,12 +2110,11 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
 }
 
-// TestProcessEngineSwitchoverCleanupUsesActiveEngine verifies that once
-// switchover is already completed, the cleanup branch uses the Active flag to
-// choose the current engine even if multiple engines temporarily share the same
-// node. This covers reverse-switchover recovery where a remount/reattach can
-// leave both engines on the target node.
-func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
+// TestProcessEngineSwitchoverCleanupUsesEngineFrontend verifies that once
+// switchover is already completed, the cleanup branch uses the EngineFrontend's
+// target engine as the source of truth for v2 cleanup even if volume status and
+// engine Active flags are not enough to disambiguate both engines.
+func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesEngineFrontend(c *C) {
 	vc, lhClient, engineIndexer, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
 	// Switchover is already complete from the volume's perspective.
@@ -2036,12 +2124,13 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	v.Status.CurrentNodeID = TestNode1
 
 	// Both engines are temporarily on the target engine node after a reverse
-	// switchover/remount cycle, but only the new current engine is Active.
+	// switchover/remount cycle, and neither Active flag is reliable enough to
+	// pick the serving engine.
 	currentEngine.Spec.Active = false
 	currentEngine.Spec.NodeID = TestNode2
 	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
-	migrationEngine.Spec.Active = true
+	migrationEngine.Spec.Active = false
 	migrationEngine.Spec.NodeID = TestNode2
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
@@ -2077,8 +2166,9 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	err = vc.processEngineSwitchover(v, es, rs, efs)
 	c.Assert(err, IsNil)
 
-	// The inactive extra engine should be cleaned up instead of being treated as
-	// a second current engine just because it shares the same NodeID.
+	// The old engine should be cleaned up based on the EngineFrontend's selected
+	// engine instead of being treated as a second current engine just because it
+	// shares the same NodeID.
 	c.Assert(len(es), Equals, 1)
 	c.Assert(es[migrationEngine.Name], NotNil)
 	c.Assert(es[currentEngine.Name], IsNil)
@@ -2401,6 +2491,58 @@ func (s *TestSuite) TestEngineFrontendHelpers(c *C) {
 	efs["vol-ef-1"].Spec.DisableFrontend = false
 	efs["vol-ef-1"].Spec.Frontend = longhorn.VolumeFrontendEmpty
 	c.Assert(isEngineFrontendReadyForNode(efs, TestNode2), Equals, true)
+
+	efs["vol-ef-1"].Spec.Frontend = longhorn.VolumeFrontendBlockDev
+	efs["vol-ef-1"].Spec.DisableFrontend = false
+	efs["vol-ef-1"].Status.CurrentState = longhorn.InstanceStateUnknown
+	efs["vol-ef-1"].Status.Endpoint = "/dev/longhorn/vol-unknown"
+	c.Assert(isEngineFrontendReadyForNode(efs, TestNode2), Equals, false)
+	c.Assert(isEngineFrontendTemporarilyAvailableForNode(efs, TestNode2), Equals, true)
+
+	efs["vol-ef-1"].Status.Endpoint = ""
+	c.Assert(isEngineFrontendTemporarilyAvailableForNode(efs, TestNode2), Equals, false)
+}
+
+func (s *TestSuite) TestPickCurrentEngineForV2SwitchoverCleanupUsesEngineFrontendTarget(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.NodeID = TestNode1
+	v.Spec.EngineNodeID = TestNode1
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentEngineNodeID = TestNode1
+
+	oldEngine := newEngineForVolume(v)
+	oldEngine.Name = TestVolumeName + "-e-old"
+	oldEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	oldEngine.Spec.NodeID = TestNode1
+	oldEngine.Spec.Active = true
+
+	newEngine := newEngineForVolume(v)
+	newEngine.Name = TestVolumeName + "-e-new"
+	newEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	newEngine.Spec.NodeID = TestNode1
+	newEngine.Spec.Active = true
+
+	currentEF := newEngineFrontendForVolume(v, oldEngine.Name, TestNode1, "")
+	currentEF.Spec.EngineName = newEngine.Name
+	currentEF.Spec.DesireState = longhorn.InstanceStateRunning
+	currentEF.Status.CurrentState = longhorn.InstanceStateRunning
+	currentEF.Status.Endpoint = "/dev/longhorn/" + v.Name
+
+	es := map[string]*longhorn.Engine{
+		oldEngine.Name: oldEngine,
+		newEngine.Name: newEngine,
+	}
+	efs := map[string]*longhorn.EngineFrontend{
+		currentEF.Name: currentEF,
+	}
+
+	current, extras, err := pickCurrentEngineForV2SwitchoverCleanup(v, es, efs)
+	c.Assert(err, IsNil)
+	c.Assert(current, NotNil)
+	c.Assert(current.Name, Equals, newEngine.Name)
+	c.Assert(len(extras), Equals, 1)
+	c.Assert(extras[0].Name, Equals, oldEngine.Name)
 }
 
 func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {
