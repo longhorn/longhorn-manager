@@ -2571,8 +2571,10 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 				// During an engine switchover, processEngineSwitchover drives
 				// the EF target (IP/Port/EngineName) so that the EF controller
 				// performs suspend -> switchover -> resume in the correct order.
-				if !switchoverInProgress {
-					ef.Spec.TargetIP = e.Status.IP
+				// The v2 engine exposes its NVMe-TCP target on StorageIP, so the
+				// initiator must dial StorageIP.
+				if !switchoverInProgress && e.Status.StorageIP != "" {
+					ef.Spec.TargetIP = e.Status.StorageIP
 					ef.Spec.TargetPort = e.Status.Port
 					ef.Spec.EngineName = e.Name
 				}
@@ -5492,8 +5494,8 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		migrationEngineFrontend.Spec.DisableFrontend = v.Status.FrontendDisabled
 		migrationEngineFrontend.Spec.EngineName = migrationEngine.Name
 		if migrationEngine.Status.CurrentState == longhorn.InstanceStateRunning && migrationEngine.Status.IP != "" {
-			if migrationEngine.Status.Port != 0 {
-				migrationEngineFrontend.Spec.TargetIP = migrationEngine.Status.IP
+			if migrationEngine.Status.Port != 0 && migrationEngine.Status.StorageIP != "" {
+				migrationEngineFrontend.Spec.TargetIP = migrationEngine.Status.StorageIP
 				migrationEngineFrontend.Spec.TargetPort = migrationEngine.Status.Port
 			}
 			migrationEngineFrontend.Spec.DesireState = longhorn.InstanceStateRunning
@@ -5630,8 +5632,8 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 				ef.Spec.NodeID = ""
 			}
 		}
-		if currentEF != nil && currentEngine.Status.IP != "" {
-			currentEF.Spec.TargetIP = currentEngine.Status.IP
+		if currentEF != nil && currentEngine.Status.StorageIP != "" {
+			currentEF.Spec.TargetIP = currentEngine.Status.StorageIP
 			currentEF.Spec.TargetPort = currentEngine.Status.Port
 			currentEF.Spec.EngineName = currentEngine.Name
 		}
@@ -5708,8 +5710,8 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	// switchover and waits for ANA state convergence before reporting success.
 	// Keep the old engine running until the EngineFrontend status confirms the
 	// new target so I/O can continue on the existing path if the switch fails.
-	if migrationEngine.Status.IP == "" {
-		log.Info("Migration engine is running but IP is not yet available, waiting")
+	if migrationEngine.Status.StorageIP == "" {
+		log.Info("Migration engine is running but storage IP is not yet available, waiting")
 		return nil
 	}
 
@@ -5722,7 +5724,7 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		return nil
 	}
 
-	newTargetIP := migrationEngine.Status.IP
+	newTargetIP := migrationEngine.Status.StorageIP
 	newTargetPort := migrationEngine.Status.Port
 
 	log.Infof("processEngineSwitchover EF check: ef.Spec.TargetIP=%v newTargetIP=%v ef.Spec.TargetPort=%v newTargetPort=%v ef.Spec.EngineName=%v migrationEngine=%v ef.Status.CurrentState=%v ef.Status.TargetIP=%v ef.Status.TargetPort=%v",
