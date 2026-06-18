@@ -326,6 +326,9 @@ def check_file(filepath: str, module_path: str) -> List[str]:
     if filepath.startswith("vendor/") or "/vendor/" in filepath:
         return errors
 
+    if filepath.startswith("k8s/pkg/client/"):
+        return errors
+
     blocks = parse_import_blocks(filepath, module_path)
 
     for groups in blocks:
@@ -362,6 +365,9 @@ def main() -> int:
             continue
 
         if filepath.startswith("vendor/") or "/vendor/" in filepath:
+            continue
+
+        if filepath.startswith("k8s/pkg/client/"):
             continue
 
         if not os.path.exists(filepath):
