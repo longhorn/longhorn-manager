@@ -138,3 +138,10 @@ func (s *SafeLogger) UpdateLogger(fields logrus.Fields) error {
 
 	return nil
 }
+
+// UpdateLoggerWithWarnOnFailure updates the logger with new fields thread-safely and logs a warning if it fails.
+func (s *SafeLogger) UpdateLoggerWithWarnOnFailure(fields logrus.Fields, msg string) {
+	if err := s.UpdateLogger(fields); err != nil {
+		s.WithError(err).Warn(msg)
+	}
+}

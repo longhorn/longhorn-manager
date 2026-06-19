@@ -17,6 +17,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/common"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
@@ -130,6 +131,21 @@ func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *lon
 			msg := fmt.Sprintf("cannot have second CSI ticket for migratable volume %v while it is in state %v", vol.Name, vol.Status.State)
 			return werror.NewInvalidError(msg, "spec.attachmentTickets")
 		}
+
+		if !vol.Spec.Encrypted {
+			return nil
+		}
+
+		cliAPIVersion, err := v.ds.GetDataEngineImageCLIAPIVersion(vol.Status.CurrentImage, vol.Spec.DataEngine)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to get CLI API version for validating volumeattachment update for volume %v", va.Spec.Volume)
+			return werror.NewInvalidError(err.Error(), "spec.volume")
+		}
+		if cliAPIVersion < lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+			msg := fmt.Sprintf("cannot migrate volume %v with engine image %v because its CLI API version %v is less than %v required for encrypted volumes", vol.Name, vol.Status.CurrentImage, cliAPIVersion, lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize)
+			return werror.NewInvalidError(msg, "spec.attachmentTickets")
+		}
+
 		return nil
 	default:
 		ticketsJson, _ := json.Marshal(va.Spec.AttachmentTickets)

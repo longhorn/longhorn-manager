@@ -27,6 +27,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
@@ -35,6 +36,13 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
+
+const (
+	// Deferral interval and cap for holding off a v2 replica's instance deletion until the engine has
+	// removed its base bdev from the RAID (see shouldWaitForEngineReplicaRemoval).
+	engineReplicaRemovalRetryInterval = 2 * time.Second
+	engineReplicaRemovalWaitTimeout   = 60 * time.Second
 )
 
 type ReplicaController struct {
@@ -251,8 +259,34 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}
 
 	if replica.DeletionTimestamp != nil {
+		wait, err := rc.shouldWaitForEngineReplicaRemoval(replica)
+		if err != nil {
+			return err
+		}
+		if wait {
+			log.Info("Waiting for the engine to remove the replica from its RAID before deleting the replica instance")
+			rc.queue.AddAfter(key, engineReplicaRemovalRetryInterval)
+			return nil
+		}
+
 		if err := rc.DeleteInstance(replica); err != nil {
 			return errors.Wrapf(err, "failed to cleanup the related replica instance before deleting replica %v", replica.Name)
+		}
+
+		// For v2, wait for the SPDK lvol bdev to be fully torn down before
+		// cleaning up data or removing the finalizer.
+		if types.IsDataEngineV2(replica.Spec.DataEngine) {
+			if err := rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus); err != nil {
+				return err
+			}
+			if _, err := rc.ds.UpdateReplicaStatus(replica); err != nil {
+				return err
+			}
+			if replica.Status.CurrentState != longhorn.InstanceStateStopped &&
+				replica.Status.CurrentState != longhorn.InstanceStateError {
+				log.Infof("Waiting for replica instance to stop before removing finalizer (current state: %v)", replica.Status.CurrentState)
+				return nil
+			}
 		}
 
 		rs, err := rc.ds.ListVolumeReplicasRO(replica.Spec.VolumeName)
@@ -395,6 +429,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
 		Replica:             r,
+		Encrypted:           v.Spec.Encrypted,
 		DiskName:            diskName,
 		DataPath:            dataPath,
 		BackingImagePath:    backingImagePath,
@@ -628,6 +663,85 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 func canDeleteInstance(r *longhorn.Replica) bool {
 	return types.IsDataEngineV1(r.Spec.DataEngine) ||
 		(types.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
+}
+
+// shouldWaitForEngineReplicaRemoval reports whether a v2 replica's instance deletion should be held off
+// until the engine has removed the replica's base bdev from its RAID. Removing the base bdev first avoids
+// the engine RAID stalling I/O in a reconnect loop when the replica's NVMe-oF target dies. It returns
+// false when there is nothing to wait for (v1, or no running engine references the replica) or when the
+// wait has exceeded engineReplicaRemovalWaitTimeout, so an absent or stuck engine cannot trap the
+// replica finalizer.
+func (rc *ReplicaController) shouldWaitForEngineReplicaRemoval(r *longhorn.Replica) (bool, error) {
+	if !types.IsDataEngineV2(r.Spec.DataEngine) {
+		return false, nil
+	}
+
+	held, err := rc.anyRunningEngineHoldsReplica(r)
+	if err != nil {
+		return false, err
+	}
+	if !held {
+		return false, nil
+	}
+
+	// Apply the timeout only once a running engine is confirmed to still hold the replica.
+	if r.DeletionTimestamp != nil && time.Since(r.DeletionTimestamp.Time) > engineReplicaRemovalWaitTimeout {
+		return false, nil
+	}
+	return true, nil
+}
+
+// anyRunningEngineHoldsReplica reports whether any running engine still references the replica's base
+// bdev. During a migration the replica may belong to both the current and the migration engine, so both
+// are checked; an absent or non-running engine has no live RAID and is treated as not holding it.
+func (rc *ReplicaController) anyRunningEngineHoldsReplica(r *longhorn.Replica) (bool, error) {
+	for _, engineName := range []string{r.Spec.EngineName, r.Spec.MigrationEngineName} {
+		if engineName == "" {
+			continue
+		}
+		e, err := rc.ds.GetEngineRO(engineName)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				continue
+			}
+			return false, err
+		}
+		if e.Status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+		if engineStillHasReplica(e, r) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// engineStillHasReplica reports whether the engine's RAID still references the replica's base bdev.
+// After the replica is dropped from the engine spec, the monitor relabels the still-connected replica as
+// an unknown entry keyed by its backend URL until it is gracefully removed, so a name-only check would
+// report removal too early.
+func engineStillHasReplica(e *longhorn.Engine, r *longhorn.Replica) bool {
+	// The engine monitor has not populated the replica mode map yet (e.g., right after the engine starts
+	// or live-upgrades); removal cannot be confirmed, so treat the replica as still held.
+	if e.Status.ReplicaModeMap == nil {
+		return true
+	}
+	if _, ok := e.Status.ReplicaModeMap[r.Name]; ok {
+		return true
+	}
+	if r.Status.StorageIP == "" || r.Status.Port == 0 {
+		return false
+	}
+	addr := imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+	for name := range e.Status.ReplicaModeMap {
+		if !strings.HasPrefix(name, unknownReplicaPrefix) {
+			continue
+		}
+		if engineapi.GetAddressFromBackendReplicaURL(strings.TrimPrefix(name, unknownReplicaPrefix)) == addr {
+			return true
+		}
+	}
+	return false
 }
 
 func deleteUnixSocketFile(volumeName string) error {

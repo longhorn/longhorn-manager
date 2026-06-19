@@ -337,7 +337,7 @@ func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error 
 	if err != nil {
 		return err
 	}
-	job.eventRecorder.Eventf(recurringJob, eventType, eventReason, message)
+	job.eventRecorder.Event(recurringJob, eventType, eventReason, message)
 
 	return nil
 }

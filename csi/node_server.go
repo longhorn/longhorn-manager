@@ -102,6 +102,32 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) (*Nod
 	}, nil
 }
 
+func getV2VolumeEndpointForNode(volume *longhornclient.Volume, nodeID string) (string, error) {
+	if volume == nil {
+		return "", fmt.Errorf("volume is required")
+	}
+
+	if len(volume.Controllers) == 0 {
+		return "", fmt.Errorf("volume %s has no controller", volume.Name)
+	}
+
+	for _, c := range volume.Controllers {
+		if c.HostId == nodeID && c.Endpoint != "" {
+			return c.Endpoint, nil
+		}
+	}
+
+	if !volume.Migratable {
+		for _, c := range volume.Controllers {
+			if c.Endpoint != "" {
+				return c.Endpoint, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("volume %s has no ready controller on node %s", volume.Name, nodeID)
+}
+
 // NodePublishVolume will mount the volume /dev/longhorn/<volume_name> to target_path
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
@@ -462,7 +488,16 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// Check volume attachment status
-	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
+	v2DevicePath := ""
+	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
+		v2DevicePath, err = getV2VolumeEndpointForNode(volume, ns.nodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Volume %v does not have a ready v2 engine frontend on node %v", volumeID, ns.nodeID)
+		}
+	}
+	if volume.State != string(longhorn.VolumeStateAttached) ||
+		(types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) && volume.Controllers[0].Endpoint == "") ||
+		(types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) && v2DevicePath == "") {
 		log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, stagingTargetPath)
 		if err := unmount(stagingTargetPath, mounter); err != nil {
 			log.WithError(err).Warnf("Failed to unmount stagingTargetPath %v", stagingTargetPath)
@@ -499,6 +534,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	devicePath := volume.Controllers[0].Endpoint
+	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
+		devicePath = v2DevicePath
+	}
+
 	diskFormat, err := getDiskFormat(devicePath)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem %v format: %v", devicePath, err)
@@ -834,6 +873,13 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 
 	isBlockVolume := volumeCapability.GetBlock() != nil
 	devicePath := volume.Controllers[0].Endpoint
+	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
+		devicePath, err = getV2VolumeEndpointForNode(volume, ns.nodeID)
+		if err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+	}
+
 	diskFormat, err := getDiskFormat(devicePath)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to evaluate device disk format for device %v node expansion: %v", devicePath, err.Error()))
@@ -923,11 +969,7 @@ func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeI
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	// Default topology with hostname (required for CSI storage capacity calculation per node)
-	topologySegments := map[string]string{
-		nodeTopologyKey: ns.nodeID,
-	}
-
+	topologySegments := map[string]string{}
 	// Get allowed topology keys from setting
 	allowedKeys := ns.getAllowedTopologyKeys(ctx)
 
@@ -935,13 +977,21 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	// This enables StorageClass allowedTopologies to match node labels
 	kubeNode, err := ns.kubeClient.CoreV1().Nodes().Get(ctx, ns.nodeID, metav1.GetOptions{})
 	if err != nil {
-		ns.log.WithError(err).Warnf("Failed to get Kubernetes node %s for topology labels, using hostname only", ns.nodeID)
+		ns.log.WithError(err).Warnf("Failed to get Kubernetes node %s for topology labels", ns.nodeID)
 	} else {
 		for key, value := range kubeNode.Labels {
-			if key == nodeTopologyKey || allowedKeys[key] {
+			if allowedKeys[key] {
 				topologySegments[key] = value
 			}
 		}
+	}
+
+	// Always expose hostname and zone topology keys in CSINode regardless of the csi-allowed-topology-keys setting.
+	// Controller server relies on these keys to locate the correct node or zone when responding to capacity queries.
+	// Note: these keys are only included in PV node affinity if listed in the csi-allowed-topology-keys setting.
+	if kubeNode != nil {
+		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelHostname)
+		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelTopologyZone)
 	}
 
 	return &csi.NodeGetInfoResponse{
@@ -953,9 +1003,23 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	}, nil
 }
 
+// ensureTopologyKey adds the given label key to topologySegments if not already present, and warns if the label is missing.
+func (ns *NodeServer) ensureTopologyKey(nodeName string, topologySegments, nodeLabels map[string]string, key string) {
+	labelVal, hasLabel := nodeLabels[key]
+	if !hasLabel {
+		ns.log.Warnf("Node %q is missing label %q, capacity tracking may not work correctly", nodeName, key)
+		return
+	}
+	_, inTopology := topologySegments[key]
+	if !inTopology {
+		topologySegments[key] = labelVal
+		ns.log.Infof("Added label %q to CSINode %q topology keys", key, nodeName)
+	}
+}
+
 // getAllowedTopologyKeys fetches the CSI Allowed Topology Keys setting and
 // returns a map of allowed keys. If the setting is empty or cannot be fetched,
-// an empty map is returned (only nodeTopologyKey will be used).
+// an empty map is returned.
 func (ns *NodeServer) getAllowedTopologyKeys(ctx context.Context) map[string]bool {
 	obj, err := ns.lhClient.LonghornV1beta2().Settings(ns.lhNamespace).Get(ctx, string(types.SettingNameCSIAllowedTopologyKeys), metav1.GetOptions{})
 	if err != nil {
@@ -963,14 +1027,7 @@ func (ns *NodeServer) getAllowedTopologyKeys(ctx context.Context) map[string]boo
 		return nil
 	}
 
-	allowedKeys := make(map[string]bool)
-	for _, key := range strings.Split(obj.Value, ",") {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			allowedKeys[key] = true
-		}
-	}
-	return allowedKeys
+	return types.ParseCSIAllowedTopologyKeys(obj.Value)
 }
 
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {

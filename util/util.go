@@ -46,6 +46,7 @@ import (
 	lhio "github.com/longhorn/go-common-libs/io"
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhspdkutil "github.com/longhorn/go-spdk-helper/pkg/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -924,4 +925,92 @@ func IsHigherPriorityVATicketExisting(va *longhorn.VolumeAttachment, ticketType 
 		}
 	}
 	return false
+}
+
+func GetActualBackendSize(size int64, encrypted bool, cliAPIVersion int) (int64, error) {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return size, err
+	}
+
+	return nsexec.GetLuksBackendSize(size, encrypted, cliAPIVersion)
+}
+
+func IsCryptsetupVerWithFixed16MiBHeaderSize() (bool, error) {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return false, err
+	}
+
+	return nsexec.IsLuksFixed16MiBHeaderSize()
+}
+
+func LazyUnmount(path string) error {
+	if _, err := lhns.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		logrus.WithError(err).Warnf("Failed to stat path %s, will continue lazy unmounting it", path)
+	}
+
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
+	_, err = nsexec.Execute(nil, "umount", []string{"-l", path}, lhtypes.ExecuteDefaultTimeout)
+	if err != nil {
+		if isUnmountedError(err) {
+			// The device is already unmounted. We can safely ignore the error and treat it as a success!
+			logrus.WithError(err).Debugf("Device %s is already unmounted.", path)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to unmount %s", path)
+	}
+
+	logrus.Debugf("Lazy unmounted device %s without the error.", path)
+	return nil
+}
+
+func isUnmountedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "not mounted") ||
+		strings.Contains(errMsg, "no mount point specified") ||
+		strings.Contains(errMsg, "no such file or directory")
+}
+
+func RemoveDMDevice(devicePath string) error {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
+	if err := lhspdkutil.DmsetupRemove(devicePath, true, true, nsexec); err != nil {
+		if isIgnorableDMRemoveError(err) {
+			logrus.WithError(err).Debugf("Dm device %s is already removed.", devicePath)
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func isIgnorableDMRemoveError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "no such device or address") ||
+		strings.Contains(errMsg, "not found") ||
+		strings.Contains(errMsg, "no such file or directory")
 }

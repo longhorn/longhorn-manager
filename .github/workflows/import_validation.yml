@@ -1,0 +1,52 @@
+name: Check Go Import Groups
+
+on:
+  pull_request:
+    paths:
+      - "**/*.go"
+      - ".github/workflows/import_validation.yml"
+      - ".github/scripts/check_go_imports.py"
+
+permissions:
+  contents: read
+
+jobs:
+  check-go-imports:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        shell: bash
+        run: |
+          git fetch origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - name: Get changed Go files
+        id: changed-files
+        shell: bash
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMRT "origin/${{ github.base_ref }}...HEAD" -- '*.go' \
+            | grep -Ev '(^|/)vendor/' || true)
+
+          {
+            echo "files<<EOF"
+            echo "$files"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check Go import groups
+        if: steps.changed-files.outputs.files != ''
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.files }}
+        run: |
+          printf '%s\n' "$CHANGED_FILES" | python3 .github/scripts/check_go_imports.py
+
+      - name: No Go files changed
+        if: steps.changed-files.outputs.files == ''
+        run: echo "No changed Go files to check."

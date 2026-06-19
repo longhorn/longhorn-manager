@@ -30,6 +30,7 @@ const (
 	LonghornKindVolume              = "Volume"
 	LonghornKindVolumeAttachment    = "VolumeAttachment"
 	LonghornKindEngine              = "Engine"
+	LonghornKindEngineFrontend      = "EngineFrontend"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackupTarget        = "BackupTarget"
 	LonghornKindBackupVolume        = "BackupVolume"
@@ -107,6 +108,8 @@ const (
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
+	MetadataDirectoryInContainer     = "/metadata/"
+	MetadataDirectoryOnHost          = "/var/lib/longhorn/metadata/"
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
@@ -123,6 +126,7 @@ const (
 	TLSCAFile               = "ca.crt"
 	TLSCertFile             = "tls.crt"
 	TLSKeyFile              = "tls.key"
+	TLSPeerName             = "longhorn-backend.longhorn-system"
 
 	DefaultBackupTargetName = "default"
 
@@ -171,6 +175,7 @@ const (
 	LonghornLabelInstanceManagerType        = "instance-manager-type"
 	LonghornLabelInstanceManagerImage       = "instance-manager-image"
 	LonghornLabelVolume                     = "longhornvolume"
+	LonghornLabelVolumeEncrypted            = "volume-encrypted"
 	LonghornLabelShareManager               = "share-manager"
 	LonghornLabelShareManagerImage          = "share-manager-image"
 	LonghornLabelShareManagerConfigMap      = "share-manager-configmap"
@@ -213,6 +218,9 @@ const (
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
 	KubernetesTopologyRegionLabelKey      = "topology.kubernetes.io/region"
 	KubernetesTopologyZoneLabelKey        = "topology.kubernetes.io/zone"
+
+	KubernetesCSINodeStageSecretNameKey      = "csi.storage.k8s.io/node-stage-secret-name"
+	KubernetesCSINodeStageSecretNamespaceKey = "csi.storage.k8s.io/node-stage-secret-namespace"
 
 	KubernetesClusterAutoscalerSafeToEvictKey = "cluster-autoscaler.kubernetes.io/safe-to-evict"
 
@@ -373,6 +381,18 @@ func GenerateEngineNameForVolume(vName, currentEngineName string) string {
 		return vName + engineSuffix + "-" + "1"
 	}
 	return vName + engineSuffix + "-" + strconv.Itoa(suffix+1)
+}
+
+func GenerateEngineFrontendNameForVolume(vName, currentEngineFrontendName string) string {
+	if currentEngineFrontendName == "" {
+		return vName + "-ef-0"
+	}
+	parts := strings.Split(currentEngineFrontendName, "-")
+	suffix, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return vName + "-ef-1"
+	}
+	return vName + "-ef-" + strconv.Itoa(suffix+1)
 }
 
 func GenerateReplicaNameForVolume(vName string) string {

@@ -67,6 +67,12 @@ type Disk struct {
 	State DiskState
 }
 
+func (d *Disk) GetState() DiskState {
+	d.RLock()
+	defer d.RUnlock()
+	return d.State
+}
+
 func NewDisk(diskName, diskUUID, diskPath, diskDriver string, blockSize int64) *Disk {
 	return &Disk{
 		DiskPath:  diskPath,

@@ -207,6 +207,53 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 		}
 
 		h.syncInstanceCondition(instance, status)
+	case longhorn.InstanceStateSuspended:
+		status.CurrentState = longhorn.InstanceStateSuspended
+
+		imPod, err := h.ds.GetPodRO(im.Namespace, im.Name)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
+			return
+		}
+
+		if imPod == nil {
+			log.Warnf("Instance manager pod from %v not exist in datastore", im.Name)
+			return
+		}
+
+		storageIP := h.ds.GetIPFromPodByCNISetting(imPod, types.SettingNameStorageNetwork)
+		if status.StorageIP != storageIP {
+			if status.StorageIP != "" {
+				log.Warnf("Instance %v is state suspended in instance manager %s, but its status Storage IP %s does not match the instance manager recorded Storage IP %s", instanceName, im.Name, status.StorageIP, storageIP)
+			}
+			status.StorageIP = storageIP
+		}
+
+		if status.IP != im.Status.IP {
+			if status.IP != "" {
+				log.Warnf("Instance %v is state suspended in instance manager %s, but its status IP %s does not match the instance manager recorded IP %s", instanceName, im.Name, status.IP, im.Status.IP)
+			}
+			status.IP = im.Status.IP
+		}
+		if status.Port != int(instance.Status.PortStart) {
+			if status.Port != 0 {
+				log.Warnf("Instance %v is state suspended in instance manager %s, but its status Port %d does not match the instance manager recorded Port %d", instanceName, im.Name, status.Port, instance.Status.PortStart)
+			}
+			status.Port = int(instance.Status.PortStart)
+		}
+		if status.UblkID != instance.Status.UblkID {
+			status.UblkID = instance.Status.UblkID
+		}
+
+		if status.CurrentImage == "" {
+			status.CurrentImage = spec.Image
+		}
+
+		if status.UUID != instance.Status.UUID {
+			status.UUID = instance.Status.UUID
+		}
+
+		h.syncInstanceCondition(instance, status)
 
 	case longhorn.InstanceStateStopping:
 		if status.Started {
@@ -461,6 +508,8 @@ func (h *InstanceHandler) getInstancesFromInstanceManager(obj runtime.Object, in
 	switch obj.(type) {
 	case *longhorn.Engine:
 		return types.ConsolidateInstances(instanceManager.Status.InstanceEngines), nil
+	case *longhorn.EngineFrontend:
+		return types.ConsolidateInstances(instanceManager.Status.InstanceEngineFrontends), nil
 	case *longhorn.Replica:
 		return types.ConsolidateInstances(instanceManager.Status.InstanceReplicas), nil
 	}

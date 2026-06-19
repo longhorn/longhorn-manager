@@ -294,12 +294,12 @@ func getLoggerForSystemBackup(logger logrus.FieldLogger, systemBackup *longhorn.
 
 func (c *SystemBackupController) LogErrorState(record *systemBackupRecord, systemBackup *longhorn.SystemBackup, log logrus.FieldLogger) {
 	log.Error(record.message)
-	c.eventRecorder.Eventf(systemBackup, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
+	c.eventRecorder.Event(systemBackup, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
 }
 
 func (c *SystemBackupController) LogNormalState(record *systemBackupRecord, systemBackup *longhorn.SystemBackup, log logrus.FieldLogger) {
 	log.Info(record.message)
-	c.eventRecorder.Eventf(systemBackup, corev1.EventTypeNormal, record.reason, record.message)
+	c.eventRecorder.Event(systemBackup, corev1.EventTypeNormal, record.reason, record.message)
 }
 
 func (c *SystemBackupController) recordErrorState(record *systemBackupRecord, systemBackup *longhorn.SystemBackup) {

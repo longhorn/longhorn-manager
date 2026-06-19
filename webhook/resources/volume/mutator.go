@@ -184,11 +184,15 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			}
 		}
 
-		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.Status.VolumeSize)
+		currentBackupVolumeSize := backup.Status.VolumeSize
+		if bv != nil && bv.Status.Size != "" {
+			currentBackupVolumeSize = bv.Status.Size
+		}
+		logrus.Infof("Override size of volume %v to %v because it's from backup", name, currentBackupVolumeSize)
 		// formalize the final size to the unit in bytes
-		size, err = util.ConvertSize(backup.Status.VolumeSize)
+		size, err = util.ConvertSize(currentBackupVolumeSize)
 		if err != nil {
-			return nil, werror.NewInvalidError(fmt.Sprintf("get invalid size for volume %v: %v", backup.Status.VolumeSize, err), "")
+			return nil, werror.NewInvalidError(fmt.Sprintf("get invalid size for volume %v: %v", currentBackupVolumeSize, err), "")
 		}
 
 		moreLabels[types.LonghornLabelBackupVolume] = canonicalBVName

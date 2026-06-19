@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" // for runtime profiling
 	"os"
 	"time"
+
+	_ "net/http/pprof" // for runtime profiling
 
 	"github.com/cockroachdb/errors"
 	"github.com/gorilla/handlers"
@@ -41,6 +42,7 @@ import (
 
 	metricscollector "github.com/longhorn/longhorn-manager/metrics_collector"
 	recoverybackend "github.com/longhorn/longhorn-manager/recovery_backend"
+	webhookcert "github.com/longhorn/longhorn-manager/webhook/cert"
 )
 
 const (
@@ -192,6 +194,12 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			return err
 		}
 
+		// Pre-create webhook secrets with the static annotation so dynamiclistener
+		// starts in read-only mode. See webhook/cert.
+		if err := webhookcert.EnsureWebhookSecrets(ctx, clients.K8s, clients.Namespace); err != nil {
+			return errors.Wrap(err, "failed to bootstrap webhook secrets")
+		}
+
 		if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
 			return err
 		}
@@ -301,6 +309,9 @@ func startManager(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Leader-elected periodic webhook cert rotation; only the leader writes.
+	go webhookcert.RotateLoop(ctx, clients.K8s, clients.Namespace, currentNodeID)
 
 	if err := recoverybackend.StartRecoveryBackend(clients); err != nil {
 		return err

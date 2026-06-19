@@ -11,6 +11,7 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 type ManagerCollector struct {
@@ -70,6 +71,16 @@ func (mc *ManagerCollector) Collect(ch chan<- prometheus.Metric) {
 			mc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
+
+	enabled := true
+	if v, err := mc.ds.GetSettingAsBool(types.SettingNameKubernetesMetricsServerMetricsEnabled); err != nil {
+		mc.logger.WithError(err).Warnf("Failed to get setting %v, defaulting to enabled", types.SettingNameKubernetesMetricsServerMetricsEnabled)
+	} else {
+		enabled = v
+	}
+	if !enabled {
+		return
+	}
 
 	// This code is running on the manager pod and os hostname always guarantees to be the manager pod name.
 	managerPodName, err := os.Hostname()

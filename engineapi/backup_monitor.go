@@ -17,6 +17,7 @@ import (
 	"k8s.io/utils/clock"
 
 	lhbackup "github.com/longhorn/go-common-libs/backup"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -88,6 +89,15 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 		// put volume recurring jobs/groups information into backup labels and it would be stored in the file `volume.cfg`
 		if volumeRecurringJobInfo != "" {
 			backup.Spec.Labels[types.VolumeRecurringJobInfoLabel] = volumeRecurringJobInfo
+		}
+		if volume.Spec.Encrypted {
+			cliAPIVersion, err := ds.GetDataEngineImageCLIAPIVersion(volume.Spec.Image, volume.Spec.DataEngine)
+			if err != nil {
+				return nil, err
+			}
+			if cliAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+				backup.Spec.Labels[types.LonghornLabelVolumeEncrypted] = types.LonghornLabelValueEnabled
+			}
 		}
 		_, replicaAddress, err := engineClientProxy.SnapshotBackup(engine, backup.Spec.SnapshotName, backup.Name,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum, string(compressionMethod), concurrentLimit, storageClassName,

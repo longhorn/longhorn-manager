@@ -126,7 +126,7 @@ func (c *ProxyClient) SnapshotBackupStatus(dataEngine, engineName, volumeName, s
 }
 
 func (c *ProxyClient) BackupRestore(dataEngine, engineName, volumeName, serviceAddress, url, target,
-	backupVolumeName string, envs []string, concurrentLimit int) (err error) {
+	backupVolumeName string, envs []string, concurrentLimit int, needCorrectEncryptedVolumeSize bool) (err error) {
 	input := map[string]string{
 		"engineName":       engineName,
 		"volumeName":       volumeName,
@@ -168,6 +168,8 @@ func (c *ProxyClient) BackupRestore(dataEngine, engineName, volumeName, serviceA
 		// Historically, we have passed backupVolumeName as VolumeName here.
 		VolumeName:      backupVolumeName,
 		ConcurrentLimit: int32(concurrentLimit),
+
+		NeedCorrectEncryptedVolumeSize: needCorrectEncryptedVolumeSize,
 	}
 	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
 	defer cancel()

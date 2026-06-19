@@ -962,7 +962,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 					replica.Spec.NodeID = node.Name
 					replica.Spec.DiskPath = disk.Path
 					if _, err := nc.ds.UpdateReplica(replica); err != nil {
-						log.Warnf("Failed to update node & disk info for replica %v when syncing disk %v(%v), will enqueue then resync node", replica.Name, diskName, diskStatus.DiskUUID)
+						log.WithError(err).Warnf("Failed to update node & disk info for replica %v when syncing disk %v(%v), will enqueue then resync node", replica.Name, diskName, diskStatus.DiskUUID)
 						nc.enqueueNode(node)
 						continue
 					}
@@ -1130,7 +1130,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				runningOrStartingInstanceFound := false
 				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
-					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas) {
+					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceEngineFrontends, im.Status.InstanceReplicas) {
 						if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
 							runningOrStartingInstanceFound = true
 							break

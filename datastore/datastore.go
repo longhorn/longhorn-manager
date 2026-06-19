@@ -52,6 +52,8 @@ type DataStore struct {
 	VolumeInformer                 cache.SharedInformer
 	engineLister                   lhlisters.EngineLister
 	EngineInformer                 cache.SharedInformer
+	engineFrontendLister           lhlisters.EngineFrontendLister
+	EngineFrontendInformer         cache.SharedInformer
 	replicaLister                  lhlisters.ReplicaLister
 	ReplicaInformer                cache.SharedInformer
 	engineImageLister              lhlisters.EngineImageLister
@@ -141,6 +143,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, replicaInformer.Informer().HasSynced)
 	engineInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines()
 	cacheSyncs = append(cacheSyncs, engineInformer.Informer().HasSynced)
+	engineFrontendInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends()
+	cacheSyncs = append(cacheSyncs, engineFrontendInformer.Informer().HasSynced)
 	volumeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes()
 	cacheSyncs = append(cacheSyncs, volumeInformer.Informer().HasSynced)
 	engineImageInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages()
@@ -230,6 +234,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		VolumeInformer:                 volumeInformer.Informer(),
 		engineLister:                   engineInformer.Lister(),
 		EngineInformer:                 engineInformer.Informer(),
+		engineFrontendLister:           engineFrontendInformer.Lister(),
+		EngineFrontendInformer:         engineFrontendInformer.Informer(),
 		replicaLister:                  replicaInformer.Lister(),
 		ReplicaInformer:                replicaInformer.Informer(),
 		engineImageLister:              engineImageInformer.Lister(),

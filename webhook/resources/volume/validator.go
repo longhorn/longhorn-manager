@@ -22,6 +22,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	wcommon "github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -375,6 +376,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.snapshotHashingRequestedAt")
 	}
 
+	if err := v.validateEncryptedVolMigrationEngineImage(oldVolume, newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.migrationNodeID")
+	}
+
 	return nil
 }
 
@@ -709,6 +714,31 @@ func validateSnapshotHashingRequestTime(oldVolume *longhorn.Volume, newVolume *l
 	// Reject only a new request while the previous one is still in progress.
 	if oldReq != "" && oldReq != oldDone {
 		return werror.NewInvalidError("previous snapshot hashing request is still in progress", ".spec.snapshotHashingRequestedAt")
+	}
+
+	return nil
+}
+
+func (v *volumeValidator) validateEncryptedVolMigrationEngineImage(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
+	if !newVolume.Spec.Encrypted {
+		return nil
+	}
+
+	if oldVolume.Spec.MigrationNodeID != "" || oldVolume.Spec.MigrationNodeID == newVolume.Spec.MigrationNodeID {
+		return nil
+	}
+
+	engineImage := newVolume.Status.CurrentImage
+	if engineImage == "" {
+		engineImage = newVolume.Spec.Image
+	}
+
+	cliAPIVersion, err := v.ds.GetDataEngineImageCLIAPIVersion(engineImage, newVolume.Spec.DataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get CLI API version for validating volume update for volume %v", newVolume.Name)
+	}
+	if cliAPIVersion < lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+		return fmt.Errorf("cannot migratable volume %v with engine image %v that has CLI API version %v less than %v for encrypted volumes", newVolume.Name, engineImage, cliAPIVersion, lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize)
 	}
 
 	return nil

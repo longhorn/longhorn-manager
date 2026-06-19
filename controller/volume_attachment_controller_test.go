@@ -420,6 +420,87 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 
 }
 
+func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	logger := logrus.StandardLogger()
+
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	engineIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+	engineFrontendIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+
+	vac, err := NewLonghornVolumeAttachmentController(logger, ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace)
+	c.Assert(err, IsNil)
+
+	for index := range vac.cacheSyncs {
+		vac.cacheSyncs[index] = alwaysReady
+	}
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+
+	createdVolume, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), v, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = volumeIndexer.Add(createdVolume)
+	c.Assert(err, IsNil)
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.NodeID = TestNode2
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+	e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		"replica-1": longhorn.ReplicaModeRW,
+	}
+
+	createdEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), e, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = engineIndexer.Add(createdEngine)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, false)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+
+	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "")
+	ef.Spec.DesireState = longhorn.InstanceStateRunning
+	createdEngineFrontend, err := lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Create(context.TODO(), ef, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = engineFrontendIndexer.Add(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, false)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+
+	createdEngineFrontend.Status.CurrentState = longhorn.InstanceStateRunning
+	createdEngineFrontend.Status.Endpoint = "/dev/longhorn/" + v.Name
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+
+	createdEngineFrontend.Status.Endpoint = ""
+	createdEngineFrontend.Spec.DisableFrontend = true
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
+
+	createdEngineFrontend.Spec.DisableFrontend = false
+	createdEngineFrontend.Spec.Frontend = longhorn.VolumeFrontendEmpty
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
+}
+
 func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCase) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck

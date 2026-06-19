@@ -1,24 +1,26 @@
-# syntax=docker/dockerfile:1.23.0@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769
-FROM registry.suse.com/bci/golang:1.26@sha256:51ebc98f5c11317c65308bca2a80fb79b683b706c40b2664c1152a04911ad69b AS base
+# syntax=docker/dockerfile:1.24.0@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+
+ARG GOLANGCI_LINT_VERSION=v2.12.2@sha256:5cceeef04e53efe1470638d4b4b4f5ceefd574955ab3941b2d9a68a8c9ad5240
+FROM golangci/golangci-lint:${GOLANGCI_LINT_VERSION} AS golangci-lint
+
+FROM registry.suse.com/bci/golang:1.26@sha256:ffe330184fb07e2e2c089b73229eaaec7085ce802f965b80c84780f163a5f062 AS base
 
 ARG TARGETARCH
 ARG http_proxy
 ARG https_proxy
-
-ENV GOLANGCI_LINT_VERSION=v2.11.4
+ARG LONGHORN_TWO_MINOR_UPGRADE_DISTROS
 
 ENV ARCH=${TARGETARCH}
 ENV GOFLAGS=-mod=vendor
+ENV LONGHORN_TWO_MINOR_UPGRADE_DISTROS=${LONGHORN_TWO_MINOR_UPGRADE_DISTROS}
 
 # Install packages
 RUN zypper update -y && \
     zypper -n install gcc ca-certificates git wget curl vim less file awk zip unzip && \
     rm -rf /var/cache/zypp/*
 
-# Install golangci-lint
-RUN curl -fsSL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh -o /tmp/install.sh \
-    && chmod +x /tmp/install.sh \
-    && /tmp/install.sh -b /usr/local/bin ${GOLANGCI_LINT_VERSION}
+# Copy golangci-lint binary from official image
+COPY --from=golangci-lint /usr/bin/golangci-lint /usr/local/bin/golangci-lint
 
 WORKDIR /go/src/github.com/longhorn/longhorn-manager
 COPY . .

@@ -18,6 +18,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -74,6 +75,19 @@ func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) error {
 
 func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	return nil, nil, fmt.Errorf("LogInstance is not mocked")
+}
+
+type failingCreateInstanceManagerHandler struct {
+	MockInstanceManagerHandler
+	createErr error
+}
+
+func (imh *failingCreateInstanceManagerHandler) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+	return nil, fmt.Errorf("cannot find")
+}
+
+func (imh *failingCreateInstanceManagerHandler) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+	return nil, imh.createErr
 }
 
 func newEngine(name, currentImage, imName, nodeName, ip string, port int, started bool, currentState, desireState longhorn.InstanceState) *longhorn.Engine {
@@ -137,6 +151,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 				TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
@@ -151,6 +166,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newInstanceManager(
 				TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
 				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
@@ -179,6 +195,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
@@ -204,6 +221,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				},
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
@@ -231,12 +249,39 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
 			),
 			newEngine(ExistingInstance, "", "", TestNode1, "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateRunning),
 			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			false,
+		},
+		"engine frontend stays suspended during switchover": {
+			longhorn.InstanceTypeEngine,
+			newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{
+					ExistingInstance: {
+						Spec: longhorn.InstanceProcessSpec{
+							Name: ExistingInstance,
+						},
+						Status: longhorn.InstanceProcessStatus{
+							State:     longhorn.InstanceStateSuspended,
+							PortStart: TestPort1,
+						},
+					},
+				},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeV2,
+				TestInstanceManagerImage,
+				false,
+			),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateSuspended, longhorn.InstanceStateRunning),
 			false,
 		},
 		// 4. keep running
@@ -256,6 +301,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				},
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
@@ -283,6 +329,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
@@ -308,6 +355,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				},
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
@@ -335,6 +383,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
@@ -361,6 +410,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
@@ -375,6 +425,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newInstanceManager(
 				TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
 				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
@@ -393,6 +444,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 				TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
@@ -408,6 +460,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newInstanceManager(
 				TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
 				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
@@ -436,6 +489,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				true,
@@ -452,6 +506,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 				TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				true,
@@ -466,6 +521,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newInstanceManager(
 				TestInstanceManagerName, longhorn.InstanceManagerStateStarting,
 				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
@@ -493,6 +549,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				},
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
@@ -592,4 +649,34 @@ func newTestInstanceHandler(lhClient *lhfake.Clientset, kubeClient *fake.Clients
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	fakeRecorder := record.NewFakeRecorder(100)
 	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
+}
+
+func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
+	fakeRecorder := record.NewFakeRecorder(5)
+	h := &InstanceHandler{
+		instanceManagerHandler: &failingCreateInstanceManagerHandler{
+			createErr: fmt.Errorf("engine frontend create failed"),
+		},
+		eventRecorder: fakeRecorder,
+	}
+
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      NonExistingInstance,
+			Namespace: TestNamespace,
+		},
+	}
+
+	err := h.createInstance(NonExistingInstance, longhorn.DataEngineTypeV2, ef)
+	c.Assert(err, NotNil)
+	c.Assert(err.Error(), Matches, ".*engine frontend create failed.*")
+
+	select {
+	case event := <-fakeRecorder.Events:
+		c.Assert(strings.Contains(event, corev1.EventTypeWarning), Equals, true)
+		c.Assert(strings.Contains(event, constant.EventReasonFailedStarting), Equals, true)
+		c.Assert(strings.Contains(event, "Error starting "+NonExistingInstance+": engine frontend create failed"), Equals, true)
+	default:
+		c.Fatal("expected one FailedStarting event")
+	}
 }

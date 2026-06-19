@@ -10,13 +10,14 @@ import (
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
-	mapperFilePathPrefix = "/dev/mapper"
+	MapperFilePathPrefix = "/dev/mapper"
 	mapperV2VolumeSuffix = "-encrypted"
 
 	CryptoKeyDefaultCipher = "aes-xts-plain64"
@@ -33,7 +34,7 @@ const (
 	//  https://gitlab.com/cryptsetup/cryptsetup/-/wikis/FrequentlyAskedQuestions
 	//  Section 10.10 What about the size of the LUKS2 header
 	//  The default size is 16MB
-	Luks2MinimalVolumeSize = 16 * 1024 * 1024
+	Luks2MinimalVolumeSize = lhtypes.Luks2EncryptionHeaderSize
 )
 
 // EncryptParams keeps the customized cipher options from the secret CR
@@ -107,9 +108,9 @@ func VolumeMapper(volume, dataEngine string) string {
 		// v2 volume will use a dm device as default to control IO path when attaching.
 		// This dm device will be created with the same name as the volume name.
 		// The encrypted volume will be created with the volume name with "-encrypted" suffix to resolve the naming conflict.
-		return path.Join(mapperFilePathPrefix, getEncryptVolumeName(volume, dataEngine))
+		return path.Join(MapperFilePathPrefix, getEncryptVolumeName(volume, dataEngine))
 	}
-	return path.Join(mapperFilePathPrefix, volume)
+	return path.Join(MapperFilePathPrefix, volume)
 }
 
 // EncryptVolume encrypts provided device with LUKS.
@@ -248,7 +249,7 @@ func isDeviceEncrypted(devicePath string) (bool, error) {
 // and if so what the device is and the mapper name as used by LUKS.
 // If not, just returns the original device and an empty string.
 func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err error) {
-	if !strings.HasPrefix(devicePath, mapperFilePathPrefix) {
+	if !strings.HasPrefix(devicePath, MapperFilePathPrefix) {
 		return devicePath, "", nil
 	}
 
@@ -258,7 +259,7 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 		return devicePath, "", err
 	}
 
-	volume := strings.TrimPrefix(devicePath, mapperFilePathPrefix+"/")
+	volume := strings.TrimPrefix(devicePath, MapperFilePathPrefix+"/")
 	stdout, err := nsexec.LuksStatus(volume, lhtypes.LuksTimeout)
 	if err != nil {
 		logrus.WithError(err).Warnf("Device %s is not an active LUKS device", devicePath)

@@ -19,9 +19,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"k8s.io/client-go/rest"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -700,59 +702,20 @@ func (cs *ControllerServer) ListVolumes(context.Context, *csi.ListVolumesRequest
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
+func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (rsp *csi.GetCapacityResponse, err error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "GetCapacity"})
 
 	log.Infof("GetCapacity is called with req %+v", req)
 
-	var err error
 	defer func() {
 		if err != nil {
 			log.WithError(err).Errorf("Failed to get capacity")
 		}
 	}()
 
-	scParameters := req.GetParameters()
-	if scParameters == nil {
-		scParameters = map[string]string{}
-	}
-
-	nodeID, err := parseNodeID(req.GetAccessibleTopology())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
-	}
-	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
-		}
-		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
-	}
-	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
-		return &csi.GetCapacityResponse{}, nil
-	}
-	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-		return &csi.GetCapacityResponse{}, nil
-	}
-	if !node.Spec.AllowScheduling || node.Spec.EvictionRequested {
-		return &csi.GetCapacityResponse{}, nil
-	}
-
 	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(ctx, types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyNodeSelectorVolume, err)
-	}
-	var nodeSelector []string
-	if nodeSelectorRaw, ok := scParameters["nodeSelector"]; ok && len(nodeSelectorRaw) > 0 {
-		nodeSelector = strings.Split(nodeSelectorRaw, ",")
-	}
-	if !types.IsSelectorsInTags(node.Spec.Tags, nodeSelector, allowEmptyNodeSelectorVolume) {
-		return &csi.GetCapacityResponse{}, nil
-	}
-
-	var diskSelector []string
-	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
-		diskSelector = strings.Split(diskSelectorRaw, ",")
 	}
 	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(ctx, types.SettingNameAllowEmptyDiskSelectorVolume)
 	if err != nil {
@@ -763,48 +726,122 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameStorageOverProvisioningPercentage, err)
 	}
 
-	var v1AvailableCapacity int64 = 0
-	var v2AvailableCapacity int64 = 0
-	for diskName, diskStatus := range node.Status.DiskStatus {
-		diskSpec, exists := node.Spec.Disks[diskName]
-		if !exists {
-			continue
-		}
-		if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
-			continue
-		}
-		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-			continue
-		}
-		if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, allowEmptyDiskSelectorVolume) {
-			continue
-		}
-
-		overProvisionLimit := ((diskStatus.StorageMaximum - diskSpec.StorageReserved) * overProvisioningPercentage) / 100
-		storageSchedulable := overProvisionLimit - diskStatus.StorageScheduled
-		if diskStatus.Type == longhorn.DiskTypeFilesystem {
-			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
-		}
-		if diskStatus.Type == longhorn.DiskTypeBlock {
-			v2AvailableCapacity = max(v2AvailableCapacity, storageSchedulable)
-		}
+	scParameters := req.GetParameters()
+	var nodeSelector []string
+	if nodeSelectorRaw, ok := scParameters["nodeSelector"]; ok && len(nodeSelectorRaw) > 0 {
+		nodeSelector = strings.Split(nodeSelectorRaw, ",")
 	}
-
-	rsp := &csi.GetCapacityResponse{}
+	var diskSelector []string
+	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
+		diskSelector = strings.Split(diskSelectorRaw, ",")
+	}
 	dataEngine := longhorn.DataEngineTypeV1
 	if dataEngineType, ok := scParameters["dataEngine"]; ok {
 		dataEngine = longhorn.DataEngineType(dataEngineType)
 	}
-	switch dataEngine {
-	case longhorn.DataEngineTypeV1:
-		rsp.AvailableCapacity = v1AvailableCapacity
-	case longhorn.DataEngineTypeV2:
-		rsp.AvailableCapacity = v2AvailableCapacity
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
+	storageCapacityMode := types.CSIStorageCapacityTrackingModeNode
+	if storageCapacityModeRaw, ok := scParameters["storageCapacityMode"]; ok {
+		storageCapacityMode = types.CSIStorageCapacityTrackingMode(storageCapacityModeRaw)
 	}
 
-	log.Infof("Node: %s, DataEngine: %s, v1AvailableCapacity: %d, v2AvailableCapacity: %d", nodeID, dataEngine, v1AvailableCapacity, v2AvailableCapacity)
+	nodeCapacity := func(node *longhorn.Node) (maximumVolumeSize int64, availableCapacity int64) {
+		if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+			return
+		}
+		if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+			return
+		}
+		if !node.Spec.AllowScheduling || node.Spec.EvictionRequested {
+			return
+		}
+
+		if !types.IsSelectorsInTags(node.Spec.Tags, nodeSelector, allowEmptyNodeSelectorVolume) {
+			return
+		}
+
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskName]
+			if !exists {
+				continue
+			}
+			if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+				continue
+			}
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+				continue
+			}
+			if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, allowEmptyDiskSelectorVolume) {
+				continue
+			}
+
+			overProvisionLimit := ((diskStatus.StorageMaximum - diskSpec.StorageReserved) * overProvisioningPercentage) / 100
+			storageSchedulable := overProvisionLimit - diskStatus.StorageScheduled
+			storageSchedulable = max(storageSchedulable, 0)
+			validDisk := (dataEngine == longhorn.DataEngineTypeV1 && diskStatus.Type == longhorn.DiskTypeFilesystem) ||
+				(dataEngine == longhorn.DataEngineTypeV2 && diskStatus.Type == longhorn.DiskTypeBlock)
+
+			if validDisk {
+				maximumVolumeSize = max(maximumVolumeSize, storageSchedulable)
+				availableCapacity += storageSchedulable
+			}
+		}
+
+		return maximumVolumeSize, availableCapacity
+	}
+
+	var maximumVolumeSize int64
+	var availableCapacity int64
+	topology := req.GetAccessibleTopology()
+	if topology == nil || len(topology.Segments) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "missing or empty accessible topology request parameter")
+	}
+	switch storageCapacityMode {
+	case types.CSIStorageCapacityTrackingModeNode:
+		nodeID, ok := topology.Segments[corev1.LabelHostname]
+		if !ok {
+			return nil, status.Errorf(codes.InvalidArgument, "missing %q topology segment", corev1.LabelHostname)
+		}
+		node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
+			}
+			return nil, status.Errorf(codes.Internal, "failed to get node: %v", err)
+		}
+		maximumVolumeSize, availableCapacity = nodeCapacity(node)
+		log.Infof("Node: %s, DataEngine: %s, MaximumVolumeSize: %d, AvailableCapacity: %d", nodeID, dataEngine, maximumVolumeSize, availableCapacity)
+	case types.CSIStorageCapacityTrackingModeZone:
+		zone, ok := topology.Segments[corev1.LabelTopologyZone]
+		if !ok {
+			return nil, status.Errorf(codes.InvalidArgument, "missing %q topology segment", corev1.LabelTopologyZone)
+		}
+		nodeList, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to list nodes: %v", err)
+		}
+		for _, node := range nodeList.Items {
+			if node.Status.Zone == zone {
+				nodeMaximumVolumeSize, nodeAvailableCapacity := nodeCapacity(&node)
+				maximumVolumeSize = max(maximumVolumeSize, nodeMaximumVolumeSize)
+				availableCapacity += nodeAvailableCapacity
+			}
+		}
+		log.Infof("Zone: %s, DataEngine: %s, MaximumVolumeSize: %d, AvailableCapacity: %d", zone, dataEngine, maximumVolumeSize, availableCapacity)
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unexpected value %q for storage class parameter 'storageCapacityMode'", storageCapacityMode)
+	}
+
+	rsp = &csi.GetCapacityResponse{
+		// Used by kube-scheduler to filter nodes that cannot fit the requested
+		// volume size. Takes precedence over AvailableCapacity for filtering.
+		// See https://github.com/kubernetes/kubernetes/commit/3fa43540b6eace70951c7867d60fda741b9bca05
+		MaximumVolumeSize: &wrapperspb.Int64Value{Value: maximumVolumeSize},
+		// Used by kube-scheduler to score nodes by total remaining capacity.
+		// Alpha as of v1.35; requires the StorageCapacityScoring feature flag.
+		// See KEP-4049 (Storage Capacity Scoring of Nodes for Dynamic Provisioning).
+		AvailableCapacity: availableCapacity,
+	}
+
 	return rsp, nil
 }
 
@@ -813,11 +850,7 @@ func (cs *ControllerServer) getSettingAsBoolean(ctx context.Context, name types.
 	if err != nil {
 		return false, err
 	}
-	value, err := strconv.ParseBool(obj.Value)
-	if err != nil {
-		return false, err
-	}
-	return value, nil
+	return strconv.ParseBool(obj.Value)
 }
 
 func (cs *ControllerServer) getSettingAsInt(ctx context.Context, name types.SettingName) (int64, error) {
@@ -825,11 +858,7 @@ func (cs *ControllerServer) getSettingAsInt(ctx context.Context, name types.Sett
 	if err != nil {
 		return -1, err
 	}
-	value, err := strconv.ParseInt(obj.Value, 10, 64)
-	if err != nil {
-		return -1, err
-	}
-	return value, nil
+	return strconv.ParseInt(obj.Value, 10, 64)
 }
 
 func (cs *ControllerServer) getSettingAsString(ctx context.Context, name types.SettingName) (string, error) {
@@ -1045,7 +1074,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 	if existBackupTarget == nil {
 		return nil, status.Errorf(codes.NotFound, "backup target %s not found", existVol.BackupTargetName)
 	}
-	if !existBackupTarget.Available {
+	if isBackupTargetUnavailableForBackup(existBackupTarget) {
 		return nil, status.Errorf(codes.Aborted, "backup target %s is not available", existVol.BackupTargetName)
 	}
 
@@ -1101,11 +1130,15 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		return nil, err
 	}
 
-	log.Infof("Volume %s backup %s of snapshot %s created", existVol.Name, backup.Id, csiSnapshotName)
-	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, existVol.Name, backup.Id)
-	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(existVol.Name, snapshotID, snapshotCR.CreationTime,
+	log.Infof("Volume %s backup %s of snapshot %s created", backup.VolumeName, backup.Name, csiSnapshotName)
+	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, backup.VolumeName, backup.Name)
+	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(backup.VolumeName, snapshotID, snapshotCR.CreationTime,
 		existVol.Size, backup.State == string(longhorn.BackupStateCompleted))
 	return rsp, nil
+}
+
+func isBackupTargetUnavailableForBackup(backupTarget *longhornclient.BackupTarget) bool {
+	return backupTarget == nil || backupTarget.BackupTargetURL == "" || !backupTarget.Available
 }
 
 func createSnapshotResponseForSnapshotTypeLonghornSnapshot(sourceVolumeName, snapshotID string, snapshotCR *longhornclient.SnapshotCR) *csi.CreateSnapshotResponse {
@@ -1460,18 +1493,15 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 	}
 }
 
-// waitForBackupControllerSync returns the backup of the given snapshot of the given volume. It does not return until
-// the backup controller has synced at least once (so the backup contains information we need). This function does not
-// wait for the existence of a backup. If one doesn't exist, it returns without error immediately.
+// waitForBackupControllerSync polls until the backup controller has synced the snapshot creation time into the Backup
+// CR (best effort). On timeout, if the Backup CR exists it is returned so the caller can respond with
+// ready_to_use=false per the CSI spec; if the CR does not exist at all a codes.Internal error is returned.
 func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName string) (*longhornclient.Backup, error) {
-	// Don't wait if we don't need to.
 	backup, err := cs.getBackup(volumeName, snapshotName)
 	if err != nil {
 		return nil, err
 	}
 	if backup != nil && backup.SnapshotCreated != "" {
-		// The backup controller sets the snapshot creation time at first sync. If we do not wait to return until
-		// this is done, we may see timestamp related errors in csi-snapshotter logs.
 		return backup, nil
 	}
 
@@ -1486,9 +1516,20 @@ func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName
 	for {
 		select {
 		case <-timeout:
-			msg := fmt.Sprintf("waitForBackupControllerSync: timeout while waiting for backup controller to sync for volume %s and snapshot %s", volumeName, snapshotName)
+			// Best effort: SnapshotCreated was not synced in time. If the Backup CR exists, return it so
+			// the caller can respond with ready_to_use=false per the CSI spec. The sidecar will retry
+			// CreateSnapshot idempotently until the backup completes and ready_to_use=true is returned.
+			backup, err := cs.getBackup(volumeName, snapshotName)
+			if err != nil {
+				return nil, err
+			}
+			if backup != nil {
+				logrus.Debugf("waitForBackupControllerSync: backup CR for snapshot %s on volume %s exists but SnapshotCreated not yet synced; returning with ready_to_use=false", snapshotName, volumeName)
+				return backup, nil
+			}
+			msg := fmt.Sprintf("waitForBackupControllerSync: timeout waiting for Backup CR to be created for volume %s snapshot %s", volumeName, snapshotName)
 			logrus.Warn(msg)
-			return nil, status.Error(codes.DeadlineExceeded, msg)
+			return nil, status.Error(codes.Internal, msg)
 		case <-tick:
 			backup, err := cs.getBackup(volumeName, snapshotName)
 			if err != nil {
@@ -1687,14 +1728,7 @@ func (cs *ControllerServer) getAccessibleTopologyFromRequirements(ctx context.Co
 	if err != nil {
 		log.WithError(err).Warn("Failed to get CSI allowed topology keys setting, filtering all topology keys")
 	}
-
-	allowedKeys := make(map[string]bool)
-	for _, key := range strings.Split(allowedKeysStr, ",") {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			allowedKeys[key] = true
-		}
-	}
+	allowedKeys := types.ParseCSIAllowedTopologyKeys(allowedKeysStr)
 
 	return cs.filterTopologyByAllowedKeys(accessibleTopology, allowedKeys)
 }

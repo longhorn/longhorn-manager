@@ -25,6 +25,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -663,15 +664,48 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 			continue
 		}
 
-		// NFS clients can generally recover without a restart/remount when the NFS server restarts using the same Cluster IP.
-		// A remount is required when the storage network for RWX is in use because the new NFS server has a different IP.
-		if isRegularRWXVolume(vol) && !isEndpointNetworkForRWXVolumeInSetting {
-			continue
-		}
-
-		remountRequestedAt, err := time.Parse(time.RFC3339, vol.Status.RemountRequestedAt)
+		remountRequestedAt, err := util.ParseTimeZ(vol.Status.RemountRequestedAt)
 		if err != nil {
 			return err
+		}
+
+		// NFS clients can generally recover without a restart/remount when the NFS server restarts using the same Cluster IP.
+		// Endpoint-network RWX volumes continue to use the existing remount path because the replacement NFS server gets a new IP.
+		// For regular RWX volumes without endpoint network, add an extra gate before remounting the workload:
+		// only force a remount after the share-manager pod has actually restarted and the replacement share-manager
+		// is confirmed to be serving via its gRPC health check.
+		if isRegularRWXVolume(vol) && !isEndpointNetworkForRWXVolumeInSetting {
+			smPodName := types.GetShareManagerPodNameFromShareManagerName(vol.Name)
+			smPod, err := kc.ds.GetPod(smPodName)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+
+			if smPod == nil {
+				continue
+			}
+
+			if smPod.Status.StartTime == nil {
+				kc.logger.Debugf("Share-manager pod %v/%v has no start time yet, skip remount check for workload pod %v", smPod.Namespace, smPod.Name, pod.Name)
+				continue
+			}
+
+			smPodStartTime := smPod.Status.StartTime.Time
+			if !smPodStartTime.After(remountRequestedAt) {
+				continue
+			}
+
+			serving, err := kc.isShareManagerServing(vol.Name, smPod)
+			if err != nil {
+				kc.logger.WithError(err).Warnf("Failed to verify serving state for share-manager pod %v, requeue workload pod %v", smPod.Name, pod.Name)
+				kc.enqueuePodAfter(pod, remountRequestDelayDuration)
+				return nil
+			}
+			if !serving {
+				// Wait until the replacement share-manager is actually serving before forcing workload remount.
+				kc.enqueuePodAfter(pod, remountRequestDelayDuration)
+				return nil
+			}
 		}
 
 		timeNow := time.Now()
@@ -696,6 +730,20 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 	}
 
 	return nil
+}
+
+func (kc *KubernetesPodController) isShareManagerServing(volumeName string, pod *corev1.Pod) (bool, error) {
+	client, err := engineapi.NewShareManagerClientByName(volumeName, pod)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			kc.logger.WithError(err).Warnf("Failed to close share-manager client for pod %v", pod.Name)
+		}
+	}()
+
+	return client.IsServing()
 }
 
 func isOwnedByStatefulSet(pod *corev1.Pod) bool {

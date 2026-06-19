@@ -15,8 +15,9 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -94,7 +95,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 
 func (a *AttacherDeployment) Deploy(kubeClient *clientset.Clientset) error {
 	return deploy(kubeClient, a.deployment, "deployment",
-		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc, deploymentUpdateFunc)
 }
 
 func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -155,7 +156,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 
 func (p *ProvisionerDeployment) Deploy(kubeClient *clientset.Clientset) error {
 	return deploy(kubeClient, p.deployment, "deployment",
-		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc, deploymentUpdateFunc)
 }
 
 func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -222,7 +223,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 
 func (p *ResizerDeployment) Deploy(kubeClient *clientset.Clientset) error {
 	return deploy(kubeClient, p.deployment, "deployment",
-		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc, deploymentUpdateFunc)
 }
 
 func (p *ResizerDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -279,7 +280,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 
 func (p *SnapshotterDeployment) Deploy(kubeClient *clientset.Clientset) error {
 	return deploy(kubeClient, p.deployment, "deployment",
-		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc, deploymentUpdateFunc)
 }
 
 func (p *SnapshotterDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -622,7 +623,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 
 func (p *PluginDeployment) Deploy(kubeClient *clientset.Clientset) error {
 	return deploy(kubeClient, p.daemonSet, "daemon set",
-		daemonSetCreateFunc, daemonSetDeleteFunc, daemonSetGetFunc)
+		daemonSetCreateFunc, daemonSetDeleteFunc, daemonSetGetFunc, nil)
 }
 
 func (p *PluginDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -636,14 +637,14 @@ type DriverObjectDeployment struct {
 	obj *storagev1.CSIDriver
 }
 
-func NewCSIDriverObject() *DriverObjectDeployment {
+func NewCSIDriverObject(storageCapacityEnabled bool) *DriverObjectDeployment {
 	obj := &storagev1.CSIDriver{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: types.LonghornDriverName,
 		},
 		Spec: storagev1.CSIDriverSpec{
 			PodInfoOnMount:  ptr.To(true),
-			StorageCapacity: ptr.To(true),
+			StorageCapacity: ptr.To(storageCapacityEnabled),
 		},
 	}
 	return &DriverObjectDeployment{
@@ -653,7 +654,7 @@ func NewCSIDriverObject() *DriverObjectDeployment {
 
 func (d *DriverObjectDeployment) Deploy(kubeClient *clientset.Clientset) error {
 	return deploy(kubeClient, d.obj, "CSI Driver",
-		csiDriverObjectCreateFunc, csiDriverObjectDeleteFunc, csiDriverObjectGetFunc)
+		csiDriverObjectCreateFunc, csiDriverObjectDeleteFunc, csiDriverObjectGetFunc, nil)
 }
 
 func (d *DriverObjectDeployment) Cleanup(kubeClient *clientset.Clientset) {

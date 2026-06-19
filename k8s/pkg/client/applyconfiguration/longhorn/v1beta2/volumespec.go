@@ -39,16 +39,20 @@ type VolumeSpecApplyConfiguration struct {
 	CloneMode                 *longhornv1beta2.CloneMode                     `json:"cloneMode,omitempty"`
 	DataLocality              *longhornv1beta2.DataLocality                  `json:"dataLocality,omitempty"`
 	StaleReplicaTimeout       *int                                           `json:"staleReplicaTimeout,omitempty"`
-	NodeID                    *string                                        `json:"nodeID,omitempty"`
-	MigrationNodeID           *string                                        `json:"migrationNodeID,omitempty"`
-	Image                     *string                                        `json:"image,omitempty"`
-	BackingImage              *string                                        `json:"backingImage,omitempty"`
-	Standby                   *bool                                          `json:"Standby,omitempty"`
-	DiskSelector              []string                                       `json:"diskSelector,omitempty"`
-	NodeSelector              []string                                       `json:"nodeSelector,omitempty"`
-	DisableFrontend           *bool                                          `json:"disableFrontend,omitempty"`
-	RevisionCounterDisabled   *bool                                          `json:"revisionCounterDisabled,omitempty"`
-	UnmapMarkSnapChainRemoved *longhornv1beta2.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved,omitempty"`
+	// nodeID defines the node where the volume is attached (where the frontend initiator runs).
+	NodeID *string `json:"nodeID,omitempty"`
+	// engineNodeID defines the node where the backend engine (target) runs.
+	// If empty, falls back to NodeID.
+	EngineNodeID              *string                                    `json:"engineNodeID,omitempty"`
+	MigrationNodeID           *string                                    `json:"migrationNodeID,omitempty"`
+	Image                     *string                                    `json:"image,omitempty"`
+	BackingImage              *string                                    `json:"backingImage,omitempty"`
+	Standby                   *bool                                      `json:"Standby,omitempty"`
+	DiskSelector              []string                                   `json:"diskSelector,omitempty"`
+	NodeSelector              []string                                   `json:"nodeSelector,omitempty"`
+	DisableFrontend           *bool                                      `json:"disableFrontend,omitempty"`
+	RevisionCounterDisabled   *bool                                      `json:"revisionCounterDisabled,omitempty"`
+	UnmapMarkSnapChainRemoved *longhornv1beta2.UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved,omitempty"`
 	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node.
 	ReplicaSoftAntiAffinity *longhornv1beta2.ReplicaSoftAntiAffinity `json:"replicaSoftAntiAffinity,omitempty"`
 	// Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone.
@@ -183,6 +187,14 @@ func (b *VolumeSpecApplyConfiguration) WithStaleReplicaTimeout(value int) *Volum
 // If called multiple times, the NodeID field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithNodeID(value string) *VolumeSpecApplyConfiguration {
 	b.NodeID = &value
+	return b
+}
+
+// WithEngineNodeID sets the EngineNodeID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the EngineNodeID field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithEngineNodeID(value string) *VolumeSpecApplyConfiguration {
+	b.EngineNodeID = &value
 	return b
 }
 

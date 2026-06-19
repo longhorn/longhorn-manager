@@ -11,12 +11,14 @@ import (
 	"go.uber.org/multierr"
 
 	lhlonghorn "github.com/longhorn/go-common-libs/longhorn"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -110,113 +112,42 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager, allowUnknown bool) (
 		return nil, fmt.Errorf("invalid instance manager %v, state %v, IP %v", im.Name, im.Status.CurrentState, im.Status.IP)
 	}
 
-	// TODO: Initialize the following gRPC clients are similar. This can be simplified via factory method.
-
-	initProcessManagerTLSClient := func(endpoint string) (processManagerClient *imclient.ProcessManagerClient, err error) {
-		defer func() {
-			if err != nil && processManagerClient != nil {
-				_ = processManagerClient.Close()
-				processManagerClient = nil
-			}
-		}()
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		// check for tls cert file presence
-		processManagerClient, err = imclient.NewProcessManagerClientWithTLS(ctx, cancel, endpoint,
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
-			"longhorn-backend.longhorn-system",
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to load Instance Manager Process Manager Service Client TLS files")
-		}
-
-		if err = processManagerClient.CheckConnection(); err != nil {
-			return processManagerClient, errors.Wrapf(err, "failed to check Instance Manager Process Manager Service Client TLS connection for %v IP %v",
-				im.Name, im.Status.IP)
-		}
-
-		if _, err = processManagerClient.VersionGet(); err != nil {
-			return processManagerClient, errors.Wrap(err, "failed to check version of Instance Manager Process Manager Service Client with TLS connection")
-		}
-
-		return processManagerClient, nil
-	}
-
-	initInstanceServiceTLSClient := func(endpoint string) (instanceServiceClient *imclient.InstanceServiceClient, err error) {
-		defer func() {
-			if err != nil && instanceServiceClient != nil {
-				_ = instanceServiceClient.Close()
-				instanceServiceClient = nil
-			}
-		}()
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		// check for tls cert file presence
-		instanceServiceClient, err = imclient.NewInstanceServiceClientWithTLS(ctx, cancel, endpoint,
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
-			"longhorn-backend.longhorn-system",
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to load Instance Manager Instance Service Client TLS files")
-		}
-
-		if err = instanceServiceClient.CheckConnection(); err != nil {
-			return instanceServiceClient, errors.Wrapf(err, "failed to check Instance Manager Instance Service Client TLS connection for %v IP %v",
-				im.Name, im.Status.IP)
-		}
-
-		if _, err = instanceServiceClient.VersionGet(); err != nil {
-			return instanceServiceClient, errors.Wrap(err, "failed to check version of Instance Manager Instance Service Client with TLS connection")
-		}
-
-		return instanceServiceClient, nil
-	}
-
 	// Create a new process manager client
-	// HACK: TODO: fix me
 	var err error
-	var processManagerClient *imclient.ProcessManagerClient
 	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerProcessManagerServiceDefaultPort)
 	if im.Status.APIVersion < 4 {
-		processManagerClient, err = initProcessManagerTLSClient(endpoint)
-		defer func() {
-			if err != nil && processManagerClient != nil {
-				if closeErr := processManagerClient.Close(); closeErr != nil {
-					logrus.WithError(closeErr).WithField("endpoint", endpoint).Warn("Failed to close process manager client")
-				}
-				processManagerClient = nil
-			}
-		}()
-		if err != nil {
-			logrus.WithError(err).Tracef("Falling back to non-tls client for Instance Manager Process Manager Service Client for %v IP %v",
-				im.Name, im.Status.IP)
-			// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
-			// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
-			ctx, cancel := context.WithCancel(context.Background())
-			processManagerClient, err = imclient.NewProcessManagerClient(ctx, cancel, endpoint, nil)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to initialize Instance Manager Process Manager Service Client for %v IP %v",
-					im.Name, im.Status.IP)
-			}
-			if err = processManagerClient.CheckConnection(); err != nil {
-				return nil, errors.Wrapf(err, "failed to check Instance Manager Process Manager Service Client connection for %v IP %v",
-					im.Name, im.Status.IP)
-			}
+		caFile, certFile, keyFile, peerName := imTLSFiles()
 
-			version, err := processManagerClient.VersionGet()
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to check version of Instance Manager Process Manager Service Client for %v IP %v",
-					im.Name, im.Status.IP)
-			}
-			logrus.Tracef("Instance Manager Process Manager Service Client Version: %+v", version)
+		newClient := func() (*imclient.ProcessManagerClient, error) {
+			ctx, cancel := context.WithCancel(context.Background())
+			return imclient.NewProcessManagerClientWithTLS(ctx, cancel, endpoint,
+				caFile, certFile, keyFile, peerName)
 		}
 
+		buildPlain := func() (*imclient.ProcessManagerClient, error) {
+			ctx, cancel := context.WithCancel(context.Background())
+			return imclient.NewProcessManagerClient(ctx, cancel, endpoint, nil)
+		}
+
+		checkVersion := func(c *imclient.ProcessManagerClient) error {
+			version, err := c.VersionGet()
+			if err != nil {
+				return err
+			}
+			logrus.Tracef("Instance Manager Process Manager Service Client Version: %+v", version)
+			return nil
+		}
+
+		processManagerClient, err := newIMClient(
+			newClient,
+			buildPlain,
+			checkVersion,
+			logrus.StandardLogger(), im.Name, im.Status.IP, "process manager",
+		)
+		if err != nil {
+			return nil, errors.Wrapf(err,
+				"failed to initialize process manager client for %v IP %v", im.Name, im.Status.IP)
+		}
 		return &InstanceManagerClient{
 			ip:                       im.Status.IP,
 			apiMinVersion:            im.Status.APIMinVersion,
@@ -225,39 +156,39 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager, allowUnknown bool) (
 		}, nil
 	}
 
-	// Create a new instance service  client
+	// Create a new instance service client
 	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerInstanceServiceDefaultPort)
-	instanceServiceClient, err := initInstanceServiceTLSClient(endpoint)
-	defer func() {
-		if err != nil && instanceServiceClient != nil {
-			if closeErr := instanceServiceClient.Close(); closeErr != nil {
-				logrus.WithError(closeErr).WithField("endpoint", endpoint).Warn("Failed to close instance service client")
-			}
-			instanceServiceClient = nil
-		}
-	}()
-	if err != nil {
-		logrus.WithError(err).Tracef("Falling back to non-tls client for Instance Manager Instance Service Client for %v, IP %v",
-			im.Name, im.Status.IP)
-		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
-		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
-		ctx, cancel := context.WithCancel(context.Background())
-		instanceServiceClient, err = imclient.NewInstanceServiceClient(ctx, cancel, endpoint, nil)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Instance Service Client for %v IP %v",
-				im.Name, im.Status.IP)
-		}
-		if err = instanceServiceClient.CheckConnection(); err != nil {
-			return nil, errors.Wrapf(err, "failed to check Instance Manager Instance Service Client connection for %v IP %v",
-				im.Name, im.Status.IP)
-		}
+	caFile, certFile, keyFile, peerName := imTLSFiles()
 
-		version, err := instanceServiceClient.VersionGet()
+	newClient := func() (*imclient.InstanceServiceClient, error) {
+		ctx, cancel := context.WithCancel(context.Background())
+		return imclient.NewInstanceServiceClientWithTLS(ctx, cancel, endpoint,
+			caFile, certFile, keyFile, peerName)
+	}
+
+	buildPlain := func() (*imclient.InstanceServiceClient, error) {
+		ctx, cancel := context.WithCancel(context.Background())
+		return imclient.NewInstanceServiceClient(ctx, cancel, endpoint, nil)
+	}
+
+	checkVersion := func(c *imclient.InstanceServiceClient) error {
+		version, err := c.VersionGet()
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to check version of Instance Manager Instance Service Client for %v IP %v",
-				im.Name, im.Status.IP)
+			return err
 		}
 		logrus.Tracef("Instance Manager Instance Service Client Version: %+v", version)
+		return nil
+	}
+
+	instanceServiceClient, err := newIMClient(
+		newClient,
+		buildPlain,
+		checkVersion,
+		logrus.StandardLogger(), im.Name, im.Status.IP, "instance service",
+	)
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"failed to initialize instance service client for %v IP %v", im.Name, im.Status.IP)
 	}
 
 	// TODO: consider evaluating im client version since we do the call anyway to validate the connection, i.e. fallback to non tls
@@ -268,13 +199,24 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager, allowUnknown bool) (
 		apiMinVersion:             im.Status.APIMinVersion,
 		apiVersion:                im.Status.APIVersion,
 		instanceServiceGrpcClient: instanceServiceClient,
-		processManagerGrpcClient:  processManagerClient,
 	}, nil
 }
 
 func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 	if p == nil {
 		return nil
+	}
+
+	paths := make([]longhorn.EngineFrontendNvmeTCPPath, 0, len(p.InstanceStatus.Paths))
+	for _, path := range p.InstanceStatus.Paths {
+		paths = append(paths, longhorn.EngineFrontendNvmeTCPPath{
+			TargetIP:   path.TargetIP,
+			TargetPort: int(path.TargetPort),
+			EngineName: path.EngineName,
+			NQN:        path.NQN,
+			NGUID:      path.NGUID,
+			ANAState:   path.ANAState,
+		})
 	}
 
 	return &longhorn.InstanceProcess{
@@ -287,16 +229,19 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			State:           longhorn.InstanceState(p.InstanceStatus.State),
 			ErrorMsg:        p.InstanceStatus.ErrorMsg,
 			Conditions:      p.InstanceStatus.Conditions,
+			ActivePath:      p.InstanceStatus.ActivePath,
+			PreferredPath:   p.InstanceStatus.PreferredPath,
+			Paths:           paths,
 			PortStart:       p.InstanceStatus.PortStart,
 			PortEnd:         p.InstanceStatus.PortEnd,
 			TargetPortStart: p.InstanceStatus.TargetPortStart,
 			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
 			UblkID:          p.InstanceStatus.UblkID,
 			UUID:            p.InstanceStatus.UUID,
-
+			Endpoint:        p.InstanceStatus.Endpoint,
+			Frontend:        p.InstanceStatus.Frontend,
 			// FIXME: These fields are not used, maybe we can deprecate them later.
-			Listen:   "",
-			Endpoint: "",
+			Listen: "",
 		},
 	}
 }
@@ -354,7 +299,7 @@ func getTypeForProcess(name string) longhorn.InstanceType {
 
 func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 	frontend string, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
-	dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (string, []string, error) {
+	dataLocality longhorn.DataLocality, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
 
 	args := []string{"controller", e.Spec.VolumeName,
 		"--frontend", frontend,
@@ -369,9 +314,17 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 	}
 
 	if engineCLIAPIVersion >= 6 {
+		requestSize, err := util.GetActualBackendSize(e.Spec.VolumeSize, encrypted, engineCLIAPIVersion)
+		if err != nil {
+			return "", nil, err
+		}
+		requestCurrentSize, err := util.GetActualBackendSize(e.Status.CurrentSize, encrypted, engineCLIAPIVersion)
+		if err != nil {
+			return "", nil, err
+		}
 		args = append(args,
-			"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
-			"--current-size", strconv.FormatInt(e.Status.CurrentSize, 10))
+			"--size", strconv.FormatInt(requestSize, 10),
+			"--current-size", strconv.FormatInt(requestCurrentSize, 10))
 	}
 
 	if engineCLIAPIVersion >= 7 {
@@ -410,11 +363,16 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 }
 
 func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int) (string, []string) {
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
+
+	requestSize, err := util.GetActualBackendSize(r.Spec.VolumeSize, encrypted, engineCLIAPIVersion)
+	if err != nil {
+		return "", nil, err
+	}
 
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(dataPath),
-		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
+		"--size", strconv.FormatInt(requestSize, 10),
 	}
 	if backingImagePath != "" {
 		args = append(args, "--backing-file", backingImagePath)
@@ -447,17 +405,22 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 		args = append(args, "--snapshot-max-size", strconv.FormatInt(r.Spec.SnapshotMaxSize, 10))
 	}
 
+	if encrypted && engineCLIAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+		args = append(args, "--encrypted")
+	}
+
 	// 3 ports are already used by replica server, data server and syncagent server
 	syncAgentPortCount := portCount - 3
 	args = append(args, "--sync-agent-port-count", strconv.Itoa(syncAgentPortCount))
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.Image), types.EngineBinaryName)
 
-	return binary, args
+	return binary, args, nil
 }
 
 type EngineInstanceCreateRequest struct {
 	Engine                           *longhorn.Engine
+	Encrypted                        bool
 	VolumeFrontend                   longhorn.VolumeFrontend
 	UblkQueueDepth                   int
 	UblkNumberOfQueue                int
@@ -489,12 +452,13 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 	switch req.Engine.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1:
-		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion)
+		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion, req.Encrypted)
 		if err != nil {
 			return nil, err
 		}
 	case longhorn.DataEngineTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
+		// v2 target doesn't need frontend - it will be set by initiator (EngineFrontend)
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -528,6 +492,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			InitiatorAddress:  req.InitiatorAddress,
 			TargetAddress:     req.TargetAddress,
 			SalvageRequested:  req.Engine.Spec.SalvageRequested,
+			SnapshotMaxCount:  req.Engine.Spec.SnapshotMaxCount,
 		},
 	})
 
@@ -544,6 +509,95 @@ type ReplicaInstanceCreateRequest struct {
 	BackingImagePath    string
 	DataLocality        longhorn.DataLocality
 	EngineCLIAPIVersion int
+	Encrypted           bool
+}
+
+// EngineFrontendInstanceCreateRequest contains the parameters to create an engine frontend (initiator) instance
+type EngineFrontendInstanceCreateRequest struct {
+	EngineFrontend    *longhorn.EngineFrontend
+	VolumeFrontend    longhorn.VolumeFrontend
+	UblkQueueDepth    int
+	UblkNumberOfQueue int
+	TargetIP          string
+	TargetPort        int
+	EngineName        string
+}
+
+func getEngineFrontendInstanceSize(ef *longhorn.EngineFrontend) int64 {
+	if ef == nil {
+		return 0
+	}
+	if ef.Spec.Size != 0 {
+		return ef.Spec.Size
+	}
+	return ef.Spec.VolumeSize
+}
+
+// EngineFrontendInstanceCreate creates a new engine frontend (initiator) instance for v2 data engine
+func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontendInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	frontend, err := GetEngineInstanceFrontend(req.EngineFrontend.Spec.DataEngine, req.VolumeFrontend)
+	if err != nil {
+		return nil, err
+	}
+
+	// EngineFrontend (initiator) is only supported in v2 data engine and API version >= 4
+	if c.GetAPIVersion() < 4 {
+		return nil, fmt.Errorf("engine frontend (initiator) requires instance manager API version >= 4")
+	}
+
+	targetAddress := util.BuildTargetAddress(req.TargetIP, req.TargetPort)
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(req.EngineFrontend.Spec.DataEngine),
+		DataEngine:         string(req.EngineFrontend.Spec.DataEngine),
+		Name:               req.EngineFrontend.Name,
+		InstanceType:       string(longhorn.InstanceTypeEngineFrontend), // v2 initiator
+		VolumeName:         req.EngineFrontend.Spec.VolumeName,
+		Size:               uint64(getEngineFrontendInstanceSize(req.EngineFrontend)),
+		PortCount:          DefaultEnginePortCount,
+		PortArgs:           []string{DefaultPortArg},
+
+		EngineFrontend: imclient.EngineFrontendCreateRequest{
+			Frontend:          frontend,
+			UblkQueueDepth:    req.UblkQueueDepth,
+			UblkNumberOfQueue: req.UblkNumberOfQueue,
+			TargetAddress:     targetAddress,
+			EngineName:        req.EngineName,
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// EngineFrontendSwitchOverTarget switches over the target for an engine frontend instance
+func (c *InstanceManagerClient) EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName, switchoverPhase string) error {
+	if c.GetAPIVersion() < 4 {
+		return fmt.Errorf("engine frontend switch over target requires instance manager API version >= 4")
+	}
+	return c.instanceServiceGrpcClient.InstanceSwitchOverTarget(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend), targetAddress, engineName, switchoverPhase)
+}
+
+// EngineFrontendSuspend suspends the engine frontend instance
+func (c *InstanceManagerClient) EngineFrontendSuspend(dataEngine longhorn.DataEngineType, name string) error {
+	if c.GetAPIVersion() < 4 {
+		return fmt.Errorf("engine frontend suspend requires instance manager API version >= 4")
+	}
+	return c.instanceServiceGrpcClient.InstanceSuspend(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend))
+}
+
+// EngineFrontendResume resumes the engine frontend instance
+func (c *InstanceManagerClient) EngineFrontendResume(dataEngine longhorn.DataEngineType, name string) error {
+	if c.GetAPIVersion() < 4 {
+		return fmt.Errorf("engine frontend resume requires instance manager API version >= 4")
+	}
+	return c.instanceServiceGrpcClient.InstanceResume(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend))
 }
 
 // ReplicaInstanceCreate creates a new replica instance
@@ -554,8 +608,12 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
+	var err error
 	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
-		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion)
+		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -719,6 +777,7 @@ func (c *InstanceManagerClient) InstanceList() (map[string]longhorn.InstanceProc
 
 type EngineInstanceUpgradeRequest struct {
 	Engine                           *longhorn.Engine
+	Encrypted                        bool
 	VolumeFrontend                   longhorn.VolumeFrontend
 	EngineReplicaTimeout             int64
 	ReplicaFileSyncHTTPClientTimeout int64
@@ -759,9 +818,21 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 
 	if req.EngineCLIAPIVersion >= 6 {
+		requestSize := req.Engine.Spec.VolumeSize
+		requestCurrentSize := req.Engine.Status.CurrentSize
+		if req.Encrypted {
+			is16MiBHeaderPkgVersion, err := util.IsCryptsetupVerWithFixed16MiBHeaderSize()
+			if err != nil {
+				return nil, err
+			}
+			if is16MiBHeaderPkgVersion {
+				requestSize = lhtypes.GetBackendSize(req.Engine.Spec.VolumeSize, req.Encrypted, req.EngineCLIAPIVersion)
+				requestCurrentSize = lhtypes.GetBackendSize(req.Engine.Status.CurrentSize, req.Encrypted, req.EngineCLIAPIVersion)
+			}
+		}
 		args = append(args,
-			"--size", strconv.FormatInt(req.Engine.Spec.VolumeSize, 10),
-			"--current-size", strconv.FormatInt(req.Engine.Status.CurrentSize, 10))
+			"--size", strconv.FormatInt(requestSize, 10),
+			"--current-size", strconv.FormatInt(requestCurrentSize, 10))
 	}
 
 	if req.EngineCLIAPIVersion >= 7 {

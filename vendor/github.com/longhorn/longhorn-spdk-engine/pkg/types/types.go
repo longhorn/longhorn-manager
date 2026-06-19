@@ -7,6 +7,10 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 )
 
+const (
+	MetadataDir = "/metadata"
+)
+
 type Mode string
 
 const (
@@ -36,9 +40,10 @@ const (
 type InstanceType string
 
 const (
-	InstanceTypeReplica      = InstanceType("replica")
-	InstanceTypeEngine       = InstanceType("engine")
-	InstanceTypeBackingImage = InstanceType("backingImage")
+	InstanceTypeReplica        = InstanceType("replica")
+	InstanceTypeEngine         = InstanceType("engine")
+	InstanceTypeEngineFrontend = InstanceType("engine-frontend")
+	InstanceTypeBackingImage   = InstanceType("backingImage")
 )
 
 type BackingImageState string
@@ -59,6 +64,26 @@ const (
 const VolumeHead = "volume-head"
 
 const SPDKServicePort = 8504
+
+const (
+	DefaultUblkQueueDepth    = 128
+	DefaultUblkNumberOfQueue = 1
+)
+
+func IsUblkFrontend(frontend string) bool {
+	return frontend == FrontendUBLK
+}
+
+// IsFrontendSupported returns true if the given frontend type is one of the
+// supported frontends (spdk-tcp-blockdev, spdk-tcp-nvmf, ublk, or empty).
+func IsFrontendSupported(frontend string) bool {
+	switch frontend {
+	case FrontendSPDKTCPBlockdev, FrontendSPDKTCPNvmf, FrontendUBLK, FrontendEmpty:
+		return true
+	default:
+		return false
+	}
+}
 
 func ReplicaModeToGRPCReplicaMode(mode Mode) spdkrpc.ReplicaMode {
 	switch mode {
@@ -82,14 +107,6 @@ func GRPCReplicaModeToReplicaMode(replicaMode spdkrpc.ReplicaMode) Mode {
 		return ModeERR
 	}
 	return ModeERR
-}
-
-func IsFrontendSupported(frontend string) bool {
-	return frontend == FrontendEmpty || frontend == FrontendSPDKTCPNvmf || frontend == FrontendSPDKTCPBlockdev || frontend == FrontendUBLK
-}
-
-func IsUblkFrontend(frontend string) bool {
-	return frontend == FrontendUBLK
 }
 
 const (

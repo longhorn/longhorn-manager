@@ -5,9 +5,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type InstanceType string
 
 const (
-	InstanceTypeEngine  = InstanceType("engine")
-	InstanceTypeReplica = InstanceType("replica")
-	InstanceTypeNone    = InstanceType("")
+	InstanceTypeEngine         = InstanceType("engine")
+	InstanceTypeReplica        = InstanceType("replica")
+	InstanceTypeEngineFrontend = InstanceType("engine-frontend") // v2 initiator
+	InstanceTypeNone           = InstanceType("")
 )
 
 type InstanceManagerState string
@@ -72,12 +73,13 @@ type InstanceProcessSpec struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning  = InstanceState("running")
-	InstanceStateStopped  = InstanceState("stopped")
-	InstanceStateError    = InstanceState("error")
-	InstanceStateStarting = InstanceState("starting")
-	InstanceStateStopping = InstanceState("stopping")
-	InstanceStateUnknown  = InstanceState("unknown")
+	InstanceStateRunning   = InstanceState("running")
+	InstanceStateSuspended = InstanceState("suspended")
+	InstanceStateStopped   = InstanceState("stopped")
+	InstanceStateError     = InstanceState("error")
+	InstanceStateStarting  = InstanceState("starting")
+	InstanceStateStopping  = InstanceState("stopping")
+	InstanceStateUnknown   = InstanceState("unknown")
 	// InstanceStateTerminated indicates the instance is deleted and not found
 	InstanceStateTerminated = InstanceState("terminated")
 )
@@ -138,6 +140,14 @@ type InstanceStatus struct {
 type InstanceProcessStatus struct {
 	// +optional
 	Endpoint string `json:"endpoint"`
+	// +optional
+	Frontend string `json:"frontend"`
+	// +optional
+	ActivePath string `json:"activePath,omitempty"`
+	// +optional
+	PreferredPath string `json:"preferredPath,omitempty"`
+	// +optional
+	Paths []EngineFrontendNvmeTCPPath `json:"paths,omitempty"`
 	// +optional
 	ErrorMsg string `json:"errorMsg"`
 	//+optional
@@ -218,6 +228,9 @@ type InstanceManagerStatus struct {
 	// +optional
 	// +nullable
 	InstanceEngines map[string]InstanceProcess `json:"instanceEngines,omitempty"`
+	// +optional
+	// +nullable
+	InstanceEngineFrontends map[string]InstanceProcess `json:"instanceEngineFrontends,omitempty"`
 	// +optional
 	// +nullable
 	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`

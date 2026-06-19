@@ -105,16 +105,30 @@ func isServiceAvailable(webhookType string, endpoint string, timeout time.Durati
 		resp, err := cli.Get(endpoint)
 		if err != nil {
 			logrus.WithError(err).Warnf("Failed to check endpoint %v", endpoint)
-		} else if resp.StatusCode == 200 {
-			running = true
-			break
 		} else {
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				logrus.Warnf("Endpoint return %d not 200: cannot read the body", resp.StatusCode)
+			func() {
+				defer func() {
+					if closeErr := resp.Body.Close(); closeErr != nil {
+						logrus.WithError(closeErr).Warnf("Failed to close response body for endpoint %v", endpoint)
+					}
+				}()
+
+				if resp.StatusCode == http.StatusOK {
+					running = true
+					return
+				}
+
+				bodyBytes, err := io.ReadAll(resp.Body)
+				if err != nil {
+					logrus.Warnf("Endpoint return %d not 200: cannot read the body", resp.StatusCode)
+				}
+				bodyString := string(bodyBytes)
+				logrus.Warnf("Endpoint return %d not 200: %v", resp.StatusCode, bodyString)
+			}()
+
+			if running {
+				break
 			}
-			bodyString := string(bodyBytes)
-			logrus.Warnf("Endpoint return %d not 200: %v", resp.StatusCode, bodyString)
 		}
 		time.Sleep(2 * time.Second)
 	}
