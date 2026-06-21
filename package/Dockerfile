@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.20.0@sha256:26147acbda4f14c5add9946e2fd2ed543fc402884fd75146bd342a7f6271dc1d
-FROM registry.suse.com/bci/golang:1.25@sha256:2c8e7d25c10a6296c5ffca13a785512917671fd6a6cb2881fa3bffa38517f6ca AS builder
+FROM registry.suse.com/bci/golang:1.25@sha256:2dc5bfb1f6ad133910dacd9d00a090e9020e4c76cb6e3cad743478c78134c41a AS builder
 
 WORKDIR /app
 
