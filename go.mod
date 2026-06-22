@@ -87,7 +87,7 @@ require (
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.36.1
 	k8s.io/apiextensions-apiserver v0.36.1
 	k8s.io/apimachinery v0.36.1
@@ -102,11 +102,9 @@ require (
 )
 
 require (
-	github.com/go-co-op/gocron/v2 v2.21.2
-	github.com/go-co-op/gocron/v2 v2.21.2
-	github.com/urfave/cli/v3 v3.9.0
-	github.com/urfave/cli/v3 v3.9.0
-	gopkg.in/yaml.v3 v3.0.1
+	github.com/go-co-op/gocron v1.37.0
+	github.com/urfave/cli v1.22.17
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
