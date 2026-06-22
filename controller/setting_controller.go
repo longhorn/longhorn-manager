@@ -2042,7 +2042,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 // getVolumeSizeBucket returns a bucket label for the given volume size.
 // Buckets: LessThan1GiB, 1To2GiB, 2To5GiB, 5To10GiB, 10To20GiB, 20To50GiB,
-// 50To100GiB, 100To200GiB, 200To500GiB, 500GiBTo1TiB, 1To2TiB, gt2TiB.
+// 50To100GiB, 100To200GiB, 200To500GiB, 500GiBTo1TiB, 1To2TiB, Gt2TiB.
 func getVolumeSizeBucket(sizeBytes int64) string {
 	const (
 		gib = 1 << 30
@@ -2072,7 +2072,7 @@ func getVolumeSizeBucket(sizeBytes int64) string {
 	case sizeBytes < 2*tib:
 		return "1To2TiB"
 	default:
-		return "gt2TiB"
+		return "Gt2TiB"
 	}
 }
 

@@ -176,8 +176,8 @@ func TestGetVolumeSizeBucket(t *testing.T) {
 		{name: "just below 1TiB", size: tib - 1, want: "500GiBTo1TiB"},
 		{name: "exactly 1TiB", size: tib, want: "1To2TiB"},
 		{name: "just below 2TiB", size: 2*tib - 1, want: "1To2TiB"},
-		{name: "exactly 2TiB", size: 2 * tib, want: "gt2TiB"},
-		{name: "greater than 2TiB", size: 2*tib + 1, want: "gt2TiB"},
+		{name: "exactly 2TiB", size: 2 * tib, want: "Gt2TiB"},
+		{name: "greater than 2TiB", size: 2*tib + 1, want: "Gt2TiB"},
 	}
 
 	for _, tt := range tests {
