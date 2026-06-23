@@ -2834,6 +2834,20 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		return nil
 	}
 	if e.Spec.VolumeSize == v.Spec.Size {
+		// Reassert ExpansionRequired if the backend engine never reached the
+		// requested size even though the target size already propagated to the
+		// Engine spec. For V1, this does not change the existing behavior
+		// because V1 only checks the engine size for expansion progress.
+		// For V2, intentionally do not use EngineFrontend.CurrentSize here:
+		// detached or reattaching frontends can legitimately report 0 or
+		// temporarily lag the backend size, and treating that as
+		// expansion-incomplete can spuriously trigger volume-expansion
+		// attachment loops for otherwise idle volumes.
+		if e.Status.CurrentSize > 0 {
+			if e.Status.CurrentSize != v.Spec.Size {
+				v.Status.ExpansionRequired = true
+			}
+		}
 		return nil
 	}
 
