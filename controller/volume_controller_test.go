@@ -1525,6 +1525,154 @@ func (s *TestSuite) TestReconcileVolumeSizeV2KeepsExpansionRequiredWhenExpansion
 	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
 }
 
+func (s *TestSuite) TestReconcileVolumeSizeV2ReassertsExpansionRequiredWhenEngineCurrentSizeLags(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Size = TestVolumeSize * 2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = TestVolumeSize
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: v.Spec.Size,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+			Active: true,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			CurrentSize: TestVolumeSize,
+		},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{efName: ef})
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, true)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeV1ReassertsExpansionRequiredWhenEngineCurrentSizeLags(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV1
+	v.Spec.Size = TestVolumeSize * 2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV1
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = TestVolumeSize
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, nil)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, true)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeV2DoesNotReassertExpansionRequiredWhenDetachedFrontendCurrentSizeIsZero(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = v.Spec.Size
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: v.Spec.Size,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+			Active: true,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			CurrentSize: 0,
+		},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{efName: ef})
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, false)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeV2DoesNotReassertExpansionRequiredForFreshCreate(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = 0
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: v.Spec.Size,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+			Active: true,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			CurrentSize: 0,
+		},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{efName: ef})
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, false)
+}
+
 func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2UsesTargetNodeID(c *C) {
 	datastore.SkipListerCheck = true
 
