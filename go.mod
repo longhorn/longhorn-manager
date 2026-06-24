@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.25
+go 1.25.3
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -83,9 +83,9 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.35.0
-	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sys v0.40.0
+	golang.org/x/mod v0.36.0
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sys v0.46.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.79.3
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -198,11 +198,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.47.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sync v0.20.0
-	golang.org/x/term v0.39.0 // indirect
-	golang.org/x/text v0.33.0
+	golang.org/x/sync v0.21.0
+	golang.org/x/term v0.44.0 // indirect
+	golang.org/x/text v0.38.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.35.4 // indirect
