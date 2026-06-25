@@ -2561,7 +2561,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			// For DR volumes (frontend disabled or empty), bypass the Port check
 			// because the engine may not expose a port when the frontend is off.
 			if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" &&
-				(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty) {
+				(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty || v.Spec.Frontend == longhorn.VolumeFrontendUblk) {
 				ef.Spec.NodeID = v.Spec.NodeID
 				ef.Spec.Frontend = v.Spec.Frontend
 				ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
