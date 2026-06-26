@@ -104,6 +104,7 @@ require (
 
 require (
 	github.com/go-co-op/gocron v1.37.0
+	github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -140,7 +141,6 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
