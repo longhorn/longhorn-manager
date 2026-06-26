@@ -559,13 +559,22 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 	return nil
 }
 
-func (imc *InstanceManagerController) isDateEngineCPUMaskApplied(im *longhorn.InstanceManager) (bool, error) {
+func (imc *InstanceManagerController) isDateEngineCPUMaskCoreNumberApplied(im *longhorn.InstanceManager) (bool, error) {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return true, nil
 	}
 
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return true, nil
+	}
+
+	spdkCoreNumber, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting for checking data engine CPU mask", types.SettingNameDataEngineNumberOfCPUCores)
+	}
+
+	if spdkCoreNumber > 0 {
+		return im.Status.DataEngineStatus.V2.CPUCoreNumber == spdkCoreNumber, nil
 	}
 
 	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
@@ -653,7 +662,7 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
 	}
 
-	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskApplied(im)
+	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskCoreNumberApplied(im)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to sync date engine CPU mask to instance manager pod %v", im.Name)
 	}
@@ -1874,20 +1883,31 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			logFlags = strings.ToLower(logFlagsSetting)
 		}
 
-		// CPU mask is required for SPDK.
-		cpuMask := im.Spec.DataEngineSpec.V2.CPUMask
-		if cpuMask == "" {
-			value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
-			if err != nil {
-				return nil, err
-			}
+		spdkCoreNumber, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+		if err != nil {
+			return nil, err
+		}
+		dynamicCPUPinningEnabled := spdkCoreNumber != 0
 
-			cpuMask = value
+		// CPU mask is required for SPDK.
+		cpuMask := ""
+		if !dynamicCPUPinningEnabled {
+			cpuMask = im.Spec.DataEngineSpec.V2.CPUMask
 			if cpuMask == "" {
-				return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
+				value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
+				if err != nil {
+					return nil, err
+				}
+
+				cpuMask = value
+				if cpuMask == "" {
+					return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
+				}
 			}
 		}
+		// When CPU-manager-based pinning is enabled, SPDK CPUs are determined at runtime inside the IM pod (cpuMask may be empty here).
 		im.Status.DataEngineStatus.V2.CPUMask = cpuMask
+		im.Status.DataEngineStatus.V2.CPUCoreNumber = spdkCoreNumber
 
 		// Hugepage or legacy memory preallocation is required for SPDK.
 		hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
@@ -1909,9 +1929,10 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 
 		args := []string{
-			"instance-manager",
+			"start-spdk-tgt",
 			"--spdk-log", logFlags,
 			"--spdk-cpumask", cpuMask,
+			"--spdk-core-number", fmt.Sprintf("%d", spdkCoreNumber),
 			"--spdk-memory-size", fmt.Sprintf("%d", memory),
 			"--enable-spdk", "--debug",
 			"daemon",
@@ -1947,6 +1968,15 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 
 		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+		if dynamicCPUPinningEnabled {
+			cpuQty, ok := podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+			if !ok {
+				cpuQty = resource.MustParse(fmt.Sprintf("%d", spdkCoreNumber))
+				podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = cpuQty
+			}
+			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = cpuQty
+			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceMemory] = resource.MustParse("128Mi")
+		}
 
 		podSpec.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{

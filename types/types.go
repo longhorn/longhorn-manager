@@ -272,6 +272,7 @@ const (
 	EnvDataEngine     = "DATA_ENGINE"
 	EnvTZ             = "TZ"
 	EnvDistro         = "LONGHORN_DISTRO"
+	EnvKubeletRootDir = "KUBELET_ROOT_DIR"
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
