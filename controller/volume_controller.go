@@ -2560,6 +2560,11 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			// so we have the TargetIP available.
 			// For DR volumes (frontend disabled or empty), bypass the Port check
 			// because the engine may not expose a port when the frontend is off.
+			// For UBLK, also bypass the Port check: UBLK is a local block device
+			// exposed via ublk_drv, so the engine never reports a TCP port and
+			// e.Status.Port stays 0 even when the engine is healthy. Without this
+			// the UBLK EngineFrontend would never start and the volume would hang
+			// in attaching.
 			if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" &&
 				(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty || v.Spec.Frontend == longhorn.VolumeFrontendUblk) {
 				ef.Spec.NodeID = v.Spec.NodeID
