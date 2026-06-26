@@ -11,27 +11,30 @@ const (
 	NodeConditionTypeNFSClientInstalled  = "NFSClientInstalled"
 	NodeConditionTypeSchedulable         = "Schedulable"
 	NodeConditionTypeHugePagesAvailable  = "HugePagesAvailable"
+	NodeConditionTypeCPUManagerPolicy    = "CPUManagerPolicy"
 )
 
 const (
-	NodeConditionReasonManagerPodDown            = "ManagerPodDown"
-	NodeConditionReasonManagerPodMissing         = "ManagerPodMissing"
-	NodeConditionReasonKubernetesNodeGone        = "KubernetesNodeGone"
-	NodeConditionReasonKubernetesNodeNotReady    = "KubernetesNodeNotReady"
-	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
-	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
-	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
-	NodeConditionReasonMultipathdIsRunning       = "MultipathdIsRunning"
-	NodeConditionReasonUnknownOS                 = "UnknownOS"
-	NodeConditionReasonNamespaceExecutorErr      = "NamespaceExecutorErr"
-	NodeConditionReasonKernelModulesNotLoaded    = "KernelModulesNotLoaded"
-	NodeConditionReasonPackagesNotInstalled      = "PackagesNotInstalled"
-	NodeConditionReasonCheckKernelConfigFailed   = "CheckKernelConfigFailed"
-	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
-	NodeConditionReasonNFSClientIsMisconfigured  = "NFSClientIsMisconfigured"
-	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
-	NodeConditionReasonHugePagesNotConfigured    = "HugePagesNotConfigured"
-	NodeConditionReasonInsufficientHugePages     = "InsufficientHugePages"
+	NodeConditionReasonManagerPodDown               = "ManagerPodDown"
+	NodeConditionReasonManagerPodMissing            = "ManagerPodMissing"
+	NodeConditionReasonKubernetesNodeGone           = "KubernetesNodeGone"
+	NodeConditionReasonKubernetesNodeNotReady       = "KubernetesNodeNotReady"
+	NodeConditionReasonKubernetesNodePressure       = "KubernetesNodePressure"
+	NodeConditionReasonUnknownNodeConditionTrue     = "UnknownNodeConditionTrue"
+	NodeConditionReasonNoMountPropagationSupport    = "NoMountPropagationSupport"
+	NodeConditionReasonMultipathdIsRunning          = "MultipathdIsRunning"
+	NodeConditionReasonUnknownOS                    = "UnknownOS"
+	NodeConditionReasonNamespaceExecutorErr         = "NamespaceExecutorErr"
+	NodeConditionReasonKernelModulesNotLoaded       = "KernelModulesNotLoaded"
+	NodeConditionReasonPackagesNotInstalled         = "PackagesNotInstalled"
+	NodeConditionReasonCheckKernelConfigFailed      = "CheckKernelConfigFailed"
+	NodeConditionReasonNFSClientIsNotFound          = "NFSClientIsNotFound"
+	NodeConditionReasonNFSClientIsMisconfigured     = "NFSClientIsMisconfigured"
+	NodeConditionReasonKubernetesNodeCordoned       = "KubernetesNodeCordoned"
+	NodeConditionReasonHugePagesNotConfigured       = "HugePagesNotConfigured"
+	NodeConditionReasonInsufficientHugePages        = "InsufficientHugePages"
+	NodeConditionReasonCPUManagerPolicyConfigured   = "CPUManagerPolicyConfigured"
+	NodeConditionReasonCPUManagerPolicyUnConfigured = "CPUManagerPolicyUnConfigured"
 )
 
 const (
@@ -64,6 +67,12 @@ const (
 	ErrorReplicaScheduleReplicaAlreadyScheduled           = "replica already scheduled"
 	ErrorReplicaScheduleLonghornClientOperationFailed     = "longhorn client operation failed"
 	ErrorReplicaScheduleIncompatibleVolumeSize            = "incompatible volume size"
+)
+
+const (
+	CpuManagerStaticPolicy  = "static"
+	CpuManagerNonePolicy    = "none"
+	CpuManagerUnknownPolicy = "unknown"
 )
 
 type DiskType string
