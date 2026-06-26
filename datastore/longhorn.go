@@ -707,8 +707,84 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 			return errors.Wrapf(err, "failed to get the storage class %v for setting %v", value, types.SettingNameDefaultLonghornStaticStorageClass)
 		}
+	case types.SettingNameDataEngineNumberOfCPUCores:
+		trimmed := strings.TrimSpace(value)
+
+		var values map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(trimmed), &values); err != nil {
+			// Allow single values (for example, "2") the same way types.ValidateSetting does.
+			coreNumber, convErr := strconv.Atoi(trimmed)
+			if convErr != nil {
+				return errors.Wrapf(convErr, "failed to convert CPU core number setting value %q to integer", value)
+			}
+
+			if err := s.ValidateDataEngineCoreNumber(coreNumber, longhorn.DataEngineTypeV2); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		for dataEngine, v := range values {
+			coreNumber, err := strconv.Atoi(v)
+			if err != nil {
+				return errors.Wrapf(err, "failed to convert CPU core number %s for data engine %s to integer", v, dataEngine)
+			}
+			if err := s.ValidateDataEngineCoreNumber(coreNumber, dataEngine); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func (s *DataStore) ValidateDataEngineCoreNumber(coreNum int, dataEngine longhorn.DataEngineType) error {
+	switch {
+	case coreNum < 0:
+		return errors.Errorf("CPU core number for data engine %s cannot be negative", dataEngine)
+	case coreNum > 0:
+		allNodesCPUPolicyConfiged, err := s.isAllNodesCPUPolicyConfiged()
+		if err != nil {
+			return errors.Wrapf(err, "failed to check if all nodes have CPU manager policy configured")
+		}
+		if !allNodesCPUPolicyConfiged {
+			return errors.Errorf("CPU core number for data engine %s cannot be set to %d when not all nodes have CPU manager policy configured", dataEngine, coreNum)
+		}
+	case coreNum == 0:
+		allNodesCPUMaskZero, err := s.isDataEngineCPUMaskZero(dataEngine)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check if data engine CPU mask is set to 0")
+		}
+		if allNodesCPUMaskZero {
+			return errors.Errorf("CPU core number for data engine %s cannot be set to 0 when data engine CPU mask is set to 0", dataEngine)
+		}
+	}
+	return nil
+}
+
+func (s *DataStore) isAllNodesCPUPolicyConfiged() (bool, error) {
+	lhnodes, err := s.ListNodesRO()
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get all nodes")
+	}
+
+	for _, node := range lhnodes {
+		waitForBackingImageCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeCPUManagerPolicy)
+		if waitForBackingImageCondition.Status != longhorn.ConditionStatusTrue {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *DataStore) isDataEngineCPUMaskZero(dataEngine longhorn.DataEngineType) (bool, error) {
+	value, err := s.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameDataEngineCPUMask)
+	}
+	if value == "0" || value == "0x0" {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *DataStore) ValidateV1DataEngineEnabled(dataEngineEnabled bool) (ims []*longhorn.InstanceManager, err error) {
