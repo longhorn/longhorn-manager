@@ -2003,7 +2003,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            "false",
+		Default:            "true",
 	}
 
 	SettingDefinitionLogPath = SettingDefinition{
