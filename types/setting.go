@@ -157,6 +157,7 @@ const (
 	SettingNameDataEngineHugepageEnabled                                = SettingName("data-engine-hugepage-enabled")
 	SettingNameDataEngineMemorySize                                     = SettingName("data-engine-memory-size")
 	SettingNameDataEngineCPUMask                                        = SettingName("data-engine-cpu-mask")
+	SettingNameDataEngineNumberOfCPUCores                               = SettingName("data-engine-number-of-cpu-cores")
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
 	SettingNameDataEngineInterruptModeEnabled                           = SettingName("data-engine-interrupt-mode-enabled")
@@ -280,6 +281,7 @@ var (
 		SettingNameDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize,
 		SettingNameDataEngineCPUMask,
+		SettingNameDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel,
 		SettingNameDataEngineLogFlags,
 		SettingNameSnapshotDataIntegrity,
@@ -443,6 +445,7 @@ var (
 		SettingNameDataEngineHugepageEnabled:                                SettingDefinitionDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize:                                     SettingDefinitionDataEngineMemorySize,
 		SettingNameDataEngineCPUMask:                                        SettingDefinitionDataEngineCPUMask,
+		SettingNameDataEngineNumberOfCPUCores:                               SettingDefinitionDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
 		SettingNameDataEngineInterruptModeEnabled:                           SettingDefinitionDataEngineInterruptModeEnabled,
@@ -1794,13 +1797,28 @@ var (
 
 	SettingDefinitionDataEngineCPUMask = SettingDefinition{
 		DisplayName:        "Data Engine CPU Mask",
-		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the assigned CPU cores do not exceed the guaranteed CPUs allocated to the V2 Data Engine Instance Manager. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. When only a single core is assigned, heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and operational stability. Accepts either hexadecimal CPU masks (for example, 0x3 or 0xff) or CPU list format (for example, 0-1,2,5). CPU lists are automatically converted to hexadecimal masks. The default value is 0x3.",
+		Description:        "Applies only to the V2 Data Engine. If the Data Engine CPU Core Number setting is specified, this setting will be ignored. It specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the assigned CPU cores do not exceed the guaranteed CPUs allocated to the V2 Data Engine Instance Manager. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. When only a single core is assigned, heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and operational stability. Accepts either hexadecimal CPU masks (for example, 0x3 or 0xff) or CPU list format (for example, 0-1,2,5). CPU lists are automatically converted to hexadecimal masks. The default value is 0x3.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"0x3\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDataEngineNumberOfCPUCores = SettingDefinition{
+		DisplayName: "Data Engine Number of CPU Cores",
+		Description: "Applies only to the V2 Data Engine. It can be applied only when the kubelet CPU policy is set to static. It has higher priority than the Data Engine CPU Mask setting. Therefore, when specified, the CPU Mask setting will be ignored. " +
+			"Specifies the number of CPU cores allocated to the Storage Performance Development Kit (SPDK) target daemon. The daemon is deployed in each Instance Manager pod. Ensure that the assigned CPU cores do not exceed the guaranteed CPUs allocated to the V2 Data Engine Instance Manager. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. When only a single core is assigned, heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and operational stability.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionDataEngineInterruptModeEnabled = SettingDefinition{
