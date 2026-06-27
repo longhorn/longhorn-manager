@@ -80,6 +80,7 @@ type Volume struct {
 	KubernetesStatus longhorn.KubernetesStatus     `json:"kubernetesStatus"`
 	CloneStatus      longhorn.VolumeCloneStatus    `json:"cloneStatus"`
 	Ready            bool                          `json:"ready"`
+	NotReadyMessage  string                        `json:"notReadyMessage"`
 
 	AccessMode        longhorn.AccessMode              `json:"accessMode"`
 	ShareEndpoint     string                           `json:"shareEndpoint"`
@@ -1677,7 +1678,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 	//   3. It's faulted.
 	//   4. It's restore pending.
 	//   5. It's failed to clone
-	ready, _ := types.IsVolumeReady(v, vrs, types.VolumeOperationGeneric)
+	ready, notReadyMessage := types.IsVolumeReady(v, vrs, types.VolumeOperationGeneric)
 
 	r := &Volume{
 		Resource: client.Resource{
@@ -1731,6 +1732,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		ReplicaDiskSoftAntiAffinity: v.Spec.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                  v.Spec.DataEngine,
 		Ready:                       ready,
+		NotReadyMessage:             notReadyMessage,
 
 		AccessMode:        v.Spec.AccessMode,
 		ShareEndpoint:     v.Status.ShareEndpoint,
