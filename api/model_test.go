@@ -52,3 +52,24 @@ func TestToVolumeResourceUsesEngineFrontendNodeForV2Controller(t *testing.T) {
 		t.Fatalf("expected controller endpoint to use frontend endpoint, got %q", resource.Controllers[0].Endpoint)
 	}
 }
+
+func TestToVolumeResourcePropagatesReadyMessage(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
+	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
+	if err != nil {
+		t.Fatalf("failed to create API url builder: %v", err)
+	}
+
+	volume := &longhorn.Volume{}
+	volume.Name = "test-volume"
+	volume.Spec.NodeID = "test-node"
+	volume.Status.Robustness = longhorn.VolumeRobustnessFaulted
+
+	resource := toVolumeResource(volume, nil, nil, nil, nil, nil, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+	if resource.Ready {
+		t.Fatalf("expected volume to not be ready")
+	}
+	if resource.NotReadyMessage == "" {
+		t.Fatalf("expected NotReadyMessage to be populated when volume is not ready")
+	}
+}

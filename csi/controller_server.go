@@ -550,6 +550,9 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	//  Most of the readiness conditions are covered by the attach, except auto attachment which requires changes to the design
 	//  should be handled by the processing of the api return codes
 	if !volume.Ready {
+		if volume.NotReadyMessage != "" {
+			return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads: %v", volumeID, volume.NotReadyMessage)
+		}
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
