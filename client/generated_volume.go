@@ -73,6 +73,8 @@ type Volume struct {
 
 	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
 
+	NotReadyMessage string `json:"notReadyMessage,omitempty" yaml:"not_ready_message,omitempty"`
+
 	RebuildConcurrentSyncLimit int64 `json:"rebuildConcurrentSyncLimit,omitempty" yaml:"rebuild_concurrent_sync_limit,omitempty"`
 
 	RebuildStatus []RebuildStatus `json:"rebuildStatus,omitempty" yaml:"rebuild_status,omitempty"`

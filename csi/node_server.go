@@ -25,12 +25,13 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	utilexec "k8s.io/utils/exec"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
-	lhns "github.com/longhorn/go-common-libs/ns"
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -193,6 +194,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	if !volume.Ready {
+		if volume.NotReadyMessage != "" {
+			return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads: %v", volumeID, volume.NotReadyMessage)
+		}
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
@@ -506,6 +510,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	if !volume.Ready {
+		if volume.NotReadyMessage != "" {
+			return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads: %v", volumeID, volume.NotReadyMessage)
+		}
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
