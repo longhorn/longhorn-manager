@@ -2097,10 +2097,11 @@ const (
 type NodeDownPodDeletionPolicy string
 
 const (
-	NodeDownPodDeletionPolicyDoNothing                             = NodeDownPodDeletionPolicy("do-nothing") // Kubernetes default behavior
-	NodeDownPodDeletionPolicyDeleteStatefulSetPod                  = NodeDownPodDeletionPolicy("delete-statefulset-pod")
-	NodeDownPodDeletionPolicyDeleteDeploymentPod                   = NodeDownPodDeletionPolicy("delete-deployment-pod")
-	NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod = NodeDownPodDeletionPolicy("delete-both-statefulset-and-deployment-pod")
+	NodeDownPodDeletionPolicyDoNothing                                             = NodeDownPodDeletionPolicy("do-nothing") // Kubernetes default behavior
+	NodeDownPodDeletionPolicyDeleteStatefulSetPod                                  = NodeDownPodDeletionPolicy("delete-statefulset-pod")
+	NodeDownPodDeletionPolicyDeleteDeploymentPod                                   = NodeDownPodDeletionPolicy("delete-deployment-pod")
+	NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod                 = NodeDownPodDeletionPolicy("delete-both-statefulset-and-deployment-pod")
+	NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPodAndAnnotatedPods = NodeDownPodDeletionPolicy("delete-both-statefulset-and-deployment-pod-and-annotated-pods")
 )
 
 type NodeDrainPolicy string
