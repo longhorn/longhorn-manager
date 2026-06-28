@@ -323,8 +323,8 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260531.0.20260610073602-18980f82144c
-## explicit; go 1.26
+# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260614
+## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
@@ -334,7 +334,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260531.0.20260608045156-f8dd876a4b6a
+# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260614
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
