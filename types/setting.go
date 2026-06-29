@@ -168,6 +168,7 @@ const (
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
 	SettingNameDataEngineInterruptModeEnabled                           = SettingName("data-engine-interrupt-mode-enabled")
+	SettingNameDataEngineIRQAffinityEnabled                             = SettingName("data-engine-irq-affinity-enabled")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -295,6 +296,7 @@ var (
 		SettingNameDataEngineLogFlags,
 		SettingNameSnapshotDataIntegrity,
 		SettingNameDataEngineInterruptModeEnabled,
+		SettingNameDataEngineIRQAffinityEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -460,6 +462,7 @@ var (
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
 		SettingNameDataEngineInterruptModeEnabled:                           SettingDefinitionDataEngineInterruptModeEnabled,
+		SettingNameDataEngineIRQAffinityEnabled:                             SettingDefinitionDataEngineIRQAffinityEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -1877,6 +1880,29 @@ var (
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V2 volumes. \n\n" +
 			"  - `true`: Enables interrupt mode, which may reduce CPU usage. \n\n" +
 			"  - `false`: Uses polling mode for maximum performance. \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDataEngineIRQAffinityEnabled = SettingDefinition{
+		DisplayName: "Enable IRQ Affinity Pinning for Data Engine",
+		Description: "Applies only to the V2 Data Engine. Steers host hardware IRQs away from the CPUs used by the SPDK target daemon, " +
+			"so that interrupt handling does not preempt SPDK polling reactors. \n\n" +
+			"  - DO NOT ENABLE THIS LIGHTLY. The setting writes to `/proc/irq/*/smp_affinity` on the host, which is **node-wide** and affects every workload on the node. " +
+			"On small nodes, or on nodes where another component (irqbalance, tuned, the cloud provider's IRQ policy, etc.) is already managing IRQ affinity, " +
+			"this setting can starve other workloads of IRQ-handling CPUs and conflict with the other policy.\n\n" +
+			"  - The Instance Manager pod must be privileged and must mount the host root at `/host`. \n\n" +
+			"  - When enabled, the V2 Instance Manager persists the SPDK cpu mask under `/var/lib/longhorn/instance-manager/v2/spdk_cpu_mask` on the host and programs " +
+			"`/proc/irq/*/smp_affinity` to the inverse mask before launching `spdk_tgt`. \n\n" +
+			"  - When disabled, the next Instance Manager restart still reconciles any leftover state (clears stale IRQ affinity and removes the marker file), " +
+			"but does not install any new affinity. \n\n" +
+			"  - The setting takes effect only after the V2 Instance Manager pod is recreated. Longhorn will refuse to apply the change while V2 volumes are attached. \n\n" +
+			"  - `true`: Pin host IRQs to non-SPDK CPUs. \n\n" +
+			"  - `false`: Leave host IRQ affinity untouched (default). \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
