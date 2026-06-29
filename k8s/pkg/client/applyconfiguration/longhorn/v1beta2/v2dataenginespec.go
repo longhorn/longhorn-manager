@@ -22,6 +22,12 @@ package v1beta2
 // with apply.
 type V2DataEngineSpecApplyConfiguration struct {
 	CPUMask *string `json:"cpuMask,omitempty"`
+	// IRQAffinityEnabled overrides the cluster-wide
+	// data-engine-irq-affinity-enabled setting for this instance manager.
+	// "true"  -> pass --enable-irq-affinity to start-spdk-tgt.
+	// "false" -> do not pass the flag.
+	// ""      -> inherit the global setting value.
+	IRQAffinityEnabled *string `json:"irqAffinityEnabled,omitempty"`
 }
 
 // V2DataEngineSpecApplyConfiguration constructs a declarative configuration of the V2DataEngineSpec type for use with
@@ -35,5 +41,13 @@ func V2DataEngineSpec() *V2DataEngineSpecApplyConfiguration {
 // If called multiple times, the CPUMask field is set to the value of the last call.
 func (b *V2DataEngineSpecApplyConfiguration) WithCPUMask(value string) *V2DataEngineSpecApplyConfiguration {
 	b.CPUMask = &value
+	return b
+}
+
+// WithIRQAffinityEnabled sets the IRQAffinityEnabled field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the IRQAffinityEnabled field is set to the value of the last call.
+func (b *V2DataEngineSpecApplyConfiguration) WithIRQAffinityEnabled(value string) *V2DataEngineSpecApplyConfiguration {
+	b.IRQAffinityEnabled = &value
 	return b
 }
