@@ -840,6 +840,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
 		case types.SettingNameDataEngineIobufLargePoolSize:
 			isSettingSynced, err = imc.isSettingIobufLargePoolSizeSynced(im, pod)
+		case types.SettingNameDataEngineIRQAffinityEnabled:
+			isSettingSynced, err = imc.isSettingIRQAffinityEnabledSynced(setting, im, pod)
 		}
 		if err != nil {
 			return false, nil, false, false, err
@@ -987,6 +989,35 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 	}
 
 	return im.Status.DataEngineStatus.V2.InterruptModeEnabled == settingValue, nil
+}
+
+// isSettingIRQAffinityEnabledSynced returns true if the IRQ-affinity setting
+// matches what the V2 instance-manager pod was started with. The pod always
+// receives --longhorn-control-path (so we can reconcile stale state across
+// restarts even after toggling the setting off); the actual toggle is the
+// presence of --enable-irq-affinity in the pod's args.
+func (imc *InstanceManagerController) isSettingIRQAffinityEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+	if pod == nil || len(pod.Spec.Containers) == 0 {
+		return true, nil
+	}
+
+	settingValue, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineIRQAffinityEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+	wantEnabled := settingValue == "true"
+
+	hasFlag := false
+	for _, a := range pod.Spec.Containers[0].Args {
+		if a == "--enable-irq-affinity" {
+			hasFlag = true
+			break
+		}
+	}
+	return wantEnabled == hasFlag, nil
 }
 
 // isHugepageSettingApplied checks whether hugepage-related settings are effectively
@@ -1967,6 +1998,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
 		}
 
+		controlPath, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+		}
+
 		args := []string{
 			"start-spdk-tgt",
 			"--spdk-log", logFlags,
@@ -1979,6 +2015,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
 		}
 		args = append(args,
+			"--longhorn-control-path", controlPath.Value,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
@@ -1993,6 +2030,14 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		if im.Status.DataEngineStatus.V2.InterruptModeEnabled == "true" {
 			args = append(args, "--spdk-interrupt-mode")
+		}
+
+		irqAffinityEnabled, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineIRQAffinityEnabled, dataEngine)
+		if err != nil {
+			return nil, err
+		}
+		if irqAffinityEnabled == "true" {
+			args = append(args, "--enable-irq-affinity")
 		}
 
 		if !hugepageEnabled {
