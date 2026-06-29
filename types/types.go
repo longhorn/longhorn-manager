@@ -113,6 +113,12 @@ const (
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
+	// LonghornControlPathOnHost is the on-host directory used by Longhorn
+	// system components (instance-manager, etc.) for control-plane state such
+	// as the SPDK cpu_mask marker file written by start-spdk-tgt.
+	// It mirrors the engine-side DefaultLonghornControlPath constant.
+	LonghornControlPathOnHost = "/var/lib/longhorn"
+
 	UnixDomainSocketDirectoryInContainer = "/host/var/lib/longhorn/unix-domain-socket/"
 	UnixDomainSocketDirectoryOnHost      = "/var/lib/longhorn/unix-domain-socket/"
 
