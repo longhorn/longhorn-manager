@@ -178,6 +178,15 @@ type InstanceProcessStatus struct {
 type V2DataEngineSpec struct {
 	// +optional
 	CPUMask string `json:"cpuMask"`
+
+	// IRQAffinityEnabled overrides the cluster-wide
+	// data-engine-irq-affinity-enabled setting for this instance manager.
+	// "true"  -> pass --enable-irq-affinity to start-spdk-tgt.
+	// "false" -> do not pass the flag.
+	// ""      -> inherit the global setting value.
+	// +optional
+	// +kubebuilder:validation:Enum="";"true";"false"
+	IRQAffinityEnabled string `json:"irqAffinityEnabled"`
 }
 
 type DataEngineSpec struct {
