@@ -988,11 +988,34 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 	return im.Status.DataEngineStatus.V2.InterruptModeEnabled == settingValue, nil
 }
 
-// isSettingIRQAffinityEnabledSynced returns true if the IRQ-affinity setting
-// matches what the V2 instance-manager pod was started with. The pod always
-// receives --longhorn-control-path (so we can reconcile stale state across
-// restarts even after toggling the setting off); the actual toggle is the
-// presence of --enable-irq-affinity in the pod's args.
+// resolveIRQAffinityEnabled returns the effective IRQ-affinity-enabled value
+// for a V2 instance manager. The per-IM Spec.DataEngineSpec.V2.IRQAffinityEnabled
+// field takes priority over the cluster-wide data-engine-irq-affinity-enabled
+// setting:
+//
+//	"true"  -> enabled
+//	"false" -> disabled
+//	""      -> inherit the global setting value
+func (imc *InstanceManagerController) resolveIRQAffinityEnabled(im *longhorn.InstanceManager) (bool, error) {
+	switch im.Spec.DataEngineSpec.V2.IRQAffinityEnabled {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
+	val, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineIRQAffinityEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+	return val == "true", nil
+}
+
+// isSettingIRQAffinityEnabledSynced returns true if the effective IRQ-affinity
+// value (Spec.DataEngineSpec.V2.IRQAffinityEnabled, falling back to the global
+// setting) matches what the V2 instance-manager pod was started with. The pod
+// always receives --longhorn-control-path (so we can reconcile stale state
+// across restarts even after toggling off); the actual toggle is the presence
+// of --enable-irq-affinity in the pod's args.
 func (imc *InstanceManagerController) isSettingIRQAffinityEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return true, nil
@@ -1001,11 +1024,10 @@ func (imc *InstanceManagerController) isSettingIRQAffinityEnabledSynced(setting 
 		return true, nil
 	}
 
-	settingValue, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineIRQAffinityEnabled, im.Spec.DataEngine)
+	wantEnabled, err := imc.resolveIRQAffinityEnabled(im)
 	if err != nil {
 		return false, err
 	}
-	wantEnabled := settingValue == "true"
 
 	hasFlag := false
 	for _, a := range pod.Spec.Containers[0].Args {
@@ -1982,11 +2004,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			args = append(args, "--spdk-interrupt-mode")
 		}
 
-		irqAffinityEnabled, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineIRQAffinityEnabled, dataEngine)
+		irqAffinityEnabled, err := imc.resolveIRQAffinityEnabled(im)
 		if err != nil {
 			return nil, err
 		}
-		if irqAffinityEnabled == "true" {
+		if irqAffinityEnabled {
 			args = append(args, "--enable-irq-affinity")
 		}
 
