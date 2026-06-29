@@ -1901,6 +1901,8 @@ var (
 			"  - When disabled, the next Instance Manager restart still reconciles any leftover state (clears stale IRQ affinity and removes the marker file), " +
 			"but does not install any new affinity. \n\n" +
 			"  - The setting takes effect only after the V2 Instance Manager pod is recreated. Longhorn will refuse to apply the change while V2 volumes are attached. \n\n" +
+			"  - This value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.IRQAffinityEnabled` " +
+			"(set to `\"true\"` or `\"false\"` on a specific instance manager to force the value on that node; leave empty to inherit this setting). \n\n" +
 			"  - `true`: Pin host IRQs to non-SPDK CPUs. \n\n" +
 			"  - `false`: Leave host IRQ affinity untouched (default). \n\n",
 		Category:           SettingCategoryDangerZone,
