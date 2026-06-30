@@ -13,9 +13,9 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
-	werror "github.com/longhorn/longhorn-manager/webhook/error"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 type recurringJobMutator struct {
