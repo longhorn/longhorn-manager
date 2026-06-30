@@ -1,11 +1,12 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
@@ -22,35 +23,36 @@ import (
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
-func SystemRolloutCmd() cli.Command {
-	return cli.Command{
+func SystemRolloutCmd() *cli.Command {
+	return &cli.Command{
 		Name: "system-rollout",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
-			cli.StringFlag{
-				Name:   FlagNamespace,
-				EnvVar: types.EnvPodNamespace,
+			&cli.StringFlag{
+				Name:    FlagNamespace,
+				Sources: cli.EnvVars(types.EnvPodNamespace),
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := systemRollout(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := systemRollout(cmd); err != nil {
 				logrus.Fatalln(err)
 			}
+			return nil
 		},
 	}
 }
 
-func systemRollout(c *cli.Context) error {
-	if c.NArg() != 1 {
+func systemRollout(cmd *cli.Command) error {
+	if cmd.NArg() != 1 {
 		return errors.New("require SystemRestore name")
 	}
 
-	systemRestoreName := c.Args()[0]
+	systemRestoreName := cmd.Args().Get(0)
 
-	namespace := c.String(FlagNamespace)
+	namespace := cmd.String(FlagNamespace)
 	if namespace == "" {
 		return errors.New("namespace is required")
 	}
@@ -60,7 +62,7 @@ func systemRollout(c *cli.Context) error {
 		return errors.New("fail to detect the node name")
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
+	config, err := clientcmd.BuildConfigFromFlags("", cmd.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}

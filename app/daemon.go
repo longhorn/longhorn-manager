@@ -13,7 +13,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/rancher/wrangler/v3/pkg/signals"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -65,51 +65,52 @@ const (
 	enableConversionWebhook = false
 )
 
-func DaemonCmd() cli.Command {
-	return cli.Command{
+func DaemonCmd() *cli.Command {
+	return &cli.Command{
 		Name: "daemon",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagEngineImage,
 				Usage: "Specify Longhorn engine image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagInstanceManagerImage,
 				Usage: "Specify Longhorn instance manager image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagShareManagerImage,
 				Usage: "Specify Longhorn share manager image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagBackingImageManagerImage,
 				Usage: "Specify Longhorn backing image manager image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagSupportBundleManagerImage,
 				Usage: "Specify Longhorn support bundle manager image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagManagerImage,
 				Usage: "Specify Longhorn manager image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagServiceAccount,
 				Usage: "Specify service account for manager",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
-			cli.BoolFlag{
+			&cli.BoolFlag{
 				Name:  FlagUpgradeVersionCheck,
 				Usage: "Enforce version checking for upgrades. If disabled, there will be no requirement for the necessary upgrade source version",
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := startManager(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := startManager(cmd); err != nil {
 				logrus.Fatalf("Error starting manager: %v", err)
 			}
+			return nil
 		},
 	}
 }
@@ -247,40 +248,40 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 	return nil
 }
 
-func startManager(c *cli.Context) error {
+func startManager(cmd *cli.Command) error {
 	var (
 		err error
 	)
 
-	engineImage := c.String(FlagEngineImage)
+	engineImage := cmd.String(FlagEngineImage)
 	if engineImage == "" {
 		return fmt.Errorf("require %v", FlagEngineImage)
 	}
-	instanceManagerImage := c.String(FlagInstanceManagerImage)
+	instanceManagerImage := cmd.String(FlagInstanceManagerImage)
 	if instanceManagerImage == "" {
 		return fmt.Errorf("require %v", FlagInstanceManagerImage)
 	}
-	shareManagerImage := c.String(FlagShareManagerImage)
+	shareManagerImage := cmd.String(FlagShareManagerImage)
 	if shareManagerImage == "" {
 		return fmt.Errorf("require %v", FlagShareManagerImage)
 	}
-	backingImageManagerImage := c.String(FlagBackingImageManagerImage)
+	backingImageManagerImage := cmd.String(FlagBackingImageManagerImage)
 	if backingImageManagerImage == "" {
 		return fmt.Errorf("require %v", FlagBackingImageManagerImage)
 	}
-	supportBundleManagerImage := c.String(FlagSupportBundleManagerImage)
+	supportBundleManagerImage := cmd.String(FlagSupportBundleManagerImage)
 	if supportBundleManagerImage == "" {
 		return fmt.Errorf("require %v", FlagSupportBundleManagerImage)
 	}
-	managerImage := c.String(FlagManagerImage)
+	managerImage := cmd.String(FlagManagerImage)
 	if managerImage == "" {
 		return fmt.Errorf("require %v", FlagManagerImage)
 	}
-	serviceAccount := c.String(FlagServiceAccount)
+	serviceAccount := cmd.String(FlagServiceAccount)
 	if serviceAccount == "" {
 		return fmt.Errorf("require %v", FlagServiceAccount)
 	}
-	kubeconfigPath := c.String(FlagKubeConfig)
+	kubeconfigPath := cmd.String(FlagKubeConfig)
 
 	if err := environmentCheck(); err != nil {
 		return errors.Wrap(err, "failed to check environment, please make sure you have iscsiadm/open-iscsi installed on the host")
@@ -321,7 +322,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage, c.Bool(FlagUpgradeVersionCheck)); err != nil {
+	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage, cmd.Bool(FlagUpgradeVersionCheck)); err != nil {
 		return err
 	}
 
