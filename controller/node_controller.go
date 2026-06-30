@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -210,7 +211,8 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage ||
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
-		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy
+		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy ||
+		types.SettingName(setting.Name) == types.SettingNameSystemManagedComponentsNodeSelector
 }
 
 func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
@@ -1098,6 +1100,21 @@ func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
 	return nil
 }
 
+func (nc *NodeController) isSystemManagedComponentsNodeSelectorMatching(nodeName string) (bool, error) {
+	nodeSelector, err := nc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameSystemManagedComponentsNodeSelector)
+	}
+	if len(nodeSelector) == 0 {
+		return true, nil
+	}
+	kubeNode, err := nc.ds.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		return false, err
+	}
+	return labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
+}
+
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
@@ -1105,6 +1122,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	}
 
 	log := getLoggerForNode(nc.logger, node)
+
+	isNodeSelectorMatching, err := nc.isSystemManagedComponentsNodeSelectorMatching(node.Name)
+	if err != nil {
+		return err
+	}
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
@@ -1140,7 +1162,14 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				cleanupRequired := true
 
-				if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
+				if !isNodeSelectorMatching {
+					if runningOrStartingInstanceFound {
+						cleanupRequired = false
+						log.Infof("Keeping instance manager %v on selector-excluded node %v because it still has running/starting instances", im.Name, node.Name)
+					} else {
+						log.Infof("Cleaning up instance manager %v because node %v does not match %v", im.Name, node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
+					}
+				} else if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
 					// Keep default instance manager or instance manager matching argument image (during rolling update)
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
@@ -1174,6 +1203,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 			if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
+				if !isNodeSelectorMatching {
+					log.Debugf("Skipping default instance manager creation for node %v because it does not match %v", node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
+					continue
+				}
+
 				// Only create instance manager when argument image matches setting image
 				if nc.instanceManagerImage != defaultInstanceManagerImage {
 					log.Debugf("Skipping instance manager creation for node %v: argument image (%v) != setting image (%v)",
@@ -2253,7 +2287,7 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse SnapshotHashingRequestedAt")
 	}
 
-	// Case 1: First-ever request → allow immediately
+	// Case 1: Allow the first-ever request immediately.
 	if v.Status.LastOnDemandSnapshotHashingCompleteAt == "" {
 		return true, nil
 	}
@@ -2263,11 +2297,11 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse LastOnDemandSnapshotHashingCompleteAt")
 	}
 
-	// Case 2: Not a new request → reject
+	// Case 2: Reject requests that are not newer than the last completion.
 	if !requestTime.After(lastCompleted) {
 		return false, nil
 	}
 
-	// Case 3: New request → allow
+	// Case 3: Allow a new request.
 	return true, nil
 }
