@@ -10,6 +10,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -64,6 +65,9 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 	if recurringjob.Spec.Parameters == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/parameters", "value": {}}`)
 	}
+	if recurringjob.Spec.Concurrency == 0 {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/concurrency", "value": %d}`, types.DefaultRecurringJobConcurrency))
+	}
 
 	log := logrus.WithFields(logrus.Fields{
 		"recurringJob": recurringjob.Name,
@@ -108,6 +112,9 @@ func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.
 	}
 	if newRecurringjob.Spec.Parameters == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/parameters", "value": {}}`)
+	}
+	if newRecurringjob.Spec.Concurrency == 0 {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/concurrency", "value": %d}`, types.DefaultRecurringJobConcurrency))
 	}
 
 	log := logrus.WithFields(logrus.Fields{
