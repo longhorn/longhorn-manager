@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -303,10 +304,14 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
 	if len(ds.OwnerReferences) < 1 || ds.OwnerReferences[0].Kind != types.LonghornKindEngineImage {
 		ds.OwnerReferences = datastore.GetOwnerReferencesForEngineImage(engineImage)
-		_, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
+		ds, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
+	}
+
+	if err := ic.syncEngineImageDaemonSetNodeSelector(ds); err != nil {
+		return errors.Wrapf(err, "failed to sync node selector for engine image daemonset %v", ds.Name)
 	}
 
 	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
@@ -338,21 +343,37 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
-	deployedNodeCount := 0
-	for _, isDeployed := range engineImage.Status.NodeDeploymentMap {
-		if isDeployed {
-			deployedNodeCount++
-		}
-	}
-
 	readyNodes, err := ic.ds.ListReadyNodesRO()
 	if err != nil {
 		return err
 	}
 
-	if deployedNodeCount < len(readyNodes) {
+	nodeSelector, err := ic.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return err
+	}
+
+	targetCount, deployedCount := 0, 0
+	selector := labels.SelectorFromSet(nodeSelector)
+	for nodeName := range readyNodes {
+		if len(nodeSelector) > 0 {
+			kubeNode, err := ic.ds.GetKubernetesNodeRO(nodeName)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get Kubernetes node %v while checking system managed components node selector", nodeName)
+			}
+			if !selector.Matches(labels.Set(kubeNode.Labels)) {
+				continue
+			}
+		}
+		targetCount++
+		if engineImage.Status.NodeDeploymentMap[nodeName] {
+			deployedCount++
+		}
+	}
+
+	if deployedCount < targetCount {
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse,
-			longhorn.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("Engine image is not fully deployed on all nodes: %v of %v", deployedNodeCount, len(engineImage.Status.NodeDeploymentMap)))
+			longhorn.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("Engine image is not fully deployed on targeted ready nodes: %v of %v", deployedCount, targetCount))
 		engineImage.Status.State = longhorn.EngineImageStateDeploying
 	} else {
 		engineImage.Status.Conditions = types.SetConditionAndRecord(engineImage.Status.Conditions,
@@ -772,6 +793,48 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 		return
 	}
 	ic.enqueueEngineImage(engineImage)
+}
+
+// syncEngineImageDaemonSetNodeSelector updates the DaemonSet's pod template node selector
+// when it diverges from the system-managed-components-node-selector setting.
+func (ic *EngineImageController) syncEngineImageDaemonSetNodeSelector(ds *appsv1.DaemonSet) error {
+	nodeSelector, err := ic.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return err
+	}
+
+	currentNodeSelector := ds.Spec.Template.Spec.NodeSelector
+	if (len(currentNodeSelector) == 0 && len(nodeSelector) == 0) ||
+		reflect.DeepEqual(currentNodeSelector, nodeSelector) {
+		return nil
+	}
+	// The system-managed-components-node-selector setting is a Danger Zone
+	// setting. Updating the Engine Image DaemonSet pod template restarts Engine
+	// Image pods; if volumes are attached, the restart can make engine images
+	// unavailable and trigger image deletion. Apply the DaemonSet selector
+	// change only after all volumes are detached.
+	detached, err := ic.ds.AreAllVolumesDetachedState()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSystemManagedComponentsNodeSelector)
+	}
+	if !detached {
+		ic.logger.Infof("Skipping node selector update for engine image daemonset %v because some volumes are still attached", ds.Name)
+		return nil
+	}
+
+	// Node selector differs: patch the DaemonSet template so Kubernetes
+	// performs a rolling update that honours the new selector.
+	// ds is already a deep copy returned by GetEngineImageDaemonSet, so
+	// mutating it directly is safe.
+	if len(nodeSelector) == 0 {
+		ds.Spec.Template.Spec.NodeSelector = nil
+	} else {
+		ds.Spec.Template.Spec.NodeSelector = nodeSelector
+	}
+	ic.logger.Infof("Updating node selector for engine image daemonset %v from %v to %v",
+		ds.Name, currentNodeSelector, nodeSelector)
+	_, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
+	return err
 }
 
 func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []corev1.Toleration,
