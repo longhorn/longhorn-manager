@@ -5754,7 +5754,7 @@ func (s *DataStore) ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) erro
 	}
 
 	if totalJobRetainCount > int(maxRecurringJobRetain) {
-		return fmt.Errorf("job Can't retain more than %d snapshots", maxRecurringJobRetain)
+		return fmt.Errorf("job can't retain more than %d snapshots", maxRecurringJobRetain)
 	}
 	return nil
 }
