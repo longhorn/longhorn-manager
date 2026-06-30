@@ -6080,9 +6080,6 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 	if !isValidRecurringJobTask(job.Task) {
 		return fmt.Errorf("recurring job task %v is not valid", job.Task)
 	}
-	if job.Concurrency == 0 {
-		job.Concurrency = types.DefaultRecurringJobConcurrency
-	}
 	if _, err := cron.ParseStandard(job.Cron); err != nil {
 		return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
 	}
