@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	. "gopkg.in/check.v1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -26,8 +28,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -48,6 +48,7 @@ const (
 	TestServiceAccount            = "longhorn-service-account"
 
 	TestBackingImage = "test-backing-image"
+	TestBIMImage     = "longhorn-backing-image-manager:latest"
 
 	TestInstanceManagerName = "instance-manager-test-name"
 
@@ -608,7 +609,7 @@ func getTestNow() string {
 func randomIP() string {
 	b := []string{}
 	for i := 0; i < 4; i++ {
-		b = append(b, strconv.Itoa(int(rand.Uint32()%255)))
+		b = append(b, strconv.Itoa(rand.IntN(255)))
 	}
 	return strings.Join(b, ".")
 }
@@ -622,7 +623,7 @@ func getTestEngineImageDaemonSetName() string {
 }
 
 func randomPort() int {
-	return rand.Int() % 30000
+	return rand.IntN(30000)
 }
 
 func fakeEngineBinaryChecker(image string) (bool, error) {
