@@ -6,6 +6,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -22,8 +24,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 type EngineImageControllerTestCase struct {
@@ -40,12 +40,15 @@ type EngineImageControllerTestCase struct {
 	// For expired engine image cleanup
 	defaultEngineImage string
 
+	nodeSelectorSettingValue string
+
 	currentEngineImage  *longhorn.EngineImage
 	currentDaemonSet    *appv1.DaemonSet
 	currentDaemonSetPod *corev1.Pod
 
-	expectedEngineImage *longhorn.EngineImage
-	expectedDaemonSet   *appv1.DaemonSet
+	expectedEngineImage           *longhorn.EngineImage
+	expectedDaemonSet             *appv1.DaemonSet
+	expectedDaemonSetNodeSelector map[string]string
 }
 
 func newTestEngineImageController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) (*EngineImageController, error) {
@@ -191,6 +194,13 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["Incompatible engine image"] = tc
 
+	tc = getEngineImageControllerTestTemplate()
+	tc.nodeSelectorSettingValue = "kubernetes.io/hostname:TestNode1"
+	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
+	tc.copyCurrentToExpected()
+	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
+	testCases["Engine image DaemonSet node selector update is deferred with attached volume"] = tc
+
 	return testCases
 }
 
@@ -208,6 +218,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 
 		dsIndexer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
 		podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 
 		nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 		settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
@@ -227,11 +238,23 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		c.Assert(err, IsNil)
 		err = settingIndexer.Add(setting)
 		c.Assert(err, IsNil)
+		setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), newSetting(string(types.SettingNameSystemManagedComponentsNodeSelector), tc.nodeSelectorSettingValue), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = settingIndexer.Add(setting)
+		c.Assert(err, IsNil)
 
 		node, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), tc.node, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = nodeIndexer.Add(node)
 		c.Assert(err, IsNil)
+		if tc.nodeSelectorSettingValue != "" {
+			kubeNode := newKubernetesNode(tc.node.Name, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+			kubeNode.Labels = map[string]string{"kubernetes.io/hostname": tc.node.Name}
+			kubeNode, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = kubeNodeIndexer.Add(kubeNode)
+			c.Assert(err, IsNil)
+		}
 
 		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), tc.currentEngineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -291,6 +314,11 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			// For the DaemonSet created by the fake k8s client, the field `Status.DesiredNumberScheduled` won't be set automatically.
 			ds.Status.DesiredNumberScheduled = 1
 			c.Assert(ds.Status, DeepEquals, tc.expectedDaemonSet.Status)
+			if len(tc.expectedDaemonSetNodeSelector) == 0 {
+				c.Assert(len(ds.Spec.Template.Spec.NodeSelector), Equals, 0)
+			} else {
+				c.Assert(ds.Spec.Template.Spec.NodeSelector, DeepEquals, tc.expectedDaemonSetNodeSelector)
+			}
 		}
 	}
 }
@@ -363,4 +391,179 @@ func (s *TestSuite) TestCreateEngineImageDaemonSetSpecUsesDefaultLivenessProbeOn
 	c.Assert(livenessProbe.PeriodSeconds, Equals, int32(datastore.PodProbePeriodSeconds))
 	c.Assert(livenessProbe.TimeoutSeconds, Equals, int32(datastore.PodProbeTimeoutSeconds))
 	c.Assert(livenessProbe.FailureThreshold, Equals, int32(datastore.PodLivenessProbeFailureThreshold))
+}
+
+func (s *TestSuite) TestEngineImageConditionWithNodeSelector(c *C) {
+	testCases := []struct {
+		name            string
+		readyNodeNames  []string
+		kubeNodeNames   []string
+		podNodeNames    []string
+		expectedState   longhorn.EngineImageState
+		expectedReady   longhorn.ConditionStatus
+		expectedMessage string
+	}{
+		{
+			name:           "excluded ready nodes are not deployment targets",
+			readyNodeNames: []string{TestNode1, TestNode2},
+			kubeNodeNames:  []string{TestNode1, TestNode2},
+			podNodeNames:   []string{TestNode1},
+			expectedState:  longhorn.EngineImageStateDeployed,
+			expectedReady:  longhorn.ConditionStatusTrue,
+		},
+		{
+			name:           "missing Kubernetes nodes are skipped",
+			readyNodeNames: []string{TestNode1},
+			expectedState:  longhorn.EngineImageStateDeploying,
+			expectedReady:  longhorn.ConditionStatusFalse,
+		},
+		{
+			name:            "readiness message reports selector target count",
+			readyNodeNames:  []string{TestNode1, TestNode2},
+			kubeNodeNames:   []string{TestNode1, TestNode2},
+			expectedState:   longhorn.EngineImageStateDeploying,
+			expectedReady:   longhorn.ConditionStatusFalse,
+			expectedMessage: "Engine image is not fully deployed on targeted ready nodes: 0 of 1",
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Logf("testing %v", tc.name)
+
+		kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+		extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		dsIndexer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
+		podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+
+		ic, err := newTestEngineImageController(lhClient, kubeClient, extensionClient, informerFactories)
+		c.Assert(err, IsNil)
+
+		for _, setting := range []*longhorn.Setting{
+			newSetting(string(types.SettingNameDefaultEngineImage), TestEngineImage),
+			newSetting(string(types.SettingNameTaintToleration), ""),
+			newSetting(string(types.SettingNameSystemManagedComponentsNodeSelector), "kubernetes.io/hostname:"+TestNode1),
+		} {
+			setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(settingIndexer.Add(setting), IsNil)
+		}
+
+		for _, nodeName := range tc.readyNodeNames {
+			node := newNode(nodeName, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+			node, err = lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(nodeIndexer.Add(node), IsNil)
+		}
+		for _, nodeName := range tc.kubeNodeNames {
+			node := newKubernetesNode(nodeName, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+			node.Labels = map[string]string{"kubernetes.io/hostname": nodeName}
+			node, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(kubeNodeIndexer.Add(node), IsNil)
+		}
+
+		engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeploying)
+		engineImage, err = lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), engineImage, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(eiIndexer.Add(engineImage), IsNil)
+
+		daemonSet := newEngineImageDaemonSet()
+		daemonSet, err = kubeClient.AppsV1().DaemonSets(TestNamespace).Create(context.TODO(), daemonSet, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(dsIndexer.Add(daemonSet), IsNil)
+
+		for index, nodeName := range tc.podNodeNames {
+			podName := fmt.Sprintf("%s%s-%d", getTestEngineImageDaemonSetName(), TestPod1, index)
+			pod := createEngineImageDaemonSetPod(podName, true, nodeName)
+			pod, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(podIndexer.Add(pod), IsNil)
+		}
+
+		key := fmt.Sprintf("%s/%s", TestNamespace, getTestEngineImageName())
+		c.Assert(ic.syncEngineImage(key), IsNil)
+
+		engineImage, err = lhClient.LonghornV1beta2().EngineImages(TestNamespace).Get(context.TODO(), getTestEngineImageName(), metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(engineImage.Status.State, Equals, tc.expectedState)
+		readyCondition := types.GetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady)
+		c.Assert(readyCondition.Status, Equals, tc.expectedReady)
+		if tc.expectedMessage != "" {
+			c.Assert(readyCondition.Message, Equals, tc.expectedMessage)
+		}
+	}
+}
+
+func (s *TestSuite) TestSyncEngineImageDaemonSetNodeSelector(c *C) {
+	testCases := []struct {
+		name                 string
+		settingValue         string
+		volumeState          longhorn.VolumeState
+		expectedNodeSelector map[string]string
+		expectUpdate         bool
+	}{
+		{
+			name: "nil and empty selectors are equal",
+		},
+		{
+			name:                 "attached volume defers update",
+			settingValue:         "kubernetes.io/hostname:" + TestNode1,
+			volumeState:          longhorn.VolumeStateAttached,
+			expectedNodeSelector: nil,
+		},
+		{
+			name:                 "detached volumes allow update",
+			settingValue:         "kubernetes.io/hostname:" + TestNode1,
+			expectedNodeSelector: map[string]string{"kubernetes.io/hostname": TestNode1},
+			expectUpdate:         true,
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Logf("testing %v", tc.name)
+
+		kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+		extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+
+		ic, err := newTestEngineImageController(lhClient, kubeClient, extensionClient, informerFactories)
+		c.Assert(err, IsNil)
+
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(
+			context.TODO(), newSetting(string(types.SettingNameSystemManagedComponentsNodeSelector), tc.settingValue), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(settingIndexer.Add(setting), IsNil)
+
+		if tc.volumeState != "" {
+			volume := newVolume(TestVolumeName, 2)
+			volume.Status.State = tc.volumeState
+			volume, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(volumeIndexer.Add(volume), IsNil)
+		}
+
+		daemonSet := newEngineImageDaemonSet()
+		daemonSet.Spec.Template.Spec.NodeSelector = nil
+		daemonSet, err = kubeClient.AppsV1().DaemonSets(TestNamespace).Create(context.TODO(), daemonSet, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		actionCount := len(kubeClient.Actions())
+
+		c.Assert(ic.syncEngineImageDaemonSetNodeSelector(daemonSet), IsNil)
+		if tc.expectUpdate {
+			c.Assert(len(kubeClient.Actions()), Equals, actionCount+1)
+		} else {
+			c.Assert(len(kubeClient.Actions()), Equals, actionCount)
+		}
+		c.Assert(daemonSet.Spec.Template.Spec.NodeSelector, DeepEquals, tc.expectedNodeSelector)
+	}
 }
