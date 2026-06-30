@@ -7,7 +7,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -17,35 +17,36 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func RecurringJobCmd() cli.Command {
-	return cli.Command{
+func RecurringJobCmd() *cli.Command {
+	return &cli.Command{
 		Name: "recurring-job",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagManagerURL,
 				Usage: "Longhorn manager API URL",
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := recurringJob(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := recurringJob(cmd); err != nil {
 				logrus.WithError(err).Fatal("Failed to do a recurring job")
 			}
+			return nil
 		},
 	}
 }
 
-func recurringJob(c *cli.Context) (err error) {
+func recurringJob(cmd *cli.Command) (err error) {
 	logger := logrus.StandardLogger()
 
-	var managerURL = c.String(FlagManagerURL)
+	var managerURL = cmd.String(FlagManagerURL)
 	if managerURL == "" {
 		return fmt.Errorf("require %v", FlagManagerURL)
 	}
 
-	if c.NArg() != 1 {
+	if cmd.NArg() != 1 {
 		return errors.New("job name is required")
 	}
-	jobName := c.Args()[0]
+	jobName := cmd.Args().Get(0)
 
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
