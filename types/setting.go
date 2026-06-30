@@ -1806,7 +1806,7 @@ var (
 	SettingDefinitionDataEngineIobufLargePoolSize = SettingDefinition{
 		DisplayName: "Data Engine iobuf Large Pool Size",
 		Description: "Applies only to the V2 Data Engine. Sets the SPDK iobuf large buffer pool size (`large_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
-			"  - `0` (default): keep SPDK's built-in default (1024); behavior is unchanged. \n\n" +
+			"  - `1024` (default): SPDK's built-in default `large_pool_count`; behavior is unchanged. \n\n" +
 			"  - A larger value relieves NVMe-oF TCP large-buffer exhaustion (the `large_pool` `retry` / `NEED_BUFFER` stalls) under heavy mixed read/write workloads whose I/O size exceeds the iobuf small buffer size (8 KiB), e.g. 16 KiB database pages. Values not greater than 1024 keep the SPDK default. \n\n" +
 			"  - Larger values consume more hugepage memory: each large buffer is 132 KiB, so the large pool uses `large_pool_count x 132 KiB` (1024 -> 132 MiB, 4096 -> 528 MiB, 16384 -> ~2 GiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
 			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool size takes effect.",
@@ -1815,10 +1815,9 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufLargePoolSize),
 		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: 0,
-			ValueIntRangeMaximum: 65536,
+			ValueIntRangeMinimum: SpdkDefaultIobufLargePoolSize,
 		},
 	}
 
