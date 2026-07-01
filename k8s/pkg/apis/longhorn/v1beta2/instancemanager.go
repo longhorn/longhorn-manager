@@ -179,14 +179,16 @@ type V2DataEngineSpec struct {
 	// +optional
 	CPUMask string `json:"cpuMask"`
 
-	// IRQAffinityEnabled overrides the cluster-wide
-	// data-engine-irq-affinity-enabled setting for this instance manager.
-	// "true"  -> pass --enable-irq-affinity to start-spdk-tgt.
-	// "false" -> do not pass the flag.
+	// CPUIsolationEnabled overrides the cluster-wide
+	// data-engine-cpu-isolation-enabled setting for this instance manager.
+	// "true"  -> pass --enable-irq-affinity and --enable-workqueue-affinity
+	//            to start-spdk-tgt (steer host IRQs and unbound kernel
+	//            workqueues away from the SPDK reactor CPUs).
+	// "false" -> do not pass the flags.
 	// ""      -> inherit the global setting value.
 	// +optional
 	// +kubebuilder:validation:Enum="";"true";"false"
-	IRQAffinityEnabled string `json:"irqAffinityEnabled"`
+	CPUIsolationEnabled string `json:"cpuIsolationEnabled"`
 }
 
 type DataEngineSpec struct {
