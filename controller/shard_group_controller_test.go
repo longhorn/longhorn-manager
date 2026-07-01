@@ -216,3 +216,47 @@ func (s *ShardGroupControllerSuite) TestClearShardGroupProcessStatusPreservesLvs
 	c.Assert(sg.Status.LvstoreUUID, Equals, "deadbeef")
 	c.Assert(sg.Status.HeadLvolUUID, Equals, "cafebabe")
 }
+
+// TestConcurrentShardRebuildLimit verifies the per-node rebuild limit is enforced
+// strictly: an in-memory reservation blocks a sibling ShardGroup even before the first
+// group's RebuildInProgress flag has propagated, and the slot frees once the rebuild
+// finishes.
+func (s *ShardGroupControllerSuite) TestConcurrentShardRebuildLimit(c *C) {
+	settingIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	c.Assert(settingIndexer.Add(newSetting(string(types.SettingNameConcurrentReplicaRebuildPerNodeLimit), "1")), IsNil)
+
+	sgA := newTestShardGroup("vol-rebuild-a", 4, 2, TestNode1)
+	sgB := newTestShardGroup("vol-rebuild-b", 4, 2, TestNode1)
+	c.Assert(s.lhShardGroupIndexer.Add(sgA), IsNil)
+	c.Assert(s.lhShardGroupIndexer.Add(sgB), IsNil)
+
+	// A takes the only slot via an in-memory reservation. Its RebuildInProgress is still
+	// false, so a bare cache count would not see it - the reservation is what holds the slot.
+	can, err := s.controller.canStartShardRebuild(sgA)
+	c.Assert(err, IsNil)
+	c.Assert(can, Equals, true)
+
+	// B is blocked strictly by A's reservation, before any durable flag is set.
+	can, err = s.controller.canStartShardRebuild(sgB)
+	c.Assert(err, IsNil)
+	c.Assert(can, Equals, false)
+
+	// A asking again is idempotent - it already holds the slot, does not consume a second.
+	can, err = s.controller.canStartShardRebuild(sgA)
+	c.Assert(err, IsNil)
+	c.Assert(can, Equals, true)
+
+	// A's rebuild is now actually running: the durable flag carries the count and B stays blocked.
+	sgA.Status.RebuildInProgress = true
+	c.Assert(s.lhShardGroupIndexer.Update(sgA), IsNil)
+	can, err = s.controller.canStartShardRebuild(sgB)
+	c.Assert(err, IsNil)
+	c.Assert(can, Equals, false)
+
+	// A finishes: the freed slot lets B proceed.
+	sgA.Status.RebuildInProgress = false
+	c.Assert(s.lhShardGroupIndexer.Update(sgA), IsNil)
+	can, err = s.controller.canStartShardRebuild(sgB)
+	c.Assert(err, IsNil)
+	c.Assert(can, Equals, true)
+}
