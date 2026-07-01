@@ -22,12 +22,14 @@ package v1beta2
 // with apply.
 type V2DataEngineSpecApplyConfiguration struct {
 	CPUMask *string `json:"cpuMask,omitempty"`
-	// IRQAffinityEnabled overrides the cluster-wide
-	// data-engine-irq-affinity-enabled setting for this instance manager.
-	// "true"  -> pass --enable-irq-affinity to start-spdk-tgt.
-	// "false" -> do not pass the flag.
+	// CPUIsolationEnabled overrides the cluster-wide
+	// data-engine-cpu-isolation-enabled setting for this instance manager.
+	// "true"  -> pass --enable-irq-affinity and --enable-workqueue-affinity
+	//            to start-spdk-tgt (steer host IRQs and unbound kernel
+	//            workqueues away from the SPDK reactor CPUs).
+	// "false" -> do not pass the flags.
 	// ""      -> inherit the global setting value.
-	IRQAffinityEnabled *string `json:"irqAffinityEnabled,omitempty"`
+	CPUIsolationEnabled *string `json:"cpuIsolationEnabled,omitempty"`
 }
 
 // V2DataEngineSpecApplyConfiguration constructs a declarative configuration of the V2DataEngineSpec type for use with
@@ -44,10 +46,10 @@ func (b *V2DataEngineSpecApplyConfiguration) WithCPUMask(value string) *V2DataEn
 	return b
 }
 
-// WithIRQAffinityEnabled sets the IRQAffinityEnabled field in the declarative configuration to the given value
+// WithCPUIsolationEnabled sets the CPUIsolationEnabled field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the IRQAffinityEnabled field is set to the value of the last call.
-func (b *V2DataEngineSpecApplyConfiguration) WithIRQAffinityEnabled(value string) *V2DataEngineSpecApplyConfiguration {
-	b.IRQAffinityEnabled = &value
+// If called multiple times, the CPUIsolationEnabled field is set to the value of the last call.
+func (b *V2DataEngineSpecApplyConfiguration) WithCPUIsolationEnabled(value string) *V2DataEngineSpecApplyConfiguration {
+	b.CPUIsolationEnabled = &value
 	return b
 }
