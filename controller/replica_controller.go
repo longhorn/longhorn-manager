@@ -435,6 +435,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		BackingImagePath:    backingImagePath,
 		DataLocality:        v.Spec.DataLocality,
 		EngineCLIAPIVersion: cliAPIVersion,
+		FromBackup:          v.Spec.FromBackup != "",
 	})
 }
 
