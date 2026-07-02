@@ -1517,16 +1517,13 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		endpoint := e.Status.Endpoint
 		controllerNodeID := e.Spec.NodeID
 		controllerSize := e.Status.CurrentSize
-		// For v2, the engine has no endpoint; use the matching EF's endpoint
-		// and size. The EF's CurrentSize reflects the frontend device size,
-		// which may lag behind the RAID (engine) size during expansion.
+		// For v2, the engine has no endpoint; use the matching EF's endpoint.
+		// Keep the controller size sourced from the engine so API/CSI callers
+		// observe backend expansion state rather than frontend device size.
 		if ef, ok := efByEngine[e.Name]; ok {
 			controllerNodeID = ef.Spec.NodeID
 			if ef.Status.Endpoint != "" {
 				endpoint = ef.Status.Endpoint
-			}
-			if ef.Status.CurrentSize > 0 {
-				controllerSize = ef.Status.CurrentSize
 			}
 		}
 		controllers = append(controllers, Controller{
