@@ -238,6 +238,12 @@ type InstanceManagerStatus struct {
 	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`
 	// +optional
 	// +nullable
+	InstanceShards map[string]InstanceProcess `json:"instanceShards,omitempty"`
+	// +optional
+	// +nullable
+	InstanceShardGroups map[string]InstanceProcess `json:"instanceShardGroups,omitempty"`
+	// +optional
+	// +nullable
 	BackingImages map[string]BackingImageV2CopyInfo `json:"backingImages"`
 	// +optional
 	IP string `json:"ip"`

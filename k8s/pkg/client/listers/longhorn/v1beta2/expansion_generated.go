@@ -146,6 +146,22 @@ type SettingListerExpansion interface{}
 // SettingNamespaceLister.
 type SettingNamespaceListerExpansion interface{}
 
+// ShardListerExpansion allows custom methods to be added to
+// ShardLister.
+type ShardListerExpansion interface{}
+
+// ShardNamespaceListerExpansion allows custom methods to be added to
+// ShardNamespaceLister.
+type ShardNamespaceListerExpansion interface{}
+
+// ShardGroupListerExpansion allows custom methods to be added to
+// ShardGroupLister.
+type ShardGroupListerExpansion interface{}
+
+// ShardGroupNamespaceListerExpansion allows custom methods to be added to
+// ShardGroupNamespaceLister.
+type ShardGroupNamespaceListerExpansion interface{}
+
 // ShareManagerListerExpansion allows custom methods to be added to
 // ShareManagerLister.
 type ShareManagerListerExpansion interface{}
