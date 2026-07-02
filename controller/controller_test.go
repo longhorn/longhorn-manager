@@ -48,6 +48,7 @@ const (
 	TestServiceAccount            = "longhorn-service-account"
 
 	TestBackingImage = "test-backing-image"
+	TestBIMImage     = "longhorn-backing-image-manager:latest"
 
 	TestInstanceManagerName = "instance-manager-test-name"
 
