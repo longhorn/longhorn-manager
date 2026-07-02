@@ -837,6 +837,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			}
 		case types.SettingNameDataEngineInterruptModeEnabled:
 			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
+		case types.SettingNameDataEngineCPUIsolationEnabled:
+			isSettingSynced, err = imc.isSettingCPUIsolationEnabledSynced(setting, im, pod)
 		}
 		if err != nil {
 			return false, nil, false, false, err
@@ -984,6 +986,63 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 	}
 
 	return im.Status.DataEngineStatus.V2.InterruptModeEnabled == settingValue, nil
+}
+
+// resolveCPUIsolationEnabled returns the effective CPU-isolation-enabled value
+// for a V2 instance manager. The per-IM Spec.DataEngineSpec.V2.CPUIsolationEnabled
+// field takes priority over the cluster-wide data-engine-cpu-isolation-enabled
+// setting:
+//
+//	"true"  -> enabled
+//	"false" -> disabled
+//	""      -> inherit the global setting value
+func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.InstanceManager) (bool, error) {
+	switch im.Spec.DataEngineSpec.V2.CPUIsolationEnabled {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
+	val, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+	return val == "true", nil
+}
+
+// isSettingCPUIsolationEnabledSynced returns true if the effective CPU-isolation
+// value (Spec.DataEngineSpec.V2.CPUIsolationEnabled, falling back to the global
+// setting) matches what the V2 instance-manager pod was started with. The pod
+// always receives --longhorn-control-path (so we can reconcile stale state
+// across restarts even after toggling off); the actual toggle is the presence
+// of --enable-irq-affinity AND --enable-workqueue-affinity in the pod's args.
+// Both flags are set together, so the effective state is "enabled" only when
+// both are present.
+func (imc *InstanceManagerController) isSettingCPUIsolationEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+	if pod == nil || len(pod.Spec.Containers) == 0 {
+		return true, nil
+	}
+
+	wantEnabled, err := imc.resolveCPUIsolationEnabled(im)
+	if err != nil {
+		return false, err
+	}
+
+	hasIRQFlag := false
+	hasWorkqueueFlag := false
+	for _, a := range pod.Spec.Containers[0].Args {
+		switch a {
+		case "--enable-irq-affinity":
+			hasIRQFlag = true
+		case "--enable-workqueue-affinity":
+			hasWorkqueueFlag = true
+		}
+	}
+	hasEnabled := hasIRQFlag && hasWorkqueueFlag
+	return wantEnabled == hasEnabled, nil
 }
 
 // isHugepageSettingApplied checks whether hugepage-related settings are effectively
@@ -1934,6 +1993,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			"--spdk-cpumask", cpuMask,
 			"--spdk-core-number", fmt.Sprintf("%d", spdkCoreNumber),
 			"--spdk-memory-size", fmt.Sprintf("%d", memory),
+			"--longhorn-control-path", types.LonghornControlPathOnHost,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
@@ -1948,6 +2008,14 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		if im.Status.DataEngineStatus.V2.InterruptModeEnabled == "true" {
 			args = append(args, "--spdk-interrupt-mode")
+		}
+
+		cpuIsolationEnabled, err := imc.resolveCPUIsolationEnabled(im)
+		if err != nil {
+			return nil, err
+		}
+		if cpuIsolationEnabled {
+			args = append(args, "--enable-irq-affinity", "--enable-workqueue-affinity")
 		}
 
 		if !hugepageEnabled {
