@@ -298,6 +298,29 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	return ParseResourceRequirement(cpuRequestVal)
 }
 
+// GetInstanceManagerResourceRequirements returns the effective resource requirements (requests and limits)
+// for an Instance Manager pod's main container.
+//
+// If the `instance-manager-resource-limits` setting is set, its value fully overrides the CPU request
+// derived from `guaranteed-instance-manager-cpu` and any per-node `Node.Spec.InstanceManagerCPURequest`.
+// Otherwise it delegates to GetInstanceManagerCPURequirement (today's CPU-request-only spec).
+// Hugepages and the V2 hardcoded 128Mi memory request are handled by the caller and are intentionally
+// not part of the return value.
+func GetInstanceManagerResourceRequirements(ds *datastore.DataStore, imName string) (*corev1.ResourceRequirements, error) {
+	overrideSetting, err := ds.GetSettingWithAutoFillingRO(types.SettingNameInstanceManagerResourceLimits)
+	if err != nil {
+		return nil, err
+	}
+	override, err := types.UnmarshalInstanceManagerResourceLimits(overrideSetting.Value)
+	if err != nil {
+		return nil, err
+	}
+	if override != nil {
+		return override, nil
+	}
+	return GetInstanceManagerCPURequirement(ds, imName)
+}
+
 func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
 	// we use this approach so that if there is an issue with the data store
 	// we don't accidentally transfer ownership
@@ -335,4 +358,37 @@ func IsSameGuaranteedCPURequirement(a, b *corev1.ResourceRequirements) bool {
 		bQ = b.Requests[corev1.ResourceCPU]
 	}
 	return (&aQ).Cmp(bQ) == 0
+}
+
+// IsInstanceManagerResourcesSynced returns true when the pod's current CPU/memory requests
+// and limits match the expectation defined by the instance-manager-resource-limits setting.
+// When override is nil (setting unset/cleared) the pod must NOT carry a CPU or memory limit:
+// those are only ever set by the override, so their presence indicates a previously-set
+// override that has since been cleared and the pod must be rolled to drop them. CPU request
+// matching the guaranteed-instance-manager-cpu default is checked separately by
+// IsSameGuaranteedCPURequirement. hugepages and other resources are ignored; they are
+// managed by data-engine-memory-size.
+func IsInstanceManagerResourcesSynced(override *corev1.ResourceRequirements, actual corev1.ResourceRequirements) bool {
+	if override == nil {
+		if _, hasCPULimit := actual.Limits[corev1.ResourceCPU]; hasCPULimit {
+			return false
+		}
+		if _, hasMemLimit := actual.Limits[corev1.ResourceMemory]; hasMemLimit {
+			return false
+		}
+		return true
+	}
+	for _, r := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+		want := override.Requests[r]
+		got := actual.Requests[r]
+		if (&want).Cmp(got) != 0 {
+			return false
+		}
+		wantL := override.Limits[r]
+		gotL := actual.Limits[r]
+		if (&wantL).Cmp(gotL) != 0 {
+			return false
+		}
+	}
+	return true
 }
