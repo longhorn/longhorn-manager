@@ -292,3 +292,25 @@ func getContainerArgValue(args []string, flag string) string {
 	}
 	return ""
 }
+
+// isEngineFrontendInSplitTopology returns true when a v2 EngineFrontend stays
+// on the attachment node while the engine target is on another node.
+func isEngineFrontendInSplitTopology(v *longhorn.Volume, ef *longhorn.EngineFrontend, nodeID string) bool {
+	if v == nil || ef == nil || !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return false
+	}
+
+	targetEngineNodeID := v.Spec.EngineNodeID
+	if targetEngineNodeID == "" {
+		targetEngineNodeID = v.Spec.NodeID
+	}
+	if targetEngineNodeID == "" || v.Status.CurrentNodeID != nodeID || ef.Spec.NodeID != nodeID {
+		return false
+	}
+
+	// This uses volume status, so CurrentEngineNodeID may briefly lag while
+	// the engine switch is converging.
+	splitTopology := targetEngineNodeID != nodeID ||
+		(v.Status.CurrentEngineNodeID != "" && v.Status.CurrentEngineNodeID != nodeID)
+	return splitTopology
+}

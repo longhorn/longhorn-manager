@@ -1026,7 +1026,12 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 			return false
 		}
 		efForNode, err = getEngineFrontendForNode(efs, node)
-		if err != nil || !isEngineFrontendReady(efForNode) {
+		if err != nil {
+			return false
+		}
+
+		toleratedInSplitTopology := isEngineFrontendToleratedInSplitTopology(volume, efForNode, node)
+		if !isEngineFrontendReady(efForNode) && !toleratedInSplitTopology {
 			return false
 		}
 	}
