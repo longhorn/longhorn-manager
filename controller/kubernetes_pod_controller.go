@@ -38,6 +38,8 @@ const (
 	remountRequestDelayDuration = 5 * time.Second
 )
 
+// KubernetesPodController is hosted by the longhorn-global-manager Deployment.
+// See enhancements/20260506-global-longhorn-manager.md.
 type KubernetesPodController struct {
 	*baseController
 
@@ -366,10 +368,8 @@ func (kc *KubernetesPodController) isControllerInBlacklist(resource *metav1.Owne
 // cleanupForceDeletedPodResources removes stale resources left behind when a pod
 // is force-deleted (i.e., deletion grace period is zero).
 func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
-	if !isControllerResponsibleFor(kc.controllerID, kc.ds, pod.Name, "", pod.Spec.NodeName) {
-		return nil
-	}
-
+	// The single leader handles pods on every node; force-delete below
+	// (grace 0) already implies the node is gone.
 	if pod.DeletionTimestamp.IsZero() {
 		return nil
 	}
@@ -616,11 +616,6 @@ func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *corev1.Pod) ([
 // handlePodDeletionIfVolumeRequestRemount will delete the pod which is using a volume that has requested remount.
 // By deleting the consuming pod, Kubernetes will recreated them, reattaches, and remounts the volume.
 func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *corev1.Pod) error {
-	// Only handle pod that is on the same node as this manager
-	if pod.Spec.NodeName != kc.controllerID {
-		return nil
-	}
-
 	autoDeletePodWhenVolumeDetachedUnexpectedly, err := kc.ds.GetSettingAsBool(types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
 	if err != nil {
 		return err
@@ -785,9 +780,10 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 	}
 
 	if isCSIPluginPod(pod) {
-		if pod.Spec.NodeName == kc.controllerID {
-			kc.queue.Add(key)
-		}
+		// The leader enqueues every node's CSI plugin pod;
+		// handleWorkloadPodDeletionIfCSIPluginPodIsDown keys off
+		// csiPod.Spec.NodeName itself.
+		kc.queue.Add(key)
 		return
 	}
 
