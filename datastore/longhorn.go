@@ -768,8 +768,8 @@ func (s *DataStore) isAllNodesCPUPolicyConfiged() (bool, error) {
 	}
 
 	for _, node := range lhnodes {
-		waitForBackingImageCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeCPUManagerPolicy)
-		if waitForBackingImageCondition.Status != longhorn.ConditionStatusTrue {
+		cpuManagerPolicyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeCPUManagerPolicy)
+		if cpuManagerPolicyCondition.Status != longhorn.ConditionStatusTrue {
 			return false, nil
 		}
 	}
