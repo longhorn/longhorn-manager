@@ -268,3 +268,132 @@ func TestDeployUsesUpdateFuncInsteadOfDeleteRecreate(t *testing.T) {
 		t.Error("expected createFunc NOT to be called, but it was")
 	}
 }
+
+func TestNeedToUpdateReplicas(t *testing.T) {
+	deploymentWithReplicas := func(r *int32) *appsv1.Deployment {
+		return &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: r}}
+	}
+	two := int32(2)
+	three := int32(3)
+
+	for _, test := range []struct {
+		testName string
+		existing runtime.Object
+		new      runtime.Object
+		expected bool
+	}{
+		{
+			testName: "Should update when existing has more replicas than desired",
+			existing: deploymentWithReplicas(&three),
+			new:      deploymentWithReplicas(&two),
+			expected: true,
+		},
+		{
+			testName: "Should not update when replica counts match",
+			existing: deploymentWithReplicas(&three),
+			new:      deploymentWithReplicas(&three),
+			expected: false,
+		},
+		{
+			testName: "Should not update when desired replica count is nil",
+			existing: deploymentWithReplicas(&three),
+			new:      deploymentWithReplicas(nil),
+			expected: false,
+		},
+		{
+			testName: "Should update when existing replica count is nil but desired is set",
+			existing: deploymentWithReplicas(nil),
+			new:      deploymentWithReplicas(&two),
+			expected: true,
+		},
+		{
+			testName: "Should not update for non-Deployment objects",
+			existing: &appsv1.DaemonSet{},
+			new:      &appsv1.DaemonSet{},
+			expected: false,
+		},
+	} {
+		t.Run(test.testName, func(t *testing.T) {
+			res := needToUpdateReplicas(test.existing, test.new)
+			if res != test.expected {
+				t.Errorf("expected result: %v, but got: %v", test.expected, res)
+			}
+		})
+	}
+}
+
+func TestDeployUpdatesOnReplicaCountChange(t *testing.T) {
+	two := int32(2)
+	three := int32(3)
+
+	existing := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "csi-attacher",
+			Annotations: map[string]string{
+				AnnotationCSIGitCommit: longhornmeta.GitCommit,
+				AnnotationCSIVersion:   longhornmeta.Version,
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &three,
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "csi-attacher", Image: "same-image:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "csi-attacher",
+			Annotations: map[string]string{},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &two,
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "csi-attacher", Image: "same-image:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	createCalled := false
+	deleteCalled := false
+	updateCalled := false
+
+	fakeCreate := func(_ *clientset.Clientset, _ runtime.Object) error {
+		createCalled = true
+		return nil
+	}
+	fakeDelete := func(_ *clientset.Clientset, _, _ string) error {
+		deleteCalled = true
+		return nil
+	}
+	fakeGet := func(_ *clientset.Clientset, _, _ string) (runtime.Object, error) {
+		return existing, nil
+	}
+	fakeUpdate := func(_ *clientset.Clientset, _ runtime.Object) error {
+		updateCalled = true
+		return nil
+	}
+
+	err := deploy(nil, desired, "deployment", fakeCreate, fakeDelete, fakeGet, fakeUpdate)
+	if err != nil {
+		t.Fatalf("deploy() returned unexpected error: %v", err)
+	}
+	if !updateCalled {
+		t.Error("expected updateFunc to be called on replica count change, but it was not")
+	}
+	if deleteCalled {
+		t.Error("expected deleteFunc NOT to be called, but it was")
+	}
+	if createCalled {
+		t.Error("expected createFunc NOT to be called, but it was")
+	}
+}
