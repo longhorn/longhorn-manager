@@ -201,7 +201,8 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 			annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil &&
 			!needToUpdateImage(existing, obj) &&
-			!needToUpdatePodAntiAffinity(existing, obj) {
+			!needToUpdatePodAntiAffinity(existing, obj) &&
+			!needToUpdateReplicas(existing, obj) {
 			// deployment of correct version already deployed
 			logrus.Infof("Detected %v %v CSI Git commit %v version %v has already been deployed",
 				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion])
@@ -322,6 +323,26 @@ func needToUpdatePodAntiAffinity(existingObj, newObj runtime.Object) bool {
 	}
 
 	return existingPreset != newPreset
+}
+
+func needToUpdateReplicas(existingObj, newObj runtime.Object) bool {
+	existingDeployment, ok := existingObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+	newDeployment, ok := newObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+
+	if newDeployment.Spec.Replicas == nil {
+		return false
+	}
+	if existingDeployment.Spec.Replicas == nil {
+		return true
+	}
+
+	return *existingDeployment.Spec.Replicas != *newDeployment.Spec.Replicas
 }
 
 func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
