@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+
 	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -211,6 +212,8 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -296,6 +299,8 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -383,6 +388,8 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -468,6 +475,8 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -623,6 +632,8 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -769,6 +780,8 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -927,6 +940,8 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1049,6 +1064,8 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1198,6 +1215,8 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1292,6 +1311,8 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1397,6 +1418,8 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1495,6 +1518,8 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1595,6 +1620,8 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1693,6 +1720,8 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1793,6 +1822,8 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1887,6 +1918,8 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -2197,6 +2230,8 @@ CONFIG_NFS_V4_2=y`
 					c.Assert(err, IsNil)
 					err = s.controller.environmentCheckMonitor.RunOnce()
 					c.Assert(err, IsNil)
+					err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+					c.Assert(err, IsNil)
 				}
 
 				err = s.controller.syncNode(getKey(node, c))
@@ -2492,6 +2527,12 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 		return nil, err
 	}
 	nc.environmentCheckMonitor = environmentCheckMonitor
+
+	cpuPolicyCheckMonitor, err := monitor.NewFakeCPUPolicyCheckMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+	nc.cpuPolicyCheckMonitor = cpuPolicyCheckMonitor
 
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
