@@ -10,9 +10,11 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/controller"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -139,6 +141,69 @@ func TestCountCPUCoresFromMask(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := countCPUCoresFromMask(tt.mask); got != tt.want {
 				t.Errorf("countCPUCoresFromMask(%q) = %v, want %v", tt.mask, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetSystemManagedComponentFromRuntimeObject(t *testing.T) {
+	tests := []struct {
+		name string
+		obj  runtime.Object
+		want string
+	}{
+		{
+			name: "csi attacher deployment",
+			obj: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Name: types.CSIAttacherName},
+			},
+			want: types.CSIAttacherName,
+		},
+		{
+			name: "csi provisioner deployment",
+			obj: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Name: types.CSIProvisionerName},
+			},
+			want: types.CSIProvisionerName,
+		},
+		{
+			name: "csi plugin daemonset",
+			obj: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Name: types.CSIPluginName},
+			},
+			want: types.CSIPluginName,
+		},
+		{
+			name: "engine image daemonset",
+			obj: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Name: "engine-image-ei-1234567890abcdef"},
+			},
+			want: types.SystemManagedComponentEngineImage,
+		},
+		{
+			name: "instance manager pod",
+			obj: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						types.GetLonghornLabelComponentKey(): types.LonghornLabelInstanceManager,
+					},
+				},
+			},
+			want: types.SystemManagedComponentInstanceManager,
+		},
+		{
+			name: "unknown deployment falls back to global priority class",
+			obj: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Name: "share-manager"},
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := getSystemManagedComponentFromRuntimeObject(tt.obj); got != tt.want {
+				t.Errorf("getSystemManagedComponentFromRuntimeObject() = %v, want %v", got, tt.want)
 			}
 		})
 	}
