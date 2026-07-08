@@ -11,30 +11,27 @@ const (
 	NodeConditionTypeNFSClientInstalled  = "NFSClientInstalled"
 	NodeConditionTypeSchedulable         = "Schedulable"
 	NodeConditionTypeHugePagesAvailable  = "HugePagesAvailable"
-	NodeConditionTypeCPUManagerPolicy    = "CPUManagerPolicy"
 )
 
 const (
-	NodeConditionReasonManagerPodDown               = "ManagerPodDown"
-	NodeConditionReasonManagerPodMissing            = "ManagerPodMissing"
-	NodeConditionReasonKubernetesNodeGone           = "KubernetesNodeGone"
-	NodeConditionReasonKubernetesNodeNotReady       = "KubernetesNodeNotReady"
-	NodeConditionReasonKubernetesNodePressure       = "KubernetesNodePressure"
-	NodeConditionReasonUnknownNodeConditionTrue     = "UnknownNodeConditionTrue"
-	NodeConditionReasonNoMountPropagationSupport    = "NoMountPropagationSupport"
-	NodeConditionReasonMultipathdIsRunning          = "MultipathdIsRunning"
-	NodeConditionReasonUnknownOS                    = "UnknownOS"
-	NodeConditionReasonNamespaceExecutorErr         = "NamespaceExecutorErr"
-	NodeConditionReasonKernelModulesNotLoaded       = "KernelModulesNotLoaded"
-	NodeConditionReasonPackagesNotInstalled         = "PackagesNotInstalled"
-	NodeConditionReasonCheckKernelConfigFailed      = "CheckKernelConfigFailed"
-	NodeConditionReasonNFSClientIsNotFound          = "NFSClientIsNotFound"
-	NodeConditionReasonNFSClientIsMisconfigured     = "NFSClientIsMisconfigured"
-	NodeConditionReasonKubernetesNodeCordoned       = "KubernetesNodeCordoned"
-	NodeConditionReasonHugePagesNotConfigured       = "HugePagesNotConfigured"
-	NodeConditionReasonInsufficientHugePages        = "InsufficientHugePages"
-	NodeConditionReasonCPUManagerPolicyConfigured   = "CPUManagerPolicyConfigured"
-	NodeConditionReasonCPUManagerPolicyUnConfigured = "CPUManagerPolicyUnConfigured"
+	NodeConditionReasonManagerPodDown            = "ManagerPodDown"
+	NodeConditionReasonManagerPodMissing         = "ManagerPodMissing"
+	NodeConditionReasonKubernetesNodeGone        = "KubernetesNodeGone"
+	NodeConditionReasonKubernetesNodeNotReady    = "KubernetesNodeNotReady"
+	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
+	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
+	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
+	NodeConditionReasonMultipathdIsRunning       = "MultipathdIsRunning"
+	NodeConditionReasonUnknownOS                 = "UnknownOS"
+	NodeConditionReasonNamespaceExecutorErr      = "NamespaceExecutorErr"
+	NodeConditionReasonKernelModulesNotLoaded    = "KernelModulesNotLoaded"
+	NodeConditionReasonPackagesNotInstalled      = "PackagesNotInstalled"
+	NodeConditionReasonCheckKernelConfigFailed   = "CheckKernelConfigFailed"
+	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
+	NodeConditionReasonNFSClientIsMisconfigured  = "NFSClientIsMisconfigured"
+	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
+	NodeConditionReasonHugePagesNotConfigured    = "HugePagesNotConfigured"
+	NodeConditionReasonInsufficientHugePages     = "InsufficientHugePages"
 )
 
 const (
@@ -69,10 +66,12 @@ const (
 	ErrorReplicaScheduleIncompatibleVolumeSize            = "incompatible volume size"
 )
 
+type CPUManagerPolicy string
+
 const (
-	CpuManagerStaticPolicy  = "static"
-	CpuManagerNonePolicy    = "none"
-	CpuManagerUnknownPolicy = "unknown"
+	CPUManagerPolicyStatic  CPUManagerPolicy = "static"
+	CPUManagerPolicyNone    CPUManagerPolicy = "none"
+	CPUManagerPolicyUnknown CPUManagerPolicy = "unknown"
 )
 
 type DiskType string
@@ -245,6 +244,8 @@ type NodeStatus struct {
 	SnapshotCheckStatus SnapshotCheckStatus `json:"snapshotCheckStatus"`
 	// +optional
 	AutoEvicting bool `json:"autoEvicting"`
+	// +optional
+	CPUPolicy CPUManagerPolicy `json:"cpuPolicy"`
 }
 
 // +genclient
