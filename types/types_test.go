@@ -75,6 +75,24 @@ func (s *TestSuite) TestGetLonghornControlPath(c *C) {
 	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
 }
 
+func (s *TestSuite) TestResolveSystemManagedComponentPriorityClass(c *C) {
+	priorityClass, err := ResolveSystemManagedComponentPriorityClass("longhorn-critical", "", SystemManagedComponentInstanceManager)
+	c.Assert(err, IsNil)
+	c.Assert(priorityClass, Equals, "longhorn-critical")
+
+	setting := `{"instance-manager":"system-node-critical","csi-attacher":"system-cluster-critical"}`
+	priorityClass, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", setting, SystemManagedComponentInstanceManager)
+	c.Assert(err, IsNil)
+	c.Assert(priorityClass, Equals, "system-node-critical")
+
+	priorityClass, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", setting, CSIProvisionerName)
+	c.Assert(err, IsNil)
+	c.Assert(priorityClass, Equals, "longhorn-critical")
+
+	_, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", `{"unsupported":"system-node-critical"}`, SystemManagedComponentInstanceManager)
+	c.Assert(err, NotNil)
+}
+
 func (s *TestSuite) TestContainerPathHelpersUseReplicaHostPrefix(c *C) {
 	customPath := "/control/longhorn"
 	image := "longhornio/longhorn-engine:v1.9.0"
