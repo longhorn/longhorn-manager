@@ -779,11 +779,11 @@ func (s *DataStore) ValidateDataEngineCoreNumber(coreNum int, dataEngine longhor
 	case coreNum < 0:
 		return errors.Errorf("CPU core number for data engine %s cannot be negative", dataEngine)
 	case coreNum > 0:
-		allNodesCPUPolicyConfiged, err := s.isAllNodesCPUPolicyConfiged()
+		allNodesCPUPolicyConfigured, err := s.isAllNodesCPUPolicyConfigured()
 		if err != nil {
 			return errors.Wrapf(err, "failed to check if all nodes have CPU manager policy configured")
 		}
-		if !allNodesCPUPolicyConfiged {
+		if !allNodesCPUPolicyConfigured {
 			return errors.Errorf("CPU core number for data engine %s cannot be set to %d when not all nodes have CPU manager policy configured", dataEngine, coreNum)
 		}
 	case coreNum == 0:
@@ -798,15 +798,14 @@ func (s *DataStore) ValidateDataEngineCoreNumber(coreNum int, dataEngine longhor
 	return nil
 }
 
-func (s *DataStore) isAllNodesCPUPolicyConfiged() (bool, error) {
+func (s *DataStore) isAllNodesCPUPolicyConfigured() (bool, error) {
 	lhnodes, err := s.ListNodesRO()
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to get all nodes")
 	}
 
 	for _, node := range lhnodes {
-		waitForBackingImageCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeCPUManagerPolicy)
-		if waitForBackingImageCondition.Status != longhorn.ConditionStatusTrue {
+		if !strings.EqualFold(string(node.Status.CPUPolicy), string(longhorn.CPUManagerPolicyStatic)) {
 			return false, nil
 		}
 	}

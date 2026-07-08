@@ -60,6 +60,7 @@ type NodeController struct {
 
 	diskMonitor             monitor.Monitor
 	environmentCheckMonitor monitor.Monitor
+	cpuPolicyCheckMonitor   monitor.Monitor
 
 	snapshotMonitor              monitor.Monitor
 	snapshotChangeEventQueue     workqueue.TypedInterface[any]
@@ -486,6 +487,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	// Create a monitor for collecting CPU policy check information
+	if _, err := nc.createCPUPolicyCheckMonitor(); err != nil {
+		return err
+	}
+
 	collectedDiskInfo, err := nc.syncWithDiskMonitor(node)
 	if err != nil {
 		if strings.Contains(err.Error(), "mismatching disks") {
@@ -504,6 +510,13 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err == nil {
 		// Best effort to update the environment check conditions
 		nc.syncEnvironmentCheckConditions(node, collectedEnvironmentCheckConditions)
+	}
+
+	node.Status.CPUPolicy = longhorn.CPUManagerPolicyUnknown
+	collectedCPUPolicyName, err := nc.syncWithCPUPolicyCheckMonitor()
+	if err == nil {
+		// Best effort to update the CPU policy name
+		node.Status.CPUPolicy = collectedCPUPolicyName
 	}
 
 	_, err = nc.createSnapshotMonitor()
@@ -1385,6 +1398,21 @@ func (nc *NodeController) createEnvironmentCheckMonitor() (monitor.Monitor, erro
 	return monitor, nil
 }
 
+func (nc *NodeController) createCPUPolicyCheckMonitor() (monitor.Monitor, error) {
+	if nc.cpuPolicyCheckMonitor != nil {
+		return nc.cpuPolicyCheckMonitor, nil
+	}
+
+	monitor, err := monitor.NewCPUPolicyCheckMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+
+	nc.cpuPolicyCheckMonitor = monitor
+
+	return monitor, nil
+}
+
 func (nc *NodeController) enqueueNodeForMonitor(key string) {
 	nc.queue.Add(key)
 }
@@ -1619,6 +1647,20 @@ func (nc *NodeController) syncWithEnvironmentCheckMonitor() ([]longhorn.Conditio
 	}
 
 	return conditions, nil
+}
+
+func (nc *NodeController) syncWithCPUPolicyCheckMonitor() (longhorn.CPUManagerPolicy, error) {
+	v, err := nc.cpuPolicyCheckMonitor.GetCollectedData()
+	if err != nil {
+		return longhorn.CPUManagerPolicyUnknown, err
+	}
+
+	cpuPolicy, ok := v.(longhorn.CPUManagerPolicy)
+	if !ok {
+		return longhorn.CPUManagerPolicyUnknown, errors.New("failed to convert the collected data to CPU policy name")
+	}
+
+	return cpuPolicy, nil
 }
 
 // Check all disks in the same filesystem ID are in ready status

@@ -2,9 +2,7 @@ package monitor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -40,20 +38,7 @@ const (
 
 	kernelConfigDir = "/host/boot/"
 	systemConfigDir = "/host/etc/"
-
-	// Path to the kubelet CPU manager state file.
-	// If running in a pod, this path should match where you mounted the host's /var/lib/kubelet
-	DefaultKubeletRootDir      = "/var/lib/kubelet"
-	DefaultCpuManagerStateFile = "/cpu_manager_state"
 )
-
-// CPUManagerState represents the structure of the kubelet's CPU manager state file.
-type CPUManagerState struct {
-	PolicyName    string                       `json:"policyName"`
-	DefaultCPUSet string                       `json:"defaultCpuSet"`
-	Entries       map[string]map[string]string `json:"entries,omitempty"`
-	Checksum      uint32                       `json:"checksum"`
-}
 
 var (
 	kernelModules       = map[string]string{"CONFIG_DM_CRYPT": "dm_crypt"}
@@ -188,10 +173,6 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 
 	if isV2DataEngine {
 		m.checkHugePages(kubeNode, collectedData)
-	}
-
-	if err := m.syncNodeCPUManagerPolicy(collectedData); err != nil {
-		m.logger.WithError(err).Debug("Failed to sync node CPU manager policy")
 	}
 
 	return collectedData
@@ -580,50 +561,4 @@ func (m *EnvironmentCheckMonitor) syncNFSClientVersion(kubeNode *corev1.Node, co
 	}
 
 	collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusTrue, "", "")
-}
-
-func (m *EnvironmentCheckMonitor) syncNodeCPUManagerPolicy(collectedData *CollectedEnvironmentCheckInfo) error {
-	kubeletCPUManagerStateFilePath := getKubeletCPUManagerStateFilePath()
-	data, err := lhns.ReadFileContent(kubeletCPUManagerStateFilePath)
-	if err != nil {
-		m.logger.WithError(err).Debugf("failed to read CPU state file %s", kubeletCPUManagerStateFilePath)
-		collectedData.conditions = types.SetCondition(collectedData.conditions,
-			longhorn.NodeConditionTypeCPUManagerPolicy, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonCPUManagerPolicyUnConfigured),
-			fmt.Sprintf("Failed to read CPU state file %s on node %s", kubeletCPUManagerStateFilePath, m.nodeName))
-		return nil
-	}
-
-	// Unmarshal the JSON data
-	var state CPUManagerState
-	if err := json.Unmarshal([]byte(data), &state); err != nil {
-		m.logger.WithError(err).Debugf("failed to parse CPU state file %s", kubeletCPUManagerStateFilePath)
-		collectedData.conditions = types.SetCondition(collectedData.conditions,
-			longhorn.NodeConditionTypeCPUManagerPolicy, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonCPUManagerPolicyUnConfigured),
-			fmt.Sprintf("Failed to parse CPU state file %s on node %s", kubeletCPUManagerStateFilePath, m.nodeName))
-		return nil
-	}
-
-	if state.PolicyName == longhorn.CpuManagerStaticPolicy {
-		collectedData.conditions = types.SetCondition(collectedData.conditions,
-			longhorn.NodeConditionTypeCPUManagerPolicy, longhorn.ConditionStatusTrue,
-			string(longhorn.NodeConditionReasonCPUManagerPolicyConfigured),
-			fmt.Sprintf("Node %v CPU manager policy is static", m.nodeName))
-	} else {
-		collectedData.conditions = types.SetCondition(collectedData.conditions,
-			longhorn.NodeConditionTypeCPUManagerPolicy, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonCPUManagerPolicyUnConfigured),
-			fmt.Sprintf("Node %v CPU manager policy is %v", m.nodeName, state.PolicyName))
-	}
-
-	return nil
-}
-
-func getKubeletCPUManagerStateFilePath() string {
-	kubeletRootDirPath := strings.TrimRight(strings.TrimSpace(os.Getenv(types.EnvKubeletRootDir)), "/")
-	if kubeletRootDirPath == "" {
-		kubeletRootDirPath = DefaultKubeletRootDir
-	}
-	return kubeletRootDirPath + DefaultCpuManagerStateFile
 }
