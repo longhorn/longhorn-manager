@@ -610,6 +610,19 @@ func (s *DataStore) deleteSetting(name string) error {
 	return s.lhClient.LonghornV1beta2().Settings(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
+func (s *DataStore) GetSystemManagedComponentPriorityClass(component string) (string, error) {
+	priorityClassSetting, err := s.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
+	if err != nil {
+		return "", err
+	}
+
+	priorityClassesSetting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsPriorityClasses)
+	if err != nil {
+		return "", err
+	}
+	return types.ResolveSystemManagedComponentPriorityClass(priorityClassSetting.Value, priorityClassesSetting.Value, component)
+}
+
 // ValidateSetting checks the given setting value types and condition
 func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	defer func() {
@@ -625,6 +638,27 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
 				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
+			}
+		}
+	case types.SettingNameSystemManagedComponentsPriorityClasses:
+		priorityClasses, err := types.UnmarshalComponentPriorityClasses(value)
+		if err != nil {
+			return err
+		}
+		for _, priorityClass := range []string{
+			priorityClasses.InstanceManager,
+			priorityClasses.EngineImage,
+			priorityClasses.CSIPlugin,
+			priorityClasses.CSIAttacher,
+			priorityClasses.CSIProvisioner,
+			priorityClasses.CSIResizer,
+			priorityClasses.CSISnapshotter,
+		} {
+			if priorityClass == "" {
+				continue
+			}
+			if _, err := s.GetPriorityClass(priorityClass); err != nil {
+				return errors.Wrapf(err, "failed to get priority class %v before modifying system managed components priority classes setting", priorityClass)
 			}
 		}
 
