@@ -1574,9 +1574,9 @@ const (
 	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
 	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
 
-	ClusterInfoV2DataEngineCPUCores       = util.StructName("LonghornV2DataEngineCpuCores")
-	ClusterInfoV2DataEngineHugepageSize   = util.StructName("LonghornV2DataEngineHugepageSize")
-	ClusterInfoV2DataEngineHugepageEnable = util.StructName("LonghornV2DataEngineHugepageEnabled")
+	ClusterInfoV2DataEngineCPUCores        = util.StructName("LonghornV2DataEngineCpuCores")
+	ClusterInfoV2DataEngineHugepageSize    = util.StructName("LonghornV2DataEngineHugepageSize")
+	ClusterInfoV2DataEngineHugepageEnabled = util.StructName("LonghornV2DataEngineHugepageEnabled")
 
 	ClusterInfoBackupTargetSchemeCountFmt                            = "LonghornBackupTarget%sCount"
 	ClusterInfoPodAvgCPUUsageFmt                                     = "Longhorn%sAverageCpuUsageMilliCores"
@@ -2246,7 +2246,7 @@ func (info *ClusterInfo) collectV2DataEngineInfo() error {
 	if err != nil {
 		info.logger.WithError(err).Warn("Failed to get V2 data engine hugepage enabled setting")
 	} else {
-		info.structFields.fields.Append(ClusterInfoV2DataEngineHugepageEnable, hugepageEnabled)
+		info.structFields.tags.Append(ClusterInfoV2DataEngineHugepageEnabled, fmt.Sprint(hugepageEnabled))
 	}
 
 	return nil
