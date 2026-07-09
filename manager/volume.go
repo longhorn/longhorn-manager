@@ -960,6 +960,11 @@ func (m *VolumeManager) UpdateBackupCompressionMethod(name string, value string)
 		return nil, err
 	}
 
+	if v.Spec.BackupCompressionMethod == longhorn.BackupCompressionMethod(value) {
+		logrus.Debugf("Volume %v already has backup compression method set to %v", v.Name, value)
+		return v, nil
+	}
+
 	oldValue := v.Spec.BackupCompressionMethod
 	v.Spec.BackupCompressionMethod = longhorn.BackupCompressionMethod(value)
 
