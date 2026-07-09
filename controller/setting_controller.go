@@ -2269,23 +2269,20 @@ func (info *ClusterInfo) collectV2DataEngineInfo() error {
 	cpuMask, err := info.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, longhorn.DataEngineTypeV2)
 	if err != nil {
 		info.logger.WithError(err).Warn("Failed to get V2 data engine CPU mask setting")
-	} else {
-		info.structFields.fields.Append(ClusterInfoV2DataEngineCPUCores, countCPUCoresFromMask(cpuMask))
 	}
+	info.structFields.fields.Append(ClusterInfoV2DataEngineCPUCores, countCPUCoresFromMask(cpuMask))
 
 	hugepageSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2)
 	if err != nil {
 		info.logger.WithError(err).Warn("Failed to get V2 data engine hugepage size setting")
-	} else {
-		info.structFields.fields.Append(ClusterInfoV2DataEngineHugepageSize, int(hugepageSize))
 	}
+	info.structFields.fields.Append(ClusterInfoV2DataEngineHugepageSize, int(hugepageSize))
 
 	hugepageEnabled, err := info.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, longhorn.DataEngineTypeV2)
 	if err != nil {
 		info.logger.WithError(err).Warn("Failed to get V2 data engine hugepage enabled setting")
-	} else {
-		info.structFields.tags.Append(ClusterInfoV2DataEngineHugepageEnabled, fmt.Sprint(hugepageEnabled))
 	}
+	info.structFields.tags.Append(ClusterInfoV2DataEngineHugepageEnabled, fmt.Sprint(hugepageEnabled))
 
 	return nil
 }
