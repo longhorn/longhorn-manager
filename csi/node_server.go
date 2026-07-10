@@ -1137,10 +1137,6 @@ func restageRequired(volume *longhornclient.Volume,
 	mounter mount.Interface,
 	isBlock, isStorageNetworkConfigured bool) (bool, error) {
 
-	if volume.DataEngine == string(longhorn.DataEngineTypeV2) {
-		return true, fmt.Errorf("always unstage v2 volume %v", volumeID)
-	}
-
 	if isStorageNetworkConfigured && volume.AccessMode == string(longhorn.AccessModeReadWriteMany) {
 		return true, fmt.Errorf("always unstage RWX volume %v when storage network is configured", volumeID)
 	}
