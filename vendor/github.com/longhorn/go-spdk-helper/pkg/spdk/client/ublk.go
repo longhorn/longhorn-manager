@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
+
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 )
 
@@ -14,6 +16,11 @@ func (c *Client) UblkCreateTarget(cpumask string, disableUserCopy bool) (err err
 	}
 	_, err = c.jsonCli.SendCommand("ublk_create_target", req)
 	if err != nil {
+		// The ublk target is a singleton per SPDK app; treat an already-created
+		// target as success so concurrent/repeated volume attaches are safe.
+		if jsonrpc.IsJSONRPCRespErrorDeviceOrResourceBusy(err) {
+			return nil
+		}
 		return err
 	}
 	return nil
