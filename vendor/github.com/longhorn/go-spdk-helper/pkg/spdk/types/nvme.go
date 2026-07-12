@@ -120,6 +120,10 @@ type BdevNvmeDetachControllerRequest struct {
 	Hostsvcid string `json:"hostsvcid,omitempty"`
 }
 
+type BdevNvmeResetControllerRequest struct {
+	Name string `json:"name"`
+}
+
 type BdevNvmeSetOptionsRequest struct {
 	CtrlrLossTimeoutSec  int32 `json:"ctrlr_loss_timeout_sec"`
 	ReconnectDelaySec    int32 `json:"reconnect_delay_sec"`
