@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.20.0@sha256:26147acbda4f14c5add9946e2fd2ed543fc402884fd75146bd342a7f6271dc1d
-FROM registry.suse.com/bci/golang:1.25@sha256:a086bf3003dd1d8124e77f2d8d4e9aa2e8a163f5e0399294ec515a714a3b8e0d AS builder
+FROM registry.suse.com/bci/golang:1.25@sha256:bd17be73bd89df69fa98dc085afdaee4edbe7cd97d15c6b52f48089ce234088e AS builder
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ RUN chmod +x /app/scripts/build
 # Run the build script
 RUN /app/scripts/build
 
-FROM registry.suse.com/bci/bci-base:15.7@sha256:29bf09c9e2b25cac3f27967590195bf448b1b5f6773dedc16f214d8e531466eb AS release
+FROM registry.suse.com/bci/bci-base:15.7@sha256:1e16d612972586476f9e349c8b635c4085e0ba467f7c5d305391ef3bfdae1851 AS release
 
 ARG TARGETPLATFORM
 RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
