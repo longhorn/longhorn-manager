@@ -2026,11 +2026,6 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
 		}
 
-		controlPath, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
-		}
-
 		args := []string{
 			"start-spdk-tgt",
 			"--spdk-log", logFlags,
@@ -2043,7 +2038,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
 		}
 		args = append(args,
-			"--longhorn-control-path", controlPath.Value,
+			"--longhorn-control-path", types.DefaultControlPath,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
