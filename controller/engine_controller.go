@@ -709,10 +709,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 
 	instanceManagerStorageIP := ec.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
-	dataLayoutType := imrpc.DataLayoutType_DATA_LAYOUT_TYPE_REPLICATED
-	if v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded {
-		dataLayoutType = imrpc.DataLayoutType_DATA_LAYOUT_TYPE_SHARDED
-	}
+	dataLayoutType := toIMRPCDataLayoutType(v.Spec.DataLayout.Type)
 
 	e.Status.Starting = true
 	engineName := e.Name
@@ -735,6 +732,14 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		InitiatorAddress:                 instanceManagerStorageIP,
 		TargetAddress:                    instanceManagerStorageIP,
 	})
+}
+
+// toIMRPCDataLayoutType maps the volume data layout to the instance-manager RPC enum.
+func toIMRPCDataLayoutType(t longhorn.VolumeDataLayoutType) imrpc.DataLayoutType {
+	if t == longhorn.VolumeDataLayoutTypeSharded {
+		return imrpc.DataLayoutType_DATA_LAYOUT_TYPE_SHARDED
+	}
+	return imrpc.DataLayoutType_DATA_LAYOUT_TYPE_REPLICATED
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
