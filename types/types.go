@@ -118,6 +118,8 @@ const (
 
 	DefaultLogDirectoryOnHost = "/var/lib/longhorn/logs/"
 
+	DefaultControlPath = "/var/lib/longhorn"
+
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
 
