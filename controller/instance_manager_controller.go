@@ -1018,9 +1018,9 @@ func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.In
 // setting) matches what the V2 instance-manager pod was started with. The pod
 // always receives --longhorn-control-path (so we can reconcile stale state
 // across restarts even after toggling off); the actual toggle is the presence
-// of --enable-irq-affinity AND --enable-workqueue-affinity in the pod's args.
-// Both flags are set together, so the effective state is "enabled" only when
-// both are present.
+// of --enable-irq-affinity, --enable-workqueue-affinity, AND --enable-rps in the
+// pod's args. All flags are set together, so the effective state is "enabled"
+// only when all are present.
 func (imc *InstanceManagerController) isSettingCPUIsolationEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return true, nil
@@ -1036,15 +1036,18 @@ func (imc *InstanceManagerController) isSettingCPUIsolationEnabledSynced(setting
 
 	hasIRQFlag := false
 	hasWorkqueueFlag := false
+	hasRPSFlag := false
 	for _, a := range pod.Spec.Containers[0].Args {
 		switch a {
 		case "--enable-irq-affinity":
 			hasIRQFlag = true
 		case "--enable-workqueue-affinity":
 			hasWorkqueueFlag = true
+		case "--enable-rps":
+			hasRPSFlag = true
 		}
 	}
-	hasEnabled := hasIRQFlag && hasWorkqueueFlag
+	hasEnabled := hasIRQFlag && hasWorkqueueFlag && hasRPSFlag
 	return wantEnabled == hasEnabled, nil
 }
 
@@ -2065,7 +2068,10 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, err
 		}
 		if cpuIsolationEnabled {
-			args = append(args, "--enable-irq-affinity", "--enable-workqueue-affinity")
+			// RPS steering shares the CPU-isolation toggle: the start-spdk-tgt script
+			// steers host IRQ, workqueue, and RX softirq (RPS) away from the SPDK
+			// reactor cores together.
+			args = append(args, "--enable-irq-affinity", "--enable-workqueue-affinity", "--enable-rps")
 		}
 
 		if !hugepageEnabled {
