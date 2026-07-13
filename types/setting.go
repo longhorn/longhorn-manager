@@ -1867,21 +1867,11 @@ var (
 
 	SettingDefinitionDataEngineCPUIsolationEnabled = SettingDefinition{
 		DisplayName: "Enable Host CPU Isolation for Data Engine",
-		Description: "Applies only to the V2 Data Engine. Steers host hardware IRQs *and* unbound kernel workqueue workers away from the CPUs used by the SPDK target daemon, " +
+		Description: "Applies only to the V2 Data Engine. Steers host hardware IRQs *and* unbound kernel workqueue workers away from the CPUs used by the Storage Performance Development Kit (SPDK) target daemon, " +
 			"so that interrupt handling and deferred kernel work do not preempt SPDK polling reactors. \n\n" +
-			"  - DO NOT ENABLE THIS LIGHTLY. The setting writes to `/proc/irq/*/smp_affinity` and `/sys/devices/virtual/workqueue/cpumask` on the host, which are **node-wide** and affect every workload on the node. " +
-			"On small nodes, or on nodes where another component (irqbalance, tuned, the cloud provider's IRQ policy, etc.) is already managing IRQ / workqueue affinity, " +
-			"this setting can starve other workloads of CPU-time and conflict with the other policy.\n\n" +
-			"  - The Instance Manager pod must be privileged and must mount the host root at `/host`. \n\n" +
-			"  - When enabled, the V2 Instance Manager persists the SPDK cpu mask under `/var/lib/longhorn/instance-manager/v2/spdk_cpu_mask` on the host, programs " +
-			"`/proc/irq/*/smp_affinity` to the inverse mask, and writes the same inverse mask to `/sys/devices/virtual/workqueue/cpumask` before launching `spdk_tgt`. \n\n" +
-			"  - When disabled, the next Instance Manager restart still reconciles any leftover state (clears stale IRQ / workqueue affinity and removes the marker file), " +
-			"but does not install any new affinity. \n\n" +
-			"  - The setting takes effect only after the V2 Instance Manager pod is recreated. Longhorn will refuse to apply the change while V2 volumes are attached. \n\n" +
+			"  - When applying the setting, Longhorn will try to restart all V2 instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n" +
 			"  - This value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.CPUIsolationEnabled` " +
-			"(set to `\"true\"` or `\"false\"` on a specific instance manager to force the value on that node; leave empty to inherit this setting). \n\n" +
-			"  - `true`: Pin host IRQs *and* unbound kernel workqueues to non-SPDK CPUs. \n\n" +
-			"  - `false`: Leave host IRQ / workqueue affinity untouched (default). \n\n",
+			"(set to `\"true\"` or `\"false\"` on a specific instance manager to force the value on that node; leave empty to inherit this setting). \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
