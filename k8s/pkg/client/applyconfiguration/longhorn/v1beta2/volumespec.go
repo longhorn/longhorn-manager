@@ -43,13 +43,18 @@ type VolumeSpecApplyConfiguration struct {
 	NodeID *string `json:"nodeID,omitempty"`
 	// engineNodeID defines the node where the backend engine (target) runs.
 	// If empty, falls back to NodeID.
-	EngineNodeID              *string                                    `json:"engineNodeID,omitempty"`
-	MigrationNodeID           *string                                    `json:"migrationNodeID,omitempty"`
-	Image                     *string                                    `json:"image,omitempty"`
-	BackingImage              *string                                    `json:"backingImage,omitempty"`
-	Standby                   *bool                                      `json:"Standby,omitempty"`
-	DiskSelector              []string                                   `json:"diskSelector,omitempty"`
-	NodeSelector              []string                                   `json:"nodeSelector,omitempty"`
+	EngineNodeID    *string  `json:"engineNodeID,omitempty"`
+	MigrationNodeID *string  `json:"migrationNodeID,omitempty"`
+	Image           *string  `json:"image,omitempty"`
+	BackingImage    *string  `json:"backingImage,omitempty"`
+	Standby         *bool    `json:"Standby,omitempty"`
+	DiskSelector    []string `json:"diskSelector,omitempty"`
+	NodeSelector    []string `json:"nodeSelector,omitempty"`
+	// TopologyRequirement lists the failure domains the volume's replicas must
+	// be scheduled in, derived from the CSI accessible topology at creation —
+	// the same failure domains as the PV nodeAffinity terms (a node must match
+	// at least one term). Empty means unconstrained.
+	TopologyRequirement       []VolumeTopologyTermApplyConfiguration     `json:"topologyRequirement,omitempty"`
 	DisableFrontend           *bool                                      `json:"disableFrontend,omitempty"`
 	RevisionCounterDisabled   *bool                                      `json:"revisionCounterDisabled,omitempty"`
 	UnmapMarkSnapChainRemoved *longhornv1beta2.UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved,omitempty"`
@@ -249,6 +254,19 @@ func (b *VolumeSpecApplyConfiguration) WithDiskSelector(values ...string) *Volum
 func (b *VolumeSpecApplyConfiguration) WithNodeSelector(values ...string) *VolumeSpecApplyConfiguration {
 	for i := range values {
 		b.NodeSelector = append(b.NodeSelector, values[i])
+	}
+	return b
+}
+
+// WithTopologyRequirement adds the given value to the TopologyRequirement field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the TopologyRequirement field.
+func (b *VolumeSpecApplyConfiguration) WithTopologyRequirement(values ...*VolumeTopologyTermApplyConfiguration) *VolumeSpecApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithTopologyRequirement")
+		}
+		b.TopologyRequirement = append(b.TopologyRequirement, *values[i])
 	}
 	return b
 }

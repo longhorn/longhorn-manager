@@ -242,6 +242,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.VolumeSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeStatus"):
 		return &longhornv1beta2.VolumeStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeTopologyTerm"):
+		return &longhornv1beta2.VolumeTopologyTermApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("WorkloadStatus"):
 		return &longhornv1beta2.WorkloadStatusApplyConfiguration{}
 

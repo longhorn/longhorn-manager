@@ -67,6 +67,8 @@ type Volume struct {
 
 	NodeSelector []string `json:"nodeSelector,omitempty" yaml:"node_selector,omitempty"`
 
+	TopologyRequirement []VolumeTopologyTerm `json:"topologyRequirement,omitempty" yaml:"topology_requirement,omitempty"`
+
 	NumberOfReplicas int64 `json:"numberOfReplicas,omitempty" yaml:"number_of_replicas,omitempty"`
 
 	OfflineRebuilding string `json:"offlineRebuilding,omitempty" yaml:"offline_rebuilding,omitempty"`

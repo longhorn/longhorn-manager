@@ -13,6 +13,8 @@ import (
 	. "gopkg.in/check.v1"
 
 	corev1 "k8s.io/api/core/v1"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -601,4 +603,22 @@ func (s *TestSuite) TestIsHexCPUMask(c *C) {
 		result := IsHexCPUMask(testCase.input)
 		c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
+}
+
+func (s *TestSuite) TestIsTopologyZonePinned(c *C) {
+	c.Assert(IsTopologyZonePinned(nil), Equals, false)
+
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{{Zone: "zone-1"}}), Equals, true)
+
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-1", Region: "region-1"},
+	}), Equals, true)
+
+	// A region-only term allows any zone in the region.
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{{Region: "region-1"}}), Equals, false)
+
+	// Terms naming different zones allow spreading across those zones.
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-2"},
+	}), Equals, false)
 }
