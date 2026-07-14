@@ -121,10 +121,15 @@ func ValidateECParameters(dataChunks, parityChunks, stripSizeKB int) error {
 	if dataChunks+parityChunks > ECMaxBaseBdevs {
 		return fmt.Errorf("dataChunks (%v) + parityChunks (%v) must be <= %v (Longhorn EC base bdev cap)", dataChunks, parityChunks, ECMaxBaseBdevs)
 	}
-	if stripSizeKB < 4 || stripSizeKB > 1024 || (stripSizeKB&(stripSizeKB-1)) != 0 {
+	if stripSizeKB < 4 || stripSizeKB > 1024 || !isPowerOfTwo(stripSizeKB) {
 		return fmt.Errorf("stripSizeKB must be a power of two in [4, 1024], got %v", stripSizeKB)
 	}
 	return nil
+}
+
+// isPowerOfTwo reports whether n is a positive power of two.
+func isPowerOfTwo(n int) bool {
+	return n > 0 && n&(n-1) == 0
 }
 
 const (
