@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -160,9 +158,6 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if err := verifyVolumeDataSource(v.ds, volume); err != nil {
-		return err
-	}
-	if err := validateRecurringJobLabels(volume); err != nil {
 		return err
 	}
 
@@ -406,10 +401,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		if err := v.validateUpdatingSnapshotMaxCountAndSize(oldVolume, newVolume); err != nil {
 			return err
 		}
-	}
-
-	if err := validateRecurringJobLabels(newVolume); err != nil {
-		return err
 	}
 
 	if err := validateSnapshotHashingRequestTime(oldVolume, newVolume); err != nil {
@@ -830,37 +821,6 @@ func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error
 		return werror.NewInvalidError(
 			fmt.Sprintf("linked-clone volume cannot have more replicas (%d) than its source volume (%d)",
 				vol.Spec.NumberOfReplicas, srcVol.Spec.NumberOfReplicas), "spec.numberOfReplicas")
-	}
-
-	return nil
-}
-
-func validateRecurringJobLabels(vol *longhorn.Volume) error {
-	if vol.Spec.CloneMode != longhorn.CloneModeLinkedClone {
-		return nil
-	}
-
-	metadata, err := meta.Accessor(vol)
-	if err != nil {
-		return err
-	}
-
-	labels := metadata.GetLabels()
-
-	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob)
-	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup)
-
-	jobLabels := []string{}
-	for label := range labels {
-		if !strings.HasPrefix(label, jobPrefix) &&
-			!strings.HasPrefix(label, groupPrefix) {
-			continue
-		}
-		jobLabels = append(jobLabels, label)
-	}
-
-	if len(jobLabels) > 0 {
-		return werror.NewInvalidError(fmt.Sprintf("cannot add recurring jobs to linked-clone volume: %+v ", jobLabels), ".metadata.label")
 	}
 
 	return nil

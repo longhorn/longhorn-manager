@@ -5431,11 +5431,6 @@ func (c *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
 		err = errors.Wrapf(err, "failed to update recurring jobs for %v", v.Name)
 	}()
 
-	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-		// Do not add recurring job for linked-clone volume as these volumes do not support snapshot/backup operations
-		return nil
-	}
-
 	existingVolume := v.DeepCopy()
 
 	if err := c.syncPVCRecurringJobLabels(v); err != nil {
