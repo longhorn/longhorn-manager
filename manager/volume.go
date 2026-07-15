@@ -617,11 +617,10 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 		engine = e
 	}
 
-	if engine.Status.IsExpanding {
-		return nil, fmt.Errorf("the engine expansion is in progress")
-	}
-	if engine.Status.CurrentSize == v.Spec.Size {
-		return nil, fmt.Errorf("the engine expansion is already complete")
+	// If the controller has already propagated the requested size to Engine.Spec.VolumeSize,
+	// treat the expansion request as consumed and do not allow canceling it anymore.
+	if engine.Spec.VolumeSize >= v.Spec.Size {
+		return nil, fmt.Errorf("cannot cancel expansion after engine spec size is updated (engineSpec=%v, volumeSpec=%v)", engine.Spec.VolumeSize, v.Spec.Size)
 	}
 
 	previousSize := v.Spec.Size
