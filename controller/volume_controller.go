@@ -1051,12 +1051,19 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy &&
-		v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
-		v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
-		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
-			"finished cloning snapshot %v from source volume %v",
-			v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy {
+		if v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
+			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
+				"finished cloning snapshot %v from source volume %v",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+		} else if c.shouldCompleteLinkedCloneDespiteDegraded(v, rs) {
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
+			c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCompleted,
+				"marking clone of snapshot %v from source volume %v as completed despite degraded state: "+
+					"rebuild retries exhausted or stale timeout reached",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+		}
 	}
 
 	return nil
@@ -5040,6 +5047,74 @@ func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume
 		}
 	}
 	return nil
+}
+
+// shouldCompleteLinkedCloneDespiteDegraded decides whether a linked-clone
+// volume stuck in CopyCompletedAwaitingHealthy should be marked Completed
+// even though it is degraded. For each non-healthy replica it checks whether
+// at least one of the following conditions is met (mirroring shouldCleanUpFailedReplica):
+//  1. Rebuild retry count exhausted (RebuildRetryCount >= FailedReplicaMaxRetryCount)
+//  2. Stale timeout exceeded (FailedAt older than StaleReplicaTimeout)
+//  3. The replica was created more than StaleReplicaTimeout after the earliest
+//     healthy replica's HealthyAt — indicating the system has been stuck in the
+//     replenish-and-fail loop for too long.
+//
+// If ALL non-healthy replicas satisfy at least one condition, the clone should
+// complete so the volume becomes usable.
+func (c *VolumeController) shouldCompleteLinkedCloneDespiteDegraded(v *longhorn.Volume, rs map[string]*longhorn.Replica) bool {
+	staleTimeout := time.Duration(v.Spec.StaleReplicaTimeout) * time.Minute
+
+	// Find the earliest HealthyAt among healthy replicas as the reference point.
+	var earliestHealthyAt time.Time
+	for _, r := range rs {
+		if r.Spec.VolumeName != v.Name {
+			continue
+		}
+		if r.Spec.HealthyAt == "" || r.Spec.FailedAt != "" {
+			continue
+		}
+		t, err := util.ParseTime(r.Spec.HealthyAt)
+		if err != nil {
+			continue
+		}
+		if earliestHealthyAt.IsZero() || t.Before(earliestHealthyAt) {
+			earliestHealthyAt = t
+		}
+	}
+
+	hasNonHealthyReplica := false
+	for _, r := range rs {
+		if r.Spec.VolumeName != v.Name {
+			continue
+		}
+		if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
+			// Healthy replica — skip.
+			continue
+		}
+		hasNonHealthyReplica = true
+
+		// Condition 1: rebuild retries exhausted.
+		if r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount {
+			continue
+		}
+
+		// Condition 2: failed longer than stale timeout.
+		if v.Spec.StaleReplicaTimeout > 0 && r.Spec.FailedAt != "" &&
+			util.TimestampAfterTimeout(r.Spec.FailedAt, staleTimeout) {
+			continue
+		}
+
+		// Condition 3: created much later than the healthy replicas became healthy,
+		// indicating the system has been stuck in the replenish-and-fail loop.
+		if v.Spec.StaleReplicaTimeout > 0 && !earliestHealthyAt.IsZero() &&
+			r.CreationTimestamp.After(earliestHealthyAt.Add(staleTimeout)) {
+			continue
+		}
+
+		// This replica does not meet any condition — not ready to give up.
+		return false
+	}
+	return hasNonHealthyReplica
 }
 
 func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) (err error) {
