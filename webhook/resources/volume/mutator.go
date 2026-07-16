@@ -147,6 +147,13 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	moreLabels := map[string]string{}
+
+	// Use a new label to indicate that the volume is a v2 encrypted volume and LUKS2 header size can be extended.
+	// Existing v2 encrypted volumes that are created before (v1.12.1) the introduction of this label will not have this label.
+	if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
+		moreLabels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader] = longhorn.TrueValue
+	}
+
 	size := volume.Spec.Size
 	backupTargetName := volume.Spec.BackupTargetName
 	if volume.Spec.FromBackup != "" {
@@ -190,6 +197,17 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 				if bv.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
 					bv.Status.BackingImageChecksum != bi.Status.Checksum {
 					return nil, werror.NewInvalidError(fmt.Sprintf("backing image %v current checksum doesn't match the recoreded checksum in backup volume", volume.Spec.BackingImage), "")
+				}
+			}
+		}
+
+		// Volumes restored from backup should not have the label LonghornLabelV2EncryptedVolumeWithLuksHeader set to "true" because they are not extended.
+		if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
+			if backup == nil || backup.Status.Labels == nil {
+				delete(moreLabels, types.LonghornLabelV2EncryptedVolumeWithLuksHeader)
+			} else {
+				if encrypted, exists := backup.Status.Labels[types.LonghornLabelVolumeEncrypted]; !exists || encrypted != types.LonghornLabelValueEnabled {
+					delete(moreLabels, types.LonghornLabelV2EncryptedVolumeWithLuksHeader)
 				}
 			}
 		}

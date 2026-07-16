@@ -431,6 +431,7 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 type EngineInstanceCreateRequest struct {
 	Engine                           *longhorn.Engine
 	Encrypted                        bool
+	ExtraLUKS2HeaderSpaceRequired    bool
 	VolumeFrontend                   longhorn.VolumeFrontend
 	UblkQueueDepth                   int
 	UblkNumberOfQueue                int
@@ -461,6 +462,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		return nil, err
 	}
 
+	volumeSize := req.Engine.Spec.VolumeSize
 	switch req.Engine.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1:
 		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion, req.Encrypted)
@@ -470,6 +472,12 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	case longhorn.DataEngineTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 		// v2 target doesn't need frontend - it will be set by initiator (EngineFrontend)
+		if req.ExtraLUKS2HeaderSpaceRequired {
+			volumeSize, err = util.GetActualBackendSize(req.Engine.Spec.VolumeSize, req.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -487,7 +495,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Name:               req.Engine.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
 		VolumeName:         req.Engine.Spec.VolumeName,
-		Size:               uint64(req.Engine.Spec.VolumeSize),
+		Size:               uint64(volumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
 		DataLayoutType:     req.DataLayoutType,
@@ -515,24 +523,27 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 }
 
 type ReplicaInstanceCreateRequest struct {
-	Replica             *longhorn.Replica
-	DiskName            string
-	DataPath            string
-	BackingImagePath    string
-	DataLocality        longhorn.DataLocality
-	EngineCLIAPIVersion int
-	Encrypted           bool
+	Replica                       *longhorn.Replica
+	DiskName                      string
+	DataPath                      string
+	BackingImagePath              string
+	DataLocality                  longhorn.DataLocality
+	EngineCLIAPIVersion           int
+	Encrypted                     bool
+	ExtraLUKS2HeaderSpaceRequired bool
 }
 
 // EngineFrontendInstanceCreateRequest contains the parameters to create an engine frontend (initiator) instance
 type EngineFrontendInstanceCreateRequest struct {
-	EngineFrontend    *longhorn.EngineFrontend
-	VolumeFrontend    longhorn.VolumeFrontend
-	UblkQueueDepth    int
-	UblkNumberOfQueue int
-	TargetIP          string
-	TargetPort        int
-	EngineName        string
+	EngineFrontend                *longhorn.EngineFrontend
+	VolumeFrontend                longhorn.VolumeFrontend
+	UblkQueueDepth                int
+	UblkNumberOfQueue             int
+	TargetIP                      string
+	TargetPort                    int
+	EngineName                    string
+	Encrypted                     bool
+	ExtraLUKS2HeaderSpaceRequired bool
 }
 
 func getEngineFrontendInstanceSize(ef *longhorn.EngineFrontend) int64 {
@@ -561,6 +572,14 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 		return nil, fmt.Errorf("engine frontend (initiator) requires instance manager API version >= 4")
 	}
 
+	volumeSize := getEngineFrontendInstanceSize(req.EngineFrontend)
+	if req.ExtraLUKS2HeaderSpaceRequired {
+		volumeSize, err = util.GetActualBackendSize(getEngineFrontendInstanceSize(req.EngineFrontend), req.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	targetAddress := util.BuildTargetAddress(req.TargetIP, req.TargetPort)
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
@@ -569,7 +588,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 		Name:               req.EngineFrontend.Name,
 		InstanceType:       string(longhorn.InstanceTypeEngineFrontend), // v2 initiator
 		VolumeName:         req.EngineFrontend.Spec.VolumeName,
-		Size:               uint64(getEngineFrontendInstanceSize(req.EngineFrontend)),
+		Size:               uint64(volumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
 
@@ -638,8 +657,15 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	portCount := DefaultReplicaPortCountV1
+	volumeSize := req.Replica.Spec.VolumeSize
 	if types.IsDataEngineV2(req.Replica.Spec.DataEngine) {
 		portCount = DefaultReplicaPortCountV2
+		if req.ExtraLUKS2HeaderSpaceRequired {
+			volumeSize, err = util.GetActualBackendSize(req.Replica.Spec.VolumeSize, req.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
@@ -648,7 +674,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		Name:               req.Replica.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
 		VolumeName:         req.Replica.Spec.VolumeName,
-		Size:               uint64(req.Replica.Spec.VolumeSize),
+		Size:               uint64(volumeSize),
 		PortCount:          portCount,
 		PortArgs:           []string{DefaultPortArg},
 

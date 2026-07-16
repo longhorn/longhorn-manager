@@ -95,7 +95,8 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 			if err != nil {
 				return nil, err
 			}
-			if cliAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+
+			if cliAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize || types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
 				backup.Spec.Labels[types.LonghornLabelVolumeEncrypted] = types.LonghornLabelValueEnabled
 			}
 		}
