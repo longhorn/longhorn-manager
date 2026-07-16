@@ -252,9 +252,10 @@ const (
 	LonghornLabelExportFromVolume                 = "export-from-volume"
 	LonghornLabelSnapshotForExportingBackingImage = "for-exporting-backing-image"
 
-	// LonghornLabelLinkedCloneSourceVolume is stamped on linked-clone volumes to
-	// enable efficient index-based lookups by source volume name.
-	LonghornLabelLinkedCloneSourceVolume = "linked-clone-source-volume"
+	// LonghornLabelCloneSourceVolume is stamped on all clone target volumes
+	// (both full-copy and linked-clone) to enable efficient lookups by source volume name.
+	LonghornLabelCloneSourceVolume = "clone-source-volume"
+
 	// LonghornLabelLinkedCloneSourceSnapshot is stamped on linked-clone volumes to
 	// enable efficient index-based lookups by source snapshot name.
 	LonghornLabelLinkedCloneSourceSnapshot = "linked-clone-source-snapshot"
@@ -704,11 +705,11 @@ func GetShardGroupLabels(shardGroupName string) map[string]string {
 	}
 }
 
-// GetLinkedCloneSourceVolumeLabel returns the label map used to stamp a linked-clone
-// volume with its source volume name, enabling efficient index-based lookups.
-func GetLinkedCloneSourceVolumeLabel(srcVolumeName string) map[string]string {
+// GetCloneSourceVolumeLabel returns the label map used to stamp any clone target
+// volume (both full-copy and linked-clone) with its source volume name.
+func GetCloneSourceVolumeLabel(srcVolumeName string) map[string]string {
 	return map[string]string{
-		GetLonghornLabelKey(LonghornLabelLinkedCloneSourceVolume): srcVolumeName,
+		GetLonghornLabelKey(LonghornLabelCloneSourceVolume): srcVolumeName,
 	}
 }
 

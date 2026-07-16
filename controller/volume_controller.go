@@ -131,7 +131,7 @@ func NewVolumeController(
 	var err error
 	if _, err = ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolume,
-		UpdateFunc: func(old, cur interface{}) { c.enqueueVolume(cur) },
+		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumeChange(old, cur) },
 		DeleteFunc: c.enqueueVolume,
 	}); err != nil {
 		return nil, err
@@ -1873,7 +1873,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			// CloneStatus.SourceVolume which may not be populated yet when salvage runs.
 			srcVolumeGone := false
 			if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-				srcVolName := v.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceVolume)]
+				srcVolName := v.Labels[types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)]
 				if srcVolName != "" {
 					if _, srcVolErr := c.ds.GetVolumeRO(srcVolName); srcVolErr != nil {
 						if apierrors.IsNotFound(srcVolErr) {
@@ -5467,6 +5467,33 @@ func (c *VolumeController) enqueueVolume(obj interface{}) {
 	}
 
 	c.queue.Add(key)
+}
+
+func (c *VolumeController) enqueueVolumeChange(old, cur interface{}) {
+	curV, ok := cur.(*longhorn.Volume)
+	if !ok {
+		return
+	}
+	c.enqueueVolume(cur)
+
+	oldV, ok := old.(*longhorn.Volume)
+	if !ok {
+		return
+	}
+
+	// When a source volume becomes attached, enqueue its clone target volumes
+	// so they can immediately start the clone operation without waiting for
+	// their own periodic reconcile.
+	if oldV.Status.State != longhorn.VolumeStateAttached && curV.Status.State == longhorn.VolumeStateAttached {
+		cloneVolumes, err := c.ds.ListCloneVolumesBySourceVolumeRO(curV.Name)
+		if err == nil {
+			for _, v := range cloneVolumes {
+				if isCloneTargetCopyInProgress(v) {
+					c.enqueueVolume(v)
+				}
+			}
+		}
+	}
 }
 
 func (c *VolumeController) enqueueVolumeAfter(obj interface{}, duration time.Duration) {
