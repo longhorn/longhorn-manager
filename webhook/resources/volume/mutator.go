@@ -307,13 +307,16 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if volume.Spec.CloneMode == longhorn.CloneModeNone {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeFullCopy))
 		}
+		// Stamp clone source volume label for all clone types (full-copy and linked-clone).
+		if types.IsDataFromVolume(volume.Spec.DataSource) {
+			if srcVolName := types.GetVolumeName(volume.Spec.DataSource); srcVolName != "" {
+				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)] = srcVolName
+			}
+		}
 		if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
 			// Stamp source labels so the deletion webhook can protect the entrypoint
 			// snapshot. For vol:// datasources the snapshot is auto-created later
 			// and its label is stamped by the volume controller.
-			if srcVolName := types.GetVolumeName(volume.Spec.DataSource); srcVolName != "" {
-				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceVolume)] = srcVolName
-			}
 			if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
 				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)] = snapName
 			}

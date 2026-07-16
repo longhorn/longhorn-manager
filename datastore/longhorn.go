@@ -1362,10 +1362,12 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 		return nil, err
 	}
 
-	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-		if err := labelLinkedCloneSourceVolume(types.GetVolumeName(v.Spec.DataSource), v); err != nil {
+	if types.IsDataFromVolume(v.Spec.DataSource) {
+		if err := labelCloneSourceVolume(types.GetVolumeName(v.Spec.DataSource), v); err != nil {
 			return nil, err
 		}
+	}
+	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
 		if err := labelLinkedCloneSourceSnapshot(types.GetSnapshotName(v.Spec.DataSource), v); err != nil {
 			return nil, err
 		}
@@ -4108,10 +4110,10 @@ func labelBackingImage(backingImageName string, obj k8sruntime.Object) error {
 	return nil
 }
 
-// labelLinkedCloneSourceVolume stamps the longhorn.io/linked-clone-source-volume label
-// on a linked-clone volume so it can be efficiently retrieved by source volume name.
+// labelCloneSourceVolume stamps the longhorn.io/clone-source-volume label
+// on a clone volume so it can be efficiently retrieved by source volume name.
 // If srcVolumeName is empty the label is not set and no error is returned.
-func labelLinkedCloneSourceVolume(srcVolumeName string, obj k8sruntime.Object) error {
+func labelCloneSourceVolume(srcVolumeName string, obj k8sruntime.Object) error {
 	if srcVolumeName == "" {
 		return nil
 	}
@@ -4124,7 +4126,7 @@ func labelLinkedCloneSourceVolume(srcVolumeName string, obj k8sruntime.Object) e
 	if lbls == nil {
 		lbls = map[string]string{}
 	}
-	lbls[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceVolume)] = srcVolumeName
+	lbls[types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)] = srcVolumeName
 	metadata.SetLabels(lbls)
 	return nil
 }
@@ -7368,13 +7370,15 @@ func (s *DataStore) IsVolumeLinkedCloneVolume(volName string) (bool, error) {
 // whose DataSource points to srcVolumeName. The map is keyed by volume name and
 // contains deep copies safe for mutation.
 func (s *DataStore) ListLinkedCloneVolumesBySourceVolume(srcVolumeName string) (map[string]*longhorn.Volume, error) {
-	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetLinkedCloneSourceVolumeLabel(srcVolumeName),
-	})
+	list, err := s.ListLinkedCloneVolumesBySourceVolumeRO(srcVolumeName)
 	if err != nil {
 		return nil, err
 	}
-	return s.ListVolumesByLabelSelector(selector)
+	result := make(map[string]*longhorn.Volume, len(list))
+	for _, v := range list {
+		result[v.Name] = v.DeepCopy()
+	}
+	return result, nil
 }
 
 // ListLinkedCloneVolumesBySourceVolumeRO returns a slice of read-only linked-clone
@@ -7382,7 +7386,30 @@ func (s *DataStore) ListLinkedCloneVolumesBySourceVolume(srcVolumeName string) (
 // The returned objects must NOT be mutated.
 func (s *DataStore) ListLinkedCloneVolumesBySourceVolumeRO(srcVolumeName string) ([]*longhorn.Volume, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetLinkedCloneSourceVolumeLabel(srcVolumeName),
+		MatchLabels: types.GetCloneSourceVolumeLabel(srcVolumeName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	allClones, err := s.volumeLister.Volumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*longhorn.Volume, 0, len(allClones))
+	for _, v := range allClones {
+		if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			result = append(result, v)
+		}
+	}
+	return result, nil
+}
+
+// ListCloneVolumesBySourceVolumeRO returns a slice of read-only clone target
+// volumes (both full-copy and linked-clone) whose source is srcVolumeName.
+// The returned objects must NOT be mutated.
+func (s *DataStore) ListCloneVolumesBySourceVolumeRO(srcVolumeName string) ([]*longhorn.Volume, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetCloneSourceVolumeLabel(srcVolumeName),
 	})
 	if err != nil {
 		return nil, err
