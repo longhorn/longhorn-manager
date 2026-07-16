@@ -720,6 +720,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		Encrypted:                        v.Spec.Encrypted,
+		ExtraLUKS2HeaderSpaceRequired:    types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v),
 		VolumeFrontend:                   frontend,
 		UblkQueueDepth:                   ublkQueueDepth,
 		UblkNumberOfQueue:                ublkNumberOfQueue,
@@ -1262,6 +1263,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	removeInvalidEngineOpStatus(engine)
 
 	// align 'engine.Status.CurrentSize' to 'engine.Spec.VolumeSize' if the backend size is expected.
+	if types.IsDataEngineV2(engine.Spec.DataEngine) && volume.Spec.Encrypted && types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
+		cliAPIVersion = lhtypes.CliAPIVersionExtraLUKS2HeaderReservation
+	}
 	expectedBackendSize, err := util.GetActualBackendSize(engine.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
 	if err != nil {
 		return err

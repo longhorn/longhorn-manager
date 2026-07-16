@@ -428,13 +428,14 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	}
 
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
-		Replica:             r,
-		Encrypted:           v.Spec.Encrypted,
-		DiskName:            diskName,
-		DataPath:            dataPath,
-		BackingImagePath:    backingImagePath,
-		DataLocality:        v.Spec.DataLocality,
-		EngineCLIAPIVersion: cliAPIVersion,
+		Replica:                       r,
+		Encrypted:                     v.Spec.Encrypted,
+		DiskName:                      diskName,
+		DataPath:                      dataPath,
+		BackingImagePath:              backingImagePath,
+		DataLocality:                  v.Spec.DataLocality,
+		EngineCLIAPIVersion:           cliAPIVersion,
+		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v),
 	})
 }
 
