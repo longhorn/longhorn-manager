@@ -53,3 +53,17 @@ func IsVolumeReady(v *longhorn.Volume, vrs []*longhorn.Replica, volOp string) (r
 	}
 	return true, ""
 }
+
+// IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue returns true if the volume has the label LonghornLabelV2EncryptedVolumeWithLuksHeader set to "true".
+func IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v *longhorn.Volume) bool {
+	if !IsDataEngineV2(v.Spec.DataEngine) || !v.Spec.Encrypted || v.Labels == nil {
+		return false
+	}
+
+	luksExtendedLabel, ok := v.Labels[LonghornLabelV2EncryptedVolumeWithLuksHeader]
+	if !ok {
+		return false
+	}
+
+	return luksExtendedLabel == longhorn.TrueValue
+}

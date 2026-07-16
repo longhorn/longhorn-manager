@@ -354,6 +354,23 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
+
+		// Label LonghornLabelV2EncryptedVolumeWithLuksHeader is only supported for v2 encrypted volumes and immutable after creation.
+		// It is used to indicate that the LUKS2 header size is extended.
+		if oldVolume.Spec.Encrypted {
+			oldV2EncryptedVolumeWithLuksHeaderLabel := ""
+			newV2EncryptedVolumeWithLuksHeaderLabel := ""
+			if oldVolume.Labels != nil {
+				oldV2EncryptedVolumeWithLuksHeaderLabel = oldVolume.Labels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader]
+			}
+			if newVolume.Labels != nil {
+				newV2EncryptedVolumeWithLuksHeaderLabel = newVolume.Labels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader]
+			}
+			if oldV2EncryptedVolumeWithLuksHeaderLabel != newV2EncryptedVolumeWithLuksHeaderLabel {
+				err := fmt.Errorf("changing %v label for volume %v is not supported", types.LonghornLabelV2EncryptedVolumeWithLuksHeader, oldVolume.Name)
+				return werror.NewInvalidError(err.Error(), "")
+			}
+		}
 	}
 
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
