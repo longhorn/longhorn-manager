@@ -651,6 +651,8 @@ type DiskConfig struct {
 	DiskUUID   string              `json:"diskUUID"`
 	DiskDriver longhorn.DiskDriver `json:"diskDriver"`
 	State      string              `json:"state"`
+	// BlockSize is reported by the V2 disk service and is never persisted.
+	BlockSize int64 `json:"-"`
 	// Message is never persisted; it only carries the reason of the current state.
 	Message string `json:"-"`
 }

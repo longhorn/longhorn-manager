@@ -1510,6 +1510,11 @@ func IsPotentialBlockDisk(path string) bool {
 	return false
 }
 
+// IsSupportedV2BlockSize reports whether Longhorn supports the logical block size for V2 data paths.
+func IsSupportedV2BlockSize(blockSize int64) bool {
+	return blockSize == 512 || blockSize == 4096
+}
+
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	if IsPotentialBlockDisk(dataPath) {
 		return map[string]longhorn.DiskSpec{
