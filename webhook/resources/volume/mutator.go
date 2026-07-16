@@ -98,22 +98,32 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	if volume.Spec.NumberOfReplicas == 0 {
-		numberOfReplicas, err := v.getDefaultReplicaCount(volume.Spec.DataEngine)
-		if err != nil {
-			err = errors.Wrap(err, "failed to get valid number for setting default replica count")
-			return nil, werror.NewInvalidError(err.Error(), "")
+		// EC (sharded) volumes require exactly one replica; fault tolerance comes from
+		// parity chunks, so the validator rejects any other count.
+		numberOfReplicas := 1
+		if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+			count, err := v.getDefaultReplicaCount(volume.Spec.DataEngine)
+			if err != nil {
+				return nil, werror.NewInvalidError(errors.Wrap(err, "failed to get valid number for setting default replica count").Error(), "")
+			}
+			numberOfReplicas = count
+			logrus.Infof("Using the default number of replicas %v", numberOfReplicas)
 		}
-		logrus.Infof("Using the default number of replicas %v", numberOfReplicas)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/numberOfReplicas", "value": %v}`, numberOfReplicas))
 	}
 
 	if string(volume.Spec.DataLocality) == "" {
-		defaultDataLocality, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name)
-			return nil, werror.NewInvalidError(err.Error(), "")
+		// EC (sharded) volumes distribute chunks across k+m nodes, so the validator
+		// requires data locality disabled regardless of the cluster default.
+		dataLocality := string(longhorn.DataLocalityDisabled)
+		if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+			setting, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
+			if err != nil {
+				return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name).Error(), "")
+			}
+			dataLocality = setting
 		}
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, defaultDataLocality))
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, dataLocality))
 	}
 
 	if string(volume.Spec.AccessMode) == "" {
@@ -137,6 +147,13 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	moreLabels := map[string]string{}
+
+	// Use a new label to indicate that the volume is a v2 encrypted volume and LUKS2 header size can be extended.
+	// Existing v2 encrypted volumes that are created before (v1.12.1) the introduction of this label will not have this label.
+	if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
+		moreLabels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader] = longhorn.TrueValue
+	}
+
 	size := volume.Spec.Size
 	backupTargetName := volume.Spec.BackupTargetName
 	if volume.Spec.FromBackup != "" {
@@ -184,11 +201,26 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			}
 		}
 
-		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.Status.VolumeSize)
+		// Volumes restored from backup should not have the label LonghornLabelV2EncryptedVolumeWithLuksHeader set to "true" because they are not extended.
+		if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
+			if backup == nil || backup.Status.Labels == nil {
+				delete(moreLabels, types.LonghornLabelV2EncryptedVolumeWithLuksHeader)
+			} else {
+				if encrypted, exists := backup.Status.Labels[types.LonghornLabelVolumeEncrypted]; !exists || encrypted != types.LonghornLabelValueEnabled {
+					delete(moreLabels, types.LonghornLabelV2EncryptedVolumeWithLuksHeader)
+				}
+			}
+		}
+
+		currentBackupVolumeSize := backup.Status.VolumeSize
+		if bv != nil && bv.Status.Size != "" {
+			currentBackupVolumeSize = bv.Status.Size
+		}
+		logrus.Infof("Override size of volume %v to %v because it's from backup", name, currentBackupVolumeSize)
 		// formalize the final size to the unit in bytes
-		size, err = util.ConvertSize(backup.Status.VolumeSize)
+		size, err = util.ConvertSize(currentBackupVolumeSize)
 		if err != nil {
-			return nil, werror.NewInvalidError(fmt.Sprintf("get invalid size for volume %v: %v", backup.Status.VolumeSize, err), "")
+			return nil, werror.NewInvalidError(fmt.Sprintf("get invalid size for volume %v: %v", currentBackupVolumeSize, err), "")
 		}
 
 		moreLabels[types.LonghornLabelBackupVolume] = canonicalBVName

@@ -263,6 +263,7 @@ func newInstanceManager(
 	currentState longhorn.InstanceManagerState,
 	currentOwnerID, nodeID, ip string,
 	instanceEngines map[string]longhorn.InstanceProcess,
+	instanceEngineFrontends map[string]longhorn.InstanceProcess,
 	instanceReplicas map[string]longhorn.InstanceProcess,
 	dataEngine longhorn.DataEngineType,
 	instanceManagerImage string,
@@ -282,11 +283,12 @@ func newInstanceManager(
 			DataEngine: dataEngine,
 		},
 		Status: longhorn.InstanceManagerStatus{
-			OwnerID:          currentOwnerID,
-			CurrentState:     currentState,
-			IP:               ip,
-			InstanceEngines:  instanceEngines,
-			InstanceReplicas: instanceReplicas,
+			OwnerID:                 currentOwnerID,
+			CurrentState:            currentState,
+			IP:                      ip,
+			InstanceEngines:         instanceEngines,
+			InstanceEngineFrontends: instanceEngineFrontends,
+			InstanceReplicas:        instanceReplicas,
 		},
 	}
 

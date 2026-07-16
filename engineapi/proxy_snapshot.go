@@ -8,15 +8,13 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func (p *Proxy) SnapshotCreate(e *longhorn.Engine, name string, labels map[string]string,
-	freezeFilesystem bool) (string, error) {
-	return p.grpcClient.VolumeSnapshot(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
+func (p *Proxy) SnapshotCreate(obj DataEngineObject, name string, labels map[string]string, freezeFilesystem bool) (string, error) {
+	return p.grpcClient.VolumeSnapshot(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj),
 		name, labels, freezeFilesystem)
 }
 
-func (p *Proxy) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn.SnapshotInfo, err error) {
-	recv, err := p.grpcClient.SnapshotList(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
-		p.DirectToURL(e))
+func (p *Proxy) SnapshotList(obj DataEngineObject) (snapshots map[string]*longhorn.SnapshotInfo, err error) {
+	recv, err := p.grpcClient.SnapshotList(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(), p.DirectToURL(obj))
 	if err != nil {
 		return nil, err
 	}
@@ -28,8 +26,8 @@ func (p *Proxy) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn
 	return snapshots, nil
 }
 
-func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn.SnapshotInfo, err error) {
-	recv, err := p.SnapshotList(e)
+func (p *Proxy) SnapshotGet(obj DataEngineObject, name string) (snapshot *longhorn.SnapshotInfo, err error) {
+	recv, err := p.SnapshotList(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -37,15 +35,15 @@ func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn
 	return recv[name], nil
 }
 
-func (p *Proxy) SnapshotClone(e *longhorn.Engine, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string,
+func (p *Proxy) SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string,
 	fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) (err error) {
-	return p.grpcClient.SnapshotClone(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
+	return p.grpcClient.SnapshotClone(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(), p.DirectToURL(obj),
 		snapshotName, fromEngineAddress, fromVolumeName, fromEngineName, int(fileSyncHTTPClientTimeout), grpcTimeoutSeconds, cloneMode)
 }
 
-func (p *Proxy) SnapshotCloneStatus(e *longhorn.Engine) (status map[string]*longhorn.SnapshotCloneStatus, err error) {
-	recv, err := p.grpcClient.SnapshotCloneStatus(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
-		p.DirectToURL(e))
+func (p *Proxy) SnapshotCloneStatus(obj DataEngineObject) (status map[string]*longhorn.SnapshotCloneStatus, err error) {
+	recv, err := p.grpcClient.SnapshotCloneStatus(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(),
+		p.DirectToURL(obj))
 	if err != nil {
 		return nil, err
 	}
@@ -57,28 +55,28 @@ func (p *Proxy) SnapshotCloneStatus(e *longhorn.Engine) (status map[string]*long
 	return status, nil
 }
 
-func (p *Proxy) SnapshotRevert(e *longhorn.Engine, snapshotName string) (err error) {
-	return p.grpcClient.SnapshotRevert(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
+func (p *Proxy) SnapshotRevert(obj DataEngineObject, snapshotName string) (err error) {
+	return p.grpcClient.SnapshotRevert(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj),
 		snapshotName)
 }
 
-func (p *Proxy) SnapshotPurge(e *longhorn.Engine) (err error) {
-	v, err := p.ds.GetVolumeRO(e.Spec.VolumeName)
+func (p *Proxy) SnapshotPurge(obj DataEngineObject) (err error) {
+	v, err := p.ds.GetVolumeRO(obj.GetVolumeName())
 	if err != nil {
-		return errors.Wrapf(err, "failed to get volume %v before purging snapshots", e.Spec.VolumeName)
+		return errors.Wrapf(err, "failed to get volume %v before purging snapshots", obj.GetVolumeName())
 	}
 
 	if util.IsVolumeMigrating(v) {
-		return errors.Errorf("failed to start snapshot purge for engine %v and volume %v because the volume is migrating", e.Name, e.Spec.VolumeName)
+		return errors.Errorf("failed to start snapshot purge for engine %v and volume %v because the volume is migrating", obj.GetEngineName(), obj.GetVolumeName())
 	}
 
-	return p.grpcClient.SnapshotPurge(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
+	return p.grpcClient.SnapshotPurge(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj),
 		true)
 }
 
-func (p *Proxy) SnapshotPurgeStatus(e *longhorn.Engine) (status map[string]*longhorn.PurgeStatus, err error) {
-	recv, err := p.grpcClient.SnapshotPurgeStatus(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
-		p.DirectToURL(e))
+func (p *Proxy) SnapshotPurgeStatus(obj DataEngineObject) (status map[string]*longhorn.PurgeStatus, err error) {
+	recv, err := p.grpcClient.SnapshotPurgeStatus(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(),
+		p.DirectToURL(obj))
 	if err != nil {
 		return nil, err
 	}
@@ -90,19 +88,19 @@ func (p *Proxy) SnapshotPurgeStatus(e *longhorn.Engine) (status map[string]*long
 	return status, nil
 }
 
-func (p *Proxy) SnapshotDelete(e *longhorn.Engine, name string) (err error) {
-	return p.grpcClient.SnapshotRemove(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
+func (p *Proxy) SnapshotDelete(obj DataEngineObject, name string) (err error) {
+	return p.grpcClient.SnapshotRemove(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj),
 		[]string{name})
 }
 
-func (p *Proxy) SnapshotHash(e *longhorn.Engine, snapshotName string, rehash bool) error {
-	return p.grpcClient.SnapshotHash(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
-		snapshotName, rehash)
+func (p *Proxy) SnapshotHash(obj DataEngineObject, snapshotName string, rehash bool) error {
+	return p.grpcClient.SnapshotHash(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(),
+		p.DirectToURL(obj), snapshotName, rehash)
 }
 
-func (p *Proxy) SnapshotHashStatus(e *longhorn.Engine, snapshotName string) (status map[string]*longhorn.HashStatus, err error) {
-	recv, err := p.grpcClient.SnapshotHashStatus(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
-		p.DirectToURL(e), snapshotName)
+func (p *Proxy) SnapshotHashStatus(obj DataEngineObject, snapshotName string) (status map[string]*longhorn.HashStatus, err error) {
+	recv, err := p.grpcClient.SnapshotHashStatus(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(),
+		p.DirectToURL(obj), snapshotName)
 	if err != nil {
 		return nil, err
 	}

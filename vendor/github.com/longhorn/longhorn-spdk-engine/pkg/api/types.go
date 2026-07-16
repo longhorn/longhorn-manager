@@ -142,48 +142,48 @@ func ReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 }
 
 type Engine struct {
-	Name              string                `json:"name"`
-	VolumeName        string                `json:"volumeName"`
-	SpecSize          uint64                `json:"spec_size"`
-	ActualSize        uint64                `json:"actual_size"`
-	IP                string                `json:"ip"`
-	Port              int32                 `json:"port"`
-	TargetIP          string                `json:"target_ip"`
-	TargetPort        int32                 `json:"target_port"`
-	StandbyTargetPort int32                 `json:"standby_target_port"`
-	ReplicaAddressMap map[string]string     `json:"replica_address_map"`
-	ReplicaModeMap    map[string]types.Mode `json:"replica_mode_map"`
-	Head              *Lvol                 `json:"head"`
-	Snapshots         map[string]*Lvol      `json:"snapshots"`
-	Frontend          string                `json:"frontend"`
-	Endpoint          string                `json:"endpoint"`
-	State             string                `json:"state"`
-	ErrorMsg          string                `json:"error_msg"`
-	UblkID            int32                 `json:"ublk_id"`
-	UUID              string                `json:"uuid"`
+	Name                  string                `json:"name"`
+	VolumeName            string                `json:"volumeName"`
+	SpecSize              uint64                `json:"spec_size"`
+	ActualSize            uint64                `json:"actual_size"`
+	IP                    string                `json:"ip"`
+	Port                  int32                 `json:"port"`
+	ReplicaAddressMap     map[string]string     `json:"replica_address_map"`
+	ReplicaModeMap        map[string]types.Mode `json:"replica_mode_map"`
+	Head                  *Lvol                 `json:"head"`
+	Snapshots             map[string]*Lvol      `json:"snapshots"`
+	Frontend              string                `json:"frontend"`
+	Endpoint              string                `json:"endpoint"`
+	UUID                  string                `json:"uuid"`
+	State                 string                `json:"state"`
+	ErrorMsg              string                `json:"error_msg"`
+	IsExpanding           bool                  `json:"is_expanding"`
+	LastExpansionError    string                `json:"last_expansion_error"`
+	LastExpansionFailedAt string                `json:"last_expansion_failed_at"`
+	SnapshotMaxCount      int32                 `json:"snapshot_max_count"`
 }
 
 func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
 	res := &Engine{
-		Name:              e.Name,
-		VolumeName:        e.VolumeName,
-		SpecSize:          e.SpecSize,
-		ActualSize:        e.ActualSize,
-		IP:                e.Ip,
-		Port:              e.Port,
-		TargetIP:          e.TargetIp,
-		TargetPort:        e.TargetPort,
-		StandbyTargetPort: e.StandbyTargetPort,
-		ReplicaAddressMap: e.ReplicaAddressMap,
-		ReplicaModeMap:    map[string]types.Mode{},
-		Head:              ProtoLvolToLvol(e.Head),
-		Snapshots:         map[string]*Lvol{},
-		Frontend:          e.Frontend,
-		Endpoint:          e.Endpoint,
-		State:             e.State,
-		ErrorMsg:          e.ErrorMsg,
-		UblkID:            e.UblkId,
-		UUID:              e.Uuid,
+		Name:                  e.Name,
+		VolumeName:            e.VolumeName,
+		SpecSize:              e.SpecSize,
+		ActualSize:            e.ActualSize,
+		IP:                    e.Ip,
+		Port:                  e.Port,
+		ReplicaAddressMap:     e.ReplicaAddressMap,
+		ReplicaModeMap:        map[string]types.Mode{},
+		Head:                  ProtoLvolToLvol(e.Head),
+		Snapshots:             map[string]*Lvol{},
+		Frontend:              e.Frontend,
+		Endpoint:              e.Endpoint,
+		UUID:                  e.Uuid,
+		State:                 e.State,
+		ErrorMsg:              e.ErrorMsg,
+		IsExpanding:           e.IsExpanding,
+		LastExpansionError:    e.LastExpansionError,
+		LastExpansionFailedAt: e.LastExpansionFailedAt,
+		SnapshotMaxCount:      e.SnapshotMaxCount,
 	}
 	for rName, mode := range e.ReplicaModeMap {
 		res.ReplicaModeMap[rName] = types.GRPCReplicaModeToReplicaMode(mode)
@@ -193,6 +193,91 @@ func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
 	}
 
 	return res
+}
+
+type EngineFrontend struct {
+	Name                  string                       `json:"name"`
+	VolumeName            string                       `json:"volumeName"`
+	EngineName            string                       `json:"engine_name"`
+	SpecSize              uint64                       `json:"spec_size"`
+	ActualSize            uint64                       `json:"actual_size"`
+	TargetIP              string                       `json:"target_ip"`
+	TargetPort            int32                        `json:"target_port"`
+	ActivePath            string                       `json:"active_path"`
+	PreferredPath         string                       `json:"preferred_path"`
+	Paths                 []*EngineFrontendNvmeTCPPath `json:"paths"`
+	Frontend              string                       `json:"frontend"`
+	Endpoint              string                       `json:"endpoint"`
+	UUID                  string                       `json:"uuid"`
+	UblkID                int32                        `json:"ublk_id"`
+	State                 string                       `json:"state"`
+	ErrorMsg              string                       `json:"error_msg"`
+	IsExpanding           bool                         `json:"is_expanding"`
+	LastExpansionError    string                       `json:"last_expansion_error"`
+	LastExpansionFailedAt string                       `json:"last_expansion_failed_at"`
+}
+
+type EngineFrontendNvmeTCPPath struct {
+	TargetIP   string `json:"target_ip"`
+	TargetPort int32  `json:"target_port"`
+	EngineName string `json:"engine_name"`
+	NQN        string `json:"nqn"`
+	NGUID      string `json:"nguid"`
+	ANAState   string `json:"ana_state"`
+}
+
+func ProtoEngineFrontendToEngineFrontend(ef *spdkrpc.EngineFrontend) *EngineFrontend {
+	res := &EngineFrontend{
+		Name:                  ef.Name,
+		VolumeName:            ef.VolumeName,
+		EngineName:            ef.EngineName,
+		SpecSize:              ef.SpecSize,
+		ActualSize:            ef.ActualSize,
+		TargetIP:              ef.TargetIp,
+		TargetPort:            ef.TargetPort,
+		ActivePath:            ef.ActivePath,
+		PreferredPath:         ef.PreferredPath,
+		Paths:                 make([]*EngineFrontendNvmeTCPPath, 0, len(ef.Paths)),
+		Frontend:              ef.Frontend,
+		Endpoint:              ef.Endpoint,
+		UUID:                  ef.Uuid,
+		UblkID:                ef.UblkId,
+		State:                 ef.State,
+		ErrorMsg:              ef.ErrorMsg,
+		IsExpanding:           ef.IsExpanding,
+		LastExpansionError:    ef.LastExpansionError,
+		LastExpansionFailedAt: ef.LastExpansionFailedAt,
+	}
+
+	for _, path := range ef.Paths {
+		if path == nil {
+			continue
+		}
+		res.Paths = append(res.Paths, &EngineFrontendNvmeTCPPath{
+			TargetIP:   path.TargetIp,
+			TargetPort: path.TargetPort,
+			EngineName: path.EngineName,
+			NQN:        path.Nqn,
+			NGUID:      path.Nguid,
+			ANAState:   path.AnaState,
+		})
+	}
+
+	return res
+}
+
+type EngineFrontendStream struct {
+	stream spdkrpc.SPDKService_EngineFrontendWatchClient
+}
+
+func NewEngineFrontendStream(stream spdkrpc.SPDKService_EngineFrontendWatchClient) *EngineFrontendStream {
+	return &EngineFrontendStream{
+		stream,
+	}
+}
+
+func (s *EngineFrontendStream) Recv() (*emptypb.Empty, error) {
+	return s.stream.Recv()
 }
 
 type BackingImage struct {
@@ -305,6 +390,49 @@ func ProtoReplicaSnapshotCloneSrcStatusCheckResponseToSnapshotCloneSrcStatus(sta
 	}
 }
 
+type Shard struct {
+	ShardID    string `json:"shard_id"`
+	VolumeName string `json:"volume_name"`
+	SlotIndex  uint32 `json:"slot_index"`
+	State      string `json:"state"`
+	SizeBytes  uint64 `json:"size_bytes"`
+	LvsName    string `json:"lvs_name"`
+	LvsUUID    string `json:"lvs_uuid"`
+	BdevName   string `json:"bdev_name"`
+	NvmfNqn    string `json:"nvmf_nqn"`
+	IP         string `json:"ip"`
+	Port       int32  `json:"port"`
+	UUID       string `json:"uuid"`
+	ErrorMsg   string `json:"error_msg"`
+}
+
+func ProtoShardToShard(s *spdkrpc.Shard) *Shard {
+	if s == nil {
+		return nil
+	}
+
+	state := types.InstanceStateRunning
+	if s.State == spdkrpc.EcSlotState_EC_SLOT_STATE_FAILED {
+		state = types.InstanceStateError
+	}
+
+	return &Shard{
+		ShardID:    s.Name,
+		VolumeName: s.VolumeName,
+		SlotIndex:  s.SlotIndex,
+		State:      string(state),
+		SizeBytes:  s.SizeBytes,
+		LvsName:    s.LvsName,
+		LvsUUID:    s.LvsUuid,
+		BdevName:   s.BdevName,
+		NvmfNqn:    s.NvmfNqn,
+		IP:         s.Ip,
+		Port:       s.Port,
+		UUID:       s.Uuid,
+		ErrorMsg:   s.ErrorMsg,
+	}
+}
+
 type ReplicaSnapshotCloneDstStatus struct {
 	IsCloning         bool   `json:"is_cloning"`
 	SrcReplicaName    string `json:"src_replica_name"`
@@ -370,5 +498,19 @@ func NewBackingImageStream(stream spdkrpc.SPDKService_BackingImageWatchClient) *
 }
 
 func (s *BackingImageStream) Recv() (*emptypb.Empty, error) {
+	return s.stream.Recv()
+}
+
+type ShardStream struct {
+	stream spdkrpc.SPDKService_ShardWatchClient
+}
+
+func NewShardStream(stream spdkrpc.SPDKService_ShardWatchClient) *ShardStream {
+	return &ShardStream{
+		stream,
+	}
+}
+
+func (s *ShardStream) Recv() (*emptypb.Empty, error) {
 	return s.stream.Recv()
 }

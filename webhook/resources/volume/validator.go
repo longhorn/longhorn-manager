@@ -16,6 +16,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -183,6 +185,14 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
+	if err := validateDataLayout(volume.Spec.DataEngine, volume.Spec.DataLayout); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.dataLayout")
+	}
+
+	if err := validateShardedConstraints(volume); err != nil {
+		return err
+	}
+
 	if err := datastore.CheckVolume(volume); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
@@ -231,6 +241,13 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := validateReplicaCount(newVolume.Spec.CloneMode, newVolume.Spec.DataLocality, newVolume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
+	}
+
+	// spec.numberOfReplicas and spec.dataLocality stay mutable after create, so
+	// re-check the EC (sharded) constraints here to keep an update from breaking
+	// the invariants Create established.
+	if err := validateShardedConstraints(newVolume); err != nil {
+		return err
 	}
 
 	if err := validateUblkQueueDepth(newVolume.Spec.UblkQueueDepth); err != nil {
@@ -337,6 +354,23 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
+
+		// Label LonghornLabelV2EncryptedVolumeWithLuksHeader is only supported for v2 encrypted volumes and immutable after creation.
+		// It is used to indicate that the LUKS2 header size is extended.
+		if oldVolume.Spec.Encrypted {
+			oldV2EncryptedVolumeWithLuksHeaderLabel := ""
+			newV2EncryptedVolumeWithLuksHeaderLabel := ""
+			if oldVolume.Labels != nil {
+				oldV2EncryptedVolumeWithLuksHeaderLabel = oldVolume.Labels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader]
+			}
+			if newVolume.Labels != nil {
+				newV2EncryptedVolumeWithLuksHeaderLabel = newVolume.Labels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader]
+			}
+			if oldV2EncryptedVolumeWithLuksHeaderLabel != newV2EncryptedVolumeWithLuksHeaderLabel {
+				err := fmt.Errorf("changing %v label for volume %v is not supported", types.LonghornLabelV2EncryptedVolumeWithLuksHeader, oldVolume.Name)
+				return werror.NewInvalidError(err.Error(), "")
+			}
+		}
 	}
 
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
@@ -375,6 +409,46 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.snapshotHashingRequestedAt")
 	}
 
+	if err := v.validateEncryptedVolMigrationEngineImage(oldVolume, newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.migrationNodeID")
+	}
+
+	return nil
+}
+
+// validateShardedConstraints enforces the invariants that must hold for an EC
+// (sharded) volume for its whole lifetime. Both Create and Update call it so a
+// later update to a mutable field cannot slip past the create-time guards.
+func validateShardedConstraints(volume *longhorn.Volume) error {
+	if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+		return nil
+	}
+
+	if volume.Spec.NumberOfReplicas != 1 {
+		return werror.NewInvalidError("spec.numberOfReplicas must be 1 for EC (sharded) volumes; fault tolerance is provided by spec.dataLayout.parityChunks", "spec.numberOfReplicas")
+	}
+	if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
+		return werror.NewInvalidError("spec.dataLocality must be \"disabled\" for EC (sharded) volumes; data chunks are distributed across k+m nodes by design", "spec.dataLocality")
+	}
+	// The following features have no EC implementation in the initial release.
+	// Each is undefined behavior at runtime if allowed through, so reject at
+	// admission to turn silent breakage into a clear error.
+	if volume.Spec.Standby {
+		return werror.NewInvalidError("spec.standby is not supported for EC (sharded) volumes", "spec.standby")
+	}
+	if volume.Spec.DataSource != "" {
+		return werror.NewInvalidError("spec.dataSource is not supported for EC (sharded) volumes", "spec.dataSource")
+	}
+	if volume.Spec.FromBackup != "" {
+		return werror.NewInvalidError("spec.fromBackup is not supported for EC (sharded) volumes", "spec.fromBackup")
+	}
+	if volume.Spec.BackingImage != "" {
+		return werror.NewInvalidError("spec.backingImage is not supported for EC (sharded) volumes", "spec.backingImage")
+	}
+	if volume.Spec.Migratable {
+		return werror.NewInvalidError("spec.migratable is not supported for EC (sharded) volumes", "spec.migratable")
+	}
+
 	return nil
 }
 
@@ -403,6 +477,13 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 	}
 
 	for _, replica := range replicaMap {
+		// An empty DiskID means the replica has not been scheduled to a disk yet.
+		// This can happen for newly created volumes that have never been attached.
+		// Since there is no underlying disk filesystem to check for size compatibility,
+		// it is safe to skip the validation for these unscheduled replicas.
+		if replica.Spec.DiskID == "" {
+			continue
+		}
 		diskUUID := replica.Spec.DiskID
 		node, diskName, err := v.ds.GetReadyDiskNode(diskUUID)
 		if err != nil {
@@ -690,6 +771,31 @@ func validateRecurringJobLabels(vol *longhorn.Volume) error {
 	return nil
 }
 
+func validateDataLayout(dataEngine longhorn.DataEngineType, layout longhorn.VolumeDataLayout) error {
+	switch layout.Type {
+	case "", longhorn.VolumeDataLayoutTypeReplicated:
+		if layout.DataChunks != 0 || layout.ParityChunks != 0 || layout.StripSizeKB != 0 {
+			return fmt.Errorf("EC params (dataChunks, parityChunks, stripSizeKB) must be 0 for non-sharded volumes")
+		}
+		if layout.Mode != "" && layout.Mode != longhorn.VolumeDataLayoutModeRaid1 {
+			return fmt.Errorf("spec.dataLayout.mode %v is not valid for non-sharded volumes", layout.Mode)
+		}
+	case longhorn.VolumeDataLayoutTypeSharded:
+		if !types.IsDataEngineV2(dataEngine) {
+			return fmt.Errorf("sharded data layout requires V2 data engine")
+		}
+		if layout.Mode != longhorn.VolumeDataLayoutModeErasureCoding {
+			return fmt.Errorf("spec.dataLayout.mode must be %v when type is %v", longhorn.VolumeDataLayoutModeErasureCoding, longhorn.VolumeDataLayoutTypeSharded)
+		}
+		if err := types.ValidateECParameters(layout.DataChunks, layout.ParityChunks, layout.StripSizeKB); err != nil {
+			return fmt.Errorf("spec.dataLayout: %v", err)
+		}
+	default:
+		return fmt.Errorf("invalid spec.dataLayout.type %v", layout.Type)
+	}
+	return nil
+}
+
 func validateSnapshotHashingRequestTime(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
 	oldReq := oldVolume.Spec.SnapshotHashingRequestedAt
 	oldDone := oldVolume.Status.LastOnDemandSnapshotHashingCompleteAt
@@ -709,6 +815,31 @@ func validateSnapshotHashingRequestTime(oldVolume *longhorn.Volume, newVolume *l
 	// Reject only a new request while the previous one is still in progress.
 	if oldReq != "" && oldReq != oldDone {
 		return werror.NewInvalidError("previous snapshot hashing request is still in progress", ".spec.snapshotHashingRequestedAt")
+	}
+
+	return nil
+}
+
+func (v *volumeValidator) validateEncryptedVolMigrationEngineImage(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
+	if !newVolume.Spec.Encrypted {
+		return nil
+	}
+
+	if oldVolume.Spec.MigrationNodeID != "" || oldVolume.Spec.MigrationNodeID == newVolume.Spec.MigrationNodeID {
+		return nil
+	}
+
+	engineImage := newVolume.Status.CurrentImage
+	if engineImage == "" {
+		engineImage = newVolume.Spec.Image
+	}
+
+	cliAPIVersion, err := v.ds.GetDataEngineImageCLIAPIVersion(engineImage, newVolume.Spec.DataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get CLI API version for validating volume update for volume %v", newVolume.Name)
+	}
+	if cliAPIVersion < lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+		return fmt.Errorf("cannot migratable volume %v with engine image %v that has CLI API version %v less than %v for encrypted volumes", newVolume.Name, engineImage, cliAPIVersion, lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize)
 	}
 
 	return nil

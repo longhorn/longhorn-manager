@@ -96,6 +96,15 @@ type EngineCreateRequest struct {
 	TargetAddress     string
 	UpgradeRequired   bool
 	SalvageRequested  bool
+	SnapshotMaxCount  int
+}
+
+type EngineFrontendCreateRequest struct {
+	Frontend          string
+	UblkQueueDepth    int
+	UblkNumberOfQueue int
+	TargetAddress     string
+	EngineName        string
 }
 
 type ReplicaCreateRequest struct {
@@ -103,6 +112,21 @@ type ReplicaCreateRequest struct {
 	DiskUUID         string
 	ExposeRequired   bool
 	BackingImageName string
+}
+
+type ShardCreateRequest struct {
+	LvsName   string
+	LvsUUID   string
+	SlotIndex uint32
+}
+
+// ShardGroupCreateRequest carries the EC creation parameters for a ShardGroup instance.
+type ShardGroupCreateRequest struct {
+	DataChunks       uint32
+	ParityChunks     uint32
+	StripSizeKb      uint32
+	Shards           map[string]*rpc.ShardEndpoint
+	SalvageRequested bool
 }
 
 type InstanceCreateRequest struct {
@@ -117,8 +141,12 @@ type InstanceCreateRequest struct {
 	Binary     string
 	BinaryArgs []string
 
-	Engine  EngineCreateRequest
-	Replica ReplicaCreateRequest
+	Engine         EngineCreateRequest
+	EngineFrontend EngineFrontendCreateRequest
+	Replica        ReplicaCreateRequest
+	Shard          ShardCreateRequest
+	ShardGroup     ShardGroupCreateRequest
+	DataLayoutType rpc.DataLayoutType
 
 	// Deprecated: replaced by DataEngine.
 	BackendStoreDriver string
@@ -154,8 +182,16 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				ReplicaAddressMap: req.Engine.ReplicaAddressMap,
 				Frontend:          req.Engine.Frontend,
 				SalvageRequested:  req.Engine.SalvageRequested,
+				SnapshotMaxCount:  int32(req.Engine.SnapshotMaxCount),
 				UblkQueueDepth:    int32(req.Engine.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.Engine.UblkNumberOfQueue),
+			}
+		case types.InstanceTypeEngineFrontend:
+			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
+				Size:              req.Size,
+				Frontend:          req.EngineFrontend.Frontend,
+				UblkQueueDepth:    int32(req.EngineFrontend.UblkQueueDepth),
+				UblkNumberOfQueue: int32(req.EngineFrontend.UblkNumberOfQueue),
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
@@ -164,6 +200,24 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				DiskUuid:         req.Replica.DiskUUID,
 				ExposeRequired:   req.Replica.ExposeRequired,
 				BackingImageName: req.Replica.BackingImageName,
+			}
+		case types.InstanceTypeShard:
+			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
+				Size:      req.Size,
+				LvsName:   req.Shard.LvsName,
+				LvsUuid:   req.Shard.LvsUUID,
+				SlotIndex: req.Shard.SlotIndex,
+			}
+		case types.InstanceTypeShardGroup:
+			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
+				Size: req.Size,
+				ShardGroupSpec: &rpc.ShardGroupSpec{
+					DataChunks:       req.ShardGroup.DataChunks,
+					ParityChunks:     req.ShardGroup.ParityChunks,
+					StripSizeKb:      req.ShardGroup.StripSizeKb,
+					Shards:           req.ShardGroup.Shards,
+					SalvageRequested: req.ShardGroup.SalvageRequested,
+				},
 			}
 		default:
 			return nil, fmt.Errorf("failed to create instance: invalid instance type %v", req.InstanceType)
@@ -186,8 +240,20 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 			UpgradeRequired:  req.Engine.UpgradeRequired,
 			InitiatorAddress: req.Engine.InitiatorAddress,
-			TargetAddress:    req.Engine.TargetAddress,
+			TargetAddress: func() string {
+				if req.InstanceType == types.InstanceTypeEngineFrontend {
+					return req.EngineFrontend.TargetAddress
+				}
+				return req.Engine.TargetAddress
+			}(),
+			EngineName: func() string {
+				if req.InstanceType == types.InstanceTypeEngineFrontend {
+					return req.EngineFrontend.EngineName
+				}
+				return ""
+			}(),
 		},
+		DataLayoutType: req.DataLayoutType,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create instance")
@@ -399,7 +465,7 @@ func (c *InstanceServiceClient) InstanceResume(dataEngine, name, instanceType st
 }
 
 // InstanceSwitchOverTarget switches over the target for an instance.
-func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, instanceType, targetAddress string) error {
+func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, instanceType, targetAddress, engineName, switchoverPhase string) error {
 	if name == "" {
 		return fmt.Errorf("failed to switch over target for instance: missing required parameter name")
 	}
@@ -418,10 +484,12 @@ func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, insta
 	defer cancel()
 
 	_, err := client.InstanceSwitchOverTarget(ctx, &rpc.InstanceSwitchOverTargetRequest{
-		Name:          name,
-		Type:          instanceType,
-		DataEngine:    rpc.DataEngine(driver),
-		TargetAddress: targetAddress,
+		Name:            name,
+		Type:            instanceType,
+		DataEngine:      rpc.DataEngine(driver),
+		TargetAddress:   targetAddress,
+		EngineName:      engineName,
+		SwitchoverPhase: switchoverPhase,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "failed to switch over target for instance %v", name)

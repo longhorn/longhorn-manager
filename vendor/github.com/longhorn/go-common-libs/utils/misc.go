@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"cmp"
 	"crypto/rand"
 	"fmt"
 	"math/big"
@@ -13,7 +14,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
-	"golang.org/x/exp/constraints"
+
+	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/longhorn/go-common-libs/types"
 )
@@ -123,7 +125,7 @@ func ConvertTypeToString[T any](value T) string {
 }
 
 // SortKeys sorts the keys of a map in ascending order.
-func SortKeys[K constraints.Ordered, V any](mapObj map[K]V) ([]K, error) {
+func SortKeys[K cmp.Ordered, V any](mapObj map[K]V) ([]K, error) {
 	if mapObj == nil {
 		return nil, fmt.Errorf("input object cannot be nil")
 	}
@@ -218,4 +220,24 @@ func GetStringFromMap(mapObj map[string]any, key string) string {
 	default:
 		return fmt.Sprint(value)
 	}
+}
+
+// IsVersionAtLeast checks if the current version is at least the minimum version.
+func IsVersionAtLeast(currentVersion, minimumVersion string) (bool, error) {
+	parsedVer, err := version.ParseSemantic(currentVersion)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse testing version %q", currentVersion)
+	}
+
+	minVer, err := version.ParseSemantic(minimumVersion)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse minimum version %q", minimumVersion)
+	}
+
+	return parsedVer.AtLeast(minVer), nil
+}
+
+func IsVersionValid(versionStr string) bool {
+	_, err := version.ParseSemantic(versionStr)
+	return err == nil
 }

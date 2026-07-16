@@ -11,7 +11,7 @@ import (
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
-func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddress string) (info *etypes.VolumeInfo, err error) {
+func (c *ProxyClient) VolumeGet(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress string) (info *etypes.VolumeInfo, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
@@ -31,8 +31,9 @@ func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddre
 	}()
 
 	req := &rpc.ProxyEngineRequest{
-		Address:    serviceAddress,
-		EngineName: engineName,
+		Address:            serviceAddress,
+		EngineName:         engineName,
+		EngineFrontendName: engineFrontendName,
 		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
@@ -62,12 +63,15 @@ func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddre
 	return info, nil
 }
 
-func (c *ProxyClient) VolumeExpand(dataEngine, engineName, volumeName, serviceAddress string,
+func (c *ProxyClient) VolumeExpand(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress string,
 	size int64) (err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
 		"serviceAddress": serviceAddress,
+	}
+	if dataEngine == dataEngineV2 {
+		input["engineFrontendName"] = engineFrontendName
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return errors.Wrap(err, "failed to expand volume")
@@ -84,8 +88,9 @@ func (c *ProxyClient) VolumeExpand(dataEngine, engineName, volumeName, serviceAd
 
 	req := &rpc.EngineVolumeExpandRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:    serviceAddress,
-			EngineName: engineName,
+			Address:            serviceAddress,
+			EngineName:         engineName,
+			EngineFrontendName: engineFrontendName,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),

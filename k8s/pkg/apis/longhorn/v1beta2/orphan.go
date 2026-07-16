@@ -5,9 +5,11 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type OrphanType string
 
 const (
-	OrphanTypeReplicaData     = OrphanType("replica")
-	OrphanTypeEngineInstance  = OrphanType("engine-instance")
-	OrphanTypeReplicaInstance = OrphanType("replica-instance")
+	OrphanTypeReplicaData        = OrphanType("replica")
+	OrphanTypeEngineInstance     = OrphanType("engine-instance")
+	OrphanTypeReplicaInstance    = OrphanType("replica-instance")
+	OrphanTypeShardInstance      = OrphanType("shard-instance")
+	OrphanTypeShardGroupInstance = OrphanType("shardgroup-instance")
 )
 
 const (

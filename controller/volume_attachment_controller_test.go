@@ -6,6 +6,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -19,13 +21,12 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 type volumeAttachmentTestCase struct {
 	volAttachment *longhorn.VolumeAttachment
 	vol           *longhorn.Volume
+	nodes         []*longhorn.Node
 
 	expectedVolAttachment *longhorn.VolumeAttachment
 	expectedVol           *longhorn.Volume
@@ -420,6 +421,87 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 
 }
 
+func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	logger := logrus.StandardLogger()
+
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	engineIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+	engineFrontendIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+
+	vac, err := NewLonghornVolumeAttachmentController(logger, ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace)
+	c.Assert(err, IsNil)
+
+	for index := range vac.cacheSyncs {
+		vac.cacheSyncs[index] = alwaysReady
+	}
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+
+	createdVolume, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), v, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = volumeIndexer.Add(createdVolume)
+	c.Assert(err, IsNil)
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.NodeID = TestNode2
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+	e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		"replica-1": longhorn.ReplicaModeRW,
+	}
+
+	createdEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), e, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = engineIndexer.Add(createdEngine)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, false)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+
+	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "")
+	ef.Spec.DesireState = longhorn.InstanceStateRunning
+	createdEngineFrontend, err := lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Create(context.TODO(), ef, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = engineFrontendIndexer.Add(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, false)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+
+	createdEngineFrontend.Status.CurrentState = longhorn.InstanceStateRunning
+	createdEngineFrontend.Status.Endpoint = "/dev/longhorn/" + v.Name
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, false)
+
+	createdEngineFrontend.Status.Endpoint = ""
+	createdEngineFrontend.Spec.DisableFrontend = true
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
+
+	createdEngineFrontend.Spec.DisableFrontend = false
+	createdEngineFrontend.Spec.Frontend = longhorn.VolumeFrontendEmpty
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode1), Equals, true)
+}
+
 func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCase) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
@@ -432,6 +514,7 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 
 	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 	volumeAttachmentIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments().Informer().GetIndexer()
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 
 	vac, err := NewLonghornVolumeAttachmentController(logger, ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace)
 	c.Assert(err, IsNil)
@@ -456,6 +539,13 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 	err = volumeAttachmentIndexer.Add(volAttachment)
 	c.Assert(err, IsNil)
 
+	for _, n := range tc.nodes {
+		createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), n, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = nodeIndexer.Add(createdNode)
+		c.Assert(err, IsNil)
+	}
+
 	////////////////////////////////////
 	// main test func
 	err = vac.syncHandler(getKey(volAttachment, c))
@@ -477,6 +567,130 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 	}
 	c.Assert(retVolAttachment.Status, DeepEquals, tc.expectedVolAttachment.Status)
 
+}
+
+func (s *TestSuite) TestVolumeMigrationStartNodeReadiness(c *C) {
+	testCases := map[string]*volumeAttachmentTestCase{}
+
+	// shared builder: migratable vol attached to TestNode1, CSI tickets for both nodes
+	makeMigrationTC := func() *volumeAttachmentTestCase {
+		tc := generateVolumeAttachmentTestCaseTemplate(TestVolumeName)
+		tc.vol.Spec.Migratable = true
+		tc.vol.Spec.AccessMode = longhorn.AccessModeReadWriteMany
+		tc.vol.Spec.NodeID = TestNode1
+		tc.vol.Status.State = longhorn.VolumeStateAttached
+		tc.vol.Status.CurrentNodeID = TestNode1
+		tc.volAttachment.Spec.AttachmentTickets = map[string]*longhorn.AttachmentTicket{
+			"csi-node1": {
+				ID:         "csi-node1",
+				Type:       longhorn.AttacherTypeCSIAttacher,
+				NodeID:     TestNode1,
+				Parameters: map[string]string{},
+			},
+			"csi-node2": {
+				ID:         "csi-node2",
+				Type:       longhorn.AttacherTypeCSIAttacher,
+				NodeID:     TestNode2,
+				Parameters: map[string]string{},
+			},
+		}
+		return tc
+	}
+
+	// shared expected ticket statuses: csi-node1 satisfied, csi-node2 not (migration not
+	// confirmed by VolumeController yet, so CurrentMigrationNodeID is still "")
+	expectedTicketStatuses := func() map[string]*longhorn.AttachmentTicketStatus {
+		return map[string]*longhorn.AttachmentTicketStatus{
+			"csi-node1": {
+				ID:        "csi-node1",
+				Satisfied: true,
+				Conditions: types.SetConditionWithoutTimestamp([]longhorn.Condition{},
+					longhorn.AttachmentStatusConditionTypeSatisfied, longhorn.ConditionStatusTrue, "", ""),
+			},
+			"csi-node2": {
+				ID:        "csi-node2",
+				Satisfied: false,
+				Conditions: types.SetConditionWithoutTimestamp([]longhorn.Condition{},
+					longhorn.AttachmentStatusConditionTypeSatisfied, longhorn.ConditionStatusFalse, "",
+					fmt.Sprintf("the volume is currently attached to different node %v ", TestNode1)),
+			},
+		}
+	}
+
+	///////////////////////////////////////////////////////////////////
+	// Case A: target node not found in etcd -> IsNodeDownOrDeletedOrMissingManager=true -> blocked
+	tc := makeMigrationTC()
+	tc.nodes = []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		// TestNode2 intentionally absent
+	}
+	tc.copyCurrentToExpect()
+	tc.expectedVol.Spec.MigrationNodeID = ""
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = expectedTicketStatuses()
+	testCases["migration blocked: target node absent"] = tc
+	///////////////////////////////////////////////////////////////////
+
+	///////////////////////////////////////////////////////////////////
+	// Case B: target node Ready=False, Reason=ManagerPodMissing -> blocked
+	tc = makeMigrationTC()
+	tc.nodes = []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, false, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonManagerPodMissing)),
+	}
+	tc.copyCurrentToExpect()
+	tc.expectedVol.Spec.MigrationNodeID = ""
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = expectedTicketStatuses()
+	testCases["migration blocked: target node ManagerPodMissing"] = tc
+	///////////////////////////////////////////////////////////////////
+
+	///////////////////////////////////////////////////////////////////
+	// Case C: target node Ready=False, Reason=KubernetesNodeNotReady -> blocked
+	tc = makeMigrationTC()
+	tc.nodes = []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, false, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonKubernetesNodeNotReady)),
+	}
+	tc.copyCurrentToExpect()
+	tc.expectedVol.Spec.MigrationNodeID = ""
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = expectedTicketStatuses()
+	testCases["migration blocked: target node KubernetesNodeNotReady"] = tc
+	///////////////////////////////////////////////////////////////////
+
+	///////////////////////////////////////////////////////////////////
+	// Case D: target node Ready=False, Reason=ManagerPodDown (not in IsNodeDownOrDeletedOrMissingManager).
+	// IsNodeDownOrDeletedOrMissingManager returns false, so only the Ready=True gate blocks this.
+	// This test will FAIL before the Ready=True gate is added and PASS after.
+	tc = makeMigrationTC()
+	tc.nodes = []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, false, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonManagerPodDown)),
+	}
+	tc.copyCurrentToExpect()
+	tc.expectedVol.Spec.MigrationNodeID = ""
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = expectedTicketStatuses()
+	testCases["migration blocked: target node Ready=False transitional (ManagerPodDown)"] = tc
+	///////////////////////////////////////////////////////////////////
+
+	///////////////////////////////////////////////////////////////////
+	// Case E: target node Ready=True -> migration proceeds
+	tc = makeMigrationTC()
+	tc.nodes = []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+	}
+	tc.copyCurrentToExpect()
+	tc.expectedVol.Spec.MigrationNodeID = TestNode2
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = expectedTicketStatuses()
+	testCases["migration proceeds: target node Ready=True"] = tc
+	///////////////////////////////////////////////////////////////////
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+		s.runVolumeAttachmentTestCase(c, tc)
+	}
 }
 
 func newVolumeAttachment(name string) *longhorn.VolumeAttachment {

@@ -82,6 +82,14 @@ type EngineListerExpansion interface{}
 // EngineNamespaceLister.
 type EngineNamespaceListerExpansion interface{}
 
+// EngineFrontendListerExpansion allows custom methods to be added to
+// EngineFrontendLister.
+type EngineFrontendListerExpansion interface{}
+
+// EngineFrontendNamespaceListerExpansion allows custom methods to be added to
+// EngineFrontendNamespaceLister.
+type EngineFrontendNamespaceListerExpansion interface{}
+
 // EngineImageListerExpansion allows custom methods to be added to
 // EngineImageLister.
 type EngineImageListerExpansion interface{}
@@ -137,6 +145,22 @@ type SettingListerExpansion interface{}
 // SettingNamespaceListerExpansion allows custom methods to be added to
 // SettingNamespaceLister.
 type SettingNamespaceListerExpansion interface{}
+
+// ShardListerExpansion allows custom methods to be added to
+// ShardLister.
+type ShardListerExpansion interface{}
+
+// ShardNamespaceListerExpansion allows custom methods to be added to
+// ShardNamespaceLister.
+type ShardNamespaceListerExpansion interface{}
+
+// ShardGroupListerExpansion allows custom methods to be added to
+// ShardGroupLister.
+type ShardGroupListerExpansion interface{}
+
+// ShardGroupNamespaceListerExpansion allows custom methods to be added to
+// ShardGroupNamespaceLister.
+type ShardGroupNamespaceListerExpansion interface{}
 
 // ShareManagerListerExpansion allows custom methods to be added to
 // ShareManagerLister.

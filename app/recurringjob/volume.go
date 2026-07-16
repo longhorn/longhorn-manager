@@ -337,7 +337,7 @@ func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error 
 	if err != nil {
 		return err
 	}
-	job.eventRecorder.Eventf(recurringJob, eventType, eventReason, message)
+	job.eventRecorder.Event(recurringJob, eventType, eventReason, message)
 
 	return nil
 }
@@ -593,11 +593,18 @@ func (job *VolumeJob) doRecurringFilesystemTrim(volume *longhornclient.Volume) (
 		}
 	}()
 	volumeAPI := job.api.Volume
-	volume, err = volumeAPI.ActionTrimFilesystem(volume)
+	// ActionTrimFilesystem returns an empty &Volume{} on error, so keep the original
+	// pointer for the failure path: both the warning event and the wrapped error need
+	// the volume name.
+	trimmed, err := volumeAPI.ActionTrimFilesystem(volume)
 	if err != nil {
+		eventMessage := fmt.Sprintf("volume %v: %v", volume.Name, err)
+		if eventErr := job.eventCreate(corev1.EventTypeWarning, constant.EventReasonFailedFilesystemTrim, eventMessage); eventErr != nil {
+			job.logger.WithError(eventErr).Warn("failed to record filesystem-trim warning event")
+		}
 		return err
 	}
-	return job.purgeSnapshots(volume, volumeAPI)
+	return job.purgeSnapshots(trimmed, volumeAPI)
 }
 
 // waitForBackupProcessStart timeout in second

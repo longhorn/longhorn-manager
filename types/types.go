@@ -30,6 +30,7 @@ const (
 	LonghornKindVolume              = "Volume"
 	LonghornKindVolumeAttachment    = "VolumeAttachment"
 	LonghornKindEngine              = "Engine"
+	LonghornKindEngineFrontend      = "EngineFrontend"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackupTarget        = "BackupTarget"
 	LonghornKindBackupVolume        = "BackupVolume"
@@ -47,6 +48,8 @@ const (
 	LonghornKindSystemBackup        = "SystemBackup"
 	LonghornKindSystemRestore       = "SystemRestore"
 	LonghornKindOrphan              = "Orphan"
+	LonghornKindShardGroup          = "ShardGroup"
+	LonghornKindShard               = "Shard"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -99,6 +102,36 @@ const (
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
 )
 
+// ECMaxBaseBdevs is the maximum number of base bdevs (k+m) an EC array may have.
+// Matches the SPDK bdev_ec compile-time constant EC_MAX_BASE_BDEVS (ISA-L Reed-Solomon
+// requires n = k+m <= 255; Longhorn caps it at 32 for operational sanity).
+const ECMaxBaseBdevs = 32
+
+// ValidateECParameters validates the erasure-coding parameters shared by sharded
+// Volumes (spec.dataLayout) and ShardGroups (spec): k=dataChunks, m=parityChunks,
+// and the EC chunk size. Kept in one place so the bounds cannot drift between the
+// Volume and ShardGroup admission webhooks.
+func ValidateECParameters(dataChunks, parityChunks, stripSizeKB int) error {
+	if dataChunks < 1 {
+		return fmt.Errorf("dataChunks must be >= 1, got %v", dataChunks)
+	}
+	if parityChunks < 1 {
+		return fmt.Errorf("parityChunks must be >= 1, got %v", parityChunks)
+	}
+	if dataChunks+parityChunks > ECMaxBaseBdevs {
+		return fmt.Errorf("dataChunks (%v) + parityChunks (%v) must be <= %v (Longhorn EC base bdev cap)", dataChunks, parityChunks, ECMaxBaseBdevs)
+	}
+	if stripSizeKB < 4 || stripSizeKB > 1024 || !isPowerOfTwo(stripSizeKB) {
+		return fmt.Errorf("stripSizeKB must be a power of two in [4, 1024], got %v", stripSizeKB)
+	}
+	return nil
+}
+
+// isPowerOfTwo reports whether n is a positive power of two.
+func isPowerOfTwo(n int) bool {
+	return n > 0 && n&(n-1) == 0
+}
+
 const (
 	DefaultAPIPort                   = 9500
 	DefaultConversionWebhookPort     = 9501
@@ -106,14 +139,17 @@ const (
 	DefaultRecoveryBackendServerPort = 9503
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
-	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
+	MetadataDirectoryInContainer     = "/metadata/"
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
-
-	UnixDomainSocketDirectoryInContainer = "/host/var/lib/longhorn/unix-domain-socket/"
-	UnixDomainSocketDirectoryOnHost      = "/var/lib/longhorn/unix-domain-socket/"
-
-	DefaultLogDirectoryOnHost = "/var/lib/longhorn/logs/"
+	DefaultDataPath                  = "/var/lib/longhorn"
+	DefaultControlPath               = "/var/lib/longhorn"
+	LonghornDataPathEnv              = "LONGHORN_DATA_PATH"
+	LonghornControlPathEnv           = "LONGHORN_CONTROL_PATH"
+	EngineBinaryDirectorySubpath     = "engine-binaries"
+	MetadataDirectorySubpath         = "metadata"
+	UnixDomainSocketDirectorySubpath = "unix-domain-socket"
+	LogDirectorySubpath              = "logs"
 
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
@@ -123,6 +159,7 @@ const (
 	TLSCAFile               = "ca.crt"
 	TLSCertFile             = "tls.crt"
 	TLSKeyFile              = "tls.key"
+	TLSPeerName             = "longhorn-backend.longhorn-system"
 
 	DefaultBackupTargetName = "default"
 
@@ -130,6 +167,8 @@ const (
 	LonghornInstanceManagerKey = "longhorninstancemanager"
 	LonghornEngineKey          = "longhornengine"
 	LonghornReplicaKey         = "longhornreplica"
+	LonghornShardKey           = "longhornshard"
+	LonghornShardGroupKey      = "longhornshardgroup"
 	LonghornDiskUUIDKey        = "longhorndiskuuid"
 
 	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
@@ -218,6 +257,9 @@ const (
 	KubernetesTopologyRegionLabelKey      = "topology.kubernetes.io/region"
 	KubernetesTopologyZoneLabelKey        = "topology.kubernetes.io/zone"
 
+	KubernetesCSINodeStageSecretNameKey      = "csi.storage.k8s.io/node-stage-secret-name"
+	KubernetesCSINodeStageSecretNamespaceKey = "csi.storage.k8s.io/node-stage-secret-namespace"
+
 	KubernetesClusterAutoscalerSafeToEvictKey = "cluster-autoscaler.kubernetes.io/safe-to-evict"
 
 	LonghornDriverName = "driver.longhorn.io"
@@ -235,6 +277,13 @@ const (
 	DefaultRecurringJobConcurrency = 10
 
 	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
+
+	// ShardAnnotationIntentionalDelete marks a Shard CR whose deletion is admin-driven
+	// (kubectl delete, eviction, drain) rather than caused by a real failure. The
+	// ShardGroup controller force-fails the slot via ShardGroupShardForceFail and
+	// records the slot in ShardGroup.Status.IntentionalDeleteSlots so the replacement
+	// Shard CR bypasses the failure-recovery debounce.
+	ShardAnnotationIntentionalDelete = "longhorn.io/intentional-delete"
 
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
@@ -268,6 +317,7 @@ const (
 	EnvDataEngine     = "DATA_ENGINE"
 	EnvTZ             = "TZ"
 	EnvDistro         = "LONGHORN_DISTRO"
+	EnvKubeletRootDir = "KUBELET_ROOT_DIR"
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
@@ -367,6 +417,18 @@ func GenerateEngineNameForVolume(vName, currentEngineName string) string {
 	return vName + engineSuffix + "-" + strconv.Itoa(suffix+1)
 }
 
+func GenerateEngineFrontendNameForVolume(vName, currentEngineFrontendName string) string {
+	if currentEngineFrontendName == "" {
+		return vName + "-ef-0"
+	}
+	parts := strings.Split(currentEngineFrontendName, "-")
+	suffix, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return vName + "-ef-1"
+	}
+	return vName + "-ef-" + strconv.Itoa(suffix+1)
+}
+
 func GenerateReplicaNameForVolume(vName string) string {
 	return vName + replicaSuffix + "-" + util.RandomID()
 }
@@ -387,13 +449,94 @@ func GetDefaultManagerURL() string {
 	return "http://longhorn-backend:" + strconv.Itoa(DefaultAPIPort) + "/v1"
 }
 
+// GetLonghornDataPath returns the process-scoped Longhorn data path.
+// LONGHORN_DATA_PATH is expected to be populated from the configured
+// default-data-path during installation or pod creation. This is an
+// installation-time default rather than a dynamically reloadable setting;
+// when the env var is unset, empty, or invalid, the historical default path
+// is used for backward compatibility.
+func GetLonghornDataPath() string {
+	path := strings.TrimSpace(os.Getenv(LonghornDataPathEnv))
+	if path == "" {
+		return DefaultDataPath
+	}
+	path = filepath.Clean(path)
+	if !IsValidLonghornDataPath(path) {
+		logrus.Warnf("Falling back to default data path %q because %s is unset or invalid", DefaultDataPath, LonghornDataPathEnv)
+		return DefaultDataPath
+	}
+	return path
+}
+
+// GetLonghornControlPath returns the process-scoped Longhorn control path.
+// LONGHORN_CONTROL_PATH is expected to be populated from the configured
+// default-control-path during installation or pod creation. This is an
+// installation-time default rather than a dynamically reloadable setting;
+// when the env var is unset, empty, or invalid, the historical default path
+// is used for backward compatibility.
+func GetLonghornControlPath() string {
+	path := strings.TrimSpace(os.Getenv(LonghornControlPathEnv))
+	if path == "" {
+		return DefaultControlPath
+	}
+	path = filepath.Clean(path)
+	if !IsValidLonghornControlPath(path) {
+		if path == "/dev" || strings.HasPrefix(path, "/dev/") {
+			logrus.Warnf("Falling back to default control path %q because %s cannot point to /dev", DefaultControlPath, LonghornControlPathEnv)
+			return DefaultControlPath
+		}
+		logrus.Warnf("Falling back to default control path %q because %s is unset or invalid", DefaultControlPath, LonghornControlPathEnv)
+		return DefaultControlPath
+	}
+	return path
+}
+
+func IsValidLonghornDataPath(path string) bool {
+	path = filepath.Clean(strings.TrimSpace(path))
+	return path != "." && path != "" && path != string(filepath.Separator) && filepath.IsAbs(path)
+}
+
+func IsValidLonghornControlPath(path string) bool {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "." || path == "" || path == string(filepath.Separator) || !filepath.IsAbs(path) {
+		return false
+	}
+	return path != "/dev" && !strings.HasPrefix(path, "/dev/")
+}
+
+// Defaults to /var/lib/longhorn/engine-binaries when LONGHORN_CONTROL_PATH is unset.
+func GetEngineBinaryDirectoryOnHost() string {
+	return filepath.Join(GetLonghornControlPath(), EngineBinaryDirectorySubpath)
+}
+
+// Defaults to /var/lib/longhorn/metadata when LONGHORN_CONTROL_PATH is unset.
+func GetMetadataDirectoryOnHost() string {
+	return filepath.Join(GetLonghornControlPath(), MetadataDirectorySubpath)
+}
+
+// Defaults to /var/lib/longhorn/unix-domain-socket when LONGHORN_CONTROL_PATH is unset.
+func GetUnixDomainSocketDirectoryOnHost() string {
+	return filepath.Join(GetLonghornControlPath(), UnixDomainSocketDirectorySubpath)
+}
+
+// Defaults to /host/var/lib/longhorn/unix-domain-socket inside the container.
+func GetUnixDomainSocketDirectoryInContainer() string {
+	return filepath.Join(ReplicaHostPrefix,
+		strings.TrimLeft(GetUnixDomainSocketDirectoryOnHost(), string(filepath.Separator)))
+}
+
+// Defaults to /var/lib/longhorn/logs when LONGHORN_CONTROL_PATH is unset.
+func GetDefaultLogDirectoryOnHost() string {
+	return filepath.Join(GetLonghornControlPath(), LogDirectorySubpath)
+}
+
 func GetImageCanonicalName(image string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(image, ":", "-"), "/", "-")
 }
 
 func GetEngineBinaryDirectoryOnHostForImage(image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(EngineBinaryDirectoryOnHost, cname)
+	return filepath.Join(GetEngineBinaryDirectoryOnHost(), cname)
 }
 
 func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
@@ -403,7 +546,11 @@ func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
 
 func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(filepath.Join(ReplicaHostPrefix, EngineBinaryDirectoryOnHost), cname)
+	return filepath.Join(
+		ReplicaHostPrefix,
+		strings.TrimLeft(GetEngineBinaryDirectoryOnHost(), string(filepath.Separator)),
+		cname,
+	)
 }
 
 func EngineBinaryExistOnHostForImage(image string) (bool, error) {
@@ -626,6 +773,12 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	}
 }
 
+func GetShardGroupLabels(shardGroupName string) map[string]string {
+	return map[string]string{
+		LonghornLabelShardGroup: shardGroupName,
+	}
+}
+
 func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {
 	if isGroup {
 		return GetRecurringJobLabelKey(LonghornLabelRecurringJobGroup, name)
@@ -691,6 +844,26 @@ func GetOrphanLabelsForOrphanedReplicaInstance(nodeID, instanceManager, replicaN
 	labels[LonghornInstanceManagerKey] = instanceManager
 	labels[LonghornReplicaKey] = replicaName
 	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeReplicaInstance)
+	return labels
+}
+
+func GetOrphanLabelsForOrphanedShardInstance(nodeID, instanceManager, shardName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
+	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
+	labels[LonghornShardKey] = shardName
+	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeShardInstance)
+	return labels
+}
+
+func GetOrphanLabelsForOrphanedShardGroupInstance(nodeID, instanceManager, shardGroupName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
+	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
+	labels[LonghornShardGroupKey] = shardGroupName
+	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeShardGroupInstance)
 	return labels
 }
 

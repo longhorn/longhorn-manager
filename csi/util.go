@@ -36,8 +36,6 @@ const (
 	defaultForceUmountTimeout = 30 * time.Second
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
-
-	nodeTopologyKey = "kubernetes.io/hostname"
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -283,6 +281,47 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 	vol.DataEngine = string(longhorn.DataEngineTypeV1)
 	if driver, ok := volOptions["dataEngine"]; ok {
 		vol.DataEngine = driver
+	}
+
+	layoutType, hasLayoutType := volOptions["dataLayout.type"]
+	layoutMode, hasLayoutMode := volOptions["dataLayout.mode"]
+	dataChunksRaw, hasDataChunks := volOptions["dataLayout.dataChunks"]
+	parityChunksRaw, hasParityChunks := volOptions["dataLayout.parityChunks"]
+	stripSizeKBRaw, hasStripSizeKB := volOptions["dataLayout.stripSizeKB"]
+
+	if hasLayoutType || hasLayoutMode || hasDataChunks || hasParityChunks || hasStripSizeKB {
+		vol.DataLayout = &longhornclient.VolumeDataLayout{}
+		if hasLayoutType {
+			vol.DataLayout.Type = layoutType
+		}
+		if hasLayoutMode {
+			vol.DataLayout.Mode = layoutMode
+		}
+		if hasDataChunks {
+			dataChunks, err := strconv.Atoi(dataChunksRaw)
+			if err != nil {
+				return nil, errors.Wrap(err, "invalid parameter dataLayout.dataChunks")
+			}
+			vol.DataLayout.DataChunks = int64(dataChunks)
+		}
+		if hasParityChunks {
+			parityChunks, err := strconv.Atoi(parityChunksRaw)
+			if err != nil {
+				return nil, errors.Wrap(err, "invalid parameter dataLayout.parityChunks")
+			}
+			vol.DataLayout.ParityChunks = int64(parityChunks)
+		}
+		if hasStripSizeKB {
+			stripSizeKB, err := strconv.Atoi(stripSizeKBRaw)
+			if err != nil {
+				return nil, errors.Wrap(err, "invalid parameter dataLayout.stripSizeKB")
+			}
+			vol.DataLayout.StripSizeKB = int64(stripSizeKB)
+		}
+
+		if vol.DataLayout.Type == string(longhorn.VolumeDataLayoutTypeSharded) && vol.DataLayout.Mode == "" {
+			vol.DataLayout.Mode = string(longhorn.VolumeDataLayoutModeErasureCoding)
+		}
 	}
 
 	if freezeFilesystemForSnapshot, ok := volOptions["freezeFilesystemForSnapshot"]; ok {
@@ -610,17 +649,6 @@ func requireExclusiveAccess(vol *longhornclient.Volume, capability *csi.VolumeCa
 
 func getStageBlockVolumePath(stagingTargetPath, volumeID string) string {
 	return filepath.Join(stagingTargetPath, volumeID)
-}
-
-func parseNodeID(topology *csi.Topology) (string, error) {
-	if topology == nil || topology.Segments == nil {
-		return "", fmt.Errorf("missing accessible topology request parameter")
-	}
-	nodeId, ok := topology.Segments[nodeTopologyKey]
-	if !ok {
-		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
-	}
-	return nodeId, nil
 }
 
 func isFileNotExistError(err error) bool {

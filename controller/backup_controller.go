@@ -507,6 +507,16 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	// Remove the Backup Volume recurring jobs/groups information.
 	// Only record the latest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
 	delete(backupInfo.Labels, types.VolumeRecurringJobInfoLabel)
+	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", canonicalBackupVolumeName, backupTargetClient.URL)
+	backupVolumeInfo, err := backupTargetClient.BackupVolumeGet(backupVolumeMetadataURL, backupTargetClient.Credential)
+	if err != nil {
+		log.WithError(err).Error("Failed to get backup volume config from backup target")
+	}
+	if backupVolumeInfo != nil {
+		if encrypted, ok := backupVolumeInfo.Labels[types.LonghornLabelVolumeEncrypted]; ok && encrypted == types.LonghornLabelValueEnabled {
+			backupInfo.Labels[types.LonghornLabelVolumeEncrypted] = types.LonghornLabelValueEnabled
+		}
+	}
 
 	// Update Backup CR status
 	backup.Status.BackupTargetName = backupTargetName
@@ -519,13 +529,18 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.Labels = backupInfo.Labels
 	backup.Status.Messages = backupInfo.Messages
 	backup.Status.VolumeName = backupInfo.VolumeName
-	backup.Status.VolumeSize = backupInfo.VolumeSize
 	backup.Status.VolumeCreated = backupInfo.VolumeCreated
 	backup.Status.VolumeBackingImageName = backupInfo.VolumeBackingImageName
 	backup.Status.CompressionMethod = longhorn.BackupCompressionMethod(backupInfo.CompressionMethod)
 	backup.Status.LastSyncedAt = syncTime
 	backup.Status.NewlyUploadedDataSize = backupInfo.NewlyUploadedDataSize
 	backup.Status.ReUploadedDataSize = backupInfo.ReUploadedDataSize
+	backup.Status.VolumeSize, err = getCorrectedEncryptedVolumeSize(backupInfo.VolumeSize, backupInfo.Labels)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to get corrected encrypted volume size: %v", backupInfo.VolumeSize)
+		return err
+	}
+
 	return err
 }
 
@@ -1002,6 +1017,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 	if err != nil {
 		return nil, err
 	}
+	bc.logger.Infof("Enable backup monitor for backup %v", backup.Name)
 	bc.monitors[backup.Name] = monitor
 	return monitor, nil
 }
@@ -1162,6 +1178,15 @@ func (bc *BackupController) setInprogressDeletionMap(backupURL string, state lon
 	bc.deletingMapLock.Lock()
 	defer bc.deletingMapLock.Unlock()
 
+	if bc.inProgressDeletingMap[backupURL] == nil {
+		// The entry was removed by the reconcile cleanup path before this
+		// update path acquired the lock. Both the deferred panic-recover and
+		// the regular error path can call this setter after reconcile
+		// observed the deletion as terminal and removed the entry. Returning
+		// here matches the existence check the reconcile read path already
+		// performs in handleBackupDeletionInBackupStore.
+		return
+	}
 	bc.inProgressDeletingMap[backupURL].State = state
 	bc.inProgressDeletingMap[backupURL].ErrorMessage = errMsg
 }

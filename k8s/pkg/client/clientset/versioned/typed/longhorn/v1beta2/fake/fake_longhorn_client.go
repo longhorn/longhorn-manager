@@ -60,6 +60,10 @@ func (c *FakeLonghornV1beta2) Engines(namespace string) v1beta2.EngineInterface 
 	return newFakeEngines(c, namespace)
 }
 
+func (c *FakeLonghornV1beta2) EngineFrontends(namespace string) v1beta2.EngineFrontendInterface {
+	return newFakeEngineFrontends(c, namespace)
+}
+
 func (c *FakeLonghornV1beta2) EngineImages(namespace string) v1beta2.EngineImageInterface {
 	return newFakeEngineImages(c, namespace)
 }
@@ -86,6 +90,14 @@ func (c *FakeLonghornV1beta2) Replicas(namespace string) v1beta2.ReplicaInterfac
 
 func (c *FakeLonghornV1beta2) Settings(namespace string) v1beta2.SettingInterface {
 	return newFakeSettings(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) Shards(namespace string) v1beta2.ShardInterface {
+	return newFakeShards(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) ShardGroups(namespace string) v1beta2.ShardGroupInterface {
+	return newFakeShardGroups(c, namespace)
 }
 
 func (c *FakeLonghornV1beta2) ShareManagers(namespace string) v1beta2.ShareManagerInterface {

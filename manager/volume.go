@@ -109,6 +109,23 @@ func (m *VolumeManager) GetEnginesSorted(vName string) ([]*longhorn.Engine, erro
 	return engines, nil
 }
 
+func (m *VolumeManager) GetEngineFrontendsSorted(vName string) ([]*longhorn.EngineFrontend, error) {
+	engineFrontendMap, err := m.ds.ListVolumeEngineFrontends(vName)
+	if err != nil {
+		return []*longhorn.EngineFrontend{}, err
+	}
+
+	engineFrontends := make([]*longhorn.EngineFrontend, len(engineFrontendMap))
+	engineFrontendNames, err := util.SortKeys(engineFrontendMap)
+	if err != nil {
+		return []*longhorn.EngineFrontend{}, err
+	}
+	for i, engineFrontendName := range engineFrontendNames {
+		engineFrontends[i] = engineFrontendMap[engineFrontendName]
+	}
+	return engineFrontends, nil
+}
+
 func (m *VolumeManager) GetReplicas(vName string) (map[string]*longhorn.Replica, error) {
 	return m.ds.ListVolumeReplicas(vName)
 }
@@ -201,6 +218,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaZoneSoftAntiAffinity:     spec.ReplicaZoneSoftAntiAffinity,
 			ReplicaDiskSoftAntiAffinity:     spec.ReplicaDiskSoftAntiAffinity,
 			DataEngine:                      spec.DataEngine,
+			DataLayout:                      spec.DataLayout,
 			FreezeFilesystemForSnapshot:     spec.FreezeFilesystemForSnapshot,
 			BackupTargetName:                backupTargetName,
 			OfflineRebuilding:               spec.OfflineRebuilding,
@@ -941,6 +959,11 @@ func (m *VolumeManager) UpdateBackupCompressionMethod(name string, value string)
 	v, err = m.ds.GetVolume(name)
 	if err != nil {
 		return nil, err
+	}
+
+	if v.Spec.BackupCompressionMethod == longhorn.BackupCompressionMethod(value) {
+		logrus.Debugf("Volume %v already has backup compression method set to %v", v.Name, value)
+		return v, nil
 	}
 
 	oldValue := v.Spec.BackupCompressionMethod

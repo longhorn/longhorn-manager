@@ -100,6 +100,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.EngineApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineBackupStatus"):
 		return &longhornv1beta2.EngineBackupStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontend"):
+		return &longhornv1beta2.EngineFrontendApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontendNvmeTCPPath"):
+		return &longhornv1beta2.EngineFrontendNvmeTCPPathApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontendSpec"):
+		return &longhornv1beta2.EngineFrontendSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("EngineFrontendStatus"):
+		return &longhornv1beta2.EngineFrontendStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineImage"):
 		return &longhornv1beta2.EngineImageApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineImageSpec"):
@@ -166,6 +174,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.SettingApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("SettingStatus"):
 		return &longhornv1beta2.SettingStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("Shard"):
+		return &longhornv1beta2.ShardApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardGroup"):
+		return &longhornv1beta2.ShardGroupApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardGroupSpec"):
+		return &longhornv1beta2.ShardGroupSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardGroupStatus"):
+		return &longhornv1beta2.ShardGroupStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardSpec"):
+		return &longhornv1beta2.ShardSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardStatus"):
+		return &longhornv1beta2.ShardStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ShareManager"):
 		return &longhornv1beta2.ShareManagerApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ShareManagerSpec"):
@@ -216,6 +236,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.VolumeAttachmentStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeCloneStatus"):
 		return &longhornv1beta2.VolumeCloneStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeDataLayout"):
+		return &longhornv1beta2.VolumeDataLayoutApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeSpec"):
 		return &longhornv1beta2.VolumeSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeStatus"):

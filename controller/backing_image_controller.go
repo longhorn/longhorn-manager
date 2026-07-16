@@ -761,7 +761,7 @@ func (bic *BackingImageController) syncV2StatusWithInstanceManager(bi *longhorn.
 					if bi.Status.DiskFileStatusMap[diskUUID].State != longhorn.BackingImageStateFailed {
 						msg := fmt.Sprintf("found mismatching size %v reported by instance manager %v in disk %v, the size recorded in status is %v",
 							statusInfo.Size, im.Name, diskUUID, bi.Status.Size)
-						bic.eventRecorder.Eventf(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
+						bic.eventRecorder.Event(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
 						bi.Status.DiskFileStatusMap[diskUUID].State = longhorn.BackingImageStateFailed
 						bi.Status.DiskFileStatusMap[diskUUID].Message = msg
 					}
@@ -1350,7 +1350,7 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 				if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State != longhorn.BackingImageStateFailed {
 					msg := fmt.Sprintf("found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v",
 						info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)
-					bic.eventRecorder.Eventf(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
+					bic.eventRecorder.Event(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
 					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State = longhorn.BackingImageStateFailed
 					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].Message = msg
 				}
@@ -1365,7 +1365,7 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 				if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State != longhorn.BackingImageStateFailed {
 					msg := fmt.Sprintf("found mismatching virtualSize %v reported by backing image manager %v in disk %v, the virtualSize recorded in status is %v",
 						info.VirtualSize, bim.Name, bim.Spec.DiskUUID, bi.Status.VirtualSize)
-					bic.eventRecorder.Eventf(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
+					bic.eventRecorder.Event(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
 					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State = longhorn.BackingImageStateFailed
 					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].Message = msg
 				}

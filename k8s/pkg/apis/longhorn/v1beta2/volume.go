@@ -24,6 +24,58 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
+// VolumeDataLayoutType describes how volume data is distributed across nodes.
+// +kubebuilder:validation:Enum=replicated;sharded;""
+type VolumeDataLayoutType string
+
+const (
+	// VolumeDataLayoutTypeReplicated means each node holds a full copy of the data (RAID1).
+	VolumeDataLayoutTypeReplicated = VolumeDataLayoutType("replicated")
+	// VolumeDataLayoutTypeSharded means data chunks are distributed across k+m nodes via erasure
+	// coding, breaking the physical node boundary. No single node holds a complete copy.
+	VolumeDataLayoutTypeSharded = VolumeDataLayoutType("sharded")
+)
+
+// VolumeDataLayoutMode describes the specific data protection mechanism in use.
+// +kubebuilder:validation:Enum=raid1;erasureCoding;""
+type VolumeDataLayoutMode string
+
+const (
+	// VolumeDataLayoutModeRaid1 means V2 RAID1 replication via SPDK bdev_raid_create.
+	VolumeDataLayoutModeRaid1 = VolumeDataLayoutMode("raid1")
+	// VolumeDataLayoutModeErasureCoding means Reed-Solomon erasure coding via SPDK bdev_ec_create.
+	VolumeDataLayoutModeErasureCoding = VolumeDataLayoutMode("erasureCoding")
+)
+
+// VolumeDataLayout declares the user's intended data layout for the volume. The entire struct is
+// immutable after creation. EC sub-fields are only meaningful when Type is VolumeDataLayoutTypeSharded.
+type VolumeDataLayout struct {
+	// Type describes how volume data is distributed across nodes.
+	// +optional
+	Type VolumeDataLayoutType `json:"type"`
+	// Mode describes the specific data protection mechanism in use.
+	// Empty for V1 volumes where no SPDK-level mode applies.
+	// +optional
+	Mode VolumeDataLayoutMode `json:"mode"`
+	// DataChunks is the number of data chunks (k) in the EC array.
+	// Required when Type is sharded; must be 0 for replicated volumes.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	DataChunks int `json:"dataChunks,omitempty"`
+	// ParityChunks is the number of parity chunks (m) in the EC array.
+	// The volume tolerates up to m simultaneous disk failures.
+	// Required when Type is sharded; must be 0 for replicated volumes.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	ParityChunks int `json:"parityChunks,omitempty"`
+	// StripSizeKB is the chunk size in KiB used by the EC bdev.
+	// Must be a power of two in the range [4, 1024].
+	// Required when Type is sharded; must be 0 for replicated volumes.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	StripSizeKB int `json:"stripSizeKB,omitempty"`
+}
+
 // +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;ublk;""
 type VolumeFrontend string
 
@@ -109,6 +161,17 @@ const (
 	VolumeCloneStateFailed                       = VolumeCloneState("failed")
 )
 
+// VolumeSwitchoverState describes the progress of a v2 engine live switchover.
+type VolumeSwitchoverState string
+
+const (
+	VolumeSwitchoverStateEmpty         = VolumeSwitchoverState("")
+	VolumeSwitchoverStatePreparing     = VolumeSwitchoverState("preparing")
+	VolumeSwitchoverStateSwitchingOver = VolumeSwitchoverState("switching-over")
+	VolumeSwitchoverStateFinalizing    = VolumeSwitchoverState("finalizing")
+	VolumeSwitchoverStateReverting     = VolumeSwitchoverState("reverting")
+)
+
 type VolumeCloneStatus struct {
 	// +optional
 	SourceVolume string `json:"sourceVolume"`
@@ -134,6 +197,7 @@ const (
 const (
 	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
 	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonShardSchedulingFailure          = "ShardSchedulingFailure"
 	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
 	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
@@ -261,8 +325,13 @@ type VolumeSpec struct {
 	DataLocality DataLocality `json:"dataLocality"`
 	// +optional
 	StaleReplicaTimeout int `json:"staleReplicaTimeout"`
+	// nodeID defines the node where the volume is attached (where the frontend initiator runs).
 	// +optional
 	NodeID string `json:"nodeID"`
+	// engineNodeID defines the node where the backend engine (target) runs.
+	// If empty, falls back to NodeID.
+	// +optional
+	EngineNodeID string `json:"engineNodeID"`
 	// +optional
 	MigrationNodeID string `json:"migrationNodeID"`
 	// +optional
@@ -356,6 +425,12 @@ type VolumeSpec struct {
 	// If SnapshotHashingRequestedAt differs from LastOnDemandSnapshotHashingCompleteAt, it indicates that a hashing request
 	// is still in progress, and a new request will be rejected.
 	SnapshotHashingRequestedAt string `json:"snapshotHashingRequestedAt,omitempty"` // +optional
+
+	// DataLayout declares the user's intended data layout (topology type, protection mode, and EC parameters).
+	// The entire struct is immutable after creation.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="DataLayout is immutable"
+	// +optional
+	DataLayout VolumeDataLayout `json:"dataLayout,omitempty"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -368,6 +443,9 @@ type VolumeStatus struct {
 	Robustness VolumeRobustness `json:"robustness"`
 	// +optional
 	CurrentNodeID string `json:"currentNodeID"`
+	// the node that the engine (target) is currently running on.
+	// +optional
+	CurrentEngineNodeID string `json:"currentEngineNodeID"`
 	// +optional
 	CurrentImage string `json:"currentImage"`
 	// +optional
@@ -401,6 +479,8 @@ type VolumeStatus struct {
 	// +optional
 	LastDegradedAt string `json:"lastDegradedAt"`
 	// +optional
+	LastAutoSalvagedAt string `json:"lastAutoSalvagedAt"`
+	// +optional
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
@@ -409,6 +489,10 @@ type VolumeStatus struct {
 	// most recent on-demand snapshot checksum calculation completed.
 	// When this value matches SnapshotHashingRequestedAt, the requested on-demand checksum calculation is considered complete.
 	LastOnDemandSnapshotHashingCompleteAt string `json:"lastOnDemandSnapshotHashingCompleteAt,omitempty"`
+	// SwitchoverState describes the current progress of a v2 engine live switchover.
+	// Empty when no switchover is in progress.
+	// +optional
+	SwitchoverState VolumeSwitchoverState `json:"switchoverState"`
 }
 
 // +genclient
@@ -422,6 +506,7 @@ type VolumeStatus struct {
 // +kubebuilder:printcolumn:name="Scheduled",type=string,JSONPath=`.status.conditions[?(@.type=='Schedulable')].status`,description="The scheduled condition of the volume"
 // +kubebuilder:printcolumn:name="Size",type=string,JSONPath=`.spec.size`,description="The size of the volume"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.currentNodeID`,description="The node that the volume is currently attaching to"
+// +kubebuilder:printcolumn:name="Switchover",type=string,JSONPath=`.status.switchoverState`,description="The engine switchover state",priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Volume is where Longhorn stores volume object.

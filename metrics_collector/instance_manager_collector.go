@@ -140,6 +140,16 @@ func (imc *InstanceManagerCollector) collectActualUsage(ch chan<- prometheus.Met
 		}
 	}()
 
+	enabled := true
+	if v, err := imc.ds.GetSettingAsBool(types.SettingNameKubernetesMetricsServerMetricsEnabled); err != nil {
+		imc.logger.WithError(err).Warnf("Failed to get setting %v, defaulting to enabled", types.SettingNameKubernetesMetricsServerMetricsEnabled)
+	} else {
+		enabled = v
+	}
+	if !enabled {
+		return
+	}
+
 	podMetrics, err := imc.kubeMetricsClient.MetricsV1beta1().PodMetricses(imc.namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: makeInstanceManagerLabelSelector(imc.currentNodeID),
 	})

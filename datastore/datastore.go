@@ -52,6 +52,8 @@ type DataStore struct {
 	VolumeInformer                 cache.SharedInformer
 	engineLister                   lhlisters.EngineLister
 	EngineInformer                 cache.SharedInformer
+	engineFrontendLister           lhlisters.EngineFrontendLister
+	EngineFrontendInformer         cache.SharedInformer
 	replicaLister                  lhlisters.ReplicaLister
 	ReplicaInformer                cache.SharedInformer
 	engineImageLister              lhlisters.EngineImageLister
@@ -92,6 +94,10 @@ type DataStore struct {
 	SystemRestoreInformer          cache.SharedInformer
 	lhVolumeAttachmentLister       lhlisters.VolumeAttachmentLister
 	LHVolumeAttachmentInformer     cache.SharedInformer
+	shardGroupLister               lhlisters.ShardGroupLister
+	ShardGroupInformer             cache.SharedInformer
+	shardLister                    lhlisters.ShardLister
+	ShardInformer                  cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	podLister                     corelisters.PodLister
@@ -141,6 +147,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, replicaInformer.Informer().HasSynced)
 	engineInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines()
 	cacheSyncs = append(cacheSyncs, engineInformer.Informer().HasSynced)
+	engineFrontendInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends()
+	cacheSyncs = append(cacheSyncs, engineFrontendInformer.Informer().HasSynced)
 	volumeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes()
 	cacheSyncs = append(cacheSyncs, volumeInformer.Informer().HasSynced)
 	engineImageInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages()
@@ -181,6 +189,10 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
 	lhVolumeAttachmentInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
+	shardGroupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().ShardGroups()
+	cacheSyncs = append(cacheSyncs, shardGroupInformer.Informer().HasSynced)
+	shardInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Shards()
+	cacheSyncs = append(cacheSyncs, shardInformer.Informer().HasSynced)
 
 	// Kube Informers
 	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
@@ -230,6 +242,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		VolumeInformer:                 volumeInformer.Informer(),
 		engineLister:                   engineInformer.Lister(),
 		EngineInformer:                 engineInformer.Informer(),
+		engineFrontendLister:           engineFrontendInformer.Lister(),
+		EngineFrontendInformer:         engineFrontendInformer.Informer(),
 		replicaLister:                  replicaInformer.Lister(),
 		ReplicaInformer:                replicaInformer.Informer(),
 		engineImageLister:              engineImageInformer.Lister(),
@@ -270,6 +284,10 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		SystemRestoreInformer:          systemRestoreInformer.Informer(),
 		lhVolumeAttachmentLister:       lhVolumeAttachmentInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVolumeAttachmentInformer.Informer(),
+		shardGroupLister:               shardGroupInformer.Lister(),
+		ShardGroupInformer:             shardGroupInformer.Informer(),
+		shardLister:                    shardInformer.Lister(),
+		ShardInformer:                  shardInformer.Informer(),
 
 		kubeClient:                    kubeClient,
 		podLister:                     podInformer.Lister(),

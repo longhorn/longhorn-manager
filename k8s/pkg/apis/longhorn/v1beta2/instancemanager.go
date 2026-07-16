@@ -5,9 +5,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type InstanceType string
 
 const (
-	InstanceTypeEngine  = InstanceType("engine")
-	InstanceTypeReplica = InstanceType("replica")
-	InstanceTypeNone    = InstanceType("")
+	InstanceTypeEngine         = InstanceType("engine")
+	InstanceTypeReplica        = InstanceType("replica")
+	InstanceTypeEngineFrontend = InstanceType("engine-frontend") // v2 initiator
+	InstanceTypeNone           = InstanceType("")
 )
 
 type InstanceManagerState string
@@ -72,12 +73,13 @@ type InstanceProcessSpec struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning  = InstanceState("running")
-	InstanceStateStopped  = InstanceState("stopped")
-	InstanceStateError    = InstanceState("error")
-	InstanceStateStarting = InstanceState("starting")
-	InstanceStateStopping = InstanceState("stopping")
-	InstanceStateUnknown  = InstanceState("unknown")
+	InstanceStateRunning   = InstanceState("running")
+	InstanceStateSuspended = InstanceState("suspended")
+	InstanceStateStopped   = InstanceState("stopped")
+	InstanceStateError     = InstanceState("error")
+	InstanceStateStarting  = InstanceState("starting")
+	InstanceStateStopping  = InstanceState("stopping")
+	InstanceStateUnknown   = InstanceState("unknown")
 	// InstanceStateTerminated indicates the instance is deleted and not found
 	InstanceStateTerminated = InstanceState("terminated")
 )
@@ -139,6 +141,14 @@ type InstanceProcessStatus struct {
 	// +optional
 	Endpoint string `json:"endpoint"`
 	// +optional
+	Frontend string `json:"frontend"`
+	// +optional
+	ActivePath string `json:"activePath,omitempty"`
+	// +optional
+	PreferredPath string `json:"preferredPath,omitempty"`
+	// +optional
+	Paths []EngineFrontendNvmeTCPPath `json:"paths,omitempty"`
+	// +optional
 	ErrorMsg string `json:"errorMsg"`
 	//+optional
 	//+nullable
@@ -168,6 +178,17 @@ type InstanceProcessStatus struct {
 type V2DataEngineSpec struct {
 	// +optional
 	CPUMask string `json:"cpuMask"`
+
+	// CPUIsolationEnabled overrides the cluster-wide
+	// data-engine-cpu-isolation-enabled setting for this instance manager.
+	// "true"  -> pass --enable-irq-affinity and --enable-workqueue-affinity
+	//            to start-spdk-tgt (steer host IRQs and unbound kernel
+	//            workqueues away from the SPDK reactor CPUs).
+	// "false" -> do not pass the flags.
+	// ""      -> inherit the global setting value.
+	// +optional
+	// +kubebuilder:validation:Enum="";"true";"false"
+	CPUIsolationEnabled string `json:"cpuIsolationEnabled"`
 }
 
 type DataEngineSpec struct {
@@ -192,6 +213,8 @@ type InstanceManagerSpec struct {
 type V2DataEngineStatus struct {
 	// +optional
 	CPUMask string `json:"cpuMask"`
+	// +optional
+	CPUCoreNumber int64 `json:"cpuCoreNumber"`
 
 	// InterruptModeEnabled indicates whether the V2 data engine is running in
 	// interrupt mode (true) or polling mode (false). Set by Longhorn manager;
@@ -220,7 +243,16 @@ type InstanceManagerStatus struct {
 	InstanceEngines map[string]InstanceProcess `json:"instanceEngines,omitempty"`
 	// +optional
 	// +nullable
+	InstanceEngineFrontends map[string]InstanceProcess `json:"instanceEngineFrontends,omitempty"`
+	// +optional
+	// +nullable
 	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`
+	// +optional
+	// +nullable
+	InstanceShards map[string]InstanceProcess `json:"instanceShards,omitempty"`
+	// +optional
+	// +nullable
+	InstanceShardGroups map[string]InstanceProcess `json:"instanceShardGroups,omitempty"`
 	// +optional
 	// +nullable
 	BackingImages map[string]BackingImageV2CopyInfo `json:"backingImages"`

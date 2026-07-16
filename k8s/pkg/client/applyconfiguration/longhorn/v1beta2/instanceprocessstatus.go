@@ -25,19 +25,23 @@ import (
 // InstanceProcessStatusApplyConfiguration represents a declarative configuration of the InstanceProcessStatus type for use
 // with apply.
 type InstanceProcessStatusApplyConfiguration struct {
-	Endpoint        *string                        `json:"endpoint,omitempty"`
-	ErrorMsg        *string                        `json:"errorMsg,omitempty"`
-	Conditions      map[string]bool                `json:"conditions,omitempty"`
-	Listen          *string                        `json:"listen,omitempty"`
-	PortEnd         *int32                         `json:"portEnd,omitempty"`
-	PortStart       *int32                         `json:"portStart,omitempty"`
-	TargetPortEnd   *int32                         `json:"targetPortEnd,omitempty"`
-	TargetPortStart *int32                         `json:"targetPortStart,omitempty"`
-	State           *longhornv1beta2.InstanceState `json:"state,omitempty"`
-	Type            *longhornv1beta2.InstanceType  `json:"type,omitempty"`
-	ResourceVersion *int64                         `json:"resourceVersion,omitempty"`
-	UblkID          *int32                         `json:"ublkID,omitempty"`
-	UUID            *string                        `json:"uuid,omitempty"`
+	Endpoint        *string                                       `json:"endpoint,omitempty"`
+	Frontend        *string                                       `json:"frontend,omitempty"`
+	ActivePath      *string                                       `json:"activePath,omitempty"`
+	PreferredPath   *string                                       `json:"preferredPath,omitempty"`
+	Paths           []EngineFrontendNvmeTCPPathApplyConfiguration `json:"paths,omitempty"`
+	ErrorMsg        *string                                       `json:"errorMsg,omitempty"`
+	Conditions      map[string]bool                               `json:"conditions,omitempty"`
+	Listen          *string                                       `json:"listen,omitempty"`
+	PortEnd         *int32                                        `json:"portEnd,omitempty"`
+	PortStart       *int32                                        `json:"portStart,omitempty"`
+	TargetPortEnd   *int32                                        `json:"targetPortEnd,omitempty"`
+	TargetPortStart *int32                                        `json:"targetPortStart,omitempty"`
+	State           *longhornv1beta2.InstanceState                `json:"state,omitempty"`
+	Type            *longhornv1beta2.InstanceType                 `json:"type,omitempty"`
+	ResourceVersion *int64                                        `json:"resourceVersion,omitempty"`
+	UblkID          *int32                                        `json:"ublkID,omitempty"`
+	UUID            *string                                       `json:"uuid,omitempty"`
 }
 
 // InstanceProcessStatusApplyConfiguration constructs a declarative configuration of the InstanceProcessStatus type for use with
@@ -51,6 +55,43 @@ func InstanceProcessStatus() *InstanceProcessStatusApplyConfiguration {
 // If called multiple times, the Endpoint field is set to the value of the last call.
 func (b *InstanceProcessStatusApplyConfiguration) WithEndpoint(value string) *InstanceProcessStatusApplyConfiguration {
 	b.Endpoint = &value
+	return b
+}
+
+// WithFrontend sets the Frontend field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Frontend field is set to the value of the last call.
+func (b *InstanceProcessStatusApplyConfiguration) WithFrontend(value string) *InstanceProcessStatusApplyConfiguration {
+	b.Frontend = &value
+	return b
+}
+
+// WithActivePath sets the ActivePath field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ActivePath field is set to the value of the last call.
+func (b *InstanceProcessStatusApplyConfiguration) WithActivePath(value string) *InstanceProcessStatusApplyConfiguration {
+	b.ActivePath = &value
+	return b
+}
+
+// WithPreferredPath sets the PreferredPath field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PreferredPath field is set to the value of the last call.
+func (b *InstanceProcessStatusApplyConfiguration) WithPreferredPath(value string) *InstanceProcessStatusApplyConfiguration {
+	b.PreferredPath = &value
+	return b
+}
+
+// WithPaths adds the given value to the Paths field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Paths field.
+func (b *InstanceProcessStatusApplyConfiguration) WithPaths(values ...*EngineFrontendNvmeTCPPathApplyConfiguration) *InstanceProcessStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithPaths")
+		}
+		b.Paths = append(b.Paths, *values[i])
+	}
 	return b
 }
 

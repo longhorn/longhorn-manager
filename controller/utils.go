@@ -2,6 +2,9 @@ package controller
 
 import (
 	"context"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -15,6 +18,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -25,6 +30,13 @@ const (
 	podRecreateInitBackoff = 1 * time.Second
 	podRecreateMaxBackoff  = 120 * time.Second
 	backoffGCPeriod        = 12 * time.Hour
+
+	// Matches revisioned engine image tags such as 1.10.2-4.12 or 1.10.2-4.20.
+	engineImageRevisionTagPattern = `.+-\d+\.\d+$`
+)
+
+var (
+	engineImageRevisionTagRegex = regexp.MustCompile(engineImageRevisionTagPattern)
 )
 
 // newBackoff returns a flowcontrol.Backoff and starts a background GC loop.
@@ -50,6 +62,16 @@ func newBackoff(ctx context.Context) *flowcontrol.Backoff {
 func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
 		if r.Spec.EvictionRequested {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasShardEvictionRequested(shards map[string]*longhorn.Shard) bool {
+	for _, s := range shards {
+		if s.Spec.EvictionRequested {
 			return true
 		}
 	}
@@ -241,4 +263,42 @@ func getAwsIAMRoleArnFromSecret(ds *datastore.DataStore, namespace, secretName s
 	}
 	// Key not found; clear the annotation if needed.
 	return "", nil
+}
+
+func getCorrectedEncryptedVolumeSize(volumeSizeStr string, labels map[string]string) (string, error) {
+	if encrypted, exists := labels[types.LonghornLabelVolumeEncrypted]; exists && encrypted == types.LonghornLabelValueEnabled {
+		volumeSize, err := strconv.ParseInt(volumeSizeStr, 10, 64)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to convert volume size: %v", volumeSizeStr)
+		}
+		correctedSize := volumeSize - lhtypes.Luks2EncryptionHeaderSize
+		if correctedSize < 0 {
+			return "", errors.Errorf("corrected volume size is negative: %d", correctedSize)
+		}
+		return strconv.FormatInt(correctedSize, 10), nil
+	}
+	return volumeSizeStr, nil
+}
+
+func isRevisionedEngineImage(image string) bool {
+	lastSlashIndex := strings.LastIndex(image, "/")
+	lastColonIndex := strings.LastIndex(image, ":")
+	if lastColonIndex <= lastSlashIndex {
+		return false
+	}
+
+	tag := image[lastColonIndex+1:]
+	return engineImageRevisionTagRegex.MatchString(tag)
+}
+
+// getContainerArgValue returns the value following the given flag in a container's
+// args (e.g. for flag "--spdk-iobuf-large-pool-size" it returns the next element).
+// It returns an empty string if the flag is absent or has no following value.
+func getContainerArgValue(args []string, flag string) string {
+	for i, arg := range args {
+		if arg == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }

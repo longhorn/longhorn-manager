@@ -67,6 +67,7 @@ type Volume struct {
 	UblkNumberOfQueue               int                                    `json:"ublkNumberOfQueue"`
 	FreezeFilesystemForSnapshot     longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
 	BackupTargetName                string                                 `json:"backupTargetName"`
+	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -80,6 +81,7 @@ type Volume struct {
 	KubernetesStatus longhorn.KubernetesStatus     `json:"kubernetesStatus"`
 	CloneStatus      longhorn.VolumeCloneStatus    `json:"cloneStatus"`
 	Ready            bool                          `json:"ready"`
+	NotReadyMessage  string                        `json:"notReadyMessage"`
 
 	AccessMode        longhorn.AccessMode              `json:"accessMode"`
 	ShareEndpoint     string                           `json:"shareEndpoint"`
@@ -619,8 +621,9 @@ type InstanceManager struct {
 	ManagerType  string                        `json:"managerType"`
 	DataEngine   string                        `json:"dataEngine"`
 
-	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
-	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
+	InstanceEngines         map[string]longhorn.InstanceProcess `json:"instanceEngines"`
+	InstanceEngineFrontends map[string]longhorn.InstanceProcess `json:"instanceEngineFrontends"`
+	InstanceReplicas        map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
 
 	Instances map[string]longhorn.InstanceProcess `json:"instances"`
 }
@@ -635,6 +638,50 @@ type Orphan struct {
 	client.Resource
 	Name string `json:"name"`
 	longhorn.OrphanSpec
+}
+
+type ShardGroup struct {
+	client.Resource
+	Name                string                   `json:"name"`
+	VolumeName          string                   `json:"volumeName"`
+	DataChunks          int                      `json:"dataChunks"`
+	ParityChunks        int                      `json:"parityChunks"`
+	StripSizeKB         int                      `json:"stripSizeKB"`
+	NodeID              string                   `json:"nodeID"`
+	InstanceManagerName string                   `json:"instanceManagerName"`
+	OwnerID             string                   `json:"ownerID"`
+	State               longhorn.ShardGroupState `json:"state"`
+	FailedCount         int                      `json:"failedCount"`
+	ShardRefs           []string                 `json:"shardRefs"`
+	ECShardAddressMap   map[string]string        `json:"ecShardAddressMap"`
+	ScrubInProgress     bool                     `json:"scrubInProgress"`
+	RebuildInProgress   bool                     `json:"rebuildInProgress"`
+	GrowInProgress      bool                     `json:"growInProgress"`
+	ProcessState        longhorn.InstanceState   `json:"processState"`
+	StorageIP           string                   `json:"storageIP"`
+	Port                int32                    `json:"port"`
+	NQN                 string                   `json:"nqn"`
+	LvstoreUUID         string                   `json:"lvstoreUUID"`
+	HeadLvolUUID        string                   `json:"headLvolUUID"`
+}
+
+type Shard struct {
+	client.Resource
+	Name                 string              `json:"name"`
+	ShardGroupName       string              `json:"shardGroupName"`
+	SlotIndex            int                 `json:"slotIndex"`
+	Size                 string              `json:"size"`
+	NodeID               string              `json:"nodeID"`
+	DiskPath             string              `json:"diskPath"`
+	DiskUUID             string              `json:"diskUUID"`
+	EvictionRequested    bool                `json:"evictionRequested"`
+	OwnerID              string              `json:"ownerID"`
+	State                longhorn.ShardState `json:"state"`
+	Role                 longhorn.ShardRole  `json:"role"`
+	StorageIP            string              `json:"storageIP"`
+	Port                 int32               `json:"port"`
+	RebuildProgress      int                 `json:"rebuildProgress"`
+	LastFailureTimestamp string              `json:"lastFailureTimestamp"`
 }
 
 type VolumeRecurringJob struct {
@@ -718,6 +765,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateOfflineRebuildingInput", UpdateOfflineRebuildingInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
+	schemas.AddType("volumeDataLayout", longhorn.VolumeDataLayout{})
 	schemas.AddType("empty", Empty{})
 
 	schemas.AddType("volumeRecurringJob", VolumeRecurringJob{})
@@ -770,6 +818,9 @@ func NewSchema() *client.Schemas {
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
 	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
 	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
+
+	schemas.AddType("shardGroup", ShardGroup{})
+	schemas.AddType("shard", Shard{})
 
 	return schemas
 }
@@ -1327,6 +1378,10 @@ func volumeSchema(volume *client.Schema) {
 	dataEngine.Default = longhorn.DataEngineTypeV1
 	volume.ResourceFields["dataEngine"] = dataEngine
 
+	dataLayout := volume.ResourceFields["dataLayout"]
+	dataLayout.Create = true
+	volume.ResourceFields["dataLayout"] = dataLayout
+
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
@@ -1482,7 +1537,7 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
 	controllers := []Controller{}
 	backupStatus := []BackupStatus{}
@@ -1492,6 +1547,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	volumeAttachment := VolumeAttachment{
 		Attachments: make(map[string]Attachment),
 		Volume:      v.Name,
+	}
+	// Build engine-name -> EF map so we can merge EF endpoint into Controller.
+	// For v2, the engine itself has no endpoint; the EF provides it.
+	efByEngine := map[string]*longhorn.EngineFrontend{}
+	for _, ef := range vefs {
+		if ef.Spec.EngineName != "" {
+			efByEngine[ef.Spec.EngineName] = ef
+		}
 	}
 	for _, e := range ves {
 		actualSize := int64(0)
@@ -1504,19 +1567,40 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			}
 			actualSize += snapshotSize
 		}
+		endpoint := e.Status.Endpoint
+		controllerNodeID := e.Spec.NodeID
+		controllerSize := e.Status.CurrentSize
+		// For v2, the engine has no endpoint; use the matching EF's endpoint.
+		// Keep engine size as the source of truth, but for an attached volume
+		// do not expose a newer size until the frontend is also serving it.
+		if ef, ok := efByEngine[e.Name]; ok {
+			controllerNodeID = ef.Spec.NodeID
+			if ef.Status.Endpoint != "" {
+				endpoint = ef.Status.Endpoint
+			}
+			// For an attached volume, also use the frontend size as a source
+			// of truth. If the frontend lags the backend engine, keep
+			// returning the older size until the frontend catches up.
+			if v.Status.State == longhorn.VolumeStateAttached &&
+				ef.Status.Endpoint != "" &&
+				ef.Status.CurrentSize > 0 &&
+				ef.Status.CurrentSize < controllerSize {
+				controllerSize = ef.Status.CurrentSize
+			}
+		}
 		controllers = append(controllers, Controller{
 			Instance: Instance{
 				Name:                e.Name,
 				Running:             e.Status.CurrentState == longhorn.InstanceStateRunning,
-				NodeID:              e.Spec.NodeID,
+				NodeID:              controllerNodeID,
 				Address:             e.Status.IP,
 				Image:               e.Spec.Image,
 				CurrentImage:        e.Status.CurrentImage,
 				InstanceManagerName: e.Status.InstanceManagerName,
 			},
-			Size:                             strconv.FormatInt(e.Status.CurrentSize, 10),
+			Size:                             strconv.FormatInt(controllerSize, 10),
 			ActualSize:                       strconv.FormatInt(actualSize, 10),
-			Endpoint:                         e.Status.Endpoint,
+			Endpoint:                         endpoint,
 			LastRestoredBackup:               e.Status.LastRestoredBackup,
 			RequestedBackupRestore:           e.Spec.RequestedBackupRestore,
 			IsExpanding:                      e.Status.IsExpanding,
@@ -1524,7 +1608,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			LastExpansionFailedAt:            e.Status.LastExpansionFailedAt,
 			UnmapMarkSnapChainRemovedEnabled: e.Status.UnmapMarkSnapChainRemovedEnabled,
 		})
-		if e.Spec.NodeID == v.Status.CurrentNodeID {
+
+		if controllerNodeID == v.Status.CurrentNodeID {
 			ve = e
 		}
 		rs := e.Status.RestoreStatus
@@ -1652,7 +1737,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//   3. It's faulted.
 	//   4. It's restore pending.
 	//   5. It's failed to clone
-	ready, _ := types.IsVolumeReady(v, vrs, types.VolumeOperationGeneric)
+	ready, notReadyMessage := types.IsVolumeReady(v, vrs, types.VolumeOperationGeneric)
 
 	r := &Volume{
 		Resource: client.Resource{
@@ -1691,6 +1776,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		RestoreVolumeRecurringJob:       v.Spec.RestoreVolumeRecurringJob,
 		FreezeFilesystemForSnapshot:     v.Spec.FreezeFilesystemForSnapshot,
 		BackupTargetName:                v.Spec.BackupTargetName,
+		DataLayout:                      v.Spec.DataLayout,
 
 		State:                       v.Status.State,
 		Robustness:                  v.Status.Robustness,
@@ -1706,6 +1792,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		ReplicaDiskSoftAntiAffinity: v.Spec.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                  v.Spec.DataEngine,
 		Ready:                       ready,
+		NotReadyMessage:             notReadyMessage,
 
 		AccessMode:        v.Spec.AccessMode,
 		ShareEndpoint:     v.Status.ShareEndpoint,
@@ -2415,14 +2502,15 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Id:   im.Name,
 			Type: "instanceManager",
 		},
-		CurrentState:     im.Status.CurrentState,
-		Image:            im.Spec.Image,
-		Name:             im.Name,
-		NodeID:           im.Spec.NodeID,
-		ManagerType:      string(im.Spec.Type),
-		DataEngine:       string(im.Spec.DataEngine),
-		InstanceEngines:  im.Status.InstanceEngines,
-		InstanceReplicas: im.Status.InstanceReplicas,
+		CurrentState:            im.Status.CurrentState,
+		Image:                   im.Spec.Image,
+		Name:                    im.Name,
+		NodeID:                  im.Spec.NodeID,
+		ManagerType:             string(im.Spec.Type),
+		DataEngine:              string(im.Spec.DataEngine),
+		InstanceEngines:         im.Status.InstanceEngines,
+		InstanceEngineFrontends: im.Status.InstanceEngineFrontends,
+		InstanceReplicas:        im.Status.InstanceReplicas,
 	}
 }
 
@@ -2486,6 +2574,76 @@ func toOrphanCollection(orphans map[string]*longhorn.Orphan) *client.GenericColl
 		data = append(data, toOrphanResource(orphan))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "orphan"}}
+}
+
+func toShardGroupResource(sg *longhorn.ShardGroup) *ShardGroup {
+	return &ShardGroup{
+		Resource: client.Resource{
+			Id:   sg.Name,
+			Type: "shardGroup",
+		},
+		Name:                sg.Name,
+		VolumeName:          sg.Spec.VolumeName,
+		DataChunks:          sg.Spec.DataChunks,
+		ParityChunks:        sg.Spec.ParityChunks,
+		StripSizeKB:         sg.Spec.StripSizeKB,
+		NodeID:              sg.Spec.NodeID,
+		InstanceManagerName: sg.Status.InstanceManagerName,
+		OwnerID:             sg.Status.OwnerID,
+		State:               sg.Status.State,
+		FailedCount:         sg.Status.FailedCount,
+		ShardRefs:           sg.Status.ShardRefs,
+		ECShardAddressMap:   sg.Status.ECShardAddressMap,
+		ScrubInProgress:     sg.Status.ScrubInProgress,
+		RebuildInProgress:   sg.Status.RebuildInProgress,
+		GrowInProgress:      sg.Status.GrowInProgress,
+		ProcessState:        sg.Status.ProcessState,
+		StorageIP:           sg.Status.StorageIP,
+		Port:                sg.Status.Port,
+		NQN:                 sg.Status.NQN,
+		LvstoreUUID:         sg.Status.LvstoreUUID,
+		HeadLvolUUID:        sg.Status.HeadLvolUUID,
+	}
+}
+
+func toShardGroupCollection(sgs map[string]*longhorn.ShardGroup) *client.GenericCollection {
+	var data []interface{}
+	for _, sg := range sgs {
+		data = append(data, toShardGroupResource(sg))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "shardGroup"}}
+}
+
+func toShardResource(s *longhorn.Shard) *Shard {
+	return &Shard{
+		Resource: client.Resource{
+			Id:   s.Name,
+			Type: "shard",
+		},
+		Name:                 s.Name,
+		ShardGroupName:       s.Spec.ShardGroupName,
+		SlotIndex:            s.Spec.SlotIndex,
+		Size:                 strconv.FormatInt(s.Spec.Size, 10),
+		NodeID:               s.Spec.NodeID,
+		DiskPath:             s.Spec.DiskPath,
+		DiskUUID:             s.Spec.DiskUUID,
+		EvictionRequested:    s.Spec.EvictionRequested,
+		OwnerID:              s.Status.OwnerID,
+		State:                s.Status.State,
+		Role:                 s.Status.Role,
+		StorageIP:            s.Status.StorageIP,
+		Port:                 s.Status.Port,
+		RebuildProgress:      s.Status.RebuildProgress,
+		LastFailureTimestamp: s.Status.LastFailureTimestamp,
+	}
+}
+
+func toShardCollection(shards map[string]*longhorn.Shard) *client.GenericCollection {
+	var data []interface{}
+	for _, s := range shards {
+		data = append(data, toShardResource(s))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "shard"}}
 }
 
 func toVolumeAttachmentResource(volumeAttachment *longhorn.VolumeAttachment) *VolumeAttachment {

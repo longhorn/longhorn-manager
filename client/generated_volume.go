@@ -7,6 +7,8 @@ const (
 type Volume struct {
 	Resource `yaml:"-"`
 
+	DataLayout *VolumeDataLayout `json:"dataLayout,omitempty" yaml:"data_layout,omitempty"`
+
 	AccessMode string `json:"accessMode,omitempty" yaml:"access_mode,omitempty"`
 
 	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
@@ -73,6 +75,8 @@ type Volume struct {
 
 	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
 
+	NotReadyMessage string `json:"notReadyMessage,omitempty" yaml:"not_ready_message,omitempty"`
+
 	RebuildConcurrentSyncLimit int64 `json:"rebuildConcurrentSyncLimit,omitempty" yaml:"rebuild_concurrent_sync_limit,omitempty"`
 
 	RebuildStatus []RebuildStatus `json:"rebuildStatus,omitempty" yaml:"rebuild_status,omitempty"`
@@ -128,6 +132,18 @@ type Volume struct {
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved,omitempty" yaml:"unmap_mark_snap_chain_removed,omitempty"`
 
 	VolumeAttachment VolumeAttachment `json:"volumeAttachment,omitempty" yaml:"volume_attachment,omitempty"`
+}
+
+type VolumeDataLayout struct {
+	Type string `json:"type,omitempty" yaml:"type,omitempty"`
+
+	Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
+
+	DataChunks int64 `json:"dataChunks,omitempty" yaml:"data_chunks,omitempty"`
+
+	ParityChunks int64 `json:"parityChunks,omitempty" yaml:"parity_chunks,omitempty"`
+
+	StripSizeKB int64 `json:"stripSizeKB,omitempty" yaml:"strip_size_kb,omitempty"`
 }
 
 type VolumeCollection struct {

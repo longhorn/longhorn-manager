@@ -16,8 +16,8 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	_ "github.com/longhorn/longhorn-manager/metrics_collector/client_go_adaper" // load the client-go metrics
-	_ "github.com/longhorn/longhorn-manager/metrics_collector/workqueue"        // load the workqueue metrics
+	_ "github.com/longhorn/longhorn-manager/metrics_collector/client_go_adapter" // load the client-go metrics
+	_ "github.com/longhorn/longhorn-manager/metrics_collector/workqueue"         // load the workqueue metrics
 )
 
 func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string, proxyConnCounter util.Counter) {

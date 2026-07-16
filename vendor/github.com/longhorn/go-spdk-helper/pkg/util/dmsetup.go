@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	commonns "github.com/longhorn/go-common-libs/ns"
@@ -85,17 +86,51 @@ func DmsetupDeps(dmDeviceName string, executor *commonns.Executor) ([]string, er
 		return nil, err
 	}
 
-	return parseDependentDevicesFromString(outputStr), nil
+	knownDevices, err := GetKnownDevices(executor)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseDependentDevicesFromString(outputStr, knownDevices), nil
 }
 
-func parseDependentDevicesFromString(str string) []string {
-	re := regexp.MustCompile(`\(([\w-]+)\)`)
+func parseDependentDevicesFromString(str string, knownDevices map[string]*LonghornBlockDevice) []string {
+	re := regexp.MustCompile(`\(([^)]+)\)`)
 	matches := re.FindAllStringSubmatch(str, -1)
 
 	devices := make([]string, 0, len(matches))
 
 	for _, match := range matches {
-		devices = append(devices, match[1])
+		dep := strings.TrimSpace(match[1])
+		if dep == "" {
+			continue
+		}
+
+		if !strings.Contains(dep, ",") {
+			devices = append(devices, dep)
+			continue
+		}
+
+		majorMinor := strings.Split(dep, ",")
+		if len(majorMinor) != 2 {
+			continue
+		}
+
+		major, errMajor := strconv.Atoi(strings.TrimSpace(majorMinor[0]))
+		minor, errMinor := strconv.Atoi(strings.TrimSpace(majorMinor[1]))
+		if errMajor != nil || errMinor != nil {
+			continue
+		}
+
+		for _, device := range knownDevices {
+			if device == nil {
+				continue
+			}
+			if device.Source.Major == major && device.Source.Minor == minor {
+				devices = append(devices, device.Source.Name)
+				break
+			}
+		}
 	}
 
 	return devices
@@ -108,6 +143,7 @@ type DeviceInfo struct {
 	TableInactive   bool
 	Suspended       bool
 	ReadOnly        bool
+	DeferredRemove  bool
 	Major           uint32
 	Minor           uint32
 	OpenCount       uint32 // Open reference count
@@ -168,8 +204,39 @@ func DmsetupInfo(dmDeviceName string, executor *commonns.Executor) ([]*DeviceInf
 		info.TableLive = strings.Contains(attr, "L")
 		info.TableInactive = strings.Contains(attr, "I")
 
+		// Check deferred-remove flag via non-columns dmsetup info
+		deferredRemove, err := DmsetupInfoDeferredRemove(info.Name, executor)
+		if err == nil {
+			info.DeferredRemove = deferredRemove
+		}
+
 		devices = append(devices, info)
 	}
 
 	return devices, nil
+}
+
+// DmsetupInfoDeferredRemove checks if the device has the deferred-remove flag set
+// by running `dmsetup info <name>` (non-columns format) and parsing the State line.
+func DmsetupInfoDeferredRemove(dmDeviceName string, executor *commonns.Executor) (bool, error) {
+	opts := []string{
+		"info", dmDeviceName,
+	}
+
+	outputStr, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	if err != nil {
+		return false, err
+	}
+
+	lines := strings.Split(outputStr, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "State:") {
+			if strings.Contains(strings.ToUpper(line), "DEFERRED REMOVE") {
+				return true, nil
+			}
+			return false, nil
+		}
+	}
+
+	return false, fmt.Errorf("failed to find State line in dmsetup info output for %s", dmDeviceName)
 }

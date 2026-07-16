@@ -38,6 +38,7 @@ import (
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -80,7 +81,6 @@ type InstanceManagerMonitor struct {
 	logger logrus.FieldLogger
 
 	Name         string
-	imName       string
 	controllerID string
 
 	ds                 *datastore.DataStore
@@ -93,8 +93,7 @@ type InstanceManagerMonitor struct {
 
 	nodeCallback func(nodeName string)
 
-	client      *engineapi.InstanceManagerClient
-	proxyClient engineapi.EngineClientProxy
+	client *engineapi.InstanceManagerClient
 }
 
 type instanceProcessMap map[string]longhorn.InstanceProcess
@@ -222,7 +221,10 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
-		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion
+		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufLargePoolSize ||
+		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -551,19 +553,31 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
 		im.Status.InstanceEngines = nil
+		im.Status.InstanceEngineFrontends = nil
 		im.Status.InstanceReplicas = nil
+		im.Status.InstanceShards = nil
+		im.Status.InstanceShardGroups = nil
 		im.Status.BackingImages = nil
 	}
 	return nil
 }
 
-func (imc *InstanceManagerController) isDateEngineCPUMaskApplied(im *longhorn.InstanceManager) (bool, error) {
+func (imc *InstanceManagerController) isDateEngineCPUMaskCoreNumberApplied(im *longhorn.InstanceManager) (bool, error) {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return true, nil
 	}
 
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return true, nil
+	}
+
+	spdkCoreNumber, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting for checking data engine CPU mask", types.SettingNameDataEngineNumberOfCPUCores)
+	}
+
+	if spdkCoreNumber > 0 {
+		return im.Status.DataEngineStatus.V2.CPUCoreNumber == spdkCoreNumber, nil
 	}
 
 	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
@@ -651,17 +665,50 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
 	}
 
-	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskApplied(im)
+	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskCoreNumberApplied(im)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to sync date engine CPU mask to instance manager pod %v", im.Name)
 	}
 
-	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
+	// hugepageSettingApplied: true means the pod is safe to keep (either settings
+	// are synced, or node lacks capacity making deletion unsafe). false means settings
+	// are not synced AND node has enough capacity, so deletion is safe to proceed.
+	// hugepageSettingsSynced: true means the pod's hugepage limit and --spdk-memory-size
+	// arg match the current settings. false means they differ or could not be verified.
+	hugepageSettingApplied, hugepageSettingsSynced, err := imc.isHugepageSettingApplied(im)
+	if err != nil {
+		// Fail safe on verification errors: keep the pod deletion-blocked, but do not
+		// claim the hugepage settings are synced when capacity/sync could not be verified.
+		hugepageSettingApplied = true
+		hugepageSettingsSynced = false
+		log.WithError(err).Warnf("Failed to check hugepage setting applied state for instance manager pod %v", im.Name)
+	}
+
+	isSettingSynced, unSyncedSettings, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
 	if err != nil {
 		return err
 	}
 
-	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	// When hugepage settings are not synced and the pod is eligible for deletion,
+	// decide whether to block or allow based on node hugepage capacity.
+	if !hugepageSettingsSynced && !isPodDeletedOrNotRunning && !areInstancesRunningInPod {
+		unSyncedSettings = append(unSyncedSettings, types.SettingNameDataEngineHugepageEnabled, types.SettingNameDataEngineMemorySize)
+
+		if hugepageSettingApplied {
+			// Node lacks sufficient hugepage capacity or capacity could not be verified.
+			// Block ALL pod deletion to avoid leaving the replacement pod unschedulable (Pending).
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced,
+				fmt.Sprintf("Settings %v are not synced; skipping pod deletion because sufficient hugepage capacity for rescheduling cannot be confirmed", unSyncedSettings))
+			log.Warnf("Skipping deletion of instance manager pod %v because sufficient hugepage capacity for rescheduling cannot be confirmed", im.Name)
+			return nil
+		}
+
+		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
+			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, fmt.Sprintf("Settings %v are not synced", unSyncedSettings))
+	}
+
+	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied && hugepageSettingApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
 		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
 		isPodDeletionNotRequired {
@@ -672,7 +719,7 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		log.Warnf("Instance manager pod %v is deleted or not running, recreating the pod", im.Name)
 	} else {
 		log.Warnf("Deleting instance manager pod %v because some danger zone settings are not synced since no instances are running and the following conditions are met: "+
-			"setting is not synced (%v) or data engine CPU mask is not applied (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied)
+			"setting is not synced (%v) or data engine CPU mask is not applied (%v) or hugepage setting is not applied (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied, !hugepageSettingApplied)
 	}
 
 	if err := imc.cleanupInstanceManagerPod(im.Name); err != nil {
@@ -745,31 +792,31 @@ func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.Instanc
 	return nil
 }
 
-func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *longhorn.InstanceManager) (isSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod bool, err error) {
+func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *longhorn.InstanceManager) (isSynced bool, unSyncedDangerSettings []types.SettingName, isPodDeletedOrNotRunning, areInstancesRunningInPod bool, err error) {
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-		return false, true, false, nil
+		return false, nil, true, false, nil
 	}
 
-	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas) {
+	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceEngineFrontends, im.Status.InstanceReplicas) {
 		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
-			return false, false, true, nil
+			return false, nil, false, true, nil
 		}
 	}
 
 	pod, err := imc.ds.GetPodRO(im.Namespace, im.Name)
 	if err != nil {
-		return false, false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+		return false, nil, false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
 	}
 	if pod == nil {
-		return false, true, false, nil
+		return false, nil, true, false, nil
 	}
 
-	unSyncedDangerSettings := []types.SettingName{}
+	unSyncedDangerSettings = []types.SettingName{}
 	for settingName := range types.GetDangerZoneSettings() {
 		isSettingSynced := true
 		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
 		if err != nil {
-			return false, false, false, err
+			return false, nil, false, false, err
 		}
 		switch settingName {
 		case types.SettingNameTaintToleration:
@@ -793,9 +840,13 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			}
 		case types.SettingNameDataEngineInterruptModeEnabled:
 			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
+		case types.SettingNameDataEngineIobufLargePoolSize:
+			isSettingSynced, err = imc.isSettingIobufLargePoolSizeSynced(im, pod)
+		case types.SettingNameDataEngineCPUIsolationEnabled:
+			isSettingSynced, err = imc.isSettingCPUIsolationEnabledSynced(setting, im, pod)
 		}
 		if err != nil {
-			return false, false, false, err
+			return false, nil, false, false, err
 		}
 		if !isSettingSynced {
 			unSyncedDangerSettings = append(unSyncedDangerSettings, settingName)
@@ -804,12 +855,12 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 	if len(unSyncedDangerSettings) > 0 {
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
 			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, fmt.Sprintf("Settings %v are not synced", unSyncedDangerSettings))
-		return false, false, false, nil
+		return false, unSyncedDangerSettings, false, false, nil
 	}
 
 	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced,
 		longhorn.ConditionStatusTrue, "", "")
-	return true, false, false, nil
+	return true, nil, false, false, nil
 }
 
 func (imc *InstanceManagerController) isSettingTaintTolerationSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -867,7 +918,7 @@ func (imc *InstanceManagerController) isSettingLogPathSynced(setting *longhorn.S
 
 	logPath := setting.Value
 	if logPath == "" {
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	}
 
 	normalizedLogPath := filepath.Clean(logPath)
@@ -942,6 +993,248 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 	return im.Status.DataEngineStatus.V2.InterruptModeEnabled == settingValue, nil
 }
 
+// resolveCPUIsolationEnabled returns the effective CPU-isolation-enabled value
+// for a V2 instance manager. The per-IM Spec.DataEngineSpec.V2.CPUIsolationEnabled
+// field takes priority over the cluster-wide data-engine-cpu-isolation-enabled
+// setting:
+//
+//	"true"  -> enabled
+//	"false" -> disabled
+//	""      -> inherit the global setting value
+func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.InstanceManager) (bool, error) {
+	switch im.Spec.DataEngineSpec.V2.CPUIsolationEnabled {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
+	val, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+	return val == "true", nil
+}
+
+// isSettingCPUIsolationEnabledSynced returns true if the effective CPU-isolation
+// value (Spec.DataEngineSpec.V2.CPUIsolationEnabled, falling back to the global
+// setting) matches what the V2 instance-manager pod was started with. The pod
+// always receives --longhorn-control-path (so we can reconcile stale state
+// across restarts even after toggling off); the actual toggle is the presence
+// of --enable-irq-affinity, --enable-workqueue-affinity, AND --enable-rps in the
+// pod's args. All flags are set together, so the effective state is "enabled"
+// only when all are present.
+func (imc *InstanceManagerController) isSettingCPUIsolationEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+	if pod == nil || len(pod.Spec.Containers) == 0 {
+		return true, nil
+	}
+
+	wantEnabled, err := imc.resolveCPUIsolationEnabled(im)
+	if err != nil {
+		return false, err
+	}
+
+	hasIRQFlag := false
+	hasWorkqueueFlag := false
+	hasRPSFlag := false
+	for _, a := range pod.Spec.Containers[0].Args {
+		switch a {
+		case "--enable-irq-affinity":
+			hasIRQFlag = true
+		case "--enable-workqueue-affinity":
+			hasWorkqueueFlag = true
+		case "--enable-rps":
+			hasRPSFlag = true
+		}
+	}
+	hasEnabled := hasIRQFlag && hasWorkqueueFlag && hasRPSFlag
+	return wantEnabled == hasEnabled, nil
+}
+
+// isHugepageSettingApplied checks whether hugepage-related settings are effectively
+// applied to the IM pod. It returns:
+//   - applied: true if the pod should be considered safe to keep (settings synced,
+//     or node lacks capacity making deletion unsafe)
+//   - synced: true if the pod's hugepage limit and --spdk-memory-size arg match
+//     the current settings
+//
+// applied is true (consider safe to keep) if:
+//   - The data engine is V1 (hugepages not used)
+//   - The IM is not running
+//   - The pod's hugepage limit and --spdk-memory-size arg match the current settings
+//   - The settings are NOT synced but the node lacks sufficient total hugepage
+//     capacity to reschedule the pod, making deletion unsafe
+func (imc *InstanceManagerController) isHugepageSettingApplied(im *longhorn.InstanceManager) (applied, synced bool, err error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, true, nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return true, true, nil
+	}
+
+	pod, err := imc.ds.GetPodRO(im.Namespace, im.Name)
+	if err != nil {
+		return false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+	}
+	if pod == nil {
+		return true, true, nil
+	}
+
+	limitSynced, err := imc.isSettingHugepageLimitSynced(im, pod)
+	if err != nil {
+		return false, false, err
+	}
+
+	argSynced, err := imc.isSettingMemorySizeArgSynced(im, pod)
+	if err != nil {
+		return false, false, err
+	}
+
+	if limitSynced && argSynced {
+		return true, true, nil
+	}
+
+	// Settings not synced - check if the node has enough total hugepage capacity
+	// to safely reschedule the pod after deletion.
+	nodeHasCapacity, err := imc.nodeHasEnoughHugepageTotalCapacity(im)
+	if err != nil {
+		return false, false, err
+	}
+
+	// If the node doesn't have enough total capacity, deletion would leave the
+	// IM pod unschedulable (Pending). Return applied=true to prevent deletion,
+	// but synced=false so the condition reflects the actual state.
+	return !nodeHasCapacity, false, nil
+}
+
+// isSettingHugepageLimitSynced checks whether the pod's hugepages-2Mi resource limit
+// matches the expected value derived from the hugepage-enabled and memory-size settings.
+func (imc *InstanceManagerController) isSettingHugepageLimitSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	expectedHugepage := int64(0)
+	if hugepageEnabled {
+		expectedHugepage = memorySize
+	}
+	expectedHugepageQuantity := fmt.Sprintf("%dMi", expectedHugepage)
+	expectedQuantity, err := resource.ParseQuantity(expectedHugepageQuantity)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse expected hugepage quantity %q", expectedHugepageQuantity)
+	}
+	currentQuantity := pod.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")]
+	return currentQuantity.Cmp(expectedQuantity) == 0, nil
+}
+
+// isSettingMemorySizeArgSynced checks whether the pod's --spdk-memory-size argument
+// matches the current memory-size setting value.
+func (imc *InstanceManagerController) isSettingMemorySizeArgSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	currentMemorySize := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-memory-size")
+	expectedMemorySize := fmt.Sprintf("%d", memorySize)
+	return currentMemorySize == expectedMemorySize, nil
+}
+
+// nodeHasEnoughHugepageTotalCapacity checks whether the node's total allocatable
+// (or capacity) hugepages meet the required memory size. It does NOT account for
+// hugepages already consumed by other pods on the node. This means a true result
+// is necessary but not sufficient for the new IM pod to be schedulable. A false
+// result, however, guarantees the pod cannot schedule and deletion should be skipped.
+func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *longhorn.InstanceManager) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	if !hugepageEnabled {
+		return true, nil
+	}
+
+	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	kubeNode, err := imc.ds.GetKubernetesNodeRO(im.Spec.NodeID)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get kubernetes node %v for hugepage check", im.Spec.NodeID)
+	}
+
+	hugepagesResourceName := corev1.ResourceName("hugepages-2Mi")
+	hugepages2MiAllocatable, exists := kubeNode.Status.Allocatable[hugepagesResourceName]
+	if !exists {
+		hugepages2MiAllocatable = kubeNode.Status.Capacity[hugepagesResourceName]
+	}
+
+	requiredHugePagesQuantity := fmt.Sprintf("%dMi", memorySize)
+	requiredHugePages, err := resource.ParseQuantity(requiredHugePagesQuantity)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse required hugepages quantity for memory size %v", memorySize)
+	}
+
+	return hugepages2MiAllocatable.Cmp(requiredHugePages) >= 0, nil
+}
+
+// isSettingIobufLargePoolSizeSynced checks whether the pod's --spdk-iobuf-large-pool-size
+// argument matches the current setting. A value not greater than SPDK's default
+// (types.SpdkDefaultIobufLargePoolSize) means the flag is omitted from the pod args, so an
+// absent flag is considered synced; this prevents recreating existing pods that predate the setting.
+func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	iobufLargePoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	expected := ""
+	if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
+		expected = fmt.Sprintf("%d", iobufLargePoolSize)
+	}
+	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-large-pool-size")
+	return current == expected, nil
+}
+
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {
 	// Avoid changing API versions when InstanceManagers are state Unknown.
 	// Then once required (in the future), the monitor could still talk with the pod and update processes in some corner cases. e.g., kubelet restart.
@@ -971,19 +1264,10 @@ func (imc *InstanceManagerController) syncMonitor(im *longhorn.InstanceManager) 
 	isMonitorRequired := im.Status.CurrentState == longhorn.InstanceManagerStateRunning &&
 		engineapi.CheckInstanceManagerCompatibility(im.Status.APIMinVersion, im.Status.APIVersion) == nil
 
-	// BackingImage monitoring is only required for v2 data engine
-	// and it uses proxy client instead of instance manager client.
-	// Thus, we use another monitor goroutine for backing image monitoring for better maintenance.
 	if isMonitorRequired {
 		imc.startMonitoring(im)
-		if types.IsDataEngineV2(im.Spec.DataEngine) {
-			imc.startBackingImageMonitoring(im)
-		}
 	} else {
 		imc.stopMonitoring(im.Name)
-		if types.IsDataEngineV2(im.Spec.DataEngine) {
-			imc.stopBackingImageMonitoring(im.Name)
-		}
 	}
 
 	return nil
@@ -1308,7 +1592,7 @@ func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeNa
 	}
 
 	for _, im := range ims {
-		if len(im.Status.InstanceEngines) > 0 {
+		if len(im.Status.InstanceEngines) > 0 || len(im.Status.InstanceEngineFrontends) > 0 {
 			return false, formatInstanceMessage(im), nil
 		}
 	}
@@ -1615,10 +1899,23 @@ func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
 	if types.IsDataEngineV2(dataEngine) {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
 
-		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
+		// For v2, also verify:
+		// 1. spdk_tgt process exists.
+		// 2. spdk_tgt is not stuck in a stopped/traced state (for example, after SIGSTOP).
+		processProbe := `
+pids=$(pgrep -f '^spdk_tgt') &&
+[ -n "$pids" ] &&
+status=0 &&
+for pid in $pids; do
+  state=$(awk '/^State:/ {print $2}' /proc/$pid/status 2>/dev/null)
+  [ -n "$state" ] || status=1
+  [ "$state" != "T" ] && [ "$state" != "t" ] || status=1
+done
+test $status -eq 0
+`
 		livenessProbes = append(livenessProbes, processProbe)
 	}
-	return fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
+	return strings.Join(livenessProbes, " && ")
 }
 
 func (imc *InstanceManagerController) getLogPath() (string, error) {
@@ -1628,7 +1925,7 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 	}
 
 	if logPath == "" || logPath == string(filepath.Separator) {
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	} else {
 		logPath = filepath.Clean(logPath)
 	}
@@ -1636,16 +1933,16 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 	parent := filepath.Dir(logPath)
 	if parent == "." || parent == string(filepath.Separator) {
 		imc.logger.Warnf("Log path %q is not a valid directory, using default log directory", logPath)
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	}
 
 	if st, err := lhns.Stat(parent); err != nil {
 		imc.logger.WithError(err).Warnf("Failed to stat parent of log path %q, using default log directory", logPath)
-		logPath = types.DefaultLogDirectoryOnHost
+		logPath = types.GetDefaultLogDirectoryOnHost()
 	} else {
 		if !st.IsDir() {
 			imc.logger.Warnf("Parent of log path %q is not a directory, using default log directory", logPath)
-			logPath = types.DefaultLogDirectoryOnHost
+			logPath = types.GetDefaultLogDirectoryOnHost()
 		}
 		imc.logger.Infof("Using log path %q", logPath)
 	}
@@ -1679,20 +1976,31 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			logFlags = strings.ToLower(logFlagsSetting)
 		}
 
-		// CPU mask is required for SPDK.
-		cpuMask := im.Spec.DataEngineSpec.V2.CPUMask
-		if cpuMask == "" {
-			value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
-			if err != nil {
-				return nil, err
-			}
+		spdkCoreNumber, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+		if err != nil {
+			return nil, err
+		}
+		dynamicCPUPinningEnabled := spdkCoreNumber != 0
 
-			cpuMask = value
+		// CPU mask is required for SPDK.
+		cpuMask := ""
+		if !dynamicCPUPinningEnabled {
+			cpuMask = im.Spec.DataEngineSpec.V2.CPUMask
 			if cpuMask == "" {
-				return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
+				value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
+				if err != nil {
+					return nil, err
+				}
+
+				cpuMask = value
+				if cpuMask == "" {
+					return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
+				}
 			}
 		}
+		// When CPU-manager-based pinning is enabled, SPDK CPUs are determined at runtime inside the IM pod (cpuMask may be empty here).
 		im.Status.DataEngineStatus.V2.CPUMask = cpuMask
+		im.Status.DataEngineStatus.V2.CPUCoreNumber = spdkCoreNumber
 
 		// Hugepage or legacy memory preallocation is required for SPDK.
 		hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
@@ -1713,15 +2021,38 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			hugepage = memory
 		}
 
+		// iobuf large pool size (large_pool_count) for the SPDK target. A value not
+		// greater than SPDK's built-in default (types.SpdkDefaultIobufLargePoolSize) is
+		// a no-op, so the flag is omitted and behavior is unchanged. A larger value is
+		// consumed by the instance-manager launch wrapper, which generates an SPDK
+		// startup JSON config (the iobuf pool can only be sized during spdk_tgt startup).
+		iobufLargePoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
+		}
+
+		controlPath, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+		}
+
 		args := []string{
-			"instance-manager",
+			"start-spdk-tgt",
 			"--spdk-log", logFlags,
 			"--spdk-cpumask", cpuMask,
+			"--spdk-core-number", fmt.Sprintf("%d", spdkCoreNumber),
 			"--spdk-memory-size", fmt.Sprintf("%d", memory),
+		}
+		// Must precede "daemon" so the launch wrapper consumes it as an SPDK option.
+		if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
+			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
+		}
+		args = append(args,
+			"--longhorn-control-path", controlPath.Value,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
-			"--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
+			"--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort))
 
 		interruptMode, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, dataEngine)
 		if err != nil {
@@ -1732,6 +2063,17 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		if im.Status.DataEngineStatus.V2.InterruptModeEnabled == "true" {
 			args = append(args, "--spdk-interrupt-mode")
+		}
+
+		cpuIsolationEnabled, err := imc.resolveCPUIsolationEnabled(im)
+		if err != nil {
+			return nil, err
+		}
+		if cpuIsolationEnabled {
+			// RPS steering shares the CPU-isolation toggle: the start-spdk-tgt script
+			// steers host IRQ, workqueue, and RX softirq (RPS) away from the SPDK
+			// reactor cores together.
+			args = append(args, "--enable-irq-affinity", "--enable-workqueue-affinity", "--enable-rps")
 		}
 
 		if !hugepageEnabled {
@@ -1752,6 +2094,15 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 
 		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+		if dynamicCPUPinningEnabled {
+			cpuQty, ok := podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+			if !ok {
+				cpuQty = resource.MustParse(fmt.Sprintf("%d", spdkCoreNumber))
+				podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = cpuQty
+			}
+			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = cpuQty
+			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceMemory] = resource.MustParse("128Mi")
+		}
 
 		podSpec.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{
@@ -1791,7 +2142,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podEnv := []corev1.EnvVar{
 		{
 			Name:  "TLS_DIR",
-			Value: types.TLSDirectoryInContainer,
+			Value: imtypes.TLSDirectoryInContainer,
 		},
 		{
 			Name: types.EnvPodIP,
@@ -1804,6 +2155,14 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		{
 			Name:  types.EnvDataEngine,
 			Value: string(dataEngine),
+		},
+		{
+			Name:  types.LonghornDataPathEnv,
+			Value: types.GetLonghornDataPath(),
+		},
+		{
+			Name:  types.LonghornControlPathEnv,
+			Value: types.GetLonghornControlPath(),
 		},
 	}
 	if tz := os.Getenv(types.EnvTZ); tz != "" {
@@ -1827,11 +2186,16 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
-			MountPath: types.UnixDomainSocketDirectoryInContainer,
+			MountPath:        types.MetadataDirectoryInContainer,
+			Name:             "metadata",
+			MountPropagation: &mountPropagationHostToContainer,
+		},
+		{
+			MountPath: types.GetUnixDomainSocketDirectoryInContainer(),
 			Name:      "unix-domain-socket",
 		},
 		{
-			MountPath: types.TLSDirectoryInContainer,
+			MountPath: imtypes.TLSDirectoryInContainer,
 			Name:      "longhorn-grpc-tls",
 		},
 		{
@@ -1853,7 +2217,16 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "engine-binaries",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.EngineBinaryDirectoryOnHost,
+					Path: types.GetEngineBinaryDirectoryOnHost(),
+				},
+			},
+		},
+		{
+			Name: "metadata",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: types.GetMetadataDirectoryOnHost(),
+					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
 		},
@@ -1861,7 +2234,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "unix-domain-socket",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.UnixDomainSocketDirectoryOnHost,
+					Path: types.GetUnixDomainSocketDirectoryOnHost(),
 				},
 			},
 		},
@@ -1948,6 +2321,12 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 		case longhorn.OrphanTypeReplicaInstance:
 			_, instanceExist = im.Status.InstanceReplicas[instanceName]
 			instanceCRScheduledBack, err = imc.isReplicaOnInstanceManager(instanceManager, instanceName)
+		case longhorn.OrphanTypeShardInstance:
+			_, instanceExist = im.Status.InstanceShards[instanceName]
+			instanceCRScheduledBack, err = imc.isShardOnInstanceManager(instanceManager, instanceName)
+		case longhorn.OrphanTypeShardGroupInstance:
+			_, instanceExist = im.Status.InstanceShardGroups[instanceName]
+			instanceCRScheduledBack, err = imc.isShardGroupCRPresent(instanceName)
 		}
 		if err != nil {
 			errs.Append("errors", errors.Wrapf(err, "failed to check if instance %v is scheduled on instance manager %v", instanceName, instanceManager))
@@ -2043,6 +2422,44 @@ func (imc *InstanceManagerController) isReplicaOnInstanceManager(instanceManager
 	return imc.isInstanceOnInstanceManager(instanceManager, &existReplica.Status.InstanceStatus), nil
 }
 
+// isShardOnInstanceManager reports whether the shard is scheduled in the given instance manager.
+// A Shard CR carries no instance-manager name, so the instance manager is resolved from the
+// shard's scheduled node (Spec.NodeID), which is immutable once set.
+func (imc *InstanceManagerController) isShardOnInstanceManager(instanceManager, instanceName string) (bool, error) {
+	shard, err := imc.ds.GetShardRO(instanceName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Shard CR not found - the instance is orphaned, not scheduled here.
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to check if shard instance %q is scheduled on instance manager %q", instanceName, instanceManager)
+	}
+	if shard.Spec.NodeID == "" {
+		// Not yet scheduled to a node; cannot be confirmed on this instance manager.
+		return false, nil
+	}
+	scheduledInstanceManager, err := imc.ds.GetInstanceManagerByInstanceRO(shard)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to resolve instance manager for shard %q", instanceName)
+	}
+	return scheduledInstanceManager.Name == instanceManager, nil
+}
+
+// isShardGroupCRPresent returns true when a ShardGroup CR exists with the given
+// name (which equals the volume name). Used by the orphan deletion path: a
+// ShardGroup-instance Orphan can be removed once the ShardGroup CR is back,
+// indicating the process has been re-adopted by the controller.
+func (imc *InstanceManagerController) isShardGroupCRPresent(shardGroupName string) (bool, error) {
+	_, err := imc.ds.GetShardGroupRO(shardGroupName)
+	if err == nil {
+		return true, nil
+	}
+	if datastore.ErrorIsNotFound(err) {
+		return false, nil
+	}
+	return false, errors.Wrapf(err, "failed to check if ShardGroup CR %q is present", shardGroupName)
+}
+
 func (imc *InstanceManagerController) isInstanceOnInstanceManager(instanceManager string, status *longhorn.InstanceStatus) bool {
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
@@ -2053,59 +2470,6 @@ func (imc *InstanceManagerController) isInstanceOnInstanceManager(instanceManage
 	default:
 		return false
 	}
-}
-
-func (imc *InstanceManagerController) startBackingImageMonitoring(im *longhorn.InstanceManager) {
-	log := imc.logger.WithField("instance manager", im.Name)
-
-	backingImageMonitorName := types.GetBackingImageMonitorName(im.Name)
-
-	if im.Status.IP == "" {
-		log.Errorf("IP is not set before monitoring")
-		return
-	}
-	imc.instanceManagerMonitorMutex.Lock()
-	defer imc.instanceManagerMonitorMutex.Unlock()
-
-	if _, ok := imc.instanceManagerMonitorMap[backingImageMonitorName]; ok {
-		return
-	}
-
-	engineClientProxy, err := engineapi.NewEngineClientProxy(im, log, imc.proxyConnCounter, imc.ds)
-	if err != nil {
-		log.Errorf("failed to get the engine client proxy for instance manager %v", im.Name)
-		return
-	}
-
-	stopCh := make(chan struct{}, 1)
-	monitorVoluntaryStopCh := make(chan struct{})
-	monitor := &InstanceManagerMonitor{
-		logger:                 log,
-		Name:                   backingImageMonitorName,
-		imName:                 im.Name,
-		controllerID:           imc.controllerID,
-		ds:                     imc.ds,
-		lock:                   &sync.RWMutex{},
-		stopCh:                 stopCh,
-		done:                   false,
-		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
-		// notify monitor to update the instance map
-		updateNotification: true,
-		proxyClient:        engineClientProxy,
-
-		nodeCallback: imc.enqueueInstanceManagersForNode,
-	}
-
-	imc.instanceManagerMonitorMap[backingImageMonitorName] = stopCh
-	go monitor.BackingImageMonitorRun()
-
-	go func() {
-		<-monitorVoluntaryStopCh
-		engineClientProxy.Close()
-		imc.instanceManagerMonitorMutex.Lock()
-		delete(imc.instanceManagerMonitorMap, backingImageMonitorName)
-		imc.instanceManagerMonitorMutex.Unlock()
-	}()
 }
 
 func (imc *InstanceManagerController) stopBackingImageMonitoring(imName string) {
@@ -2124,119 +2488,6 @@ func (imc *InstanceManagerController) stopBackingImageMonitoring(imName string) 
 	default:
 		close(stopCh)
 	}
-}
-
-func (m *InstanceManagerMonitor) BackingImageMonitorRun() {
-	m.logger.Infof("Start SPDK backing image monitoring %v", m.Name)
-
-	ctx, cancel := context.WithCancel(context.TODO())
-	notifier, err := m.proxyClient.SPDKBackingImageWatch(ctx)
-	if err != nil {
-		m.logger.WithError(err).Errorf("Failed to get the notifier for monitoring")
-		cancel()
-		close(m.monitorVoluntaryStopCh)
-		return
-	}
-
-	defer func() {
-		m.logger.Infof("Stop monitoring spdk backing image %v", m.Name)
-		cancel()
-		m.StopMonitorWithLock()
-		close(m.monitorVoluntaryStopCh)
-	}()
-
-	go func() {
-		continuousFailureCount := 0
-		for {
-			if continuousFailureCount >= engineapi.MaxMonitorRetryCount {
-				m.logger.Errorf("Instance manager SPDK backing image monitor streaming continuously errors receiving items for %v times, will stop the monitor itself", engineapi.MaxMonitorRetryCount)
-				m.StopMonitorWithLock()
-			}
-
-			if m.CheckMonitorStoppedWithLock() {
-				return
-			}
-
-			_, err = notifier.Recv()
-			if err != nil {
-				m.logger.WithError(err).Error("Failed to receive next item in spdk backing image watch")
-				continuousFailureCount++
-				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
-			} else {
-				m.lock.Lock()
-				m.updateNotification = true
-				m.lock.Unlock()
-				continuousFailureCount = 0
-			}
-		}
-	}()
-
-	timer := 0
-	ticker := time.NewTicker(engineapi.MinPollCount * engineapi.PollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if m.CheckMonitorStoppedWithLock() {
-				return
-			}
-
-			needUpdate := false
-
-			m.lock.Lock()
-			timer++
-			if timer >= engineapi.MaxPollCount || m.updateNotification {
-				needUpdate = true
-				m.updateNotification = false
-				timer = 0
-			}
-			m.lock.Unlock()
-
-			if !needUpdate {
-				continue
-			}
-			if needStop := m.pollAndUpdateV2BackingImageMap(); needStop {
-				return
-			}
-		case <-m.stopCh:
-			return
-		}
-	}
-}
-
-func (m *InstanceManagerMonitor) pollAndUpdateV2BackingImageMap() (needStop bool) {
-	im, err := m.ds.GetInstanceManager(m.imName)
-	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			m.logger.Warn("Stop monitoring because the instance manager no longer exists")
-			return true
-		}
-		utilruntime.HandleError(errors.Wrapf(err, "failed to get instance manager %v for monitoring", m.Name))
-		return false
-	}
-
-	if im.Status.OwnerID != m.controllerID {
-		m.logger.Warnf("Stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
-		return true
-	}
-
-	// the key in the resp is in the form of "bi-%s-disk-%s" so we can distinguish the different disks in the same instance manager
-	resp, err := m.proxyClient.SPDKBackingImageList()
-	if err != nil {
-		utilruntime.HandleError(errors.Wrapf(err, "failed to poll spdk backing image info to update instance manager %v", m.Name))
-		return false
-	}
-
-	if reflect.DeepEqual(im.Status.BackingImages, resp) {
-		return false
-	}
-
-	im.Status.BackingImages = resp
-	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
-		utilruntime.HandleError(errors.Wrapf(err, "failed to update v2 backing image map for instance manager %v", m.Name))
-		return false
-	}
-	return false
 }
 
 func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager) {
@@ -2454,17 +2705,23 @@ func (m *InstanceManagerMonitor) syncInstances(im *longhorn.InstanceManager, ins
 func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, instanceMap instanceProcessMap) bool {
 	switch {
 	default:
-		engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
+		engineProcesses, engineFrontendProcesses, replicaProcesses, shardProcesses, shardGroupProcesses := m.categorizeProcesses(instanceMap)
 
 		// reflect.DeepEqual treats the two maps `var m1 map[string]process` and `m2 := map[string]process` as different maps.
 		// Therefore, to prevent unnecessary updates, we must check both that the length of the maps is zero and that the maps are identical.
 		if ((len(im.Status.InstanceEngines) == 0 && len(engineProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngines, engineProcesses)) &&
-			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcesses)) {
+			((len(im.Status.InstanceEngineFrontends) == 0 && len(engineFrontendProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngineFrontends, engineFrontendProcesses)) &&
+			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcesses)) &&
+			((len(im.Status.InstanceShards) == 0 && len(shardProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceShards, shardProcesses)) &&
+			((len(im.Status.InstanceShardGroups) == 0 && len(shardGroupProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceShardGroups, shardGroupProcesses)) {
 			return false
 		}
 
 		im.Status.InstanceEngines = engineProcesses
+		im.Status.InstanceEngineFrontends = engineFrontendProcesses
 		im.Status.InstanceReplicas = replicaProcesses
+		im.Status.InstanceShards = shardProcesses
+		im.Status.InstanceShardGroups = shardGroupProcesses
 	}
 	return true
 }
@@ -2482,7 +2739,7 @@ func (m *InstanceManagerMonitor) StopMonitorWithLock() {
 }
 
 func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, instanceMap instanceProcessMap) {
-	engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
+	engineProcesses, _, replicaProcesses, shardProcesses, shardGroupProcesses := m.categorizeProcesses(instanceMap)
 	existOrphansList, err := m.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
 	if err != nil {
 		m.logger.WithError(err).Errorf("Failed to list orphans on node %s", im.Spec.NodeID)
@@ -2494,8 +2751,10 @@ func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, insta
 	}
 
 	// exam instances and create orphan CRs
-	m.createOrphanForInstances(existOrphans, im, engineProcesses, longhorn.OrphanTypeEngineInstance, m.isEngineOrphaned)
-	m.createOrphanForInstances(existOrphans, im, replicaProcesses, longhorn.OrphanTypeReplicaInstance, m.isReplicaOrphaned)
+	m.createOrphanForInstances(existOrphans, im, engineProcesses, longhorn.OrphanTypeEngineInstance, m.isEngineOrphaned, longhorn.DataEngineTypeV1)
+	m.createOrphanForInstances(existOrphans, im, replicaProcesses, longhorn.OrphanTypeReplicaInstance, m.isReplicaOrphaned, longhorn.DataEngineTypeV1)
+	m.createOrphanForInstances(existOrphans, im, shardProcesses, longhorn.OrphanTypeShardInstance, m.isShardOrphaned, longhorn.DataEngineTypeV2)
+	m.createOrphanForInstances(existOrphans, im, shardGroupProcesses, longhorn.OrphanTypeShardGroupInstance, m.isShardGroupInstanceOrphaned, longhorn.DataEngineTypeV2)
 }
 
 // isEngineOrphaned returns true only when it is very certain that an engine is scheduled on another instance manager
@@ -2561,7 +2820,7 @@ func (m *InstanceManagerMonitor) isInstanceOrphanedInInstanceManager(status *lon
 	}
 }
 
-func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[string]bool, im *longhorn.InstanceManager, instanceMap instanceProcessMap, orphanType longhorn.OrphanType, orphanFilter func(instanceName, instanceManager string) (bool, error)) {
+func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[string]bool, im *longhorn.InstanceManager, instanceMap instanceProcessMap, orphanType longhorn.OrphanType, orphanFilter func(instanceName, instanceManager string) (bool, error), expectedDataEngine longhorn.DataEngineType) {
 	for instanceName, instance := range instanceMap {
 		if instance.Status.State == longhorn.InstanceStateStarting ||
 			instance.Status.State == longhorn.InstanceStateStopping ||
@@ -2570,8 +2829,8 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 			// Stopping, Stopped: Terminating. No orphan CR needed, and the orphaned instances will be cleanup by instance manager after stopped.
 			continue
 		}
-		if instance.Spec.DataEngine != longhorn.DataEngineTypeV1 {
-			m.logger.Debugf("Skipping orphan creation, instance %s is not data engine v1", instanceName)
+		if instance.Spec.DataEngine != expectedDataEngine {
+			m.logger.Debugf("Skipping orphan creation, instance %s is not data engine %s", instanceName, expectedDataEngine)
 			continue
 		}
 		if instance.Status.UUID == "" {
@@ -2625,18 +2884,69 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 	return m.ds.CreateOrphan(orphan)
 }
 
-func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap) {
+func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap, instanceProcessMap, instanceProcessMap, instanceProcessMap) {
 	engineProcesses := make(instanceProcessMap)
+	engineFrontendProcesses := make(instanceProcessMap)
 	replicaProcesses := make(instanceProcessMap)
+	shardProcesses := make(instanceProcessMap)
+	shardGroupProcesses := make(instanceProcessMap)
 	for name, process := range instanceMap {
 		switch process.Status.Type {
 		case longhorn.InstanceTypeEngine:
 			engineProcesses[name] = process
+		case longhorn.InstanceTypeEngineFrontend:
+			engineFrontendProcesses[name] = process
 		case longhorn.InstanceTypeReplica:
 			replicaProcesses[name] = process
+		case longhorn.InstanceType(engineapi.InstanceTypeShard):
+			shardProcesses[name] = process
+		case longhorn.InstanceType(engineapi.InstanceTypeShardGroup):
+			shardGroupProcesses[name] = process
 		}
 	}
-	return engineProcesses, replicaProcesses
+	return engineProcesses, engineFrontendProcesses, replicaProcesses, shardProcesses, shardGroupProcesses
+}
+
+// isShardOrphaned reports whether a running shard process is stranded: its Shard CR is gone,
+// or the CR is now on a different instance manager than the process runs in. A Shard CR carries
+// no instance-manager name, so the instance manager is resolved from the shard's scheduled node
+// (Spec.NodeID). Spec.NodeID is immutable (relocation deletes and recreates the Shard CR), so
+// unlike the replica path it needs no transition guard.
+func (m *InstanceManagerMonitor) isShardOrphaned(instanceName, instanceManager string) (bool, error) {
+	shard, err := m.ds.GetShardRO(instanceName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Shard CR not found - instance is orphaned.
+			return true, nil
+		}
+		return false, err
+	}
+	if shard.Spec.NodeID == "" {
+		// Not yet scheduled to a node; treat as not orphaned to avoid deleting a
+		// process that is still being placed.
+		return false, nil
+	}
+	scheduledInstanceManager, err := m.ds.GetInstanceManagerByInstanceRO(shard)
+	if err != nil {
+		return false, err
+	}
+	return scheduledInstanceManager.Name != instanceManager, nil
+}
+
+// isShardGroupInstanceOrphaned returns true when a running ShardGroup process
+// has no matching ShardGroup CR. The ShardGroup process name equals the
+// volume name (and the ShardGroup CR name), so a missing CR with the same
+// name means the process is stranded - typically left behind by a manager
+// crash mid-deletion or a manual CR delete.
+func (m *InstanceManagerMonitor) isShardGroupInstanceOrphaned(instanceName, _ string) (bool, error) {
+	_, err := m.ds.GetShardGroupRO(instanceName)
+	if err == nil {
+		return false, nil
+	}
+	if apierrors.IsNotFound(err) {
+		return true, nil
+	}
+	return false, err
 }
 
 func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {

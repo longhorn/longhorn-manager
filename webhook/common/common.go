@@ -72,6 +72,8 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, requiredLabels, removingLabels
 		volumeName = o.Name
 	case *longhorn.Engine:
 		volumeName = o.Spec.VolumeName
+	case *longhorn.EngineFrontend:
+		volumeName = o.Spec.VolumeName
 	case *longhorn.Replica:
 		volumeName = o.Spec.VolumeName
 	}

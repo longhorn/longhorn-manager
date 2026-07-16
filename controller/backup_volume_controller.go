@@ -399,10 +399,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	// If there is no backup CR creation/deletion and the backup volume config metadata not changed
+	// If there is no backup CR creation/deletion, the correct backup in the cluster is presented at the last backup of the backup volume,
+	// and the backup volume config metadata not changed
 	// skip read the backup volume config
 	if len(backupsToPull) == 0 && len(backupsToDelete) == 0 &&
-		backupVolume.Status.LastModificationTime.Time.Equal(configMetadata.ModificationTime) {
+		backupVolume.Status.LastModificationTime.Time.Equal(configMetadata.ModificationTime) &&
+		bvc.isLastBackupUpdateSafeToSkip(clusterBackups, backupStoreBackups, backupVolume) {
 		backupVolume.Status.LastSyncedAt = syncTime
 		return nil
 	}
@@ -443,7 +445,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Update BackupVolume CR status
 	backupVolume.Status.LastModificationTime = metav1.Time{Time: configMetadata.ModificationTime}
-	backupVolume.Status.Size = backupVolumeInfo.Size
 	backupVolume.Status.Labels = backupVolumeInfo.Labels
 	backupVolume.Status.CreatedAt = backupVolumeInfo.Created
 	backupVolume.Status.LastBackupName = backupVolumeInfo.LastBackupName
@@ -454,7 +455,67 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
 	backupVolume.Status.LastSyncedAt = syncTime
+	backupVolume.Status.Size, err = getCorrectedEncryptedVolumeSize(backupVolumeInfo.Size, backupVolumeInfo.Labels)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to get corrected encrypted volume size: %v", backupVolumeInfo.Size)
+		return err
+	}
+
 	return nil
+}
+
+// isLastBackupUpdateSafeToSkip checks if it's safe to skip updating the last backup related status of the backup volume
+// when the backup volume config metadata is not changed.
+//
+//	clusterBackups: the backup CRs in the cluster with the same backup target and backup volume, which are expected to be consistent with the backup list in the backup target.
+//	backupStoreBackups: the backup names in the backup target, which are expected to be consistent with the backup CRs in the cluster.
+//
+//nolint:staticcheck
+func (bvc *BackupVolumeController) isLastBackupUpdateSafeToSkip(clusterBackups map[string]*longhorn.Backup, backupStoreBackups sets.String, bv *longhorn.BackupVolume) bool {
+	if backupStoreBackups.Len() == 0 {
+		// If there is no backup in the backup target, the last backup name should be empty.
+		return bv.Status.LastBackupName == ""
+	}
+
+	// backupStoreBackups is not empty and the last backup name should not be empty.
+	if bv.Status.LastBackupName == "" {
+		return false
+	}
+
+	// Last backup of the backup volume is deleted.
+	if !backupStoreBackups.Has(bv.Status.LastBackupName) {
+		return false
+	}
+
+	// check if there is any backup which is created after the last backup of the backup volume, and the backup CR is not updated with the backup created time yet.
+	lastBackupCreateAt := time.Time{}
+	lastCreatedAndCompletedBackupName := ""
+	for backupName, backup := range clusterBackups {
+		if !backupStoreBackups.Has(backupName) || backup.Status.State != longhorn.BackupStateCompleted {
+			continue
+		}
+
+		if bv.Status.LastBackupAt == "" {
+			return false
+		}
+
+		backupCreatedAt, err := util.ParseTimeZ(backup.Status.BackupCreatedAt)
+		if backup.Status.BackupCreatedAt == "" || err != nil {
+			bvc.logger.WithError(err).Debugf("Failed to parse backup created time for backup %s", backup.Name)
+			return false
+		}
+
+		if backupCreatedAt.After(lastBackupCreateAt) {
+			lastBackupCreateAt = backupCreatedAt
+			lastCreatedAndCompletedBackupName = backupName
+		}
+	}
+
+	if lastCreatedAndCompletedBackupName != bv.Status.LastBackupName {
+		return false
+	}
+
+	return true
 }
 
 func (bvc *BackupVolumeController) isResponsibleFor(bv *longhorn.BackupVolume, defaultEngineImage string) (bool, error) {

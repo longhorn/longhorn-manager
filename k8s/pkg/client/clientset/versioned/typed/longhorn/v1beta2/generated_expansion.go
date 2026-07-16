@@ -34,6 +34,8 @@ type BackupVolumeExpansion interface{}
 
 type EngineExpansion interface{}
 
+type EngineFrontendExpansion interface{}
+
 type EngineImageExpansion interface{}
 
 type InstanceManagerExpansion interface{}
@@ -47,6 +49,10 @@ type RecurringJobExpansion interface{}
 type ReplicaExpansion interface{}
 
 type SettingExpansion interface{}
+
+type ShardExpansion interface{}
+
+type ShardGroupExpansion interface{}
 
 type ShareManagerExpansion interface{}
 

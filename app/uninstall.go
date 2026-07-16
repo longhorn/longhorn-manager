@@ -1,11 +1,12 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -26,38 +27,39 @@ const (
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
 
-func UninstallCmd() cli.Command {
-	return cli.Command{
+func UninstallCmd() *cli.Command {
+	return &cli.Command{
 		Name: "uninstall",
 		Flags: []cli.Flag{
-			cli.BoolFlag{
+			&cli.BoolFlag{
 				Name:  FlagForce,
 				Usage: "uninstall even if volumes are in use",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
-			cli.StringFlag{
-				Name:   FlagNamespace,
-				EnvVar: EnvLonghornNamespace,
+			&cli.StringFlag{
+				Name:    FlagNamespace,
+				Sources: cli.EnvVars(EnvLonghornNamespace),
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := uninstall(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := uninstall(cmd); err != nil {
 				logrus.Fatalln(err)
 			}
+			return nil
 		},
 	}
 }
 
-func uninstall(c *cli.Context) error {
-	namespace := c.String(FlagNamespace)
+func uninstall(cmd *cli.Command) error {
+	namespace := cmd.String(FlagNamespace)
 	if namespace == "" {
 		return errors.New("namespace is required")
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
+	config, err := clientcmd.BuildConfigFromFlags("", cmd.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}
@@ -86,7 +88,7 @@ func uninstall(c *cli.Context) error {
 	ctrl, err := controller.NewUninstallController(
 		logger,
 		namespace,
-		c.Bool(FlagForce),
+		cmd.Bool(FlagForce),
 		ds,
 		doneCh,
 		kubeClient,

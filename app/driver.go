@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/tools/clientcmd"
@@ -57,101 +58,102 @@ const (
 	EnvCSISnapshotterReplicaCount  = "CSI_SNAPSHOTTER_REPLICA_COUNT"
 )
 
-func DeployDriverCmd() cli.Command {
-	return cli.Command{
+func DeployDriverCmd() *cli.Command {
+	return &cli.Command{
 		Name: "deploy-driver",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagManagerImage,
 				Usage: "Specify Longhorn manager image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagManagerURL,
 				Usage: "Longhorn manager API URL",
 			},
-			cli.StringFlag{
-				Name:   FlagKubeletRootDir,
-				Usage:  "Specify the root directory of kubelet for csi components (optional)",
-				EnvVar: EnvKubeletRootDir,
+			&cli.StringFlag{
+				Name:    FlagKubeletRootDir,
+				Usage:   "Specify the root directory of kubelet for csi components (optional)",
+				Sources: cli.EnvVars(EnvKubeletRootDir),
 			},
-			cli.StringFlag{
-				Name:   FlagCSIAttacherImage,
-				Usage:  "Specify CSI attacher image",
-				EnvVar: EnvCSIAttacherImage,
+			&cli.StringFlag{
+				Name:    FlagCSIAttacherImage,
+				Usage:   "Specify CSI attacher image",
+				Sources: cli.EnvVars(EnvCSIAttacherImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSIAttacherReplicaCount,
-				Usage:  "Specify number of CSI attacher replicas",
-				EnvVar: EnvCSIAttacherReplicaCount,
-				Value:  csi.DefaultCSIAttacherReplicaCount,
+			&cli.IntFlag{
+				Name:    FlagCSIAttacherReplicaCount,
+				Usage:   "Specify number of CSI attacher replicas",
+				Sources: cli.EnvVars(EnvCSIAttacherReplicaCount),
+				Value:   csi.DefaultCSIAttacherReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSIProvisionerImage,
-				Usage:  "Specify CSI provisioner image",
-				EnvVar: EnvCSIProvisionerImage,
+			&cli.StringFlag{
+				Name:    FlagCSIProvisionerImage,
+				Usage:   "Specify CSI provisioner image",
+				Sources: cli.EnvVars(EnvCSIProvisionerImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSIProvisionerReplicaCount,
-				Usage:  "Specify number of CSI provisioner replicas",
-				EnvVar: EnvCSIProvisionerReplicaCount,
-				Value:  csi.DefaultCSIProvisionerReplicaCount,
+			&cli.IntFlag{
+				Name:    FlagCSIProvisionerReplicaCount,
+				Usage:   "Specify number of CSI provisioner replicas",
+				Sources: cli.EnvVars(EnvCSIProvisionerReplicaCount),
+				Value:   csi.DefaultCSIProvisionerReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSIResizerImage,
-				Usage:  "Specify CSI resizer image",
-				EnvVar: EnvCSIResizerImage,
+			&cli.StringFlag{
+				Name:    FlagCSIResizerImage,
+				Usage:   "Specify CSI resizer image",
+				Sources: cli.EnvVars(EnvCSIResizerImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSIResizerReplicaCount,
-				Usage:  "Specify number of CSI resizer replicas",
-				EnvVar: EnvCSIResizerReplicaCount,
-				Value:  csi.DefaultCSIResizerReplicaCount,
+			&cli.IntFlag{
+				Name:    FlagCSIResizerReplicaCount,
+				Usage:   "Specify number of CSI resizer replicas",
+				Sources: cli.EnvVars(EnvCSIResizerReplicaCount),
+				Value:   csi.DefaultCSIResizerReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSISnapshotterImage,
-				Usage:  "Specify CSI snapshotter image",
-				EnvVar: EnvCSISnapshotterImage,
+			&cli.StringFlag{
+				Name:    FlagCSISnapshotterImage,
+				Usage:   "Specify CSI snapshotter image",
+				Sources: cli.EnvVars(EnvCSISnapshotterImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSISnapshotterReplicaCount,
-				Usage:  "Specify number of CSI snapshotter replicas",
-				EnvVar: EnvCSISnapshotterReplicaCount,
-				Value:  csi.DefaultCSISnapshotterReplicaCount,
+			&cli.IntFlag{
+				Name:    FlagCSISnapshotterReplicaCount,
+				Usage:   "Specify number of CSI snapshotter replicas",
+				Sources: cli.EnvVars(EnvCSISnapshotterReplicaCount),
+				Value:   csi.DefaultCSISnapshotterReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSIPodAntiAffinityPreset,
-				Usage:  "Specify CSI deployment podAntiAffinity",
-				EnvVar: EnvCSIPodAntiAffinityPreset,
-				Value:  csi.DefaultCSIPodAntiAffinityPreset,
+			&cli.StringFlag{
+				Name:    FlagCSIPodAntiAffinityPreset,
+				Usage:   "Specify CSI deployment podAntiAffinity",
+				Sources: cli.EnvVars(EnvCSIPodAntiAffinityPreset),
+				Value:   csi.DefaultCSIPodAntiAffinityPreset,
 			},
-			cli.StringFlag{
-				Name:   FlagCSINodeDriverRegistrarImage,
-				Usage:  "Specify CSI node-driver-registrar image",
-				EnvVar: EnvCSINodeDriverRegistrarImage,
+			&cli.StringFlag{
+				Name:    FlagCSINodeDriverRegistrarImage,
+				Usage:   "Specify CSI node-driver-registrar image",
+				Sources: cli.EnvVars(EnvCSINodeDriverRegistrarImage),
 			},
-			cli.StringFlag{
-				Name:   FlagCSILivenessProbeImage,
-				Usage:  "Specify CSI liveness probe image",
-				EnvVar: EnvCSILivenessProbeImage,
+			&cli.StringFlag{
+				Name:    FlagCSILivenessProbeImage,
+				Usage:   "Specify CSI liveness probe image",
+				Sources: cli.EnvVars(EnvCSILivenessProbeImage),
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := validateFlags(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := validateFlags(cmd); err != nil {
 				logrus.Fatalf("Error validating flags: %v", err)
 			}
 
-			if err := deployDriver(c); err != nil {
+			if err := deployDriver(cmd); err != nil {
 				logrus.Fatalf("Error deploying driver: %v", err)
 			}
+			return nil
 		},
 	}
 }
 
-func validateFlags(c *cli.Context) error {
+func validateFlags(cmd *cli.Command) error {
 	for _, flag := range []string{
 		FlagManagerImage,
 		FlagManagerURL,
@@ -162,7 +164,7 @@ func validateFlags(c *cli.Context) error {
 		FlagCSINodeDriverRegistrarImage,
 		FlagCSILivenessProbeImage,
 	} {
-		if c.String(flag) == "" {
+		if cmd.String(flag) == "" {
 			return fmt.Errorf("%q cannot be empty", flag)
 		}
 	}
@@ -170,11 +172,11 @@ func validateFlags(c *cli.Context) error {
 	return nil
 }
 
-func deployDriver(c *cli.Context) error {
-	managerImage := c.String(FlagManagerImage)
-	managerURL := c.String(FlagManagerURL)
+func deployDriver(cmd *cli.Command) error {
+	managerImage := cmd.String(FlagManagerImage)
+	managerURL := cmd.String(FlagManagerURL)
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
+	config, err := clientcmd.BuildConfigFromFlags("", cmd.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}
@@ -199,7 +201,7 @@ func deployDriver(c *cli.Context) error {
 	}
 
 	logrus.Info("Deploying CSI driver")
-	return deployCSIDriver(kubeClient, lhClient, c, managerImage, managerURL)
+	return deployCSIDriver(kubeClient, lhClient, cmd, managerImage, managerURL)
 }
 
 func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
@@ -215,24 +217,24 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 	return nil
 }
 
-func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) (err error) {
+func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, cmd *cli.Command, managerImage, managerURL string) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to start CSI driver")
 	}()
-	csiAttacherImage := c.String(FlagCSIAttacherImage)
-	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
-	csiResizerImage := c.String(FlagCSIResizerImage)
-	csiSnapshotterImage := c.String(FlagCSISnapshotterImage)
-	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
-	csiLivenessProbeImage := c.String(FlagCSILivenessProbeImage)
-	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
-	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
-	csiSnapshotterReplicaCount := c.Int(FlagCSISnapshotterReplicaCount)
-	csiResizerReplicaCount := c.Int(FlagCSIResizerReplicaCount)
-	csiPodAntiAffinityPreset := c.String(FlagCSIPodAntiAffinityPreset)
+	csiAttacherImage := cmd.String(FlagCSIAttacherImage)
+	csiProvisionerImage := cmd.String(FlagCSIProvisionerImage)
+	csiResizerImage := cmd.String(FlagCSIResizerImage)
+	csiSnapshotterImage := cmd.String(FlagCSISnapshotterImage)
+	csiNodeDriverRegistrarImage := cmd.String(FlagCSINodeDriverRegistrarImage)
+	csiLivenessProbeImage := cmd.String(FlagCSILivenessProbeImage)
+	csiAttacherReplicaCount := cmd.Int(FlagCSIAttacherReplicaCount)
+	csiProvisionerReplicaCount := cmd.Int(FlagCSIProvisionerReplicaCount)
+	csiSnapshotterReplicaCount := cmd.Int(FlagCSISnapshotterReplicaCount)
+	csiResizerReplicaCount := cmd.Int(FlagCSIResizerReplicaCount)
+	csiPodAntiAffinityPreset := cmd.String(FlagCSIPodAntiAffinityPreset)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
-	rootDir := c.String(FlagKubeletRootDir)
+	rootDir := cmd.String(FlagKubeletRootDir)
 
 	tolerationSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
@@ -287,6 +289,14 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	storageCapacityEnabled := false
+	storageCapacityTrackingSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCSIStorageCapacityTracking), metav1.GetOptions{})
+	if err != nil {
+		logrus.WithError(err).Warnf("failed to get storage capacity tracking setting, defaulting to false")
+	} else if storageCapacityEnabled, err = strconv.ParseBool(storageCapacityTrackingSetting.Value); err != nil {
+		return err
+	}
+
 	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {
 	case string(types.SystemManagedPodsImagePullPolicyNever):
@@ -319,7 +329,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	csiDriverObjectDeployment := csi.NewCSIDriverObject()
+	csiDriverObjectDeployment := csi.NewCSIDriverObject(storageCapacityEnabled)
 	if err := csiDriverObjectDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
