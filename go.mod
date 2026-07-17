@@ -68,21 +68,21 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260709065232-ca96411485d4
 	github.com/longhorn/go-common-libs v0.0.0-20260716070930-439af9b33f41
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.6.3-0.20260712050109-6357546afe9a
+	github.com/longhorn/go-spdk-helper v0.7.0
 	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
 	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260714061654-fac6a1ce8f5e
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
 	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260714055101-73cc68c78d23
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
-	github.com/rancher/dynamiclistener v0.8.2
+	github.com/rancher/dynamiclistener v0.9.0
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.7.0
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.10.1
-	golang.org/x/mod v0.37.0
+	golang.org/x/mod v0.38.0
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
@@ -208,11 +208,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0
-	golang.org/x/term v0.43.0 // indirect
-	golang.org/x/text v0.39.0
+	golang.org/x/term v0.44.0 // indirect
+	golang.org/x/text v0.40.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.36.2 // indirect

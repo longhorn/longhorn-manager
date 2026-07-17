@@ -29,7 +29,7 @@ const (
 )
 
 var (
-	cnRegexp = regexp.MustCompile("^([A-Za-z0-9:][-A-Za-z0-9_.:]*)?[A-Za-z0-9:]$")
+	cnRegexp = regexp.MustCompile(`^(\*\.)?([A-Za-z0-9:][-A-Za-z0-9_.:]*)?[A-Za-z0-9:]$`)
 )
 
 type TLS struct {
@@ -37,10 +37,19 @@ type TLS struct {
 	CAKey               crypto.Signer
 	CN                  string
 	Organization        []string
-	FilterCN            func(...string) []string
+	FilterCN        func(...string) []string
+	// FilterExisting, when true, applies FilterCN to the set of CNs already
+	// recorded on the secret (via cnPrefix annotations) inside Merge, AddCN,
+	// Renew, Regenerate, and cert generation. Any existing CN that FilterCN
+	// would reject is pruned from the cert on the next write. false (default)
+	// preserves all existing CNs as before.
+	FilterExisting bool
 	ExpirationDaysCheck int
 }
 
+// cns returns the raw CN set recorded on the secret via cnPrefix
+// annotations. No filtering is applied. Used for raw-count checks (e.g.
+// the MaxSANs cap in NeedsUpdate) where the literal stored count matters.
 func cns(secret *v1.Secret) (cns []string) {
 	if secret == nil {
 		return nil
@@ -53,10 +62,19 @@ func cns(secret *v1.Secret) (cns []string) {
 	return
 }
 
-func collectCNs(secret *v1.Secret) (domains []string, ips []net.IP, err error) {
-	var (
-		cns = cns(secret)
-	)
+// filteredCNs returns the secret's stored CNs, with FilterCN applied to the
+// existing set when FilterExisting is true. Used everywhere the valid CN set
+// is needed for merging or cert generation.
+func (t *TLS) filteredCNs(secret *v1.Secret) []string {
+	out := cns(secret)
+	if t.FilterExisting && t.FilterCN != nil {
+		out = t.FilterCN(out...)
+	}
+	return out
+}
+
+func (t *TLS) collectCNs(secret *v1.Secret) (domains []string, ips []net.IP, err error) {
+	cns := t.filteredCNs(secret)
 
 	sort.Strings(cns)
 
@@ -70,6 +88,35 @@ func collectCNs(secret *v1.Secret) (domains []string, ips []net.IP, err error) {
 	}
 
 	return
+}
+
+// hasStaleCNs reports whether the secret has CN annotations that FilterCN
+// would remove when FilterExisting is true. When true, Merge must call
+// generateCert rather than returning the cert as-is.
+func (t *TLS) hasStaleCNs(secret *v1.Secret) bool {
+	if !t.FilterExisting || t.FilterCN == nil || secret == nil {
+		return false
+	}
+	return len(t.filteredCNs(secret)) < len(cns(secret))
+}
+
+// pruneAnnotations strips cnPrefix annotations whose values FilterCN would
+// reject, when FilterExisting is true. No-op otherwise. Other annotations
+// (Static, Fingerprint, etc.) are preserved.
+func (t *TLS) pruneAnnotations(secret *v1.Secret) *v1.Secret {
+	if !t.FilterExisting || t.FilterCN == nil || secret == nil || secret.Annotations == nil {
+		return secret
+	}
+	keep := make(map[string]bool)
+	for _, cn := range t.filteredCNs(secret) {
+		keep[cn] = true
+	}
+	for k, v := range secret.Annotations {
+		if strings.HasPrefix(k, cnPrefix) && !keep[v] {
+			delete(secret.Annotations, k)
+		}
+	}
+	return secret
 }
 
 // Merge combines the SAN lists from the target and additional Secrets, and
@@ -92,18 +139,27 @@ func (t *TLS) Merge(target, additional *v1.Secret) (*v1.Secret, bool, error) {
 		return target, false, nil
 	}
 
-	mergedCNs := append(cns(target), cns(additional)...)
+	mergedCNs := append(t.filteredCNs(target), t.filteredCNs(additional)...)
 
 	// if the additional secret already has all the CNs, use it in preference to the
 	// current one. This behavior is required to allow for renewal or regeneration.
+	// If FilterExisting is active and the cert has stale CNs beyond the filtered
+	// set, fall through to generateCert so pruneAnnotations can remove them.
 	if !NeedsUpdate(0, additional, mergedCNs...) && !t.IsExpired(additional) {
-		return additional, true, nil
+		if !t.hasStaleCNs(additional) {
+			return additional, true, nil
+		}
+		return t.generateCert(additional, mergedCNs...)
 	}
 
 	// if the target secret already has all the CNs, continue using it. The additional
 	// cert had only a subset of the current CNs, so nothing needs to be added.
+	// Same staleness check as above.
 	if !NeedsUpdate(0, target, mergedCNs...) && !t.IsExpired(target) {
-		return target, false, nil
+		if !t.hasStaleCNs(target) {
+			return target, false, nil
+		}
+		return t.generateCert(target, mergedCNs...)
 	}
 
 	// neither cert currently has all the necessary CNs or is unexpired; generate a new one.
@@ -117,7 +173,7 @@ func (t *TLS) Renew(secret *v1.Secret) (*v1.Secret, error) {
 	if IsStatic(secret) {
 		return secret, cert.ErrStaticCert
 	}
-	cns := cns(secret)
+	cns := t.filteredCNs(secret)
 	secret = secret.DeepCopy()
 	secret.Annotations = map[string]string{}
 	secret, _, err := t.generateCert(secret, cns...)
@@ -146,7 +202,7 @@ func (t *TLS) AddCN(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error) {
 }
 
 func (t *TLS) Regenerate(secret *v1.Secret) (*v1.Secret, error) {
-	cns := cns(secret)
+	cns := t.filteredCNs(secret)
 	secret, _, err := t.generateCert(nil, cns...)
 	return secret, err
 }
@@ -163,12 +219,16 @@ func (t *TLS) generateCert(secret *v1.Secret, cn ...string) (*v1.Secret, bool, e
 
 	secret = populateCN(secret, cn...)
 
+	// Drop CN annotations that FilterCN would reject — including any
+	// just added by populateCN — so the cert and its annotations stay in sync.
+	secret = t.pruneAnnotations(secret)
+
 	privateKey, err := getPrivateKey(secret)
 	if err != nil {
 		return nil, false, err
 	}
 
-	domains, ips, err := collectCNs(secret)
+	domains, ips, err := t.collectCNs(secret)
 	if err != nil {
 		return nil, false, err
 	}
@@ -268,22 +328,49 @@ func IsStatic(secret *v1.Secret) bool {
 
 // NeedsUpdate returns true if any of the CNs are not currently present on the
 // secret's Certificate, as recorded in the cnPrefix annotations. It will return
-// false if all requested CNs are already present, or if maxSANs is non-zero and has
+// false if all requested CNs are already present (either explicitly, or covered
+// by an existing wildcard SAN per RFC 6125), or if maxSANs is non-zero and has
 // been exceeded.
 func NeedsUpdate(maxSANs int, secret *v1.Secret, cn ...string) bool {
 	if secret == nil {
 		return true
 	}
-
+	existingCNs := cns(secret)
 	for _, cn := range cn {
-		if secret.Annotations[getAnnotationKey(cn)] == "" {
-			if maxSANs > 0 && len(cns(secret)) >= maxSANs {
-				return false
-			}
+		if secret.Annotations[getAnnotationKey(cn)] != "" {
+			continue
+		}
+		if isCoveredByWildcard(cn, existingCNs) {
+			continue
+		}
+		if maxSANs > 0 && len(existingCNs) >= maxSANs {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+// isCoveredByWildcard reports whether cn is matched by any "*.parent" entry in
+// existing, per RFC 6125 single-label leftmost-wildcard semantics.
+//
+//	"*.example.com" covers "foo.example.com" but NOT "a.b.example.com" and NOT "example.com".
+//
+// A wildcard cn is never considered covered by another wildcard.
+func isCoveredByWildcard(cn string, existing []string) bool {
+	if strings.HasPrefix(cn, "*.") {
+		return false
+	}
+	dot := strings.IndexByte(cn, '.')
+	if dot < 1 {
+		return false
+	}
+	parent := "*" + cn[dot:]
+	for _, e := range existing {
+		if e == parent {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -348,11 +435,12 @@ func NewPrivateKey() (crypto.Signer, error) {
 func getAnnotationKey(cn string) string {
 	cn = cnPrefix + cn
 	cnLen := len(cn)
-	if cnLen < 64 && !strings.ContainsRune(cn, ':') {
+	if cnLen < 64 && !strings.ContainsRune(cn, ':') && !strings.ContainsRune(cn, '*') {
 		return cn
 	}
 	digest := sha256.Sum256([]byte(cn))
 	cn = strings.ReplaceAll(cn, ":", "_")
+	cn = strings.ReplaceAll(cn, "*", "_")
 	if cnLen > 56 {
 		cnLen = 56
 	}
