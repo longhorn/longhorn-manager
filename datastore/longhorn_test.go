@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -280,6 +281,33 @@ func TestValidateSettingDefaultControlPath(t *testing.T) {
 			newValue:        "/control/longhorn",
 			expectError:     "cannot change default-control-path after Longhorn has been initialized",
 		},
+		"legacy cluster rejects control path change to customized data path": {
+			existingObjects: []runtime.Object{
+				&longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      string(types.SettingNameDefaultDataPath),
+						Namespace: testNamespace,
+					},
+					Value: "/data/longhorn",
+				},
+				newNode("node-1"),
+			},
+			newValue:    "/data/longhorn",
+			expectError: "cannot change default-control-path after Longhorn has been initialized",
+		},
+		"legacy cluster keeps historical default control path": {
+			existingObjects: []runtime.Object{
+				&longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      string(types.SettingNameDefaultDataPath),
+						Namespace: testNamespace,
+					},
+					Value: "/data/longhorn",
+				},
+				newNode("node-1"),
+			},
+			newValue: types.DefaultControlPath,
+		},
 		"block device path is rejected": {
 			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
 			newValue:        "/dev/nvme0n1",
@@ -397,6 +425,222 @@ func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
 			))
 
 			err := ds.ValidateSetting(string(types.SettingNameDefaultDataPath), tc.newValue)
+			if tc.expectError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectError)
+			}
+		})
+	}
+}
+
+func TestUpdateCustomizedSettingsForInstallTimePathsOnUpgrade(t *testing.T) {
+	const (
+		testNamespace            = "longhorn-system"
+		configMapResourceVersion = "3113"
+	)
+
+	newNode := func(name string) *longhorn.Node {
+		return &longhorn.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: testNamespace,
+			},
+		}
+	}
+
+	newSetting := func(name types.SettingName, value string) *longhorn.Setting {
+		return &longhorn.Setting{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      string(name),
+				Namespace: testNamespace,
+			},
+			Value: value,
+		}
+	}
+
+	newDefaultSettingConfigMap := func(dataPath, controlPath string) *corev1.ConfigMap {
+		data := ""
+		if dataPath != "" {
+			data += fmt.Sprintf("default-data-path: %q\n", dataPath)
+		}
+		if controlPath != "" {
+			data += fmt.Sprintf("default-control-path: %q\n", controlPath)
+		}
+		return &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            types.DefaultDefaultSettingConfigMapName,
+				Namespace:       testNamespace,
+				ResourceVersion: configMapResourceVersion,
+			},
+			Data: map[string]string{
+				types.DefaultSettingYAMLFileName: data,
+			},
+		}
+	}
+
+	tests := map[string]struct {
+		existingObjects             []runtime.Object
+		defaultSettingConfigMap     *corev1.ConfigMap
+		expectedDataPathValue       string
+		expectedControlPathValue    string
+		expectControlPathToBeCreate bool
+	}{
+		"upgrade from historical default path succeeds": {
+			existingObjects: []runtime.Object{
+				newNode("node-1"),
+				newSetting(types.SettingNameDefaultDataPath, types.DefaultDataPath),
+			},
+			defaultSettingConfigMap:     newDefaultSettingConfigMap(types.DefaultDataPath, types.DefaultControlPath),
+			expectedDataPathValue:       types.DefaultDataPath,
+			expectedControlPathValue:    types.DefaultControlPath,
+			expectControlPathToBeCreate: true,
+		},
+		"upgrade from customized data path bootstraps historical control path": {
+			existingObjects: []runtime.Object{
+				newNode("node-1"),
+				newSetting(types.SettingNameDefaultDataPath, "/data/longhorn"),
+			},
+			defaultSettingConfigMap:     newDefaultSettingConfigMap("/data/longhorn", types.DefaultControlPath),
+			expectedDataPathValue:       "/data/longhorn",
+			expectedControlPathValue:    types.DefaultControlPath,
+			expectControlPathToBeCreate: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset(tc.existingObjects...)      // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset(tc.defaultSettingConfigMap) // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset()        // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			informerFactories.Start(stopCh)
+
+			require.True(t, cache.WaitForCacheSync(stopCh,
+				ds.SettingInformer.HasSynced,
+				ds.NodeInformer.HasSynced,
+				ds.ConfigMapInformer.HasSynced,
+			))
+
+			err := ds.UpdateCustomizedSettings(nil)
+			require.NoError(t, err)
+
+			dataSetting, err := ds.lhClient.LonghornV1beta2().Settings(testNamespace).Get(context.TODO(), string(types.SettingNameDefaultDataPath), metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedDataPathValue, dataSetting.Value)
+
+			controlSetting, err := ds.lhClient.LonghornV1beta2().Settings(testNamespace).Get(context.TODO(), string(types.SettingNameDefaultControlPath), metav1.GetOptions{})
+			if tc.expectControlPathToBeCreate {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedControlPathValue, controlSetting.Value)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateCustomizedDefaultDataAndControlPathSettings(t *testing.T) {
+	const (
+		testNamespace            = "longhorn-system"
+		configMapResourceVersion = "3113"
+	)
+
+	newNode := func(name string) *longhorn.Node {
+		return &longhorn.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: testNamespace,
+			},
+		}
+	}
+
+	newSetting := func(name types.SettingName, value string) *longhorn.Setting {
+		return &longhorn.Setting{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      string(name),
+				Namespace: testNamespace,
+			},
+			Value: value,
+		}
+	}
+
+	newDefaultSettingConfigMap := func(dataPath, controlPath string) *corev1.ConfigMap {
+		data := ""
+		if dataPath != "" {
+			data += fmt.Sprintf("default-data-path: %q\n", dataPath)
+		}
+		if controlPath != "" {
+			data += fmt.Sprintf("default-control-path: %q\n", controlPath)
+		}
+		return &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            types.DefaultDefaultSettingConfigMapName,
+				Namespace:       testNamespace,
+				ResourceVersion: configMapResourceVersion,
+			},
+			Data: map[string]string{
+				types.DefaultSettingYAMLFileName: data,
+			},
+		}
+	}
+
+	tests := map[string]struct {
+		existingObjects         []runtime.Object
+		defaultSettingConfigMap *corev1.ConfigMap
+		expectError             string
+	}{
+		"customized paths are allowed when unchanged": {
+			existingObjects: []runtime.Object{
+				newNode("node-1"),
+				newSetting(types.SettingNameDefaultDataPath, "/data/longhorn"),
+				newSetting(types.SettingNameDefaultControlPath, types.DefaultControlPath),
+			},
+			defaultSettingConfigMap: newDefaultSettingConfigMap("/data/longhorn", types.DefaultControlPath),
+		},
+		"rejects default data path change after initialization": {
+			existingObjects: []runtime.Object{
+				newNode("node-1"),
+				newSetting(types.SettingNameDefaultDataPath, "/data/longhorn"),
+			},
+			defaultSettingConfigMap: newDefaultSettingConfigMap(types.DefaultDataPath, types.DefaultControlPath),
+			expectError:             "cannot change default-data-path after Longhorn has been initialized",
+		},
+		"rejects default control path change after initialization": {
+			existingObjects: []runtime.Object{
+				newNode("node-1"),
+				newSetting(types.SettingNameDefaultDataPath, types.DefaultDataPath),
+				newSetting(types.SettingNameDefaultControlPath, types.DefaultControlPath),
+			},
+			defaultSettingConfigMap: newDefaultSettingConfigMap(types.DefaultDataPath, "/control/longhorn"),
+			expectError:             "cannot change default-control-path after Longhorn has been initialized",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset(tc.existingObjects...)      // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset(tc.defaultSettingConfigMap) // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset()        // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			informerFactories.Start(stopCh)
+
+			require.True(t, cache.WaitForCacheSync(stopCh,
+				ds.SettingInformer.HasSynced,
+				ds.NodeInformer.HasSynced,
+				ds.ConfigMapInformer.HasSynced,
+			))
+
+			err := ds.ValidateCustomizedDefaultDataAndControlPathSettings()
 			if tc.expectError == "" {
 				require.NoError(t, err)
 			} else {

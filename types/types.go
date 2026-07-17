@@ -508,22 +508,6 @@ func GetEngineBinaryDirectoryOnHost() string {
 	return filepath.Join(GetLonghornControlPath(), EngineBinaryDirectorySubpath)
 }
 
-// Defaults to /var/lib/longhorn/metadata when LONGHORN_CONTROL_PATH is unset.
-func GetMetadataDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), MetadataDirectorySubpath)
-}
-
-// Defaults to /var/lib/longhorn/unix-domain-socket when LONGHORN_CONTROL_PATH is unset.
-func GetUnixDomainSocketDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), UnixDomainSocketDirectorySubpath)
-}
-
-// Defaults to /host/var/lib/longhorn/unix-domain-socket inside the container.
-func GetUnixDomainSocketDirectoryInContainer() string {
-	return filepath.Join(ReplicaHostPrefix,
-		strings.TrimLeft(GetUnixDomainSocketDirectoryOnHost(), string(filepath.Separator)))
-}
-
 // Defaults to /var/lib/longhorn/logs when LONGHORN_CONTROL_PATH is unset.
 func GetDefaultLogDirectoryOnHost() string {
 	return filepath.Join(GetLonghornControlPath(), LogDirectorySubpath)
@@ -533,9 +517,13 @@ func GetImageCanonicalName(image string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(image, ":", "-"), "/", "-")
 }
 
-func GetEngineBinaryDirectoryOnHostForImage(image string) string {
+func GetEngineBinaryDirectoryOnHostForImageWithControlPath(controlPath, image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(GetEngineBinaryDirectoryOnHost(), cname)
+	return filepath.Join(controlPath, EngineBinaryDirectorySubpath, cname)
+}
+
+func GetEngineBinaryDirectoryOnHostForImage(image string) string {
+	return GetEngineBinaryDirectoryOnHostForImageWithControlPath(GetLonghornControlPath(), image)
 }
 
 func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
@@ -543,17 +531,25 @@ func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
 	return filepath.Join(EngineBinaryDirectoryInContainer, cname)
 }
 
-func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
+func GetEngineBinaryDirectoryForReplicaManagerContainerWithControlPath(controlPath, image string) string {
 	cname := GetImageCanonicalName(image)
 	return filepath.Join(
 		ReplicaHostPrefix,
-		strings.TrimLeft(GetEngineBinaryDirectoryOnHost(), string(filepath.Separator)),
+		strings.TrimLeft(filepath.Join(controlPath, EngineBinaryDirectorySubpath), string(filepath.Separator)),
 		cname,
 	)
 }
 
+func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
+	return GetEngineBinaryDirectoryForReplicaManagerContainerWithControlPath(GetLonghornControlPath(), image)
+}
+
 func EngineBinaryExistOnHostForImage(image string) (bool, error) {
-	engineBinaryPath := filepath.Join(GetEngineBinaryDirectoryOnHostForImage(image), "longhorn")
+	return EngineBinaryExistOnHostForImageWithControlPath(GetLonghornControlPath(), image)
+}
+
+func EngineBinaryExistOnHostForImageWithControlPath(controlPath, image string) (bool, error) {
+	engineBinaryPath := filepath.Join(GetEngineBinaryDirectoryOnHostForImageWithControlPath(controlPath, image), "longhorn")
 	st, err := os.Stat(engineBinaryPath)
 	if err != nil {
 		return false, err

@@ -708,7 +708,11 @@ func (bc *BackupController) getEngineBinaryClient(volumeName string) (*engineapi
 	if engine == nil {
 		return nil, fmt.Errorf("cannot get the client since the engine is nil")
 	}
-	return GetBinaryClientForEngine(engine, &engineapi.EngineCollection{}, engine.Status.CurrentImage)
+	controlPath, err := bc.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, err
+	}
+	return GetBinaryClientForEngine(engine, &engineapi.EngineCollection{}, engine.Status.CurrentImage, controlPath)
 }
 
 // validateBackingImageChecksum validates backing image checksum
