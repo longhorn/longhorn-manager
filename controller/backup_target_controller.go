@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -319,6 +320,29 @@ func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backup
 	return newBackupTargetClient(ds, backupTarget, defaultEngineImage)
 }
 
+// requestIDPattern matches the volatile, per-attempt identifiers that
+// AWS/S3-compatible SDKs embed in error messages, e.g.
+// "403 1eed0c50c2cb9133" (HTTP status + hex request ID) as produced by
+// backupstore's parseAwsError, or an explicit "RequestId: ..." field.
+var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-f-]+|\b[0-9]{3}\s+[0-9a-f]{16}\b)`)
+
+// sanitizeBackupStoreErrorMessage strips volatile per-request identifiers
+// (S3 request IDs, HTTP status/request-ID pairs) from a backup store error
+// message before it is persisted to BackupTarget.Status.Conditions.
+//
+// Without this, every failed poll produces a Status.Conditions[].Message
+// that differs only by request ID, which fails the reflect.DeepEqual check
+// in reconcile()'s deferred status update. Each failure then triggers
+// UpdateBackupTargetStatus, which fires the BackupTargetInformer's
+// UpdateFunc handler and immediately re-enqueues reconcile - completely
+// bypassing BackupTarget.Spec.PollInterval and hammering the remote
+// backup target (observed: tens of thousands of S3 list calls in minutes).
+//
+// See https://github.com/longhorn/longhorn/issues/1547
+func sanitizeBackupStoreErrorMessage(message string) string {
+	return requestIDPattern.ReplaceAllString(message, "<redacted>")
+}
+
 func (btc *BackupTargetController) reconcile(name string) (err error) {
 	backupTarget, err := btc.ds.GetBackupTarget(name)
 	if err != nil {
@@ -478,7 +502,8 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
-			longhorn.BackupTargetConditionReasonUnavailable, errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error())
+			longhorn.BackupTargetConditionReasonUnavailable,
+			sanitizeBackupStoreErrorMessage(errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error()))
 		log.WithError(err).Error("Failed to get info from backup store")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
