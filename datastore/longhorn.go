@@ -7400,6 +7400,11 @@ func (s *DataStore) UpdateShardGroupStatus(sg *longhorn.ShardGroup) (*longhorn.S
 	return obj, nil
 }
 
+// DeleteShardGroup won't result in immediate deletion since finalizer was set by default
+func (s *DataStore) DeleteShardGroup(name string) error {
+	return s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
 // RemoveFinalizerForShardGroup will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForShardGroup(obj *longhorn.ShardGroup) error {
 	if !util.FinalizerExists(longhornFinalizerKey, obj) {

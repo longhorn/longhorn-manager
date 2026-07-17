@@ -2034,3 +2034,10 @@ func getLoggerForShardGroup(logger logrus.FieldLogger, shardGroup *longhorn.Shar
 		"volume":     shardGroup.Spec.VolumeName,
 	})
 }
+
+func getLoggerForShard(logger logrus.FieldLogger, shard *longhorn.Shard) *logrus.Entry {
+	return logger.WithFields(logrus.Fields{
+		"shard":      shard.Name,
+		"shardGroup": shard.Spec.ShardGroupName,
+	})
+}
