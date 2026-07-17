@@ -47,6 +47,8 @@ const (
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 	CRDOrphanName                 = "orphans.longhorn.io"
 	CRDSnapshotName               = "snapshots.longhorn.io"
+	CRDShardGroupName             = "shardgroups.longhorn.io"
+	CRDShardName                  = "shards.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -203,6 +205,18 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDShardGroupName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.ShardGroupInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.ShardGroupInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDShardName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.ShardInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.ShardInformer.HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -525,6 +539,24 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteReplicas(replicas)
 	}
 
+	// Shard and shard group cleanup runs through the instance managers: the shard
+	// group controller tears down their SPDK instances before removing the
+	// finalizer. Delete them before the instance managers and the manager for a
+	// graceful cleanup.
+	if shardGroups, err := c.ds.ListShardGroups(); err != nil {
+		return true, err
+	} else if len(shardGroups) > 0 {
+		c.logger.Infof("Found %d shard groups remaining", len(shardGroups))
+		return true, c.deleteShardGroups(shardGroups)
+	}
+
+	if shards, err := c.ds.ListShards(); err != nil {
+		return true, err
+	} else if len(shards) > 0 {
+		c.logger.Infof("Found %d shards remaining", len(shards))
+		return true, c.deleteShards(shards)
+	}
+
 	// Unset backup target to prevent the remote backup target
 	// backup volume config, and backup config and it's data
 	// being deleted during uninstall process.
@@ -771,6 +803,78 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 		}
 	}
 	return
+}
+
+func (c *UninstallController) deleteShardGroups(shardGroups map[string]*longhorn.ShardGroup) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete shard groups")
+	}()
+	for _, shardGroup := range shardGroups {
+		log := getLoggerForShardGroup(c.logger, shardGroup)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if shardGroup.DeletionTimestamp == nil {
+			if errDelete := c.ds.DeleteShardGroup(shardGroup.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("ShardGroup is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if shardGroup.DeletionTimestamp.Before(&timeout) {
+			log.Warn("ShardGroup deletion did not finish within timeout, removing finalizer forcibly")
+			if errRemove := c.ds.RemoveFinalizerForShardGroup(shardGroup); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("ShardGroup is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteShards(shards map[string]*longhorn.Shard) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete shards")
+	}()
+	for _, shard := range shards {
+		log := getLoggerForShard(c.logger, shard)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if shard.DeletionTimestamp == nil {
+			if errDelete := c.ds.DeleteShard(shard.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("Shard is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if shard.DeletionTimestamp.Before(&timeout) {
+			log.Warn("Shard deletion did not finish within timeout, removing finalizer forcibly")
+			if errRemove := c.ds.RemoveFinalizerForShard(shard); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("Shard is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return nil
 }
 
 // deleteLeftBackups deletes the backup having no backup volume
