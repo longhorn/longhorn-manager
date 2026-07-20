@@ -5,6 +5,9 @@ import "time"
 const (
 	HTTPClientTimout = 1 * time.Minute
 
+	InitClientTimeout       = 1 * time.Minute
+	InitClientRetryInterval = 1 * time.Second
+
 	SnapshotPurgeStatusInterval = 5 * time.Second
 	// SnapshotPurgeStatusTimeout is set to 24 hours because we don't know the appropriate value.
 	SnapshotPurgeStatusTimeout = 24 * time.Hour
