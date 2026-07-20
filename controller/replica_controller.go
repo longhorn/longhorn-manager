@@ -341,7 +341,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				return err // transient error — requeue
 			}
 			// Volume not found: orphan replica, let it proceed to cleanup
-		} else if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		} else if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone && !types.IsLegacyLinkedCloneVolume(vol) {
 			return nil // gate: wait for volume controller to set the field
 		}
 	}

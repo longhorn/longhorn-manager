@@ -301,6 +301,17 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
+	// Legacy linked-clone volumes only support attach, detach, deletion, and backup.
+	// Block spec changes that would trigger incompatible operations.
+	if types.IsLegacyLinkedCloneVolume(oldVolume) {
+		if newVolume.Spec.NumberOfReplicas != oldVolume.Spec.NumberOfReplicas {
+			return werror.NewInvalidError("cannot change replica count for legacy linked-clone volumes (pre-entrypoint architecture)", "spec.numberOfReplicas")
+		}
+		if newVolume.Spec.Size > oldVolume.Spec.Size {
+			return werror.NewInvalidError("cannot expand legacy linked-clone volumes (pre-entrypoint architecture)", "spec.size")
+		}
+	}
+
 	if oldVolume.Spec.Image != newVolume.Spec.Image {
 		if err := v.ds.CheckDataEngineImageCompatiblityByImage(newVolume.Spec.Image, newVolume.Spec.DataEngine); err != nil {
 			return werror.NewInvalidError(err.Error(), "volume.spec.image")

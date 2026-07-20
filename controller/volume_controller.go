@@ -3573,6 +3573,12 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		return nil
 	}
 
+	// Legacy linked-clone volumes (pre-entrypoint architecture) cannot be rebuilt
+	// because the new rebuild path expects entrypoint lvols that don't exist.
+	if types.IsLegacyLinkedCloneVolume(v) {
+		return nil
+	}
+
 	concurrentRebuildingLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
 	if err != nil {
 		return err
@@ -4949,6 +4955,9 @@ func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 
 func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	if v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+	if types.IsLegacyLinkedCloneVolume(v) {
 		return nil
 	}
 	// Snapshot must be resolved before we can assign src replica fields.

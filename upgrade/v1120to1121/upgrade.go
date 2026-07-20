@@ -8,6 +8,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
@@ -49,13 +50,23 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		if srcVolName == "" {
 			continue
 		}
-		labelKey := types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)
 		if v.Labels == nil {
 			v.Labels = map[string]string{}
 		}
+
+		// Backfill clone-source-volume label for all clone volumes.
+		labelKey := types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)
 		if v.Labels[labelKey] == "" {
 			v.Labels[labelKey] = srcVolName
 		}
+
+		// Mark existing linked-clone volumes as legacy (pre-entrypoint architecture).
+		// All linked-clone volumes that exist at upgrade time predate the new architecture.
+		if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			legacyKey := types.GetLonghornLabelKey(types.LonghornLabelLegacyLinkedClone)
+			v.Labels[legacyKey] = "true"
+		}
+
 		// Remove the deprecated linked-clone-source-volume label.
 		delete(v.Labels, types.GetLonghornLabelKey("linked-clone-source-volume"))
 	}
