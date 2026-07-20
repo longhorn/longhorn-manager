@@ -1409,6 +1409,20 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			return err
 		}
 		if needClone {
+			// Gate: verify our attachment ticket on the src volume is satisfied.
+			// This prevents wasted clone attempts when the source is still attaching.
+			srcVolName := types.GetVolumeName(engine.Spec.RequestedDataSource)
+			srcVA, vaErr := m.ds.GetLHVolumeAttachmentByVolumeName(srcVolName)
+			if vaErr != nil {
+				return errors.Wrapf(vaErr, "failed to get volume attachment for clone src volume %v", srcVolName)
+			}
+			cloneTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, engine.Spec.VolumeName)
+			if !longhorn.IsAttachmentTicketSatisfied(cloneTicketID, srcVA) {
+				m.logger.Debugf("Deferring clone: attachment ticket %v for clone volume %v on src volume %v not yet satisfied",
+					cloneTicketID, engine.Spec.VolumeName, srcVolName)
+				return nil
+			}
+
 			allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
 			if err != nil {
 				return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
@@ -2368,6 +2382,25 @@ func (ec *EngineController) prepareRebuildContext(
 	// Also resolve the src engine name and address so RebuildingDstFinish can verify the
 	// src replica is RW before connecting the entrypoint.
 	if types.IsDataEngineV2(e.Spec.DataEngine) && rc.replica.Spec.LinkedCloneSrcReplicaName != "" {
+		// Gate: verify our attachment ticket on the src volume is satisfied before proceeding.
+		// This ensures the src volume won't detach mid-rebuild (our ticket keeps it attached).
+		vol, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get volume %v for linked-clone rebuild gate", e.Spec.VolumeName)
+		}
+		srcVolumeName := types.GetVolumeName(vol.Spec.DataSource)
+		if srcVolumeName != "" {
+			srcVA, err := ec.ds.GetLHVolumeAttachmentByVolumeName(srcVolumeName)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get volume attachment for clone src volume %v", srcVolumeName)
+			}
+			cloneTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, e.Spec.VolumeName)
+			if !longhorn.IsAttachmentTicketSatisfied(cloneTicketID, srcVA) {
+				return nil, fmt.Errorf("attachment ticket %v for clone volume %v on src volume %v not yet satisfied: deferring rebuild",
+					cloneTicketID, e.Spec.VolumeName, srcVolumeName)
+			}
+		}
+
 		rc.linkedCloneSrcReplicaName = rc.replica.Spec.LinkedCloneSrcReplicaName
 
 		srcReplica, err := ec.ds.GetReplica(rc.linkedCloneSrcReplicaName)
