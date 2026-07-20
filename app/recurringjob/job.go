@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -23,19 +24,41 @@ import (
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
+// newAPIClient creates the longhorn-manager API client, retrying until
+// InitClientTimeout. A new pod may not be able to reach the manager API
+// immediately, for example while the CNI is still applying network policy
+// rules for the pod IP.
+// Ref: https://github.com/longhorn/longhorn/issues/13567
+func newAPIClient(managerURL string, logger *logrus.Logger) (*longhornclient.RancherClient, error) {
+	clientOpts := &longhornclient.ClientOpts{
+		Url:     managerURL,
+		Timeout: HTTPClientTimout,
+	}
+
+	apiClient, err := longhornclient.NewRancherClient(clientOpts)
+
+	deadline := time.Now().Add(InitClientTimeout)
+	for err != nil && time.Now().Before(deadline) {
+		logger.WithError(err).Warn("Failed to create Longhorn manager API client, retrying")
+		time.Sleep(InitClientRetryInterval)
+		apiClient, err = longhornclient.NewRancherClient(clientOpts)
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create longhorn-manager api client")
+	}
+
+	return apiClient, nil
+}
+
 func NewJob(name string, logger *logrus.Logger, managerURL string, recurringJob *longhorn.RecurringJob, lhClient *lhclientset.Clientset) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
-	clientOpts := &longhornclient.ClientOpts{
-		Url:     managerURL,
-		Timeout: HTTPClientTimout,
-	}
-	apiClient, err := longhornclient.NewRancherClient(clientOpts)
+	apiClient, err := newAPIClient(managerURL, logger)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not create longhorn-manager api client")
+		return nil, err
 	}
 
 	scheme := runtime.NewScheme()
