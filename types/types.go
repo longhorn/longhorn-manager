@@ -262,6 +262,10 @@ const (
 	// LonghornLabelLinkedCloneSrcReplica is stamped on linked-clone replicas to
 	// enable efficient index-based lookups by source replica name.
 	LonghornLabelLinkedCloneSrcReplica = "linked-clone-src-replica"
+	// LonghornLabelLegacyLinkedClone marks linked-clone volumes created with
+	// the old (pre-entrypoint) architecture. These volumes only support
+	// attach, detach, deletion, and backup creation.
+	LonghornLabelLegacyLinkedClone = "legacy-linked-clone"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -727,6 +731,19 @@ func GetLinkedCloneSrcReplicaLabel(srcReplicaName string) map[string]string {
 	return map[string]string{
 		GetLonghornLabelKey(LonghornLabelLinkedCloneSrcReplica): srcReplicaName,
 	}
+}
+
+// GetLegacyLinkedCloneLabel returns the label map marking a volume as a legacy
+// linked-clone (pre-entrypoint architecture).
+func GetLegacyLinkedCloneLabel() map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLegacyLinkedClone): "true",
+	}
+}
+
+// IsLegacyLinkedCloneVolume returns true if the volume is marked as a legacy linked-clone.
+func IsLegacyLinkedCloneVolume(vol *longhorn.Volume) bool {
+	return vol.Labels[GetLonghornLabelKey(LonghornLabelLegacyLinkedClone)] == "true"
 }
 
 func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {
