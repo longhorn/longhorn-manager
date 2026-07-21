@@ -210,8 +210,13 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		}
 		// For Deployments, update in-place to let Kubernetes perform a rolling update,
 		// which respects maxUnavailable and avoids a 0-replica window.
-		// For other resource types (DaemonSet, CSIDriver), fall back to delete+recreate.
-		if updateFunc != nil && existingMeta.GetDeletionTimestamp() == nil {
+		// A pod anti-affinity preset change (e.g. soft -> hard) cannot converge via a
+		// rolling update on a constrained cluster: the old pods must stay Available
+		// (maxUnavailable) while the new hard-anti-affinity pods can't be scheduled,
+		// causing a deadlock. Fall back to delete+recreate for that case.
+		// For other resource types (DaemonSet, CSIDriver), also fall back to delete+recreate.
+		if updateFunc != nil && existingMeta.GetDeletionTimestamp() == nil &&
+			!needToUpdatePodAntiAffinity(existing, obj) {
 			logrus.Infof("Updating %s %s", resource, name)
 			return updateFunc(kubeClient, obj)
 		}
