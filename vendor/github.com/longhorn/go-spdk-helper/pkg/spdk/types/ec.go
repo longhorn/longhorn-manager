@@ -165,6 +165,7 @@ type BdevEcResizeResponse struct {
 	EcName      string `json:"ec_name"`
 	OldBlockcnt uint64 `json:"old_blockcnt"`
 	NewBlockcnt uint64 `json:"new_blockcnt"`
+	Resized     bool   `json:"resized"`
 }
 
 // BdevEcGetWibStatusRequest is the request for bdev_ec_get_wib_status.
