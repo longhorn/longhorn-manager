@@ -201,6 +201,8 @@ func (c *Client) BdevEcSetRebuildQos(name string, maxStripesPerSec uint32, pause
 // BdevEcResize performs an in-place capacity expansion of an EC bdev.
 // All k+m base bdevs must have been resized before calling this.
 // No data movement occurs; only geometry and WIB metadata are updated.
+// When the base bdevs have not grown, the call is an idempotent no-op:
+// it returns success with Resized false and the current block count.
 func (c *Client) BdevEcResize(name string) (resp spdktypes.BdevEcResizeResponse, err error) {
 	req := spdktypes.BdevEcResizeRequest{
 		Name: name,

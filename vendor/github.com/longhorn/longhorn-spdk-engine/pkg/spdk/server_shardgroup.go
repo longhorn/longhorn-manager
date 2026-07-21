@@ -180,7 +180,7 @@ func (s *Server) ShardGroupExpand(ctx context.Context, req *spdkrpc.ShardGroupEx
 	if shardGroup == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find shardgroup %v", req.Name)
 	}
-	if err := shardGroup.Expand(spdkClient, req.Size); err != nil {
+	if err := shardGroup.Expand(spdkClient, req.Size, req.CreationSize); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
@@ -202,7 +202,7 @@ func (s *Server) ShardGroupExpandPrecheck(ctx context.Context, req *spdkrpc.Shar
 	if shardGroup == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find shardgroup %v", req.Name)
 	}
-	required, err := shardGroup.ExpandPrecheck(spdkClient, req.Size)
+	required, err := shardGroup.ExpandPrecheck(spdkClient, req.Size, req.CreationSize)
 	if err != nil {
 		return nil, err
 	}

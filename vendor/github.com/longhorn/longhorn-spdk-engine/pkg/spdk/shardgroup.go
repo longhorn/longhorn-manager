@@ -88,10 +88,9 @@ type ShardGroup struct {
 	EcBdevName  string // <volumeName>-ec
 	LvsName     string // <volumeName>-lvs
 	LvsUUID     string // populated after lvstore creation
-	ClusterSize uint64 // lvstore cluster size in bytes. Queried from SPDK, not
-	// hardcoded: the lvstore is created with cluster_sz=0 (SPDK's default,
-	// currently 4 MiB), and refreshECSnapshotMapNoLock multiplies
-	// NumAllocatedClusters by this value to get bytes.
+	ClusterSize uint64 // lvstore cluster size in bytes. Set to
+	// spdktypes.EcLvstoreClusterSize at create, queried back from SPDK.
+	// Used to convert NumAllocatedClusters to bytes.
 	HeadLvolName string // == VolumeName
 	HeadLvolUUID string // populated after head lvol creation
 	HeadAlias    string // <LvsName>/<HeadLvolName>
@@ -321,9 +320,39 @@ func ecUsableFitsSpec(numBlocks uint64, blockSize uint32, specSize uint64) bool 
 	return numBlocks*uint64(blockSize) >= specSize
 }
 
-// assertEcUsableFitsSpecNoLock fails if the EC bdev is smaller than SpecSize.
-// The size comes from BdevGetBdevs because BdevEcInfo has no size field. The
-// caller must hold sg's lock.
+// lvstoreUsableFitsSpec reports whether totalDataClusters clusters of
+// clusterSize bytes can back specSize bytes.
+func lvstoreUsableFitsSpec(totalDataClusters, clusterSize, specSize uint64) bool {
+	return totalDataClusters*clusterSize >= specSize
+}
+
+// exceedsInPlaceGrowthCeiling reports whether newSize is beyond the
+// in-place growth ceiling (EcLvstoreMaxGrowthFactor x creationSize).
+// creationSize == 0 means unknown; the ceiling is not enforced.
+func exceedsInPlaceGrowthCeiling(newSize, creationSize uint64) bool {
+	return creationSize > 0 && newSize > spdktypes.EcLvstoreMaxGrowthFactor*creationSize
+}
+
+// ecUsableExceedsCreationCap reports whether the EC bdev is too large for
+// SPDK to size lvstore metadata for (EcLvstoreMaxCreationSize). SPDK floors
+// the device to whole clusters before sizing, and admission
+// (ValidateECCreationSize) compares the same way, so compare in clusters to
+// agree with both at the boundary.
+func ecUsableExceedsCreationCap(usable uint64) bool {
+	return usable/spdktypes.EcLvstoreClusterSize > uint64(spdktypes.EcLvstoreMaxCreationSize)/spdktypes.EcLvstoreClusterSize
+}
+
+// assertEcUsableFitsSpecNoLock fails if the EC bdev cannot host the lvstore
+// and head lvol. Two checks:
+//
+//   - The device size, floored to whole clusters, must not exceed
+//     EcLvstoreMaxCreationSize. SPDK sizes lvstore metadata from the device
+//     size, not SpecSize, and the shards over-provision, so the device is
+//     what must stay under the limit.
+//   - The device size must be at least SpecSize.
+//
+// The size comes from BdevGetBdevs because BdevEcInfo has no size field.
+// The caller must hold sg's lock.
 func (sg *ShardGroup) assertEcUsableFitsSpecNoLock(spdkClient *spdkclient.Client) error {
 	bdevList, err := spdkClient.BdevGetBdevs(sg.EcBdevName, 0)
 	if err != nil {
@@ -333,10 +362,20 @@ func (sg *ShardGroup) assertEcUsableFitsSpecNoLock(spdkClient *spdkclient.Client
 		return fmt.Errorf("expected exactly one EC bdev %s for capacity check, got %d", sg.EcBdevName, len(bdevList))
 	}
 	bdev := bdevList[0]
+	usable := bdev.NumBlocks * uint64(bdev.BlockSize)
+	if ecUsableExceedsCreationCap(usable) {
+		return fmt.Errorf("EC bdev %s size %d bytes exceeds the lvstore creation limit %d bytes: volume size %d is too large",
+			sg.EcBdevName, usable, uint64(spdktypes.EcLvstoreMaxCreationSize), sg.SpecSize)
+	}
+	if modeled := spdktypes.EcUsableSize(int64(sg.SpecSize), int(sg.DataChunks), int(sg.StripSizeKb)); modeled != usable {
+		sg.log.Warnf("EC bdev %s usable size %d bytes differs from the %d bytes modeled from the shard sizing formula; "+
+			"a shard was sized off-formula, so admission and this check may disagree near the creation cap",
+			sg.EcBdevName, usable, modeled)
+	}
 	if !ecUsableFitsSpec(bdev.NumBlocks, bdev.BlockSize, sg.SpecSize) {
 		return fmt.Errorf("EC bdev %s usable capacity %d bytes < required %d bytes "+
-			"(shards under-sized: per-shard size must budget for the EC front reservation)",
-			sg.EcBdevName, bdev.NumBlocks*uint64(bdev.BlockSize), sg.SpecSize)
+			"(shards under-sized: per-shard size must budget the EC front reservation and lvstore metadata)",
+			sg.EcBdevName, usable, sg.SpecSize)
 	}
 	return nil
 }
@@ -597,19 +636,23 @@ func (sg *ShardGroup) Create(spdkClient *spdkclient.Client, superiorPortAllocato
 			return nil, fmt.Errorf("salvage requested but existing lvstore/head not found for shardgroup %s", sg.Name)
 		}
 
-		// Fail fast if the EC bdev is too small to hold the head. The head is
-		// thin, so SPDK would otherwise accept an undersized volume and only
-		// fail later on write. Only the fresh-create path is guarded, so
-		// re-attach and salvage are left untouched.
+		// Fail fast if the EC bdev cannot host the head: too large for
+		// SPDK's lvstore md-pages sizing bound, or too small for SpecSize
+		// (the head is thin, so SPDK would otherwise accept an undersized
+		// volume and only fail later on write). Only the fresh-create path
+		// is guarded: an existing lvstore was created under the bound.
 		if err := sg.assertEcUsableFitsSpecNoLock(spdkClient); err != nil {
 			return nil, err
 		}
 
-		// Fresh-create path: create lvstore + head lvol on bdev_ec. We pass
-		// cluster_sz=0 so SPDK applies its compiled-in default; the actual size
-		// is then queried back so the NumAllocatedClusters -> bytes math in
-		// refreshECSnapshotMapNoLock multiplies by the right value.
-		lvsUUID, err := spdkClient.BdevLvolCreateLvstore(sg.EcBdevName, sg.LvsName, 0)
+		// Fresh-create path: create lvstore + head lvol on bdev_ec. The
+		// cluster size and md-pages ratio are pinned to the constants that
+		// ComputeShardSize sizes shards from, so an SPDK default change
+		// cannot alter the geometry. The cluster size is still queried back
+		// for the NumAllocatedClusters -> bytes math in
+		// refreshECSnapshotMapNoLock.
+		lvsUUID, err := spdkClient.BdevLvolCreateLvstoreWithMdRatio(sg.EcBdevName, sg.LvsName,
+			spdktypes.EcLvstoreClusterSize, spdktypes.EcLvstoreMdPagesPerClusterRatio)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create lvstore %s on EC bdev %s", sg.LvsName, sg.EcBdevName)
 		}
@@ -623,6 +666,24 @@ func (sg *ShardGroup) Create(spdkClient *spdkclient.Client, superiorPortAllocato
 			return nil, fmt.Errorf("expected exactly one lvstore for uuid %s, found %d", lvsUUID, len(lvstoreList))
 		}
 		sg.ClusterSize = lvstoreList[0].ClusterSize
+
+		// The head lvol is thin, so SPDK would accept it even when the
+		// lvstore cannot back it, deferring the failure to an ENOSPC
+		// mid-workload. Fail the create here instead. Delete the fresh,
+		// empty lvstore first: leaving it behind would make the next
+		// Create find a lvstore without a head lvol and fail in
+		// tryDiscoverExistingLvstore, so the create would never become
+		// retryable.
+		if !lvstoreUsableFitsSpec(lvstoreList[0].TotalDataClusters, lvstoreList[0].ClusterSize, sg.SpecSize) {
+			if _, deleteErr := spdkClient.BdevLvolDeleteLvstore("", lvsUUID); deleteErr != nil {
+				sg.log.WithError(deleteErr).Warnf("Failed to delete under-sized lvstore %s (uuid %s)", sg.LvsName, lvsUUID)
+			}
+			sg.LvsUUID = ""
+			sg.ClusterSize = 0
+			return nil, fmt.Errorf("lvstore %s on EC bdev %s can back only %d of %d bytes "+
+				"(shards under-sized: blobstore metadata not budgeted)",
+				sg.LvsName, sg.EcBdevName, lvstoreList[0].TotalDataClusters*lvstoreList[0].ClusterSize, sg.SpecSize)
+		}
 
 		headLvolUUID, err := spdkClient.BdevLvolCreate("", lvsUUID, sg.HeadLvolName, util.BytesToMiB(sg.SpecSize), "", true)
 		if err != nil {
@@ -848,11 +909,16 @@ func (sg *ShardGroup) SetErrorState() {
 // All k+m shards must be resized via ShardExpand on their nodes before
 // calling this.
 //
+// creationSize is the volume size when the ShardGroup was created. The
+// lvstore metadata is sized at creation for EcLvstoreMaxGrowthFactor x that
+// size, so expansion beyond the ceiling is rejected. Zero means unknown:
+// the check is skipped and the post-grow capacity check is the backstop.
+//
 // Unlike Shard.Expand, a failure here does not set Error on the
 // ShardGroup directly. Sync sees IsExposed=true with no live subsystem
 // and moves the ShardGroup to Error. The two layers recover differently,
 // so do not copy the Shard.Expand error-marking defer here.
-func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize uint64) (err error) {
+func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize, creationSize uint64) (err error) {
 	sg.Lock()
 	prevSpecSize := sg.SpecSize
 	defer func() {
@@ -874,18 +940,23 @@ func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize uint64) (err
 	if sg.SpecSize > newSize {
 		return fmt.Errorf("cannot shrink shardgroup %s from %d to %d", sg.Name, sg.SpecSize, newSize)
 	}
-	// False-success window: SpecSize is committed right after the head-lvol
-	// resize, before the re-expose. If the re-expose failed, a retry lands
-	// here and returns success while the NVMe-oF target is still down; Sync
-	// is what flags the torn-down subsystem and moves the ShardGroup to
-	// Error. So SpecSize == newSize does not guarantee the expose completed.
-	// Follow-up: once bdev_ec_resize distinguishes "base bdevs not grown"
-	// (-EALREADY, idempotent) from a genuine size error, tolerate that error
-	// at the BdevEcResize call, move the SpecSize commit back to the end of
-	// the function, and this fast path becomes honest again.
+	// SpecSize is committed only after the whole chain succeeds, so
+	// equality here means the expansion completed.
 	if sg.SpecSize == newSize {
 		sg.log.Infof("Shardgroup %s already at size %d", sg.Name, newSize)
 		return nil
+	}
+
+	// Backstop for callers that skipped ExpandPrecheck. By this point the
+	// shard lvols were already resized by per-shard ShardExpand calls; this
+	// check only keeps the EC bdev, lvstore, and head lvol at their current
+	// size. The oversized shard lvols are thin, so the extra allocation is
+	// harmless and is reused if a legal-size expansion follows.
+	if exceedsInPlaceGrowthCeiling(newSize, creationSize) {
+		return grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"shardgroup %s: new size %d exceeds the %dx in-place growth ceiling %d (creation size %d); shard-group rebuild required",
+			sg.Name, newSize, spdktypes.EcLvstoreMaxGrowthFactor,
+			uint64(spdktypes.EcLvstoreMaxGrowthFactor)*creationSize, creationSize)
 	}
 
 	sg.log.Infof("Expanding shardgroup to size %d", newSize)
@@ -911,8 +982,9 @@ func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize uint64) (err
 	// BDEV_EVENT_RESIZE (no-op) instead of BDEV_EVENT_REMOVE (failure cascade),
 	// so the slot stays NORMAL with no spurious rebuild triggered.
 	//
-	// Without the SPDK patch this reset is a no-op for size refresh and the
-	// BdevEcResize below would fail with -114 "Base bdevs have not grown".
+	// Without the SPDK patch this reset is a no-op for size refresh, the
+	// BdevEcResize below would be a no-op (resized=false), and the
+	// post-grow capacity check would reject the expansion.
 	for slotIndex := uint32(0); slotIndex < sg.DataChunks+sg.ParityChunks; slotIndex++ {
 		controllerName := GetShardLvolName(sg.VolumeName, slotIndex)
 		if _, err := spdkClient.BdevNvmeResetController(controllerName); err != nil {
@@ -920,14 +992,38 @@ func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize uint64) (err
 		}
 	}
 
-	// 2. Resize bdev_ec to pick up the larger base bdevs.
-	if _, err := spdkClient.BdevEcResize(sg.EcBdevName); err != nil {
+	// 2. Resize bdev_ec to pick up the larger base bdevs. A no-op
+	// (resized=false) means the EC bdev already matches its base bdevs:
+	// a retry, or shards that did not grow. The post-grow capacity check
+	// decides which.
+	resizeResp, err := spdkClient.BdevEcResize(sg.EcBdevName)
+	if err != nil {
 		return errors.Wrapf(err, "failed to resize EC bdev %s", sg.EcBdevName)
+	}
+	if !resizeResp.Resized {
+		sg.log.Warnf("EC bdev %s resize was a no-op; resuming a prior expansion or shards did not grow", sg.EcBdevName)
 	}
 
 	// 3. Grow the lvstore to fill the resized bdev_ec.
 	if _, err := spdkClient.BdevLvolGrowLvstore(sg.LvsName, ""); err != nil {
 		return errors.Wrapf(err, "failed to grow lvstore %s", sg.LvsName)
+	}
+
+	// The grown lvstore must back the new size before the head lvol grows
+	// into it. Failing here leaves the volume exposed and serving at the
+	// old size.
+	lvstoreList, err := spdkClient.BdevLvolGetLvstore("", sg.LvsUUID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to query lvstore %s after grow for shardgroup %s", sg.LvsName, sg.Name)
+	}
+	if len(lvstoreList) != 1 {
+		return fmt.Errorf("expected exactly one lvstore for uuid %s, found %d", sg.LvsUUID, len(lvstoreList))
+	}
+	if !lvstoreUsableFitsSpec(lvstoreList[0].TotalDataClusters, lvstoreList[0].ClusterSize, newSize) {
+		return grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"lvstore %s on EC bdev %s can back only %d of %d bytes after grow: "+
+				"shards may be under-sized, or the lvstore metadata cannot support this size",
+			sg.LvsName, sg.EcBdevName, lvstoreList[0].TotalDataClusters*lvstoreList[0].ClusterSize, newSize)
 	}
 
 	// 4. Resize the head lvol.
@@ -964,13 +1060,6 @@ func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize uint64) (err
 		return fmt.Errorf("head lvol %s was not resized", sg.HeadAlias)
 	}
 
-	// Record the new size as soon as the head resize lands. If the re-expose
-	// or the cache refresh below fails, a retried Expand must not re-run
-	// BdevEcResize - it fails when the base bdevs have not grown again. The
-	// retry hits the size-equality fast path instead, and Sync flags the
-	// torn-down subsystem if the re-expose was the step that failed.
-	sg.SpecSize = newSize
-
 	if err := spdkClient.StartExposeBdev(sg.Nqn, sg.HeadLvolUUID, generateNGUID(sg.HeadLvolName),
 		sg.IP, strconv.Itoa(int(sg.Port))); err != nil {
 		return errors.Wrapf(err, "failed to re-expose shardgroup %s after head-lvol resize", sg.Name)
@@ -980,20 +1069,39 @@ func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize uint64) (err
 		return errors.Wrapf(err, "failed to refresh shardgroup snapshot/head cache after expansion for %s", sg.Name)
 	}
 
+	// Commit the new size only after the whole chain succeeded. Every
+	// step above is idempotent, so a retried Expand resumes the chain
+	// after any mid-chain failure.
+	sg.SpecSize = newSize
+
 	sg.log.Info("Expanded shardgroup")
 	return nil
 }
 
 // ExpandPrecheck validates that the ShardGroup's EC stack is in a state where
-// expansion can proceed: no rebuild in progress, no scrub in progress, all
-// slots NORMAL. Returns expansionRequired=true if the new size is larger than
-// the current size and preconditions are met.
-func (sg *ShardGroup) ExpandPrecheck(spdkClient *spdkclient.Client, newSize uint64) (expansionRequired bool, err error) {
+// expansion can proceed: the target is within the in-place growth ceiling, no
+// rebuild in progress, no scrub in progress, all slots NORMAL. Returns
+// expansionRequired=true if the new size is larger than the current size and
+// preconditions are met.
+//
+// creationSize is the volume size when the ShardGroup was created; pass 0
+// when unknown to skip the ceiling check.
+func (sg *ShardGroup) ExpandPrecheck(spdkClient *spdkclient.Client, newSize, creationSize uint64) (expansionRequired bool, err error) {
 	sg.RLock()
 	defer sg.RUnlock()
 
 	if sg.SpecSize >= newSize {
 		return false, nil
+	}
+
+	// Gate the ceiling here, before the caller resizes any shard lvol. The
+	// matching check in Expand is only a backstop for callers that skip the
+	// precheck.
+	if exceedsInPlaceGrowthCeiling(newSize, creationSize) {
+		return false, grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"shardgroup %s: new size %d exceeds the %dx in-place growth ceiling %d (creation size %d); shard-group rebuild required",
+			sg.Name, newSize, spdktypes.EcLvstoreMaxGrowthFactor,
+			uint64(spdktypes.EcLvstoreMaxGrowthFactor)*creationSize, creationSize)
 	}
 
 	ecInfo, err := sg.getEcBdevInfoNoLock(spdkClient)
@@ -1412,6 +1520,14 @@ func (sg *ShardGroup) tryDiscoverExistingLvstore(spdkClient *spdkclient.Client) 
 	}
 	sg.LvsUUID = lvstoreList[0].UUID
 	sg.ClusterSize = lvstoreList[0].ClusterSize
+
+	// An existing lvstore may be too small to back the spec size. Warn
+	// instead of failing so the data stays accessible.
+	if !lvstoreUsableFitsSpec(lvstoreList[0].TotalDataClusters, lvstoreList[0].ClusterSize, sg.SpecSize) {
+		sg.log.Warnf("Discovered lvstore %s can back only %d of %d bytes; "+
+			"volume may hit ENOSPC when fully written",
+			sg.LvsName, lvstoreList[0].TotalDataClusters*lvstoreList[0].ClusterSize, sg.SpecSize)
+	}
 
 	headBdev, err := spdkClient.BdevLvolGetByName(sg.HeadAlias, 0)
 	if err != nil {

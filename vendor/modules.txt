@@ -304,7 +304,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.7.1-0.20260722033947-00e69113b674
+# github.com/longhorn/go-spdk-helper v0.7.1-0.20260722033947-00e69113b674 => github.com/c3y1huang/go-spdk-helper v0.0.0-20260723043116-23d0bab9f5df
 ## explicit; go 1.25.10
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -320,7 +320,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260723050202-4723ac346d2d
+# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260723050202-4723ac346d2d => github.com/c3y1huang/longhorn-instance-manager v1.13.0-dev-20260712.0.20260724040735-0d5b2693ca5d
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -331,7 +331,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260723044437-9c6562286f0a
+# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260723044437-9c6562286f0a => github.com/c3y1huang/longhorn-spdk-engine v0.0.0-20260723061451-d455ad1a93d1
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -345,7 +345,7 @@ github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/virtio-scsi
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/pkg/util
 github.com/longhorn/longhorn-spdk-engine/pkg/util/broadcaster
-# github.com/longhorn/types v0.0.0-20260723012747-f5be45849762
+# github.com/longhorn/types v0.0.0-20260723012747-f5be45849762 => github.com/c3y1huang/types v0.0.0-20260723060829-5cbacb04e0fc
 ## explicit; go 1.25.0
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -1399,3 +1399,7 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.36.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.36.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.36.2
+# github.com/longhorn/go-spdk-helper => github.com/c3y1huang/go-spdk-helper v0.0.0-20260723043116-23d0bab9f5df
+# github.com/longhorn/longhorn-spdk-engine => github.com/c3y1huang/longhorn-spdk-engine v0.0.0-20260723061451-d455ad1a93d1
+# github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.13.0-dev-20260712.0.20260724040735-0d5b2693ca5d
+# github.com/longhorn/types => github.com/c3y1huang/types v0.0.0-20260723060829-5cbacb04e0fc
