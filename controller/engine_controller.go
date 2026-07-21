@@ -1433,8 +1433,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				return nil
 			}
 
-			if err = cloneSnapshot(engine, engineClientProxy, m.ds); err != nil {
-				return err
+			if cloneErr := cloneSnapshot(engine, engineClientProxy, m.ds); cloneErr != nil {
+				m.logger.WithError(cloneErr).Warn("Engine monitor: SnapshotClone failed and the error will be recorded in the clone status")
 			}
 		}
 	}
