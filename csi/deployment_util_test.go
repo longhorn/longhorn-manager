@@ -4,9 +4,11 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
@@ -266,6 +268,91 @@ func TestDeployUsesUpdateFuncInsteadOfDeleteRecreate(t *testing.T) {
 	}
 	if createCalled {
 		t.Error("expected createFunc NOT to be called, but it was")
+	}
+}
+
+// TestDeployDeletesAndRecreatesOnAntiAffinityPresetChange verifies that when the
+// only change is the pod anti-affinity preset (soft -> hard), deploy() falls back
+// to delete + recreate instead of an in-place rolling update. A rolling update
+// cannot converge for this change on a constrained cluster (longhorn/longhorn#13546).
+func TestDeployDeletesAndRecreatesOnAntiAffinityPresetChange(t *testing.T) {
+	// existing deployment: same git commit/version and image, but soft preset
+	existing := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "csi-attacher",
+			Annotations: map[string]string{
+				AnnotationCSIGitCommit:             longhornmeta.GitCommit,
+				AnnotationCSIVersion:               longhornmeta.Version,
+				AnnotationCSIPodAntiAffinityPreset: CSIPodAntiAffinityPresetSoft,
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "csi-attacher", Image: "same-image:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	// desired deployment: identical except the preset is now hard
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "csi-attacher",
+			Annotations: map[string]string{
+				AnnotationCSIPodAntiAffinityPreset: CSIPodAntiAffinityPresetHard,
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "csi-attacher", Image: "same-image:v1"},
+					},
+				},
+			},
+		},
+	}
+
+	createCalled := false
+	deleteCalled := false
+	updateCalled := false
+
+	fakeCreate := func(_ *clientset.Clientset, _ runtime.Object) error {
+		createCalled = true
+		return nil
+	}
+	fakeDelete := func(_ *clientset.Clientset, _, _ string) error {
+		deleteCalled = true
+		return nil
+	}
+	// Return the existing object until it is deleted, then report NotFound so
+	// cleanup()'s WaitForResourceDeletion completes immediately.
+	fakeGet := func(_ *clientset.Clientset, name, _ string) (runtime.Object, error) {
+		if deleteCalled {
+			return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "deployments"}, name)
+		}
+		return existing, nil
+	}
+	fakeUpdate := func(_ *clientset.Clientset, _ runtime.Object) error {
+		updateCalled = true
+		return nil
+	}
+
+	err := deploy(nil, desired, "deployment", fakeCreate, fakeDelete, fakeGet, fakeUpdate)
+	if err != nil {
+		t.Fatalf("deploy() returned unexpected error: %v", err)
+	}
+	if updateCalled {
+		t.Error("expected updateFunc NOT to be called on preset change, but it was")
+	}
+	if !deleteCalled {
+		t.Error("expected deleteFunc to be called on preset change, but it was not")
+	}
+	if !createCalled {
+		t.Error("expected createFunc to be called on preset change, but it was not")
 	}
 }
 
