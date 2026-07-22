@@ -8,6 +8,8 @@ import (
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
+	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
@@ -72,6 +74,17 @@ func (v *shardGroupValidator) Create(request *admission.Request, newObj runtime.
 		return werror.NewInvalidError(err.Error(), "spec")
 	}
 
+	// CreationSize is zero until the ShardGroup controller records it at the
+	// first lvstore creation. Only validate once set.
+	if sg.Spec.CreationSize < 0 {
+		return werror.NewInvalidError(fmt.Sprintf("ShardGroup %v spec.creationSize must not be negative", sg.Name), "spec.creationSize")
+	}
+	if sg.Spec.CreationSize > 0 {
+		if err := spdktypes.ValidateECCreationSize(sg.Spec.CreationSize, sg.Spec.DataChunks, sg.Spec.StripSizeKB); err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("ShardGroup %v spec.creationSize is invalid: %v", sg.Name, err), "spec.creationSize")
+		}
+	}
+
 	return nil
 }
 
@@ -87,6 +100,14 @@ func (v *shardGroupValidator) Update(request *admission.Request, oldObj runtime.
 
 	if !reflect.DeepEqual(immutableFields(oldSG), immutableFields(newSG)) {
 		return werror.NewInvalidError(fmt.Sprintf("shard group %v spec fields VolumeName, DataChunks, ParityChunks, and StripSizeKB are immutable", oldSG.Name), "")
+	}
+
+	// CreationSize normally arrives via this update when the lvstore is first
+	// created, so validate the geometry here. Write-once is enforced by CEL.
+	if oldSG.Spec.CreationSize == 0 && newSG.Spec.CreationSize > 0 {
+		if err := spdktypes.ValidateECCreationSize(newSG.Spec.CreationSize, newSG.Spec.DataChunks, newSG.Spec.StripSizeKB); err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("ShardGroup %v spec.creationSize is invalid: %v", newSG.Name, err), "spec.creationSize")
+		}
 	}
 
 	return nil
