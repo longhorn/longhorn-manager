@@ -2686,6 +2686,19 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		rs[r.Name] = r
 	}
 
+	// This function also runs while the volume is already Attached, to pick up replicas added or
+	// rebuilt afterward (see the "This is a stable state" call site in
+	// reconcileAttachDetachStateMachine). In that steady state, don't let one replica that is still
+	// starting/rebuilding block OTHER, already Running, sibling replicas from being (re-)added to
+	// e.Spec.ReplicaAddressMap below: that field is fully overwritten every call, so bailing out here
+	// would silently drop already-healthy replicas until every sibling becomes Running at the same
+	// time. That may never happen when rebuilds are serialized one at a time per volume/per node,
+	// leaving replacement replicas permanently un-dialed by the engine after a mass replica
+	// replacement event (https://github.com/longhorn/longhorn/issues/13571). Only wait for every
+	// replica to become Running when the engine itself hasn't started yet, since starting it for the
+	// first time with an incomplete replica set would be wrong.
+	engineAlreadyRunning := e.Status.CurrentState == longhorn.InstanceStateRunning
+
 	replicaAddressMap := map[string]string{}
 	for _, r := range rs {
 		// Ignore unscheduled replicas
@@ -2710,8 +2723,19 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if r.Status.CurrentState == longhorn.InstanceStateError {
 			continue
 		}
-		// wait for all potentially healthy replicas become running
 		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+			if engineAlreadyRunning {
+				// The engine is already up. Keep this replica's existing address (if any) instead of
+				// waiting for it to become Running, so a still-starting or briefly-flapping replica
+				// does not block its running siblings from being kept in the map, while also not
+				// dropping a still-connected replica that would then be removed as unknown.
+				if addr, ok := e.Spec.ReplicaAddressMap[r.Name]; ok {
+					replicaAddressMap[r.Name] = addr
+				}
+				continue
+			}
+			// Initial attach: wait for all potentially healthy replicas to become running before
+			// starting the engine.
 			return nil
 		}
 		if r.Status.IP == "" {

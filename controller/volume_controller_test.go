@@ -1097,6 +1097,88 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	testCases["replica rebuilding - reuse failed replica"] = tc
 
+	// volume attached, add running replica address while sibling replica is still starting
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Spec.NumberOfReplicas = 3
+	tc.volume.Status.CurrentImage = TestEngineImage
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.State = longhorn.VolumeStateAttached
+	tc.volume.Status.Robustness = longhorn.VolumeRobustnessDegraded
+	tc.volume.Status.LastDegradedAt = "2014-01-02T00:00:00Z"
+	var currentEngine *longhorn.Engine
+	for _, e := range tc.engines {
+		currentEngine = e
+		break
+	}
+	thirdReplica := newReplicaForVolume(tc.volume, currentEngine, TestNode1, TestDiskID1)
+	tc.replicas[thirdReplica.Name] = thirdReplica
+	var healthyReplica *longhorn.Replica
+	var runningReplica *longhorn.Replica
+	var stoppedReplica *longhorn.Replica
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = longhorn.InstanceStateRunning
+		e.Spec.Image = TestEngineImage
+		e.Status.CurrentState = longhorn.InstanceStateRunning
+		e.Status.CurrentImage = TestEngineImage
+		e.Status.CurrentSize = TestVolumeSize
+		e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+		e.Status.ReplicaTransitionTimeMap = map[string]string{}
+	}
+	for _, r := range tc.replicas {
+		if healthyReplica == nil {
+			healthyReplica = r
+			r.Spec.DesireState = longhorn.InstanceStateRunning
+			r.Spec.HealthyAt = getTestNow()
+			r.Spec.LastHealthyAt = r.Spec.HealthyAt
+			r.Status.CurrentState = longhorn.InstanceStateRunning
+			r.Status.IP = randomIP()
+			r.Status.StorageIP = r.Status.IP
+			r.Status.Port = randomPort()
+			for _, e := range tc.engines {
+				e.Spec.ReplicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+				e.Status.ReplicaModeMap[r.Name] = longhorn.ReplicaModeRW
+				e.Status.ReplicaTransitionTimeMap[r.Name] = r.Spec.LastHealthyAt
+			}
+			continue
+		}
+		if runningReplica == nil {
+			runningReplica = r
+			r.Spec.DesireState = longhorn.InstanceStateRunning
+			r.Spec.HealthyAt = ""
+			r.Spec.LastHealthyAt = getTestNow()
+			r.Spec.RebuildRetryCount = 1
+			r.Status.CurrentState = longhorn.InstanceStateRunning
+			r.Status.IP = randomIP()
+			r.Status.StorageIP = r.Status.IP
+			r.Status.Port = randomPort()
+			continue
+		}
+		stoppedReplica = r
+		r.Spec.HealthyAt = ""
+		r.Spec.LastHealthyAt = getTestNow()
+		r.Spec.RebuildRetryCount = 1
+		r.Status.CurrentState = longhorn.InstanceStateStopped
+		// This replica is already in the engine's replica address map but is momentarily not
+		// Running (so it carries no live IP). Its existing address must be preserved (not dropped),
+		// otherwise the engine monitor would later treat it as an unknown replica and remove a
+		// still-connected replica.
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[r.Name] = imutil.GetURL("10.234.0.99", 10000)
+		}
+	}
+	tc.copyCurrentToExpect()
+	for _, e := range tc.expectEngines {
+		e.Spec.ReplicaAddressMap[runningReplica.Name] = imutil.GetURL(runningReplica.Status.StorageIP, runningReplica.Status.Port)
+	}
+	for _, r := range tc.expectReplicas {
+		if r.Name == stoppedReplica.Name {
+			r.Spec.DesireState = longhorn.InstanceStateRunning
+		}
+	}
+	testCases["volume attached - add running replica address while sibling is not running"] = tc
+
 	// replica rebuilding - delay replica replenishment
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
