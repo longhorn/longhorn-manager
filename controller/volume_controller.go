@@ -2453,6 +2453,9 @@ func (c *VolumeController) reconcileShardGroup(v *longhorn.Volume) error {
 				ParityChunks: v.Spec.DataLayout.ParityChunks,
 				StripSizeKB:  v.Spec.DataLayout.StripSizeKB,
 				NodeID:       v.Spec.NodeID,
+				// CreationSize is left zero here; the ShardGroup controller sets
+				// it when the lvstore is first created, since a detached volume
+				// can grow between CR creation and first attach.
 			},
 		}
 		if _, err := c.ds.CreateShardGroup(sg); err != nil && !apierrors.IsAlreadyExists(err) {
