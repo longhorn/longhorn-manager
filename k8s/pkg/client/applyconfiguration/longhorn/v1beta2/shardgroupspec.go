@@ -33,6 +33,11 @@ type ShardGroupSpecApplyConfiguration struct {
 	// StripSizeKB is the EC chunk size in KiB. Must be a power of two in the range [4, 1024].
 	// Immutable after creation.
 	StripSizeKB *int `json:"stripSizeKB,omitempty"`
+	// CreationSize is the volume size in bytes when the ShardGroup is created.
+	// The lvstore metadata region is sized from it at creation and never grows,
+	// so in-place expansion is limited to EcLvstoreMaxGrowthFactor (10x) of this
+	// size. Zero means unknown; expansion guards fail open. Immutable once set.
+	CreationSize *int64 `json:"creationSize,omitempty"`
 	// NodeID identifies the node hosting the long-lived ShardGroup process that owns the
 	// EC volume's bdev_ec, lvol store, head lvol, and NVMe-oF export. It is typically equal
 	// to Engine.Spec.NodeID for engine-process co-location. The Volume controller is the
@@ -78,6 +83,14 @@ func (b *ShardGroupSpecApplyConfiguration) WithParityChunks(value int) *ShardGro
 // If called multiple times, the StripSizeKB field is set to the value of the last call.
 func (b *ShardGroupSpecApplyConfiguration) WithStripSizeKB(value int) *ShardGroupSpecApplyConfiguration {
 	b.StripSizeKB = &value
+	return b
+}
+
+// WithCreationSize sets the CreationSize field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CreationSize field is set to the value of the last call.
+func (b *ShardGroupSpecApplyConfiguration) WithCreationSize(value int64) *ShardGroupSpecApplyConfiguration {
+	b.CreationSize = &value
 	return b
 }
 

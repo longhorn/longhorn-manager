@@ -49,6 +49,13 @@ type ShardGroupSpec struct {
 	// +kubebuilder:validation:Maximum=1024
 	// +optional
 	StripSizeKB int `json:"stripSizeKB"`
+	// CreationSize is the volume size in bytes when the ShardGroup is created.
+	// The lvstore metadata region is sized from it at creation and never grows,
+	// so in-place expansion is limited to EcLvstoreMaxGrowthFactor (10x) of this
+	// size. Zero means unknown; expansion guards fail open. Immutable once set.
+	// +kubebuilder:validation:XValidation:rule="oldSelf == 0 || self == oldSelf",message="CreationSize is immutable once set"
+	// +optional
+	CreationSize int64 `json:"creationSize"`
 	// NodeID identifies the node hosting the long-lived ShardGroup process that owns the
 	// EC volume's bdev_ec, lvol store, head lvol, and NVMe-oF export. It is typically equal
 	// to Engine.Spec.NodeID for engine-process co-location. The Volume controller is the
