@@ -1848,9 +1848,12 @@ func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
 	// that the engine's nvme initiator picks up to grow its view, so the
 	// EngineExpand call below polls until it lands.
 	sgExpandCtx, sgExpandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	// CreationSize lets the engine check the 10x growth ceiling before
+	// resizing anything. Zero means unknown; the engine skips the check.
 	_, sgExpandErr := rctx.spdkClient.ShardGroupExpand(sgExpandCtx, &spdkrpc.ShardGroupExpandRequest{
-		Name: shardGroup.Name,
-		Size: uint64(volume.Spec.Size),
+		Name:         shardGroup.Name,
+		Size:         uint64(volume.Spec.Size),
+		CreationSize: uint64(shardGroup.Spec.CreationSize),
 	})
 	sgExpandCancel()
 	if sgExpandErr != nil {
