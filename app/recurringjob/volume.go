@@ -52,11 +52,6 @@ func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
 
 	concurrentLimiter := make(chan struct{}, recurringJob.Spec.Concurrency)
 	ewg := &errgroup.Group{}
-	defer func() {
-		if wgError := ewg.Wait(); wgError != nil {
-			err = wgError
-		}
-	}()
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
@@ -64,7 +59,7 @@ func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
 		})
 	}
 
-	return err
+	return ewg.Wait()
 }
 
 func startVolumeJob(job *Job, recurringJob *longhorn.RecurringJob,

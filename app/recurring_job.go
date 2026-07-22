@@ -15,6 +15,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhtyped "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta2"
 )
 
 func RecurringJobCmd() *cli.Command {
@@ -58,10 +59,9 @@ func recurringJob(cmd *cli.Command) (err error) {
 		return errors.Wrap(err, "failed to get clientset")
 	}
 
-	recurringJob, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+	recurringJob, err := getRecurringJob(lhClient.LonghornV1beta2().RecurringJobs(namespace), jobName)
 	if err != nil {
-		logrus.WithError(err).Errorf("Failed to get recurring job %v.", jobName)
-		return nil
+		return err
 	}
 
 	recurringJob.Status.ExecutionCount += 1
@@ -80,4 +80,13 @@ func recurringJob(cmd *cli.Command) (err error) {
 	default:
 		return recurringjob.StartVolumeJobs(job, recurringJob)
 	}
+}
+
+func getRecurringJob(client lhtyped.RecurringJobInterface, jobName string) (*longhorn.RecurringJob, error) {
+	recurringJob, err := client.Get(context.TODO(), jobName, metav1.GetOptions{})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get recurring job %v", jobName)
+	}
+
+	return recurringJob, nil
 }
