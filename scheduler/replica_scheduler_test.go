@@ -958,6 +958,69 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
 	testCases["fail scheduling when zoneSoftAntiAffinity is false"] = tc
 
+	// Test a zone-pinned volume under a hard zone anti-affinity setting: the
+	// same setup as above fails, but the volume webhook keeps zone-pinned
+	// volumes at replicaZoneSoftAntiAffinity enabled, and the volume field
+	// overrides the global setting, so both replicas schedule within the
+	// pinned zone.
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
+		daemon1,
+		daemon2,
+	}
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
+		},
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode2, "1"): disk,
+	}
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode2, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	tc.volume.Spec.TopologyRequirement = []longhorn.VolumeTopologyTerm{{Zone: TestZone1}}
+	// The volume webhook enforces this invariant for zone-pinned volumes.
+	tc.volume.Spec.ReplicaZoneSoftAntiAffinity = longhorn.ReplicaZoneSoftAntiAffinityEnabled
+	tc.expectedNodes = nil // We don't know or care which nodes the replicas schedule to.
+	tc.err = false
+	tc.firstNilReplica = -1                  // Both replicas must schedule despite the hard zone anti-affinity setting.
+	tc.replicaNodeSoftAntiAffinity = "true"  // Allow replicas to schedule to the same node.
+	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
+	testCases["schedule replicas in the pinned zone when zoneSoftAntiAffinity is false"] = tc
+
 	// Test schedule when zoneSoftAntiAffinity is false but there is an evicting replica
 	tc = generateSchedulerTestCase()
 	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
@@ -1162,6 +1225,85 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	// node with less load.
 	tc = generateBestEffortAutoBalanceScheduleTestCase()
 	testCases["scheduling on the right node with \"best-effort\" auto balancing"] = tc
+
+	// Test topology zone: a volume with a topology zone schedules its replica
+	// only on a node in that zone. Without the filter the replica could land on
+	// node1 (a different zone).
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{daemon1, daemon2}
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{getDiskID(TestNode1, "1"): disk}
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions:       []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)},
+			DiskUUID:         getDiskID(TestNode1, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+		},
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node2 = newNode(TestNode2, TestNamespace, TestZone2, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{getDiskID(TestNode2, "1"): disk}
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode2, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions:       []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)},
+			DiskUUID:         getDiskID(TestNode2, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+		},
+	}
+	expectNode2 = newNode(TestNode2, TestNamespace, TestZone2, true, longhorn.ConditionStatusTrue)
+	expectNode2.Spec.Disks = map[string]longhorn.DiskSpec{getDiskID(TestNode2, "1"): disk}
+	tc.nodes = map[string]*longhorn.Node{TestNode1: node1, TestNode2: node2}
+	tc.expectedNodes = map[string]*longhorn.Node{TestNode2: expectNode2}
+	// Keep a single replica so the expected node is deterministic.
+	var topologyReplica *longhorn.Replica
+	for _, r := range tc.allReplicas {
+		topologyReplica = r
+		break
+	}
+	tc.allReplicas = map[string]*longhorn.Replica{topologyReplica.Name: topologyReplica}
+	tc.replicasToSchedule = map[string]struct{}{topologyReplica.Name: {}}
+	tc.volume.Spec.NumberOfReplicas = 1
+	// Two terms (OR semantics): no node is in "other-zone", so the node must
+	// match the second term. Node1 (TestZone1) matches neither and is excluded.
+	tc.volume.Spec.TopologyRequirement = []longhorn.VolumeTopologyTerm{{Zone: "other-zone"}, {Zone: TestZone2}}
+	tc.err = false
+	tc.firstNilReplica = -1
+	testCases["schedule replica only in the volume's topology zone"] = tc
+
+	// Test topology zone: scheduling fails when no node exists in the volume's
+	// zone (no cross-zone fallback).
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	tc.daemons = []*corev1.Pod{daemon1}
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{getDiskID(TestNode1, "1"): disk}
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions:       []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)},
+			DiskUUID:         getDiskID(TestNode1, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+		},
+	}
+	tc.nodes = map[string]*longhorn.Node{TestNode1: node1}
+	tc.volume.Spec.TopologyRequirement = []longhorn.VolumeTopologyTerm{{Zone: TestZone2}} // no node in this zone
+	tc.err = true
+	testCases["fail scheduling when no node in the volume's topology zone"] = tc
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)

@@ -400,7 +400,16 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
 	}
-	if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
+	// A volume pinned to a single zone by its topology requirement must keep
+	// replicaZoneSoftAntiAffinity enabled: zone anti-affinity can never be
+	// satisfied within one zone (see the volume validator). "ignored" would
+	// couple the volume to the mutable global setting, so record enabled on
+	// the volume instead; an explicit disabled is left for the validator to
+	// reject rather than being silently overwritten.
+	if types.IsTopologyZonePinned(volume.Spec.TopologyRequirement) &&
+		(volume.Spec.ReplicaZoneSoftAntiAffinity == "" || volume.Spec.ReplicaZoneSoftAntiAffinity == longhorn.ReplicaZoneSoftAntiAffinityDefault) {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityEnabled))
+	} else if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
 	}
 	if string(volume.Spec.ReplicaDiskSoftAntiAffinity) == "" {

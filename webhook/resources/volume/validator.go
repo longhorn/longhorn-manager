@@ -107,6 +107,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
+	if err := validateTopologyZonePin(volume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
+	}
+
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(volume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
 	}
@@ -278,6 +282,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
+	if err := validateTopologyZonePin(newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
+	}
+
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(newVolume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
 	}
@@ -288,6 +296,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := validateImmutable(".spec.dataSource", oldVolume.Spec.DataSource, newVolume.Spec.DataSource); err != nil {
 		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
+	}
+
+	if err := validateImmutable(".spec.topologyRequirement", oldVolume.Spec.TopologyRequirement, newVolume.Spec.TopologyRequirement); err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.topologyRequirement")
 	}
 
 	if oldVolume.Spec.CloneMode != longhorn.CloneModeNone {
@@ -695,6 +707,23 @@ func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(oldVolume, new
 
 	if currentSnapshotCount > newVolume.Spec.SnapshotMaxCount || (newVolume.Spec.SnapshotMaxSize != 0 && currentTotalSnapshotSize > newVolume.Spec.SnapshotMaxSize) {
 		return werror.NewInvalidError("can't make snapshotMaxCount or snapshotMaxSize be smaller than current usage, please remove snapshots first", "")
+	}
+	return nil
+}
+
+// validateTopologyZonePin enforces the invariant that a volume pinned to a
+// single zone by its topology requirement has replicaZoneSoftAntiAffinity
+// enabled. Zone anti-affinity can never be satisfied within one zone, so any
+// other value would leave every replica beyond the first unschedulable
+// forever. The volume mutator fills enabled when the field is empty or
+// ignored, so this only rejects an explicit disabled.
+func validateTopologyZonePin(volume *longhorn.Volume) error {
+	if !types.IsTopologyZonePinned(volume.Spec.TopologyRequirement) {
+		return nil
+	}
+	if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityEnabled {
+		return fmt.Errorf("spec.replicaZoneSoftAntiAffinity must be %v for a volume pinned to a single zone by spec.topologyRequirement: zone anti-affinity cannot be satisfied within one zone (got %v)",
+			longhorn.ReplicaZoneSoftAntiAffinityEnabled, volume.Spec.ReplicaZoneSoftAntiAffinity)
 	}
 	return nil
 }

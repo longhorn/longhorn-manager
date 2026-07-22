@@ -58,6 +58,7 @@ const (
 	ErrorReplicaScheduleNodeUnavailable                   = "nodes are unavailable"
 	ErrorReplicaScheduleEngineImageNotReady               = "none of the node candidates contains a ready engine image"
 	ErrorReplicaScheduleHardNodeAffinityNotSatisfied      = "hard affinity cannot be satisfied"
+	ErrorReplicaScheduleTopologyNotSatisfied              = "topology requirement cannot be satisfied"
 	ErrorReplicaScheduleLinkedCloneNotSatisfied           = "linked clone replica cannot be satisfied"
 	ErrorReplicaScheduleSchedulingFailed                  = "replica scheduling failed"
 	ErrorReplicaScheduleUnusedFailedReplicaIsNotSupported = "unused failed replica is not supported"

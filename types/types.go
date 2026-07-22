@@ -1209,6 +1209,28 @@ func ValidateReplicaZoneSoftAntiAffinity(value longhorn.ReplicaZoneSoftAntiAffin
 	return nil
 }
 
+// IsTopologyZonePinned reports whether a volume topology requirement confines
+// replica candidates to exactly one zone. A term without a zone (region-only)
+// allows any zone in the region, so it does not pin; terms naming different
+// zones allow spreading across those zones.
+func IsTopologyZonePinned(terms []longhorn.VolumeTopologyTerm) bool {
+	if len(terms) == 0 {
+		return false
+	}
+	zone := ""
+	for _, term := range terms {
+		if term.Zone == "" {
+			return false
+		}
+		if zone == "" {
+			zone = term.Zone
+		} else if term.Zone != zone {
+			return false
+		}
+	}
+	return true
+}
+
 func ValidateReplicaDiskSoftAntiAffinity(value longhorn.ReplicaDiskSoftAntiAffinity) error {
 	if value != longhorn.ReplicaDiskSoftAntiAffinityDefault &&
 		value != longhorn.ReplicaDiskSoftAntiAffinityEnabled &&

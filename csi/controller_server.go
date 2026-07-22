@@ -150,6 +150,28 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		accessibleTopology = cs.getAccessibleTopologyFromRequirements(ctx, req.GetAccessibilityRequirements(), strictTopology)
 	}
 
+	// The volumeTopology parameter pins the volume to a single failure domain
+	// resolved at provisioning time. The resolved terms are stored on the
+	// volume and returned as the accessible topology instead of the full
+	// requirement echo, so the PV node affinity and the replica scheduler
+	// constrain pods and replicas to the same failure domain.
+	if err := checkVolumeTopologyParameters(volumeParameters); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	topologyTerms, err := volumeTopologyTerms(accessibleTopology, volumeParameters["volumeTopology"])
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if len(topologyTerms) > 0 {
+		accessibleTopology = termsToCSITopology(topologyTerms)
+	} else if vt := volumeParameters["volumeTopology"]; vt == "zonal" || vt == "regional" {
+		// Degenerate on purpose: clusters without topology labels (or without
+		// the csi-allowed-topology-keys setting) fall back to unconstrained
+		// placement so one StorageClass can serve both labeled and unlabeled
+		// clusters. Warn so a mislabeled multi-zone cluster is noticeable.
+		log.Warnf("CreateVolume for %s requested volumeTopology %q but no failure domain was resolvable from the accessible topology; the volume is unconstrained", volumeID, vt)
+	}
+
 	volumeSource := req.GetVolumeContentSource()
 	if volumeSource != nil {
 		switch volumeSource.Type.(type) {
@@ -246,6 +268,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if existVol != nil {
 		log.Infof("Volume %v already exists with name %v", volumeID, existVol.Name)
 
+		// Respond with the topology already resolved on the existing volume:
+		// recomputing from the request could resolve a different failure
+		// domain on retries (the preferred order is not stable under
+		// immediate binding) and diverge from the stored terms.
+		if len(existVol.TopologyRequirement) > 0 {
+			accessibleTopology = termsToCSITopology(existVol.TopologyRequirement)
+		}
+
 		exVolSize, err := util.ConvertSize(existVol.Size)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
@@ -289,6 +319,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	vol.TopologyRequirement = topologyTerms
 
 	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters, vol.DataEngine); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -1689,6 +1721,81 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	log.Infof("ControllerModifyVolume: called with args %v", req)
 
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// checkVolumeTopologyParameters rejects explicitly contradictory volume
+// parameters: a zonal volume keeps all of its replicas in one zone, which hard
+// zone anti-affinity can never satisfy for more than one replica. The volume
+// webhook enforces the same invariant on the volume itself (the mutator fills
+// replicaZoneSoftAntiAffinity enabled for zone-pinned volumes, the validator
+// rejects other values); this check just fails provisioning fast with a
+// parameter-level error when the StorageClass asks for both at once.
+func checkVolumeTopologyParameters(volumeParameters map[string]string) error {
+	if volumeParameters["volumeTopology"] == "zonal" &&
+		volumeParameters["replicaZoneSoftAntiAffinity"] == string(longhorn.ReplicaZoneSoftAntiAffinityDisabled) {
+		return fmt.Errorf("volumeTopology %q cannot be combined with replicaZoneSoftAntiAffinity %q: all replicas of a zonal volume are kept in one zone", "zonal", longhorn.ReplicaZoneSoftAntiAffinityDisabled)
+	}
+	return nil
+}
+
+// volumeTopologyTerms resolves the volumeTopology volume parameter against the
+// accessible topology, pinning the volume to a single failure domain at
+// provisioning time: "any" (default) returns nothing (unconstrained, current
+// behavior), "zonal" resolves the zone of the first entry (the selected node's
+// zone under delayed binding), "regional" only its region. The resolved terms
+// are stored on the volume so every replica is scheduled in that failure
+// domain, and rendered back into the response topology (the PV node affinity)
+// so pods follow the volume.
+func volumeTopologyTerms(accessibleTopology []*csi.Topology, volumeTopology string) ([]longhornclient.VolumeTopologyTerm, error) {
+	switch volumeTopology {
+	case "", "any":
+		return nil, nil
+	case "zonal", "regional":
+	default:
+		return nil, fmt.Errorf("invalid volumeTopology %q, must be one of \"any\", \"zonal\", \"regional\"", volumeTopology)
+	}
+
+	if len(accessibleTopology) == 0 {
+		return nil, nil
+	}
+
+	segments := accessibleTopology[0].GetSegments()
+	term := longhornclient.VolumeTopologyTerm{
+		Region: segments[types.KubernetesTopologyRegionLabelKey],
+	}
+	if volumeTopology == "zonal" {
+		term.Zone = segments[types.KubernetesTopologyZoneLabelKey]
+		if term.Zone == "" {
+			// A zonal volume cannot be pinned without a zone; degenerate to
+			// unconstrained placement instead of storing a region-only term
+			// that would silently behave as regional.
+			return nil, nil
+		}
+	}
+	if term.Zone == "" && term.Region == "" {
+		return nil, nil
+	}
+	return []longhornclient.VolumeTopologyTerm{term}, nil
+}
+
+// termsToCSITopology renders stored volume topology terms back into CSI
+// topology entries for the CreateVolumeResponse.
+func termsToCSITopology(terms []longhornclient.VolumeTopologyTerm) []*csi.Topology {
+	var topologies []*csi.Topology
+	for _, term := range terms {
+		segments := map[string]string{}
+		if term.Zone != "" {
+			segments[types.KubernetesTopologyZoneLabelKey] = term.Zone
+		}
+		if term.Region != "" {
+			segments[types.KubernetesTopologyRegionLabelKey] = term.Region
+		}
+		if len(segments) == 0 {
+			continue
+		}
+		topologies = append(topologies, &csi.Topology{Segments: segments})
+	}
+	return topologies
 }
 
 // getAccessibleTopologyFromRequirements converts AccessibilityRequirements from CreateVolumeRequest
