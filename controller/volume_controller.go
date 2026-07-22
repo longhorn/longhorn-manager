@@ -4993,7 +4993,8 @@ func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume
 		// Find healthy src replicas on the same node+disk
 		var candidates []*longhorn.Replica
 		for _, sr := range srcReplicas {
-			if sr.Spec.NodeID == r.Spec.NodeID &&
+			if sr.DeletionTimestamp == nil &&
+				sr.Spec.NodeID == r.Spec.NodeID &&
 				sr.Spec.DiskID == r.Spec.DiskID &&
 				sr.Spec.FailedAt == "" &&
 				sr.Spec.HealthyAt != "" &&
@@ -5002,10 +5003,11 @@ func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume
 			}
 		}
 		if len(candidates) == 0 {
-			// Check if any src replica exists on this disk at all (even unhealthy ones).
+			// Check if any non-deleted src replica exists on this disk (even unhealthy ones).
 			hasSrcOnDisk := false
 			for _, sr := range srcReplicas {
-				if sr.Spec.NodeID == r.Spec.NodeID && sr.Spec.DiskID == r.Spec.DiskID {
+				if sr.DeletionTimestamp == nil &&
+					sr.Spec.NodeID == r.Spec.NodeID && sr.Spec.DiskID == r.Spec.DiskID {
 					hasSrcOnDisk = true
 					break
 				}
