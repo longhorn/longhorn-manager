@@ -25,7 +25,7 @@ func TestGetVolumeOptions(t *testing.T) {
 			},
 			expectedVolume: &longhornclient.Volume{
 				NumberOfReplicas:        3,
-				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				StaleReplicaTimeout:     0,
 				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
 				DataEngine:              string(longhorn.DataEngineTypeV1),
 				RevisionCounterDisabled: true,
@@ -37,7 +37,7 @@ func TestGetVolumeOptions(t *testing.T) {
 				"exclusive": "true",
 			},
 			expectedVolume: &longhornclient.Volume{
-				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				StaleReplicaTimeout:     0,
 				AccessMode:              string(longhorn.AccessModeReadWriteOncePod),
 				DataEngine:              string(longhorn.DataEngineTypeV1),
 				RevisionCounterDisabled: true,
@@ -49,7 +49,7 @@ func TestGetVolumeOptions(t *testing.T) {
 				"share": "true",
 			},
 			expectedVolume: &longhornclient.Volume{
-				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				StaleReplicaTimeout:     0,
 				AccessMode:              string(longhorn.AccessModeReadWriteMany),
 				DataEngine:              string(longhorn.DataEngineTypeV1),
 				RevisionCounterDisabled: true,
@@ -69,7 +69,7 @@ func TestGetVolumeOptions(t *testing.T) {
 				"migratable": "true",
 			},
 			expectedVolume: &longhornclient.Volume{
-				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				StaleReplicaTimeout:     0,
 				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
 				DataEngine:              string(longhorn.DataEngineTypeV1),
 				RevisionCounterDisabled: true,
@@ -83,7 +83,7 @@ func TestGetVolumeOptions(t *testing.T) {
 				"migratable": "true",
 			},
 			expectedVolume: &longhornclient.Volume{
-				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				StaleReplicaTimeout:     0,
 				AccessMode:              string(longhorn.AccessModeReadWriteMany),
 				DataEngine:              string(longhorn.DataEngineTypeV1),
 				RevisionCounterDisabled: true,
@@ -96,11 +96,30 @@ func TestGetVolumeOptions(t *testing.T) {
 				"dataEngine": "v2",
 			},
 			expectedVolume: &longhornclient.Volume{
-				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				StaleReplicaTimeout:     0,
 				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
 				DataEngine:              string(longhorn.DataEngineTypeV2),
 				RevisionCounterDisabled: true,
 			},
+		},
+		"custom stale replica timeout": {
+			volumeID: "test-vol-custom-timeout",
+			volumeOptions: map[string]string{
+				"staleReplicaTimeout": "100",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:     100,
+				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:              string(longhorn.DataEngineTypeV1),
+				RevisionCounterDisabled: true,
+			},
+		},
+		"negative stale replica timeout should fail": {
+			volumeID: "test-vol-negative",
+			volumeOptions: map[string]string{
+				"staleReplicaTimeout": "-10",
+			},
+			expectedError: true,
 		},
 	}
 
