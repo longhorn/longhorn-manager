@@ -2,6 +2,7 @@ package volume
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 
@@ -16,6 +17,7 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 
 	lhtypes "github.com/longhorn/go-common-libs/types"
+	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -195,6 +197,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if err := validateShardedConstraints(volume); err != nil {
+		return err
+	}
+
+	if err := checkECCreationSizeCap(volume, volume.Spec.Size); err != nil {
 		return err
 	}
 
@@ -534,6 +540,12 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		return fmt.Errorf("shrinking volume %v size from %v to %v is not supported", newVolume.Name, oldSize, newSize)
 	}
 
+	if newVolume.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded && newSize > oldSize {
+		if err := v.validateECExpansionCeiling(newVolume, newSize); err != nil {
+			return err
+		}
+	}
+
 	replicaMap, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
 	if err != nil {
 		return err
@@ -599,6 +611,69 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		return fmt.Errorf("PVC %v size should be expanded from %v to %v first", pvcName, pvcSpecValue.Value(), requestedSize.Value())
 	}
 
+	return nil
+}
+
+// validateECExpansionCeiling limits EC volume expansion to
+// EcLvstoreMaxGrowthFactor (10x) of ShardGroup.Spec.CreationSize, because the
+// lvstore metadata region is sized at creation and never grows. A zero
+// CreationSize (or missing CR) with no lvstore means the new size becomes the
+// creation size, so the creation cap applies instead. A zero CreationSize
+// with an existing lvstore is rejected: the ceiling cannot be checked.
+func (v *volumeValidator) validateECExpansionCeiling(volume *longhorn.Volume, newSize int64) error {
+	sg, err := v.ds.GetShardGroupRO(volume.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return checkECCreationSizeCap(volume, newSize)
+		}
+		return err
+	}
+	if sg.Spec.CreationSize == 0 {
+		// HeadLvolUUID set means the lvstore exists but its creation size was
+		// never recorded, so the growth ceiling cannot be checked. Fail
+		// closed rather than admit an expansion the metadata region may not
+		// support.
+		if sg.Status.HeadLvolUUID != "" {
+			return werror.NewInvalidError(fmt.Sprintf(
+				"volume %v cannot be expanded: its lvstore exists but the creation size is unknown; recreate the volume",
+				volume.Name), "spec.size")
+		}
+		return checkECCreationSizeCap(volume, newSize)
+	}
+	return checkECExpansionCeiling(volume.Name, sg.Spec.CreationSize, newSize)
+}
+
+// checkECCreationSizeCap rejects an EC (sharded) volume size larger than the
+// maximum size SPDK can create an lvstore for. Applies at creation and to
+// expansion before the ShardGroup exists; growth after that reuses the
+// metadata region sized at creation.
+func checkECCreationSizeCap(volume *longhorn.Volume, size int64) error {
+	if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+		return nil
+	}
+	if err := spdktypes.ValidateECCreationSize(size, volume.Spec.DataLayout.DataChunks, volume.Spec.DataLayout.StripSizeKB); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.size")
+	}
+	return nil
+}
+
+// checkECExpansionCeiling rejects newSize beyond
+// EcLvstoreMaxGrowthFactor * creationSize. Exactly the ceiling is allowed;
+// creationSize <= 0 means unknown and passes.
+func checkECExpansionCeiling(volumeName string, creationSize, newSize int64) error {
+	if creationSize <= 0 {
+		return nil
+	}
+	// Guard the multiply below; unreachable in practice since creation is
+	// capped at EcLvstoreMaxCreationSize.
+	if creationSize > math.MaxInt64/spdktypes.EcLvstoreMaxGrowthFactor {
+		return fmt.Errorf("volume %v ShardGroup creation size %v is invalid", volumeName, creationSize)
+	}
+	maxSize := creationSize * spdktypes.EcLvstoreMaxGrowthFactor
+	if newSize > maxSize {
+		return fmt.Errorf("volume %v expansion to %v exceeds the %vx in-place growth ceiling (creation size %v, max expandable size %v); recreate the volume with a larger size, as shard-group rebuild is not yet supported",
+			volumeName, newSize, spdktypes.EcLvstoreMaxGrowthFactor, creationSize, maxSize)
+	}
 	return nil
 }
 
