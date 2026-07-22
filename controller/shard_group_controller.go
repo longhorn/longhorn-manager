@@ -56,6 +56,10 @@ type ShardGroupController struct {
 	ds        *datastore.DataStore
 	scheduler *scheduler.ShardScheduler
 
+	// dialSPDKFn dials the SPDK service on a node. Defaults to dialSPDK;
+	// overridable in tests to stub per-shard-node RPCs.
+	dialSPDKFn func(nodeID string) (spdkrpc.SPDKServiceClient, *grpc.ClientConn, error)
+
 	// rebuildingLock guards inProgressRebuildingMap so the per-node rebuild limit is
 	// checked and reserved atomically across the controller's parallel workers.
 	rebuildingLock sync.Mutex
@@ -107,6 +111,7 @@ func NewShardGroupController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-shard-group-controller"}),
 	}
+	c.dialSPDKFn = c.dialSPDK
 
 	var err error
 	if _, err = ds.ShardGroupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1809,7 +1814,7 @@ func (c *ShardGroupController) countFailedShards(rctx *sgReconcileCtx) int {
 func (c *ShardGroupController) resizeShardsTo(rctx *sgReconcileCtx, shardSize uint64) bool {
 	log := rctx.log
 	for _, shard := range rctx.shards {
-		shardSPDKClient, shardConn, err := c.dialSPDK(shard.Spec.NodeID)
+		shardSPDKClient, shardConn, err := c.dialSPDKFn(shard.Spec.NodeID)
 		if err != nil {
 			log.WithError(err).Warnf("Cannot connect to SPDK service for shard %v; will retry", shard.Name)
 			return false
@@ -1886,6 +1891,28 @@ func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
 			shardGroup.Status.GrowInProgress = false
 		}
 		return nil
+	}
+
+	// Gate the 10x growth ceiling (and engine-side rebuild/degraded checks)
+	// before any shard lvol is resized; a rejection here leaves the volume
+	// untouched. Zero CreationSize means unknown and skips the ceiling check.
+	sgPrecheckCtx, sgPrecheckCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	_, sgPrecheckErr := rctx.spdkClient.ShardGroupExpandPrecheck(sgPrecheckCtx, &spdkrpc.ShardGroupExpandPrecheckRequest{
+		Name:         shardGroup.Name,
+		Size:         uint64(volume.Spec.Size),
+		CreationSize: uint64(shardGroup.Spec.CreationSize),
+	})
+	sgPrecheckCancel()
+	if sgPrecheckErr != nil {
+		if e, ok := status.FromError(sgPrecheckErr); ok && e.Code() == codes.FailedPrecondition {
+			// Policy rejection (growth ceiling): terminal, leave the volume untouched.
+			log.WithError(sgPrecheckErr).Warn("ShardGroupExpandPrecheck rejected expansion; skipping")
+			c.eventRecorder.Eventf(shardGroup, corev1.EventTypeWarning, constant.EventReasonFailedExpansion,
+				"expansion to %v bytes rejected by precheck: %v", volume.Spec.Size, sgPrecheckErr)
+			return nil
+		}
+		// Transient (outage, timeout, rebuild in progress): requeue and retry.
+		return errors.Wrapf(sgPrecheckErr, "failed to precheck expansion to %v bytes for ShardGroup %v", volume.Spec.Size, shardGroup.Name)
 	}
 
 	log.Infof("Expanding EC volume to %v bytes", volume.Spec.Size)
