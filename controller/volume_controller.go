@@ -5014,14 +5014,15 @@ func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume
 			}
 			if !hasSrcOnDisk {
 				// The src replica was deleted during the scheduling window.
-				// Fail this clone replica so the volume controller cleans it up
-				// and schedules a replacement on an available src replica.
-				setReplicaFailedAt(r, c.nowHandler())
-				if _, err := c.ds.UpdateReplica(r); err != nil {
-					return errors.Wrapf(err, "failed to mark stranded clone replica %v as failed", r.Name)
+				// Delete (not fail) the clone replica so replenishment creates
+				// a replacement on a disk that actually has a src replica.
+				// Failing it would leave a replica with no healthyAt, making
+				// salvage impossible if the volume faults.
+				if err := c.deleteReplica(r, rs); err != nil {
+					return errors.Wrapf(err, "failed to delete stranded clone replica %v", r.Name)
 				}
 				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailed,
-					"clone replica %v marked as failed: source replica on disk %v node %v was removed during scheduling window",
+					"clone replica %v deleted: source replica on disk %v node %v was removed during scheduling window",
 					r.Name, r.Spec.DiskID, r.Spec.NodeID)
 			}
 			// else: src exists but is temporarily unhealthy; will retry on next reconcile
