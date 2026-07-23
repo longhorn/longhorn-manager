@@ -1147,6 +1147,192 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	s.runTestCases(c, testCases)
 }
 
+func (s *TestSuite) TestOpenVolumeDependentResourcesFailsNeverStartedReplicaOnDownNode(c *C) {
+	testCases := []struct {
+		name                    string
+		nodeReady               longhorn.ConditionStatus
+		desireState             longhorn.InstanceState
+		currentState            longhorn.InstanceState
+		starting                bool
+		started                 bool
+		lastHealthyAt           string
+		expectFailed            bool
+		expectDesiredState      longhorn.InstanceState
+		expectReplicaMapUpdated bool
+	}{
+		{
+			name:                    "status starting never-started replica",
+			nodeReady:               longhorn.ConditionStatusFalse,
+			desireState:             longhorn.InstanceStateStopped,
+			currentState:            longhorn.InstanceStateStopped,
+			starting:                true,
+			expectFailed:            true,
+			expectDesiredState:      longhorn.InstanceStateStopped,
+			expectReplicaMapUpdated: true,
+		},
+		{
+			name:                    "desired running never-started replica",
+			nodeReady:               longhorn.ConditionStatusFalse,
+			desireState:             longhorn.InstanceStateRunning,
+			currentState:            longhorn.InstanceStateStopped,
+			expectFailed:            true,
+			expectDesiredState:      longhorn.InstanceStateStopped,
+			expectReplicaMapUpdated: true,
+		},
+		{
+			name:               "replica never requested to run",
+			nodeReady:          longhorn.ConditionStatusFalse,
+			desireState:        longhorn.InstanceStateStopped,
+			currentState:       longhorn.InstanceStateStopped,
+			expectDesiredState: longhorn.InstanceStateStopped,
+		},
+		{
+			name:               "stopped replica previously observed running",
+			nodeReady:          longhorn.ConditionStatusFalse,
+			desireState:        longhorn.InstanceStateRunning,
+			currentState:       longhorn.InstanceStateStopped,
+			starting:           true,
+			started:            true,
+			expectDesiredState: longhorn.InstanceStateRunning,
+		},
+		{
+			name:               "stopped previously healthy replica",
+			nodeReady:          longhorn.ConditionStatusFalse,
+			desireState:        longhorn.InstanceStateRunning,
+			currentState:       longhorn.InstanceStateStopped,
+			starting:           true,
+			lastHealthyAt:      getTestNow(),
+			expectDesiredState: longhorn.InstanceStateRunning,
+		},
+		{
+			name:               "replica process still starting on down node",
+			nodeReady:          longhorn.ConditionStatusFalse,
+			desireState:        longhorn.InstanceStateRunning,
+			currentState:       longhorn.InstanceStateStarting,
+			starting:           true,
+			expectDesiredState: longhorn.InstanceStateRunning,
+		},
+		{
+			name:                    "never-started rebuilding replica on ready node",
+			nodeReady:               longhorn.ConditionStatusTrue,
+			desireState:             longhorn.InstanceStateRunning,
+			currentState:            longhorn.InstanceStateStopped,
+			starting:                true,
+			expectDesiredState:      longhorn.InstanceStateRunning,
+			expectReplicaMapUpdated: true,
+		},
+		{
+			name:               "replica process still starting on ready node",
+			nodeReady:          longhorn.ConditionStatusTrue,
+			desireState:        longhorn.InstanceStateRunning,
+			currentState:       longhorn.InstanceStateStarting,
+			starting:           true,
+			expectDesiredState: longhorn.InstanceStateRunning,
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Logf("testing %v", tc.name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		c.Assert(err, IsNil)
+
+		nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		err = nodeIndexer.Add(newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""))
+		c.Assert(err, IsNil)
+		nodeReason := ""
+		if tc.nodeReady == longhorn.ConditionStatusFalse {
+			nodeReason = string(longhorn.NodeConditionReasonKubernetesNodeNotReady)
+		}
+		err = nodeIndexer.Add(newNode(TestNode2, TestNamespace, true, tc.nodeReady, nodeReason))
+		c.Assert(err, IsNil)
+
+		volume := newVolume(TestVolumeName, 2)
+		volume.Spec.NodeID = TestNode1
+		volume.Status.CurrentNodeID = TestNode1
+		volume.Status.CurrentImage = TestEngineImage
+		volume.Status.State = longhorn.VolumeStateAttached
+
+		engine := newEngineForVolume(volume)
+		engine.Spec.NodeID = TestNode1
+		engine.Spec.DesireState = longhorn.InstanceStateRunning
+
+		replacementReplica := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+		replacementReplica.Spec.DesireState = longhorn.InstanceStateRunning
+		replacementReplica.Status.CurrentState = longhorn.InstanceStateRunning
+		replacementReplica.Status.Started = true
+		replacementReplica.Status.IP = TestIP1
+		replacementReplica.Status.StorageIP = TestIP1
+		replacementReplica.Status.Port = 10000
+
+		candidate := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+		candidate.Spec.DesireState = tc.desireState
+		candidate.Spec.RebuildRetryCount = 1
+		candidate.Spec.LastHealthyAt = tc.lastHealthyAt
+		candidate.Status.CurrentState = tc.currentState
+		candidate.Status.Starting = tc.starting
+		candidate.Status.Started = tc.started
+
+		replacementInstanceManager := newInstanceManager(
+			TestInstanceManagerName+"-"+TestNode1, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
+		replacementReplica.Status.InstanceManagerName = replacementInstanceManager.Name
+
+		candidateInstanceManager := newInstanceManager(
+			TestInstanceManagerName+"-"+TestNode2, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode2, TestIP2,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
+		candidate.Status.InstanceManagerName = candidateInstanceManager.Name
+
+		instanceManagerIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		err = instanceManagerIndexer.Add(replacementInstanceManager)
+		c.Assert(err, IsNil)
+		err = instanceManagerIndexer.Add(candidateInstanceManager)
+		c.Assert(err, IsNil)
+
+		replicas := map[string]*longhorn.Replica{
+			replacementReplica.Name: replacementReplica,
+			candidate.Name:          candidate,
+		}
+
+		err = vc.openVolumeDependentResources(volume, engine, replicas, nil, getLoggerForVolume(vc.logger, volume))
+		c.Assert(err, IsNil)
+
+		if tc.expectFailed {
+			c.Assert(candidate.Spec.FailedAt, Equals, getTestNow())
+			c.Assert(candidate.Spec.LastFailedAt, Equals, getTestNow())
+		} else {
+			c.Assert(candidate.Spec.FailedAt, Equals, "")
+			c.Assert(candidate.Spec.LastFailedAt, Equals, "")
+		}
+		c.Assert(candidate.Spec.DesireState, Equals, tc.expectDesiredState)
+
+		expectedReplicaAddressMap := map[string]string{}
+		if tc.expectReplicaMapUpdated {
+			expectedReplicaAddressMap[replacementReplica.Name] = imutil.GetURL(replacementReplica.Status.StorageIP, replacementReplica.Status.Port)
+		}
+		c.Assert(engine.Spec.ReplicaAddressMap, DeepEquals, expectedReplicaAddressMap)
+	}
+}
+
 func (s *TestSuite) TestTooManySnapshotsThresholdBehavior(c *C) {
 	// Ensure lister skip for unit tests
 	datastore.SkipListerCheck = true
@@ -2061,7 +2247,7 @@ func setupSwitchoverTestInfra(c *C) (
 	v.Status.CurrentEngineNodeID = TestNode1
 	v.Status.Robustness = longhorn.VolumeRobustnessHealthy
 
-	// Current (old) engine — running on node1
+	// Current (old) engine - running on node1
 	currentEngine = newEngineForVolume(v)
 	currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
 	currentEngine.Spec.Active = true
@@ -2072,7 +2258,7 @@ func setupSwitchoverTestInfra(c *C) (
 	currentEngine.Status.StorageIP = "10.1.0.1"
 	currentEngine.Status.Port = 8501
 
-	// Migration engine — running on node2
+	// Migration engine - running on node2
 	migrationEngine = newEngineForVolume(v)
 	migrationEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
 	migrationEngine.Spec.Active = false
@@ -2083,7 +2269,7 @@ func setupSwitchoverTestInfra(c *C) (
 	migrationEngine.Status.StorageIP = "10.1.0.2"
 	migrationEngine.Status.Port = 8502
 
-	// Replica — assigned to the current engine, and also used for migration.
+	// Replica - assigned to the current engine, and also used for migration.
 	replica = newReplicaForVolume(v, currentEngine, TestNode1, TestDiskID1)
 	replica.Spec.DesireState = longhorn.InstanceStateRunning
 	replica.Status.CurrentState = longhorn.InstanceStateRunning
@@ -2099,7 +2285,7 @@ func setupSwitchoverTestInfra(c *C) (
 		replica.Name: imutil.GetURL(replica.Status.StorageIP, replica.Status.Port),
 	}
 
-	// EF — Spec already points to migration engine target (from a prior cycle).
+	// EF - Spec already points to migration engine target (from a prior cycle).
 	ef = newEngineFrontendForVolume(v, currentEngine.Name, TestNode1, "")
 	ef.Spec.TargetIP = migrationEngine.Status.StorageIP
 	ef.Spec.TargetPort = migrationEngine.Status.Port
@@ -2131,7 +2317,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetS
 	err := vc.processEngineSwitchover(v, es, rs, efs)
 	c.Assert(err, IsNil)
 
-	// The old engine must still be running — not stopped.
+	// The old engine must still be running - not stopped.
 	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
 }
 
