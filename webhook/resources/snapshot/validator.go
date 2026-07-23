@@ -3,6 +3,8 @@ package snapshot
 import (
 	"fmt"
 	"reflect"
+	"sort"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 
@@ -38,6 +40,7 @@ func (o *snapshotValidator) Resource() admission.Resource {
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
 			admissionregv1.Update,
+			admissionregv1.Delete,
 		},
 	}
 }
@@ -152,4 +155,25 @@ func countExistingSnapshots(snapshots map[string]*longhorn.Snapshot) int {
 		}
 	}
 	return count
+}
+func (o *snapshotValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
+	snapshot, ok := oldObj.(*longhorn.Snapshot)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", oldObj), "")
+	}
+
+	isEntrypoint, cloneNames, err := o.ds.IsSnapshotLinkedCloneEntrypoint(snapshot.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf(
+			"failed to check if snapshot %v is a linked-clone entrypoint: %v",
+			snapshot.Name, err))
+	}
+	if isEntrypoint {
+		sort.Strings(cloneNames)
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot delete snapshot %v: it is the entrypoint for linked-clone volume(s): %v",
+			snapshot.Name, strings.Join(cloneNames, ", ")))
+	}
+
+	return nil
 }

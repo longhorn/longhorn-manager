@@ -24,6 +24,8 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
 	"github.com/longhorn/longhorn-manager/webhook/resources/replica"
 	"github.com/longhorn/longhorn-manager/webhook/resources/setting"
+	"github.com/longhorn/longhorn-manager/webhook/resources/shard"
+	"github.com/longhorn/longhorn-manager/webhook/resources/shardgroup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
 	"github.com/longhorn/longhorn-manager/webhook/resources/supportbundle"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
@@ -51,6 +53,8 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		volume.NewValidator(ds, currentNodeID),
 		orphan.NewValidator(ds),
 		snapshot.NewValidator(ds),
+		shardgroup.NewValidator(ds),
+		shard.NewValidator(ds),
 		supportbundle.NewValidator(ds),
 		systembackup.NewValidator(ds),
 		systemrestore.NewValidator(ds),

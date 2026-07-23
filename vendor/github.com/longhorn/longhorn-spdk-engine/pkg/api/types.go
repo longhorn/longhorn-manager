@@ -14,21 +14,25 @@ type SnapshotOptions struct {
 }
 
 type Replica struct {
-	Name             string           `json:"name"`
-	LvsName          string           `json:"lvs_name"`
-	LvsUUID          string           `json:"lvs_uuid"`
-	SpecSize         uint64           `json:"spec_size"`
-	ActualSize       uint64           `json:"actual_size"`
-	Head             *Lvol            `json:"head"`
-	Snapshots        map[string]*Lvol `json:"snapshots"`
-	IP               string           `json:"ip"`
-	PortStart        int32            `json:"port_start"`
-	PortEnd          int32            `json:"port_end"`
-	State            string           `json:"state"`
-	ErrorMsg         string           `json:"error_msg"`
-	Rebuilding       bool             `json:"rebuilding"`
-	BackingImageName string           `json:"backing_image_name"`
-	UUID             string           `json:"uuid"`
+	Name                    string           `json:"name"`
+	LvsName                 string           `json:"lvs_name"`
+	LvsUUID                 string           `json:"lvs_uuid"`
+	SpecSize                uint64           `json:"spec_size"`
+	ActualSize              uint64           `json:"actual_size"`
+	Head                    *Lvol            `json:"head"`
+	Snapshots               map[string]*Lvol `json:"snapshots"`
+	IP                      string           `json:"ip"`
+	PortStart               int32            `json:"port_start"`
+	PortEnd                 int32            `json:"port_end"`
+	State                   string           `json:"state"`
+	ErrorMsg                string           `json:"error_msg"`
+	Rebuilding              bool             `json:"rebuilding"`
+	BackingImageName        string           `json:"backing_image_name"`
+	UUID                    string           `json:"uuid"`
+	IsCloneReplica          bool             `json:"is_clone_replica"`
+	CloneSourceReplicaName  string           `json:"clone_source_replica_name"`
+	CloneEntrypointLvolName string           `json:"clone_entrypoint_lvol_name"`
+	CloneEntrypointMap      map[string]int32 `json:"clone_entrypoint_map"`
 }
 
 type Lvol struct {
@@ -109,6 +113,16 @@ func ProtoReplicaToReplica(r *spdkrpc.Replica) *Replica {
 		res.BackingImageName = r.BackingImageName
 	}
 
+	res.IsCloneReplica = r.IsCloneReplica
+	res.CloneSourceReplicaName = r.CloneSourceReplicaName
+	res.CloneEntrypointLvolName = r.CloneEntrypointLvolName
+	if len(r.CloneEntrypointMap) > 0 {
+		res.CloneEntrypointMap = make(map[string]int32, len(r.CloneEntrypointMap))
+		for k, v := range r.CloneEntrypointMap {
+			res.CloneEntrypointMap[k] = v
+		}
+	}
+
 	return res
 }
 
@@ -138,6 +152,16 @@ func ReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 	if r.BackingImageName != "" {
 		res.BackingImageName = r.BackingImageName
 	}
+
+	res.IsCloneReplica = r.IsCloneReplica
+	res.CloneSourceReplicaName = r.CloneSourceReplicaName
+	res.CloneEntrypointLvolName = r.CloneEntrypointLvolName
+	if len(r.CloneEntrypointMap) > 0 {
+		res.CloneEntrypointMap = make(map[string]int32, len(r.CloneEntrypointMap))
+		for k, v := range r.CloneEntrypointMap {
+			res.CloneEntrypointMap[k] = v
+		}
+	}
 	return res
 }
 
@@ -160,6 +184,7 @@ type Engine struct {
 	IsExpanding           bool                  `json:"is_expanding"`
 	LastExpansionError    string                `json:"last_expansion_error"`
 	LastExpansionFailedAt string                `json:"last_expansion_failed_at"`
+	SnapshotMaxCount      int32                 `json:"snapshot_max_count"`
 }
 
 func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
@@ -182,6 +207,7 @@ func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
 		IsExpanding:           e.IsExpanding,
 		LastExpansionError:    e.LastExpansionError,
 		LastExpansionFailedAt: e.LastExpansionFailedAt,
+		SnapshotMaxCount:      e.SnapshotMaxCount,
 	}
 	for rName, mode := range e.ReplicaModeMap {
 		res.ReplicaModeMap[rName] = types.GRPCReplicaModeToReplicaMode(mode)
@@ -388,6 +414,49 @@ func ProtoReplicaSnapshotCloneSrcStatusCheckResponseToSnapshotCloneSrcStatus(sta
 	}
 }
 
+type Shard struct {
+	ShardID    string `json:"shard_id"`
+	VolumeName string `json:"volume_name"`
+	SlotIndex  uint32 `json:"slot_index"`
+	State      string `json:"state"`
+	SizeBytes  uint64 `json:"size_bytes"`
+	LvsName    string `json:"lvs_name"`
+	LvsUUID    string `json:"lvs_uuid"`
+	BdevName   string `json:"bdev_name"`
+	NvmfNqn    string `json:"nvmf_nqn"`
+	IP         string `json:"ip"`
+	Port       int32  `json:"port"`
+	UUID       string `json:"uuid"`
+	ErrorMsg   string `json:"error_msg"`
+}
+
+func ProtoShardToShard(s *spdkrpc.Shard) *Shard {
+	if s == nil {
+		return nil
+	}
+
+	state := types.InstanceStateRunning
+	if s.State == spdkrpc.EcSlotState_EC_SLOT_STATE_FAILED {
+		state = types.InstanceStateError
+	}
+
+	return &Shard{
+		ShardID:    s.Name,
+		VolumeName: s.VolumeName,
+		SlotIndex:  s.SlotIndex,
+		State:      string(state),
+		SizeBytes:  s.SizeBytes,
+		LvsName:    s.LvsName,
+		LvsUUID:    s.LvsUuid,
+		BdevName:   s.BdevName,
+		NvmfNqn:    s.NvmfNqn,
+		IP:         s.Ip,
+		Port:       s.Port,
+		UUID:       s.Uuid,
+		ErrorMsg:   s.ErrorMsg,
+	}
+}
+
 type ReplicaSnapshotCloneDstStatus struct {
 	IsCloning         bool   `json:"is_cloning"`
 	SrcReplicaName    string `json:"src_replica_name"`
@@ -453,5 +522,19 @@ func NewBackingImageStream(stream spdkrpc.SPDKService_BackingImageWatchClient) *
 }
 
 func (s *BackingImageStream) Recv() (*emptypb.Empty, error) {
+	return s.stream.Recv()
+}
+
+type ShardStream struct {
+	stream spdkrpc.SPDKService_ShardWatchClient
+}
+
+func NewShardStream(stream spdkrpc.SPDKService_ShardWatchClient) *ShardStream {
+	return &ShardStream{
+		stream,
+	}
+}
+
+func (s *ShardStream) Recv() (*emptypb.Empty, error) {
 	return s.stream.Recv()
 }

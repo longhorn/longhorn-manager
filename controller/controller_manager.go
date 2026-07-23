@@ -156,6 +156,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	shardGroupController, err := NewShardGroupController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
 
 	// Kubernetes controllers
 	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
@@ -217,6 +221,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeEvictionController.Run(Workers, stopCh)
 	go volumeCloneController.Run(Workers, stopCh)
 	go volumeExpansionController.Run(Workers, stopCh)
+	go shardGroupController.Run(Workers, stopCh)
 
 	// Start goroutines for Kubernetes controllers
 	go kubernetesPVController.Run(Workers, stopCh)
@@ -262,11 +267,13 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	}
 
 	cpuRequest := 0
+	cpuRequestVal := ""
 	switch im.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
 		// TODO: Currently lhNode.Spec.InstanceManagerCPURequest is applied to both v1 and v2 data engines.
 		// In the future, we may want to support different CPU requests for them.
 		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
+		cpuRequestVal = fmt.Sprintf("%dm", cpuRequest)
 		if cpuRequest == 0 {
 			guaranteedCPUPercentage, err := ds.GetSettingAsFloatByDataEngine(types.SettingNameGuaranteedInstanceManagerCPU, im.Spec.DataEngine)
 			if err != nil {
@@ -274,12 +281,26 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 			}
 			allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
 			cpuRequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
+			cpuRequestVal = fmt.Sprintf("%dm", cpuRequest)
+		}
+		if types.IsDataEngineV2(im.Spec.DataEngine) {
+			spdkCoreNumber, err := ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+			if err != nil {
+				return nil, err
+			}
+			if spdkCoreNumber > 0 {
+				if cpuRequest < int(spdkCoreNumber)*1000 {
+					cpuRequestVal = fmt.Sprintf("%d", spdkCoreNumber)
+				} else {
+					cpuRequestVal = fmt.Sprintf("%d", ((cpuRequest-1)/1000)+1)
+				}
+			}
 		}
 	default:
 		return nil, fmt.Errorf("unknown data engine %v", im.Spec.DataEngine)
 	}
 
-	return ParseResourceRequirement(fmt.Sprintf("%dm", cpuRequest))
+	return ParseResourceRequirement(cpuRequestVal)
 }
 
 func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {

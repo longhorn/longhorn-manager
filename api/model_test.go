@@ -52,3 +52,98 @@ func TestToVolumeResourceUsesEngineFrontendNodeForV2Controller(t *testing.T) {
 		t.Fatalf("expected controller endpoint to use frontend endpoint, got %q", resource.Controllers[0].Endpoint)
 	}
 }
+
+func TestToVolumeResourceUsesOldSizeUntilLiveFrontendCatchesUp(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
+	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
+	if err != nil {
+		t.Fatalf("failed to create API url builder: %v", err)
+	}
+
+	volume := &longhorn.Volume{}
+	volume.Name = "test-volume"
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Spec.Size = 20
+	volume.Spec.NumberOfReplicas = 1
+	volume.Status.State = longhorn.VolumeStateAttached
+
+	engine := &longhorn.Engine{}
+	engine.Name = "test-volume-e-0"
+	engine.Spec.VolumeName = volume.Name
+	engine.Spec.NodeID = "engine-node"
+	engine.Spec.Image = "ei-test"
+	engine.Status.CurrentState = longhorn.InstanceStateRunning
+	engine.Status.CurrentSize = 20
+	engine.Status.IP = "10.0.0.2"
+
+	frontend := &longhorn.EngineFrontend{}
+	frontend.Name = "test-volume-ef-0"
+	frontend.Spec.EngineName = engine.Name
+	frontend.Spec.NodeID = "frontend-node"
+	frontend.Status.CurrentState = longhorn.InstanceStateRunning
+	frontend.Status.Endpoint = "/dev/longhorn/test-volume"
+	frontend.Status.CurrentSize = 10
+
+	resource := toVolumeResource(volume, []*longhorn.EngineFrontend{frontend}, []*longhorn.Engine{engine}, nil, nil, nil, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+	if got := resource.Controllers[0].Size; got != "10" {
+		t.Fatalf("expected controller size to stay at live frontend size, got %q", got)
+	}
+}
+
+func TestToVolumeResourceUsesEngineSizeWhenFrontendIsNotLive(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
+	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
+	if err != nil {
+		t.Fatalf("failed to create API url builder: %v", err)
+	}
+
+	volume := &longhorn.Volume{}
+	volume.Name = "test-volume"
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Spec.Size = 20
+	volume.Spec.NumberOfReplicas = 1
+	volume.Status.State = longhorn.VolumeStateAttached
+
+	engine := &longhorn.Engine{}
+	engine.Name = "test-volume-e-0"
+	engine.Spec.VolumeName = volume.Name
+	engine.Spec.NodeID = "engine-node"
+	engine.Spec.Image = "ei-test"
+	engine.Status.CurrentState = longhorn.InstanceStateRunning
+	engine.Status.CurrentSize = 20
+	engine.Status.IP = "10.0.0.2"
+
+	frontend := &longhorn.EngineFrontend{}
+	frontend.Name = "test-volume-ef-0"
+	frontend.Spec.EngineName = engine.Name
+	frontend.Spec.NodeID = "frontend-node"
+	frontend.Status.CurrentState = longhorn.InstanceStateStopped
+	frontend.Status.Endpoint = ""
+	frontend.Status.CurrentSize = 10
+
+	resource := toVolumeResource(volume, []*longhorn.EngineFrontend{frontend}, []*longhorn.Engine{engine}, nil, nil, nil, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+	if got := resource.Controllers[0].Size; got != "20" {
+		t.Fatalf("expected controller size to use engine size when frontend is not live, got %q", got)
+	}
+}
+
+func TestToVolumeResourcePropagatesReadyMessage(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
+	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
+	if err != nil {
+		t.Fatalf("failed to create API url builder: %v", err)
+	}
+
+	volume := &longhorn.Volume{}
+	volume.Name = "test-volume"
+	volume.Spec.NodeID = "test-node"
+	volume.Status.Robustness = longhorn.VolumeRobustnessFaulted
+
+	resource := toVolumeResource(volume, nil, nil, nil, nil, nil, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+	if resource.Ready {
+		t.Fatalf("expected volume to not be ready")
+	}
+	if resource.NotReadyMessage == "" {
+		t.Fatalf("expected NotReadyMessage to be populated when volume is not ready")
+	}
+}

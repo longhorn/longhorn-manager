@@ -2,6 +2,7 @@ package replica
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/cockroachdb/errors"
 
@@ -10,6 +11,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -71,6 +73,20 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 		}
 	}
 
+	// LinkedCloneSrcReplicaName is immutable once set.
+	if oldReplica.Spec.LinkedCloneSrcReplicaName != "" &&
+		newReplica.Spec.LinkedCloneSrcReplicaName != oldReplica.Spec.LinkedCloneSrcReplicaName {
+		return werror.NewInvalidError("spec.linkedCloneSrcReplicaName is immutable once set",
+			"spec.linkedCloneSrcReplicaName")
+	}
+	// The linked-clone-src-replica label is immutable once set to a non-empty value.
+	oldLabel := oldReplica.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)]
+	newLabel := newReplica.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)]
+	if oldLabel != "" && newLabel != oldLabel {
+		return werror.NewInvalidError("label linked-clone-src-replica is immutable once set",
+			"metadata.labels")
+	}
+
 	return nil
 }
 
@@ -82,6 +98,49 @@ func (r *replicaValidator) Delete(request *admission.Request, obj runtime.Object
 
 	if err := r.validateReplicaDeletion(replica); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := r.validateLinkedCloneReplicaDeletion(replica); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLinkedCloneReplicaDeletion blocks deletion of a replica that is the
+// source of one or more active linked-clone replicas.  The guard is bypassed
+// when the owning volume is being deleted so that normal cascade cleanup can
+// proceed.
+func (r *replicaValidator) validateLinkedCloneReplicaDeletion(replica *longhorn.Replica) error {
+	if replica.Spec.VolumeName == "" {
+		return nil
+	}
+
+	vol, err := r.ds.GetVolumeRO(replica.Spec.VolumeName)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return werror.NewInternalError(fmt.Sprintf(
+			"failed to get volume %v before checking linked-clone replicas for replica %v: %v",
+			replica.Spec.VolumeName, replica.Name, err))
+	}
+	// Bypass: src volume is being deleted — allow cascade cleanup.
+	if vol != nil && vol.DeletionTimestamp != nil {
+		return nil
+	}
+
+	cloneReplicas, err := r.ds.ListLinkedCloneReplicasBySrcReplicaRO(replica.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf(
+			"failed to list linked-clone replicas for replica %v: %v", replica.Name, err))
+	}
+	if len(cloneReplicas) > 0 {
+		cloneNames := make([]string, 0, len(cloneReplicas))
+		for _, r := range cloneReplicas {
+			cloneNames = append(cloneNames, r.Name)
+		}
+		sort.Strings(cloneNames)
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot delete replica %v: it is the source of linked-clone replica(s) %v",
+			replica.Name, cloneNames))
 	}
 
 	return nil

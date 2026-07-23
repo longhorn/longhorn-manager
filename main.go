@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -8,19 +9,11 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"github.com/longhorn/longhorn-manager/app"
 	"github.com/longhorn/longhorn-manager/meta"
 )
-
-func cmdNotFound(c *cli.Context, command string) {
-	panic(fmt.Errorf("unrecognized command: %s", command))
-}
-
-func onUsageError(c *cli.Context, err error, isSubcommand bool) error {
-	panic(fmt.Errorf("usage error, please check your command"))
-}
 
 func main() {
 	logrus.SetReportCaller(true)
@@ -34,48 +27,53 @@ func main() {
 		FullTimestamp:   true,
 	})
 
-	a := cli.NewApp()
-	a.Usage = "Longhorn Manager"
-	a.Version = meta.Version
-
-	a.Before = func(c *cli.Context) error {
-		if c.GlobalBool("debug") {
-			logrus.SetLevel(logrus.DebugLevel)
-		}
-		if c.GlobalBool("log-json") {
-			logrus.SetFormatter(&logrus.JSONFormatter{})
-		}
-		return nil
-	}
-
-	a.Flags = []cli.Flag{
-		cli.BoolFlag{
-			Name:   "debug, d",
-			Usage:  "enable debug logging level",
-			EnvVar: "RANCHER_DEBUG",
+	a := &cli.Command{
+		Usage:   "Longhorn Manager",
+		Version: meta.Version,
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			if cmd.Bool("debug") {
+				logrus.SetLevel(logrus.DebugLevel)
+			}
+			if cmd.Bool("log-json") {
+				logrus.SetFormatter(&logrus.JSONFormatter{})
+			}
+			return ctx, nil
 		},
-		cli.BoolFlag{
-			Name:   "log-json, j",
-			Usage:  "log in json format",
-			EnvVar: "RANCHER_LOG_JSON",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "debug",
+				Aliases: []string{"d"},
+				Usage:   "enable debug logging level",
+				Sources: cli.EnvVars("RANCHER_DEBUG"),
+			},
+			&cli.BoolFlag{
+				Name:    "log-json",
+				Aliases: []string{"j"},
+				Usage:   "log in json format",
+				Sources: cli.EnvVars("RANCHER_LOG_JSON"),
+			},
+		},
+		Commands: []*cli.Command{
+			app.DaemonCmd(),
+			app.RecurringJobCmd(),
+			app.DeployDriverCmd(),
+			app.CSICommand(),
+			app.PreUpgradeCmd(),
+			app.PostUpgradeCmd(),
+			app.UninstallCmd(),
+			app.SystemRolloutCmd(),
+			// TODO: Remove MigrateForPre070VolumesCmd() after v0.8.1
+			app.MigrateForPre070VolumesCmd(),
+		},
+		CommandNotFound: func(ctx context.Context, cmd *cli.Command, command string) {
+			panic(fmt.Errorf("unrecognized command: %s", command))
+		},
+		OnUsageError: func(ctx context.Context, cmd *cli.Command, err error, isSubcommand bool) error {
+			panic(fmt.Errorf("usage error, please check your command"))
 		},
 	}
-	a.Commands = []cli.Command{
-		app.DaemonCmd(),
-		app.RecurringJobCmd(),
-		app.DeployDriverCmd(),
-		app.CSICommand(),
-		app.PreUpgradeCmd(),
-		app.PostUpgradeCmd(),
-		app.UninstallCmd(),
-		app.SystemRolloutCmd(),
-		// TODO: Remove MigrateForPre070VolumesCmd() after v0.8.1
-		app.MigrateForPre070VolumesCmd(),
-	}
-	a.CommandNotFound = cmdNotFound
-	a.OnUsageError = onUsageError
 
-	if err := a.Run(os.Args); err != nil {
+	if err := a.Run(context.Background(), os.Args); err != nil {
 		logrus.Fatalf("Critical error: %v", err)
 	}
 }

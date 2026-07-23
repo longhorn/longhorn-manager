@@ -166,9 +166,10 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 
 type resourceCreateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
 type resourceDeleteFunc func(kubeClient *clientset.Clientset, name, namespace string) error
+type resourceUpdateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
 
 func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
-	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
+	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc, updateFunc resourceUpdateFunc) (err error) {
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
@@ -200,11 +201,24 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 			annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil &&
 			!needToUpdateImage(existing, obj) &&
-			!needToUpdatePodAntiAffinity(existing, obj) {
+			!needToUpdatePodAntiAffinity(existing, obj) &&
+			!needToUpdateReplicas(existing, obj) {
 			// deployment of correct version already deployed
 			logrus.Infof("Detected %v %v CSI Git commit %v version %v has already been deployed",
 				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion])
 			return nil
+		}
+		// For Deployments, update in-place to let Kubernetes perform a rolling update,
+		// which respects maxUnavailable and avoids a 0-replica window.
+		// A pod anti-affinity preset change (e.g. soft -> hard) cannot converge via a
+		// rolling update on a constrained cluster: the old pods must stay Available
+		// (maxUnavailable) while the new hard-anti-affinity pods can't be scheduled,
+		// causing a deadlock. Fall back to delete+recreate for that case.
+		// For other resource types (DaemonSet, CSIDriver), also fall back to delete+recreate.
+		if updateFunc != nil && existingMeta.GetDeletionTimestamp() == nil &&
+			!needToUpdatePodAntiAffinity(existing, obj) {
+			logrus.Infof("Updating %s %s", resource, name)
+			return updateFunc(kubeClient, obj)
 		}
 		// otherwise clean up the old deployment
 		if err := cleanup(kubeClient, obj, resource, deleteFunc, getFunc); err != nil {
@@ -316,6 +330,26 @@ func needToUpdatePodAntiAffinity(existingObj, newObj runtime.Object) bool {
 	return existingPreset != newPreset
 }
 
+func needToUpdateReplicas(existingObj, newObj runtime.Object) bool {
+	existingDeployment, ok := existingObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+	newDeployment, ok := newObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+
+	if newDeployment.Spec.Replicas == nil {
+		return false
+	}
+	if existingDeployment.Spec.Replicas == nil {
+		return true
+	}
+
+	return *existingDeployment.Spec.Replicas != *newDeployment.Spec.Replicas
+}
+
 func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
 	deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
 
@@ -357,6 +391,24 @@ func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) e
 		return fmt.Errorf("failed to convert back the object")
 	}
 	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
+	return err
+}
+
+func deploymentUpdateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
+	o, ok := obj.(*appsv1.Deployment)
+	if !ok {
+		return fmt.Errorf("failed to convert object to *appsv1.Deployment for update, got %T", obj)
+	}
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		latest, err := kubeClient.AppsV1().Deployments(o.Namespace).Get(context.TODO(), o.Name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		latest.Annotations = o.Annotations
+		latest.Labels = o.Labels
+		latest.Spec = o.Spec
+		return kubeClient.AppsV1().Deployments(o.Namespace).Update(context.TODO(), latest, metav1.UpdateOptions{})
+	})
 	return err
 }
 

@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
 	. "gopkg.in/check.v1"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
@@ -20,8 +22,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/backupstore"
 
@@ -1525,6 +1525,154 @@ func (s *TestSuite) TestReconcileVolumeSizeV2KeepsExpansionRequiredWhenExpansion
 	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
 }
 
+func (s *TestSuite) TestReconcileVolumeSizeV2ReassertsExpansionRequiredWhenEngineCurrentSizeLags(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Size = TestVolumeSize * 2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = TestVolumeSize
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: v.Spec.Size,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+			Active: true,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			CurrentSize: TestVolumeSize,
+		},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{efName: ef})
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, true)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeV1ReassertsExpansionRequiredWhenEngineCurrentSizeLags(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV1
+	v.Spec.Size = TestVolumeSize * 2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV1
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = TestVolumeSize
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, nil)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, true)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeV2DoesNotReassertExpansionRequiredWhenDetachedFrontendCurrentSizeIsZero(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = v.Spec.Size
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: v.Spec.Size,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+			Active: true,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			CurrentSize: 0,
+		},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{efName: ef})
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, false)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeV2DoesNotReassertExpansionRequiredForFreshCreate(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = 0
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = v.Spec.Size
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: v.Spec.Size,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+			Active: true,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			CurrentSize: 0,
+		},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{efName: ef})
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, false)
+}
+
 func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2UsesTargetNodeID(c *C) {
 	datastore.SkipListerCheck = true
 
@@ -1869,129 +2017,6 @@ func (s *TestSuite) TestCleanupReplicasDoesNotSkipExtraHealthyCleanupForV1WhenAt
 	c.Assert(rs[remoteReplica.Name], IsNil)
 }
 
-func (s *TestSuite) TestCleanupReplicasSkipsExtraHealthyCleanupForRecentlyHealthyV2Replica(c *C) {
-	datastore.SkipListerCheck = true
-
-	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
-	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
-	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
-	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-
-	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
-	c.Assert(err, IsNil)
-
-	v := newVolume(TestVolumeName, 1)
-	v.Spec.DataEngine = longhorn.DataEngineTypeV2
-	v.Spec.DataLocality = longhorn.DataLocalityBestEffort
-	v.Spec.NodeID = TestNode1
-	v.Status.State = longhorn.VolumeStateAttached
-	v.Status.CurrentNodeID = TestNode1
-	v.Status.CurrentImage = TestEngineImage
-
-	e := newEngineForVolume(v)
-	e.Spec.DataEngine = longhorn.DataEngineTypeV2
-	e.Spec.NodeID = TestNode1
-	e.Status.CurrentState = longhorn.InstanceStateRunning
-
-	baseNow, err := util.ParseTime(getTestNow())
-	c.Assert(err, IsNil)
-
-	localReplica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
-	localReplica.Spec.Active = true
-	localReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow)
-	localReplica.Spec.LastHealthyAt = localReplica.Spec.HealthyAt
-	localReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	remoteReplica := newReplicaForVolume(v, e, TestNode2, TestDiskID2)
-	remoteReplica.Spec.Active = true
-	remoteReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow.Add(-2 * RecentHealthyReplicaCleanupDelay))
-	remoteReplica.Spec.LastHealthyAt = remoteReplica.Spec.HealthyAt
-	remoteReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "/dev/longhorn/test")
-	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.Endpoint = "/dev/longhorn/test"
-
-	rs := map[string]*longhorn.Replica{
-		localReplica.Name:  localReplica,
-		remoteReplica.Name: remoteReplica,
-	}
-	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
-
-	err = vc.cleanupReplicas(v, map[string]*longhorn.Engine{e.Name: e}, rs, efs)
-	c.Assert(err, IsNil)
-	c.Assert(rs, HasLen, 2)
-	c.Assert(rs[localReplica.Name], NotNil)
-	c.Assert(rs[remoteReplica.Name], NotNil)
-}
-
-func (s *TestSuite) TestCleanupReplicasAllowsExtraHealthyCleanupAfterRecentHealthyDelay(c *C) {
-	datastore.SkipListerCheck = true
-
-	kubeClient := fake.NewSimpleClientset()
-	lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
-	extensionsClient := apiextensionsfake.NewSimpleClientset()
-	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-
-	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
-	c.Assert(err, IsNil)
-	rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
-
-	v := newVolume(TestVolumeName, 1)
-	v.Spec.DataEngine = longhorn.DataEngineTypeV2
-	v.Spec.DataLocality = longhorn.DataLocalityBestEffort
-	v.Spec.NodeID = TestNode1
-	v.Status.State = longhorn.VolumeStateAttached
-	v.Status.CurrentNodeID = TestNode1
-	v.Status.CurrentImage = TestEngineImage
-
-	e := newEngineForVolume(v)
-	e.Spec.DataEngine = longhorn.DataEngineTypeV2
-	e.Spec.NodeID = TestNode1
-	e.Status.CurrentState = longhorn.InstanceStateRunning
-
-	baseNow, err := util.ParseTime(getTestNow())
-	c.Assert(err, IsNil)
-	vc.nowHandler = func() string {
-		return util.FormatTimeZ(baseNow.Add(RecentHealthyReplicaCleanupDelay + time.Second))
-	}
-
-	localReplica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
-	localReplica.Spec.Active = true
-	localReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow)
-	localReplica.Spec.LastHealthyAt = localReplica.Spec.HealthyAt
-	localReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	remoteReplica := newReplicaForVolume(v, e, TestNode2, TestDiskID2)
-	remoteReplica.Spec.Active = true
-	remoteReplica.Spec.HealthyAt = util.FormatTimeZ(baseNow.Add(-2 * RecentHealthyReplicaCleanupDelay))
-	remoteReplica.Spec.LastHealthyAt = remoteReplica.Spec.HealthyAt
-	remoteReplica.Status.CurrentState = longhorn.InstanceStateRunning
-
-	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "/dev/longhorn/test")
-	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.Endpoint = "/dev/longhorn/test"
-
-	rs := map[string]*longhorn.Replica{
-		localReplica.Name:  localReplica,
-		remoteReplica.Name: remoteReplica,
-	}
-	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
-
-	for _, replica := range []*longhorn.Replica{localReplica, remoteReplica} {
-		createdReplica, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
-		c.Assert(err, IsNil)
-		err = rIndexer.Add(createdReplica)
-		c.Assert(err, IsNil)
-	}
-
-	err = vc.cleanupReplicas(v, map[string]*longhorn.Engine{e.Name: e}, rs, efs)
-	c.Assert(err, IsNil)
-	c.Assert(rs, HasLen, 1)
-	c.Assert(rs[localReplica.Name], NotNil)
-	c.Assert(rs[remoteReplica.Name], IsNil)
-}
-
 // setupSwitchoverTestInfra creates a VolumeController and the required
 // datastore objects (nodes) for processEngineSwitchover tests.
 // It returns the controller and a pre-built set of volume/engine/replica/EF
@@ -2044,6 +2069,7 @@ func setupSwitchoverTestInfra(c *C) (
 	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
 	currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
 	currentEngine.Status.IP = "10.0.0.1"
+	currentEngine.Status.StorageIP = "10.1.0.1"
 	currentEngine.Status.Port = 8501
 
 	// Migration engine — running on node2
@@ -2054,6 +2080,7 @@ func setupSwitchoverTestInfra(c *C) (
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 	migrationEngine.Status.CurrentState = longhorn.InstanceStateRunning
 	migrationEngine.Status.IP = "10.0.0.2"
+	migrationEngine.Status.StorageIP = "10.1.0.2"
 	migrationEngine.Status.Port = 8502
 
 	// Replica — assigned to the current engine, and also used for migration.
@@ -2074,7 +2101,7 @@ func setupSwitchoverTestInfra(c *C) (
 
 	// EF — Spec already points to migration engine target (from a prior cycle).
 	ef = newEngineFrontendForVolume(v, currentEngine.Name, TestNode1, "")
-	ef.Spec.TargetIP = migrationEngine.Status.IP
+	ef.Spec.TargetIP = migrationEngine.Status.StorageIP
 	ef.Spec.TargetPort = migrationEngine.Status.Port
 	ef.Spec.EngineName = migrationEngine.Name
 
@@ -2091,7 +2118,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetS
 	// still shows the old target because the direct multipath/ANA switchover
 	// has not completed yet.
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.TargetIP = currentEngine.Status.IP
+	ef.Status.TargetIP = currentEngine.Status.StorageIP
 	ef.Status.TargetPort = currentEngine.Status.Port
 
 	es := map[string]*longhorn.Engine{
@@ -2116,7 +2143,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 
 	// EF switchover is complete: both Spec and Status show the new target.
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.TargetIP = migrationEngine.Status.IP
+	ef.Status.TargetIP = migrationEngine.Status.StorageIP
 	ef.Status.TargetPort = migrationEngine.Status.Port
 
 	es := map[string]*longhorn.Engine{
@@ -2169,11 +2196,11 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
 	// The cleanup branch does not consult EF state, but keep the object valid.
-	ef.Spec.TargetIP = migrationEngine.Status.IP
+	ef.Spec.TargetIP = migrationEngine.Status.StorageIP
 	ef.Spec.TargetPort = migrationEngine.Status.Port
 	ef.Spec.EngineName = migrationEngine.Name
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
-	ef.Status.TargetIP = migrationEngine.Status.IP
+	ef.Status.TargetIP = migrationEngine.Status.StorageIP
 	ef.Status.TargetPort = migrationEngine.Status.Port
 
 	// Persist the engine objects in the fake datastore so cleanup can update and
@@ -2580,6 +2607,7 @@ func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 	migrationEngine.Status.CurrentState = longhorn.InstanceStateRunning
 	migrationEngine.Status.IP = randomIP()
+	migrationEngine.Status.StorageIP = randomIP()
 	migrationEngine.Status.Port = randomPort()
 
 	migrationReplica := currentReplica.DeepCopy()
@@ -2626,7 +2654,8 @@ func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {
 	c.Assert(migrationEngineFrontend.Spec.NodeID, Equals, TestNode2)
 	c.Assert(migrationEngineFrontend.Spec.EngineName, Equals, migrationEngine.Name)
 	c.Assert(migrationEngineFrontend.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
-	c.Assert(migrationEngineFrontend.Spec.TargetIP, Equals, migrationEngine.Status.IP)
+	c.Assert(migrationEngineFrontend.Spec.TargetIP, Equals, migrationEngine.Status.StorageIP)
+	c.Assert(migrationEngineFrontend.Spec.TargetIP, Not(Equals), migrationEngine.Status.IP)
 	c.Assert(migrationEngineFrontend.Spec.TargetPort, Equals, migrationEngine.Status.Port)
 }
 

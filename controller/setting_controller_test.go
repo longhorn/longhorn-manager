@@ -68,6 +68,127 @@ func TestGetRegistry(t *testing.T) {
 	}
 }
 
+func TestCountCPUCoresFromMask(t *testing.T) {
+	tests := []struct {
+		name string
+		mask string
+		want int
+	}{
+		{
+			name: "empty string",
+			mask: "",
+			want: 0,
+		},
+		{
+			name: "single core 0x1",
+			mask: "0x1",
+			want: 1,
+		},
+		{
+			name: "two cores 0x3",
+			mask: "0x3",
+			want: 2,
+		},
+		{
+			name: "four cores 0xf",
+			mask: "0xf",
+			want: 4,
+		},
+		{
+			name: "eight cores 0xff",
+			mask: "0xff",
+			want: 8,
+		},
+		{
+			name: "non-contiguous bits 0xa5",
+			mask: "0xa5",
+			want: 4,
+		},
+		{
+			name: "uppercase prefix 0X0F",
+			mask: "0X0F",
+			want: 4,
+		},
+		{
+			name: "no prefix plain hex ff",
+			mask: "ff",
+			want: 8,
+		},
+		{
+			name: "large mask 0xffffffff",
+			mask: "0xffffffff",
+			want: 32,
+		},
+		{
+			name: "whitespace around mask",
+			mask: "  0xff  ",
+			want: 8,
+		},
+		{
+			name: "invalid hex string",
+			mask: "xyz",
+			want: 0,
+		},
+		{
+			name: "single bit high position 0x100",
+			mask: "0x100",
+			want: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := countCPUCoresFromMask(tt.mask); got != tt.want {
+				t.Errorf("countCPUCoresFromMask(%q) = %v, want %v", tt.mask, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetVolumeSizeBucket(t *testing.T) {
+	const (
+		gib = int64(1 << 30)
+		tib = int64(1 << 40)
+	)
+
+	tests := []struct {
+		name string
+		size int64
+		want string
+	}{
+		{name: "less than 1GiB", size: gib - 1, want: "LessThan1GiB"},
+		{name: "exactly 1GiB", size: gib, want: "1To2GiB"},
+		{name: "just below 2GiB", size: 2*gib - 1, want: "1To2GiB"},
+		{name: "exactly 2GiB", size: 2 * gib, want: "2To5GiB"},
+		{name: "just below 5GiB", size: 5*gib - 1, want: "2To5GiB"},
+		{name: "exactly 5GiB", size: 5 * gib, want: "5To10GiB"},
+		{name: "just below 10GiB", size: 10*gib - 1, want: "5To10GiB"},
+		{name: "exactly 10GiB", size: 10 * gib, want: "10To20GiB"},
+		{name: "just below 20GiB", size: 20*gib - 1, want: "10To20GiB"},
+		{name: "exactly 20GiB", size: 20 * gib, want: "20To50GiB"},
+		{name: "just below 50GiB", size: 50*gib - 1, want: "20To50GiB"},
+		{name: "exactly 50GiB", size: 50 * gib, want: "50To100GiB"},
+		{name: "just below 100GiB", size: 100*gib - 1, want: "50To100GiB"},
+		{name: "exactly 100GiB", size: 100 * gib, want: "100To200GiB"},
+		{name: "just below 200GiB", size: 200*gib - 1, want: "100To200GiB"},
+		{name: "exactly 200GiB", size: 200 * gib, want: "200To500GiB"},
+		{name: "just below 500GiB", size: 500*gib - 1, want: "200To500GiB"},
+		{name: "exactly 500GiB", size: 500 * gib, want: "500GiBTo1TiB"},
+		{name: "just below 1TiB", size: tib - 1, want: "500GiBTo1TiB"},
+		{name: "exactly 1TiB", size: tib, want: "1To2TiB"},
+		{name: "just below 2TiB", size: 2*tib - 1, want: "1To2TiB"},
+		{name: "exactly 2TiB", size: 2 * tib, want: "Gt2TiB"},
+		{name: "greater than 2TiB", size: 2*tib + 1, want: "Gt2TiB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := getVolumeSizeBucket(tt.size); got != tt.want {
+				t.Errorf("getVolumeSizeBucket(%d) = %q, want %q", tt.size, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUpdateEngineImagePodLivenessProbes(t *testing.T) {
 	originalSkipListerCheck := datastore.SkipListerCheck
 	datastore.SkipListerCheck = true

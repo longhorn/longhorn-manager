@@ -2,6 +2,7 @@ package spdk
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -38,21 +39,62 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine])
+		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient)
 		e = s.engineMap[req.Name]
 	}
 
 	spdkClient := s.spdkClient
 	s.Unlock()
 
-	return e.Create(spdkClient, req.ReplicaAddressMap, req.PortCount, s.portAllocator, req.SalvageRequested)
+	backendFactory, err := selectBackendFactory(req.DataLayoutType, s.newServiceClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return e.Create(spdkClient, req.ReplicaAddressMap, req.PortCount, s.portAllocator, req.SalvageRequested, backendFactory)
+}
+
+// selectBackendFactory is the only place the server-layer translates the
+// EngineCreateRequest.DataLayoutType discriminator into an Backend
+// implementation. Once Engine.backends is populated, the engine never
+// re-reads the layout.
+func selectBackendFactory(layout spdkrpc.DataLayoutType, newServiceClient ServiceClientFactory) (BackendFactory, error) {
+	switch layout {
+	case spdkrpc.DataLayoutType_DATA_LAYOUT_TYPE_REPLICATED:
+		return func(name, address string) Backend {
+			return newReplicaBackend(name, address, newServiceClient)
+		}, nil
+	case spdkrpc.DataLayoutType_DATA_LAYOUT_TYPE_SHARDED:
+		return func(name, address string) Backend {
+			return newShardGroupBackend(name, address, newServiceClient)
+		}, nil
+	default:
+		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "unsupported data_layout_type %v", layout)
+	}
+}
+
+func (s *Server) EngineSnapshotMaxCountSet(ctx context.Context, req *spdkrpc.EngineSnapshotMaxCountSetRequest) (ret *emptypb.Empty, err error) {
+	if req.Name == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "engine name is required")
+	}
+
+	s.RLock()
+	e := s.engineMap[req.Name]
+	s.RUnlock()
+
+	if e == nil {
+		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for snapshot max count update", req.Name)
+	}
+
+	e.SetSnapshotMaxCount(req.Count)
+	return &emptypb.Empty{}, nil
 }
 
 // EngineDelete deletes an engine
 func (s *Server) EngineDelete(ctx context.Context, req *spdkrpc.EngineDeleteRequest) (ret *emptypb.Empty, err error) {
 	s.RLock()
-	e := s.engineMap[req.Name]
 	spdkClient := s.spdkClient
+	e := s.engineMap[req.Name]
 	s.RUnlock()
 
 	defer func() {
@@ -91,12 +133,43 @@ func (s *Server) EngineExpand(ctx context.Context, req *spdkrpc.EngineExpandRequ
 		return nil, grpcstatus.Errorf(grpccodes.Unimplemented, "cannot expand ublk frontend engine %v", req.Name)
 	}
 
-	err = e.Expand(spdkClient, req.Size)
+	// EC volumes take the backend-reset path because ShardGroupExpand has
+	// already driven the backend resize against the ShardGroup process;
+	// RAID1 keeps its tear-down/expand-replicas/reconstruct cycle. The
+	// engine itself remains layout-blind - the dispatch is decided here
+	// by inspecting which Backend implementation EngineCreate's factory
+	// populated. EngineExpandRequest does not currently carry
+	// DataLayoutType, so this inference is the substitute for
+	// req.data_layout_type until both topologies converge on
+	// ExpandViaBackendReset and the dispatch is removed.
+	if isShardedEngine(e) {
+		err = e.ExpandViaBackendReset(spdkClient, req.Size)
+	} else {
+		err = e.Expand(spdkClient, req.Size)
+	}
 	if err != nil {
 		return nil, toExpansionGRPCError(err, "failed to expand engine %v", req.Name)
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// isShardedEngine reports whether the engine's backends are
+// shardGroupBackend (EC layout). This is the only place server_engine.go
+// peers into Backend concrete types, and it does so to preserve the
+// "engine.go knows no layout" invariant: the layout is read from what
+// EngineCreate's factory already populated, not from a layout field on
+// Engine. This dispatch site is expected to be removed once
+// Engine.ExpandViaBackendReset covers both layouts.
+func isShardedEngine(e *Engine) bool {
+	e.RLock()
+	defer e.RUnlock()
+	for _, u := range e.backends {
+		if _, ok := u.(*shardGroupBackend); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // EngineExpandPrecheck checks if expansion is required for an engine. The engine spec size should be updated before precheck.
@@ -158,13 +231,18 @@ func (s *Server) EngineFrontendSwitchOver(ctx context.Context, req *spdkrpc.Engi
 			ef = frontend
 		}
 	}
-	spdkClient := s.spdkClient
 	s.RUnlock()
 
 	if ef == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine frontend or engine %v for target switchover", req.Name)
 	}
 
+	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
+	defer unlockVolumeHost()
+
+	s.RLock()
+	spdkClient := s.spdkClient
+	s.RUnlock()
 	if err := ef.SwitchOverTarget(spdkClient, req.EngineName, req.TargetAddress, req.SwitchoverPhase); err != nil {
 		return nil, toSwitchOverGRPCError(err, "failed to switch over target for %s", req.Name)
 	}
@@ -244,7 +322,7 @@ func (s *Server) EngineList(ctx context.Context, req *emptypb.Empty) (*spdkrpc.E
 
 // EngineWatch returns a stream of engine updates
 func (s *Server) EngineWatch(req *emptypb.Empty, srv spdkrpc.SPDKService_EngineWatchServer) error {
-	responseCh, err := s.Subscribe(types.InstanceTypeEngine)
+	responseCh, err := s.Subscribe(srv.Context(), types.InstanceTypeEngine)
 	if err != nil {
 		return err
 	}
@@ -303,6 +381,14 @@ func (s *Server) EngineReplicaAdd(ctx context.Context, req *spdkrpc.EngineReplic
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for replica %s add", req.EngineName, req.ReplicaName)
 	}
 
+	// EC engines have no replicas at the engine layer - shard replacement
+	// is driven inside the ShardGroup process via ShardGroupShardReplace.
+	// Reject ReplicaAdd at the boundary so a misconfigured caller cannot
+	// inject a *replicaBackend into a shardGroupBackend-keyed map.
+	if isShardedEngine(e) {
+		return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "replica add is not supported on EC engine %v", req.EngineName)
+	}
+
 	var frontendSuspendResumeWrapper replicaAddFrontendSuspendResumeWrapper
 	if efName != "" {
 		log := logrus.WithFields(logrus.Fields{
@@ -310,16 +396,20 @@ func (s *Server) EngineReplicaAdd(ctx context.Context, req *spdkrpc.EngineReplic
 			"replicaName":    req.ReplicaName,
 			"engineFrontend": efName,
 		})
-		frontendSuspendResumeWrapper = buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress, log)
+		frontendSuspendResumeWrapper = buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress, log, s.newServiceClient)
 	}
 
-	if err := e.ReplicaAdd(spdkClient, req.ReplicaName, req.ReplicaAddress, req.FastSync, frontendSuspendResumeWrapper); err != nil {
+	if err := e.ReplicaAdd(spdkClient, req.ReplicaName, req.ReplicaAddress, req.FastSync, req.LinkedCloneSrcReplicaName, req.LinkedCloneSrcEngineName, req.LinkedCloneSrcEngineAddress, frontendSuspendResumeWrapper); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to add replica %s to engine %s: %v", req.ReplicaName, req.EngineName, err)
 	}
 	return &emptypb.Empty{}, nil
 }
 
-// EngineReplicaList returns all replicas for an engine
+// EngineReplicaList returns all replicas for an engine. EC engines have no
+// replicas at the engine layer - their single backend is a ShardGroup and
+// shards are queried via ShardList - so the response is an empty map. The
+// guard lives at the server layer (not in Engine.ReplicaList) so engine.go
+// stays layout-blind.
 func (s *Server) EngineReplicaList(ctx context.Context, req *spdkrpc.EngineReplicaListRequest) (ret *spdkrpc.EngineReplicaListResponse, err error) {
 	s.RLock()
 	e := s.engineMap[req.EngineName]
@@ -328,6 +418,10 @@ func (s *Server) EngineReplicaList(ctx context.Context, req *spdkrpc.EngineRepli
 
 	if e == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for replica list", req.EngineName)
+	}
+
+	if isShardedEngine(e) {
+		return &spdkrpc.EngineReplicaListResponse{Replicas: map[string]*spdkrpc.Replica{}}, nil
 	}
 
 	replicas, err := e.ReplicaList(spdkClient)
@@ -356,6 +450,13 @@ func (s *Server) EngineReplicaDelete(ctx context.Context, req *spdkrpc.EngineRep
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for replica %s with address %s delete", req.EngineName, req.ReplicaName, req.ReplicaAddress)
 	}
 
+	// Symmetric to EngineReplicaAdd: replica add/delete are RAID1-only.
+	// EC volumes manage shards via the ShardGroup controller, not at the
+	// engine layer.
+	if isShardedEngine(e) {
+		return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "replica delete is not supported on EC engine %v", req.EngineName)
+	}
+
 	if err := e.ReplicaDelete(spdkClient, req.ReplicaName, req.ReplicaAddress); err != nil {
 		return nil, err
 	}
@@ -366,6 +467,11 @@ func (s *Server) EngineReplicaDelete(ctx context.Context, req *spdkrpc.EngineRep
 func (s *Server) EngineSnapshotCreate(ctx context.Context, req *spdkrpc.SnapshotRequest) (ret *spdkrpc.SnapshotResponse, err error) {
 	if req.Name == "" {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "engine name are required")
+	}
+	if req.SnapshotName != "" {
+		if err := ValidateReplicaOrSnapshotName(req.SnapshotName); err != nil {
+			return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid snapshot name: %v", err)
+		}
 	}
 
 	s.RLock()
@@ -478,6 +584,14 @@ func (s *Server) EngineSnapshotHashStatus(ctx context.Context, req *spdkrpc.Snap
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for snapshot hash status", req.Name)
 	}
 
+	// Snapshot hashing is not supported on EC volumes in the initial release;
+	// shardGroupBackend.SnapshotHash returns Unimplemented for the same
+	// reason. Reject the status query at the server boundary so it never
+	// reaches Engine.SnapshotHashStatus's RAID1-only iteration path.
+	if isShardedEngine(e) {
+		return nil, grpcstatus.Errorf(grpccodes.Unimplemented, "snapshot hash status is not supported on EC engine %v", req.Name)
+	}
+
 	return e.SnapshotHashStatus(req.SnapshotName)
 }
 
@@ -487,6 +601,7 @@ func (s *Server) EngineSnapshotClone(ctx context.Context, req *spdkrpc.EngineSna
 		util.Param{Name: "snapshotName", Value: req.SnapshotName},
 		util.Param{Name: "srcEngineName", Value: req.SrcEngineName},
 		util.Param{Name: "srcEngineAddress", Value: req.SrcEngineAddress},
+		util.Param{Name: "dstReplicaSrcReplicaPairMap", Value: fmt.Sprintf("%+v", req.DstReplicaSrcReplicaPairMap)},
 	); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "%v", err)
 	}
@@ -499,7 +614,7 @@ func (s *Server) EngineSnapshotClone(ctx context.Context, req *spdkrpc.EngineSna
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for snapshot clone", req.Name)
 	}
 
-	if err := e.SnapshotClone(req.SnapshotName, req.SrcEngineName, req.SrcEngineAddress, req.CloneMode); err != nil {
+	if err := e.SnapshotClone(req.SnapshotName, req.SrcEngineName, req.SrcEngineAddress, req.CloneMode, req.DstReplicaSrcReplicaPairMap); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
@@ -596,6 +711,7 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 		types.DefaultUblkQueueDepth,
 		types.DefaultUblkNumberOfQueue,
 		throwawayUpdateCh,
+		s.newServiceClient,
 	)
 
 	logrus.WithFields(logrus.Fields{
@@ -603,7 +719,7 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 		"engine":         tempEF.EngineName,
 		"volume":         tempEF.VolumeName,
 		"frontend":       tempEF.Frontend,
-		"replicas":       len(e.ReplicaStatusMap),
+		"replicas":       len(e.backends),
 		"specSize":       e.SpecSize,
 	}).Info("Creating temporary engine frontend for backup restore request")
 

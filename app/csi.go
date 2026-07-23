@@ -1,51 +1,54 @@
 package app
 
 import (
+	"context"
+
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"github.com/longhorn/longhorn-manager/csi"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
-func CSICommand() cli.Command {
-	return cli.Command{
+func CSICommand() *cli.Command {
+	return &cli.Command{
 		Name: "csi",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  "endpoint",
 				Value: csi.GetCSIEndpoint(),
 				Usage: "CSI endpoint",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  "drivername",
 				Value: types.LonghornDriverName,
 				Usage: "Name of the CSI driver",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  "nodeid",
 				Usage: "Node id",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  "manager-url",
 				Value: "",
 				Usage: "Longhorn manager API URL",
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := runCSI(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := runCSI(cmd); err != nil {
 				logrus.Fatalf("Error starting CSI manager: %v", err)
 			}
+			return nil
 		},
 	}
 }
 
-func runCSI(c *cli.Context) error {
+func runCSI(cmd *cli.Command) error {
 	manager := csi.GetCSIManager()
-	identityVersion := c.App.Version
-	return manager.Run(c.String("drivername"),
-		c.String("nodeid"),
-		c.String("endpoint"),
+	identityVersion := cmd.Root().Version
+	return manager.Run(cmd.String("drivername"),
+		cmd.String("nodeid"),
+		cmd.String("endpoint"),
 		identityVersion,
-		c.String("manager-url"))
+		cmd.String("manager-url"))
 }

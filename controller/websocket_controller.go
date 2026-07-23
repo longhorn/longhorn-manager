@@ -111,6 +111,16 @@ func NewWebsocketController(
 	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.LHVolumeAttachmentInformer.HasSynced)
 
+	if _, err = ds.ShardGroupInformer.AddEventHandler(wc.notifyWatchersHandler("shardGroup")); err != nil {
+		return nil, err
+	}
+	wc.cacheSyncs = append(wc.cacheSyncs, ds.ShardGroupInformer.HasSynced)
+
+	if _, err = ds.ShardInformer.AddEventHandler(wc.notifyWatchersHandler("shard")); err != nil {
+		return nil, err
+	}
+	wc.cacheSyncs = append(wc.cacheSyncs, ds.ShardInformer.HasSynced)
+
 	return wc, nil
 }
 

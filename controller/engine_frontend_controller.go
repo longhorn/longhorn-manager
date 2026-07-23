@@ -25,6 +25,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -52,6 +53,9 @@ type EngineFrontendController struct {
 	cacheSyncs []cache.InformerSynced
 
 	instanceHandler *InstanceHandler
+
+	// nil means use DeleteInstance; set in tests.
+	deleteInstanceHandler func(obj interface{}) error
 
 	proxyConnCounter util.Counter
 
@@ -370,6 +374,32 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		return err
 	}
 
+	// Delete stale EF instances recovered with an empty frontend in the IM.
+	if ef.Status.CurrentState == longhorn.InstanceStateRunning &&
+		ef.Spec.DesireState == longhorn.InstanceStateRunning &&
+		isEngineFrontendEndpointRequired(ef) {
+		var (
+			im    *longhorn.InstanceManager
+			imErr error
+		)
+		if ef.Status.InstanceManagerName != "" {
+			im, imErr = efc.ds.GetInstanceManagerRO(ef.Status.InstanceManagerName)
+		} else {
+			im, imErr = efc.ds.GetInstanceManagerByInstanceRO(ef)
+		}
+		if imErr != nil {
+			log.WithError(imErr).Warn("Failed to get instance manager for stale engine frontend detection, skipping")
+		} else if shouldDeleteStaleRunningEngineFrontend(ef, im) {
+			log.Warnf("EngineFrontend %v is running in IM with empty frontend (spec expects %v), deleting stale instance to trigger re-creation", ef.Name, ef.Spec.Frontend)
+			efc.eventRecorder.Eventf(ef, corev1.EventTypeWarning, constant.EventReasonStaleInstance,
+				"Deleting stale instance: IM reports empty frontend but spec expects %v", ef.Spec.Frontend)
+			if err := efc.deleteEngineFrontendInstance(ef); err != nil {
+				return errors.Wrapf(err, "failed to delete stale engine frontend instance %v", ef.Name)
+			}
+			return nil
+		}
+	}
+
 	statusTargetInitialized := isEngineFrontendTargetInitialized(ef.Status.TargetIP, ef.Status.TargetPort)
 	specTargetInitialized := isEngineFrontendTargetInitialized(ef.Spec.TargetIP, ef.Spec.TargetPort)
 	if !statusTargetInitialized && specTargetInitialized {
@@ -401,7 +431,28 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
 		switchoverInProgress := ef.Status.SwitchoverPhase != longhorn.EngineFrontendSwitchoverPhaseNone
 
+		// Only execute the ANA multipath switchover when the volume controller
+		// has explicitly signaled switchover intent (SwitchoverState != Empty).
+		// A target IP change without switchover intent (e.g. engine restart on
+		// the same node) is handled by NVMe multipath auto-reconnection and
+		// does not require an explicit ANA state transition.
+		//
+		// Also fetch the volume when a switchover is already in progress to
+		// validate that the volume controller still wants the switchover.
+		// After auto-salvage or recovery the volume clears SwitchoverState
+		// but the EF's SwitchoverPhase may remain stale.
+		var volume *longhorn.Volume
 		if targetChanged || switchoverInProgress {
+			volume, err = efc.ds.GetVolumeRO(ef.Spec.VolumeName)
+			if err != nil && !datastore.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "failed to get volume %v for engine frontend switchover evaluation", ef.Spec.VolumeName)
+			}
+			if datastore.ErrorIsNotFound(err) {
+				log.WithField("volume", ef.Spec.VolumeName).Warn("Volume not found while evaluating engine frontend target change, skipping switchover")
+			}
+		}
+
+		if shouldExecuteEngineFrontendSwitchover(ef, volume) {
 			im, err := efc.ds.GetInstanceManager(ef.Status.InstanceManagerName)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get instance manager %v for target switchover", ef.Status.InstanceManagerName)
@@ -458,6 +509,17 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 				log.Infof("Successfully switched over target for engine frontend %v to %v", ef.Name, targetAddress)
 				efc.eventRecorder.Eventf(ef, corev1.EventTypeNormal, constant.EventReasonSwitchover, "Successfully switched over target to %v", targetAddress)
 			}
+		} else if switchoverInProgress {
+			// shouldExecuteEngineFrontendSwitchover returned false while a
+			// switchover phase was still set. This means the volume no longer
+			// requires the switchover (e.g., after auto-salvage cleared
+			// SwitchoverState). Clear the stale phase.
+			log.Warnf("Clearing stale switchover phase %v: volume SwitchoverState is empty, switchover no longer required",
+				ef.Status.SwitchoverPhase)
+			ef.Status.SwitchoverPhase = longhorn.EngineFrontendSwitchoverPhaseNone
+		} else if targetChanged {
+			log.Debugf("Target changed (spec=%v:%v status=%v:%v) but switchover not executed (volume SwitchoverState is empty), waiting for data-plane path convergence",
+				ef.Spec.TargetIP, ef.Spec.TargetPort, ef.Status.TargetIP, ef.Status.TargetPort)
 		}
 	} // end switchover block
 
@@ -638,16 +700,23 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		return nil, errors.Wrapf(err, "failed to update engine frontend %v status.starting to true", efName)
 	}
 
+	volume, err := efc.ds.GetVolumeRO(ef.Spec.VolumeName)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create initiator instance via Instance Manager
 	// Note: This requires Instance Manager to have EngineFrontendInstanceCreate method
 	return c.EngineFrontendInstanceCreate(&engineapi.EngineFrontendInstanceCreateRequest{
-		EngineFrontend:    ef,
-		VolumeFrontend:    frontend,
-		UblkQueueDepth:    ublkQueueDepth,
-		UblkNumberOfQueue: ublkNumberOfQueue,
-		TargetIP:          ef.Spec.TargetIP,
-		TargetPort:        ef.Spec.TargetPort,
-		EngineName:        ef.Spec.EngineName,
+		EngineFrontend:                ef,
+		VolumeFrontend:                frontend,
+		UblkQueueDepth:                ublkQueueDepth,
+		UblkNumberOfQueue:             ublkNumberOfQueue,
+		TargetIP:                      ef.Spec.TargetIP,
+		TargetPort:                    ef.Spec.TargetPort,
+		EngineName:                    ef.Spec.EngineName,
+		Encrypted:                     volume.Spec.Encrypted,
+		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume),
 	})
 }
 
@@ -950,6 +1019,18 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 		return nil
 	}
 
+	// Persist basic status (endpoint, paths, target) before proceeding to
+	// expansion-related calls. VolumeFrontendGet below may fail when engine
+	// and EF are on different nodes, and the deferred update skips writes on
+	// error. Flushing here ensures the volume controller can see the endpoint
+	// and complete the attach flow.
+	if !reflect.DeepEqual(existingEF.Status, ef.Status) {
+		if _, err := m.ds.UpdateEngineFrontendStatus(ef); err != nil {
+			return err
+		}
+		existingEF = ef.DeepCopy()
+	}
+
 	volume, err := m.ds.GetVolumeRO(ef.Spec.VolumeName)
 	if err != nil {
 		if !datastore.ErrorIsNotFound(err) {
@@ -998,13 +1079,13 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 				return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
 			}
 			defer engineClientProxy.Close()
-			cliAPIVersion, err := m.ds.GetDataEngineImageCLIAPIVersion(ef.Status.CurrentImage, ef.Spec.DataEngine)
-			if err != nil {
-				return err
-			}
-			expectedExpansionSize, err := util.GetActualBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
-			if err != nil {
-				return err
+
+			expectedExpansionSize := ef.Spec.VolumeSize
+			if types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
+				expectedExpansionSize, err = util.GetActualBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+				if err != nil {
+					return errors.Wrapf(err, "failed to get actual backend size for engine frontend %v", ef.Name)
+				}
 			}
 			if err := engineClientProxy.VolumeExpand(ef, expectedExpansionSize); err != nil {
 				if isV2ExpansionInProgressError(err) {
@@ -1027,6 +1108,13 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 			"requestedSize":     ef.Spec.Size,
 			"expansionRequired": volume.Status.ExpansionRequired,
 		}).Trace("Skip engine frontend expansion because volume expansion is not required")
+
+		// An encrypted volume's frontend carries a LUKS header, so the size it reports is
+		// larger than the volume's logical size. Report the logical size once the header
+		// is there.
+		if volume.Spec.Encrypted && volumeInfo.Size > ef.Spec.VolumeSize {
+			ef.Status.CurrentSize = ef.Spec.VolumeSize
+		}
 	}
 
 	return nil
@@ -1077,6 +1165,27 @@ func isEngineFrontendEndpointRequired(ef *longhorn.EngineFrontend) bool {
 		return false
 	}
 	return !ef.Spec.DisableFrontend && ef.Spec.Frontend != longhorn.VolumeFrontendEmpty
+}
+
+// Caller must ensure isEngineFrontendEndpointRequired(ef) before calling.
+func shouldDeleteStaleRunningEngineFrontend(ef *longhorn.EngineFrontend, im *longhorn.InstanceManager) bool {
+	if ef == nil || im == nil {
+		return false
+	}
+
+	instance, exists := im.Status.InstanceEngineFrontends[ef.Name]
+	if !exists {
+		return false
+	}
+
+	return instance.Status.State == longhorn.InstanceStateRunning && instance.Status.Frontend == ""
+}
+
+func (efc *EngineFrontendController) deleteEngineFrontendInstance(ef *longhorn.EngineFrontend) error {
+	if efc.deleteInstanceHandler != nil {
+		return efc.deleteInstanceHandler(ef)
+	}
+	return efc.DeleteInstance(ef)
 }
 
 func syncEngineFrontendPathStatus(ef *longhorn.EngineFrontend, instance *longhorn.InstanceProcess) {
@@ -1132,6 +1241,32 @@ func getEngineFrontendTargetFromPaths(activePath string, targetPort int32, paths
 
 func isEngineFrontendTargetInitialized(targetIP string, targetPort int) bool {
 	return targetIP != "" && targetPort != 0
+}
+
+func shouldExecuteEngineFrontendSwitchover(ef *longhorn.EngineFrontend, volume *longhorn.Volume) bool {
+	if ef == nil {
+		return false
+	}
+
+	targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
+	switchoverInProgress := ef.Status.SwitchoverPhase != longhorn.EngineFrontendSwitchoverPhaseNone
+	if switchoverInProgress {
+		// An in-progress switchover should only continue if the volume
+		// controller still has an active switchover state. If the volume's
+		// SwitchoverState is Empty (e.g., cleared after auto-salvage or
+		// recovery), this SwitchoverPhase is stale and must not proceed —
+		// the old engine may already be gone.
+		if volume == nil || volume.Status.SwitchoverState == longhorn.VolumeSwitchoverStateEmpty {
+			return false
+		}
+		return true
+	}
+
+	if !targetChanged {
+		return false
+	}
+
+	return volume != nil && volume.Status.SwitchoverState != longhorn.VolumeSwitchoverStateEmpty
 }
 
 // v2ExpansionInProgressMsg matches the SPDK engine's ErrExpansionInProgress

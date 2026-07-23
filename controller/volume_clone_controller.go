@@ -180,7 +180,7 @@ func (vcc *VolumeCloneController) syncHandler(key string) (err error) {
 }
 
 func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
-	vol, err := vcc.ds.GetVolume(volName)
+	vol, err := vcc.ds.GetVolumeRO(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -223,8 +223,8 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		expectedAttachmentTickets[cloningAttachmentTicketID] = true
 	}
 
-	// case 2: this volume is source of a clone
-	vols, err := vcc.ds.ListVolumes()
+	// case 2: this volume is source of a clone (initial clone in progress)
+	vols, err := vcc.ds.ListVolumesRO()
 	if err != nil {
 		return err
 	}
@@ -234,6 +234,36 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 			createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
 			expectedAttachmentTickets[attachmentTicketID] = true
 		}
+	}
+
+	// case 3: this volume is source of a linked-clone target that needs rebuild
+	// (post-initial-clone: clone completed or awaiting healthy, but volume is degraded)
+	var readyNodes map[string]*longhorn.Node
+	for _, v := range vols {
+		if !isLinkedCloneNeedingSourceForRebuild(v, vol.Name) {
+			continue
+		}
+		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+		// Prefer the current attached node to avoid unnecessary migration
+		nodeID := vol.Status.CurrentNodeID
+		if nodeID == "" {
+			// Source not attached yet — pick a ready node
+			if readyNodes == nil {
+				readyNodes, err = vcc.ds.ListReadyNodesRO()
+				if err != nil {
+					return err
+				}
+			}
+			for n := range readyNodes {
+				nodeID = n
+				break
+			}
+			if nodeID == "" {
+				continue // no ready nodes, skip this ticket
+			}
+		}
+		createOrUpdateAttachmentTicket(va, attachmentTicketID, nodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+		expectedAttachmentTickets[attachmentTicketID] = true
 	}
 
 	// Delete unexpected attachment tickets

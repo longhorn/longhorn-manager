@@ -25,6 +25,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -46,6 +47,8 @@ const (
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 	CRDOrphanName                 = "orphans.longhorn.io"
 	CRDSnapshotName               = "snapshots.longhorn.io"
+	CRDShardGroupName             = "shardgroups.longhorn.io"
+	CRDShardName                  = "shards.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -202,6 +205,18 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDShardGroupName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.ShardGroupInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.ShardGroupInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDShardName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.ShardInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.ShardInformer.HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -524,6 +539,24 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteReplicas(replicas)
 	}
 
+	// Shard and shard group cleanup runs through the instance managers: the shard
+	// group controller tears down their SPDK instances before removing the
+	// finalizer. Delete them before the instance managers and the manager for a
+	// graceful cleanup.
+	if shardGroups, err := c.ds.ListShardGroups(); err != nil {
+		return true, err
+	} else if len(shardGroups) > 0 {
+		c.logger.Infof("Found %d shard groups remaining", len(shardGroups))
+		return true, c.deleteShardGroups(shardGroups)
+	}
+
+	if shards, err := c.ds.ListShards(); err != nil {
+		return true, err
+	} else if len(shards) > 0 {
+		c.logger.Infof("Found %d shards remaining", len(shards))
+		return true, c.deleteShards(shards)
+	}
+
 	// Unset backup target to prevent the remote backup target
 	// backup volume config, and backup config and it's data
 	// being deleted during uninstall process.
@@ -772,6 +805,78 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 	return
 }
 
+func (c *UninstallController) deleteShardGroups(shardGroups map[string]*longhorn.ShardGroup) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete shard groups")
+	}()
+	for _, shardGroup := range shardGroups {
+		log := getLoggerForShardGroup(c.logger, shardGroup)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if shardGroup.DeletionTimestamp == nil {
+			if errDelete := c.ds.DeleteShardGroup(shardGroup.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("ShardGroup is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if shardGroup.DeletionTimestamp.Before(&timeout) {
+			log.Warn("ShardGroup deletion did not finish within timeout, removing finalizer forcibly")
+			if errRemove := c.ds.RemoveFinalizerForShardGroup(shardGroup); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("ShardGroup is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteShards(shards map[string]*longhorn.Shard) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete shards")
+	}()
+	for _, shard := range shards {
+		log := getLoggerForShard(c.logger, shard)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if shard.DeletionTimestamp == nil {
+			if errDelete := c.ds.DeleteShard(shard.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("Shard is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if shard.DeletionTimestamp.Before(&timeout) {
+			log.Warn("Shard deletion did not finish within timeout, removing finalizer forcibly")
+			if errRemove := c.ds.RemoveFinalizerForShard(shard); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("Shard is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return nil
+}
+
 // deleteLeftBackups deletes the backup having no backup volume
 func (c *UninstallController) deleteLeftBackups(backup *longhorn.Backup) (err error) {
 	volumeName, ok := backup.Labels[types.LonghornLabelBackupVolume]
@@ -803,17 +908,10 @@ func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*long
 	}()
 	for _, bt := range backupTargets {
 		log := getLoggerForBackupTarget(c.logger, bt)
-		if bt.Annotations == nil {
-			bt.Annotations = make(map[string]string)
-		}
 		if bt.DeletionTimestamp == nil {
 			if isVolumeUpdateRequired(bt) {
-				// Annotations `DeleteBackupTargetFromLonghorn` is used for validator to delete default backup target only by Longhorn during uninstalling.
-				bt.Annotations[types.GetLonghornLabelKey(types.DeleteBackupTargetFromLonghorn)] = ""
-				// Clear the BackupTargetURL to prevent the data on the remote backup target from being unintentionally deleted.
-				bt.Spec.BackupTargetURL = ""
 				log.Info("Cleanup BackupTarget URL and add annotation to mark for deletion")
-				if _, err := c.ds.UpdateBackupTarget(bt); err != nil {
+				if err := c.prepareBackupTargetForDeletion(bt.Name); err != nil {
 					return errors.Wrap(err, "failed to update backup target annotations to mark for deletion")
 				}
 				continue
@@ -838,6 +936,67 @@ func isVolumeUpdateRequired(bt *longhorn.BackupTarget) bool {
 	return bt.Spec.BackupTargetURL != "" || !ok
 }
 
+// The manager is still running and updating these CRs, so an update built from
+// the uninstaller's cache can hit a resourceVersion conflict. Each helper below
+// re-fetches the object and retries on conflict.
+
+func (c *UninstallController) prepareBackupTargetForDeletion(name string) error {
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		bt, err := c.ds.GetBackupTarget(name)
+		if err != nil {
+			return nil, err
+		}
+		if bt.Annotations == nil {
+			bt.Annotations = make(map[string]string)
+		}
+		// Annotations `DeleteBackupTargetFromLonghorn` is used for validator to delete default backup target only by Longhorn during uninstalling.
+		bt.Annotations[types.GetLonghornLabelKey(types.DeleteBackupTargetFromLonghorn)] = ""
+		// Clear the BackupTargetURL to prevent the data on the remote backup target from being unintentionally deleted.
+		bt.Spec.BackupTargetURL = ""
+		return c.ds.UpdateBackupTarget(bt)
+	})
+	if err != nil && datastore.ErrorIsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+func (c *UninstallController) prepareEngineImageForDeletion(name string) error {
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		ei, err := c.ds.GetEngineImage(name)
+		if err != nil {
+			return nil, err
+		}
+		if ei.Annotations == nil {
+			ei.Annotations = make(map[string]string)
+		}
+		ei.Annotations[types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn)] = ""
+		return c.ds.UpdateEngineImage(ei)
+	})
+	if err != nil && datastore.ErrorIsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+func (c *UninstallController) prepareNodeForDeletion(name string) error {
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		node, err := c.ds.GetNode(name)
+		if err != nil {
+			return nil, err
+		}
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
+		node.Annotations[types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn)] = ""
+		return c.ds.UpdateNode(node)
+	})
+	if err != nil && datastore.ErrorIsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 func (c *UninstallController) deleteEngineImages(engineImages map[string]*longhorn.EngineImage) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete engine images")
@@ -845,18 +1004,13 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 	for _, ei := range engineImages {
 		log := getLoggerForEngineImage(c.logger, ei)
 
-		if ei.Annotations == nil {
-			ei.Annotations = make(map[string]string)
-		}
-
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if ei.DeletionTimestamp == nil {
 			if defaultImage, errGetSetting := c.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage); errGetSetting != nil {
 				return errors.Wrap(errGetSetting, "failed to get default engine image setting")
 			} else if ei.Spec.Image == defaultImage {
 				log.Infof("Adding annotation %v to engine image %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn), ei.Name)
-				ei.Annotations[types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn)] = ""
-				if _, err := c.ds.UpdateEngineImage(ei); err != nil {
+				if err := c.prepareEngineImageForDeletion(ei.Name); err != nil {
 					return errors.Wrap(err, "failed to update engine image annotations to mark for deletion")
 				}
 			}
@@ -912,15 +1066,10 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 	for _, node := range nodes {
 		log := getLoggerForNode(c.logger, node)
 
-		if node.Annotations == nil {
-			node.Annotations = make(map[string]string)
-		}
-
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if node.DeletionTimestamp == nil {
 			log.Infof("Adding annotation %v to node %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn), node.Name)
-			node.Annotations[types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn)] = ""
-			if _, err := c.ds.UpdateNode(node); err != nil {
+			if err := c.prepareNodeForDeletion(node.Name); err != nil {
 				return errors.Wrap(err, "failed to update node annotations to mark for deletion")
 			}
 			if errDelete := c.ds.DeleteNode(node.Name); errDelete != nil {

@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -29,12 +30,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhutils "github.com/longhorn/go-common-libs/utils"
+
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
-	lhutils "github.com/longhorn/go-common-libs/utils"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -403,6 +405,10 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 			if err != nil {
 				return err
 			}
+			value, err = NormalizeSettingValue(sName, value)
+			if err != nil {
+				return err
+			}
 			logrus.Infof("Setting %v default value is updated to a customized value %v (raw value %v)", sName, value, raw)
 			definition.Default = value
 			types.SetSettingDefinition(sName, definition)
@@ -447,6 +453,35 @@ func GetSettingValidValue(definition types.SettingDefinition, value string) (str
 	}
 
 	return convertDataEngineValuesToJSONString(values)
+}
+
+// NormalizeSettingValue applies setting-specific normalization to a value that
+// has already been validated and converted to JSON format by GetSettingValidValue.
+// For example, it converts CPU list format to hex mask for the DataEngineCPUMask setting.
+func NormalizeSettingValue(name types.SettingName, value string) (string, error) {
+	if name != types.SettingNameDataEngineCPUMask {
+		return value, nil
+	}
+
+	var values map[longhorn.DataEngineType]string
+	if err := json.Unmarshal([]byte(value), &values); err != nil {
+		return "", fmt.Errorf("failed to unmarshal CPU mask setting value %q: %v", value, err)
+	}
+
+	for dataEngine, v := range values {
+		normalized, err := types.NormalizeCPUMask(v)
+		if err != nil {
+			return "", fmt.Errorf("failed to normalize CPU mask for data engine %s: %v", dataEngine, err)
+		}
+		values[dataEngine] = normalized
+	}
+
+	jsonBytes, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal normalized CPU mask setting value: %v", err)
+	}
+
+	return string(jsonBytes), nil
 }
 
 func convertDataEngineValuesToJSONString(values map[longhorn.DataEngineType]any) (string, error) {
@@ -629,6 +664,42 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
+	case types.SettingNameDefaultDataPath:
+		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultDataPath)
+		if err != nil {
+			return err
+		}
+
+		oldPath := filepath.Clean(strings.TrimSpace(old.Value))
+		newPath := filepath.Clean(strings.TrimSpace(value))
+		if oldPath != newPath {
+			nodes, err := s.ListNodesRO()
+			if err != nil {
+				return err
+			}
+			if len(nodes) != 0 {
+				return errors.Errorf("cannot change %v after Longhorn has been initialized", types.SettingNameDefaultDataPath)
+			}
+		}
+
+	case types.SettingNameDefaultControlPath:
+		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
+		if err != nil {
+			return err
+		}
+
+		oldPath := filepath.Clean(strings.TrimSpace(old.Value))
+		newPath := filepath.Clean(strings.TrimSpace(value))
+		if oldPath != newPath {
+			nodes, err := s.ListNodesRO()
+			if err != nil {
+				return err
+			}
+			if len(nodes) != 0 {
+				return errors.Errorf("cannot change %v after Longhorn has been initialized", types.SettingNameDefaultControlPath)
+			}
+		}
+
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -673,8 +744,83 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 			return errors.Wrapf(err, "failed to get the storage class %v for setting %v", value, types.SettingNameDefaultLonghornStaticStorageClass)
 		}
+	case types.SettingNameDataEngineNumberOfCPUCores:
+		trimmed := strings.TrimSpace(value)
+
+		var values map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(trimmed), &values); err != nil {
+			// Allow single values (for example, "2") the same way types.ValidateSetting does.
+			coreNumber, convErr := strconv.Atoi(trimmed)
+			if convErr != nil {
+				return errors.Wrapf(convErr, "failed to convert CPU core number setting value %q to integer", value)
+			}
+
+			if err := s.ValidateDataEngineCoreNumber(coreNumber, longhorn.DataEngineTypeV2); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		for dataEngine, v := range values {
+			coreNumber, err := strconv.Atoi(v)
+			if err != nil {
+				return errors.Wrapf(err, "failed to convert CPU core number %s for data engine %s to integer", v, dataEngine)
+			}
+			if err := s.ValidateDataEngineCoreNumber(coreNumber, dataEngine); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func (s *DataStore) ValidateDataEngineCoreNumber(coreNum int, dataEngine longhorn.DataEngineType) error {
+	switch {
+	case coreNum < 0:
+		return errors.Errorf("CPU core number for data engine %s cannot be negative", dataEngine)
+	case coreNum > 0:
+		allNodesCPUPolicyConfigured, err := s.isAllNodesCPUPolicyConfigured()
+		if err != nil {
+			return errors.Wrapf(err, "failed to check if all nodes have CPU manager policy configured")
+		}
+		if !allNodesCPUPolicyConfigured {
+			return errors.Errorf("CPU core number for data engine %s cannot be set to %d when not all nodes have CPU manager policy configured", dataEngine, coreNum)
+		}
+	case coreNum == 0:
+		allNodesCPUMaskZero, err := s.isDataEngineCPUMaskZero(dataEngine)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check if data engine CPU mask is set to 0")
+		}
+		if allNodesCPUMaskZero {
+			return errors.Errorf("CPU core number for data engine %s cannot be set to 0 when data engine CPU mask is set to 0", dataEngine)
+		}
+	}
+	return nil
+}
+
+func (s *DataStore) isAllNodesCPUPolicyConfigured() (bool, error) {
+	lhnodes, err := s.ListNodesRO()
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get all nodes")
+	}
+
+	for _, node := range lhnodes {
+		if !strings.EqualFold(string(node.Status.CPUPolicy), string(longhorn.CPUManagerPolicyStatic)) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *DataStore) isDataEngineCPUMaskZero(dataEngine longhorn.DataEngineType) (bool, error) {
+	value, err := s.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameDataEngineCPUMask)
+	}
+	if value == "0" || value == "0x0" {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *DataStore) ValidateV1DataEngineEnabled(dataEngineEnabled bool) (ims []*longhorn.InstanceManager, err error) {
@@ -1251,6 +1397,17 @@ func GetOwnerReferencesForBackupVolume(backupVolume *longhorn.BackupVolume) []me
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := FixupRecurringJob(v); err != nil {
 		return nil, err
+	}
+
+	if types.IsDataFromVolume(v.Spec.DataSource) {
+		if err := labelCloneSourceVolume(types.GetVolumeName(v.Spec.DataSource), v); err != nil {
+			return nil, err
+		}
+	}
+	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		if err := labelLinkedCloneSourceSnapshot(types.GetSnapshotName(v.Spec.DataSource), v); err != nil {
+			return nil, err
+		}
 	}
 
 	ret, err := s.lhClient.LonghornV1beta2().Volumes(s.namespace).Create(context.TODO(), v, metav1.CreateOptions{})
@@ -2185,6 +2342,9 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := labelBackingImage(r.Spec.BackingImage, r); err != nil {
 		return nil, err
 	}
+	if err := labelLinkedCloneSrcReplica(r.Spec.LinkedCloneSrcReplicaName, r); err != nil {
+		return nil, err
+	}
 
 	ret, err := s.lhClient.LonghornV1beta2().Replicas(s.namespace).Create(context.TODO(), r, metav1.CreateOptions{})
 	if err != nil {
@@ -2749,7 +2909,7 @@ func (s *DataStore) IsDataEngineImageReady(image, volumeName, nodeID string, dat
 		return false, errors.Wrapf(err, "failed to check data engine image readiness of node %v", nodeID)
 	}
 
-	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal || dataLocality == longhorn.DataLocalityBestEffort {
+	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal || dataLocality == longhorn.DataLocalityBestEffort || types.IsDataEngineV2(dataEngine) {
 		return isReady, nil
 	}
 
@@ -3987,6 +4147,69 @@ func labelBackingImage(backingImageName string, obj k8sruntime.Object) error {
 	return nil
 }
 
+// labelCloneSourceVolume stamps the longhorn.io/clone-source-volume label
+// on a clone volume so it can be efficiently retrieved by source volume name.
+// If srcVolumeName is empty the label is not set and no error is returned.
+func labelCloneSourceVolume(srcVolumeName string, obj k8sruntime.Object) error {
+	if srcVolumeName == "" {
+		return nil
+	}
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	lbls := metadata.GetLabels()
+	if lbls == nil {
+		lbls = map[string]string{}
+	}
+	lbls[types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)] = srcVolumeName
+	metadata.SetLabels(lbls)
+	return nil
+}
+
+// labelLinkedCloneSourceSnapshot stamps the longhorn.io/linked-clone-source-snapshot label
+// on a linked-clone volume so it can be efficiently retrieved by source snapshot name.
+// If srcSnapshotName is empty the label is not set and no error is returned.
+func labelLinkedCloneSourceSnapshot(srcSnapshotName string, obj k8sruntime.Object) error {
+	if srcSnapshotName == "" {
+		return nil
+	}
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	lbls := metadata.GetLabels()
+	if lbls == nil {
+		lbls = map[string]string{}
+	}
+	lbls[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)] = srcSnapshotName
+	metadata.SetLabels(lbls)
+	return nil
+}
+
+// labelLinkedCloneSrcReplica stamps the longhorn.io/linked-clone-src-replica label
+// on a linked-clone replica so it can be efficiently retrieved by source replica name.
+// If srcReplicaName is empty the label is not set and no error is returned.
+func labelLinkedCloneSrcReplica(srcReplicaName string, obj k8sruntime.Object) error {
+	if srcReplicaName == "" {
+		return nil
+	}
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	lbls := metadata.GetLabels()
+	if lbls == nil {
+		lbls = map[string]string{}
+	}
+	lbls[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)] = srcReplicaName
+	metadata.SetLabels(lbls)
+	return nil
+}
+
 func labelBackupVolume(backupVolumeName string, obj k8sruntime.Object) error {
 	// fix longhorn.io/backup-volume label for object
 	metadata, err := meta.Accessor(obj)
@@ -4716,6 +4939,10 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 	case *longhorn.Replica:
 		name = obj.Name
 		dataEngine = obj.Spec.DataEngine
+		nodeID = obj.Spec.NodeID
+	case *longhorn.Shard:
+		name = obj.Name
+		dataEngine = longhorn.DataEngineTypeV2 // shards are always V2
 		nodeID = obj.Spec.NodeID
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
@@ -5970,9 +6197,6 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 	if !isValidRecurringJobTask(job.Task) {
 		return fmt.Errorf("recurring job task %v is not valid", job.Task)
 	}
-	if job.Concurrency == 0 {
-		job.Concurrency = types.DefaultRecurringJobConcurrency
-	}
 	if _, err := cron.ParseStandard(job.Cron); err != nil {
 		return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
 	}
@@ -6068,7 +6292,7 @@ func (s *DataStore) ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) erro
 	}
 
 	if totalJobRetainCount > int(maxRecurringJobRetain) {
-		return fmt.Errorf("job Can't retain more than %d snapshots", maxRecurringJobRetain)
+		return fmt.Errorf("job can't retain more than %d snapshots", maxRecurringJobRetain)
 	}
 	return nil
 }
@@ -7179,6 +7403,106 @@ func (s *DataStore) IsVolumeLinkedCloneVolume(volName string) (bool, error) {
 	return v.Spec.CloneMode == longhorn.CloneModeLinkedClone, nil
 }
 
+// ListLinkedCloneVolumesBySourceVolume returns a map of all linked-clone volumes
+// whose DataSource points to srcVolumeName. The map is keyed by volume name and
+// contains deep copies safe for mutation.
+func (s *DataStore) ListLinkedCloneVolumesBySourceVolume(srcVolumeName string) (map[string]*longhorn.Volume, error) {
+	list, err := s.ListLinkedCloneVolumesBySourceVolumeRO(srcVolumeName)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*longhorn.Volume, len(list))
+	for _, v := range list {
+		result[v.Name] = v.DeepCopy()
+	}
+	return result, nil
+}
+
+// ListLinkedCloneVolumesBySourceVolumeRO returns a slice of read-only linked-clone
+// volumes whose DataSource points to srcVolumeName.
+// The returned objects must NOT be mutated.
+func (s *DataStore) ListLinkedCloneVolumesBySourceVolumeRO(srcVolumeName string) ([]*longhorn.Volume, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetCloneSourceVolumeLabel(srcVolumeName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	allClones, err := s.volumeLister.Volumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*longhorn.Volume, 0, len(allClones))
+	for _, v := range allClones {
+		if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			result = append(result, v)
+		}
+	}
+	return result, nil
+}
+
+// ListCloneVolumesBySourceVolumeRO returns a slice of read-only clone target
+// volumes (both full-copy and linked-clone) whose source is srcVolumeName.
+// The returned objects must NOT be mutated.
+func (s *DataStore) ListCloneVolumesBySourceVolumeRO(srcVolumeName string) ([]*longhorn.Volume, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetCloneSourceVolumeLabel(srcVolumeName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.volumeLister.Volumes(s.namespace).List(selector)
+}
+
+// ListLinkedCloneReplicasBySrcReplica returns a map of all linked-clone replicas
+// whose Spec.LinkedCloneSrcReplicaName equals srcReplicaName. The map is keyed by
+// replica name and contains deep copies safe for mutation.
+func (s *DataStore) ListLinkedCloneReplicasBySrcReplica(srcReplicaName string) (map[string]*longhorn.Replica, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetLinkedCloneSrcReplicaLabel(srcReplicaName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.listReplicas(selector)
+}
+
+// ListLinkedCloneReplicasBySrcReplicaRO returns a slice of read-only linked-clone
+// replicas whose Spec.LinkedCloneSrcReplicaName equals srcReplicaName.
+// The returned objects must NOT be mutated.
+func (s *DataStore) ListLinkedCloneReplicasBySrcReplicaRO(srcReplicaName string) ([]*longhorn.Replica, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetLinkedCloneSrcReplicaLabel(srcReplicaName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.replicaLister.Replicas(s.namespace).List(selector)
+}
+
+// IsSnapshotLinkedCloneEntrypoint returns (true, cloneVolumeNames, nil) when
+// snapshotName is the entrypoint snapshot for one or more linked-clone volumes.
+func (s *DataStore) IsSnapshotLinkedCloneEntrypoint(snapshotName string) (bool, []string, error) {
+	matchLabels := types.GetLinkedCloneSourceSnapshotLabel(snapshotName)
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: matchLabels,
+	})
+	if err != nil {
+		return false, nil, err
+	}
+
+	volumes, err := s.ListVolumesByLabelSelector(selector)
+	if err != nil {
+		return false, nil, errors.Wrapf(err, "failed to list linked-clone volumes for source snapshot %v", snapshotName)
+	}
+
+	var cloneNames []string
+	for _, v := range volumes {
+		cloneNames = append(cloneNames, v.Name)
+	}
+	return len(cloneNames) > 0, cloneNames, nil
+}
+
 func (s *DataStore) GetAllDiskUUIDFirstFourChar() (map[string]bool, error) {
 	firstFourCharSet := make(map[string]bool)
 	nodes, err := s.ListNodesRO()
@@ -7202,4 +7526,279 @@ func (s *DataStore) GetDataEngineObject(engine *longhorn.Engine) (longhorn.DataE
 		return s.GetVolumeCurrentEngineFrontend(engine.Spec.VolumeName)
 	}
 	return engine, nil
+}
+
+// CreateShardGroup creates a Longhorn ShardGroup resource and verifies creation.
+// Callers are responsible for setting volume labels on sg before calling.
+func (s *DataStore) CreateShardGroup(sg *longhorn.ShardGroup) (*longhorn.ShardGroup, error) {
+	ret, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Create(context.TODO(), sg, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "shard group", func(name string) (k8sruntime.Object, error) {
+		return s.GetShardGroupRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.ShardGroup)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for shard group")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateShardGroup updates Longhorn ShardGroup and verifies update
+func (s *DataStore) UpdateShardGroup(sg *longhorn.ShardGroup) (*longhorn.ShardGroup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Update(context.TODO(), sg, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(sg.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardGroupRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateShardGroupStatus updates Longhorn ShardGroup status and verifies update
+func (s *DataStore) UpdateShardGroupStatus(sg *longhorn.ShardGroup) (*longhorn.ShardGroup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).UpdateStatus(context.TODO(), sg, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(sg.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardGroupRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteShardGroup won't result in immediate deletion since finalizer was set by default
+func (s *DataStore) DeleteShardGroup(name string) error {
+	return s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForShardGroup will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForShardGroup(obj *longhorn.ShardGroup) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().ShardGroups(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for shard group %v", obj.Name)
+	}
+	return nil
+}
+
+// GetShardGroup gets ShardGroup for the given name and namespace and returns a new ShardGroup object
+func (s *DataStore) GetShardGroup(name string) (*longhorn.ShardGroup, error) {
+	resultRO, err := s.GetShardGroupRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// GetShardGroupRO gets ShardGroup for the given name and namespace.
+// The returned object MUST NOT be modified.
+func (s *DataStore) GetShardGroupRO(name string) (*longhorn.ShardGroup, error) {
+	return s.shardGroupLister.ShardGroups(s.namespace).Get(name)
+}
+
+func (s *DataStore) listShardGroups(selector labels.Selector) (map[string]*longhorn.ShardGroup, error) {
+	list, err := s.shardGroupLister.ShardGroups(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.ShardGroup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListShardGroups returns a map of all ShardGroups in the namespace
+func (s *DataStore) ListShardGroups() (map[string]*longhorn.ShardGroup, error) {
+	return s.listShardGroups(labels.Everything())
+}
+
+// ListShardGroupsRO returns a list of all ShardGroups in the namespace.
+// The returned objects MUST NOT be modified.
+func (s *DataStore) ListShardGroupsRO() ([]*longhorn.ShardGroup, error) {
+	return s.shardGroupLister.ShardGroups(s.namespace).List(labels.Everything())
+}
+
+// CreateShard creates a Longhorn Shard resource and verifies creation.
+// Callers are responsible for setting volume and shardgroup labels on shard before calling.
+func (s *DataStore) CreateShard(shard *longhorn.Shard) (*longhorn.Shard, error) {
+	if err := labelNode(shard.Spec.NodeID, shard); err != nil {
+		return nil, err
+	}
+	if err := labelDiskUUID(shard.Spec.DiskUUID, shard); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).Create(context.TODO(), shard, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "shard", func(name string) (k8sruntime.Object, error) {
+		return s.GetShardRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Shard)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for shard")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateShard updates Longhorn Shard and verifies update
+func (s *DataStore) UpdateShard(shard *longhorn.Shard) (*longhorn.Shard, error) {
+	if err := labelNode(shard.Spec.NodeID, shard); err != nil {
+		return nil, err
+	}
+	if err := labelDiskUUID(shard.Spec.DiskUUID, shard); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).Update(context.TODO(), shard, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(shard.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateShardStatus updates Longhorn Shard status and verifies update
+func (s *DataStore) UpdateShardStatus(shard *longhorn.Shard) (*longhorn.Shard, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).UpdateStatus(context.TODO(), shard, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(shard.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetShardRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteShard won't result in immediate deletion since finalizer was set by default
+func (s *DataStore) DeleteShard(name string) error {
+	return s.lhClient.LonghornV1beta2().Shards(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForShard will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForShard(obj *longhorn.Shard) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().Shards(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for shard %v", obj.Name)
+	}
+	return nil
+}
+
+// GetShard gets Shard for the given name and namespace and returns a new Shard object
+func (s *DataStore) GetShard(name string) (*longhorn.Shard, error) {
+	resultRO, err := s.GetShardRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// GetShardRO gets Shard for the given name and namespace.
+// The returned object MUST NOT be modified.
+func (s *DataStore) GetShardRO(name string) (*longhorn.Shard, error) {
+	return s.shardLister.Shards(s.namespace).Get(name)
+}
+
+func (s *DataStore) listShards(selector labels.Selector) (map[string]*longhorn.Shard, error) {
+	list, err := s.shardLister.Shards(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Shard{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListShards returns a map of all Shards in the namespace
+func (s *DataStore) ListShards() (map[string]*longhorn.Shard, error) {
+	return s.listShards(labels.Everything())
+}
+
+// ListShardsByVolume returns a map of Shards belonging to the given volume
+func (s *DataStore) ListShardsByVolume(volumeName string) (map[string]*longhorn.Shard, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(selector)
+}
+
+// ListShardsByShardGroup returns a map of Shards belonging to the given ShardGroup
+func (s *DataStore) ListShardsByShardGroup(sgName string) (map[string]*longhorn.Shard, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetShardGroupLabels(sgName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(selector)
+}
+
+// ListShardsByNode returns a map of Shards on the given node
+func (s *DataStore) ListShardsByNode(nodeName string) (map[string]*longhorn.Shard, error) {
+	nodeSelector, err := getNodeSelector(nodeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(nodeSelector)
+}
+
+func (s *DataStore) ListShardsByDiskUUID(uuid string) (map[string]*longhorn.Shard, error) {
+	diskSelector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornDiskUUIDKey: uuid,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.listShards(diskSelector)
 }

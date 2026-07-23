@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/avast/retry-go/v4"
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 
 	commonns "github.com/longhorn/go-common-libs/ns"
 	commontypes "github.com/longhorn/go-common-libs/types"
@@ -22,8 +24,9 @@ import (
 )
 
 const (
-	LockFile    = "/var/run/longhorn-spdk.lock"
-	LockTimeout = 120 * time.Second
+	LockDir        = "/var/run/longhorn"
+	LockFilePrefix = LockDir + "/spdk"
+	LockTimeout    = 120 * time.Second
 
 	HostProc = "/host/proc"
 
@@ -57,6 +60,13 @@ const (
 
 var (
 	idGenerator IDGenerator
+
+	// isUblkTargetCreated is a process-wide fast path so that once the singleton
+	// ublk target has been created we skip the extra UblkCreateTarget RPC on
+	// subsequent StartUblkInitiator calls. Correctness never depends on it: the
+	// create is idempotent (SPDK reports an existing target as JSON-RPC -32603
+	// "Device or resource busy"), so a stale flag only costs one extra RPC.
+	isUblkTargetCreated atomic.Bool
 )
 
 var errDeviceNotReady = errors.New("device is not a block device yet")
@@ -74,6 +84,13 @@ type Initiator struct {
 	executor *commonns.Executor
 
 	logger logrus.FieldLogger
+}
+
+type initiatorLock struct {
+	lock      *commonns.FileLock
+	operation string
+	logger    logrus.FieldLogger
+	lockFile  string
 }
 
 type NVMeTCPInfo struct {
@@ -133,23 +150,50 @@ func NewInitiator(name, hostProc string, nvmeTCPInfo *NVMeTCPInfo, ublkInfo *Ubl
 	}, nil
 }
 
-func (i *Initiator) newLock() (*commonns.FileLock, error) {
+// lockFilePath returns the per-volume lock file path. Each volume/initiator
+// gets its own lock file so that operations on different volumes can proceed
+// in parallel. The lock serializes operations within the same volume only
+// (e.g., preventing concurrent Start and Stop on the same NVMe subsystem).
+func (i *Initiator) lockFilePath() string {
+	return fmt.Sprintf("%s-%s.lock", LockFilePrefix, i.Name)
+}
+
+func (i *Initiator) newLock(operation string) (*initiatorLock, error) {
 	if i.hostProc != commontypes.HostProcDirectory {
 		return nil, fmt.Errorf("invalid host proc path %s for initiator %s, supported path is %s", i.hostProc, i.Name, commontypes.HostProcDirectory)
 	}
 
-	lock := commonns.NewLock(LockFile, LockTimeout)
+	if _, err := commonns.CreateDirectory(LockDir, time.Time{}); err != nil {
+		return nil, errors.Wrapf(err, "failed to create lock directory %s for initiator %s", LockDir, i.Name)
+	}
+
+	lockFile := i.lockFilePath()
+	lock := commonns.NewLock(lockFile, LockTimeout)
 	if err := lock.Lock(); err != nil {
 		return nil, errors.Wrapf(err, "failed to get file lock for initiator %s", i.Name)
 	}
 
-	return lock, nil
+	il := &initiatorLock{
+		lock:      lock,
+		operation: operation,
+		logger:    i.logger,
+		lockFile:  lockFile,
+	}
+
+	return il, nil
+}
+
+func (lock *initiatorLock) Unlock() {
+	if lock == nil || lock.lock == nil {
+		return
+	}
+	lock.lock.Unlock()
 }
 
 // DiscoverNVMeTCPTarget discovers a target
 func (i *Initiator) DiscoverNVMeTCPTarget(ip, port string) (string, error) {
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("DiscoverNVMeTCPTarget")
 		if err != nil {
 			return "", err
 		}
@@ -162,7 +206,7 @@ func (i *Initiator) DiscoverNVMeTCPTarget(ip, port string) (string, error) {
 // ConnectNVMeTCPTarget connects to a target
 func (i *Initiator) ConnectNVMeTCPTarget(ip, port, nqn string) (string, error) {
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("ConnectNVMeTCPTarget")
 		if err != nil {
 			return "", err
 		}
@@ -190,7 +234,7 @@ func (i *Initiator) executeNVMeTCPPathOp(transportAddress, transportServiceID, o
 	}
 
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock(opName)
 		if err != nil {
 			return err
 		}
@@ -220,7 +264,7 @@ func (i *Initiator) DisconnectNVMeTCPTarget() error {
 		return fmt.Errorf("failed to DisconnectNVMeTCPTarget because nvmeTCPInfo is nil")
 	}
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("DisconnectNVMeTCPTarget")
 		if err != nil {
 			return err
 		}
@@ -254,7 +298,7 @@ func (i *Initiator) WaitForNVMeTCPConnect(maxRetries int, retryInterval time.Dur
 		return fmt.Errorf("failed to WaitForNVMeTCPConnect because nvmeTCPInfo is nil")
 	}
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("WaitForNVMeTCPConnect")
 		if err != nil {
 			return err
 		}
@@ -296,7 +340,7 @@ func (i *Initiator) WaitForNVMeTCPTargetDisconnect(maxRetries int, retryInterval
 		return fmt.Errorf("failed to WaitForNVMeTCPTargetDisconnect because nvmeTCPInfo is nil")
 	}
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("WaitForNVMeTCPTargetDisconnect")
 		if err != nil {
 			return err
 		}
@@ -352,7 +396,7 @@ func (i *Initiator) WaitForNVMeTCPTargetDisconnect(maxRetries int, retryInterval
 // Suspend suspends the device mapper device for the NVMe/TCP initiator
 func (i *Initiator) Suspend(noflush, nolockfs bool) error {
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("Suspend")
 		if err != nil {
 			return err
 		}
@@ -376,7 +420,7 @@ func (i *Initiator) Suspend(noflush, nolockfs bool) error {
 // Resume resumes the device mapper device for the NVMe/TCP initiator
 func (i *Initiator) Resume() error {
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("Resume")
 		if err != nil {
 			return err
 		}
@@ -397,6 +441,14 @@ func (i *Initiator) resumeLinearDmDevice() error {
 }
 
 func (i *Initiator) replaceDmDeviceTarget() error {
+	deferredRemove, err := i.IsDeferredRemoveSet()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check if linear dm device has deferred-remove flag set for initiator %s", i.Name)
+	}
+	if deferredRemove {
+		i.logger.Warn("Trying to reuse the linear dm device that has deferred-remove flag set, the device will be removed after not busy")
+	}
+
 	suspended, err := i.IsSuspended()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check if linear dm device is suspended for initiator %s", i.Name)
@@ -440,7 +492,7 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 	}).Info("Starting NVMe/TCP initiator")
 
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("StartNvmeTCPInitiator")
 		if err != nil {
 			return false, err
 		}
@@ -512,14 +564,53 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 	return dmDeviceIsBusy, nil
 }
 
+func (i *Initiator) isEndpointValid() bool {
+	if i.dev == nil {
+		return false
+	}
+
+	var st unix.Stat_t
+	if err := unix.Stat(i.Endpoint, &st); err != nil {
+		i.logger.WithError(err).Warnf("Failed to stat endpoint %v, removing and recreating", i.Endpoint)
+		return false
+	}
+
+	if (st.Mode & unix.S_IFMT) != unix.S_IFBLK {
+		i.logger.Warnf("Endpoint %v exists but is not a block device (mode=0x%x), removing stale entry",
+			i.Endpoint, st.Mode)
+		return false
+	}
+
+	actualMajor := int(unix.Major(st.Rdev))
+	actualMinor := int(unix.Minor(st.Rdev))
+	if actualMajor != i.dev.Export.Major || actualMinor != i.dev.Export.Minor {
+		i.logger.Warnf("Endpoint %v has stale major:minor %d:%d, expected %d:%d",
+			i.Endpoint, actualMajor, actualMinor, i.dev.Export.Major, i.dev.Export.Minor)
+		return false
+	}
+
+	return true
+}
+
 func (i *Initiator) createEndpoint() error {
 	exist, err := i.isEndpointExist()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check if endpoint %v exists for NVMe/TCP initiator %s", i.Endpoint, i.Name)
 	}
 	if exist {
-		i.logger.Infof("Skipping endpoint %v creation for NVMe/TCP initiator", i.Endpoint)
-		return nil
+		if i.dev != nil {
+			if i.isEndpointValid() {
+				i.logger.Infof("Reusing existing valid endpoint %v for NVMe/TCP initiator", i.Endpoint)
+				i.isUp = true
+				return nil
+			}
+			if removeErr := util.RemoveDevice(i.Endpoint); removeErr != nil {
+				return errors.Wrapf(removeErr, "failed to remove stale endpoint %v for NVMe/TCP initiator %s", i.Endpoint, i.Name)
+			}
+		} else {
+			i.logger.Infof("Skipping endpoint %v creation for NVMe/TCP initiator (no dev info to validate)", i.Endpoint)
+			return nil
+		}
 	}
 
 	if err := i.makeEndpoint(); err != nil {
@@ -539,7 +630,7 @@ func (i *Initiator) StartUblkInitiator(spdkClient *client.Client, dmDeviceAndEnd
 	}
 
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("StartUblkInitiator")
 		if err != nil {
 			return false, err
 		}
@@ -592,6 +683,19 @@ func (i *Initiator) StartUblkInitiator(spdkClient *client.Client, dmDeviceAndEnd
 
 	i.logger.Infof("Starting ublk initiator with bdev %s, available UBLK ID %d, queue depth %d, number of queues %d",
 		i.UblkInfo.BdevName, availableUblkID, i.UblkInfo.UblkQueueDepth, i.UblkInfo.UblkNumberOfQueue)
+
+	// Ensure the ublk target exists before starting the disk. This creation was
+	// dropped in the v0.6.x initiator rewrite (regression: Longhorn v1.11.3),
+	// causing ublk_start_disk/START_DEV to fail. The isUblkTargetCreated fast
+	// path mirrors the pre-0.6.0 behavior; UblkCreateTarget is still idempotent,
+	// so concurrent first-time callers and a stale flag remain safe.
+	if !isUblkTargetCreated.Load() {
+		if err := spdkClient.UblkCreateTarget("", true); err != nil {
+			return false, errors.Wrap(err, "failed to create ublk target")
+		}
+		isUblkTargetCreated.Store(true)
+	}
+
 	if err := spdkClient.UblkStartDisk(i.UblkInfo.BdevName, availableUblkID, i.UblkInfo.UblkQueueDepth, i.UblkInfo.UblkNumberOfQueue); err != nil {
 		return false, err
 	}
@@ -730,6 +834,7 @@ func (i *Initiator) ensureNVMeTCPPathWithoutLock(transportAddress, transportServ
 		*i.NVMeTCPInfo = previousInfo
 		return err
 	}
+
 	if err := i.waitAndLoadNVMeDeviceInfoWithoutLock(transportAddress, transportServiceID); err != nil {
 		cleanupConnection(err)
 		*i.NVMeTCPInfo = previousInfo
@@ -851,11 +956,20 @@ func (i *Initiator) findControllerBySubsystem(nqn, transportAddress, transportSe
 // Stop stops the NVMe/TCP initiator
 func (i *Initiator) Stop(spdkClient *client.Client, dmDeviceAndEndpointCleanupRequired, deferDmDeviceCleanup, returnErrorForBusyDevice bool) (bool, error) {
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("Stop")
 		if err != nil {
 			return false, err
 		}
-		defer lock.Unlock()
+		defer func() {
+			// Remove the lock file while still holding the lock to avoid
+			// an unlink race (where a waiter locks the unlinked inode while
+			// a new arrival creates and locks a fresh file at the same path).
+			errRemove := os.Remove(i.lockFilePath())
+			if errRemove != nil && !os.IsNotExist(errRemove) {
+				i.logger.WithError(errRemove).Warnf("Failed to remove lock file %s after stopping initiator %s", i.lockFilePath(), i.Name)
+			}
+			lock.Unlock()
+		}()
 	}
 
 	return i.stopWithoutLock(spdkClient, dmDeviceAndEndpointCleanupRequired, deferDmDeviceCleanup, returnErrorForBusyDevice)
@@ -1013,7 +1127,7 @@ func (i *Initiator) WaitForControllerLive(transportAddress, transportServiceID s
 // GetDevice returns the device information
 func (i *Initiator) LoadNVMeDeviceInfo(transportAddress, transportServiceID, subsystemNQN string) (err error) {
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("LoadNVMeDeviceInfo")
 		if err != nil {
 			return err
 		}
@@ -1273,7 +1387,7 @@ func (i *Initiator) suspendLinearDmDevice(noflush, nolockfs bool) error {
 // ReloadDmDevice reloads the linear dm device
 func (i *Initiator) ReloadDmDevice() (err error) {
 	if i.hostProc != "" {
-		lock, err := i.newLock()
+		lock, err := i.newLock("ReloadDmDevice")
 		if err != nil {
 			return err
 		}
@@ -1344,6 +1458,21 @@ func (i *Initiator) IsSuspended() (bool, error) {
 	for _, device := range devices {
 		if device.Name == i.Name {
 			return device.Suspended, nil
+		}
+	}
+	return false, fmt.Errorf("failed to find linear dm device %s", i.Name)
+}
+
+// IsDeferredRemoveSet checks if the linear dm device has the deferred-remove flag set
+func (i *Initiator) IsDeferredRemoveSet() (bool, error) {
+	devices, err := util.DmsetupInfo(i.Name, i.executor)
+	if err != nil {
+		return false, err
+	}
+
+	for _, device := range devices {
+		if device.Name == i.Name {
+			return device.DeferredRemove, nil
 		}
 	}
 	return false, fmt.Errorf("failed to find linear dm device %s", i.Name)

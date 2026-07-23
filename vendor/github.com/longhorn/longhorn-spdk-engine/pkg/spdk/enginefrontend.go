@@ -15,18 +15,18 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
+	"github.com/longhorn/go-spdk-helper/pkg/initiator"
+	"github.com/longhorn/types/pkg/generated/spdkrpc"
+
+	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
+	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
+
 	"github.com/longhorn/longhorn-spdk-engine/pkg/client"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/util"
 
-	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
 	safelog "github.com/longhorn/longhorn-spdk-engine/pkg/log"
-
-	"github.com/longhorn/go-spdk-helper/pkg/initiator"
-	"github.com/longhorn/types/pkg/generated/spdkrpc"
-
-	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
-	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
 )
 
 type EngineFrontend struct {
@@ -83,6 +83,8 @@ type EngineFrontend struct {
 	connectNvmeTCPPathFn func(transportAddress, transportServiceID string) error
 	// Test hook for native multipath path reconnect during recovery.
 	reconnectNvmeTCPPathFn func(transportAddress, transportServiceID string) error
+	// Test hook for target TCP reachability check during recovery.
+	checkTargetReachableFn func(address string) error
 	// Test hook for initiator NVMe device info loading.
 	loadInitiatorNVMeDeviceInfoFn func(transportAddress, transportServiceID, subsystemNQN string) error
 	// Test hook for initiator endpoint loading.
@@ -101,6 +103,8 @@ type EngineFrontend struct {
 	metadataDir string
 
 	log *safelog.SafeLogger
+
+	newServiceClient ServiceClientFactory
 }
 
 type NvmeTcpFrontend struct {
@@ -126,6 +130,13 @@ const (
 
 	anaSyncMaxAttempts   = 5
 	anaSyncRetryInterval = 200 * time.Millisecond
+
+	// recoveryTargetReachabilityTimeout is the timeout for a TCP dial to
+	// verify the NVMe-TCP target is reachable before attempting expensive
+	// reconnect retries during engine frontend recovery. This only applies
+	// to the recovery path — normal creation and switchover paths use the
+	// full retry loop in the initiator package.
+	recoveryTargetReachabilityTimeout = 5 * time.Second
 )
 
 type NvmeTCPPath struct {
@@ -146,6 +157,22 @@ type UblkFrontend struct {
 	UblkID int32
 }
 
+func (ef *EngineFrontend) setMetadataDirLocked(metadataDir string) {
+	ef.metadataDir = metadataDir
+}
+
+func (ef *EngineFrontend) setMetadataDir(metadataDir string) {
+	ef.Lock()
+	defer ef.Unlock()
+	ef.setMetadataDirLocked(metadataDir)
+}
+
+func (ef *EngineFrontend) getMetadataDir() string {
+	ef.RLock()
+	defer ef.RUnlock()
+	return ef.metadataDir
+}
+
 func getUblkQueueDepth(ublkQueueDepth int32) int32 {
 	if ublkQueueDepth == 0 {
 		return types.DefaultUblkQueueDepth
@@ -161,7 +188,11 @@ func getUblkNumberOfQueue(ublkNumberOfQueue int32) int32 {
 }
 
 func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend string, specSize uint64, ublkQueueDepth, ublkNumberOfQueue int32,
-	engineFrontendUpdateCh chan interface{}) *EngineFrontend {
+	engineFrontendUpdateCh chan interface{}, newServiceClient ServiceClientFactory) *EngineFrontend {
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
+
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"engineFrontendName": engineFrontendName,
 		"engineName":         engineName,
@@ -209,6 +240,8 @@ func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend stri
 		UpdateCh: engineFrontendUpdateCh,
 		stopCh:   make(chan struct{}),
 		log:      safelog.NewSafeLogger(log),
+
+		newServiceClient: newServiceClient,
 	}
 }
 
@@ -370,7 +403,7 @@ func (ef *EngineFrontend) setRemoteEngineTargetANAState(targetIP, engineName str
 	}
 
 	engineAddress := net.JoinHostPort(targetIP, strconv.Itoa(types.SPDKServicePort))
-	engineClient, err := GetServiceClient(engineAddress)
+	engineClient, err := ef.newServiceClient(engineAddress)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get SPDK client for engine %s at %s", engineName, engineAddress)
 	}
@@ -715,7 +748,7 @@ func (ef *EngineFrontend) Delete(spdkClient *spdkclient.Client) (err error) {
 	ef.log.WithField("hasInitiator", ef.initiator != nil).Info("Deleting engine frontend")
 
 	if ef.initiator != nil {
-		if _, err := ef.initiator.Stop(spdkClient, true, true, true); err != nil {
+		if _, err := ef.initiator.Stop(spdkClient, true, false, false); err != nil {
 			return err
 		}
 		ef.initiator = nil
@@ -1068,7 +1101,7 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 		targetAddress = net.JoinHostPort(ef.NvmeTcpFrontend.TargetIP, strconv.Itoa(int(ef.NvmeTcpFrontend.TargetPort)))
 	}
 
-	engineSpdkClient, err := GetServiceClient(ef.getEngineServiceAddress())
+	engineSpdkClient, err := ef.newServiceClient(ef.getEngineServiceAddress())
 	if err != nil {
 		ef.Unlock()
 		return errors.Wrapf(err, "failed to get SPDK client to expand engine frontend %v", ef.Name)
@@ -2184,6 +2217,21 @@ func (ef *EngineFrontend) loadInitiatorEndpoint(dmDeviceIsBusy bool) error {
 	return ef.initiator.LoadEndpointForNvmeTcpFrontend(dmDeviceIsBusy)
 }
 
+func (ef *EngineFrontend) checkTargetReachable(address string) error {
+	if ef.checkTargetReachableFn != nil {
+		return ef.checkTargetReachableFn(address)
+	}
+	conn, err := net.DialTimeout("tcp", address, recoveryTargetReachabilityTimeout)
+	if err != nil {
+		return err
+	}
+	errClose := conn.Close()
+	if errClose != nil {
+		ef.log.WithError(errClose).Warnf("Failed to close connection to target address %s", address)
+	}
+	return nil
+}
+
 func (ef *EngineFrontend) getInitiatorEndpoint() string {
 	if ef.getInitiatorEndpointFn != nil {
 		return ef.getInitiatorEndpointFn()
@@ -2207,7 +2255,7 @@ func (ef *EngineFrontend) resolveEngineNameByTargetAddress(targetAddress string)
 		return "", errors.Wrapf(ErrSwitchOverTargetInvalidInput, "invalid target address %s", targetAddress)
 	}
 
-	targetSpdkClient, err := GetServiceClient(targetAddress)
+	targetSpdkClient, err := ef.newServiceClient(targetAddress)
 	if err != nil {
 		return "", errors.Wrapf(ErrSwitchOverTargetInternal, "failed to get SPDK client for target address %s: %v", targetAddress, err)
 	}
@@ -2325,7 +2373,7 @@ func (ef *EngineFrontend) snapshotOperation(inputSnapshotName string, snapshotOp
 		}
 	}
 
-	engineSpdkClient, err := GetServiceClient(ef.getEngineServiceAddress())
+	engineSpdkClient, err := ef.newServiceClient(ef.getEngineServiceAddress())
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to get SPDK client to perform snapshot operation %s for snapshot %q", snapshotOp, inputSnapshotName)
 	}
@@ -2516,6 +2564,16 @@ func (ef *EngineFrontend) validateAndUpdateNvmeTcpFrontend() (err error) {
 	return nil
 }
 
+// isRecoveryCancelled checks whether a concurrent operation (e.g.
+// EngineFrontendCreate) has changed this ef's state away from Pending,
+// meaning the recovery goroutine should abort before performing further
+// host-level NVMe/dm operations.
+func (ef *EngineFrontend) isRecoveryCancelled() bool {
+	ef.RLock()
+	defer ef.RUnlock()
+	return ef.State != types.InstanceStatePending
+}
+
 // RecoverFromHost attempts to recover the engine frontend's initiator state by
 // detecting existing NVMe controllers and dm-devices on the host. This is called
 // during server startup for engine frontends that were persisted before restart.
@@ -2542,6 +2600,16 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 			// Device not found on host — record already removed, nothing to reconcile.
 			return
 		}
+
+		// If the state has been changed from Pending by a concurrent operation
+		// (e.g. Delete was called during recovery), do not overwrite it.
+		// This prevents a race where recovery's deferred update would revert
+		// a Terminating/Stopped state set by Delete back to Error/Running.
+		if ef.State != types.InstanceStatePending {
+			ef.log.Infof("Skipping recovery state update for engine frontend %s: state already changed to %s by concurrent operation", ef.Name, ef.State)
+			return
+		}
+
 		if recoverErr != nil {
 			ef.log.WithError(recoverErr).Errorf("Failed to recover engine frontend %s from host", ef.Name)
 			ef.State = types.InstanceStateError
@@ -2576,6 +2644,17 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 		return nil
 
 	case types.FrontendSPDKTCPBlockdev:
+		// Early cancellation check before creating the NVMe-TCP initiator.
+		// If a concurrent EngineFrontendCreate already completed for this
+		// volume (evicted us and connected its own NVMe controller), we must
+		// not proceed — creating an initiator and then calling Delete/Stop
+		// would disconnect the NEW ef's controller via DisconnectTarget
+		// (which disconnects ALL controllers for the subsystem NQN).
+		if ef.isRecoveryCancelled() {
+			recoverErr = ErrRecoveryCancelled
+			return recoverErr
+		}
+
 		// Recover the NVMe-oF initiator (blockdev frontend with dm-device).
 		i, nqn, nguid, err := ef.newNvmeTcpInitiator()
 		if err != nil {
@@ -2613,6 +2692,20 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 			reconnected := false
 			if strings.Contains(loadErr.Error(), helpertypes.ErrorMessageCannotFindValidNvmeDevice) {
 				if ef.NvmeTcpFrontend.TargetIP != "" && ef.NvmeTcpFrontend.TargetPort != 0 {
+					targetAddr := net.JoinHostPort(ef.NvmeTcpFrontend.TargetIP, strconv.Itoa(int(ef.NvmeTcpFrontend.TargetPort)))
+					if dialErr := ef.checkTargetReachable(targetAddr); dialErr != nil {
+						ef.log.WithError(dialErr).Warnf("NVMe/TCP target %s is not reachable during recovery of engine frontend %s, skipping reconnect retries", targetAddr, ef.Name)
+						recoverErr = errors.Wrapf(dialErr, "NVMe/TCP target %s is not reachable during recovery", targetAddr)
+						return recoverErr
+					}
+					// Check cancellation before the expensive host-mutating reconnect.
+					// A concurrent EngineFrontendCreate may have evicted us while
+					// the TCP pre-check was in progress.
+					if ef.isRecoveryCancelled() {
+						recoverErr = ErrRecoveryCancelled
+						return recoverErr
+					}
+
 					ef.log.WithError(loadErr).Warnf("NVMe device not found on host during recovery of engine frontend %s, reconnecting persisted multipath target", ef.Name)
 					if reconnectErr := ef.reconnectNvmeTCPPath(ef.NvmeTcpFrontend.TargetIP, ef.NvmeTcpFrontend.TargetPort); reconnectErr != nil {
 						recoverErr = errors.Wrapf(reconnectErr, "failed to reconnect NVMe/TCP path during recovery of engine frontend %s", ef.Name)
@@ -2621,7 +2714,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 					reconnected = true
 				} else {
 					ef.log.WithError(loadErr).Warnf("NVMe device not found on host during recovery of engine frontend %s, removing persisted record", ef.Name)
-					if removeErr := removeEngineFrontendRecord(ef.metadataDir, ef.VolumeName); removeErr != nil {
+					if removeErr := removeEngineFrontendRecord(ef.getMetadataDir(), ef.VolumeName); removeErr != nil {
 						ef.log.WithError(removeErr).Warn("Failed to remove engine frontend record")
 					}
 					deviceNotFound = true
@@ -2632,6 +2725,29 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 				recoverErr = errors.Wrapf(loadErr, "failed to load NVMe device info during recovery of engine frontend %s", ef.Name)
 				return recoverErr
 			}
+		}
+
+		// Verify the NVMe target is actually reachable. The NVMe device may
+		// still appear in sysfs (kernel ctrl_loss_tmo not expired) even though
+		// the target process is dead (e.g., IM pod restarted). A stale device
+		// would cause I/O errors on the dm device above it.
+		detectedAddr := i.GetTransportAddress()
+		detectedPort := i.GetTransportServiceID()
+		if detectedAddr != "" && detectedPort != "" {
+			targetAddr := net.JoinHostPort(detectedAddr, detectedPort)
+			if dialErr := ef.checkTargetReachable(targetAddr); dialErr != nil {
+				ef.log.WithError(dialErr).Warnf("NVMe device found in sysfs but target %s is not reachable, device is stale", targetAddr)
+				recoverErr = errors.Wrapf(dialErr, "NVMe/TCP target %s is not reachable during recovery (stale device in sysfs)", targetAddr)
+				return recoverErr
+			}
+		}
+
+		// Check cancellation before loading the dm-device endpoint.
+		// A concurrent EngineFrontendCreate may have evicted us during
+		// the preceding reconnect or sysfs scan.
+		if ef.isRecoveryCancelled() {
+			recoverErr = ErrRecoveryCancelled
+			return recoverErr
 		}
 
 		// Try to load the existing dm-device endpoint.

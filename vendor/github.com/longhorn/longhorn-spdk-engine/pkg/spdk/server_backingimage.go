@@ -164,7 +164,7 @@ func (s *Server) BackingImageList(ctx context.Context, req *emptypb.Empty) (ret 
 
 // BackingImageWatch will watch the backing image update.
 func (s *Server) BackingImageWatch(req *emptypb.Empty, srv spdkrpc.SPDKService_BackingImageWatchServer) error {
-	responseCh, err := s.Subscribe(types.InstanceTypeBackingImage)
+	responseCh, err := s.Subscribe(srv.Context(), types.InstanceTypeBackingImage)
 	if err != nil {
 		return err
 	}

@@ -7,13 +7,15 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -23,8 +25,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 func (s *TestSuite) TestShouldExpandEngineFrontend(c *C) {
@@ -88,6 +88,132 @@ func (s *TestSuite) TestIsEngineFrontendTargetInitialized(c *C) {
 	c.Assert(isEngineFrontendTargetInitialized("10.0.0.1", 9502), Equals, true)
 }
 
+func (s *TestSuite) TestShouldExecuteEngineFrontendSwitchover(c *C) {
+	testCases := map[string]struct {
+		ef       *longhorn.EngineFrontend
+		volume   *longhorn.Volume
+		expected bool
+	}{
+		"nil engine frontend": {
+			expected: false,
+		},
+		"no target change": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			expected: false,
+		},
+		"target change without volume switchover intent": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			volume:   &longhorn.Volume{},
+			expected: false,
+		},
+		"target change without volume object": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			expected: false,
+		},
+		"target change with volume switchover intent": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:   TestIP1,
+					TargetPort: TestPort1,
+				},
+			},
+			volume: &longhorn.Volume{
+				Status: longhorn.VolumeStatus{
+					SwitchoverState: longhorn.VolumeSwitchoverStateSwitchingOver,
+				},
+			},
+			expected: true,
+		},
+		"in progress switchover stops when volume is nil": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:        TestIP1,
+					TargetPort:      TestPort1,
+					SwitchoverPhase: longhorn.EngineFrontendSwitchoverPhasePreparing,
+				},
+			},
+			expected: false,
+		},
+		"in progress switchover continues with active volume switchover state": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:        TestIP1,
+					TargetPort:      TestPort1,
+					SwitchoverPhase: longhorn.EngineFrontendSwitchoverPhasePreparing,
+				},
+			},
+			volume: &longhorn.Volume{
+				Status: longhorn.VolumeStatus{
+					SwitchoverState: longhorn.VolumeSwitchoverStateSwitchingOver,
+				},
+			},
+			expected: true,
+		},
+		"stale switchover phase cleared when volume SwitchoverState is empty": {
+			ef: &longhorn.EngineFrontend{
+				Spec: longhorn.EngineFrontendSpec{
+					TargetIP:   TestIP2,
+					TargetPort: TestPort1,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					TargetIP:        TestIP1,
+					TargetPort:      TestPort1,
+					SwitchoverPhase: longhorn.EngineFrontendSwitchoverPhaseSwitching,
+				},
+			},
+			volume: &longhorn.Volume{
+				Status: longhorn.VolumeStatus{
+					SwitchoverState: longhorn.VolumeSwitchoverStateEmpty,
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Assert(shouldExecuteEngineFrontendSwitchover(tc.ef, tc.volume), Equals, tc.expected, Commentf("case=%s", name))
+	}
+}
+
 func (s *TestSuite) TestIsEngineFrontendEndpointRequired(c *C) {
 	c.Assert(isEngineFrontendEndpointRequired(nil), Equals, false)
 
@@ -101,6 +227,105 @@ func (s *TestSuite) TestIsEngineFrontendEndpointRequired(c *C) {
 	ef.Spec.DisableFrontend = false
 	ef.Spec.Frontend = longhorn.VolumeFrontendEmpty
 	c.Assert(isEngineFrontendEndpointRequired(ef), Equals, false)
+}
+
+func (s *TestSuite) TestShouldDeleteStaleRunningEngineFrontend(c *C) {
+	testCases := map[string]struct {
+		ef       *longhorn.EngineFrontend
+		im       *longhorn.InstanceManager
+		expected bool
+	}{
+		"nil engine frontend": {
+			im:       &longhorn.InstanceManager{},
+			expected: false,
+		},
+		"nil instance manager": {
+			ef: &longhorn.EngineFrontend{
+				ObjectMeta: metav1.ObjectMeta{Name: "ef-1"},
+			},
+			expected: false,
+		},
+		"delete stale running empty frontend instance": {
+			ef: &longhorn.EngineFrontend{
+				ObjectMeta: metav1.ObjectMeta{Name: "ef-1"},
+				Spec: longhorn.EngineFrontendSpec{
+					InstanceSpec: longhorn.InstanceSpec{
+						DesireState: longhorn.InstanceStateRunning,
+					},
+					Frontend: longhorn.VolumeFrontendBlockDev,
+				},
+				Status: longhorn.EngineFrontendStatus{
+					InstanceStatus: longhorn.InstanceStatus{
+						CurrentState: longhorn.InstanceStateRunning,
+					},
+				},
+			},
+			im: &longhorn.InstanceManager{
+				Status: longhorn.InstanceManagerStatus{
+					InstanceEngineFrontends: map[string]longhorn.InstanceProcess{
+						"ef-1": {
+							Status: longhorn.InstanceProcessStatus{
+								State:    longhorn.InstanceStateRunning,
+								Frontend: "",
+							},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		"keep running instance when IM reports frontend": {
+			ef: &longhorn.EngineFrontend{
+				ObjectMeta: metav1.ObjectMeta{Name: "ef-1"},
+			},
+			im: &longhorn.InstanceManager{
+				Status: longhorn.InstanceManagerStatus{
+					InstanceEngineFrontends: map[string]longhorn.InstanceProcess{
+						"ef-1": {
+							Status: longhorn.InstanceProcessStatus{
+								State:    longhorn.InstanceStateRunning,
+								Frontend: string(longhorn.VolumeFrontendBlockDev),
+							},
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		"keep instance when frontend process does not exist": {
+			ef: &longhorn.EngineFrontend{
+				ObjectMeta: metav1.ObjectMeta{Name: "ef-1"},
+			},
+			im: &longhorn.InstanceManager{
+				Status: longhorn.InstanceManagerStatus{
+					InstanceEngineFrontends: map[string]longhorn.InstanceProcess{},
+				},
+			},
+			expected: false,
+		},
+		"keep non-running IM instance": {
+			ef: &longhorn.EngineFrontend{
+				ObjectMeta: metav1.ObjectMeta{Name: "ef-1"},
+			},
+			im: &longhorn.InstanceManager{
+				Status: longhorn.InstanceManagerStatus{
+					InstanceEngineFrontends: map[string]longhorn.InstanceProcess{
+						"ef-1": {
+							Status: longhorn.InstanceProcessStatus{
+								State:    longhorn.InstanceStateStarting,
+								Frontend: "",
+							},
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Assert(shouldDeleteStaleRunningEngineFrontend(tc.ef, tc.im), Equals, tc.expected, Commentf("case=%s", name))
+	}
 }
 
 func (s *TestSuite) TestSyncEngineFrontendPathStatus(c *C) {
@@ -287,6 +512,138 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 	c.Assert(updatedEF.Status.CurrentState, Equals, longhorn.InstanceStateSuspended)
 	_, exists := efc.engineFrontendMonitorMap[ef.Name]
 	c.Assert(exists, Equals, false)
+}
+
+func (s *TestSuite) TestSyncEngineFrontendDeletesStaleRunningInstance(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+	efc, err := newTestEngineFrontendController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	fakeRecorder := record.NewFakeRecorder(10)
+	efc.eventRecorder = fakeRecorder
+
+	deleted := false
+	efc.deleteInstanceHandler = func(obj interface{}) error {
+		ef, ok := obj.(*longhorn.EngineFrontend)
+		c.Assert(ok, Equals, true)
+		c.Assert(ef.Name, Equals, "stale-engine-frontend")
+		deleted = true
+		return nil
+	}
+
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	efIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+	podIndexer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+	defaultEngineImageSetting := newSetting(string(types.SettingNameDefaultEngineImage), TestEngineImage)
+	v2DataEngineSetting := newSetting(string(types.SettingNameV2DataEngine), "true")
+	for _, setting := range []*longhorn.Setting{defaultEngineImageSetting, v2DataEngineSetting} {
+		createdSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(settingIndexer.Add(createdSetting), IsNil)
+	}
+
+	volume := newVolume(TestVolumeName, 1)
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Spec.Frontend = longhorn.VolumeFrontendBlockDev
+	volume.Status.CurrentImage = TestEngineImage
+	createdVolume, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(volumeIndexer.Add(createdVolume), IsNil)
+
+	kubeNode := newKubernetesNode(TestOwnerID1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	createdKubeNode, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(kubeNodeIndexer.Add(createdKubeNode), IsNil)
+
+	imPod := newPod(&corev1.PodStatus{Phase: corev1.PodRunning, PodIP: TestIP1}, TestInstanceManagerName, TestNamespace, TestOwnerID1)
+	createdPod, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), imPod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(podIndexer.Add(createdPod), IsNil)
+
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "stale-engine-frontend",
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  volume.Name,
+				VolumeSize:  volume.Spec.Size,
+				NodeID:      TestOwnerID1,
+				Image:       TestEngineImage,
+				DesireState: longhorn.InstanceStateRunning,
+				DataEngine:  longhorn.DataEngineTypeV2,
+			},
+			Frontend:   longhorn.VolumeFrontendBlockDev,
+			EngineName: "test-engine",
+			TargetIP:   TestIP2,
+			TargetPort: TestPort1,
+		},
+		Status: longhorn.EngineFrontendStatus{
+			InstanceStatus: longhorn.InstanceStatus{
+				OwnerID:             TestOwnerID1,
+				InstanceManagerName: TestInstanceManagerName,
+				CurrentState:        longhorn.InstanceStateRunning,
+				Started:             true,
+			},
+		},
+	}
+
+	instanceManager := newInstanceManager(
+		TestInstanceManagerName,
+		longhorn.InstanceManagerStateRunning,
+		TestOwnerID1,
+		TestOwnerID1,
+		TestIP1,
+		nil,
+		map[string]longhorn.InstanceProcess{
+			ef.Name: {
+				Spec: longhorn.InstanceProcessSpec{
+					Name:       ef.Name,
+					DataEngine: longhorn.DataEngineTypeV2,
+				},
+				Status: longhorn.InstanceProcessStatus{
+					State:    longhorn.InstanceStateRunning,
+					Frontend: "",
+					UUID:     "test-uuid",
+				},
+			},
+		},
+		nil,
+		longhorn.DataEngineTypeV2,
+		TestInstanceManagerImage,
+		false,
+	)
+	createdIM, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), instanceManager, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(imIndexer.Add(createdIM), IsNil)
+
+	createdEF, err := lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Create(context.TODO(), ef, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(efIndexer.Add(createdEF), IsNil)
+
+	err = efc.syncEngineFrontend(TestNamespace + "/" + ef.Name)
+	c.Assert(err, IsNil)
+	c.Assert(deleted, Equals, true)
+
+	select {
+	case event := <-fakeRecorder.Events:
+		c.Assert(strings.Contains(event, corev1.EventTypeWarning), Equals, true)
+		c.Assert(strings.Contains(event, constant.EventReasonStaleInstance), Equals, true)
+		c.Assert(strings.Contains(event, "Deleting stale instance"), Equals, true)
+	default:
+		c.Fatal("expected stale instance event to be recorded")
+	}
 }
 
 func (s *TestSuite) TestGetReplicaRebuildCandidate(c *C) {

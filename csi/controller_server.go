@@ -21,11 +21,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"k8s.io/client-go/rest"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -550,6 +550,9 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	//  Most of the readiness conditions are covered by the attach, except auto attachment which requires changes to the design
 	//  should be handled by the processing of the api return codes
 	if !volume.Ready {
+		if volume.NotReadyMessage != "" {
+			return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads: %v", volumeID, volume.NotReadyMessage)
+		}
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
@@ -1074,7 +1077,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 	if existBackupTarget == nil {
 		return nil, status.Errorf(codes.NotFound, "backup target %s not found", existVol.BackupTargetName)
 	}
-	if !existBackupTarget.Available {
+	if isBackupTargetUnavailableForBackup(existBackupTarget) {
 		return nil, status.Errorf(codes.Aborted, "backup target %s is not available", existVol.BackupTargetName)
 	}
 
@@ -1135,6 +1138,10 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(backup.VolumeName, snapshotID, snapshotCR.CreationTime,
 		existVol.Size, backup.State == string(longhorn.BackupStateCompleted))
 	return rsp, nil
+}
+
+func isBackupTargetUnavailableForBackup(backupTarget *longhornclient.BackupTarget) bool {
+	return backupTarget == nil || backupTarget.BackupTargetURL == "" || !backupTarget.Available
 }
 
 func createSnapshotResponseForSnapshotTypeLonghornSnapshot(sourceVolumeName, snapshotID string, snapshotCR *longhornclient.SnapshotCR) *csi.CreateSnapshotResponse {

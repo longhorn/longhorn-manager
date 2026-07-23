@@ -8,7 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,36 +33,37 @@ const (
 	RetryInterval = 5 * time.Second
 )
 
-func PostUpgradeCmd() cli.Command {
-	return cli.Command{
+func PostUpgradeCmd() *cli.Command {
+	return &cli.Command{
 		Name: "post-upgrade",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:     FlagNamespace,
-				EnvVar:   types.EnvPodNamespace,
+				Sources:  cli.EnvVars(types.EnvPodNamespace),
 				Required: true,
 				Usage:    "Specify Longhorn namespace",
 			},
 		},
-		Action: func(c *cli.Context) {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			logrus.Info("Running post-upgrade...")
 			defer logrus.Info("Completed post-upgrade.")
 
-			if err := postUpgrade(c); err != nil {
+			if err := postUpgrade(cmd); err != nil {
 				logrus.Fatalf("Error during post-upgrade: %v", err)
 			}
+			return nil
 		},
 	}
 }
 
-func postUpgrade(c *cli.Context) error {
-	namespace := c.String(FlagNamespace)
+func postUpgrade(cmd *cli.Command) error {
+	namespace := cmd.String(FlagNamespace)
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
+	config, err := clientcmd.BuildConfigFromFlags("", cmd.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}

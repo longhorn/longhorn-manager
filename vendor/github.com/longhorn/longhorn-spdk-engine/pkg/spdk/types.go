@@ -1,6 +1,7 @@
 package spdk
 
 import (
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -27,10 +28,12 @@ const (
 	DiskTypeFilesystem = "filesystem"
 	DiskTypeBlock      = "block"
 
-	ReplicaRebuildingLvolSuffix  = "rebuilding"
-	ReplicaExpiredLvolSuffix     = "expired"
-	ReplicaCloningLvolSuffix     = "cloning"
-	RebuildingSnapshotNamePrefix = "rebuild"
+	ReplicaRebuildingLvolSuffix         = "rebuilding"
+	ReplicaExpiredLvolSuffix            = "expired"
+	ReplicaCloningLvolSuffix            = "cloning"
+	RebuildingSnapshotNamePrefix        = "rebuild"
+	ReplicaCloneEntrypointLvolInfix     = "clone-ep"
+	ReplicaCloneEntrypointTmpHeadSuffix = "tmp-head"
 
 	SyncTimeout = 60 * time.Minute
 
@@ -70,6 +73,33 @@ const (
 )
 
 var (
+	cloneEntrypointLvolSeparator = "-" + ReplicaCloneEntrypointLvolInfix + "-"
+
+	// reservedNameTokens are substrings that must not appear in user-supplied
+	// replica or snapshot names. Their presence would cause the classification
+	// helpers (IsCloneEntrypointLvol, IsCloneEntrypointTmpHeadLvol, etc.) and
+	// extraction helpers (GetSourceReplicaNameFromCloneEntrypointLvolName, etc.)
+	// to misidentify ordinary lvols as internal objects.
+	reservedNameTokens = []string{cloneEntrypointLvolSeparator}
+	reservedNameSuffix = "-" + ReplicaCloneEntrypointTmpHeadSuffix
+)
+
+// ValidateReplicaOrSnapshotName checks that a user-supplied replica or snapshot
+// name does not contain reserved tokens that would confuse the internal lvol
+// classification and extraction helpers.
+func ValidateReplicaOrSnapshotName(name string) error {
+	for _, token := range reservedNameTokens {
+		if strings.Contains(name, token) {
+			return fmt.Errorf("name %q contains reserved token %q which is used internally for clone entrypoint management", name, token)
+		}
+	}
+	if strings.HasSuffix(name, reservedNameSuffix) {
+		return fmt.Errorf("name %q ends with reserved suffix %q which is used internally for clone entrypoint temporary heads", name, reservedNameSuffix)
+	}
+	return nil
+}
+
+var (
 	// ErrEngineFrontendCreateInvalidArgument indicates the create request carries
 	// invalid input, such as an unparsable target address.
 	ErrEngineFrontendCreateInvalidArgument = errors.New("engine frontend create invalid argument")
@@ -88,6 +118,10 @@ var (
 	// ErrRecoverDeviceNotFound indicates the NVMe device was not found on the
 	// host during recovery. The persisted record should be removed.
 	ErrRecoverDeviceNotFound = errors.New("device not found on host during recovery")
+	// ErrRecoveryCancelled indicates that recovery was aborted because a
+	// concurrent operation (e.g. EngineFrontendCreate) changed the ef state
+	// from Pending, meaning host-level operations should not proceed.
+	ErrRecoveryCancelled = errors.New("recovery cancelled by concurrent operation")
 )
 
 var (
@@ -109,6 +143,8 @@ var (
 	ErrRestoringInProgress = errors.New("restoring is in progress")
 	// ErrExpansionInvalidSize indicates an invalid target size for expansion.
 	ErrExpansionInvalidSize = errors.New("invalid expansion size")
+	// ErrAlreadyRestored indicates the requested backup has already been restored.
+	ErrAlreadyRestored = errors.New("already restored backup")
 )
 
 type Lvol struct {
@@ -217,6 +253,26 @@ func IsProbablyReplicaName(name string) bool {
 	return matched
 }
 
+func ParseShardLvolName(name string) (volumeName string, slotIndex uint32, err error) {
+	rest := strings.TrimPrefix(name, "shard-")
+	if rest == name {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: missing 'shard-' prefix", name)
+	}
+	lastDash := strings.LastIndex(rest, "-")
+	if lastDash < 0 {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: cannot find slot index separator", name)
+	}
+	idx, err := strconv.ParseUint(rest[lastDash+1:], 10, 32)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: slot index is not a valid uint32: %w", name, err)
+	}
+	volumeName = rest[:lastDash]
+	if volumeName == "" {
+		return "", 0, fmt.Errorf("invalid shard lvol name %s: empty volume name", name)
+	}
+	return volumeName, uint32(idx), nil
+}
+
 func GetBackingImageSnapLvolName(backingImageName string, lvsUUID string) string {
 	return fmt.Sprintf("bi-%s-disk-%s", backingImageName, lvsUUID)
 }
@@ -285,8 +341,87 @@ func GetTmpSnapNameForCloningLvol(replicaName string) string {
 	return fmt.Sprintf("%s-%s-tmp", replicaName, ReplicaCloningLvolSuffix)
 }
 
+func GetCloneEntrypointLvolNamePrefix(replicaName string) string {
+	return fmt.Sprintf("%s-%s-", replicaName, ReplicaCloneEntrypointLvolInfix)
+}
+
+func GetCloneEntrypointLvolName(replicaName, snapshotName string) string {
+	return fmt.Sprintf("%s%s", GetCloneEntrypointLvolNamePrefix(replicaName), snapshotName)
+}
+
+func GetCloneEntrypointTmpHeadLvolName(replicaName, snapshotName string) string {
+	return fmt.Sprintf("%s-%s", GetCloneEntrypointLvolName(replicaName, snapshotName), ReplicaCloneEntrypointTmpHeadSuffix)
+}
+
+func IsCloneEntrypointLvol(lvolName string) bool {
+	return strings.Contains(lvolName, cloneEntrypointLvolSeparator) && !IsCloneEntrypointTmpHeadLvol(lvolName)
+}
+
+func IsCloneEntrypointOfReplica(replicaName, lvolName string) bool {
+	return strings.HasPrefix(lvolName, GetCloneEntrypointLvolNamePrefix(replicaName)) &&
+		!IsCloneEntrypointTmpHeadLvol(lvolName)
+}
+
+func IsCloneEntrypointTmpHeadLvol(lvolName string) bool {
+	return strings.Contains(lvolName, cloneEntrypointLvolSeparator) && strings.HasSuffix(lvolName, ReplicaCloneEntrypointTmpHeadSuffix)
+}
+
+func GetSnapshotNameFromCloneEntrypointLvolName(replicaName, epLvolName string) string {
+	return strings.TrimPrefix(epLvolName, GetCloneEntrypointLvolNamePrefix(replicaName))
+}
+
+func GetSnapshotNameFromCloneEntrypointLvolNameWithoutReplicaName(epLvolName string) (string, error) {
+	sepIdx := strings.Index(epLvolName, cloneEntrypointLvolSeparator)
+	if sepIdx < 0 {
+		return "", fmt.Errorf("invalid clone entrypoint name %q: missing %q separator", epLvolName, cloneEntrypointLvolSeparator)
+	}
+	snapshotName := epLvolName[sepIdx+len(cloneEntrypointLvolSeparator):]
+	if snapshotName == "" {
+		return "", fmt.Errorf("invalid clone entrypoint name %q: no content after %q separator", epLvolName, cloneEntrypointLvolSeparator)
+	}
+	return snapshotName, nil
+}
+
+func GetSourceReplicaNameFromCloneEntrypointLvolName(epLvolName string) string {
+	idx := strings.Index(epLvolName, cloneEntrypointLvolSeparator)
+	if idx < 0 {
+		return ""
+	}
+	return epLvolName[:idx]
+}
+
+// GetCloneReplicaNameFromEntrypointChildLvol extracts the clone replica name
+// from a direct child of a clone entrypoint. The child may be the clone
+// replica head (name == replicaName) or a snapshot taken after cloning
+// (name == replicaName-snap-xxx).
+func GetCloneReplicaNameFromEntrypointChildLvol(childLvolName string) string {
+	if idx := strings.Index(childLvolName, "-snap-"); idx > 0 {
+		return childLvolName[:idx]
+	}
+	return childLvolName
+}
+
 func GetNvmfEndpoint(nqn, ip string, port int32) string {
 	return fmt.Sprintf("nvmf://%s:%d/%s", ip, port, nqn)
+}
+
+// ServiceClientFactory creates an SPDK gRPC client for the given address.
+type ServiceClientFactory func(address string) (*client.SPDKClient, error)
+
+// NewServiceClientFactory returns a ServiceClientFactory that uses the given TLS config.
+// A nil tlsConfig produces plaintext connections (equivalent to GetServiceClient).
+func NewServiceClientFactory(tlsConfig *tls.Config) ServiceClientFactory {
+	if tlsConfig == nil {
+		return GetServiceClient
+	}
+	return func(address string) (*client.SPDKClient, error) {
+		ip, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		addr := net.JoinHostPort(ip, strconv.Itoa(types.SPDKServicePort))
+		return client.NewSPDKClientWithTLSConfig(addr, tlsConfig)
+	}
 }
 
 func GetServiceClient(address string) (*client.SPDKClient, error) {

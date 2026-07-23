@@ -44,7 +44,7 @@ type Restore struct {
 	executor       *commonns.Executor
 	subsystemNQN   string
 	controllerName string
-	initiator      *initiator.Initiator
+	initiator      nvmeInitiator
 
 	stopOnce sync.Once
 	stopChan chan struct{}
@@ -117,8 +117,38 @@ func (r *Restore) DeepCopy() *Restore {
 	}
 }
 
-func (r *Restore) OpenVolumeDev(volDevName string) (*os.File, string, error) {
+func (r *Restore) OpenVolumeDev(volDevName string) (fh *os.File, endpoint string, err error) {
 	lvolName := r.replica.Name
+	cleanupExpose := false
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		if fh != nil {
+			if errClose := fh.Close(); errClose != nil {
+				r.log.WithError(errClose).Warnf("Failed to close NVMe device %v during restore open cleanup", fh.Name())
+			}
+			fh = nil
+		}
+
+		if r.initiator != nil {
+			if _, stopErr := r.initiator.Stop(nil, true, true, false); stopErr != nil {
+				r.log.WithError(stopErr).Warnf("Failed to stop NVMe initiator for lvol bdev %v during restore open cleanup", lvolName)
+			}
+			r.initiator = nil
+		}
+
+		if cleanupExpose {
+			if stopErr := restoreStopExposeBdev(r.spdkClient, helpertypes.GetNQN(lvolName)); stopErr != nil {
+				r.log.WithError(stopErr).Warnf("Failed to unexpose lvol bdev %v during restore open cleanup", lvolName)
+			} else {
+				r.replica.IsExposed = false
+			}
+		}
+
+		endpoint = ""
+	}()
 
 	r.log.Info("Unexposing lvol bdev before restoration")
 	if r.replica.IsExposed {
@@ -130,11 +160,12 @@ func (r *Restore) OpenVolumeDev(volDevName string) (*os.File, string, error) {
 	}
 
 	r.log.Info("Exposing snapshot lvol bdev for restore")
-	subsystemNQN, controllerName, err := exposeSnapshotLvolBdev(r.spdkClient, r.replica.LvsName, lvolName, r.ip, r.port, r.executor)
+	subsystemNQN, controllerName, err := restoreExposeSnapshotLvolBdev(r.spdkClient, r.replica.LvsName, lvolName, r.ip, r.port, r.executor)
 	if err != nil {
 		r.log.WithError(err).Errorf("Failed to expose lvol bdev")
 		return nil, "", err
 	}
+	cleanupExpose = true
 	r.subsystemNQN = subsystemNQN
 	r.controllerName = controllerName
 	r.replica.IsExposed = true
@@ -144,7 +175,7 @@ func (r *Restore) OpenVolumeDev(volDevName string) (*os.File, string, error) {
 	nvmeTCPInfo := &initiator.NVMeTCPInfo{
 		SubsystemNQN: helpertypes.GetNQN(lvolName),
 	}
-	i, err := initiator.NewInitiator(lvolName, initiator.HostProc, nvmeTCPInfo, nil)
+	i, err := newNVMeTCPInitiator(lvolName, nvmeTCPInfo)
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to create NVMe initiator for lvol bdev %v", lvolName)
 	}
@@ -153,36 +184,55 @@ func (r *Restore) OpenVolumeDev(volDevName string) (*os.File, string, error) {
 	}
 	r.initiator = i
 
-	r.log.Infof("Opening NVMe device %v", r.initiator.Endpoint)
-	fh, err := os.OpenFile(r.initiator.Endpoint, os.O_RDONLY, 0666)
+	r.log.Infof("Opening NVMe device %v", r.initiator.Endpoint())
+	fh, err = openFile(r.initiator.Endpoint(), os.O_RDONLY, 0666)
 	if err != nil {
-		return nil, "", errors.Wrapf(err, "failed to open NVMe device %v for lvol bdev %v", r.initiator.Endpoint, lvolName)
+		return nil, "", errors.Wrapf(err, "failed to open NVMe device %v for lvol bdev %v", r.initiator.Endpoint(), lvolName)
 	}
 
-	return fh, r.initiator.Endpoint, err
+	return fh, r.initiator.Endpoint(), nil
 }
 
 func (r *Restore) CloseVolumeDev(volDev *os.File) error {
-	r.log.Infof("Closing NVMe device %v", r.initiator.Endpoint)
-	if err := volDev.Close(); err != nil {
-		return errors.Wrapf(err, "failed to close NVMe device %v", r.initiator.Endpoint)
+	var errs []error
+	endpoint := getDeviceEndpoint(r.initiator, volDev)
+
+	if volDev != nil {
+		if endpoint != "" {
+			r.log.Infof("Closing NVMe device %v", endpoint)
+		} else {
+			r.log.Info("Closing NVMe device")
+		}
+		if err := volDev.Close(); err != nil {
+			if endpoint != "" {
+				errs = append(errs, errors.Wrapf(err, "failed to close NVMe device %v", endpoint))
+			} else {
+				errs = append(errs, errors.Wrap(err, "failed to close NVMe device"))
+			}
+		}
 	}
 
-	r.log.Info("Stopping NVMe initiator")
-	if _, err := r.initiator.Stop(nil, true, true, false); err != nil {
-		return errors.Wrapf(err, "failed to stop NVMe initiator")
+	if r.initiator != nil {
+		r.log.Info("Stopping NVMe initiator")
+		if _, err := r.initiator.Stop(nil, true, true, false); err != nil {
+			errs = append(errs, errors.Wrapf(err, "failed to stop NVMe initiator"))
+		}
 	}
 
-	if !r.replica.IsExposed {
+	if r.replica != nil && r.replica.IsExposed {
 		r.log.Info("Unexposing lvol bdev")
 		lvolName := r.replica.Name
-		err := r.spdkClient.StopExposeBdev(helpertypes.GetNQN(lvolName))
+		err := restoreStopExposeBdev(r.spdkClient, helpertypes.GetNQN(lvolName))
 		if err != nil {
-			return errors.Wrapf(err, "failed to unexpose lvol bdev %v", lvolName)
+			errs = append(errs, errors.Wrapf(err, "failed to unexpose lvol bdev %v", lvolName))
+		} else {
+			r.replica.IsExposed = false
 		}
-		r.replica.IsExposed = false
 	}
 
+	if len(errs) > 0 {
+		return errors.Errorf("CloseVolumeDev encountered %d error(s): %v", len(errs), errs)
+	}
 	return nil
 }
 

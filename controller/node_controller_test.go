@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+
 	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -211,6 +212,8 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -296,6 +299,8 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -383,6 +388,8 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -468,6 +475,8 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -623,6 +632,8 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -769,6 +780,8 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -927,6 +940,8 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1049,6 +1064,8 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1198,6 +1215,8 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1292,6 +1311,8 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1397,6 +1418,8 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1495,6 +1518,8 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1595,6 +1620,8 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1693,6 +1720,8 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1793,6 +1822,8 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1887,6 +1918,8 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -2197,6 +2230,8 @@ CONFIG_NFS_V4_2=y`
 					c.Assert(err, IsNil)
 					err = s.controller.environmentCheckMonitor.RunOnce()
 					c.Assert(err, IsNil)
+					err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+					c.Assert(err, IsNil)
 				}
 
 				err = s.controller.syncNode(getKey(node, c))
@@ -2493,6 +2528,12 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 	}
 	nc.environmentCheckMonitor = environmentCheckMonitor
 
+	cpuPolicyCheckMonitor, err := monitor.NewFakeCPUPolicyCheckMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+	nc.cpuPolicyCheckMonitor = cpuPolicyCheckMonitor
+
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
 	}
@@ -2501,4 +2542,201 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {
 	return false, nil
+}
+
+// ---------------------------------------------------------------------------
+// Linked-clone eviction tests
+// ---------------------------------------------------------------------------
+
+// newSrcReplica returns a non-clone replica on the given node/disk.
+func newSrcReplica(name, volumeName, nodeID, diskID string) *longhorn.Replica {
+	return &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels: map[string]string{
+				types.LonghornNodeKey:     nodeID,
+				types.LonghornDiskUUIDKey: diskID,
+			},
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: volumeName,
+			},
+			DiskID: diskID,
+		},
+	}
+}
+
+// newCloneReplica returns a linked-clone replica whose source replica is srcName.
+func newCloneReplica(name, volumeName, nodeID, diskID, srcName string) *longhorn.Replica {
+	return &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels: map[string]string{
+				types.LonghornNodeKey:     nodeID,
+				types.LonghornDiskUUIDKey: diskID,
+				types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica): srcName,
+			},
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: volumeName,
+			},
+			DiskID:                    diskID,
+			LinkedCloneSrcReplicaName: srcName,
+		},
+	}
+}
+
+func (s *NodeControllerSuite) TestLinkedCloneEviction(c *C) {
+	// ----------------------------------------------------------------
+	// Test 1 — Manual disk eviction: both evicted
+	//
+	// Disk EvictionRequested=true triggers shouldEvictReplica for every
+	// replica on that disk regardless of drain policy or node cordoning.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		disk := lhNode.Spec.Disks[TestDiskID1]
+		disk.EvictionRequested = true
+		lhNode.Spec.Disks[TestDiskID1] = disk
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"src-replica": 0, "clone-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes: map[string]*longhorn.Node{TestNode1: lhNode},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("src-replica", "src-volume", TestNode1, TestDiskID1),
+				newCloneReplica("clone-replica", "clone-volume", TestNode1, TestDiskID1, "src-replica"),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy),
+					string(types.NodeDrainPolicyBlockIfContainsLastReplica)),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		err := s.controller.syncReplicaEvictionRequested(lhNode, kubeNode)
+		c.Assert(err, IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "src-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+
+		r, err = s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "clone-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+	}
+
+	// ----------------------------------------------------------------
+	// Test 2 — block-for-eviction + cordoned: both evicted
+	//
+	// NodeDrainPolicy=block-for-eviction and node is cordoned: every replica
+	// including src and clone on the node is unconditionally evicted.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"src-replica": 0, "clone-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes: map[string]*longhorn.Node{TestNode1: lhNode},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("src-replica", "src-volume", TestNode1, TestDiskID1),
+				newCloneReplica("clone-replica", "clone-volume", TestNode1, TestDiskID1, "src-replica"),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy),
+					string(types.NodeDrainPolicyBlockForEviction)),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		err := s.controller.syncReplicaEvictionRequested(lhNode, kubeNode)
+		c.Assert(err, IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "src-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+
+		r, err = s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "clone-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+	}
+
+	// ----------------------------------------------------------------
+	// Test 3 — block-for-eviction-if-contains-last-replica + cordoned
+	//          (both last): both evicted
+	//
+	// No IM/PDB objects are registered in the fixture, so
+	// ListVolumePDBProtectedHealthyReplicasRO returns empty for every
+	// volume → hasPDBOnAnotherNode=false → shouldEvictReplica=true.
+	// Both src and clone are in ScheduledReplica and are treated as
+	// "last healthy replica", so both are evicted by the main loop.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"src-replica": 0, "clone-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes: map[string]*longhorn.Node{TestNode1: lhNode},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("src-replica", "src-volume", TestNode1, TestDiskID1),
+				newCloneReplica("clone-replica", "clone-volume", TestNode1, TestDiskID1, "src-replica"),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy),
+					string(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica)),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		err := s.controller.syncReplicaEvictionRequested(lhNode, kubeNode)
+		c.Assert(err, IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "src-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+
+		r, err = s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "clone-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+	}
 }

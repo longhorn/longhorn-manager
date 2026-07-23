@@ -409,7 +409,7 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 
 		message := fmt.Sprintf(longhorn.SupportBundleMsgGeneratedFmt,
 			supportBundle.Status.Filename,
-			fmt.Sprintf(types.SupportBundleURLDownloadFmt, supportBundleManager.podIP, types.SupportBundleURLPort),
+			util.BuildHTTPURL(supportBundleManager.podIP, types.SupportBundleURLPort, types.SupportBundleURLDownloadPath),
 		)
 		err = c.updateSupportBundleRecord(record,
 			supportBundleRecordNormal, longhorn.SupportBundleStateReady,
@@ -536,7 +536,7 @@ func (c *SupportBundleController) getSupportBundleManager(supportBundle *longhor
 		return nil, err
 	}
 
-	url := fmt.Sprintf(types.SupportBundleURLStatusFmt, supportBundleManager.podIP, types.SupportBundleURLPort)
+	url := util.BuildHTTPURL(supportBundleManager.podIP, types.SupportBundleURLPort, types.SupportBundleURLStatusPath)
 	status, err := c.getSupportBundleStatusFromManager(url)
 	if err != nil {
 		return nil, err
@@ -556,6 +556,11 @@ func (c *SupportBundleController) getSupportBundleStatusFromManager(url string) 
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close support bundle manager response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)

@@ -66,6 +66,14 @@ const (
 	ErrorReplicaScheduleIncompatibleVolumeSize            = "incompatible volume size"
 )
 
+type CPUManagerPolicy string
+
+const (
+	CPUManagerPolicyStatic  CPUManagerPolicy = "static"
+	CPUManagerPolicyNone    CPUManagerPolicy = "none"
+	CPUManagerPolicyUnknown CPUManagerPolicy = "unknown"
+)
+
 type DiskType string
 
 const (
@@ -236,6 +244,8 @@ type NodeStatus struct {
 	SnapshotCheckStatus SnapshotCheckStatus `json:"snapshotCheckStatus"`
 	// +optional
 	AutoEvicting bool `json:"autoEvicting"`
+	// +optional
+	CPUPolicy CPUManagerPolicy `json:"cpuPolicy"`
 }
 
 // +genclient

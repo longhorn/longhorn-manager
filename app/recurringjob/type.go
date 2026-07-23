@@ -15,7 +15,7 @@ import (
 // Job is a base job that contains the necessary clients, configuration, and general information.
 type Job struct {
 	api      *longhornclient.RancherClient // Rancher client used to interact with the Longhorn API.
-	lhClient *lhclientset.Clientset        // Kubernetes clientset for Longhorn resources.
+	lhClient lhclientset.Interface         // Longhorn clientset (interface so a fake can be injected in tests).
 
 	eventRecorder record.EventRecorder // Used to record events related to the job.
 	logger        *logrus.Logger       // Log messages related to the job.

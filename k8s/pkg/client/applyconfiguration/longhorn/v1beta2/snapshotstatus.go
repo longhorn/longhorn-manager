@@ -23,18 +23,19 @@ package v1beta2
 //
 // SnapshotStatus defines the observed state of Longhorn Snapshot
 type SnapshotStatusApplyConfiguration struct {
-	Parent       *string           `json:"parent,omitempty"`
-	Children     map[string]bool   `json:"children,omitempty"`
-	MarkRemoved  *bool             `json:"markRemoved,omitempty"`
-	UserCreated  *bool             `json:"userCreated,omitempty"`
-	CreationTime *string           `json:"creationTime,omitempty"`
-	Size         *int64            `json:"size,omitempty"`
-	Labels       map[string]string `json:"labels,omitempty"`
-	OwnerID      *string           `json:"ownerID,omitempty"`
-	Error        *string           `json:"error,omitempty"`
-	RestoreSize  *int64            `json:"restoreSize,omitempty"`
-	ReadyToUse   *bool             `json:"readyToUse,omitempty"`
-	Checksum     *string           `json:"checksum,omitempty"`
+	Parent        *string           `json:"parent,omitempty"`
+	Children      map[string]bool   `json:"children,omitempty"`
+	MarkRemoved   *bool             `json:"markRemoved,omitempty"`
+	UserCreated   *bool             `json:"userCreated,omitempty"`
+	RequestedTime *string           `json:"requestedTime,omitempty"`
+	CreationTime  *string           `json:"creationTime,omitempty"`
+	Size          *int64            `json:"size,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
+	OwnerID       *string           `json:"ownerID,omitempty"`
+	Error         *string           `json:"error,omitempty"`
+	RestoreSize   *int64            `json:"restoreSize,omitempty"`
+	ReadyToUse    *bool             `json:"readyToUse,omitempty"`
+	Checksum      *string           `json:"checksum,omitempty"`
 	// ChecksumCalculatedAt is the RFC3339 timestamp indicating when the checksum
 	// for this snapshot was last calculated or updated.
 	ChecksumCalculatedAt *string `json:"checksumCalculatedAt,omitempty"`
@@ -81,6 +82,14 @@ func (b *SnapshotStatusApplyConfiguration) WithMarkRemoved(value bool) *Snapshot
 // If called multiple times, the UserCreated field is set to the value of the last call.
 func (b *SnapshotStatusApplyConfiguration) WithUserCreated(value bool) *SnapshotStatusApplyConfiguration {
 	b.UserCreated = &value
+	return b
+}
+
+// WithRequestedTime sets the RequestedTime field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RequestedTime field is set to the value of the last call.
+func (b *SnapshotStatusApplyConfiguration) WithRequestedTime(value string) *SnapshotStatusApplyConfiguration {
+	b.RequestedTime = &value
 	return b
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake" // nolint: staticcheck
 )
@@ -278,6 +279,50 @@ func TestGetCapacity(t *testing.T) {
 			}
 			if res != nil && res.MaximumVolumeSize.Value != test.maximumVolumeSize {
 				t.Errorf("expected maximum volume size: %d, but got: %d", test.maximumVolumeSize, res.MaximumVolumeSize.Value)
+			}
+		})
+	}
+}
+
+func TestIsBackupTargetUnavailableForBackup(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		backupTarget *longhornclient.BackupTarget
+		expected     bool
+	}{
+		{
+			name:     "nil target",
+			expected: true,
+		},
+		{
+			name: "empty url",
+			backupTarget: &longhornclient.BackupTarget{
+				BackupTargetURL: "",
+				Available:       true,
+			},
+			expected: true,
+		},
+		{
+			name: "unavailable target",
+			backupTarget: &longhornclient.BackupTarget{
+				BackupTargetURL: "s3://backupbucket@us-east-1/backupstore",
+				Available:       false,
+			},
+			expected: true,
+		},
+		{
+			name: "configured available target",
+			backupTarget: &longhornclient.BackupTarget{
+				BackupTargetURL: "s3://backupbucket@us-east-1/backupstore",
+				Available:       true,
+			},
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := isBackupTargetUnavailableForBackup(tc.backupTarget)
+			if actual != tc.expected {
+				t.Fatalf("expected %v, got %v", tc.expected, actual)
 			}
 		})
 	}

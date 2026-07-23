@@ -98,22 +98,32 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	if volume.Spec.NumberOfReplicas == 0 {
-		numberOfReplicas, err := v.getDefaultReplicaCount(volume.Spec.DataEngine)
-		if err != nil {
-			err = errors.Wrap(err, "failed to get valid number for setting default replica count")
-			return nil, werror.NewInvalidError(err.Error(), "")
+		// EC (sharded) volumes require exactly one replica; fault tolerance comes from
+		// parity chunks, so the validator rejects any other count.
+		numberOfReplicas := 1
+		if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+			count, err := v.getDefaultReplicaCount(volume.Spec.DataEngine)
+			if err != nil {
+				return nil, werror.NewInvalidError(errors.Wrap(err, "failed to get valid number for setting default replica count").Error(), "")
+			}
+			numberOfReplicas = count
+			logrus.Infof("Using the default number of replicas %v", numberOfReplicas)
 		}
-		logrus.Infof("Using the default number of replicas %v", numberOfReplicas)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/numberOfReplicas", "value": %v}`, numberOfReplicas))
 	}
 
 	if string(volume.Spec.DataLocality) == "" {
-		defaultDataLocality, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name)
-			return nil, werror.NewInvalidError(err.Error(), "")
+		// EC (sharded) volumes distribute chunks across k+m nodes, so the validator
+		// requires data locality disabled regardless of the cluster default.
+		dataLocality := string(longhorn.DataLocalityDisabled)
+		if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+			setting, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
+			if err != nil {
+				return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name).Error(), "")
+			}
+			dataLocality = setting
 		}
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, defaultDataLocality))
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, dataLocality))
 	}
 
 	if string(volume.Spec.AccessMode) == "" {
@@ -137,6 +147,13 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	moreLabels := map[string]string{}
+
+	// Use a new label to indicate that the volume is a v2 encrypted volume and LUKS2 header size can be extended.
+	// Existing v2 encrypted volumes that are created before (v1.12.1) the introduction of this label will not have this label.
+	if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
+		moreLabels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader] = longhorn.TrueValue
+	}
+
 	size := volume.Spec.Size
 	backupTargetName := volume.Spec.BackupTargetName
 	if volume.Spec.FromBackup != "" {
@@ -184,6 +201,17 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			}
 		}
 
+		// Volumes restored from backup should not have the label LonghornLabelV2EncryptedVolumeWithLuksHeader set to "true" because they are not extended.
+		if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
+			if backup == nil || backup.Status.Labels == nil {
+				delete(moreLabels, types.LonghornLabelV2EncryptedVolumeWithLuksHeader)
+			} else {
+				if encrypted, exists := backup.Status.Labels[types.LonghornLabelVolumeEncrypted]; !exists || encrypted != types.LonghornLabelValueEnabled {
+					delete(moreLabels, types.LonghornLabelV2EncryptedVolumeWithLuksHeader)
+				}
+			}
+		}
+
 		currentBackupVolumeSize := backup.Status.VolumeSize
 		if bv != nil && bv.Status.Size != "" {
 			currentBackupVolumeSize = bv.Status.Size
@@ -202,6 +230,29 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	moreLabels[types.LonghornLabelBackupTarget] = backupTargetName
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
+
+	// For linked-clone volumes, fill spec.size from the source snapshot RestoreSize
+	// when the user leaves it unset. The validator rejects explicit sizes that do
+	// not match.
+	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone && volume.Spec.DataSource != "" && size == 0 {
+		srcVolName := types.GetVolumeName(volume.Spec.DataSource)
+		if srcVolName == "" {
+			return nil, werror.NewInvalidError(fmt.Sprintf("cannot parse source volume name from dataSource %v", volume.Spec.DataSource), ".spec.dataSource")
+		}
+		if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
+			if snap, snapErr := v.ds.GetSnapshotRO(snapName); snapErr == nil && snap.Status.RestoreSize > 0 {
+				size = snap.Status.RestoreSize
+			}
+		}
+		if size == 0 {
+			// RestoreSize not yet synced; fall back to the source volume spec.size.
+			srcVol, srcErr := v.ds.GetVolumeRO(srcVolName)
+			if srcErr != nil {
+				return nil, werror.NewInvalidError(errors.Wrapf(srcErr, "failed to get source volume %v", srcVolName).Error(), ".spec.dataSource")
+			}
+			size = srcVol.Spec.Size
+		}
+	}
 
 	// Round up the size to the unit in bytes
 	newSize := util.RoundUpSize(size)
@@ -255,6 +306,20 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	if volume.Spec.DataSource != "" {
 		if volume.Spec.CloneMode == longhorn.CloneModeNone {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeFullCopy))
+		}
+		// Stamp clone source volume label for all clone types (full-copy and linked-clone).
+		if types.IsDataFromVolume(volume.Spec.DataSource) {
+			if srcVolName := types.GetVolumeName(volume.Spec.DataSource); srcVolName != "" {
+				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)] = srcVolName
+			}
+		}
+		if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			// Stamp source labels so the deletion webhook can protect the entrypoint
+			// snapshot. For vol:// datasources the snapshot is auto-created later
+			// and its label is stamped by the volume controller.
+			if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
+				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)] = snapName
+			}
 		}
 	}
 

@@ -46,7 +46,7 @@ func (v *systemBackupValidator) Create(request *admission.Request, newObj runtim
 		return werror.NewBadRequest(err.Error())
 	}
 
-	if !backupTarget.Status.Available {
+	if backupTarget.Spec.BackupTargetURL == "" || !backupTarget.Status.Available {
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", types.DefaultBackupTargetName), "")
 	}
 

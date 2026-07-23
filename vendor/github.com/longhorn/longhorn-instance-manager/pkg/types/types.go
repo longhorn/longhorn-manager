@@ -28,6 +28,14 @@ const (
 	InstanceManagerSpdkServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 4 // 8504
 )
 
+const (
+	TLSDirectoryInContainer = "/tls-files/"
+	TLSCAFile               = "ca.crt"
+	TLSCertFile             = "tls.crt"
+	TLSKeyFile              = "tls.key"
+	TLSPeerName             = "longhorn-backend.longhorn-system"
+)
+
 var (
 	WaitInterval = 100 * time.Millisecond
 	WaitCount    = 600
@@ -42,6 +50,8 @@ const (
 	InstanceTypeEngine         = "engine"
 	InstanceTypeReplica        = "replica"
 	InstanceTypeEngineFrontend = "engine-frontend"
+	InstanceTypeShard          = "shard"
+	InstanceTypeShardGroup     = "shardgroup"
 )
 
 const (

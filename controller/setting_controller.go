@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
+	"math/bits"
 	"net/http"
 	"os"
 	"reflect"
@@ -1561,6 +1563,8 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
+	ClusterInfoLonghornDistro = util.StructName("LonghornDistro")
+
 	ClusterInfoBackingImageCount      = util.StructName("LonghornBackingImageCount")
 	ClusterInfoOrphanCount            = util.StructName("LonghornOrphanCount")
 	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeBytes")
@@ -1569,6 +1573,12 @@ const (
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
 	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
+
+	ClusterInfoVolumeSizeCountFmt = "LonghornVolumeSize%sCount"
+
+	ClusterInfoV2DataEngineCPUCores        = util.StructName("LonghornV2DataEngineCpuCores")
+	ClusterInfoV2DataEngineHugepageSize    = util.StructName("LonghornV2DataEngineHugepageSize")
+	ClusterInfoV2DataEngineHugepageEnabled = util.StructName("LonghornV2DataEngineHugepageEnabled")
 
 	ClusterInfoBackupTargetSchemeCountFmt                            = "LonghornBackupTarget%sCount"
 	ClusterInfoPodAvgCPUUsageFmt                                     = "Longhorn%sAverageCpuUsageMilliCores"
@@ -1597,12 +1607,13 @@ const (
 	ClusterInfoHostArch          = util.StructName("HostArch")
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
-	ClusterInfoLonghornDistro    = util.StructName("LonghornDistro")
 
 	ClusterInfoLonghornImageRegistry = util.StructName("LonghornImageRegistry")
 
 	ClusterInfoDiskCountFmt     = "LonghornDisk%sCount"
 	ClusterInfoNodeDiskCountFmt = "LonghornNodeDisk%sCount"
+
+	ClusterInfoBlockTypeDiskDriverCountFmt = "LonghornBlockTypeDiskDriver%sCount"
 )
 
 // ClusterInfo struct is used to collect information about the cluster.
@@ -1666,6 +1677,12 @@ func (info *ClusterInfo) collectClusterScope() {
 	if err := info.collectBackupTargetInfo(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect Longhorn backup target info")
 	}
+
+	if err := info.collectV2DataEngineInfo(); err != nil {
+		info.logger.WithError(err).Warn("Failed to collect v2 data engine info")
+	}
+
+	info.collectLonghornDistro()
 }
 
 func (info *ClusterInfo) collectNamespace() error {
@@ -1912,6 +1929,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	snapshotDataIntegrityCountStruct := newStruct()
 	unmapMarkSnapChainRemovedCountStruct := newStruct()
 	freezeFilesystemForSnapshotCountStruct := newStruct()
+	volumeSizeCountStruct := newStruct()
 	for _, volume := range volumesRO {
 		dataEngine := types.ValueUnknown
 		if volume.Spec.DataEngine != "" {
@@ -1919,14 +1937,12 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		dataEngineCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataEngineCountFmt, dataEngine))]++
 
-		// TODO: Remove this condition when v2 volume actual size is implemented.
-		//       https://github.com/longhorn/longhorn/issues/5947
-		isVolumeUsingV2DataEngine := types.IsDataEngineV2(volume.Spec.DataEngine)
-		if !isVolumeUsingV2DataEngine {
-			totalVolumeSize += int(volume.Spec.Size)
-			totalVolumeActualSize += int(volume.Status.ActualSize)
-		}
+		totalVolumeSize += int(volume.Spec.Size)
+		totalVolumeActualSize += int(volume.Status.ActualSize)
 		totalVolumeNumOfReplicas += volume.Spec.NumberOfReplicas
+
+		sizeBucket := getVolumeSizeBucket(volume.Spec.Size)
+		volumeSizeCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeSizeCountFmt, sizeBucket))]++
 
 		accessMode := types.ValueUnknown
 		if volume.Spec.AccessMode != "" {
@@ -1943,7 +1959,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		encrypted := util.ConvertToCamel(strconv.FormatBool(volume.Spec.Encrypted), "-")
 		encryptedCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeEncryptedCountFmt, encrypted))]++
 
-		if volume.Spec.Frontend != "" && !isVolumeUsingV2DataEngine {
+		if volume.Spec.Frontend != "" {
 			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
@@ -2019,8 +2035,45 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.Append(ClusterInfoVolumeAvgSnapshotCount, avgVolumeSnapshotCount)
 	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, avgVolumeNumOfReplicas)
 	info.structFields.fields.Append(ClusterInfoVolumeNumOfSnapshots, totalVolumeNumOfSnapshots)
+	info.structFields.fields.AppendCounted(volumeSizeCountStruct)
 
 	return nil
+}
+
+// getVolumeSizeBucket returns a bucket label for the given volume size.
+// Buckets: LessThan1GiB, 1To2GiB, 2To5GiB, 5To10GiB, 10To20GiB, 20To50GiB,
+// 50To100GiB, 100To200GiB, 200To500GiB, 500GiBTo1TiB, 1To2TiB, Gt2TiB.
+func getVolumeSizeBucket(sizeBytes int64) string {
+	const (
+		gib = 1 << 30
+		tib = 1 << 40
+	)
+	switch {
+	case sizeBytes < 1*gib:
+		return "LessThan1GiB"
+	case sizeBytes < 2*gib:
+		return "1To2GiB"
+	case sizeBytes < 5*gib:
+		return "2To5GiB"
+	case sizeBytes < 10*gib:
+		return "5To10GiB"
+	case sizeBytes < 20*gib:
+		return "10To20GiB"
+	case sizeBytes < 50*gib:
+		return "20To50GiB"
+	case sizeBytes < 100*gib:
+		return "50To100GiB"
+	case sizeBytes < 200*gib:
+		return "100To200GiB"
+	case sizeBytes < 500*gib:
+		return "200To500GiB"
+	case sizeBytes < 1*tib:
+		return "500GiBTo1TiB"
+	case sizeBytes < 2*tib:
+		return "1To2TiB"
+	default:
+		return "Gt2TiB"
+	}
 }
 
 func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue string, dataEngine longhorn.DataEngineType, settingName types.SettingName) string {
@@ -2068,8 +2121,6 @@ func (info *ClusterInfo) collectBackupTargetInfo() error {
 }
 
 func (info *ClusterInfo) collectNodeScope() {
-	info.collectLonghornDistro()
-
 	if err := info.collectHostArch(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect host architecture")
 	}
@@ -2088,6 +2139,10 @@ func (info *ClusterInfo) collectNodeScope() {
 
 	if err := info.collectKubernetesNodeProvider(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect node provider")
+	}
+
+	if err := info.collectBlockTypeDiskDriverCount(); err != nil {
+		info.logger.WithError(err).Warn("Failed to collect block-type disk driver count")
 	}
 }
 
@@ -2200,4 +2255,92 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 	}
 
 	return nil
+}
+
+func (info *ClusterInfo) collectV2DataEngineInfo() error {
+	v2Enabled, err := info.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameV2DataEngine)
+	}
+	if !v2Enabled {
+		return nil
+	}
+
+	cpuMask, err := info.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine CPU mask setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineCPUCores, countCPUCoresFromMask(cpuMask))
+	}
+
+	hugepageSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine hugepage size setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineHugepageSize, int(hugepageSize))
+	}
+
+	hugepageEnabled, err := info.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine hugepage enabled setting")
+	} else {
+		info.structFields.tags.Append(ClusterInfoV2DataEngineHugepageEnabled, fmt.Sprint(hugepageEnabled))
+	}
+
+	return nil
+}
+
+func (info *ClusterInfo) collectBlockTypeDiskDriverCount() error {
+	node, err := info.ds.GetNodeRO(info.controllerID)
+	if err != nil {
+		return err
+	}
+
+	structMap := make(map[util.StructName]int)
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus == nil {
+			continue
+		}
+		if diskStatus.Type != longhorn.DiskTypeBlock {
+			continue
+		}
+
+		driver := string(diskStatus.DiskDriver)
+		if driver == "" {
+			driver = types.ValueUnknown
+		}
+		structMap[util.StructName(fmt.Sprintf(ClusterInfoBlockTypeDiskDriverCountFmt, util.ConvertToCamel(driver, "-")))]++
+	}
+
+	for structName, value := range structMap {
+		info.structFields.fields.Append(structName, value)
+	}
+
+	return nil
+}
+
+// countCPUCoresFromMask counts the number of set bits (1s) in a CPU mask string.
+// The mask can be in hex format (e.g., "0xff", "0x3") or plain hex digits.
+func countCPUCoresFromMask(mask string) int {
+	mask = strings.TrimSpace(mask)
+	if mask == "" {
+		return 0
+	}
+
+	hexStr := mask
+	if strings.HasPrefix(mask, "0x") || strings.HasPrefix(mask, "0X") {
+		hexStr = mask[2:]
+	}
+
+	n := new(big.Int)
+	_, ok := n.SetString(hexStr, 16)
+	if !ok {
+		return 0
+	}
+
+	count := 0
+	for _, word := range n.Bits() {
+		count += bits.OnesCount(uint(word))
+	}
+	return count
 }

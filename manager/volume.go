@@ -218,6 +218,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaZoneSoftAntiAffinity:     spec.ReplicaZoneSoftAntiAffinity,
 			ReplicaDiskSoftAntiAffinity:     spec.ReplicaDiskSoftAntiAffinity,
 			DataEngine:                      spec.DataEngine,
+			DataLayout:                      spec.DataLayout,
 			FreezeFilesystemForSnapshot:     spec.FreezeFilesystemForSnapshot,
 			BackupTargetName:                backupTargetName,
 			OfflineRebuilding:               spec.OfflineRebuilding,
@@ -958,6 +959,11 @@ func (m *VolumeManager) UpdateBackupCompressionMethod(name string, value string)
 	v, err = m.ds.GetVolume(name)
 	if err != nil {
 		return nil, err
+	}
+
+	if v.Spec.BackupCompressionMethod == longhorn.BackupCompressionMethod(value) {
+		logrus.Debugf("Volume %v already has backup compression method set to %v", v.Name, value)
+		return v, nil
 	}
 
 	oldValue := v.Spec.BackupCompressionMethod

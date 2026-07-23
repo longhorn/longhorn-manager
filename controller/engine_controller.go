@@ -36,6 +36,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
@@ -386,9 +387,16 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 				return err
 			}
 		}
-	} else if ec.isMonitoring(engine) {
-		// engine is not running
-		ec.resetAndStopMonitoring(engine)
+	} else {
+		if ec.isMonitoring(engine) {
+			// engine is not running
+			ec.resetAndStopMonitoring(engine)
+		}
+		if types.IsDataEngineV2(engine.Spec.DataEngine) {
+			if engine.Status.CurrentState == longhorn.InstanceStateError {
+				ec.fillV2ExpansionFailureFromInstanceError(engine)
+			}
+		}
 	}
 
 	if err := ec.syncSnapshotCRs(engine); err != nil {
@@ -528,6 +536,35 @@ func failedCloneBefore(e *longhorn.Engine) bool {
 		}
 	}
 	return false
+}
+
+func (ec *EngineController) fillV2ExpansionFailureFromInstanceError(engine *longhorn.Engine) {
+	if engine.Status.LastExpansionError != "" || engine.Status.LastExpansionFailedAt != "" {
+		return
+	}
+
+	if !isV2ExpansionIncomplete(engine) {
+		return
+	}
+
+	errMsg := ""
+	instance, err := ec.GetInstance(engine)
+	if err != nil {
+		errMsg = fmt.Sprintf("engine instance could not be reached; unable to determine whether expansion completed successfully, and the result has not yet been reflected in engine status: %v", err)
+	} else if instance == nil {
+		errMsg = "engine instance could not be reached; unable to determine whether expansion completed successfully, and the result has not yet been reflected in engine status"
+	} else {
+		instanceErrMsg := instance.Status.ErrorMsg
+		if instanceErrMsg == "" {
+			errMsg = "unable to determine whether expansion completed successfully before the engine entered error, and the result has not yet been reflected in engine status"
+		} else {
+			errMsg = fmt.Sprintf("unable to determine whether expansion completed successfully before the engine entered error; instance error: %v", instanceErrMsg)
+		}
+	}
+	// The engine is already in error at this stage, and volume information is unavailable,
+	// so use the current engine instance error message to backfill the expansion failure.
+	engine.Status.LastExpansionError = errMsg
+	engine.Status.LastExpansionFailedAt = util.Now()
 }
 
 func (ec *EngineController) enqueueEngine(obj interface{}) {
@@ -672,6 +709,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 
 	instanceManagerStorageIP := ec.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	dataLayoutType := toIMRPCDataLayoutType(v.Spec.DataLayout.Type)
 
 	e.Status.Starting = true
 	engineName := e.Name
@@ -682,17 +720,27 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		Encrypted:                        v.Spec.Encrypted,
+		ExtraLUKS2HeaderSpaceRequired:    types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v),
 		VolumeFrontend:                   frontend,
 		UblkQueueDepth:                   ublkQueueDepth,
 		UblkNumberOfQueue:                ublkNumberOfQueue,
 		EngineReplicaTimeout:             engineReplicaTimeout,
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
 		DataLocality:                     v.Spec.DataLocality,
+		DataLayoutType:                   dataLayoutType,
 		EngineCLIAPIVersion:              cliAPIVersion,
 		UpgradeRequired:                  false,
 		InitiatorAddress:                 instanceManagerStorageIP,
 		TargetAddress:                    instanceManagerStorageIP,
 	})
+}
+
+// toIMRPCDataLayoutType maps the volume data layout to the instance-manager RPC enum.
+func toIMRPCDataLayoutType(t longhorn.VolumeDataLayoutType) imrpc.DataLayoutType {
+	if t == longhorn.VolumeDataLayoutTypeSharded {
+		return imrpc.DataLayoutType_DATA_LAYOUT_TYPE_SHARDED
+	}
+	return imrpc.DataLayoutType_DATA_LAYOUT_TYPE_REPLICATED
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
@@ -1215,6 +1263,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	removeInvalidEngineOpStatus(engine)
 
 	// align 'engine.Status.CurrentSize' to 'engine.Spec.VolumeSize' if the backend size is expected.
+	if types.IsDataEngineV2(engine.Spec.DataEngine) && volume.Spec.Encrypted && types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
+		cliAPIVersion = lhtypes.CliAPIVersionExtraLUKS2HeaderReservation
+	}
 	expectedBackendSize, err := util.GetActualBackendSize(engine.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
 	if err != nil {
 		return err
@@ -1341,32 +1392,50 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}
 
-	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive {
-		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
-			return err
+	// Only query clone status and trigger cloning when a clone request is active.
+	// RequestedDataSource is cleared once the clone is no longer in Initiated state.
+	if engine.Spec.RequestedDataSource != "" {
+		var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
+		if !isECVolume(volume) && (types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive) {
+			if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
+				return err
+			}
 		}
-	}
 
-	engine.Status.CloneStatus = snapshotCloneStatusMap
+		engine.Status.CloneStatus = snapshotCloneStatusMap
 
-	needClone, err := preCloneCheck(engine)
-	if err != nil {
-		return err
-	}
-	if needClone {
-		allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
+		needClone, err := preCloneCheck(engine)
 		if err != nil {
-			return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
-		}
-
-		if !allowSnapshotClone {
-			m.logger.Debugf("Delaying snapshot clone since snapshot purge is in progress beyond the concurrent limit")
-			return nil
-		}
-
-		if err = cloneSnapshot(engine, engineClientProxy, m.ds); err != nil {
 			return err
+		}
+		if needClone {
+			// Gate: verify our attachment ticket on the src volume is satisfied.
+			// This prevents wasted clone attempts when the source is still attaching.
+			srcVolName := types.GetVolumeName(engine.Spec.RequestedDataSource)
+			srcVA, vaErr := m.ds.GetLHVolumeAttachmentByVolumeName(srcVolName)
+			if vaErr != nil {
+				return errors.Wrapf(vaErr, "failed to get volume attachment for clone src volume %v", srcVolName)
+			}
+			cloneTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, engine.Spec.VolumeName)
+			if !longhorn.IsAttachmentTicketSatisfied(cloneTicketID, srcVA) {
+				m.logger.Debugf("Deferring clone: attachment ticket %v for clone volume %v on src volume %v not yet satisfied",
+					cloneTicketID, engine.Spec.VolumeName, srcVolName)
+				return nil
+			}
+
+			allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
+			if err != nil {
+				return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
+			}
+
+			if !allowSnapshotClone {
+				m.logger.Debugf("Delaying snapshot clone since snapshot purge is in progress beyond the concurrent limit")
+				return nil
+			}
+
+			if cloneErr := cloneSnapshot(engine, engineClientProxy, m.ds); cloneErr != nil {
+				m.logger.WithError(cloneErr).Warn("Engine monitor: SnapshotClone failed and the error will be recorded in the clone status")
+			}
 		}
 	}
 
@@ -1956,10 +2025,32 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 		return errors.Wrapf(err, "failed to get volume %v for cloneSnapshot", engine.Spec.VolumeName)
 	}
 
+	// For v2 linked-clone on a new enough instance manager, build the dst→src replica name map
+	// that was already computed by the scheduler (replica.Spec.LinkedCloneSrcReplicaName).
+	// This replaces the engine's auto-detection by IP+lvsUUID co-location.
+	var dstReplicaSrcReplicaPairMap map[string]string
+	if types.IsDataEngineV2(engine.Spec.DataEngine) && vol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		im, imErr := ds.GetInstanceManagerByInstance(engine)
+		if imErr == nil && im != nil && im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
+			replicas, listErr := ds.ListVolumeReplicasRO(engine.Spec.VolumeName)
+			if listErr != nil {
+				return errors.Wrapf(listErr, "failed to list replicas for linked-clone pair map")
+			}
+			pairMap := map[string]string{}
+			for _, r := range replicas {
+				if r.Spec.LinkedCloneSrcReplicaName != "" {
+					pairMap[r.Name] = r.Spec.LinkedCloneSrcReplicaName
+				}
+			}
+			if len(pairMap) > 0 {
+				dstReplicaSrcReplicaPairMap = pairMap
+			}
+		}
+	}
+
 	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL,
-		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds, string(vol.Spec.CloneMode)); err != nil {
-		// There is only 1 replica during volume cloning,
-		// so if the cloning failed, it must be that the replica failed to clone.
+		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds, string(vol.Spec.CloneMode), dstReplicaSrcReplicaPairMap); err != nil {
+		// Mark all replica clone statuses as failed.
 		for _, status := range engine.Status.CloneStatus {
 			status.Error = err.Error()
 			status.State = engineapi.ProcessStateError
@@ -2103,6 +2194,11 @@ type rebuildContext struct {
 	fastReplicaRebuild   bool
 	grpcTimeoutSeconds   int64
 	fileSyncHTTPClientTO int64
+	// linkedCloneSrcReplicaName is the source replica name for a linked-clone rebuild.
+	// Set from replica.Spec.LinkedCloneSrcReplicaName; empty for non-clone rebuilds.
+	linkedCloneSrcReplicaName   string
+	linkedCloneSrcEngineName    string
+	linkedCloneSrcEngineAddress string
 }
 
 func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, addr string) (err error) {
@@ -2281,6 +2377,53 @@ func (ec *EngineController) prepareRebuildContext(
 		return nil, err
 	}
 
+	// For V2 linked-clone rebuilds, pass the src replica name to the DST replica so it can
+	// deterministically locate its local clone entrypoint (no ambiguous LVS scan).
+	// Also resolve the src engine name and address so RebuildingDstFinish can verify the
+	// src replica is RW before connecting the entrypoint.
+	if types.IsDataEngineV2(e.Spec.DataEngine) && rc.replica.Spec.LinkedCloneSrcReplicaName != "" {
+		// Gate: verify our attachment ticket on the src volume is satisfied before proceeding.
+		// This ensures the src volume won't detach mid-rebuild (our ticket keeps it attached).
+		vol, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get volume %v for linked-clone rebuild gate", e.Spec.VolumeName)
+		}
+		srcVolumeName := types.GetVolumeName(vol.Spec.DataSource)
+		if srcVolumeName != "" {
+			srcVA, err := ec.ds.GetLHVolumeAttachmentByVolumeName(srcVolumeName)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get volume attachment for clone src volume %v", srcVolumeName)
+			}
+			cloneTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, e.Spec.VolumeName)
+			if !longhorn.IsAttachmentTicketSatisfied(cloneTicketID, srcVA) {
+				return nil, fmt.Errorf("attachment ticket %v for clone volume %v on src volume %v not yet satisfied: deferring rebuild",
+					cloneTicketID, e.Spec.VolumeName, srcVolumeName)
+			}
+		}
+
+		rc.linkedCloneSrcReplicaName = rc.replica.Spec.LinkedCloneSrcReplicaName
+
+		srcReplica, err := ec.ds.GetReplica(rc.linkedCloneSrcReplicaName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get linked-clone src replica %v for rebuild context of replica %v", rc.linkedCloneSrcReplicaName, replicaName)
+		}
+		srcEngine, err := ec.ds.GetEngineRO(srcReplica.Spec.EngineName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get engine %v for linked-clone src replica %v", srcReplica.Spec.EngineName, rc.linkedCloneSrcReplicaName)
+		}
+		// Guard: if the src engine is not yet running (e.g. still recovering after
+		// an instance manager crash), its StorageIP/Port are stale or zero.
+		// Returning an error here keeps the rebuild deferred (no replica is harmed)
+		// and the engine controller retries on the next reconcile cycle once the
+		// src engine has come back up and reported a valid address.
+		if srcEngine.Status.CurrentState != longhorn.InstanceStateRunning {
+			return nil, fmt.Errorf("linked-clone src engine %v (for src replica %v) is not yet running (state %v): deferring rebuild until src engine recovers",
+				srcEngine.Name, rc.linkedCloneSrcReplicaName, srcEngine.Status.CurrentState)
+		}
+		rc.linkedCloneSrcEngineName = srcEngine.Name
+		rc.linkedCloneSrcEngineAddress = imutil.GetURL(srcEngine.Status.StorageIP, srcEngine.Status.Port)
+	}
+
 	succeeded = true
 	return rc, nil
 }
@@ -2318,7 +2461,7 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 		// TODO: Before calling ReplicaAdd for the v2 frontend path, fetch the
 		// latest size/currentSize from currentEngine and pass them through once
 		// the proxy API consumes those fields for EngineFrontend-based rebuild.
-		replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, nil, 0, rc.grpcTimeoutSeconds)
+		replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, nil, 0, rc.grpcTimeoutSeconds, rc.linkedCloneSrcReplicaName, rc.linkedCloneSrcEngineName, rc.linkedCloneSrcEngineAddress)
 		switch {
 		case replicaAddErr == nil:
 			// ok
@@ -2339,12 +2482,12 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 			if rc.engine.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-				replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, true, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, 0)
+				replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, true, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, 0, rc.linkedCloneSrcReplicaName, rc.linkedCloneSrcEngineName, rc.linkedCloneSrcEngineAddress)
 			}
 		} else {
 			ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-			replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds)
+			replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds, rc.linkedCloneSrcReplicaName, rc.linkedCloneSrcEngineName, rc.linkedCloneSrcEngineAddress)
 		}
 	}
 
@@ -2618,9 +2761,19 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 			return err
 		}
 
-		// Don't use image with different image name but same commit here. It
-		// will cause live replica to be removed. Volume controller should filter those.
-		if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
+		// Engine images may keep the same git commit while still representing a
+		// distinct image artifact (revisioned tag) that can follow the regular upgrade flow
+		// when the allow-live-engine-upgrade-on-same-image-commit setting is enabled,
+		// e.g. 1.10.2 -> 1.10.2-4.12 or 1.10.2-4.12 -> 1.10.2-4.20.
+		shouldUpgrade := version.ClientVersion.GitCommit != version.ServerVersion.GitCommit
+		if !shouldUpgrade && isRevisionedEngineImage(e.Spec.Image) {
+			allowSameCommitUpgrade, err := ec.ds.GetSettingAsBool(types.SettingNameAllowLiveEngineUpgradeOnSameImageCommit)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get setting %v", types.SettingNameAllowLiveEngineUpgradeOnSameImageCommit)
+			}
+			shouldUpgrade = allowSameCommitUpgrade
+		}
+		if shouldUpgrade {
 			log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 			if err := ec.UpgradeEngineInstance(e, log); err != nil {
 				return err
@@ -3074,4 +3227,11 @@ func isV2ReplicaAddAlreadyInProgressError(err error) bool {
 
 func isV2ReplicaAddRestoreInProgressError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "restore is in progress")
+}
+
+func isV2ExpansionIncomplete(engine *longhorn.Engine) bool {
+	// Do not rely on IsExpanding here. If spdk_tgt is already down, that runtime
+	// state may be stale and stay true, which would prevent this fallback path
+	// from working.
+	return engine.Spec.VolumeSize > engine.Status.CurrentSize
 }

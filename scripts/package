@@ -36,6 +36,7 @@ fi
 
 [[ ${IS_SECURE} == 'true' ]] && BUILDX_ARGS+=('--sbom=true' '--attest' 'type=provenance,mode=max')
 [[ ${TARGET_PLATFORMS} ]] && BUILDX_ARGS+=('--platform' "${TARGET_PLATFORMS}")
+[[ ${LONGHORN_TWO_MINOR_UPGRADE_DISTROS+x} ]] && BUILDX_ARGS+=('--build-arg' "LONGHORN_TWO_MINOR_UPGRADE_DISTROS=${LONGHORN_TWO_MINOR_UPGRADE_DISTROS}")
 
 # update base IMAGE to get latest changes
 grep 'FROM.*/' package/Dockerfile | awk '{print $2}' | while read -r BASE_IMAGE

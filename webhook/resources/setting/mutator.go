@@ -63,6 +63,11 @@ func (s *settingMutator) mutate(newObj runtime.Object) (admission.PatchOps, erro
 		return nil, werror.NewInvalidError(fmt.Sprintf("failed to get valid value for setting %s: %v", setting.Name, err), "value")
 	}
 
+	value, err = datastore.NormalizeSettingValue(types.SettingName(setting.Name), value)
+	if err != nil {
+		return nil, werror.NewInvalidError(fmt.Sprintf("failed to normalize value for setting %s: %v", setting.Name, err), "value")
+	}
+
 	var patchOps admission.PatchOps
 
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/value", "value": %q}`, value))

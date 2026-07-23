@@ -1,11 +1,14 @@
 package client
 
 import (
+	"crypto/tls"
+
 	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Close closes the underlying gRPC connection for the SPDK service context.
@@ -23,33 +26,37 @@ func (c *SPDKClient) getSPDKServiceClient() spdkrpc.SPDKServiceClient {
 	return c.service
 }
 
-// NewSPDKClient creates an SPDK gRPC client connected to the given service URL.
+// NewSPDKClient creates an SPDK gRPC client connected to the given service URL without TLS.
 func NewSPDKClient(serviceURL string) (*SPDKClient, error) {
-	getSPDKServiceContext := func(serviceUrl string) (SPDKServiceContext, error) {
-		// Disable gRPC service config discovery to prevent DNS flooding in Kubernetes
-		connection, err := grpc.NewClient(
-			serviceUrl,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithNoProxy(),
-			grpc.WithDisableServiceConfig(),
-		)
-		if err != nil {
-			return SPDKServiceContext{}, errors.Wrapf(err, "cannot connect to SPDKService %v", serviceUrl)
-		}
+	return NewSPDKClientWithTLSConfig(serviceURL, nil)
+}
 
-		return SPDKServiceContext{
-			cc:      connection,
-			service: spdkrpc.NewSPDKServiceClient(connection),
-		}, nil
+// NewSPDKClientWithTLSConfig creates an SPDK gRPC client using a pre-built TLS configuration.
+// If tlsConfig is nil, the connection is established without TLS.
+func NewSPDKClientWithTLSConfig(serviceURL string, tlsConfig *tls.Config) (*SPDKClient, error) {
+	var transportCredentials grpc.DialOption
+	if tlsConfig == nil {
+		// Disable gRPC service config discovery to prevent DNS flooding in Kubernetes
+		transportCredentials = grpc.WithTransportCredentials(insecure.NewCredentials())
+	} else {
+		transportCredentials = grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))
 	}
 
-	serviceContext, err := getSPDKServiceContext(serviceURL)
+	connection, err := grpc.NewClient(
+		serviceURL,
+		transportCredentials,
+		grpc.WithNoProxy(),
+		grpc.WithDisableServiceConfig(),
+	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "cannot connect to SPDKService %v", serviceURL)
 	}
 
 	return &SPDKClient{
-		serviceURL:         serviceURL,
-		SPDKServiceContext: serviceContext,
+		serviceURL: serviceURL,
+		SPDKServiceContext: SPDKServiceContext{
+			cc:      connection,
+			service: spdkrpc.NewSPDKServiceClient(connection),
+		},
 	}, nil
 }
