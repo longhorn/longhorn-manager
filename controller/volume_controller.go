@@ -2757,11 +2757,28 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 				return err
 			}
 
-			if v.Status.State != longhorn.VolumeStateAttached || nodeDeleted {
-				msg := fmt.Sprintf("Replica %v is marked as failed because the volume %v is not attached and the instance manager is unable to launch the replica", r.Name, v.Name)
-				if nodeDeleted {
-					msg = fmt.Sprintf("Replica %v is marked as failed since the node %v is deleted.", r.Name, r.Spec.NodeID)
-				}
+			nodeDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+			if err != nil {
+				return err
+			}
+
+			neverStartedRebuild := r.Status.Starting &&
+				!r.Status.Started &&
+				r.Status.CurrentState == longhorn.InstanceStateStopped &&
+				r.Spec.HealthyAt == "" &&
+				r.Spec.LastHealthyAt == ""
+
+			failedReason := ""
+			switch {
+			case v.Status.State != longhorn.VolumeStateAttached:
+				failedReason = fmt.Sprintf("the volume %v is not attached and the instance manager is unable to launch the replica", v.Name)
+			case nodeDeleted:
+				failedReason = fmt.Sprintf("the node %v is deleted", r.Spec.NodeID)
+			case neverStartedRebuild && nodeDownOrDeleted:
+				failedReason = fmt.Sprintf("the replica is initializing on a node %v that is down or deleted", r.Spec.NodeID)
+			}
+			if failedReason != "" {
+				msg := fmt.Sprintf("Replica %v is marked as failed because %v", r.Name, failedReason)
 				log.WithField("replica", r.Name).Warn(msg)
 				if r.Spec.FailedAt == "" {
 					setReplicaFailedAt(r, c.nowHandler())
@@ -2867,7 +2884,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			ef.Spec.VolumeSize = v.Spec.Size
 			// Always propagate the target size to the EF so the EF
 			// monitor can detect that expansion is needed and trigger
-			// EngineFrontendExpand (which expands replicas → engine →
+			// EngineFrontendExpand (which expands replicas -> engine ->
 			// frontend).  The createEngineFrontend function already
 			// creates the SPDK EF at the pre-expansion size, so
 			// ef.Status.CurrentSize will correctly reflect the actual
@@ -3211,7 +3228,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 			}
 		}
 		if len(healthyReplicas) > v.Spec.NumberOfReplicas {
-			// Sort by HealthyAt ascending — oldest (most trusted) first.
+			// Sort by HealthyAt ascending - oldest (most trusted) first.
 			sort.Slice(healthyReplicas, func(i, j int) bool {
 				ti, _ := time.Parse(time.RFC3339, healthyReplicas[i].Spec.HealthyAt)
 				tj, _ := time.Parse(time.RFC3339, healthyReplicas[j].Spec.HealthyAt)
