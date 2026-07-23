@@ -166,50 +166,28 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
-<<<<<<< HEAD
 github.com/longhorn/backing-image-manager v1.12.0 h1:+wyh6oLgNzyOXA6FuOurqrpCp6Oz9YK3xcdlXFpSNCc=
 github.com/longhorn/backing-image-manager v1.12.0/go.mod h1:zUSePDmX3HCcr7JARv8gFrnFXjb+WQndABkyF8lt4N4=
-github.com/longhorn/backupstore v0.0.0-20260709065232-ca96411485d4 h1:yZf8jCsSvEcbkDNhzSiKBxi2Qj64NKUO70nAKTwX9Vs=
-github.com/longhorn/backupstore v0.0.0-20260709065232-ca96411485d4/go.mod h1:Vb1kh30oG5znu8vpr/imYLzf6gq23mietPXrHtxSwVw=
-=======
-github.com/longhorn/backing-image-manager v1.12.0-dev-20260503 h1:DXBaexlHBBolM2P0XoAE7uSpQNOm2T4lBOij0dhQ6EQ=
-github.com/longhorn/backing-image-manager v1.12.0-dev-20260503/go.mod h1:IrtVcTO1AklziMcAqAhpQjLD9nZSqVQ53ymuMXhKfYg=
 github.com/longhorn/backupstore v0.0.0-20260722010828-e5f4ddc47e4d h1:5uXSMAcpNnE2WSLh/LVPhyd0Aff2pBQOurAMnpxcVRY=
 github.com/longhorn/backupstore v0.0.0-20260722010828-e5f4ddc47e4d/go.mod h1:Vb1kh30oG5znu8vpr/imYLzf6gq23mietPXrHtxSwVw=
->>>>>>> 2dd6e426 (chore(vendor): update vendors for linked-clone)
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
 github.com/longhorn/go-common-libs v0.0.0-20260717062941-2c0ab58da729 h1:/H4c2iUFfDI9HnbCWOeVgXR+L5rJIIio2MGf7NBxV04=
 github.com/longhorn/go-common-libs v0.0.0-20260717062941-2c0ab58da729/go.mod h1:pjOR2fdQA0dNp3is1xfA+Ni2PjPDP+JuOoSEjdL2cfQ=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4 h1:i4yKScA3sFjO9wJUMqlIQ0JjpQhhGd14jziljO3Og34=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4/go.mod h1:tx8IHeQXisTCpcg9gB4S+P8rPifC1D98qpWcDwI19tU=
-<<<<<<< HEAD
-github.com/longhorn/go-spdk-helper v0.7.0 h1:4kaJZpXEbJyoaV7H5oAY7+RHA4qTft3cfUMj/8VvtL4=
-github.com/longhorn/go-spdk-helper v0.7.0/go.mod h1:kDYmxxJqiNKlpQKhYdgdts0AXs1sShYRvcLwjEJbhCY=
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260712 h1:rrH01izc8KhLoPBVVk0wt8d029uVoNnfYWqpJFQi7zg=
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260712/go.mod h1:fmERzeUE98TKP8I/OCGkFSW5kuPXNFhzPZIDYBeXfOc=
-github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260714234530-1c3d02a7ecf5 h1:krTHaST2e0JG/ZL1rdHbbE2zolc15lXPz7RZLeLd4fE=
-github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260714234530-1c3d02a7ecf5/go.mod h1:gLCHFw0AKQBjUvN6pf24IqtUsFy2AMJWyuaBZTEtyZs=
-github.com/longhorn/longhorn-share-manager v1.12.0 h1:YdlUH3g5Ptm6cm4Ik9kuYsB7ndlT8hOEUZlikYe5DSs=
-github.com/longhorn/longhorn-share-manager v1.12.0/go.mod h1:BTL3+5BOu6NHfjEq5pSp1adr5iO0N+OaMKSrJdcHjCQ=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260714091810-bb3f7589ea5f h1:suazJ7Y6ZzOSPtD5rR1iB/nvYeW5Coa6dgW/ecaw5MQ=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260714091810-bb3f7589ea5f/go.mod h1:pP9780gHhLlpb2wiyQqv43P1IoU4LXZRiZ8SZsEQYu8=
-github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f h1:nE+95cq4uc/RUwMVzw6GQDlch7+JHKVo0qXviowWbe0=
-github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f/go.mod h1:nQREPIDSIL/7jkEPDrmA/aUYk7sAhRKbcdKYZc7dJH0=
-=======
 github.com/longhorn/go-spdk-helper v0.7.1-0.20260722033947-00e69113b674 h1:Mz8d3NqyZzmChoa/FsexYebND26fOjAmTKMbi3gaMoI=
 github.com/longhorn/go-spdk-helper v0.7.1-0.20260722033947-00e69113b674/go.mod h1:kDYmxxJqiNKlpQKhYdgdts0AXs1sShYRvcLwjEJbhCY=
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260722045630-fbcdec882798 h1:4/eplS/5JZZBwEZPYrywDksZk/9tbG1G/2K1g1DQVE8=
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260722045630-fbcdec882798/go.mod h1:TF5cgLFPTi4K3JZQLlmYvEuBqlZuRdczFK/JuTXP/+g=
-github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260723050202-4723ac346d2d h1:wLAe/xV3WIBMGJqyeubvGACw15w39ZQ7/0z6hDZG/pE=
-github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260723050202-4723ac346d2d/go.mod h1:TkQF/F+0KUUWBPZTZOHWvyLYbaSHTH5RXJs5ZlPTe9g=
-github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2 h1:fE8sadYwAkWi0euk5igkN8AYj5sCDQ8+jURXRFw8ESM=
-github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2/go.mod h1:EA3kkZCaW8MvzI2fRpeC1BuSiMN0bEuOlLIl7B0NQkY=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260723044437-9c6562286f0a h1:KbA6DT1y4DSzrFZeu78AIqK1dxbdYrexo+WxtzW0RpE=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260723044437-9c6562286f0a/go.mod h1:JbPmkXSBIJL5vdbo/K7ypuj1R8qEwJw1HQY67TNmFOo=
+github.com/longhorn/longhorn-engine v1.13.0-dev-20260712 h1:rrH01izc8KhLoPBVVk0wt8d029uVoNnfYWqpJFQi7zg=
+github.com/longhorn/longhorn-engine v1.13.0-dev-20260712/go.mod h1:fmERzeUE98TKP8I/OCGkFSW5kuPXNFhzPZIDYBeXfOc=
+github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260723064115-dbfe535fc935 h1:HOjBejXqsrmu5dt00p3DvLgK0w3nLUK1ZEMojpN0eoM=
+github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260723064115-dbfe535fc935/go.mod h1:sngBYOVdKSw/2uFUw92JCeP8JMwWjkrCrIJMM9m91D0=
+github.com/longhorn/longhorn-share-manager v1.12.0 h1:YdlUH3g5Ptm6cm4Ik9kuYsB7ndlT8hOEUZlikYe5DSs=
+github.com/longhorn/longhorn-share-manager v1.12.0/go.mod h1:BTL3+5BOu6NHfjEq5pSp1adr5iO0N+OaMKSrJdcHjCQ=
+github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260723055757-7323017e1d4d h1:4i0qD0JR0hkt0XCBYZm0+URONHJ2cbpA0kVztWngERo=
+github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260723055757-7323017e1d4d/go.mod h1:HbUBgoNNCnuCgjcb0lESwkWHrxtHuoQdwI42A4OpBr4=
 github.com/longhorn/types v0.0.0-20260723012747-f5be45849762 h1:FWykWtGXSCP02q3hbRtH3NJsk/BHMZ07OAMPvYUL06M=
 github.com/longhorn/types v0.0.0-20260723012747-f5be45849762/go.mod h1:hrSA2U82oNh2mKH4wMJST9fG4ia7IoNtrC7A6h0GtEo=
->>>>>>> 2dd6e426 (chore(vendor): update vendors for linked-clone)
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=
@@ -402,10 +380,10 @@ golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8T
 golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 gonum.org/v1/gonum v0.17.0 h1:VbpOemQlsSMrYmn7T2OUvQ4dqxQXU+ouZFQsZOx50z4=
 gonum.org/v1/gonum v0.17.0/go.mod h1:El3tOrEuMpv2UdMrbNlKEh9vd86bmQ6vqIcDwxEOc1E=
-google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 h1:ggcbiqK8WWh6l1dnltU4BgWGIGo+EVYxCaAPih/zQXQ=
-google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
-google.golang.org/grpc v1.81.1 h1:VnnIIZ88UzOOKLukQi+ImGz8O1Wdp8nAGGnvOfEIWQQ=
-google.golang.org/grpc v1.81.1/go.mod h1:xGH9GfzOyMTGIOXBJmXt+BX/V0kcdQbdcuwQ/zNw42I=
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 h1:RmoJA1ujG+/lRGNfUnOMfhCy5EipVMyvUE+KNbPbTlw=
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
+google.golang.org/grpc v1.82.0 h1:vguDnZUPjE26w09A63VoxZPnvPjB5Riyc0mkXPFmAIU=
+google.golang.org/grpc v1.82.0/go.mod h1:yzTZ1TB1Z3SG+LIYaI+WiE8D5+PZ3ArnrSp8zF3+/ZA=
 google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af h1:+5/Sw3GsDNlEmu7TfklWKPdQ0Ykja5VEmq2i817+jbI=
 google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=

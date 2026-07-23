@@ -64,30 +64,17 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/henrygd/beszel v0.18.2
 	github.com/jinzhu/copier v0.4.0
-<<<<<<< HEAD
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0
-	github.com/longhorn/backupstore v0.0.0-20260709065232-ca96411485d4
-	github.com/longhorn/go-common-libs v0.0.0-20260716070930-439af9b33f41
-	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.7.0
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260714234530-1c3d02a7ecf5
-	github.com/longhorn/longhorn-share-manager v1.12.0
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260714091810-bb3f7589ea5f
-	github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f
-=======
-	github.com/kubernetes-csi/csi-lib-utils v0.24.0
-	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
 	github.com/longhorn/backupstore v0.0.0-20260722010828-e5f4ddc47e4d
 	github.com/longhorn/go-common-libs v0.0.0-20260717062941-2c0ab58da729
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.7.1-0.20260722033947-00e69113b674
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260722045630-fbcdec882798
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260723050202-4723ac346d2d
-	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260723044437-9c6562286f0a
->>>>>>> 2dd6e426 (chore(vendor): update vendors for linked-clone)
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260723064115-dbfe535fc935
+	github.com/longhorn/longhorn-share-manager v1.12.0
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260723055757-7323017e1d4d
+	github.com/longhorn/types v0.0.0-20260723012747-f5be45849762
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
@@ -101,13 +88,9 @@ require (
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.46.0
 	golang.org/x/time v0.15.0
-	google.golang.org/grpc v1.81.1
+	google.golang.org/grpc v1.82.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-<<<<<<< HEAD
 	gopkg.in/yaml.v2 v2.4.0
-=======
-	gopkg.in/yaml.v3 v3.0.1 // indirect
->>>>>>> 2dd6e426 (chore(vendor): update vendors for linked-clone)
 	k8s.io/api v0.36.2
 	k8s.io/apiextensions-apiserver v0.36.2
 	k8s.io/apimachinery v0.36.2
@@ -122,15 +105,6 @@ require (
 )
 
 require (
-<<<<<<< HEAD
-=======
-	github.com/go-co-op/gocron v1.37.0
-	github.com/longhorn/types v0.0.0-20260723012747-f5be45849762
-	gopkg.in/yaml.v2 v2.4.0
-)
-
-require (
->>>>>>> 2dd6e426 (chore(vendor): update vendors for linked-clone)
 	github.com/0xPolygon/polygon-edge v1.3.3 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
@@ -179,7 +153,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
