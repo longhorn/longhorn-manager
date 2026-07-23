@@ -1057,7 +1057,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
 				"finished cloning snapshot %v from source volume %v",
 				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
-		} else if c.shouldCompleteLinkedCloneDespiteDegraded(v, rs) {
+		} else if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && c.shouldCompleteLinkedCloneDespiteDegraded(v, rs) {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
 			c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCompleted,
 				"marking clone of snapshot %v from source volume %v as completed despite degraded state: "+
