@@ -239,14 +239,14 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	// case 3: this volume is source of a linked-clone target that needs rebuild
 	// (post-initial-clone: clone completed or awaiting healthy, but volume is degraded)
 	var readyNodes map[string]*longhorn.Node
+	chosenNodeID := vol.Status.CurrentNodeID
 	for _, v := range vols {
 		if !isLinkedCloneNeedingSourceForRebuild(v, vol.Name) {
 			continue
 		}
 		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-		// Prefer the current attached node to avoid unnecessary migration
-		nodeID := vol.Status.CurrentNodeID
-		if nodeID == "" {
+		// Prefer the current attached node and the same node for all clones
+		if chosenNodeID == "" {
 			// Source not attached yet — pick a ready node
 			if readyNodes == nil {
 				readyNodes, err = vcc.ds.ListReadyNodesRO()
@@ -255,14 +255,14 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 				}
 			}
 			for n := range readyNodes {
-				nodeID = n
+				chosenNodeID = n
 				break
 			}
-			if nodeID == "" {
+			if chosenNodeID == "" {
 				continue // no ready nodes, skip this ticket
 			}
 		}
-		createOrUpdateAttachmentTicket(va, attachmentTicketID, nodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+		createOrUpdateAttachmentTicket(va, attachmentTicketID, chosenNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
 		expectedAttachmentTickets[attachmentTicketID] = true
 	}
 
