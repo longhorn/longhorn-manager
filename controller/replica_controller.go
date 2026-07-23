@@ -332,20 +332,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
-	// For linked-clone replicas, instance creation must wait until
-	// LinkedCloneSrcReplicaName is set by the volume controller.
-	if replica.Spec.LinkedCloneSrcReplicaName == "" {
-		vol, err := rc.ds.GetVolumeRO(replica.Spec.VolumeName)
-		if err != nil {
-			if !datastore.ErrorIsNotFound(err) {
-				return err // transient error — requeue
-			}
-			// Volume not found: orphan replica, let it proceed to cleanup
-		} else if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone && !types.IsLegacyLinkedCloneVolume(vol) {
-			return nil // gate: wait for volume controller to set the field
-		}
-	}
-
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
@@ -363,6 +349,22 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for replica instance creation: %v", obj)
+	}
+
+	// For linked-clone replicas, instance creation must wait until
+	// LinkedCloneSrcReplicaName is set by the volume controller.
+	// This gate is in CreateInstance (not syncReplica) so that
+	// ReconcileInstanceState always runs and keeps Status.CurrentState
+	// up to date with the instance manager.
+	if r.Spec.LinkedCloneSrcReplicaName == "" {
+		vol, err := rc.ds.GetVolumeRO(r.Spec.VolumeName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return nil, err
+			}
+		} else if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone && !types.IsLegacyLinkedCloneVolume(vol) {
+			return nil, nil // gate: wait for volume controller to set the field
+		}
 	}
 
 	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
