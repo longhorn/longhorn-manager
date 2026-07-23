@@ -389,6 +389,40 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
+	// Clone-related labels must be immutable once set, and must match spec.dataSource.
+	// Without this, removing or changing these labels would break the source-volume
+	// deletion guard (which relies on label-based lookups to find dependents).
+	if oldVolume.Spec.DataSource != "" {
+		cloneSrcVolLabelKey := types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)
+		cloneSrcSnapLabelKey := types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)
+
+		oldCloneSrcVol := ""
+		newCloneSrcVol := ""
+		if oldVolume.Labels != nil {
+			oldCloneSrcVol = oldVolume.Labels[cloneSrcVolLabelKey]
+		}
+		if newVolume.Labels != nil {
+			newCloneSrcVol = newVolume.Labels[cloneSrcVolLabelKey]
+		}
+		if oldCloneSrcVol != "" && newCloneSrcVol != oldCloneSrcVol {
+			return werror.NewInvalidError(
+				fmt.Sprintf("cannot change or remove label %v for volume %v: it must match spec.dataSource", cloneSrcVolLabelKey, oldVolume.Name), "")
+		}
+
+		oldCloneSrcSnap := ""
+		newCloneSrcSnap := ""
+		if oldVolume.Labels != nil {
+			oldCloneSrcSnap = oldVolume.Labels[cloneSrcSnapLabelKey]
+		}
+		if newVolume.Labels != nil {
+			newCloneSrcSnap = newVolume.Labels[cloneSrcSnapLabelKey]
+		}
+		if oldCloneSrcSnap != "" && newCloneSrcSnap != oldCloneSrcSnap {
+			return werror.NewInvalidError(
+				fmt.Sprintf("cannot change or remove label %v for volume %v: it must match spec.dataSource", cloneSrcSnapLabelKey, oldVolume.Name), "")
+		}
+	}
+
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
 	if newVolume.Status.CurrentMigrationNodeID != "" &&
 		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
