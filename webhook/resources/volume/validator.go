@@ -310,6 +310,9 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		if newVolume.Spec.Size > oldVolume.Spec.Size {
 			return werror.NewInvalidError("cannot expand legacy linked-clone volumes (pre-entrypoint architecture)", "spec.size")
 		}
+		if err := validateNoNewRecurringJobLabels(oldVolume, newVolume); err != nil {
+			return err
+		}
 	}
 
 	if oldVolume.Spec.Image != newVolume.Spec.Image {
@@ -870,6 +873,17 @@ func (v *volumeValidator) validateSourceVolumeReplicaCountDecrease(oldVolume, ne
 			"cannot decrease replica count of source volume %v by %d: only %d of %d source replicas are not backing linked-clone replicas",
 			newVolume.Name, decreaseBy, freeCount, len(srcReplicas),
 		))
+	}
+	return nil
+}
+
+func validateNoNewRecurringJobLabels(oldVolume, newVolume *longhorn.Volume) error {
+	for key := range newVolume.Labels {
+		if types.IsRecurringJobLabel(key) {
+			if oldVolume.Labels == nil || oldVolume.Labels[key] == "" {
+				return werror.NewInvalidError("cannot add recurring jobs to legacy linked-clone volumes (pre-entrypoint architecture)", "metadata.labels")
+			}
+		}
 	}
 	return nil
 }
