@@ -43,16 +43,19 @@ func (s *TestSuite) TestComputeShardSize(c *C) {
 	for name, tc := range testCases {
 		got := ComputeShardSize(tc.volumeSize, tc.k, tc.stripSizeKB)
 
-		reservation := int64(spdktypes.EcFrontReservationBytes(uint32(tc.stripSizeKB)))
-		perDiskUser := (tc.volumeSize + int64(tc.k) - 1) / int64(tc.k) // ceil(volumeSize/k)
-		want := util.RoundUpSize(perDiskUser + reservation)
-
-		c.Assert(got, Equals, want, Commentf("case %q: unexpected shard size", name))
+		// The body delegates to the shared go-spdk-helper formula; the full sizing
+		// sweep lives in that repo. Guard the delegation and the manager-level
+		// invariants here.
+		c.Assert(got, Equals, spdktypes.ComputeShardSize(tc.volumeSize, tc.k, tc.stripSizeKB),
+			Commentf("case %q: diverged from the shared formula", name))
 		// Every shard lvol must be 2 MiB aligned so SPDK accepts it on create and expand.
 		c.Assert(got%util.SizeAlignment, Equals, int64(0), Commentf("case %q: shard size not 2 MiB aligned", name))
-		// The k shards' user regions together must cover the whole volume. A floor
-		// instead of a ceil division would leave the tail of the volume uncovered.
-		c.Assert((got-reservation)*int64(tc.k) >= tc.volumeSize, Equals, true, Commentf("case %q: shards do not cover the volume", name))
+		// The k shards' user regions together must at least cover the volume.
+		// The lvstore metadata budget on top of it is internal to the shared
+		// formula and covered by go-spdk-helper's own tests.
+		reservation := int64(spdktypes.EcFrontReservationBytes(uint32(tc.stripSizeKB)))
+		c.Assert((got-reservation)*int64(tc.k) >= tc.volumeSize, Equals, true,
+			Commentf("case %q: shards do not cover the volume", name))
 	}
 
 	// k <= 0 cannot divide the volume; the guard returns the size unchanged.

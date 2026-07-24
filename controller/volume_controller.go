@@ -2453,6 +2453,8 @@ func (c *VolumeController) reconcileShardGroup(v *longhorn.Volume) error {
 				ParityChunks: v.Spec.DataLayout.ParityChunks,
 				StripSizeKB:  v.Spec.DataLayout.StripSizeKB,
 				NodeID:       v.Spec.NodeID,
+				// Set once at creation; caps in-place expansion at 10x.
+				CreationSize: v.Spec.Size,
 			},
 		}
 		if _, err := c.ds.CreateShardGroup(sg); err != nil && !apierrors.IsAlreadyExists(err) {

@@ -1791,6 +1791,28 @@ func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
 		return nil
 	}
 
+	// Gate the 10x growth ceiling (and engine-side rebuild/degraded checks)
+	// before any shard lvol is resized; a rejection here leaves the volume
+	// untouched. Zero CreationSize means unknown and skips the ceiling check.
+	sgPrecheckCtx, sgPrecheckCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	_, sgPrecheckErr := rctx.spdkClient.ShardGroupExpandPrecheck(sgPrecheckCtx, &spdkrpc.ShardGroupExpandPrecheckRequest{
+		Name:         shardGroup.Name,
+		Size:         uint64(volume.Spec.Size),
+		CreationSize: uint64(shardGroup.Spec.CreationSize),
+	})
+	sgPrecheckCancel()
+	if sgPrecheckErr != nil {
+		if e, ok := status.FromError(sgPrecheckErr); ok && e.Code() == codes.FailedPrecondition {
+			// Policy rejection (growth ceiling): terminal, leave the volume untouched.
+			log.WithError(sgPrecheckErr).Warn("ShardGroupExpandPrecheck rejected expansion; skipping")
+			c.eventRecorder.Eventf(shardGroup, corev1.EventTypeWarning, constant.EventReasonFailedExpansion,
+				"expansion to %v bytes rejected by precheck: %v", volume.Spec.Size, sgPrecheckErr)
+			return nil
+		}
+		// Transient (outage, timeout, rebuild in progress): requeue and retry.
+		return errors.Wrapf(sgPrecheckErr, "failed to precheck expansion to %v bytes for ShardGroup %v", volume.Spec.Size, shardGroup.Name)
+	}
+
 	log.Infof("Expanding EC volume to %v bytes", volume.Spec.Size)
 	shardGroup.Status.GrowInProgress = true
 
@@ -1848,9 +1870,12 @@ func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
 	// that the engine's nvme initiator picks up to grow its view, so the
 	// EngineExpand call below polls until it lands.
 	sgExpandCtx, sgExpandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	// CreationSize lets the engine check the 10x growth ceiling before
+	// resizing anything. Zero means unknown; the engine skips the check.
 	_, sgExpandErr := rctx.spdkClient.ShardGroupExpand(sgExpandCtx, &spdkrpc.ShardGroupExpandRequest{
-		Name: shardGroup.Name,
-		Size: uint64(volume.Spec.Size),
+		Name:         shardGroup.Name,
+		Size:         uint64(volume.Spec.Size),
+		CreationSize: uint64(shardGroup.Spec.CreationSize),
 	})
 	sgExpandCancel()
 	if sgExpandErr != nil {

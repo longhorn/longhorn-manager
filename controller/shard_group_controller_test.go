@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	. "gopkg.in/check.v1"
 
@@ -601,6 +602,138 @@ func (s *ShardGroupControllerSuite) TestDegradedReadEIOEvent(c *C) {
 	c.Assert(s.controller.syncECHealth(rctxCleared), IsNil)
 	cond3 := types.GetCondition(created1.Status.Conditions, longhorn.ShardGroupConditionTypeDegradedRead)
 	c.Assert(cond3.Status, Equals, longhorn.ConditionStatusFalse)
+}
+
+// fakeGrowClient is a minimal SPDKServiceClient stub for syncShardGrow tests.
+// It records which expansion RPCs were issued so tests can pin the ordering
+// invariant: ShardGroupExpandPrecheck must complete successfully before any
+// resize RPC is attempted.
+type fakeGrowClient struct {
+	spdkrpc.SPDKServiceClient
+
+	sgPrecheckErr error // returned by ShardGroupExpandPrecheck; nil means accepted
+
+	enginePrecheckCalled int
+	sgPrecheckCalled     int
+	sgExpandCalled       int
+	engineExpandCalled   int
+}
+
+func (f *fakeGrowClient) EngineExpandPrecheck(_ context.Context, _ *spdkrpc.EngineExpandPrecheckRequest, _ ...grpc.CallOption) (*spdkrpc.EngineExpandPrecheckResponse, error) {
+	f.enginePrecheckCalled++
+	return &spdkrpc.EngineExpandPrecheckResponse{ExpansionRequired: true}, nil
+}
+
+func (f *fakeGrowClient) ShardGroupExpandPrecheck(_ context.Context, _ *spdkrpc.ShardGroupExpandPrecheckRequest, _ ...grpc.CallOption) (*spdkrpc.ShardGroupExpandPrecheckResponse, error) {
+	f.sgPrecheckCalled++
+	if f.sgPrecheckErr != nil {
+		return nil, f.sgPrecheckErr
+	}
+	return &spdkrpc.ShardGroupExpandPrecheckResponse{}, nil
+}
+
+func (f *fakeGrowClient) ShardGroupExpand(_ context.Context, _ *spdkrpc.ShardGroupExpandRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	f.sgExpandCalled++
+	return &emptypb.Empty{}, nil
+}
+
+func (f *fakeGrowClient) EngineExpand(_ context.Context, _ *spdkrpc.EngineExpandRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	f.engineExpandCalled++
+	return &emptypb.Empty{}, nil
+}
+
+// newGrowTestFixture builds a ShardGroup and matching Volume (registered in
+// the volume indexer so GetVolumeRO resolves) for syncShardGrow tests.
+func (s *ShardGroupControllerSuite) newGrowTestFixture(c *C, name string, volumeSize, creationSize int64) *sgReconcileCtx {
+	sg := newTestShardGroup(name, 4, 2, TestNode1)
+	sg.Spec.CreationSize = creationSize
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	volume := &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.VolumeSpec{
+			Size: volumeSize,
+		},
+	}
+	createdVolume, err := s.lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(
+		context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(s.lhVolumeIndexer.Add(createdVolume), IsNil)
+
+	return &sgReconcileCtx{
+		shardGroup: created,
+		engine:     &longhorn.Engine{},
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+}
+
+// TestSyncShardGrowPrecheckRejectionSkipsResize verifies the terminal path:
+// a FailedPrecondition from ShardGroupExpandPrecheck (growth ceiling) returns
+// nil without setting GrowInProgress or issuing any resize RPC, and records a
+// Warning event. This pins the safety invariant that a rejected expansion
+// leaves every shard untouched - a future reorder of the precheck after the
+// resize loop would trip the GrowInProgress and RPC-count assertions.
+func (s *ShardGroupControllerSuite) TestSyncShardGrowPrecheckRejectionSkipsResize(c *C) {
+	recorder := s.controller.eventRecorder.(*record.FakeRecorder)
+	rctx := s.newGrowTestFixture(c, "vol-grow-rejected", 110, 10)
+
+	fake := &fakeGrowClient{sgPrecheckErr: status.Error(codes.FailedPrecondition, "exceeds growth ceiling")}
+	rctx.spdkClient = fake
+
+	c.Assert(s.controller.syncShardGrow(rctx), IsNil)
+
+	c.Assert(fake.sgPrecheckCalled, Equals, 1)
+	c.Assert(fake.sgExpandCalled, Equals, 0)
+	c.Assert(fake.engineExpandCalled, Equals, 0)
+	c.Assert(rctx.shardGroup.Status.GrowInProgress, Equals, false)
+
+	select {
+	case event := <-recorder.Events:
+		c.Assert(strings.Contains(event, constant.EventReasonFailedExpansion), Equals, true)
+	default:
+		c.Fatal("expected FailedExpansion Warning event but none fired")
+	}
+}
+
+// TestSyncShardGrowPrecheckTransientErrorRetries verifies the retry path: a
+// non-FailedPrecondition error (outage, timeout, rebuild in progress) surfaces
+// to the caller for a rate-limited requeue instead of being swallowed, and no
+// resize RPC is attempted.
+func (s *ShardGroupControllerSuite) TestSyncShardGrowPrecheckTransientErrorRetries(c *C) {
+	rctx := s.newGrowTestFixture(c, "vol-grow-transient", 20, 10)
+
+	fake := &fakeGrowClient{sgPrecheckErr: status.Error(codes.Unavailable, "connection refused")}
+	rctx.spdkClient = fake
+
+	c.Assert(s.controller.syncShardGrow(rctx), NotNil)
+
+	c.Assert(fake.sgPrecheckCalled, Equals, 1)
+	c.Assert(fake.sgExpandCalled, Equals, 0)
+	c.Assert(fake.engineExpandCalled, Equals, 0)
+	c.Assert(rctx.shardGroup.Status.GrowInProgress, Equals, false)
+}
+
+// TestSyncShardGrowPrecheckAcceptedProceeds verifies the happy path: an
+// accepted precheck lets the expansion proceed - GrowInProgress is set and the
+// resize RPCs are issued, in precheck-then-expand order.
+func (s *ShardGroupControllerSuite) TestSyncShardGrowPrecheckAcceptedProceeds(c *C) {
+	rctx := s.newGrowTestFixture(c, "vol-grow-accepted", 20, 10)
+
+	fake := &fakeGrowClient{}
+	rctx.spdkClient = fake
+
+	c.Assert(s.controller.syncShardGrow(rctx), IsNil)
+
+	c.Assert(fake.enginePrecheckCalled, Equals, 1)
+	c.Assert(fake.sgPrecheckCalled, Equals, 1)
+	c.Assert(fake.sgExpandCalled, Equals, 1)
+	c.Assert(fake.engineExpandCalled, Equals, 1)
+	c.Assert(rctx.shardGroup.Status.GrowInProgress, Equals, true)
 }
 
 // TestConcurrentShardRebuildLimit verifies the per-node rebuild limit is enforced

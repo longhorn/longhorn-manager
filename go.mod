@@ -53,6 +53,14 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.36.2
 )
 
+replace github.com/longhorn/go-spdk-helper => github.com/c3y1huang/go-spdk-helper v0.0.0-20260723043116-23d0bab9f5df
+
+replace github.com/longhorn/longhorn-spdk-engine => github.com/c3y1huang/longhorn-spdk-engine v0.0.0-20260723061451-d455ad1a93d1
+
+replace github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.13.0-dev-20260712.0.20260724040735-0d5b2693ca5d
+
+replace github.com/longhorn/types => github.com/c3y1huang/types v0.0.0-20260723060829-5cbacb04e0fc
+
 require (
 	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.12.0
@@ -73,6 +81,7 @@ require (
 	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260723050202-4723ac346d2d
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
 	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260723044437-9c6562286f0a
+	github.com/longhorn/types v0.0.0-20260723012747-f5be45849762
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.9.0
@@ -104,7 +113,6 @@ require (
 
 require (
 	github.com/go-co-op/gocron v1.37.0
-	github.com/longhorn/types v0.0.0-20260723012747-f5be45849762
 	gopkg.in/yaml.v2 v2.4.0
 )
 

@@ -8,6 +8,8 @@ import (
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
+	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
@@ -70,6 +72,16 @@ func (v *shardGroupValidator) Create(request *admission.Request, newObj runtime.
 
 	if err := types.ValidateECParameters(sg.Spec.DataChunks, sg.Spec.ParityChunks, sg.Spec.StripSizeKB); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec")
+	}
+
+	// Every ShardGroup is created with CreationSize set; a missing value is a bug.
+	if sg.Spec.CreationSize <= 0 {
+		return werror.NewInvalidError(fmt.Sprintf("ShardGroup %v spec.creationSize must be a positive volume size in bytes", sg.Name), "spec.creationSize")
+	}
+	// The cap applies to the EC bdev usable size, which depends on the
+	// geometry, not the raw volume size.
+	if err := spdktypes.ValidateECCreationSize(sg.Spec.CreationSize, sg.Spec.DataChunks, sg.Spec.StripSizeKB); err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("ShardGroup %v spec.creationSize is invalid: %v", sg.Name, err), "spec.creationSize")
 	}
 
 	return nil
