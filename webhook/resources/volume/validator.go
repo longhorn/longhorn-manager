@@ -426,6 +426,20 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
+	// The legacy-linked-clone label is immutable once set. Removing it would
+	// bypass the recurring-job and expansion guards for pre-entrypoint volumes.
+	legacyLabelKey := types.GetLonghornLabelKey(types.LonghornLabelLegacyLinkedClone)
+	if oldVolume.Labels != nil && oldVolume.Labels[legacyLabelKey] != "" {
+		newVal := ""
+		if newVolume.Labels != nil {
+			newVal = newVolume.Labels[legacyLabelKey]
+		}
+		if newVal != oldVolume.Labels[legacyLabelKey] {
+			return werror.NewInvalidError(
+				fmt.Sprintf("cannot change or remove label %v once set", legacyLabelKey), "metadata.labels")
+		}
+	}
+
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
 	if newVolume.Status.CurrentMigrationNodeID != "" &&
 		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
