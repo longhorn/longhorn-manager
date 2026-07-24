@@ -1026,7 +1026,12 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 			return false
 		}
 		efForNode, err = getEngineFrontendForNode(efs, node)
-		if err != nil || !isEngineFrontendReady(efForNode) {
+		if err != nil {
+			return false
+		}
+
+		toleratedInSplitTopology := isEngineFrontendToleratedInSplitTopology(volume, efForNode, node)
+		if !isEngineFrontendReady(efForNode) && !toleratedInSplitTopology {
 			return false
 		}
 	}
@@ -1055,6 +1060,30 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 	}
 
 	return false
+}
+
+// isEngineFrontendToleratedInSplitTopology returns true when a v2
+// EngineFrontend can still be treated as usable in split topology.
+func isEngineFrontendToleratedInSplitTopology(v *longhorn.Volume, ef *longhorn.EngineFrontend, nodeID string) bool {
+	if ef == nil {
+		return false
+	}
+
+	if !isEngineFrontendInSplitTopology(v, ef, nodeID) {
+		return false
+	}
+
+	if ef.Spec.DesireState != longhorn.InstanceStateRunning || ef.Status.CurrentState != longhorn.InstanceStateUnknown {
+		return false
+	}
+
+	// Disabled or empty frontends do not expose a user-visible block device,
+	// so there is no endpoint to validate on the attachment node.
+	if ef.Spec.DisableFrontend || ef.Spec.Frontend == longhorn.VolumeFrontendEmpty {
+		return true
+	}
+
+	return ef.Status.Endpoint != ""
 }
 
 func hasCSIAttachmentTicketRequestingNode(nodeID string, va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {

@@ -2659,6 +2659,45 @@ func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {
 	c.Assert(migrationEngineFrontend.Spec.TargetPort, Equals, migrationEngine.Status.Port)
 }
 
+func (s *TestSuite) TestIsEngineFrontendToleratedInSplitTopology(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.NodeID = TestNode1
+	v.Spec.EngineNodeID = TestNode2
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentEngineNodeID = TestNode1
+	v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateSwitchingOver
+
+	efs := map[string]*longhorn.EngineFrontend{
+		"vol-ef-0": {
+			ObjectMeta: metav1.ObjectMeta{Name: "vol-ef-0"},
+			Spec: longhorn.EngineFrontendSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					NodeID:      TestNode1,
+					DesireState: longhorn.InstanceStateRunning,
+				},
+				Frontend: longhorn.VolumeFrontendBlockDev,
+			},
+			Status: longhorn.EngineFrontendStatus{
+				InstanceStatus: longhorn.InstanceStatus{CurrentState: longhorn.InstanceStateUnknown},
+				Endpoint:       "/dev/longhorn/vol",
+			},
+		},
+	}
+
+	available := isEngineFrontendToleratedInSplitTopology(v, efs["vol-ef-0"], TestNode1)
+	c.Assert(available, Equals, true)
+
+	efs["vol-ef-0"].Status.Endpoint = ""
+	available = isEngineFrontendToleratedInSplitTopology(v, efs["vol-ef-0"], TestNode1)
+	c.Assert(available, Equals, false)
+
+	efs["vol-ef-0"].Status.Endpoint = "/dev/longhorn/vol"
+	v.Spec.EngineNodeID = TestNode1
+	available = isEngineFrontendToleratedInSplitTopology(v, efs["vol-ef-0"], TestNode1)
+	c.Assert(available, Equals, false)
+}
+
 func (s *TestSuite) TestProcessMigrationV2RollbackCleanupRemovesExtraEngineFrontend(c *C) {
 	datastore.SkipListerCheck = true
 
