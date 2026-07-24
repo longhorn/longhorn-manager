@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -1859,8 +1860,13 @@ func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err erro
 }
 
 func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node) error {
+	selectorExcluded, err := nc.isNodeExcludedBySystemManagedComponentsNodeSelector(node)
+	if err != nil {
+		return errors.Wrap(err, "failed to check node selector for backing image eviction")
+	}
+
 	// preventing periodically list all backingimage.
-	if !isNodeOrDisksEvictionRequested(node) {
+	if !isNodeOrDisksEvictionRequested(node) && !selectorExcluded {
 		return nil
 	}
 	log := getLoggerForNode(nc.logger, node)
@@ -1882,8 +1888,18 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 		diskStatus := node.Status.DiskStatus[diskName]
 		diskUUID := diskStatus.DiskUUID
 
-		requireDiskFileEviction := diskSpec.EvictionRequested || node.Spec.EvictionRequested
+		requireDiskFileEviction := diskSpec.EvictionRequested || node.Spec.EvictionRequested || selectorExcluded
 		for _, backingImage := range diskBackingImageMap[diskUUID] {
+			if selectorExcluded && !diskSpec.EvictionRequested && !node.Spec.EvictionRequested {
+				bids, err := nc.ds.GetBackingImageDataSource(backingImage.Name)
+				if err != nil {
+					if !apierrors.IsNotFound(err) {
+						return errors.Wrapf(err, "failed to get backing image data source %v before selector eviction", backingImage.Name)
+					}
+				} else if !bids.Spec.FileTransferred {
+					continue
+				}
+			}
 			// trigger or cancel the eviction request on disks
 			if diskFileSpec, ok := backingImage.Spec.DiskFileSpecMap[diskUUID]; ok && diskFileSpec.EvictionRequested != requireDiskFileEviction {
 				diskFileSpec.EvictionRequested = requireDiskFileEviction
@@ -2119,6 +2135,23 @@ func isNodeOrDisksEvictionRequested(node *longhorn.Node) bool {
 	}
 
 	return false
+}
+
+func (nc *NodeController) isNodeExcludedBySystemManagedComponentsNodeSelector(node *longhorn.Node) (bool, error) {
+	nodeSelector, err := nc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return false, err
+	}
+	if len(nodeSelector) == 0 {
+		return false, nil
+	}
+
+	kubeNode, err := nc.ds.GetKubernetesNodeRO(node.Name)
+	if err != nil {
+		return false, err
+	}
+
+	return !labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
 }
 
 func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, kubeNode *corev1.Node, managerPods []*corev1.Pod) error {
@@ -2382,7 +2415,7 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse SnapshotHashingRequestedAt")
 	}
 
-	// Case 1: First-ever request → allow immediately
+	// Case 1: First-ever request -> allow immediately
 	if v.Status.LastOnDemandSnapshotHashingCompleteAt == "" {
 		return true, nil
 	}
@@ -2392,11 +2425,11 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse LastOnDemandSnapshotHashingCompleteAt")
 	}
 
-	// Case 2: Not a new request → reject
+	// Case 2: Not a new request -> reject
 	if !requestTime.After(lastCompleted) {
 		return false, nil
 	}
 
-	// Case 3: New request → allow
+	// Case 3: New request -> allow
 	return true, nil
 }

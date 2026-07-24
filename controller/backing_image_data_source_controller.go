@@ -39,7 +39,8 @@ import (
 )
 
 const (
-	BackingImageDataSourcePodContainerName = "backing-image-data-source"
+	BackingImageDataSourcePodContainerName       = "backing-image-data-source"
+	backingImageDataSourcePodSpecMismatchMessage = "pod node selector is out of sync with the system-managed-components-node-selector setting"
 )
 
 type BackingImageDataSourceController struct {
@@ -538,8 +539,8 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	if pod == nil {
 		// To avoid restarting backing image data source pod (for file preparation) too quickly or too frequently,
 		// Longhorn will leave failed backing image data source alone if it is still in the backoff period.
-		// If the backoff period pass, Longhorn will recreate the pod and increase the Backoff period for the next possible failure.
 		isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
+		retryAfterPodSpecMismatch := bids.Status.Message == backingImageDataSourcePodSpecMismatchMessage && bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeUpload
 		isInBackoffWindow := true
 		if !newBackingImageDataSource && isValidTypeForRetry {
 			if !c.backoff.IsInBackOffSinceUpdate(bids.Name, time.Now()) {
@@ -550,7 +551,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 			}
 		}
 
-		if newBackingImageDataSource ||
+		if newBackingImageDataSource || retryAfterPodSpecMismatch ||
 			(isValidTypeForRetry && !isInBackoffWindow) {
 			if err := c.handleAttachmentTicketCreation(bids); err != nil {
 				return err
@@ -657,10 +658,6 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 }
 
 func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*corev1.Pod, error) {
-	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
-	if err != nil {
-		return nil, err
-	}
 
 	tolerations, err := c.ds.GetSettingTaintToleration()
 	if err != nil {
@@ -775,7 +772,6 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		Spec: corev1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
-			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass.Value,
 			Containers: []corev1.Container{
 				{
