@@ -785,17 +785,17 @@ func (v *volumeValidator) validateLinkedCloneSize(vol *longhorn.Volume) error {
 	if vol.Spec.Size == 0 {
 		return nil // mutator will fill in the correct size
 	}
+	var expectedSize int64
 	snapName := types.GetSnapshotName(vol.Spec.DataSource)
-	if snapName == "" {
-		return nil // vol:// dataSource has no snapshot to validate against
+	if snapName != "" {
+		snap, err := v.ds.GetSnapshotRO(snapName)
+		if err != nil {
+			return werror.NewInternalError(errors.Wrapf(err, "failed to get source snapshot %v", snapName).Error())
+		}
+		expectedSize = snap.Status.RestoreSize
 	}
-	snap, err := v.ds.GetSnapshotRO(snapName)
-	if err != nil {
-		return werror.NewInternalError(errors.Wrapf(err, "failed to get source snapshot %v", snapName).Error())
-	}
-	expectedSize := snap.Status.RestoreSize
 	if expectedSize == 0 {
-		// RestoreSize not yet synced; fall back to the source volume spec.size.
+		// No snapshot specified or RestoreSize not yet synced; fall back to the source volume spec.size.
 		srcVolName := types.GetVolumeName(vol.Spec.DataSource)
 		if srcVolName != "" {
 			srcVol, srcErr := v.ds.GetVolumeRO(srcVolName)
@@ -806,8 +806,8 @@ func (v *volumeValidator) validateLinkedCloneSize(vol *longhorn.Volume) error {
 	}
 	if expectedSize > 0 && vol.Spec.Size != expectedSize {
 		return werror.NewInvalidError(fmt.Sprintf(
-			"spec.size %d does not match source snapshot %v RestoreSize %d; leave spec.size unset to inherit the correct size automatically",
-			vol.Spec.Size, snapName, expectedSize), ".spec.size")
+			"spec.size %d does not match source size %d; leave spec.size unset to inherit the correct size automatically",
+			vol.Spec.Size, expectedSize), ".spec.size")
 	}
 	return nil
 }
