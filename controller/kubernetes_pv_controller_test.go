@@ -7,9 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
+	. "gopkg.in/check.v1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes/fake"
@@ -21,10 +19,12 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -532,4 +532,135 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		}
 
 	}
+}
+
+// TestSyncKubernetesStatusIgnoresVolumeOwnerID verifies that the global manager
+// reconciles a volume's KubernetesStatus regardless of which node owns the
+// volume. The pre-split DaemonSet sharded this work with
+// `volume.Status.OwnerID == controllerID`; in single-mode the global-manager
+// leader is the only writer, so that guard is removed and ownership is
+// irrelevant.
+func (s *TestSuite) TestSyncKubernetesStatusIgnoresVolumeOwnerID(c *C) {
+	testCases := map[string]*KubernetesTestCase{}
+
+	tc := generateKubernetesTestCaseTemplate()
+	// Owner is a different node than the controllerID (TestNode1). With the
+	// old guard this reconcile would early-return and leave KubernetesStatus
+	// empty; in single-mode it must still be populated.
+	tc.volume.Status.OwnerID = TestNode2
+	tc.copyCurrentToExpect()
+	tc.pv.Status.Phase = corev1.VolumeBound
+	workloads := []longhorn.WorkloadStatus{}
+	for _, p := range tc.pods {
+		workloads = append(workloads, longhorn.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		})
+	}
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{
+		PVName:          TestPVName,
+		PVStatus:        string(corev1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+	}
+	testCases["volume owned by a different node"] = tc
+
+	s.runKubernetesTestCases(c, testCases)
+}
+
+// TestCleanupForPVDeletionIgnoresVolumeOwnerID verifies that PV-deletion cleanup
+// runs even when the volume is owned by another node. The old guard
+// (`controllerID != volume.Status.OwnerID`) dropped the cache entry and
+// returned "done" without doing the work; single-mode removes it so the leader
+// always performs the real cleanup.
+func (s *TestSuite) TestCleanupForPVDeletionIgnoresVolumeOwnerID(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	kc, err := newTestKubernetesPVController(lhClient, kubeClient, extensionsClient, informerFactories)
+	c.Assert(err, IsNil)
+
+	volume := newVolume(TestVolumeName, 2)
+	volume.Status.OwnerID = TestNode2 // different node than controllerID (TestNode1)
+	volume.Status.KubernetesStatus = longhorn.KubernetesStatus{
+		PVName:    TestPVName,
+		PVStatus:  string(corev1.VolumeBound),
+		Namespace: TestNamespace,
+		PVCName:   TestPVCName,
+	}
+	v, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	c.Assert(vIndexer.Add(v), IsNil)
+
+	// The PV is gone (deletion path); seed the cache as enqueuePVDeletion would.
+	kc.pvToVolumeCache.Store(TestPVName, TestVolumeName)
+
+	done, err := kc.cleanupForPVDeletion(TestPVName)
+	c.Assert(err, IsNil)
+	c.Assert(done, Equals, true)
+
+	retV, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), TestVolumeName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	// Real cleanup ran despite the foreign owner: PV ref cleared, LastPVCRefAt stamped.
+	c.Assert(retV.Status.KubernetesStatus.PVName, Equals, "")
+	c.Assert(retV.Status.KubernetesStatus.LastPVCRefAt, Equals, getTestNow())
+	_, ok := kc.pvToVolumeCache.Load(TestPVName)
+	c.Assert(ok, Equals, false)
+}
+
+// TestSyncKubernetesStatusIsIdempotent verifies that re-running the reconcile
+// converges to the same KubernetesStatus. This underpins the transition-safety
+// argument for the upgrade/rollback overlap window: the controller recomputes
+// state from PV/PVC/Pod facts, so duplicate or stale-read-retried writes
+// converge rather than oscillate.
+func (s *TestSuite) TestSyncKubernetesStatusIsIdempotent(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	pvIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
+	pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+	kc, err := newTestKubernetesPVController(lhClient, kubeClient, extensionsClient, informerFactories)
+	c.Assert(err, IsNil)
+
+	volume := newVolume(TestVolumeName, 2)
+	v, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(vIndexer.Add(v), IsNil)
+
+	pv := newPV()
+	pv.Status.Phase = corev1.VolumeBound
+	pvCreated, err := kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvIndexer.Add(pvCreated), IsNil)
+
+	pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), newPVC(), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvcIndexer.Add(pvc), IsNil)
+
+	pod, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), newPodWithPVC(TestPod1), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pIndexer.Add(pod), IsNil)
+
+	key := getKey(pvCreated, c)
+
+	c.Assert(kc.syncKubernetesStatus(key), IsNil)
+	first, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), TestVolumeName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+
+	c.Assert(kc.syncKubernetesStatus(key), IsNil)
+	second, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), TestVolumeName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+
+	c.Assert(second.Status.KubernetesStatus, DeepEquals, first.Status.KubernetesStatus)
 }

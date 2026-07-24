@@ -55,6 +55,7 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			app.DaemonCmd(),
+			app.GlobalCmd(),
 			app.RecurringJobCmd(),
 			app.DeployDriverCmd(),
 			app.CSICommand(),

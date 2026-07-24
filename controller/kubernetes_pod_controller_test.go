@@ -19,7 +19,9 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -322,4 +324,165 @@ func (s *TestSuite) TestHandlePodDeletionForRWXVolumeRemountScenarios(c *C) {
 
 func ptrTo[T any](v T) *T {
 	return &v
+}
+
+func newCSIPluginPod(name, nodeName string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					Kind: types.KubernetesKindDaemonSet,
+					Name: types.CSIPluginName,
+				},
+			},
+		},
+		Spec: corev1.PodSpec{
+			NodeName: nodeName,
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+		},
+	}
+}
+
+// TestEnqueuePodChangeEnqueuesCSIPluginPodOnAnyNode verifies that the global
+// manager enqueues a CSI plugin pod regardless of which node it runs on. The
+// pre-split DaemonSet only enqueued the CSI plugin pod on its own node
+// (`pod.Spec.NodeName == controllerID`); the single-mode leader must observe
+// CSI plugin pod failures cluster-wide, so that filter is removed.
+func (s *TestSuite) TestEnqueuePodChangeEnqueuesCSIPluginPodOnAnyNode(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	kc, err := newTestKubernetesPodController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	// CSI plugin pod on a node other than the controllerID (TestNode1).
+	csiPod := newCSIPluginPod("longhorn-csi-plugin-abcde", TestNode2)
+	kc.enqueuePodChange(csiPod)
+
+	c.Assert(kc.queue.Len(), Equals, 1)
+}
+
+// TestHandlePodDeletionForRemountOnAnyNode verifies that a workload pod is
+// force-deleted for a volume remount even when the pod runs on a node other
+// than the controllerID. The pre-split DaemonSet only acted on pods on its own
+// node (`pod.Spec.NodeName != controllerID` early-returned); the single-mode
+// global-manager leader is the single executor for every node's pods.
+func (s *TestSuite) TestHandlePodDeletionForRemountOnAnyNode(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	pvIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
+	pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+	kc, err := newTestKubernetesPodController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	// Enable auto-delete-pod-when-volume-detached-unexpectedly.
+	setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(),
+		newSetting(string(types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly), "true"), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(sIndexer.Add(setting), IsNil)
+
+	// RWO volume (no RWX endpoint gating) with a remount requested 10s ago.
+	volume := newVolume(TestVolumeName, 2)
+	volume.Status.RemountRequestedAt = time.Now().Add(-10 * time.Second).UTC().Format(time.RFC3339)
+	v, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(vIndexer.Add(v), IsNil)
+
+	pvObj, err := kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), newPV(), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvIndexer.Add(pvObj), IsNil)
+	pvcObj, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), newPVC(), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvcIndexer.Add(pvcObj), IsNil)
+
+	// Workload pod controlled by a StatefulSet, on a node other than the
+	// controllerID (TestNode1), started before the remount request.
+	isController := true
+	pod := newPodWithPVC(TestPod1)
+	pod.OwnerReferences[0].Controller = &isController
+	pod.Spec.NodeName = TestNode2
+	startTime := metav1.NewTime(time.Now().Add(-60 * time.Second))
+	pod.Status.StartTime = &startTime
+	podObj, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pIndexer.Add(podObj), IsNil)
+
+	err = kc.handlePodDeletionIfVolumeRequestRemount(podObj)
+	c.Assert(err, IsNil)
+
+	_, err = kubeClient.CoreV1().Pods(TestNamespace).Get(context.TODO(), TestPod1, metav1.GetOptions{})
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+}
+
+// TestCleanupForceDeletedPodResourcesOnAnyNode verifies that the stale
+// VolumeAttachment of a force-deleted pod is cleaned up regardless of which
+// node the pod was on. The pre-split DaemonSet gated this with
+// `isControllerResponsibleFor(controllerID, ...)`; the single-mode leader runs
+// the cleanup for every node's force-deleted pods.
+func (s *TestSuite) TestCleanupForceDeletedPodResourcesOnAnyNode(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	pvIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
+	pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+	vaIndexer := informerFactories.KubeInformerFactory.Storage().V1().VolumeAttachments().Informer().GetIndexer()
+
+	kc, err := newTestKubernetesPodController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	// PV without a claimRef -> the attachment is safe to delete.
+	pv := newPV()
+	pv.Spec.ClaimRef = nil
+	pvObj, err := kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvIndexer.Add(pvObj), IsNil)
+
+	pvcObj, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), newPVC(), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvcIndexer.Add(pvcObj), IsNil)
+
+	// Force-deleted workload pod (grace period 0) on a node other than the
+	// controllerID (TestNode1).
+	gracePeriod := int64(0)
+	deletionTime := metav1.Now()
+	pod := newPodWithPVC(TestPod1)
+	pod.Spec.NodeName = TestNode2
+	pod.DeletionTimestamp = &deletionTime
+	pod.DeletionGracePeriodSeconds = &gracePeriod
+
+	// Attached Longhorn VolumeAttachment for that pod's PV on TestNode2.
+	pvName := TestPVName
+	va := &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: "csi-attach-abcde"},
+		Spec: storagev1.VolumeAttachmentSpec{
+			Attacher: types.LonghornDriverName,
+			NodeName: TestNode2,
+			Source:   storagev1.VolumeAttachmentSource{PersistentVolumeName: &pvName},
+		},
+		Status: storagev1.VolumeAttachmentStatus{Attached: true},
+	}
+	vaObj, err := kubeClient.StorageV1().VolumeAttachments().Create(context.TODO(), va, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(vaIndexer.Add(vaObj), IsNil)
+
+	err = kc.cleanupForceDeletedPodResources(pod)
+	c.Assert(err, IsNil)
+
+	_, err = kubeClient.StorageV1().VolumeAttachments().Get(context.TODO(), va.Name, metav1.GetOptions{})
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
 }
