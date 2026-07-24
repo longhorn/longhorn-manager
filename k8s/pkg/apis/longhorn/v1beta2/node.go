@@ -42,6 +42,7 @@ const (
 
 const (
 	DiskConditionReasonDiskPressure           = "DiskPressure"
+	DiskConditionReasonDiskBlockSizeMismatch  = "DiskBlockSizeMismatch"
 	DiskConditionReasonDiskFilesystemChanged  = "DiskFilesystemChanged"
 	DiskConditionReasonNoDiskInfo             = "NoDiskInfo"
 	DiskConditionReasonDiskNotReady           = "DiskNotReady"
@@ -166,6 +167,12 @@ type DiskSpec struct {
 	// +kubebuilder:validation:Enum="";auto;aio;nvme
 	// +optional
 	DiskDriver DiskDriver `json:"diskDriver"`
+	// BlockSize is the block size in bytes for an AIO-backed block disk. Supported values are 512 and 4096.
+	// A value of 0 uses the default block size of 512 bytes.
+	// The effective block size is immutable after the disk is initialized.
+	// +kubebuilder:validation:Enum=0;512;4096
+	// +optional
+	BlockSize int64 `json:"blockSize"`
 	// +optional
 	AllowScheduling bool `json:"allowScheduling"`
 	// +optional
@@ -202,6 +209,9 @@ type DiskStatus struct {
 	Type DiskType `json:"diskType"`
 	// +optional
 	DiskDriver DiskDriver `json:"diskDriver"`
+	// ActualBlockSize is the block size in bytes reported by an initialized block disk.
+	// +optional
+	ActualBlockSize int64 `json:"actualBlockSize"`
 	// +optional
 	FSType string `json:"filesystemType"`
 	// +optional

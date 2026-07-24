@@ -9,6 +9,8 @@ type DiskUpdate struct {
 
 	AllowScheduling bool `json:"allowScheduling,omitempty" yaml:"allow_scheduling,omitempty"`
 
+	BlockSize int64 `json:"blockSize,omitempty" yaml:"block_size,omitempty"`
+
 	DiskDriver string `json:"diskDriver,omitempty" yaml:"disk_driver,omitempty"`
 
 	DiskType string `json:"diskType,omitempty" yaml:"disk_type,omitempty"`
