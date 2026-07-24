@@ -91,7 +91,7 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 		return err
 	}
 
-	if err := s.createNonExistingSettingCRsWithDefaultSetting(defaultSettingCM.ResourceVersion); err != nil {
+	if err := s.createNonExistingSettingCRsWithDefaultSetting(defaultSettingCM.ResourceVersion, availableCustomizedDefaultSettings); err != nil {
 		return err
 	}
 
@@ -102,7 +102,55 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 	return nil
 }
 
-func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string) error {
+func (s *DataStore) ValidateCustomizedDefaultDataAndControlPathSettings() error {
+	defaultSettingCM, err := s.GetConfigMapRO(s.namespace, types.DefaultDefaultSettingConfigMapName)
+	if err != nil {
+		return err
+	}
+
+	customizedDefaultSettings, err := types.GetCustomizedDefaultSettings(defaultSettingCM)
+	if err != nil {
+		return err
+	}
+	nodes, err := s.ListNodesRO()
+	if err != nil {
+		return err
+	}
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	for _, settingName := range []types.SettingName{
+		types.SettingNameDefaultDataPath,
+		types.SettingNameDefaultControlPath,
+	} {
+		value, ok := customizedDefaultSettings[string(settingName)]
+		if !ok {
+			continue
+		}
+		if err := s.ValidateSetting(string(settingName), value); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *DataStore) GetDefaultControlPath() (string, error) {
+	controlPathSetting, err := s.GetSettingExactRO(types.SettingNameDefaultControlPath)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return "", err
+		}
+		return types.DefaultControlPath, nil
+	}
+	if controlPathSetting.Value == "" {
+		return types.DefaultControlPath, nil
+	}
+	return controlPathSetting.Value, nil
+}
+
+func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string, customizedDefaultSettings map[string]string) error {
 	for _, sName := range types.SettingNameList {
 		if _, err := s.GetSettingExactRO(sName); err != nil && apierrors.IsNotFound(err) {
 			definition, ok := types.GetSettingDefinition(sName)
@@ -683,9 +731,13 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		}
 
 	case types.SettingNameDefaultControlPath:
-		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
+		old, err := s.GetSettingExactRO(types.SettingNameDefaultControlPath)
 		if err != nil {
-			return err
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+
+			old = &longhorn.Setting{Value: types.DefaultControlPath}
 		}
 
 		oldPath := filepath.Clean(strings.TrimSpace(old.Value))
