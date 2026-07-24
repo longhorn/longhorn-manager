@@ -101,6 +101,7 @@ const (
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
 	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
 	SettingNameSystemManagedCSIComponentsResourceLimits                 = SettingName("system-managed-csi-components-resource-limits")
+	SettingNameInstanceManagerResourceLimits                            = SettingName("instance-manager-resource-limits")
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                              = SettingName("auto-salvage")
 	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly              = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
@@ -233,6 +234,7 @@ var (
 		SettingNameTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits,
+		SettingNameInstanceManagerResourceLimits,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -400,6 +402,7 @@ var (
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits:                 SettingDefinitionSystemManagedCSIComponentsResourceLimits,
+		SettingNameInstanceManagerResourceLimits:                            SettingDefinitionInstanceManagerResourceLimits,
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                              SettingDefinitionAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:              SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -956,6 +959,31 @@ var (
 			"}\n" +
 			"```\n\n" +
 			"Supported components: csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter, longhorn-csi-plugin, node-driver-registrar, longhorn-liveness-probe",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+
+	SettingDefinitionInstanceManagerResourceLimits = SettingDefinition{
+		DisplayName: "Instance Manager Resource Limits",
+		Description: "This setting allows you to configure CPU and memory requests and limits for Instance Manager pods. " +
+			"The value must be a JSON Kubernetes ResourceRequirements object containing only `cpu` and `memory` entries " +
+			"under `requests` and `limits`. When set, this setting fully overrides the CPU request derived from " +
+			"`guaranteed-instance-manager-cpu` and any per-node `Node.Spec.InstanceManagerCPURequest` override. When empty, " +
+			"Instance Manager pods use the default behavior (CPU request from `guaranteed-instance-manager-cpu`, " +
+			"hardcoded 128Mi memory request for V2, no limits).\n\n" +
+			"Hugepages (`hugepages-2Mi`) are controlled separately via `data-engine-memory-size` and cannot be set here.\n\n" +
+			"Updating this setting causes Instance Manager pods to restart. During the restart, volume engines and " +
+			"replicas hosted on the affected nodes may be temporarily unavailable.\n\n" +
+			"Example:\n\n" +
+			"```json\n" +
+			"{\n" +
+			"  \"requests\": {\"cpu\": \"1250m\", \"memory\": \"512Mi\"},\n" +
+			"  \"limits\":   {\"cpu\": \"2\",     \"memory\": \"2Gi\"}\n" +
+			"}\n" +
+			"```",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -2417,6 +2445,50 @@ func UnmarshalCSIComponentResourceLimits(resourceLimitsSetting string) (*Compone
 	return &limits, nil
 }
 
+// UnmarshalInstanceManagerResourceLimits parses the instance-manager-resource-limits setting value
+// and validates it. Returns nil when the setting is empty (callers treat this as "no override" and
+// fall back to today's behavior). Only `cpu` and `memory` are accepted under requests/limits;
+// any other resource (including hugepages-*) is rejected. Unknown JSON fields and the `claims`
+// field (DynamicResourceAllocation) are also rejected.
+func UnmarshalInstanceManagerResourceLimits(value string) (*corev1.ResourceRequirements, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+
+	var rr corev1.ResourceRequirements
+	dec := json.NewDecoder(strings.NewReader(value))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&rr); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal instance-manager resource limits %v", value)
+	}
+	if len(rr.Claims) > 0 {
+		return nil, fmt.Errorf("instance-manager-resource-limits: `claims` is not supported; only cpu and memory requests/limits are allowed")
+	}
+
+	allowed := func(r corev1.ResourceName) bool {
+		return r == corev1.ResourceCPU || r == corev1.ResourceMemory
+	}
+	for r := range rr.Requests {
+		if !allowed(r) {
+			return nil, fmt.Errorf("instance-manager-resource-limits: unsupported request resource %q; only cpu and memory are allowed (hugepages are controlled via data-engine-memory-size)", r)
+		}
+	}
+	for r := range rr.Limits {
+		if !allowed(r) {
+			return nil, fmt.Errorf("instance-manager-resource-limits: unsupported limit resource %q; only cpu and memory are allowed (hugepages are controlled via data-engine-memory-size)", r)
+		}
+	}
+
+	for r, req := range rr.Requests {
+		if lim, ok := rr.Limits[r]; ok && req.Cmp(lim) > 0 {
+			return nil, fmt.Errorf("instance-manager-resource-limits: request %v=%v exceeds limit %v=%v", r, req.String(), r, lim.String())
+		}
+	}
+
+	return &rr, nil
+}
+
 func UnmarshalOrphanResourceTypes(resourceTypesSetting string) (map[OrphanResourceType]bool, error) {
 	resourceTypes := map[OrphanResourceType]bool{
 		OrphanResourceTypeReplicaData: false,
@@ -2907,6 +2979,11 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 
 		case SettingNameSystemManagedCSIComponentsResourceLimits:
 			if _, err := UnmarshalCSIComponentResourceLimits(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+
+		case SettingNameInstanceManagerResourceLimits:
+			if _, err := UnmarshalInstanceManagerResourceLimits(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
 
