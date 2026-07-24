@@ -5203,6 +5203,14 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 		snapshotName = snapshot.Name
 	}
 
+	// TODO: There is a race between webhook size validation and snapshot creation:
+	// the source volume may be expanded after the clone volume passes webhook
+	// validation but before the clone snapshot is actually created. In that case
+	// the snapshot data would be larger than the clone volume's spec.size.
+	// Further handling is required to avoid triggering unexpected expansion side effects:
+	//   - A safe auto-expand mechanism for the clone volume,
+	//   - Or blocking the expansion of the src volume
+
 	// Persist the entrypoint snapshot label to enable webhook protection (linked-clone only).
 	// UpdateVolume is required because syncVolume only saves status.
 	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
