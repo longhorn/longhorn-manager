@@ -2026,6 +2026,86 @@ func (s *NodeControllerSuite) TestSyncInstanceManagers(c *C) {
 	}
 }
 
+func (s *NodeControllerSuite) TestNodeControllerIsResponsibleForSystemManagedComponentsNodeSelectorSetting(c *C) {
+	setting := newSetting(string(types.SettingNameSystemManagedComponentsNodeSelector), "lh-12834-node-selector:selected")
+	c.Assert(s.controller.isResponsibleForSetting(setting), Equals, true)
+}
+
+func (s *NodeControllerSuite) syncInstanceManagersNodeSelectorCase(c *C, selectorValue string, kubeNodeLabels map[string]string, existingIMs map[string]*longhorn.InstanceManager) map[string]bool {
+	datastore.SkipListerCheck = true
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	kubeNode.Labels = kubeNodeLabels
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{TestNode1: node},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage):         newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameSystemManagedComponentsNodeSelector): newSetting(string(types.SettingNameSystemManagedComponentsNodeSelector), selectorValue),
+		},
+		lhInstanceManagers: existingIMs,
+		nodes:              map[string]*corev1.Node{TestNode1: kubeNode},
+	}
+	s.initTest(c, fixture)
+	c.Assert(s.controller.syncInstanceManagers(node), IsNil)
+	ims, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.Background(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	names := map[string]bool{}
+	for _, im := range ims.Items {
+		names[im.Name] = true
+	}
+	return names
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersCreatesDefaultWhenSystemManagedSelectorMatches(c *C) {
+	defaultInstanceManagerName, err := types.GetInstanceManagerName(longhorn.InstanceManagerTypeAllInOne, TestNode1, TestInstanceManagerImage, string(longhorn.DataEngineTypeV1))
+	c.Assert(err, IsNil)
+
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "selected"}, map[string]*longhorn.InstanceManager{})
+
+	c.Assert(names, DeepEquals, map[string]bool{defaultInstanceManagerName: true})
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersSkipsCreateWhenSystemManagedSelectorDoesNotMatch(c *C) {
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "excluded"}, map[string]*longhorn.InstanceManager{})
+
+	c.Assert(names, HasLen, 0)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersDeletesIdleWhenSystemManagedSelectorDoesNotMatch(c *C) {
+	defaultInstanceManagerName, err := types.GetInstanceManagerName(longhorn.InstanceManagerTypeAllInOne, TestNode1, TestInstanceManagerImage, string(longhorn.DataEngineTypeV1))
+	c.Assert(err, IsNil)
+	existingIM := DefaultInstanceManagerTestNode1.DeepCopy()
+	existingIM.Name = defaultInstanceManagerName
+	existingIM.Status.CurrentState = longhorn.InstanceManagerStateRunning
+	existingIM.Status.InstanceEngines = map[string]longhorn.InstanceProcess{}
+	existingIM.Status.InstanceEngineFrontends = map[string]longhorn.InstanceProcess{}
+	existingIM.Status.InstanceReplicas = map[string]longhorn.InstanceProcess{}
+
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "excluded"}, map[string]*longhorn.InstanceManager{defaultInstanceManagerName: existingIM})
+
+	c.Assert(names, HasLen, 0)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersKeepsRunningInstanceWhenSystemManagedSelectorDoesNotMatch(c *C) {
+	defaultInstanceManagerName, err := types.GetInstanceManagerName(longhorn.InstanceManagerTypeAllInOne, TestNode1, TestInstanceManagerImage, string(longhorn.DataEngineTypeV1))
+	c.Assert(err, IsNil)
+	existingIM := DefaultInstanceManagerTestNode1.DeepCopy()
+	existingIM.Name = defaultInstanceManagerName
+	existingIM.Status.CurrentState = longhorn.InstanceManagerStateRunning
+	existingIM.Status.InstanceReplicas = map[string]longhorn.InstanceProcess{
+		ExistingInstance: {
+			Spec: longhorn.InstanceProcessSpec{Name: ExistingInstance},
+			Status: longhorn.InstanceProcessStatus{
+				State: longhorn.InstanceStateRunning,
+			},
+		},
+	}
+
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "excluded"}, map[string]*longhorn.InstanceManager{defaultInstanceManagerName: existingIM})
+
+	c.Assert(names, DeepEquals, map[string]bool{defaultInstanceManagerName: true})
+}
+
 func (s *NodeControllerSuite) TestKubeNodeNFSCapabilityCondition(c *C) {
 	var err error
 
