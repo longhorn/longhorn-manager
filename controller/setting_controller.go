@@ -290,6 +290,7 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		types.SettingNameTaintToleration,
 		types.SettingNameSystemManagedComponentsNodeSelector,
 		types.SettingNamePriorityClass,
+		types.SettingNameSystemManagedComponentsPriorityClasses,
 		types.SettingNameStorageNetwork,
 	}
 
@@ -304,6 +305,10 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 				return err
 			}
 		case types.SettingNamePriorityClass:
+			if err := sc.updatePriorityClass(); err != nil {
+				return err
+			}
+		case types.SettingNameSystemManagedComponentsPriorityClasses:
 			if err := sc.updatePriorityClass(); err != nil {
 				return err
 			}
@@ -643,17 +648,11 @@ func getLastAppliedTolerationsList(obj runtime.Object) ([]corev1.Toleration, err
 
 // updatePriorityClass deletes all user-deployed and system-managed components immediately with the updated priority class.
 func (sc *SettingController) updatePriorityClass() error {
-	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
-	if err != nil {
-		return err
-	}
-	newPriorityClass := setting.Value
-
 	updatingRuntimeObjects, err := sc.collectRuntimeObjects()
 	if err != nil {
 		return errors.Wrap(err, "failed to collect runtime objects for priority class update")
 	}
-	notUpdatedPriorityClassObjs, err := getNotUpdatedPriorityClassList(newPriorityClass, updatingRuntimeObjects...)
+	notUpdatedPriorityClassObjs, err := sc.getNotUpdatedPriorityClassList(updatingRuntimeObjects...)
 	if err != nil {
 		return err
 	}
@@ -670,6 +669,10 @@ func (sc *SettingController) updatePriorityClass() error {
 	}
 
 	for _, obj := range notUpdatedPriorityClassObjs {
+		newPriorityClass, err := sc.getExpectedPriorityClassForRuntimeObject(obj)
+		if err != nil {
+			return err
+		}
 		switch objTyped := obj.(type) {
 		case *appsv1.DaemonSet:
 			sc.logger.Infof("Updating the priority class from %v to %v for %v", objTyped.Spec.Template.Spec.PriorityClassName, newPriorityClass, objTyped.Name)
@@ -696,10 +699,14 @@ func (sc *SettingController) updatePriorityClass() error {
 	return nil
 }
 
-func getNotUpdatedPriorityClassList(newPriorityClassName string, objs ...runtime.Object) ([]runtime.Object, error) {
+func (sc *SettingController) getNotUpdatedPriorityClassList(objs ...runtime.Object) ([]runtime.Object, error) {
 	notUpdatedObjsList := []runtime.Object{}
 	oldPriorityClassName := ""
 	for _, obj := range objs {
+		newPriorityClassName, err := sc.getExpectedPriorityClassForRuntimeObject(obj)
+		if err != nil {
+			return nil, err
+		}
 		switch objTyped := obj.(type) {
 		case *appsv1.DaemonSet:
 			oldPriorityClassName = objTyped.Spec.Template.Spec.PriorityClassName
@@ -718,6 +725,33 @@ func getNotUpdatedPriorityClassList(newPriorityClassName string, objs ...runtime
 	}
 
 	return notUpdatedObjsList, nil
+}
+
+func (sc *SettingController) getExpectedPriorityClassForRuntimeObject(obj runtime.Object) (string, error) {
+	return sc.ds.GetSystemManagedComponentPriorityClass(getSystemManagedComponentFromRuntimeObject(obj))
+}
+
+func getSystemManagedComponentFromRuntimeObject(obj runtime.Object) string {
+	switch objTyped := obj.(type) {
+	case *appsv1.Deployment:
+		switch objTyped.Name {
+		case types.CSIAttacherName, types.CSIProvisionerName, types.CSIResizerName, types.CSISnapshotterName:
+			return objTyped.Name
+		}
+	case *appsv1.DaemonSet:
+		if objTyped.Name == types.CSIPluginName {
+			return types.CSIPluginName
+		}
+		if strings.HasPrefix(objTyped.Name, "engine-image-") {
+			return types.SystemManagedComponentEngineImage
+		}
+	case *corev1.Pod:
+		if objTyped.Labels[types.GetLonghornLabelComponentKey()] == types.LonghornLabelInstanceManager {
+			return types.SystemManagedComponentInstanceManager
+		}
+	}
+
+	return ""
 }
 
 func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {

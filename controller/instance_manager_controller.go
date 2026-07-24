@@ -826,7 +826,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		case types.SettingNameGuaranteedInstanceManagerCPU:
 			isSettingSynced, err = imc.isSettingGuaranteedInstanceManagerCPUSynced(setting, pod)
 		case types.SettingNamePriorityClass:
-			isSettingSynced, err = imc.isSettingPriorityClassSynced(setting, pod)
+			isSettingSynced, err = imc.isSettingPriorityClassSynced(pod)
 		case types.SettingNameStorageNetwork:
 			isSettingSynced, err = imc.isSettingStorageNetworkSynced(setting, pod)
 		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
@@ -906,8 +906,13 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 	return IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq), nil
 }
 
-func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
-	return pod.Spec.PriorityClassName == setting.Value, nil
+func (imc *InstanceManagerController) isSettingPriorityClassSynced(pod *corev1.Pod) (bool, error) {
+	priorityClass, err := imc.ds.GetSystemManagedComponentPriorityClass(types.SystemManagedComponentInstanceManager)
+	if err != nil {
+		return false, err
+	}
+
+	return pod.Spec.PriorityClassName == priorityClass, nil
 }
 
 func (imc *InstanceManagerController) isSettingLogPathSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -1787,7 +1792,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
-	priorityClass, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
+	priorityClass, err := imc.ds.GetSystemManagedComponentPriorityClass(types.SystemManagedComponentInstanceManager)
 	if err != nil {
 		return nil, err
 	}
@@ -1809,7 +1814,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			ServiceAccountName: imc.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
 			NodeSelector:       nodeSelector,
-			PriorityClassName:  priorityClass.Value,
+			PriorityClassName:  priorityClass,
 			Containers: []corev1.Container{
 				{
 					Name:            "instance-manager",

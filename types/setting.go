@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"slices"
 	"strconv"
@@ -101,6 +102,7 @@ const (
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
 	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
 	SettingNameSystemManagedCSIComponentsResourceLimits                 = SettingName("system-managed-csi-components-resource-limits")
+	SettingNameSystemManagedComponentsPriorityClasses                   = SettingName("system-managed-components-priority-classes")
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                              = SettingName("auto-salvage")
 	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly              = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
@@ -233,6 +235,7 @@ var (
 		SettingNameTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits,
+		SettingNameSystemManagedComponentsPriorityClasses,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -400,6 +403,7 @@ var (
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
 		SettingNameSystemManagedCSIComponentsResourceLimits:                 SettingDefinitionSystemManagedCSIComponentsResourceLimits,
+		SettingNameSystemManagedComponentsPriorityClasses:                   SettingDefinitionSystemManagedComponentsPriorityClasses,
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                              SettingDefinitionAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:              SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -956,6 +960,33 @@ var (
 			"}\n" +
 			"```\n\n" +
 			"Supported components: csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter, longhorn-csi-plugin, node-driver-registrar, longhorn-liveness-probe",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+
+	SettingDefinitionSystemManagedComponentsPriorityClasses = SettingDefinition{
+		DisplayName: "System Managed Components Priority Classes",
+		Description: "This setting allows you to configure PriorityClass overrides for system-managed components. " +
+			"Supported components include: instance-manager, engine-image, longhorn-csi-plugin, csi-attacher, csi-provisioner, csi-resizer, and csi-snapshotter. " +
+			"The value must be a JSON object with component names as keys and PriorityClass names as values. Only the components defined in the JSON object will have their " +
+			"PriorityClass overridden; all others will continue using the priority-class setting. " +
+			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.\n\n" +
+			"Example:\n\n" +
+			"```json\n" +
+			"{\n" +
+			"  \"instance-manager\": \"system-node-critical\",\n" +
+			"  \"engine-image\": \"system-node-critical\",\n" +
+			"  \"longhorn-csi-plugin\": \"system-node-critical\",\n" +
+			"  \"csi-attacher\": \"system-cluster-critical\",\n" +
+			"  \"csi-provisioner\": \"system-cluster-critical\",\n" +
+			"  \"csi-resizer\": \"system-cluster-critical\",\n" +
+			"  \"csi-snapshotter\": \"system-cluster-critical\"\n" +
+			"}\n" +
+			"```\n\n" +
+			"Supported components: instance-manager, engine-image, longhorn-csi-plugin, csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -2402,6 +2433,41 @@ type ComponentResourceLimits struct {
 	CSILivenessProbe       *corev1.ResourceRequirements `json:"longhorn-liveness-probe,omitempty"`
 }
 
+type ComponentPriorityClasses struct {
+	InstanceManager string `json:"instance-manager,omitempty"`
+	EngineImage     string `json:"engine-image,omitempty"`
+	CSIPlugin       string `json:"longhorn-csi-plugin,omitempty"`
+	CSIAttacher     string `json:"csi-attacher,omitempty"`
+	CSIProvisioner  string `json:"csi-provisioner,omitempty"`
+	CSIResizer      string `json:"csi-resizer,omitempty"`
+	CSISnapshotter  string `json:"csi-snapshotter,omitempty"`
+}
+
+func (priorityClasses *ComponentPriorityClasses) Get(component string) string {
+	if priorityClasses == nil {
+		return ""
+	}
+
+	switch component {
+	case SystemManagedComponentInstanceManager:
+		return priorityClasses.InstanceManager
+	case SystemManagedComponentEngineImage:
+		return priorityClasses.EngineImage
+	case CSIPluginName:
+		return priorityClasses.CSIPlugin
+	case CSIAttacherName:
+		return priorityClasses.CSIAttacher
+	case CSIProvisionerName:
+		return priorityClasses.CSIProvisioner
+	case CSIResizerName:
+		return priorityClasses.CSIResizer
+	case CSISnapshotterName:
+		return priorityClasses.CSISnapshotter
+	default:
+		return ""
+	}
+}
+
 func UnmarshalCSIComponentResourceLimits(resourceLimitsSetting string) (*ComponentResourceLimits, error) {
 	resourceLimitsSetting = strings.Trim(resourceLimitsSetting, " ")
 	if resourceLimitsSetting == "" {
@@ -2415,6 +2481,42 @@ func UnmarshalCSIComponentResourceLimits(resourceLimitsSetting string) (*Compone
 	}
 
 	return &limits, nil
+}
+
+func UnmarshalComponentPriorityClasses(priorityClassesSetting string) (*ComponentPriorityClasses, error) {
+	priorityClassesSetting = strings.Trim(priorityClassesSetting, " ")
+	if priorityClassesSetting == "" {
+		return &ComponentPriorityClasses{}, nil
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(priorityClassesSetting))
+	decoder.DisallowUnknownFields()
+
+	var priorityClasses ComponentPriorityClasses
+	if err := decoder.Decode(&priorityClasses); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal system managed components priority classes %v", priorityClassesSetting)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, errors.Errorf("failed to unmarshal system managed components priority classes %v: contains multiple JSON values", priorityClassesSetting)
+		}
+		return nil, errors.Wrapf(err, "failed to unmarshal system managed components priority classes %v", priorityClassesSetting)
+	}
+
+	return &priorityClasses, nil
+}
+
+func ResolveSystemManagedComponentPriorityClass(defaultPriorityClass, priorityClassesSetting, component string) (string, error) {
+	priorityClasses, err := UnmarshalComponentPriorityClasses(priorityClassesSetting)
+	if err != nil {
+		return "", err
+	}
+	if priorityClass := priorityClasses.Get(component); priorityClass != "" {
+		return priorityClass, nil
+	}
+
+	return defaultPriorityClass, nil
 }
 
 func UnmarshalOrphanResourceTypes(resourceTypesSetting string) (map[OrphanResourceType]bool, error) {
