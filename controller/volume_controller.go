@@ -1326,12 +1326,20 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 
 	c.logger.Info("Cleaning up extra healthy replicas")
 
-	var cleaned bool
-	if cleaned, err = c.cleanupEvictionRequestedReplicas(v, rs); err != nil || cleaned {
+	// Exclude replicas that are referenced as a source by linked-clone replicas.
+	// Deleting such replicas would be rejected by the webhook, causing an
+	// endless retry loop.
+	deletableRs, err := c.filterOutLinkedCloneSrcReplicas(rs)
+	if err != nil {
 		return err
 	}
 
-	if cleaned, err = c.cleanupDataLocalityReplicas(v, e, rs); err != nil || cleaned {
+	var cleaned bool
+	if cleaned, err = c.cleanupEvictionRequestedReplicas(v, rs, deletableRs); err != nil || cleaned {
+		return err
+	}
+
+	if cleaned, err = c.cleanupDataLocalityReplicas(v, e, rs, deletableRs); err != nil || cleaned {
 		return err
 	}
 
@@ -1341,21 +1349,40 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 	// existing replicas. And this causes a rebuilding loop if this new
 	// replica is for data locality.
 	// Ref: https://github.com/longhorn/longhorn/issues/4761
-	if cleaned, err = c.cleanupAutoBalancedReplicas(v, e, rs); err != nil || cleaned {
+	if cleaned, err = c.cleanupAutoBalancedReplicas(v, e, rs, deletableRs); err != nil || cleaned {
 		return err
 	}
 
 	return nil
 }
 
-func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+// filterOutLinkedCloneSrcReplicas returns a copy of rs excluding replicas that
+// are currently referenced as a source by linked-clone replicas. This prevents
+// cleanup loops where the controller keeps trying to delete a src replica and
+// the webhook keeps rejecting it.
+func (c *VolumeController) filterOutLinkedCloneSrcReplicas(rs map[string]*longhorn.Replica) (map[string]*longhorn.Replica, error) {
+	filtered := make(map[string]*longhorn.Replica, len(rs))
+	for name, r := range rs {
+		clones, err := c.ds.ListLinkedCloneReplicasBySrcReplicaRO(name)
+		if err != nil {
+			return nil, err
+		}
+		if len(clones) > 0 {
+			continue
+		}
+		filtered[name] = r
+	}
+	return filtered, nil
+}
+
+func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, rs, deletableRs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	// If there is no non-evicting healthy replica,
 	// Longhorn should retain one evicting healthy replica.
 	hasNonEvictingHealthyReplica := false
 	evictingHealthyReplica := ""
-	for _, r := range rs {
+	for _, r := range deletableRs {
 		if !datastore.IsAvailableHealthyReplica(r) {
 			continue
 		}
@@ -1366,7 +1393,7 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 		evictingHealthyReplica = r.Name
 	}
 
-	for _, r := range rs {
+	for _, r := range deletableRs {
 		if !r.Spec.EvictionRequested {
 			continue
 		}
@@ -1423,10 +1450,6 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 	}
 
 	if chosenReplica != nil {
-		// TODO: consider skipping deletion if chosenReplica is the source of
-		// linked-clone replicas (ListLinkedCloneReplicasBySrcReplicaRO), but
-		// doing so may interfere with auto-balance behaviour. Needs further
-		// investigation before enabling.
 		if err := c.deleteReplica(chosenReplica, rs); err != nil {
 			return false, err
 		}
@@ -1566,7 +1589,7 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 	return false, nil
 }
 
-func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs, deletableRs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "delete")
 
 	setting := c.ds.GetAutoBalancedReplicasSetting(v, log)
@@ -1577,25 +1600,25 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 	// In case of potential regressions or unexpected behavior changes, these cleanups are available only when
 	// the auto balance setting is enabled.
 	// See https://github.com/longhorn/longhorn/issues/11730 and https://github.com/longhorn/longhorn/issues/12511
-	if cleaned, err := c.cleanupReplicaInNotReadyEnv(v, rs); err != nil || cleaned {
+	if cleaned, err := c.cleanupReplicaInNotReadyEnv(v, deletableRs); err != nil || cleaned {
 		return cleaned, err
 	}
 
-	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, rs); err != nil || cleaned {
+	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, deletableRs); err != nil || cleaned {
 		return cleaned, err
 	}
 
 	var rNames []string
 	if setting == longhorn.ReplicaAutoBalanceBestEffort {
-		_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode)
+		_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, deletableRs, c.getReplicaCountForAutoBalanceNode)
 		if len(rNames) == 0 {
-			_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
+			_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, deletableRs, c.getReplicaCountForAutoBalanceZone)
 		}
 	}
 
 	var err error
 	if len(rNames) == 0 {
-		rNames, err = c.getPreferredReplicaCandidatesForDeletion(rs)
+		rNames, err = c.getPreferredReplicaCandidatesForDeletion(deletableRs)
 		if err != nil {
 			return false, err
 		}
@@ -1605,12 +1628,16 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 		log.Infof("Found replica deletion candidates %v with best-effort", rNames)
 	}
 
-	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, rs)
+	if len(rNames) == 0 {
+		return false, nil
+	}
+
+	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, deletableRs)
 	if err != nil {
 		return false, err
 	}
 
-	r := rs[rNames[0]]
+	r := deletableRs[rNames[0]]
 	log.Infof("Deleting replica %v", r.Name)
 	if err := c.deleteReplica(r, rs); err != nil {
 		return false, err
@@ -1618,7 +1645,7 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 	return true, nil
 }
 
-func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs, deletableRs map[string]*longhorn.Replica) (bool, error) {
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
 		// Skip data locality cleanup when the engine is not running. If the engine crashed or stopped,
 		// we cannot verify replica data integrity through the engine's mode map, and data locality is
@@ -1629,9 +1656,9 @@ func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *lo
 		}
 	}
 	if !isDataLocalityDisabled(v) &&
-		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+		hasLocalReplicaOnSameNodeAsEngine(e, deletableRs) {
 
-		rNames, err := c.getPreferredReplicaCandidatesForDeletion(rs)
+		rNames, err := c.getPreferredReplicaCandidatesForDeletion(deletableRs)
 		if err != nil {
 			return false, err
 		}
@@ -1642,7 +1669,7 @@ func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *lo
 		// we always delete the replica with the smallest name.
 		sort.Strings(rNames)
 		for _, rName := range rNames {
-			r := rs[rName]
+			r := deletableRs[rName]
 			if r.Spec.NodeID != e.Spec.NodeID {
 				if err := c.deleteReplica(r, rs); err != nil {
 					return false, err
