@@ -5136,6 +5136,11 @@ func (c *VolumeController) shouldCompleteLinkedCloneDespiteDegraded(v *longhorn.
 		hasNonHealthyReplica = true
 
 		// Condition 1: rebuild retries exhausted.
+		// This also covers newly created replicas that start with
+		// RebuildRetryCount == FailedReplicaMaxRetryCount (to prevent
+		// reuse). By that point the system has already exhausted retries
+		// on the original failed replica, so completing despite degraded
+		// state is correct.
 		if r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount {
 			continue
 		}
