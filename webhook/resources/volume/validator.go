@@ -959,10 +959,20 @@ func (v *volumeValidator) validateSourceVolumeReplicaCountDecrease(oldVolume, ne
 
 	if freeCount < decreaseBy {
 		return werror.NewForbiddenError(fmt.Sprintf(
-			"cannot decrease replica count of source volume %v by %d: only %d of %d source replicas are not backing linked-clone replicas",
+			"cannot decrease replica count of linked-clone source volume %v by %d: only %d of %d linked-clone source replicas are not backing linked-clone replicas",
 			newVolume.Name, decreaseBy, freeCount, len(srcReplicas),
 		))
 	}
+
+	for _, cloneVolume := range cloneVolumes {
+		if cloneVolume.Spec.NumberOfReplicas > newVolume.Spec.NumberOfReplicas {
+			return werror.NewInvalidError(fmt.Sprintf(
+				"cannot decrease linked-clone source volume %v to %d replicas: linked-clone volume %v requires %d replicas",
+				newVolume.Name, newVolume.Spec.NumberOfReplicas, cloneVolume.Name, cloneVolume.Spec.NumberOfReplicas),
+				"spec.numberOfReplicas")
+		}
+	}
+
 	return nil
 }
 
