@@ -211,7 +211,7 @@ require (
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0
 	golang.org/x/term v0.44.0 // indirect
-	golang.org/x/text v0.39.0
+	golang.org/x/text v0.40.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.36.2 // indirect
