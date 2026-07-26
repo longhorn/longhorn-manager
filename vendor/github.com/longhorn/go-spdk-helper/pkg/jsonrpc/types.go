@@ -27,9 +27,11 @@ type RespErrorMsg string
 type RespErrorCode int32
 
 const (
-	RespErrorCodeNoSuchProcess = -3
-	RespErrorCodeNoFileExists  = -17
-	RespErrorCodeNoSuchDevice  = -19
+	RespErrorCodeNoEntry              = -2
+	RespErrorCodeNoSuchProcess        = -3
+	RespErrorCodeDeviceOrResourceBusy = -16
+	RespErrorCodeNoFileExists         = -17
+	RespErrorCodeNoSuchDevice         = -19
 )
 
 type Response struct {
@@ -60,6 +62,18 @@ func (re JSONClientError) Error() string {
 		re.ID, re.Method, re.Params, re.ErrorDetail)
 }
 
+func IsJSONRPCRespErrorNoEntry(err error) bool {
+	jsonRPCError, ok := err.(JSONClientError)
+	if !ok {
+		return false
+	}
+	responseError, ok := jsonRPCError.ErrorDetail.(*ResponseError)
+	if !ok {
+		return false
+	}
+	return responseError.Code == RespErrorCodeNoEntry
+}
+
 func IsJSONRPCRespErrorNoSuchProcess(err error) bool {
 	jsonRPCError, ok := err.(JSONClientError)
 	if !ok {
@@ -84,6 +98,25 @@ func IsJSONRPCRespErrorNoSuchDevice(err error) bool {
 	}
 
 	return responseError.Code == RespErrorCodeNoSuchDevice
+}
+
+func IsJSONRPCRespErrorDeviceOrResourceBusy(err error) bool {
+	jsonRPCError, ok := err.(JSONClientError)
+	if !ok {
+		return false
+	}
+	responseError, ok := jsonRPCError.ErrorDetail.(*ResponseError)
+	if !ok {
+		return false
+	}
+	// EBUSY may be returned directly as errno -16, or wrapped by SPDK as a
+	// generic JSON-RPC internal error (-32603) whose message is the EBUSY
+	// strerror string "Device or resource busy" (e.g. ublk_create_target when
+	// the singleton target already exists).
+	if responseError.Code == RespErrorCodeDeviceOrResourceBusy {
+		return true
+	}
+	return strings.Contains(strings.ToLower(string(responseError.Message)), "device or resource busy")
 }
 
 func IsJSONRPCRespErrorFileExists(err error) bool {

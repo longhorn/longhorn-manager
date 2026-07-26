@@ -84,6 +84,11 @@ type BdevLvolRenameLvstoreRequest struct {
 	NewName string `json:"new_name"`
 }
 
+type BdevLvolGrowLvstoreRequest struct {
+	UUID    string `json:"uuid,omitempty"`
+	LvsName string `json:"lvs_name,omitempty"`
+}
+
 type BdevLvolSetXattrRequest struct {
 	Name       string `json:"name"`
 	XattrName  string `json:"xattr_name"`

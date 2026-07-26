@@ -180,9 +180,25 @@ func (c *Client) BdevLvolRenameLvstore(oldName, newName string) (renamed bool, e
 	return renamed, json.Unmarshal(cmdOutput, &renamed)
 }
 
+// BdevLvolGrowLvstore grows a logical volume store to fill the underlying bdev after it has been expanded.
+// Either lvsName or uuid must be provided.
+func (c *Client) BdevLvolGrowLvstore(lvsName, uuid string) (grown bool, err error) {
+	req := spdktypes.BdevLvolGrowLvstoreRequest{
+		LvsName: lvsName,
+		UUID:    uuid,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_lvol_grow_lvstore", req)
+	if err != nil {
+		return false, err
+	}
+
+	return grown, json.Unmarshal(cmdOutput, &grown)
+}
+
 // BdevLvolCreate create a logical volume on a logical volume store.
 //
-//	"lvol_name": Required. Name of logical volume to create. The bdev name/alias will be <LVSTORE NAME>/<LVOL NAME>.
+//	"lvolName": Required. Name of logical volume to create. The bdev name/alias will be <LVSTORE NAME>/<LVOL NAME>.
 //
 //	"lvstoreName": Either this or "lvstoreUUID" is required. Name of logical volume store to create logical volume on.
 //
@@ -997,6 +1013,23 @@ func (c *Client) BdevNvmeDetachController(name string) (detached bool, err error
 	}
 
 	return detached, json.Unmarshal(cmdOutput, &detached)
+}
+
+// BdevNvmeResetController resets an NVMe controller. The associated bdevs
+// remain registered; qpairs are destroyed and recreated.
+//
+//	"name": Name of the NVMe controller. e.g., "Nvme0"
+func (c *Client) BdevNvmeResetController(name string) (success bool, err error) {
+	req := spdktypes.BdevNvmeResetControllerRequest{
+		Name: name,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_nvme_reset_controller", req)
+	if err != nil {
+		return false, err
+	}
+
+	return success, json.Unmarshal(cmdOutput, &success)
 }
 
 // BdevNvmeGetControllers gets information about bdev NVMe controllers.

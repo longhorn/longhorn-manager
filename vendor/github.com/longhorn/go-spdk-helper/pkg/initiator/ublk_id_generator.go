@@ -2,20 +2,20 @@ package initiator
 
 import (
 	"fmt"
+	"sync"
 
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 )
 
-// IDGenerator tracks only the last ID returned (which is never 0).
-// Valid range for returned IDs is [1..MaxUblkId].
 type IDGenerator struct {
+	mu            sync.Mutex
 	lastCandidate int32
 }
 
-// GetAvailableID returns an ID in [1..65535] that is NOT in inUseUblkDeviceList.
-// We do a circular search, skipping ID=0 entirely.
-// This function is not thread safe. Caller need to have their own locking mechanism
 func (gen *IDGenerator) GetAvailableID(inUseUblkDeviceList []spdktypes.UblkDevice) (int32, error) {
+	gen.mu.Lock()
+	defer gen.mu.Unlock()
+
 	// Make a set for quick membership checks
 	inUsedMap := make(map[int32]struct{}, len(inUseUblkDeviceList))
 	for _, ublkDevice := range inUseUblkDeviceList {
