@@ -3,7 +3,7 @@
 ARG GOLANGCI_LINT_VERSION=v2.12.2@sha256:5cceeef04e53efe1470638d4b4b4f5ceefd574955ab3941b2d9a68a8c9ad5240
 FROM golangci/golangci-lint:${GOLANGCI_LINT_VERSION} AS golangci-lint
 
-FROM registry.suse.com/bci/golang:1.26@sha256:b673c05ec4523174269423a9dff436c267339cdfd9827bf9987e0fe447ad4f02 AS base
+FROM registry.suse.com/bci/golang:1.26@sha256:f8e55755eb0254b1ce0874eb58b3862edb1f4ff5509df68b2fb3fbbbe6e0e8eb AS base
 
 ARG TARGETARCH
 ARG http_proxy
