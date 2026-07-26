@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/errors"
+
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -57,6 +59,16 @@ func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Ob
 		return werror.NewInvalidError("spec.volume is required", "spec.volume")
 	}
 
+	if isLinkedClone, err := o.ds.IsVolumeLinkedCloneVolume(snapshot.Spec.Volume); err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to check IsVolumeLinkedCloneVolume: %v", err), "")
+	} else if isLinkedClone {
+		return werror.NewInvalidError(fmt.Sprintf("snapshot is not allowed for linked-clone volume %v", snapshot.Spec.Volume), "")
+	}
+
+	if err := o.validateSnapshotCount(snapshot); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	return nil
 }
 
@@ -85,6 +97,65 @@ func (o *snapshotValidator) Update(request *admission.Request, oldObj runtime.Ob
 	return nil
 }
 
+func (o *snapshotValidator) validateSnapshotCount(snapshot *longhorn.Snapshot) error {
+	if !snapshot.Spec.CreateSnapshot {
+		return nil
+	}
+
+	volume, err := o.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get volume %v for snapshot count validation", snapshot.Spec.Volume)
+	}
+
+	snapshotMaxCount, err := o.getSnapshotMaxCount(volume)
+	if err != nil {
+		return err
+	}
+
+	existingSnapshots, err := o.ds.ListVolumeSnapshotsRO(snapshot.Spec.Volume)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list snapshots for volume %s for snapshot count validation", snapshot.Spec.Volume)
+	}
+
+	currentSnapshotCount := countExistingSnapshots(existingSnapshots)
+
+	if currentSnapshotCount >= snapshotMaxCount {
+		return fmt.Errorf(
+			"cannot create snapshot for volume %s: snapshot count usage %d is greater than or equal to snapshotMaxCount %d; remove snapshots or increase snapshotMaxCount",
+			snapshot.Spec.Volume,
+			currentSnapshotCount,
+			snapshotMaxCount,
+		)
+	}
+	return nil
+}
+
+// getSnapshotMaxCount returns the effective snapshot max count for the given volume.
+// It prefers volume.Spec.SnapshotMaxCount (set at volume creation time from the global setting
+// and not updated when the global setting changes afterward). If the field is unset
+// (e.g. during upgrade/migration before the mutator has defaulted it), it falls back to
+// the current global setting to ensure enforcement is never silently skipped.
+func (o *snapshotValidator) getSnapshotMaxCount(volume *longhorn.Volume) (int, error) {
+	if volume.Spec.SnapshotMaxCount > 0 {
+		return volume.Spec.SnapshotMaxCount, nil
+	}
+
+	snapshotMaxCount, err := o.ds.GetSettingAsInt(types.SettingNameSnapshotMaxCount)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to get setting %v for snapshot count validation", types.SettingNameSnapshotMaxCount)
+	}
+	return int(snapshotMaxCount), nil
+}
+
+func countExistingSnapshots(snapshots map[string]*longhorn.Snapshot) int {
+	count := 0
+	for _, s := range snapshots {
+		if s != nil && s.DeletionTimestamp == nil && !s.Status.MarkRemoved && s.Status.UserCreated {
+			count++
+		}
+	}
+	return count
+}
 func (o *snapshotValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
 	snapshot, ok := oldObj.(*longhorn.Snapshot)
 	if !ok {
