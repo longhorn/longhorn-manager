@@ -44,6 +44,7 @@ func TestGetCapacity(t *testing.T) {
 		testName                            string
 		node                                *longhorn.Node
 		skipNodeCreation                    bool
+		skipDiskScheduleCreation            bool
 		skipNodeSettingCreation             bool
 		skipDiskSettingCreation             bool
 		skipOverProvisioningSettingCreation bool
@@ -58,6 +59,7 @@ func TestGetCapacity(t *testing.T) {
 		{
 			testName:                   "Node not found",
 			skipNodeCreation:           true,
+			skipDiskScheduleCreation:   true,
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			err:                        status.Errorf(codes.NotFound, "node node-0 not found"),
@@ -112,32 +114,44 @@ func TestGetCapacity(t *testing.T) {
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", false, true, true, false),
 			dataEngine:                 "v1",
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false)},
-			maximumVolumeSize:          0,
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+			},
+			maximumVolumeSize: 0,
 		},
 		{
 			testName:                   "Node condition is not schedulable",
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", true, false, true, false),
 			dataEngine:                 "v1",
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false)},
-			maximumVolumeSize:          0,
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+			},
+			maximumVolumeSize: 0,
 		},
 		{
 			testName:                   "Scheduling not allowed on a node",
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", true, true, false, false),
 			dataEngine:                 "v1",
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false)},
-			maximumVolumeSize:          0,
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+			},
+			maximumVolumeSize: 0,
 		},
 		{
 			testName:                   "Node eviction is requested",
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", true, true, true, true),
 			dataEngine:                 "v1",
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false)},
-			maximumVolumeSize:          0,
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+			},
+			maximumVolumeSize: 0,
 		},
 		{
 			testName:                   "Node tags don't match node selector",
@@ -145,15 +159,22 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "large,fast,linux", "", true, true, true, false),
 			nodeSelector:               "fast,storage",
 			dataEngine:                 "v1",
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false)},
-			maximumVolumeSize:          0,
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+			},
+			maximumVolumeSize: 0,
 		},
 		{
 			testName:                   "Must default to v1 engine when dataEngine key is missing",
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false), newDisk(2000, 100, 0, "", true, true, true, false)},
-			maximumVolumeSize:          1150,
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+				newDisk("disk3", 2000, 100, 0, "", true, true, true, false),
+			},
+			maximumVolumeSize: 1150,
 		},
 		{
 			testName:                   "v1 engine with two valid disks",
@@ -161,8 +182,11 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage,large,fast,linux", "", true, true, true, false),
 			nodeSelector:               "fast,storage",
 			dataEngine:                 "v1",
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false)},
-			maximumVolumeSize:          1150,
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+			},
+			maximumVolumeSize: 1150,
 		},
 		{
 			testName:                   "v1 engine with two valid disks and one with mismatched engine type",
@@ -170,7 +194,11 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v1",
 			maximumVolumeSize:          1150,
-			disks:                      []*disk{newDisk(1450, 300, 0, "ssd", false, true, true, false), newDisk(1000, 500, 0, "", false, true, true, false), newDisk(2000, 100, 0, "", true, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1450, 300, 0, "ssd", false, true, true, false),
+				newDisk("disk2", 1000, 500, 0, "", false, true, true, false),
+				newDisk("disk3", 2000, 100, 0, "", true, true, true, false),
+			},
 		},
 		{
 			testName:                   "v2 engine with two valid disks and one with mismatched engine type",
@@ -178,7 +206,11 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v2",
 			maximumVolumeSize:          1650,
-			disks:                      []*disk{newDisk(1950, 300, 0, "", true, true, true, false), newDisk(1500, 500, 0, "", true, true, true, false), newDisk(2000, 100, 0, "", false, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1950, 300, 0, "", true, true, true, false),
+				newDisk("disk2", 1500, 500, 0, "", true, true, true, false),
+				newDisk("disk3", 2000, 100, 0, "", false, true, true, false),
+			},
 		},
 		{
 			testName:                   "v2 engine with one valid disk and two with unmatched tags",
@@ -187,7 +219,11 @@ func TestGetCapacity(t *testing.T) {
 			dataEngine:                 "v2",
 			diskSelector:               "ssd,fast",
 			maximumVolumeSize:          1000,
-			disks:                      []*disk{newDisk(1100, 100, 0, "fast,nvmf,ssd,hot", true, true, true, false), newDisk(2500, 500, 0, "ssd,slow,green", true, true, true, false), newDisk(2000, 100, 0, "hdd,fast", true, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1100, 100, 0, "fast,nvmf,ssd,hot", true, true, true, false),
+				newDisk("disk2", 2500, 500, 0, "ssd,slow,green", true, true, true, false),
+				newDisk("disk3", 2000, 100, 0, "hdd,fast", true, true, true, false),
+			},
 		},
 		{
 			testName:                   "v2 engine with one valid disk and one with unhealthy condition",
@@ -195,7 +231,10 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v2",
 			maximumVolumeSize:          400,
-			disks:                      []*disk{newDisk(1100, 100, 0, "ssd", true, false, true, false), newDisk(500, 100, 0, "hdd", true, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1100, 100, 0, "ssd", true, false, true, false),
+				newDisk("disk2", 500, 100, 0, "hdd", true, true, true, false),
+			},
 		},
 		{
 			testName:                   "v2 engine with one valid disk and one with scheduling disabled",
@@ -203,7 +242,10 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v2",
 			maximumVolumeSize:          400,
-			disks:                      []*disk{newDisk(1100, 100, 0, "ssd", true, true, false, false), newDisk(500, 100, 0, "hdd", true, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1100, 100, 0, "ssd", true, true, false, false),
+				newDisk("disk2", 500, 100, 0, "hdd", true, true, true, false),
+			},
 		},
 		{
 			testName:                   "v2 engine with one valid disk and one marked for eviction",
@@ -211,7 +253,10 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v2",
 			maximumVolumeSize:          400,
-			disks:                      []*disk{newDisk(1100, 100, 0, "ssd", true, true, true, true), newDisk(500, 100, 0, "hdd", true, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1100, 100, 0, "ssd", true, true, true, true),
+				newDisk("disk2", 500, 100, 0, "hdd", true, true, true, false),
+			},
 		},
 		{
 			testName:                   "v2 engine with over-provisioning set to 200",
@@ -219,7 +264,10 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v2",
 			maximumVolumeSize:          1700,
-			disks:                      []*disk{newDisk(1100, 100, 300, "ssd", true, true, true, false), newDisk(500, 100, 100, "hdd", true, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1100, 100, 300, "ssd", true, true, true, false),
+				newDisk("disk2", 500, 100, 100, "hdd", true, true, true, false),
+			},
 		},
 		{
 			testName:                   "v1 engine with over-provisioning set to 400",
@@ -227,7 +275,10 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v1",
 			maximumVolumeSize:          1500,
-			disks:                      []*disk{newDisk(900, 400, 600, "ssd", false, true, true, false), newDisk(1500, 500, 2500, "hdd", false, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 900, 400, 600, "ssd", false, true, true, false),
+				newDisk("disk2", 1500, 500, 2500, "hdd", false, true, true, false),
+			},
 		},
 		{
 			testName:                   "Capacity floors at 0 when scheduled exceeds over-provisioning limit",
@@ -235,7 +286,9 @@ func TestGetCapacity(t *testing.T) {
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "v1",
 			maximumVolumeSize:          0,
-			disks:                      []*disk{newDisk(1000, 100, 1000, "", false, true, true, false)},
+			disks: []*disk{
+				newDisk("disk1", 1000, 100, 1000, "", false, true, true, false),
+			},
 		},
 	} {
 		t.Run(test.testName, func(t *testing.T) {
@@ -243,6 +296,11 @@ func TestGetCapacity(t *testing.T) {
 			if !test.skipNodeCreation {
 				addDisksToNode(test.node, test.disks)
 				objs = append(objs, test.node)
+			}
+			if !test.skipDiskScheduleCreation {
+				for _, disk := range test.disks {
+					objs = append(objs, newDiskSchedule(test.node.Name, disk))
+				}
 			}
 			if !test.skipNodeSettingCreation {
 				objs = append(objs, newSetting(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"))
@@ -345,9 +403,9 @@ func TestGetCapacityPerZone(t *testing.T) {
 		newNode("node-a2", "", "zone-a", true, true, true, false),
 	}
 	zoneADisks := [][]*disk{
-		{newDisk(2000, 200, 0, "", false, true, true, false), newDisk(1000, 100, 0, "", false, true, true, false)},
-		{newDisk(3000, 300, 500, "", false, true, true, false), newDisk(1500, 150, 0, "", false, true, true, false)},
-		{newDisk(1800, 100, 200, "", false, true, true, false), newDisk(2200, 200, 100, "", false, true, true, false)},
+		{newDisk("disk-a0-0", 2000, 200, 0, "", false, true, true, false), newDisk("disk-a0-1", 1000, 100, 0, "", false, true, true, false)},
+		{newDisk("disk-a1-0", 3000, 300, 500, "", false, true, true, false), newDisk("disk-a1-1", 1500, 150, 0, "", false, true, true, false)},
+		{newDisk("disk-a2-0", 1800, 100, 200, "", false, true, true, false), newDisk("disk-a2-1", 2200, 200, 100, "", false, true, true, false)},
 	}
 
 	zoneBNodes := []*longhorn.Node{
@@ -356,38 +414,41 @@ func TestGetCapacityPerZone(t *testing.T) {
 		newNode("node-b2", "", "zone-b", true, true, true, false),
 	}
 	zoneBDisks := [][]*disk{
-		{newDisk(5000, 500, 1000, "", false, true, true, false), newDisk(3000, 300, 0, "", false, true, true, false)},
-		{newDisk(1000, 100, 0, "", false, true, true, false), newDisk(800, 100, 0, "", false, true, true, false)},
-		{newDisk(4000, 400, 2000, "", false, true, true, false), newDisk(2000, 200, 500, "", false, true, true, false)},
+		{newDisk("disk-b0-0", 5000, 500, 1000, "", false, true, true, false), newDisk("disk-b0-1", 3000, 300, 0, "", false, true, true, false)},
+		{newDisk("disk-b1-0", 1000, 100, 0, "", false, true, true, false), newDisk("disk-b1-1", 800, 100, 0, "", false, true, true, false)},
+		{newDisk("disk-b2-0", 4000, 400, 2000, "", false, true, true, false), newDisk("disk-b2-1", 2000, 200, 500, "", false, true, true, false)},
 	}
 
 	// Per-node available capacity (over-provisioning=100%):
 	//   schedulable per disk = (max - reserved) * 100/100 - scheduled
 	//
 	// Zone A:
-	//   node-a0: (2000-200)-0=1800, (1000-100)-0=900     → available=2700, maxVol=1800
-	//   node-a1: (3000-300)-500=2200, (1500-150)-0=1350   → available=3550, maxVol=2200
-	//   node-a2: (1800-100)-200=1500, (2200-200)-100=1900 → available=3400, maxVol=1900
+	//   node-a0: (2000-200)-0=1800, (1000-100)-0=900     -> available=2700, maxVol=1800
+	//   node-a1: (3000-300)-500=2200, (1500-150)-0=1350   -> available=3550, maxVol=2200
+	//   node-a2: (1800-100)-200=1500, (2200-200)-100=1900 -> available=3400, maxVol=1900
 	//   Zone total: available=9650, maxVol=max(1800,2200,1900)=2200
 	//
 	// Zone B:
-	//   node-b0: (5000-500)-1000=3500, (3000-300)-0=2700   → available=6200, maxVol=3500
-	//   node-b1: (1000-100)-0=900, (800-100)-0=700         → available=1600, maxVol=900
-	//   node-b2: (4000-400)-2000=1600, (2000-200)-500=1300 → available=2900, maxVol=1600
+	//   node-b0: (5000-500)-1000=3500, (3000-300)-0=2700   -> available=6200, maxVol=3500
+	//   node-b1: (1000-100)-0=900, (800-100)-0=700         -> available=1600, maxVol=900
+	//   node-b2: (4000-400)-2000=1600, (2000-200)-500=1300 -> available=2900, maxVol=1600
 	//   Zone total: available=10700, maxVol=max(3500,900,1600)=3500
 
 	allNodes := append(zoneANodes, zoneBNodes...)
 	allDisks := append(zoneADisks, zoneBDisks...)
 	var objs []runtime.Object
-	for i, node := range allNodes {
-		addDisksToNode(node, allDisks[i])
-		objs = append(objs, node)
-	}
 	objs = append(objs,
 		newSetting(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"),
 		newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"),
 		newSetting(string(types.SettingNameStorageOverProvisioningPercentage), "100"),
 	)
+	for i, node := range allNodes {
+		addDisksToNode(node, allDisks[i])
+		objs = append(objs, node)
+		for _, disk := range allDisks[i] {
+			objs = append(objs, newDiskSchedule(node.Name, disk))
+		}
+	}
 	cs := newTestControllerServer(t, objs...)
 
 	for _, tc := range []struct {
@@ -423,7 +484,7 @@ func TestGetCapacityPerZone(t *testing.T) {
 	}
 }
 
-func newDisk(storageMaximum, storageReserved, storageScheduled int64, tags string, isBlockType, isCondOk, allowScheduling, evictionRequested bool) *disk {
+func newDisk(diskUUID string, storageMaximum, storageReserved, storageScheduled int64, tags string, isBlockType, isCondOk, allowScheduling, evictionRequested bool) *disk {
 	disk := &disk{
 		spec: longhorn.DiskSpec{
 			StorageReserved:   storageReserved,
@@ -432,6 +493,7 @@ func newDisk(storageMaximum, storageReserved, storageScheduled int64, tags strin
 			EvictionRequested: evictionRequested,
 		},
 		status: longhorn.DiskStatus{
+			DiskUUID:         diskUUID,
 			StorageMaximum:   storageMaximum,
 			StorageScheduled: storageScheduled,
 			Type:             longhorn.DiskTypeFilesystem,
@@ -478,6 +540,26 @@ func addDisksToNode(node *longhorn.Node, disks []*disk) {
 		node.Spec.Disks[name] = disk.spec
 		node.Status.DiskStatus[name] = &disk.status
 	}
+}
+
+func newDiskSchedule(nodeName string, disk *disk) *longhorn.DiskSchedule {
+	diskSchedule := &longhorn.DiskSchedule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      disk.status.DiskUUID,
+			Namespace: testNamespace,
+		},
+		Spec: longhorn.DiskScheduleSpec{
+			NodeID:        nodeName,
+			Replicas:      make(map[string]int64),
+			BackingImages: make(map[string]int64),
+		},
+		Status: longhorn.DiskScheduleStatus{
+			StorageScheduled: disk.status.StorageScheduled,
+			Replicas:         make(map[string]*longhorn.DiskScheduledResourcesStatus),
+			BackingImages:    make(map[string]*longhorn.DiskScheduledResourcesStatus),
+		},
+	}
+	return diskSchedule
 }
 
 func newSetting(name, value string) *longhorn.Setting {

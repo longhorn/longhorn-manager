@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
@@ -330,4 +332,26 @@ func getContainerArgValue(args []string, flag string) string {
 		}
 	}
 	return ""
+}
+
+func eventObjToTypedObj[T any](obj any) (*T, error) {
+	if obj == nil {
+		return nil, nil
+	}
+
+	if typedObj, ok := obj.(*T); ok {
+		return typedObj, nil
+	}
+
+	deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+	if !ok {
+		return nil, fmt.Errorf("received unexpected obj: %#v", obj)
+	}
+
+	typedObj, ok := deletedState.Obj.(*T)
+	if !ok {
+		return nil, fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj)
+	}
+
+	return typedObj, nil
 }

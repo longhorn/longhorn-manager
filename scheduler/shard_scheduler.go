@@ -93,7 +93,13 @@ func (ss *ShardScheduler) ScheduleShard(sg *longhorn.ShardGroup, vol *longhorn.V
 				continue
 			}
 			// Capacity check via the shared scheduling-info helper.
-			info, err := ss.rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			diskSchedule, diskScheduleErr := ss.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+			if diskSchedule == nil {
+				skipReasons.Append("disk schedule unavailable", fmt.Errorf("cannot find the schedule for disk %v on node %v: %v", diskStatus.DiskUUID, nodeName, diskScheduleErr))
+				continue
+			}
+
+			info, err := ss.rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, diskSchedule)
 			if err != nil {
 				// Fails only on the cluster-wide over-provisioning settings, not on
 				// anything disk-specific; surface it instead of skipping the disk as

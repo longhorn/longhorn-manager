@@ -505,6 +505,9 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err := nc.syncDiskStatus(node, collectedDiskInfo); err != nil {
 		return err
 	}
+	if err := nc.syncDiskSchedule(node); err != nil {
+		return err
+	}
 
 	collectedEnvironmentCheckConditions, err := nc.syncWithEnvironmentCheckMonitor()
 	if err == nil {
@@ -747,6 +750,113 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 	}
 
 	return nc.updateDiskStatusSchedulableCondition(node)
+}
+
+func (nc *NodeController) syncDiskSchedule(node *longhorn.Node) error {
+	if err := nc.cleanupDiskSchedule(node); err != nil {
+		return err
+	}
+
+	if err := nc.syncDiskScheduleSpec(node); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (nc *NodeController) cleanupDiskSchedule(node *longhorn.Node) error {
+	diskScheduleMap, err := nc.ds.ListDiskSchedulesOnNode(node.Name)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return errors.Wrapf(err, "failed to list DiskSchedules on node %v for cleanup", node.Name)
+	}
+
+	deleteErrs := multierr.NewMultiError()
+	for _, diskSchedule := range diskScheduleMap {
+		diskExist := false
+		status := node.Status.DiskStatus[diskSchedule.Spec.Name]
+		if status != nil && status.DiskUUID == diskSchedule.Name {
+			diskExist = true
+		}
+		if !diskExist {
+			nc.logger.Infof("Deleting DiskDchedule %v (%q) from Node %v", diskSchedule.Name, diskSchedule.Spec.Name, node.Name)
+			metav1.SetMetaDataAnnotation(&diskSchedule.ObjectMeta, types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn), "")
+			if _, err := nc.ds.UpdateDiskSchedule(diskSchedule); err != nil {
+				return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+			}
+			if err := nc.ds.DeleteDiskSchedule(diskSchedule.Name); err != nil {
+				deleteErrs.Append(fmt.Sprintf("%v (%v)", diskSchedule.Name, diskSchedule.Spec.Name), err)
+			}
+		}
+	}
+
+	if len(deleteErrs) > 0 {
+		return fmt.Errorf("failed to delete DiskSchedules on node %v: %v", node.Name, deleteErrs.ErrorByReason("errors"))
+	}
+	return nil
+}
+
+func (nc *NodeController) syncDiskScheduleSpec(node *longhorn.Node) error {
+	logger := nc.logger.WithFields(logrus.Fields{
+		"function": "syncDiskScheduleSpec",
+		"node":     node.Name,
+	})
+
+	createErrs := multierr.NewMultiError()
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == "" {
+			logger.Infof("Disk %v does not have a disk UUID, skip handling disk scheduler", diskName)
+			continue
+		}
+
+		logger := logger.WithFields(logrus.Fields{
+			"diskName": diskName,
+			"diskUUID": diskStatus.DiskUUID,
+		})
+
+		_, diskDefined := node.Spec.Disks[diskName]
+		if !diskDefined {
+			logger.Infof("Disk %v does not exist in node spec, skip handling disk scheduler", diskName)
+			continue
+		}
+		if err := nc.createDiskScheduleIfNeed(logger, node, diskName, diskStatus); err != nil {
+			createErrs.Append(fmt.Sprintf("%q (%v)", diskName, diskStatus.DiskUUID), err)
+		}
+	}
+
+	if len(createErrs) > 0 {
+		return fmt.Errorf("failed to create disk schedule on node %v: %v", node.Name, createErrs.Error())
+	}
+	return nil
+}
+
+func (nc *NodeController) createDiskScheduleIfNeed(logger *logrus.Entry, node *longhorn.Node, diskName string, diskStatus *longhorn.DiskStatus) error {
+	diskUUID := diskStatus.DiskUUID
+
+	diskSchedule, err := nc.ds.GetDiskSchedule(diskUUID)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+	}
+
+	if diskSchedule != nil {
+		return nil
+	}
+
+	logger.Infof("Creating disk schedule for node %v disk %v", node.Name, diskName)
+	diskSchedule = &longhorn.DiskSchedule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            diskUUID,
+			Namespace:       node.Namespace,
+			OwnerReferences: datastore.GetOwnerReferencesForNode(node),
+		},
+		Spec: longhorn.DiskScheduleSpec{
+			Name:   diskName,
+			NodeID: node.Name,
+		},
+	}
+	_, err = nc.ds.CreateDiskSchedule(diskSchedule)
+	return err
 }
 
 func (nc *NodeController) syncEnvironmentCheckConditions(node *longhorn.Node, conditions []longhorn.Condition) {
@@ -1012,7 +1122,12 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 			diskStatus.ScheduledBackingImage = scheduledBackingImage
 
 			// check disk pressure
-			info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
+			diskSchedule, diskScheduleErr := nc.ds.GetDiskScheduleRO(diskStatus.DiskUUID)
+			if diskScheduleErr != nil {
+				log.WithError(diskScheduleErr).Warnf("Failed to check disk schedule when syncing disk %v(%v), skip update disk pressure", diskName, diskStatus.DiskUUID)
+				continue
+			}
+			info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus, diskSchedule)
 			if err != nil {
 				return err
 			}
@@ -1727,9 +1842,12 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 				continue
 			}
 
-			if err := nc.deleteDisk(node.Name, diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
-				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
+			if diskStatus.DiskUUID != "" {
+				if err := nc.deleteDisk(node.Name, diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+					nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
+				}
 			}
+
 			delete(node.Status.DiskStatus, diskName)
 		}
 	}
@@ -1737,6 +1855,20 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 
 func (nc *NodeController) deleteDisk(nodeName string, diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	nc.logger.Infof("Deleting disk %v with diskUUID %v", diskName, diskUUID)
+
+	diskSchedule, err := nc.ds.GetDiskSchedule(diskUUID)
+	if err != nil {
+		return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+	}
+	metav1.SetMetaDataAnnotation(&diskSchedule.ObjectMeta, types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn), "")
+	if _, err := nc.ds.UpdateDiskSchedule(diskSchedule); err != nil {
+		return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+	}
+	if deleteDiskScheduleErr := nc.ds.DeleteDiskSchedule(diskUUID); deleteDiskScheduleErr != nil {
+		if !datastore.ErrorIsNotFound(deleteDiskScheduleErr) {
+			return errors.Wrap(deleteDiskScheduleErr, fmt.Sprintf("failed to delete disk schedule %v", diskUUID))
+		}
+	}
 
 	dataEngine := util.GetDataEngineForDiskType(diskType)
 
@@ -1936,12 +2068,12 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 	replicasToSync := []replicaToSync{}
 
 	for diskName, diskSpec := range node.Spec.Disks {
-		diskStatus := node.Status.DiskStatus[diskName]
-		for replicaName := range diskStatus.ScheduledReplica {
-			replica, err := nc.ds.GetReplica(replicaName)
-			if err != nil {
-				return err
-			}
+		diskReplicas, listReplicasErr := nc.ds.ListReplicasByDiskUUID(node.Status.DiskStatus[diskName].DiskUUID)
+		if listReplicasErr != nil {
+			log.WithError(listReplicasErr).Errorf("Failed to list replicas by disk %v to check eviction", diskName)
+			return listReplicasErr
+		}
+		for _, replica := range diskReplicas {
 			shouldEvictReplica, reason, err := nc.shouldEvictReplica(node, kubeNode, &diskSpec, replica,
 				nodeDrainPolicy)
 			if err != nil {
@@ -2382,7 +2514,7 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse SnapshotHashingRequestedAt")
 	}
 
-	// Case 1: First-ever request → allow immediately
+	// Case 1: First-ever request -> allow immediately
 	if v.Status.LastOnDemandSnapshotHashingCompleteAt == "" {
 		return true, nil
 	}
@@ -2392,11 +2524,11 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse LastOnDemandSnapshotHashingCompleteAt")
 	}
 
-	// Case 2: Not a new request → reject
+	// Case 2: Not a new request -> reject
 	if !requestTime.After(lastCompleted) {
 		return false, nil
 	}
 
-	// Case 3: New request → allow
+	// Case 3: New request -> allow
 	return true, nil
 }

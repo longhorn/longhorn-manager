@@ -122,3 +122,19 @@ func (m *VolumeManager) DeleteNode(name string) error {
 	logrus.Infof("Deleted node %v", name)
 	return nil
 }
+
+func (m *VolumeManager) ListDiskSchedules() (map[string]*longhorn.DiskSchedule, error) {
+	diskScheduleMap, err := m.ds.ListDiskSchedules()
+	if err != nil {
+		return nil, err
+	}
+	return diskScheduleMap, nil
+}
+
+func (m *VolumeManager) ListNodeDiskSchedules(name string) (map[string]*longhorn.DiskSchedule, error) {
+	diskScheduleMap, err := m.ds.ListDiskSchedulesOnNode(name)
+	if err != nil {
+		return nil, err
+	}
+	return diskScheduleMap, nil
+}
