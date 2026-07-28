@@ -814,14 +814,39 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
+	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
 	if err != nil {
 		return nil, err
 	}
+
+	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
+		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
+		volume.Status.State != longhorn.VolumeStateAttached {
+		bc.creationRetryCounter.IncreaseCount(backup.Name)
+		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
+			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
+			backup.Status.State = longhorn.BackupStateError
+			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+			bc.creationRetryCounter.DeleteEntry(backup.Name)
+			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+			return nil, err
+		}
+		backup.Status.State = longhorn.BackupStatePending
+		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
+		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+		return nil, err
+	}
+
+	engineClientProxy, backupTargetClient, err := getBackupTarget(engine.Spec.NodeID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
+	if err != nil {
+		return nil, err
+	}
+
 	defer func() {
 		if err != nil {
 			engineClientProxy.Close()
@@ -846,29 +871,6 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 				bc.logger.Warnf("Failed to find the StorageClassName from the pvc %v", pvc.Name)
 			}
 		}
-	}
-
-	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
-		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
-		volume.Status.State != longhorn.VolumeStateAttached {
-		bc.creationRetryCounter.IncreaseCount(backup.Name)
-		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
-			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
-			backup.Status.State = longhorn.BackupStateError
-			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
-			bc.creationRetryCounter.DeleteEntry(backup.Name)
-			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-			return nil, err
-		}
-		backup.Status.State = longhorn.BackupStatePending
-		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
-		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-		return nil, err
 	}
 
 	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
