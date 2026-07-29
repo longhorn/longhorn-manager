@@ -314,6 +314,18 @@ const (
 	// auto-attaches all of them at once), not the status size.
 	SnapshotGroupMaxMemberCount = 64
 
+	// SnapshotGroupDefaultDeadlineSeconds is stamped by the mutating webhook
+	// when spec.deadlineSeconds is unset. It is sized for standalone use,
+	// leaving room to auto-attach detached members; callers holding an
+	// application pause should set an explicit deadline matched to their pause
+	// tolerance instead.
+	SnapshotGroupDefaultDeadlineSeconds = 300
+	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds bound
+	// spec.deadlineSeconds at admission. The floor is low enough to express an
+	// application pause tolerance of tens of seconds.
+	SnapshotGroupMinDeadlineSeconds = 10
+	SnapshotGroupMaxDeadlineSeconds = 3600
+
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
 	EndpointNetworkInterface = "lhnet2" // RWX volume nfs server endpoint
