@@ -64,6 +64,8 @@ type Interface interface {
 	ShareManagers() ShareManagerInformer
 	// Snapshots returns a SnapshotInformer.
 	Snapshots() SnapshotInformer
+	// SnapshotGroups returns a SnapshotGroupInformer.
+	SnapshotGroups() SnapshotGroupInformer
 	// SupportBundles returns a SupportBundleInformer.
 	SupportBundles() SupportBundleInformer
 	// SystemBackups returns a SystemBackupInformer.
@@ -185,6 +187,11 @@ func (v *version) ShareManagers() ShareManagerInformer {
 // Snapshots returns a SnapshotInformer.
 func (v *version) Snapshots() SnapshotInformer {
 	return &snapshotInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// SnapshotGroups returns a SnapshotGroupInformer.
+func (v *version) SnapshotGroups() SnapshotGroupInformer {
+	return &snapshotGroupInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // SupportBundles returns a SupportBundleInformer.

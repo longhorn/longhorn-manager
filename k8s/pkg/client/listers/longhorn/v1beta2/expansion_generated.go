@@ -178,6 +178,14 @@ type SnapshotListerExpansion interface{}
 // SnapshotNamespaceLister.
 type SnapshotNamespaceListerExpansion interface{}
 
+// SnapshotGroupListerExpansion allows custom methods to be added to
+// SnapshotGroupLister.
+type SnapshotGroupListerExpansion interface{}
+
+// SnapshotGroupNamespaceListerExpansion allows custom methods to be added to
+// SnapshotGroupNamespaceLister.
+type SnapshotGroupNamespaceListerExpansion interface{}
+
 // SupportBundleListerExpansion allows custom methods to be added to
 // SupportBundleLister.
 type SupportBundleListerExpansion interface{}

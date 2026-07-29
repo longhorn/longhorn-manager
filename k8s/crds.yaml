@@ -3841,7 +3841,7 @@ spec:
       jsonPath: .status.phase
       name: Phase
       type: string
-    - description: True exactly when the phase is Ready
+    - description: True when the group is Ready and every member is still usable
       jsonPath: .status.readyToUse
       name: ReadyToUse
       type: boolean
