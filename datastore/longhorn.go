@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -6240,6 +6241,95 @@ func (s *DataStore) ListSnapshotGroups() (map[string]*longhorn.SnapshotGroup, er
 // The returned objects MUST NOT be modified.
 func (s *DataStore) ListSnapshotGroupsRO() ([]*longhorn.SnapshotGroup, error) {
 	return s.snapshotGroupLister.SnapshotGroups(s.namespace).List(labels.Everything())
+}
+
+// SnapshotGroupMemberCandidate is one volume resolved from the group's volume
+// selection. ValidationFailure is empty when the volume passed validation,
+// and states why it failed otherwise.
+type SnapshotGroupMemberCandidate struct {
+	VolumeName        string
+	ValidationFailure string
+}
+
+// ResolveSnapshotGroupMemberCandidates resolves a spec's volume selection
+// (exactly one of Volumes or VolumeSelector) into member candidates, sorted
+// by volume name. It is the single resolver shared by the admission webhook
+// and the REST preview action; the member snapshot names are not part of
+// resolution, the mutating webhook generates them. Failures of the selection
+// itself return an error; a failure of one volume is recorded in its
+// candidate.
+func (s *DataStore) ResolveSnapshotGroupMemberCandidates(spec *longhorn.SnapshotGroupSpec) ([]SnapshotGroupMemberCandidate, error) {
+	hasVolumes := len(spec.Volumes) > 0
+	hasSelector := spec.VolumeSelector != nil
+	if hasVolumes == hasSelector {
+		return nil, fmt.Errorf("exactly one of volumes or volumeSelector must be set")
+	}
+
+	var volumes []*longhorn.Volume
+	if hasVolumes {
+		listed := map[string]bool{}
+		for _, volumeName := range spec.Volumes {
+			if listed[volumeName] {
+				return nil, fmt.Errorf("volume %v is listed more than once", volumeName)
+			}
+			listed[volumeName] = true
+			volume, err := s.GetVolumeRO(volumeName)
+			if err != nil {
+				if ErrorIsNotFound(err) {
+					return nil, fmt.Errorf("volume %v does not exist", volumeName)
+				}
+				return nil, err
+			}
+			volumes = append(volumes, volume)
+		}
+	} else {
+		selector, err := metav1.LabelSelectorAsSelector(spec.VolumeSelector)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid volumeSelector")
+		}
+		volumes, err = s.ListVolumesBySelectorRO(selector)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(volumes) == 0 {
+		return nil, fmt.Errorf("the volume selection resolves to no volumes")
+	}
+	if len(volumes) > types.SnapshotGroupMaxMemberCount {
+		return nil, fmt.Errorf("the volume selection resolves to %v volumes, above the member cap %v", len(volumes), types.SnapshotGroupMaxMemberCount)
+	}
+
+	sort.Slice(volumes, func(i, j int) bool { return volumes[i].Name < volumes[j].Name })
+
+	candidates := make([]SnapshotGroupMemberCandidate, 0, len(volumes))
+	for _, volume := range volumes {
+		candidates = append(candidates, SnapshotGroupMemberCandidate{
+			VolumeName:        volume.Name,
+			ValidationFailure: snapshotGroupMemberValidationFailure(volume),
+		})
+	}
+	return candidates, nil
+}
+
+// snapshotGroupMemberValidationFailure mirrors the per-volume snapshot
+// webhook restrictions, so creating a member snapshot can never fail on a
+// rule that admission did not check. Detached volumes are allowed; the
+// snapshot controller auto-attaches them. A volume in live migration is also
+// allowed: the migration settles in seconds and is tolerated as a transient
+// member error instead.
+func snapshotGroupMemberValidationFailure(volume *longhorn.Volume) string {
+	switch {
+	case volume.Status.IsStandby:
+		return fmt.Sprintf("volume %v is a standby volume and cannot be a member", volume.Name)
+	case volume.Status.RestoreRequired:
+		return fmt.Sprintf("volume %v is being restored and cannot be a member", volume.Name)
+	case volume.Status.Robustness == longhorn.VolumeRobustnessFaulted:
+		return fmt.Sprintf("volume %v is faulted and cannot be a member", volume.Name)
+	case types.IsLegacyLinkedCloneVolume(volume):
+		return fmt.Sprintf("volume %v is a legacy linked-clone volume and cannot be a member", volume.Name)
+	}
+	return ""
 }
 
 // CreateRecurringJob creates a Longhorn RecurringJob resource and verifies
