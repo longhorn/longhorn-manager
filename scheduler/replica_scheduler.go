@@ -1417,6 +1417,132 @@ func (rcs *ReplicaScheduler) FilterNodesSchedulableForVolume(nodes map[string]*l
 	return filteredNodes
 }
 
+func (rcs *ReplicaScheduler) GetReadyNodeForVolumeAttach(volume *longhorn.Volume, preferredNodeID string) (string, error) {
+	// Fast path: the attachment is only truly unconstrained when the volume has no node/disk
+	// selector and no backing image AND empty selectors are allowed to match any node/disk. When
+	// either allow-empty-*-selector-volume setting is false, empty selectors still exclude tagged
+	// nodes/disks (see types.IsSelectorsInTags), so we must run the full candidate selection below.
+	if volume.Spec.DataLocality != longhorn.DataLocalityStrictLocal && len(volume.Spec.NodeSelector) == 0 && len(volume.Spec.DiskSelector) == 0 && volume.Spec.BackingImage == "" {
+		allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+		}
+		allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+		}
+		if allowEmptyNodeSelectorVolume && allowEmptyDiskSelectorVolume {
+			attachableNodes, err := rcs.ds.ListReadyNodesWithReadyInstanceManagerRO(volume.Spec.DataEngine)
+			if err != nil {
+				return "", err
+			}
+			if preferredNodeID != "" && attachableNodes[preferredNodeID] != nil {
+				return preferredNodeID, nil
+			}
+			chosen := ""
+			for nodeName := range attachableNodes {
+				if chosen == "" || nodeName < chosen {
+					chosen = nodeName
+				}
+			}
+			return chosen, nil
+		}
+	}
+
+	replicas, err := rcs.ds.ListVolumeReplicasRO(volume.Name)
+	if err != nil {
+		return "", err
+	}
+
+	// The target replica may already be placed. Only reuse a node that is currently attachable
+	// (Ready with a running instance manager); a non-failed replica alone does not guarantee that.
+	attachableNodes, err := rcs.ds.ListReadyNodesWithReadyInstanceManagerRO(volume.Spec.DataEngine)
+	if err != nil {
+		return "", err
+	}
+
+	placedNodes := map[string]bool{}
+	for _, r := range replicas {
+		if r.Spec.NodeID == "" || r.Spec.FailedAt != "" || r.DeletionTimestamp != nil {
+			continue
+		}
+		placedNodes[r.Spec.NodeID] = true
+	}
+
+	if len(placedNodes) > 0 {
+		// Prefer the caller's node when it hosts a placed replica and is attachable.
+		if preferredNodeID != "" && placedNodes[preferredNodeID] && attachableNodes[preferredNodeID] != nil {
+			return preferredNodeID, nil
+		}
+		// Otherwise reuse a deterministic attachable node that already hosts a placed replica.
+		reused := ""
+		for nodeID := range placedNodes {
+			if attachableNodes[nodeID] == nil {
+				continue
+			}
+			if reused == "" || nodeID < reused {
+				reused = nodeID
+			}
+		}
+		if reused != "" {
+			return reused, nil
+		}
+		// No placed replica is currently on an attachable node. A strict-local volume has a single
+		// replica that cannot be moved, so wait for its node to recover (return empty/retry) instead
+		// of picking a different node, which would violate strict locality.
+		if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+			return "", nil
+		}
+		// For non-strict-local, fall through to candidate selection to attach elsewhere.
+	}
+
+	// No replica scheduled yet: let the real scheduler tell us which nodes can host one.
+	syntheticReplica := &longhorn.Replica{
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: volume.Name,
+				VolumeSize: volume.Spec.Size,
+				DataEngine: volume.Spec.DataEngine,
+				Image:      volume.Spec.Image,
+			},
+		},
+	}
+
+	diskCandidates, errs := rcs.FindDiskCandidates(syntheticReplica, replicas, volume)
+	if len(diskCandidates) == 0 {
+		// Propagate genuine datastore/client failures so the reconcile retries and surfaces them.
+		if clientErrs := errs[longhorn.ErrorReplicaScheduleLonghornClientOperationFailed]; len(clientErrs) > 0 {
+			return "", fmt.Errorf("failed to find a schedulable node for clone attachment of volume %v: %v", volume.Name, errs.Error())
+		}
+		// Otherwise this is an ordinary "no placement candidate" result (selector mismatch, disk full,
+		// tag removed, ...). Return an empty node with no error so the clone controller can still clean
+		// up an obsolete attachment ticket instead of getting stuck on the error path.
+		if reasons := errs.JoinReasons(); reasons != "" {
+			logrus.Debugf("No schedulable node for clone attachment of volume %v: %v", volume.Name, reasons)
+		}
+		return "", nil
+	}
+
+	candidateNodes := map[string]bool{}
+	for _, disk := range diskCandidates {
+		candidateNodes[disk.NodeID] = true
+	}
+
+	// Prefer the caller's node when it is a valid candidate (stable across reconciliations).
+	if preferredNodeID != "" && candidateNodes[preferredNodeID] {
+		return preferredNodeID, nil
+	}
+
+	// Deterministic fallback keeps the selection idempotent across reconciliations.
+	chosen := ""
+	for nodeName := range candidateNodes {
+		if chosen == "" || nodeName < chosen {
+			chosen = nodeName
+		}
+	}
+	return chosen, nil
+}
+
 func (rcs *ReplicaScheduler) isDiskNotFull(info *DiskSchedulingInfo) bool {
 	// StorageAvailable = the space can be used by 3rd party or Longhorn system.
 	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&

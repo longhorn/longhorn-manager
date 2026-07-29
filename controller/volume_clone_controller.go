@@ -22,6 +22,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -39,6 +40,7 @@ type VolumeCloneController struct {
 	eventRecorder record.EventRecorder
 
 	ds         *datastore.DataStore
+	scheduler  *scheduler.ReplicaScheduler
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -60,6 +62,8 @@ func NewVolumeCloneController(
 		controllerID: controllerID,
 
 		ds: ds,
+
+		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-clone-controller"}),
@@ -329,12 +333,16 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	// case 1: this volume is target of a clone and the cloning hasn't completed
 	if isCloneTargetActive(vol) {
 		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, volName)
-		chosenNodeID, err := pickNodeID(vol, va)
+		var attachNodeID string
+		attachNodeID, err = vcc.scheduler.GetReadyNodeForVolumeAttach(vol, vol.Status.OwnerID)
 		if err != nil {
 			return err
 		}
-		if chosenNodeID != "" {
-			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
+
+		if attachNodeID == "" {
+			vcc.enqueueVolumeAfter(vol, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+		} else {
+			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, attachNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
 			expectedAttachmentTickets[cloningAttachmentTicketID] = true
 		}
 	}

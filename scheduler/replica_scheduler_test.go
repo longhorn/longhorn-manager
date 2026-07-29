@@ -2628,3 +2628,352 @@ func (s *TestSuite) TestLinkedCloneScheduler(c *C) {
 			Commentf("expected no scheduling error — strict anti-affinity silently skips used nodes"))
 	}
 }
+
+// addTaggedDisk attaches a schedulable filesystem disk (with the given tags and available capacity)
+// to the node. The disk name is reused as its DiskUUID for simplicity.
+func addTaggedDisk(node *longhorn.Node, diskID string, tags []string, allowScheduling bool, storageAvailable, storageMaximum int64) {
+	diskSpec := newDisk(TestDefaultDataPath, allowScheduling, 0)
+	diskSpec.Tags = tags
+	if node.Spec.Disks == nil {
+		node.Spec.Disks = map[string]longhorn.DiskSpec{}
+	}
+	node.Spec.Disks[diskID] = diskSpec
+	if node.Status.DiskStatus == nil {
+		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{}
+	}
+	node.Status.DiskStatus[diskID] = &longhorn.DiskStatus{
+		StorageAvailable: storageAvailable,
+		StorageScheduled: 0,
+		StorageMaximum:   storageMaximum,
+		Conditions: []longhorn.Condition{
+			newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+		},
+		DiskUUID: diskID,
+		Type:     longhorn.DiskTypeFilesystem,
+	}
+}
+
+// setupSchedulerForAttach builds a fake datastore populated with the given nodes, volume, replicas,
+// and optional backing image, then returns a ReplicaScheduler ready for GetReadyNodeForVolumeAttach.
+func setupSchedulerForAttach(c *C, nodes map[string]*longhorn.Node, volume *longhorn.Volume,
+	replicas []*longhorn.Replica, backingImage *longhorn.BackingImage) *ReplicaScheduler {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+	nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	biIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImages().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+	s := newReplicaScheduler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+
+	for _, node := range nodes {
+		daemon := newDaemonPod(corev1.PodRunning, "longhorn-manager-"+node.Name, TestNamespace, node.Name, node.Name)
+		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(pIndexer.Add(p), IsNil)
+
+		n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(nIndexer.Add(n), IsNil)
+
+		im := newInstanceManager(node.Name)
+		imObj, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imIndexer.Add(imObj), IsNil)
+
+		engineImage.Status.NodeDeploymentMap[node.Name] = true
+	}
+
+	ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), engineImage, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(eiIndexer.Add(ei), IsNil)
+
+	if backingImage != nil {
+		bi, err := lhClient.LonghornV1beta2().BackingImages(TestNamespace).Create(context.TODO(), backingImage, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(biIndexer.Add(bi), IsNil)
+	}
+
+	vol, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(vIndexer.Add(vol), IsNil)
+
+	for _, r := range replicas {
+		rr, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(rIndexer.Add(rr), IsNil)
+	}
+
+	for name, value := range map[string]string{
+		string(types.SettingNameDefaultInstanceManagerImage):       TestInstanceManagerImage,
+		string(types.SettingNameStorageOverProvisioningPercentage): "100",
+		string(types.SettingNameStorageMinimalAvailablePercentage): "25",
+	} {
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), initSettings(name, value), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(sIndexer.Add(setting), IsNil)
+	}
+
+	return s
+}
+
+func (s *TestSuite) TestGetReadyNodeForVolumeAttach(c *C) {
+	const hostingTag = "hosting"
+
+	// Case A: no placement constraints and empty selectors are allowed to match any node/disk
+	// (both allow-empty-*-selector-volume settings default to true) -> the preferred node is
+	// returned only when it is Ready with a running instance manager.
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		addTaggedDisk(node1, TestDisk1ID, nil, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode1)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode1)
+	}
+
+	// Case A2: no placement constraints, but the preferred node is not attachable (not in the
+	// datastore) -> deterministically fall back to a Ready node with a running instance manager.
+	{
+		node2 := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		addTaggedDisk(node2, TestDisk2ID, nil, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode2: node2}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, "not-attachable-node")
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode2)
+	}
+
+	// Case B: preferred node satisfies node/disk selectors -> preferred node is returned.
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+		node2 := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		addTaggedDisk(node2, TestDisk2ID, nil, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1, TestNode2: node2}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode1)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode1)
+	}
+
+	// Case C: preferred (owner) node does not satisfy selectors, another node does -> fallback node.
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+		node2 := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		addTaggedDisk(node2, TestDisk2ID, nil, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1, TestNode2: node2}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode2)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode1)
+	}
+
+	// Case D: node selector matches no node -> empty node, no error (so stale tickets can be cleaned up).
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		addTaggedDisk(node1, TestDisk1ID, nil, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{"nonexistent"}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode1)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, "")
+	}
+
+	// Case E: disk selector matches no disk -> empty node, no error.
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		addTaggedDisk(node1, TestDisk1ID, nil, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode1)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, "")
+	}
+
+	// Case F: backing-image node/disk selectors further narrow candidates.
+	{
+		// node1 matches the volume selector but not the backing-image selector.
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+		// node2 matches both the volume selector and the backing-image selector.
+		node2 := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node2.Spec.Tags = []string{hostingTag, "bi"}
+		addTaggedDisk(node2, TestDisk2ID, []string{hostingTag, "bi"}, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+		volume.Spec.BackingImage = "test-bi"
+
+		bi := &longhorn.BackingImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bi",
+				Namespace: TestNamespace,
+			},
+			Spec: longhorn.BackingImageSpec{
+				NodeSelector: []string{"bi"},
+				DiskSelector: []string{"bi"},
+			},
+		}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1, TestNode2: node2}, volume, nil, bi)
+		// Even though node1 is the preferred node, only node2 satisfies the backing-image selectors.
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode1)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode2)
+	}
+
+	// Case G: the only selector-matching disk is being evicted -> excluded -> empty node, no error.
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+		diskSpec := node1.Spec.Disks[TestDisk1ID]
+		diskSpec.EvictionRequested = true
+		node1.Spec.Disks[TestDisk1ID] = diskSpec
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode1)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, "")
+	}
+
+	// Case H: the only selector-matching disk lacks capacity -> excluded -> empty node, no error.
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		// Tiny disk that cannot host a TestVolumeSize replica.
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, 1000, 2000)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode1)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, "")
+	}
+
+	// Case I: once the target replica is scheduled, its node is preserved even if capacity is now
+	// exhausted and the caller prefers a different node (idempotent, no capacity double-count).
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		// Disk reports as full: StorageScheduled already includes the replica's reservation.
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, 0, TestDiskSize)
+		node1.Status.DiskStatus[TestDisk1ID].StorageScheduled = TestDiskSize
+		node2 := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node2.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node2, TestDisk2ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		replica := newReplicaForVolume(volume)
+		replica.Spec.NodeID = TestNode1
+		replica.Spec.DiskID = TestDisk1ID
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1, TestNode2: node2}, volume, []*longhorn.Replica{replica}, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode2)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode1)
+	}
+
+	// Case J: with multiple valid candidates and an unsuitable preferred node, selection is
+	// deterministic (lexicographically smallest node name).
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+		node3 := newNode(TestNode3, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node3.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node3, TestDisk3ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1, TestNode3: node3}, volume, nil, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, TestNode2)
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode1)
+	}
+
+	// Case L: a strict-local volume whose only placed replica is on an unavailable node returns
+	// empty (wait/retry) instead of moving the replica to another attachable node.
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		addTaggedDisk(node1, TestDisk1ID, nil, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.DataLocality = longhorn.DataLocalityStrictLocal
+
+		replica := newReplicaForVolume(volume)
+		replica.Spec.NodeID = "down-node" // absent from the datastore -> not attachable
+		replica.Spec.DiskID = "down-disk"
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1}, volume, []*longhorn.Replica{replica}, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, "down-node")
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, "")
+	}
+
+	// Case M: a non-strict-local volume whose placed replica is on an unavailable node falls back to
+	// candidate selection and attaches on another eligible node (placed replica readiness filter).
+	{
+		node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node1.Spec.Tags = []string{hostingTag}
+		addTaggedDisk(node1, TestDisk1ID, []string{hostingTag}, true, TestDiskAvailableSize, TestDiskSize)
+
+		volume := newVolume(TestVolumeName, 1)
+		volume.Spec.NodeSelector = []string{hostingTag}
+		volume.Spec.DiskSelector = []string{hostingTag}
+
+		replica := newReplicaForVolume(volume)
+		replica.Spec.NodeID = "down-node" // absent from the datastore -> not attachable
+		replica.Spec.DiskID = "down-disk"
+
+		sched := setupSchedulerForAttach(c, map[string]*longhorn.Node{TestNode1: node1}, volume, []*longhorn.Replica{replica}, nil)
+		nodeID, err := sched.GetReadyNodeForVolumeAttach(volume, "down-node")
+		c.Assert(err, IsNil)
+		c.Assert(nodeID, Equals, TestNode1)
+	}
+}
