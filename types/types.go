@@ -999,6 +999,44 @@ func GetShareManagerImageChecksumName(image string) string {
 	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
 }
 
+const (
+	// SnapshotGroupMemberSnapshotNameSuffixLength is the number of random
+	// characters after the group name in a member snapshot name.
+	SnapshotGroupMemberSnapshotNameSuffixLength = 8
+
+	// SnapshotGroupNameMaxLength bounds the group name at admission so every
+	// member name fits 63 characters by construction - the label-value
+	// bound (the group name is stamped verbatim as the value of the
+	// longhorn.io/snapshot-group label on every member), minus the 1-character
+	// separator and the random suffix. No truncation happens anywhere.
+	SnapshotGroupNameMaxLength = 63 - 1 - SnapshotGroupMemberSnapshotNameSuffixLength
+)
+
+// GenerateSnapshotGroupMemberSnapshotName generates a member Snapshot name:
+// the group name plus a random suffix, stamped into spec.members once at
+// admission. The name must not repeat when a group name is reused, or a new
+// group could adopt a leftover member of an earlier deleted group with the
+// same name; a random name per group prevents that in practice, the same
+// way member backups are named, and the Ready transition also rejects
+// members created before the group.
+func GenerateSnapshotGroupMemberSnapshotName(groupName string) string {
+	return groupName + "-" + util.UUID()[:SnapshotGroupMemberSnapshotNameSuffixLength]
+}
+
+// GetSnapshotGroupTerminalPhase returns the phase the terminal-phase
+// annotation records, if it carries a valid outcome. The controller and the
+// admission webhook share this: a group the webhook admits as a restore must
+// be one the controller will not take snapshots for.
+func GetSnapshotGroupTerminalPhase(snapshotGroup *longhorn.SnapshotGroup) (longhorn.SnapshotGroupPhase, bool) {
+	switch snapshotGroup.Annotations[SnapshotGroupAnnotationTerminalPhase] {
+	case string(longhorn.SnapshotGroupPhaseReady):
+		return longhorn.SnapshotGroupPhaseReady, true
+	case string(longhorn.SnapshotGroupPhaseFailed):
+		return longhorn.SnapshotGroupPhaseFailed, true
+	}
+	return "", false
+}
+
 func GetOrphanChecksumNameForOrphanedDataStore(nodeID, diskName, diskPath, diskUUID, dataStore string) string {
 	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s-%s-%s", nodeID, diskName, diskPath, diskUUID, dataStore)))
 }
