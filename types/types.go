@@ -50,6 +50,7 @@ const (
 	LonghornKindOrphan              = "Orphan"
 	LonghornKindShardGroup          = "ShardGroup"
 	LonghornKindShard               = "Shard"
+	LonghornKindSnapshotGroup       = "SnapshotGroup"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -220,6 +221,7 @@ const (
 	LonghornLabelBackingImageManager             = "backing-image-manager"
 	LonghornLabelManagedBy                       = "managed-by"
 	LonghornLabelSnapshotForCloningVolume        = "for-cloning-volume"
+	LonghornLabelSnapshotGroup                   = "snapshot-group"
 	LonghornLabelBackingImageDataSource          = "backing-image-data-source"
 	LonghornLabelBackupTarget                    = "backup-target"
 	LonghornLabelBackupVolume                    = "backup-volume"
@@ -298,6 +300,19 @@ const (
 	// records the slot in ShardGroup.Status.IntentionalDeleteSlots so the replacement
 	// Shard CR bypasses the failure-recovery debounce.
 	ShardAnnotationIntentionalDelete = "longhorn.io/intentional-delete"
+
+	// SnapshotGroupAnnotationTerminalPhase records the outcome (Ready or Failed)
+	// when a SnapshotGroup reaches a terminal phase. It is the restore guard:
+	// restores that strip status still preserve annotations, so a reconcile that
+	// finds an empty phase with a terminal annotation restores the annotated
+	// phase and never cuts, instead of re-cutting fresh snapshots under the old
+	// group name in the middle of a disaster recovery.
+	SnapshotGroupAnnotationTerminalPhase = "longhorn.io/snapshot-group-terminal-phase"
+
+	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup. The cap
+	// bounds the simultaneous attach fan-out (a group of detached member volumes
+	// auto-attaches all of them at once), not the status size.
+	SnapshotGroupMaxMemberCount = 64
 
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
