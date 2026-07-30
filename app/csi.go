@@ -33,6 +33,10 @@ func CSICommand() *cli.Command {
 				Value: "",
 				Usage: "Longhorn manager API URL",
 			},
+			&cli.BoolFlag{
+				Name:  "volume-group-snapshot-enabled",
+				Usage: "Serve and advertise the CSI GroupController volume group snapshot capability",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if err := runCSI(cmd); err != nil {
@@ -50,5 +54,6 @@ func runCSI(cmd *cli.Command) error {
 		cmd.String("nodeid"),
 		cmd.String("endpoint"),
 		identityVersion,
-		cmd.String("manager-url"))
+		cmd.String("manager-url"),
+		cmd.Bool("volume-group-snapshot-enabled"))
 }
