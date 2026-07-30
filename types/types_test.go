@@ -602,3 +602,44 @@ func (s *TestSuite) TestIsHexCPUMask(c *C) {
 		c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
 }
+
+func (s *TestSuite) TestGetManagerLabels(c *C) {
+	labels := GetManagerLabels()
+	c.Assert(labels["app"], Equals, LonghornManagerDaemonSetName)
+	c.Assert(labels[GetLonghornLabelComponentKey()], Equals, LonghornLabelManager)
+}
+
+func (s *TestSuite) TestGetCSIPodLabels(c *C) {
+	type testCase struct {
+		appName           string
+		expectedComponent string
+	}
+	testCases := map[string]testCase{
+		"csi-plugin": {
+			appName:           CSIPluginName,
+			expectedComponent: LonghornLabelCSIPlugin,
+		},
+		"csi-attacher": {
+			appName:           CSIAttacherName,
+			expectedComponent: LonghornLabelCSIAttacher,
+		},
+		"csi-provisioner": {
+			appName:           CSIProvisionerName,
+			expectedComponent: LonghornLabelCSIProvisioner,
+		},
+		"csi-resizer": {
+			appName:           CSIResizerName,
+			expectedComponent: LonghornLabelCSIResizer,
+		},
+		"csi-snapshotter": {
+			appName:           CSISnapshotterName,
+			expectedComponent: LonghornLabelCSISnapshotter,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		labels := GetCSIPodLabels(testCase.appName)
+		c.Assert(labels["app"], Equals, testCase.appName, Commentf(TestErrResultFmt, testName))
+		c.Assert(labels[GetLonghornLabelComponentKey()], Equals, testCase.expectedComponent, Commentf(TestErrResultFmt, testName))
+	}
+}
