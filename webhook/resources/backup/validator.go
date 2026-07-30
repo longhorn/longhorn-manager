@@ -54,6 +54,14 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("BackupMode %v is not a valid option", backup.Spec.BackupMode), "")
 	}
 
+	// Reject backups for legacy linked-clone volumes
+	labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
+	if labelVolumeName != "" {
+		if vol, err := b.ds.GetVolumeRO(labelVolumeName); err == nil && types.IsLegacyLinkedCloneVolume(vol) {
+			return werror.NewInvalidError("cannot create backups for legacy linked-clone volumes", "")
+		}
+	}
+
 	// Check if backup target exists and is available
 	backupTargetName := backup.Labels[types.LonghornLabelBackupTarget]
 	if backupTargetName == "" {
@@ -71,8 +79,6 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	if backupTarget.Spec.BackupTargetURL == "" || !backupTarget.Status.Available {
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
-
-	labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
 
 	if backup.Spec.SnapshotName != "" {
 		//check if label volume name matches snapshot volume name
