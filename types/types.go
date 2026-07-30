@@ -245,6 +245,12 @@ const (
 	LonghornLabelVersion                         = "version"
 	LonghornLabelAdmissionWebhook                = "admission-webhook"
 	LonghornLabelConversionWebhook               = "conversion-webhook"
+	LonghornLabelManager                         = "manager"
+	LonghornLabelCSIPlugin                       = "csi-plugin"
+	LonghornLabelCSIAttacher                     = "csi-attacher"
+	LonghornLabelCSIProvisioner                  = "csi-provisioner"
+	LonghornLabelCSIResizer                      = "csi-resizer"
+	LonghornLabelCSISnapshotter                  = "csi-snapshotter"
 
 	LonghornRecoveryBackendServiceName = "longhorn-recovery-backend"
 
@@ -575,7 +581,19 @@ func GetLonghornLabelCRDAPIVersionKey() string {
 
 func GetManagerLabels() map[string]string {
 	return map[string]string{
-		"app": LonghornManagerDaemonSetName,
+		"app":                          LonghornManagerDaemonSetName,
+		GetLonghornLabelComponentKey(): LonghornLabelManager,
+	}
+}
+
+func GetCSIPodLabels(appName string) map[string]string {
+	component := appName
+	if appName == CSIPluginName {
+		component = LonghornLabelCSIPlugin
+	}
+	return map[string]string{
+		"app":                          appName,
+		GetLonghornLabelComponentKey(): component,
 	}
 }
 

@@ -347,9 +347,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": types.CSIPluginName,
-					},
+					Labels: types.GetCSIPodLabels(types.CSIPluginName),
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccount,
