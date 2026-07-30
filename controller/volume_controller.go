@@ -4126,6 +4126,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		}
 	}
 
+	// For linked-clone volumes, only nodes with a healthy src replica are valid
+	// candidates. Clone replicas can only be scheduled where a src replica exists.
+	linkedCloneSrcNodes := c.getLinkedCloneSrcNodes(v)
+
 	unusedZone := make(map[string][]string)
 	for nodeName, node := range readyNodes {
 		if util.Contains(usedZones, node.Status.Zone) {
@@ -4146,6 +4150,13 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		if isReady, _ := c.ds.CheckDataEngineImageReadiness(ei.Spec.Image, v.Spec.DataEngine, nodeName); !isReady {
 			log.Warnf("Failed to use node %v, image %v is not ready", nodeName, ei.Spec.Image)
 			continue
+		}
+
+		if linkedCloneSrcNodes != nil {
+			if _, hasSrc := linkedCloneSrcNodes[nodeName]; !hasSrc {
+				log.Debugf("Failed to use node %v for linked-clone auto-balance: no healthy src replica exists there yet", nodeName)
+				continue
+			}
 		}
 
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
@@ -4277,6 +4288,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 		}
 	}
 
+	// For linked-clone volumes, only nodes with a healthy src replica are valid
+	// candidates. Clone replicas can only be scheduled where a src replica exists.
+	linkedCloneSrcNodes := c.getLinkedCloneSrcNodes(v)
+
 	for nodeName, node := range readyNodes {
 		_, exist := nodeExtraRs[nodeName]
 		if exist {
@@ -4293,6 +4308,14 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			log.Warnf("Failed to use node %v, image %v is not ready", nodeName, ei.Spec.Image)
 			delete(readyNodes, nodeName)
 			continue
+		}
+
+		if linkedCloneSrcNodes != nil {
+			if _, hasSrc := linkedCloneSrcNodes[nodeName]; !hasSrc {
+				log.Debugf("Failed to use node %v for linked-clone auto-balance: no healthy src replica exists there yet", nodeName)
+				delete(readyNodes, nodeName)
+				continue
+			}
 		}
 	}
 
@@ -4315,6 +4338,34 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	log.Infof("Found %v node available for auto-balance duplicates in %v", adjustCount, nodeExtraRs)
 
 	return adjustCount, nodeExtraRs, err
+}
+
+// getLinkedCloneSrcNodes returns a set of node IDs that have a healthy src
+// replica for the given linked-clone volume. Returns nil if the volume is not
+// a linked-clone, indicating no filtering is needed.
+func (c *VolumeController) getLinkedCloneSrcNodes(v *longhorn.Volume) map[string]struct{} {
+	if v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+
+	srcVolName := types.GetVolumeName(v.Spec.DataSource)
+	if srcVolName == "" {
+		return nil
+	}
+
+	srcReplicas, err := c.ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		getLoggerForVolume(c.logger, v).WithError(err).Warn("Failed to list src volume replicas for linked-clone auto-balance")
+		return map[string]struct{}{} // empty set blocks all nodes, safe fallback
+	}
+
+	srcNodes := map[string]struct{}{}
+	for _, r := range srcReplicas {
+		if r.Spec.NodeID != "" && r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" && !r.Spec.EvictionRequested && r.DeletionTimestamp == nil {
+			srcNodes[r.Spec.NodeID] = struct{}{}
+		}
+	}
+	return srcNodes
 }
 
 func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica, e *longhorn.Engine) (int, string) {
