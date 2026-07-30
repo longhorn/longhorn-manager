@@ -74,6 +74,14 @@ func NewVolumeCloneController(
 	}
 	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
+	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    vcc.enqueueSourceVolumeForReplica,
+		UpdateFunc: func(old, cur interface{}) { vcc.enqueueSourceVolumeForReplica(cur) },
+	}, 0); err != nil {
+		return nil, err
+	}
+	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.ReplicaInformer.HasSynced)
+
 	return vcc, nil
 }
 
@@ -117,6 +125,36 @@ func (vcc *VolumeCloneController) enqueueVolumeAfter(obj interface{}, duration t
 	}
 
 	vcc.queue.AddAfter(key, duration)
+}
+
+// enqueueSourceVolumeForReplica enqueues the linked-clone source volume when a
+// replica with LinkedCloneSrcReplicaName is created or updated. This ensures the
+// controller re-evaluates whether a source attachment ticket is needed.
+func (vcc *VolumeCloneController) enqueueSourceVolumeForReplica(obj interface{}) {
+	r, ok := obj.(*longhorn.Replica)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return
+		}
+		r, ok = deletedState.Obj.(*longhorn.Replica)
+		if !ok {
+			return
+		}
+	}
+
+	if r.Spec.LinkedCloneSrcReplicaName == "" {
+		return
+	}
+
+	vol, err := vcc.ds.GetVolumeRO(r.Spec.VolumeName)
+	if err != nil {
+		return
+	}
+
+	if srcVolName := types.GetVolumeName(vol.Spec.DataSource); srcVolName != "" {
+		vcc.queue.Add(vcc.namespace + "/" + srcVolName)
+	}
 }
 
 func (vcc *VolumeCloneController) Run(workers int, stopCh <-chan struct{}) {
@@ -237,11 +275,15 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	}
 
 	// case 3: this volume is source of a linked-clone target that needs rebuild
-	// (post-initial-clone: clone completed or awaiting healthy, but volume is degraded)
+	// (post-initial-clone: clone completed or awaiting healthy, and has replicas pending rebuild)
 	var readyNodes map[string]*longhorn.Node
 	chosenNodeID := vol.Status.CurrentNodeID
 	for _, v := range vols {
-		if !isLinkedCloneNeedingSourceForRebuild(v, vol.Name) {
+		if !isLinkedClonePotentiallyNeedingSource(v, vol.Name) {
+			continue
+		}
+		// Check if this clone volume actually has replicas pending linked-clone rebuild
+		if !vcc.hasReplicasPendingLinkedCloneRebuild(v.Name) {
 			continue
 		}
 		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
@@ -276,6 +318,22 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	}
 
 	return nil
+}
+
+// hasReplicasPendingLinkedCloneRebuild returns true if the volume has at least one
+// replica that needs a linked-clone rebuild (has LinkedCloneSrcReplicaName set but
+// is not yet healthy).
+func (vcc *VolumeCloneController) hasReplicasPendingLinkedCloneRebuild(volumeName string) bool {
+	replicas, err := vcc.ds.ListVolumeReplicasRO(volumeName)
+	if err != nil {
+		return false
+	}
+	for _, r := range replicas {
+		if r.Spec.LinkedCloneSrcReplicaName != "" && r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (vcc *VolumeCloneController) isResponsibleFor(vol *longhorn.Volume) bool {
