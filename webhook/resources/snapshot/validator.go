@@ -57,6 +57,11 @@ func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Ob
 		return werror.NewInvalidError("spec.volume is required", "spec.volume")
 	}
 
+	vol, err := o.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err == nil && types.IsLegacyLinkedCloneVolume(vol) {
+		return werror.NewInvalidError("cannot create snapshots for legacy linked-clone volumes", "spec.volume")
+	}
+
 	return nil
 }
 
