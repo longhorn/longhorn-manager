@@ -18,6 +18,18 @@ const (
 	RecurringJobGroupDefault = "default"
 )
 
+// +kubebuilder:validation:Enum=count-base;age-base
+type RecurringJobRetentionPolicy string
+
+const (
+	// RecurringJobRetentionPolicyCountBase cleans up the snapshots/backups beyond
+	// the newest Retain ones. RetainAge is not consulted.
+	RecurringJobRetentionPolicyCountBase = RecurringJobRetentionPolicy("count-base")
+	// RecurringJobRetentionPolicyAgeBase cleans up the snapshots/backups that have
+	// existed for longer than RetainAge. Retain is not consulted.
+	RecurringJobRetentionPolicyAgeBase = RecurringJobRetentionPolicy("age-base")
+)
+
 type VolumeRecurringJob struct {
 	Name    string `json:"name"`
 	IsGroup bool   `json:"isGroup"`
@@ -46,8 +58,24 @@ type RecurringJobSpec struct {
 	// +optional
 	Cron string `json:"cron"`
 	// The retain count of the snapshot/backup.
+	// Only takes effect when the retention policy is "count-base".
 	// +optional
 	Retain int `json:"retain"`
+	// The retain age of the snapshot/backup, as a Go duration string such as
+	// "10m", "24h" or "8760h". Note that Go durations have no day or year unit,
+	// so a day is "24h". Snapshots/backups that have existed for longer than
+	// this are cleaned up by the recurring job.
+	// Only takes effect when the retention policy is "age-base".
+	// +optional
+	RetainAge metav1.Duration `json:"retainAge,omitempty"`
+	// The retention policy that decides which of the retain count and the retain
+	// age the recurring job cleans up by. Can be "count-base" or "age-base".
+	// The two work independently: "count-base" (the default) keeps the newest
+	// Retain snapshots/backups and ignores RetainAge, while "age-base" keeps the
+	// ones that have existed for no longer than RetainAge and ignores Retain.
+	// +kubebuilder:default:=count-base
+	// +optional
+	RetentionPolicy RecurringJobRetentionPolicy `json:"retentionPolicy,omitempty"`
 	// The concurrency of taking the snapshot/backup.
 	// +optional
 	Concurrency int `json:"concurrency"`
@@ -79,6 +107,8 @@ type RecurringJobStatus struct {
 // +kubebuilder:printcolumn:name="Task",type=string,JSONPath=`.spec.task`,description="Should be one of \"snapshot\", \"snapshot-force-create\", \"snapshot-cleanup\", \"snapshot-delete\", \"backup\", \"backup-force-create\", \"filesystem-trim\" or \"system-backup\""
 // +kubebuilder:printcolumn:name="Cron",type=string,JSONPath=`.spec.cron`,description="The cron expression represents recurring job scheduling"
 // +kubebuilder:printcolumn:name="Retain",type=integer,JSONPath=`.spec.retain`,description="The number of snapshots/backups to keep for the volume"
+// +kubebuilder:printcolumn:name="RetainAge",type=string,JSONPath=`.spec.retainAge`,description="Snapshots/backups older than this duration are cleaned up when the retention policy is \"age-base\""
+// +kubebuilder:printcolumn:name="RetentionPolicy",type=string,JSONPath=`.spec.retentionPolicy`,description="Whether the job cleans up by the retain count (\"count-base\") or by the retain age (\"age-base\")"
 // +kubebuilder:printcolumn:name="Concurrency",type=integer,JSONPath=`.spec.concurrency`,description="The concurrent job to run by each cron job"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:printcolumn:name="Labels",type=string,JSONPath=`.spec.labels`,description="Specify the labels"

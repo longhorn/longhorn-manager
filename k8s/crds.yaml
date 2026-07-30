@@ -2853,6 +2853,16 @@ spec:
       jsonPath: .spec.retain
       name: Retain
       type: integer
+    - description: Snapshots/backups older than this duration are cleaned up when
+        the retention policy is "age-base"
+      jsonPath: .spec.retainAge
+      name: RetainAge
+      type: string
+    - description: Whether the job cleans up by the retain count ("count-base") or
+        by the retain age ("age-base")
+      jsonPath: .spec.retentionPolicy
+      name: RetentionPolicy
+      type: string
     - description: The concurrent job to run by each cron job
       jsonPath: .spec.concurrency
       name: Concurrency
@@ -2917,8 +2927,30 @@ spec:
                   Support parameters: "full-backup-interval", "volume-backup-policy".
                 type: object
               retain:
-                description: The retain count of the snapshot/backup.
+                description: |-
+                  The retain count of the snapshot/backup.
+                  Only takes effect when the retention policy is "count-base".
                 type: integer
+              retainAge:
+                description: |-
+                  The retain age of the snapshot/backup, as a Go duration string such as
+                  "10m", "24h" or "8760h". Note that Go durations have no day or year unit,
+                  so a day is "24h". Snapshots/backups that have existed for longer than
+                  this are cleaned up by the recurring job.
+                  Only takes effect when the retention policy is "age-base".
+                type: string
+              retentionPolicy:
+                default: count-base
+                description: |-
+                  The retention policy that decides which of the retain count and the retain
+                  age the recurring job cleans up by. Can be "count-base" or "age-base".
+                  The two work independently: "count-base" (the default) keeps the newest
+                  Retain snapshots/backups and ignores RetainAge, while "age-base" keeps the
+                  ones that have existed for no longer than RetainAge and ignores Retain.
+                enum:
+                - count-base
+                - age-base
+                type: string
               task:
                 description: |-
                   The recurring job task.

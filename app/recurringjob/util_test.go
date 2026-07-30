@@ -74,7 +74,7 @@ func TestSystemBackupsToNameWithTimestamps(t *testing.T) {
 			base.Add(48*time.Hour), time.Time{}, longhorn.SystemBackupStateError)
 
 		expired := filterExpiredItems(systemBackupsToNameWithTimestamps(
-			[]longhorn.SystemBackup{oldReady, midReady, newError}), 2)
+			[]longhorn.SystemBackup{oldReady, midReady, newError}), 2, 0, "", base.Add(100*time.Hour))
 
 		assert.Equal(t, []string{"daily-new-error"}, expired,
 			"the Error backup is pruned before either Ready backup")
@@ -87,6 +87,12 @@ func TestSystemBackupsToNameWithTimestamps(t *testing.T) {
 
 func TestFilterExpiredItems(t *testing.T) {
 	base := time.Date(2026, 5, 20, 1, 0, 0, 0, time.UTC)
+	// These cases cover count-only retention, so retainAge is 0 (disabled) and
+	// the clock must not influence the result no matter how far past the items
+	// it sits. The retention policy is left empty on purpose: that is what jobs
+	// created before the field existed carry, and they must keep behaving exactly
+	// as they did.
+	now := base.Add(100 * time.Hour)
 
 	t.Run("retains_n_newest", func(t *testing.T) {
 		nts := []NameWithTimestamp{
@@ -96,7 +102,7 @@ func TestFilterExpiredItems(t *testing.T) {
 			{Name: "d", Timestamp: base.Add(72 * time.Hour)},
 		}
 
-		expired := filterExpiredItems(nts, 2)
+		expired := filterExpiredItems(nts, 2, 0, "", now)
 
 		// Expect the two oldest (a, b) to be pruned; c and d retained.
 		assert.ElementsMatch(t, []string{"a", "b"}, expired)
@@ -108,7 +114,7 @@ func TestFilterExpiredItems(t *testing.T) {
 			{Name: "b", Timestamp: base.Add(24 * time.Hour)},
 		}
 
-		expired := filterExpiredItems(nts, 2)
+		expired := filterExpiredItems(nts, 2, 0, "", now)
 
 		assert.Empty(t, expired)
 	})
@@ -118,7 +124,7 @@ func TestFilterExpiredItems(t *testing.T) {
 			{Name: "a", Timestamp: base},
 		}
 
-		expired := filterExpiredItems(nts, 5)
+		expired := filterExpiredItems(nts, 5, 0, "", now)
 
 		assert.Empty(t, expired)
 	})
@@ -134,9 +140,193 @@ func TestFilterExpiredItems(t *testing.T) {
 			{Name: "zero-time", Timestamp: time.Time{}},
 		}
 
-		expired := filterExpiredItems(nts, 2)
+		expired := filterExpiredItems(nts, 2, 0, "", now)
 
 		// Zero timestamp sorts to position 0 — gets pruned.
 		assert.Equal(t, []string{"zero-time"}, expired)
+	})
+}
+
+// TestFilterExpiredItemsByAge covers age-based retention (longhorn/longhorn#12060)
+// under the "age-base" policy. The rule under test: an item is expired when it has
+// existed for longer than retainAge as of now, and the retain count is not consulted
+// at all. The window is rolling — measured back from the moment the job runs — not a
+// fixed cutoff instant, so the same item can be kept by one run and deleted by the
+// next. See TestFilterExpiredItemsByRetentionPolicy for the choice between this
+// policy and "count-base".
+func TestFilterExpiredItemsByAge(t *testing.T) {
+	base := time.Date(2026, 5, 20, 1, 0, 0, 0, time.UTC)
+	// a < b < c < d, one day apart.
+	items := func() []NameWithTimestamp {
+		return []NameWithTimestamp{
+			{Name: "a", Timestamp: base},
+			{Name: "b", Timestamp: base.Add(24 * time.Hour)},
+			{Name: "c", Timestamp: base.Add(48 * time.Hour)},
+			{Name: "d", Timestamp: base.Add(72 * time.Hour)},
+		}
+	}
+	// Runs one hour after the newest item, so the ages are a=73h, b=49h, c=25h,
+	// d=1h.
+	now := base.Add(73 * time.Hour)
+
+	t.Run("worked_example_from_the_issue", func(t *testing.T) {
+		// The concrete case the feature was specified against: a backup taken at
+		// 07:50 with retainAge 10m must be deleted once the job runs at 08:01,
+		// because it has existed for 11m. retain is 10 and there is a single
+		// backup, so this only passes if age alone can expire an item.
+		created := time.Date(2026, 7, 28, 7, 50, 0, 0, time.UTC)
+		runAt := time.Date(2026, 7, 28, 8, 1, 0, 0, time.UTC)
+
+		expired := filterExpiredItems(
+			[]NameWithTimestamp{{Name: "backup-1", Timestamp: created}}, 10, 10*time.Minute, longhorn.RecurringJobRetentionPolicyAgeBase, runAt)
+
+		assert.Equal(t, []string{"backup-1"}, expired)
+	})
+
+	t.Run("same_item_survives_an_earlier_run", func(t *testing.T) {
+		// The mirror of the case above, and the reason retainAge cannot be stored
+		// as a fixed instant: at 07:59 the same backup is only 9m old and must be
+		// kept. The verdict depends on when the job runs.
+		created := time.Date(2026, 7, 28, 7, 50, 0, 0, time.UTC)
+		runAt := time.Date(2026, 7, 28, 7, 59, 0, 0, time.UTC)
+
+		expired := filterExpiredItems(
+			[]NameWithTimestamp{{Name: "backup-1", Timestamp: created}}, 10, 10*time.Minute, longhorn.RecurringJobRetentionPolicyAgeBase, runAt)
+
+		assert.Empty(t, expired)
+	})
+
+	t.Run("deletes_the_items_past_the_window", func(t *testing.T) {
+		// The whole point of the feature: enforce a time-based policy even when a
+		// count threshold would never be reached (e.g. backups generated rarely).
+		// 37h window: a (73h) and b (49h) are over it; c (25h) and d (1h) are not.
+		expired := filterExpiredItems(items(), 10, 37*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.ElementsMatch(t, []string{"a", "b"}, expired)
+	})
+
+	t.Run("being_within_the_retain_count_does_not_protect_an_old_item", func(t *testing.T) {
+		// retain=4 would keep all four by count. Under age-base the count is not
+		// read at all, so the items past the window still go.
+		expired := filterExpiredItems(items(), 4, 37*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.ElementsMatch(t, []string{"a", "b"}, expired)
+	})
+
+	t.Run("being_beyond_the_retain_count_does_not_expire_a_young_item", func(t *testing.T) {
+		// The other direction: retain=1 puts a, b and c beyond the count, but a
+		// 100h window covers every item. Nothing expires, because surplus by count
+		// is not a reason to delete under this policy.
+		expired := filterExpiredItems(items(), 1, 100*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.Empty(t, expired)
+	})
+
+	t.Run("window_shorter_than_every_item_deletes_everything", func(t *testing.T) {
+		// No floor: when every item is older than the window all of them go, even
+		// with retain=2 set. An operator who must always keep something to restore
+		// from wants count-base, not a smaller window.
+		expired := filterExpiredItems(items(), 2, 30*time.Minute, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.ElementsMatch(t, []string{"a", "b", "c", "d"}, expired)
+	})
+
+	t.Run("window_longer_than_every_item_deletes_nothing", func(t *testing.T) {
+		// Window wider than the oldest item's age, so nothing has expired yet.
+		expired := filterExpiredItems(items(), 10, 100*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.Empty(t, expired)
+	})
+
+	t.Run("item_exactly_at_the_window_is_kept", func(t *testing.T) {
+		// Boundary: the comparison is strictly greater-than, so an item whose age
+		// exactly equals retainAge is not yet "over" it and must be retained. Here
+		// a is exactly 73h old; only a strictly older item would expire.
+		expired := filterExpiredItems(items(), 10, 73*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.Empty(t, expired,
+			"an item whose age equals retainAge has not exceeded the window")
+	})
+
+	t.Run("zero_age_expires_nothing", func(t *testing.T) {
+		// A zero window is an unconfigured job, not an instruction to delete
+		// everything. The webhook rejects the combination, but if one ever reaches
+		// the helper it must fail towards keeping data.
+		expired := filterExpiredItems(items(), 2, 0, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.Empty(t, expired,
+			"a non-positive window must not be read as 'every item is past it'")
+	})
+
+	t.Run("negative_age_expires_nothing", func(t *testing.T) {
+		// Same reasoning as above; a negative window would otherwise put the
+		// boundary in the future and make every item "over age".
+		expired := filterExpiredItems(items(), 10, -1*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.Empty(t, expired)
+	})
+}
+
+// TestFilterExpiredItemsByRetentionPolicy covers spec.retentionPolicy as a selector
+// between two independent retention modes: "count-base" cleans up by retain and never
+// reads retainAge, "age-base" cleans up by retainAge and never reads retain. Exactly
+// one bound is ever in force, so the field the policy does not select must have no
+// effect at all — every case below sets both fields to values that disagree, which is
+// the only way that claim is observable.
+func TestFilterExpiredItemsByRetentionPolicy(t *testing.T) {
+	base := time.Date(2026, 5, 20, 1, 0, 0, 0, time.UTC)
+	items := func() []NameWithTimestamp {
+		return []NameWithTimestamp{
+			{Name: "a", Timestamp: base},
+			{Name: "b", Timestamp: base.Add(24 * time.Hour)},
+			{Name: "c", Timestamp: base.Add(48 * time.Hour)},
+			{Name: "d", Timestamp: base.Add(72 * time.Hour)},
+		}
+	}
+	// Ages as of now: a=73h, b=49h, c=25h, d=1h.
+	now := base.Add(73 * time.Hour)
+
+	t.Run("the_same_spec_gives_different_results_per_policy", func(t *testing.T) {
+		// retain=3 keeps the newest three; a 13h window keeps only d. One spec, two
+		// answers — proof that the policy, not the field values, decides.
+		byCount := filterExpiredItems(items(), 3, 13*time.Hour, longhorn.RecurringJobRetentionPolicyCountBase, now)
+		byAge := filterExpiredItems(items(), 3, 13*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+
+		assert.ElementsMatch(t, []string{"a"}, byCount)
+		assert.ElementsMatch(t, []string{"a", "b", "c"}, byAge)
+	})
+
+	t.Run("count_base_ignores_the_window_even_when_every_item_is_past_it", func(t *testing.T) {
+		// Every item is past a 30m window, so a job that consulted the age would
+		// delete all four and leave nothing to restore from. count-base must keep
+		// the newest two regardless.
+		expired := filterExpiredItems(items(), 2, 30*time.Minute, longhorn.RecurringJobRetentionPolicyCountBase, now)
+		assert.ElementsMatch(t, []string{"a", "b"}, expired,
+			"retainAge must have no effect under count-base")
+	})
+
+	t.Run("count_base_with_no_window_is_the_pre_feature_behavior", func(t *testing.T) {
+		// Regression guard for the upgrade path: retainAge unset plus the default
+		// policy has to delete exactly what the old count-only code deleted.
+		expired := filterExpiredItems(items(), 2, 0, longhorn.RecurringJobRetentionPolicyCountBase, now)
+		assert.ElementsMatch(t, []string{"a", "b"}, expired)
+	})
+
+	t.Run("age_base_ignores_a_retain_count_that_would_keep_everything", func(t *testing.T) {
+		// retain=4 covers all four items, so a count-based job would delete none.
+		// age-base does not read it and prunes by the 13h window instead.
+		expired := filterExpiredItems(items(), 4, 13*time.Hour, longhorn.RecurringJobRetentionPolicyAgeBase, now)
+		assert.ElementsMatch(t, []string{"a", "b", "c"}, expired,
+			"retain must have no effect under age-base")
+	})
+
+	t.Run("empty_policy_behaves_as_count_base", func(t *testing.T) {
+		// Jobs created before the field existed carry no policy, and the CRD
+		// default is count-base. They must keep deleting by count alone; reading
+		// the (unset, therefore zero) retainAge instead would stop them cleaning up
+		// entirely.
+		expired := filterExpiredItems(items(), 2, 30*time.Minute, "", now)
+		assert.ElementsMatch(t, []string{"a", "b"}, expired)
+	})
+
+	t.Run("unrecognized_policy_behaves_as_count_base", func(t *testing.T) {
+		// The helper only special-cases age-base, so anything else lands on the
+		// default. Falling back to the pre-feature behavior is the conservative
+		// choice; validateRetentionPolicy rejects unknown values at admission so
+		// this fallback is never what a user actually gets.
+		expired := filterExpiredItems(items(), 2, 30*time.Minute, longhorn.RecurringJobRetentionPolicy("age_base"), now)
+		assert.ElementsMatch(t, []string{"a", "b"}, expired)
 	})
 }

@@ -50,15 +50,44 @@ func filterSnapshotCRsNotInTargets(snapshotCRs []longhornclient.SnapshotCR, targ
 	})
 }
 
-// filterExpiredItems returns a list of names from the input sts excluding the latest retainCount names
-func filterExpiredItems(nts []NameWithTimestamp, retainCount int) []string {
+// filterExpiredItems returns the names of items to clean up. The two retention
+// policies work independently and exactly one is in force:
+//
+//   - age-base expires an item that has existed for longer than retainAge as of
+//     now, a rolling window re-evaluated on every run. retainCount is not read.
+//   - count-base expires an item that is not among the newest retainCount items.
+//     retainAge is not read. This is the behavior of every job that predates the
+//     policy field, so it is also what an empty policy means.
+//
+// A non-positive retainAge expires nothing under age-base. Treating it as "the
+// window is already past" would delete every snapshot/backup on the next run, so
+// the safe reading is that the job is not configured yet; the webhook rejects the
+// combination up front.
+func filterExpiredItems(nts []NameWithTimestamp, retainCount int, retainAge time.Duration, policy longhorn.RecurringJobRetentionPolicy, now time.Time) []string {
 	sort.Slice(nts, func(i, j int) bool {
 		return nts[i].Timestamp.Before(nts[j].Timestamp)
 	})
 
+	// Items with index < countExpiredBoundary are beyond the newest retainCount.
+	countExpiredBoundary := len(nts) - retainCount
+
 	ret := []string{}
-	for i := 0; i < len(nts)-retainCount; i++ {
-		ret = append(ret, nts[i].Name)
+	for i, nt := range nts {
+		expired := false
+
+		switch policy {
+		case longhorn.RecurringJobRetentionPolicyAgeBase:
+			expired = retainAge > 0 && now.Sub(nt.Timestamp) > retainAge
+		default:
+			// count-base, and the empty policy that jobs predating the field
+			// carry. Falling through to count-base rather than to "expire
+			// nothing" keeps those jobs cleaning up as they always have.
+			expired = i < countExpiredBoundary
+		}
+
+		if expired {
+			ret = append(ret, nt.Name)
+		}
 	}
 	return ret
 }

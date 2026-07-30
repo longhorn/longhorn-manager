@@ -20,6 +20,7 @@ package v1beta2
 
 import (
 	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // RecurringJobSpecApplyConfiguration represents a declarative configuration of the RecurringJobSpec type for use
@@ -37,7 +38,20 @@ type RecurringJobSpecApplyConfiguration struct {
 	// The cron setting.
 	Cron *string `json:"cron,omitempty"`
 	// The retain count of the snapshot/backup.
+	// Only takes effect when the retention policy is "count-base".
 	Retain *int `json:"retain,omitempty"`
+	// The retain age of the snapshot/backup, as a Go duration string such as
+	// "10m", "24h" or "8760h". Note that Go durations have no day or year unit,
+	// so a day is "24h". Snapshots/backups that have existed for longer than
+	// this are cleaned up by the recurring job.
+	// Only takes effect when the retention policy is "age-base".
+	RetainAge *v1.Duration `json:"retainAge,omitempty"`
+	// The retention policy that decides which of the retain count and the retain
+	// age the recurring job cleans up by. Can be "count-base" or "age-base".
+	// The two work independently: "count-base" (the default) keeps the newest
+	// Retain snapshots/backups and ignores RetainAge, while "age-base" keeps the
+	// ones that have existed for no longer than RetainAge and ignores Retain.
+	RetentionPolicy *longhornv1beta2.RecurringJobRetentionPolicy `json:"retentionPolicy,omitempty"`
 	// The concurrency of taking the snapshot/backup.
 	Concurrency *int `json:"concurrency,omitempty"`
 	// The label of the snapshot/backup.
@@ -92,6 +106,22 @@ func (b *RecurringJobSpecApplyConfiguration) WithCron(value string) *RecurringJo
 // If called multiple times, the Retain field is set to the value of the last call.
 func (b *RecurringJobSpecApplyConfiguration) WithRetain(value int) *RecurringJobSpecApplyConfiguration {
 	b.Retain = &value
+	return b
+}
+
+// WithRetainAge sets the RetainAge field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RetainAge field is set to the value of the last call.
+func (b *RecurringJobSpecApplyConfiguration) WithRetainAge(value v1.Duration) *RecurringJobSpecApplyConfiguration {
+	b.RetainAge = &value
+	return b
+}
+
+// WithRetentionPolicy sets the RetentionPolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RetentionPolicy field is set to the value of the last call.
+func (b *RecurringJobSpecApplyConfiguration) WithRetentionPolicy(value longhornv1beta2.RecurringJobRetentionPolicy) *RecurringJobSpecApplyConfiguration {
+	b.RetentionPolicy = &value
 	return b
 }
 

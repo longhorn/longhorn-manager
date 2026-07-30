@@ -1,14 +1,19 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/rancher/go-rancher/client"
 
 	rancherapi "github.com/rancher/go-rancher/api"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lhclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -145,5 +150,200 @@ func TestToVolumeResourcePropagatesReadyMessage(t *testing.T) {
 	}
 	if resource.NotReadyMessage == "" {
 		t.Fatalf("expected NotReadyMessage to be populated when volume is not ready")
+	}
+}
+
+// Age-based retention (longhorn/longhorn#12060) is only usable if retainAge is
+// settable through the API the same way retain is. If the schema stops
+// advertising it as creatable, clients that build requests from the schema
+// (the UI and the Python client) silently drop the field and the job falls
+// back to count-only retention.
+func TestRecurringJobSchemaAllowsSettingRetainAge(t *testing.T) {
+	schemas := NewSchema()
+	job, ok := schemas.CheckSchema("recurringJob")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to be registered")
+	}
+
+	retain, ok := job.CheckField("retain")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to have a retain field")
+	}
+
+	retainAge, ok := job.CheckField("retainAge")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to have a retainAge field")
+	}
+	if retainAge.Create != retain.Create {
+		t.Fatalf("expected retainAge to be creatable like retain, got create=%v", retainAge.Create)
+	}
+	// metav1.Duration reflects to the "v1.Duration" struct type, which is not a
+	// registered schema; it must be described as the duration string it is on
+	// the wire, otherwise the generated client cannot type the field.
+	if retainAge.Type != "string" {
+		t.Fatalf("expected retainAge schema type to be string, got %q", retainAge.Type)
+	}
+}
+
+// The Go client carries retainAge as a string while the manager stores it as a
+// metav1.Duration. A caller setting RetainAge must end up with that exact
+// window on the spec, otherwise the recurring job would clean up on the wrong
+// schedule.
+func TestRecurringJobRetainAgeRoundTripsFromClient(t *testing.T) {
+	body, err := json.Marshal(&lhclient.RecurringJob{
+		Name:      "test-job",
+		Task:      string(longhorn.RecurringJobTypeSnapshot),
+		Cron:      "*/1 * * * *",
+		Retain:    50,
+		RetainAge: "10m",
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal client recurring job: %v", err)
+	}
+
+	var input RecurringJob
+	if err := json.Unmarshal(body, &input); err != nil {
+		t.Fatalf("failed to decode client request into API model: %v", err)
+	}
+	if input.RetainAge.Duration != 10*time.Minute {
+		t.Fatalf("expected retainAge 10m, got %v", input.RetainAge.Duration)
+	}
+	if input.Retain != 50 {
+		t.Fatalf("expected retain 50, got %d", input.Retain)
+	}
+
+	// An unset RetainAge must stay zero so age-based retention remains off.
+	body, err = json.Marshal(&lhclient.RecurringJob{Name: "test-job", Retain: 50})
+	if err != nil {
+		t.Fatalf("failed to marshal client recurring job: %v", err)
+	}
+	input = RecurringJob{}
+	if err := json.Unmarshal(body, &input); err != nil {
+		t.Fatalf("failed to decode client request into API model: %v", err)
+	}
+	if input.RetainAge.Duration != 0 {
+		t.Fatalf("expected retainAge to stay zero when unset, got %v", input.RetainAge.Duration)
+	}
+}
+
+// Go durations have no day or year unit, so "1d" and "1y" cannot be accepted.
+// They must fail at decode — and therefore at admission — rather than being
+// silently read as zero, which would leave age-based retention quietly off on a
+// job the user believes is configured.
+func TestRecurringJobRetainAgeRejectsDayAndYearUnits(t *testing.T) {
+	for _, retainAge := range []string{"1d", "1y", "7 days", "abc"} {
+		t.Run(retainAge, func(t *testing.T) {
+			body, err := json.Marshal(&lhclient.RecurringJob{Name: "test-job", RetainAge: retainAge})
+			if err != nil {
+				t.Fatalf("failed to marshal client recurring job: %v", err)
+			}
+
+			var input RecurringJob
+			if err := json.Unmarshal(body, &input); err == nil {
+				t.Fatalf("expected retainAge %q to be rejected, got %v", retainAge, input.RetainAge.Duration)
+			}
+		})
+	}
+}
+
+// toRecurringJobResource is what the UI and client read back; dropping
+// retainAge there would make a set window invisible after a GET.
+func TestToRecurringJobResourceIncludesRetainAge(t *testing.T) {
+	retainAge := metav1.Duration{Duration: 10 * time.Minute}
+
+	recurringJob := &longhorn.RecurringJob{}
+	recurringJob.Name = "test-job"
+	recurringJob.Spec.Retain = 50
+	recurringJob.Spec.RetainAge = retainAge
+
+	resource := toRecurringJobResource(recurringJob, nil)
+	if resource.RetainAge.Duration != retainAge.Duration {
+		t.Fatalf("expected retainAge %v, got %v", retainAge.Duration, resource.RetainAge.Duration)
+	}
+}
+
+// The retention policy decides whether the job cleans up by retain or by
+// retainAge, so a client that cannot set it is stuck on the count-base default
+// and the age window it sends is never read. The schema is what the UI and the
+// Python client build requests from, so the field has to be advertised as
+// creatable there like retain is.
+func TestRecurringJobSchemaAllowsSettingRetentionPolicy(t *testing.T) {
+	schemas := NewSchema()
+	job, ok := schemas.CheckSchema("recurringJob")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to be registered")
+	}
+
+	retain, ok := job.CheckField("retain")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to have a retain field")
+	}
+
+	retentionPolicy, ok := job.CheckField("retentionPolicy")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to have a retentionPolicy field")
+	}
+	if retentionPolicy.Create != retain.Create {
+		t.Fatalf("expected retentionPolicy to be creatable like retain, got create=%v", retentionPolicy.Create)
+	}
+	if retentionPolicy.Type != "string" {
+		t.Fatalf("expected retentionPolicy schema type to be string, got %q", retentionPolicy.Type)
+	}
+}
+
+// A client asking for "age-base" must get "age-base" on the spec. Losing the
+// value in decode would leave the job on count-base, quietly ignoring the
+// retainAge the caller sent in the same request and retaining by a count they
+// never meant to rely on.
+func TestRecurringJobRetentionPolicyRoundTripsFromClient(t *testing.T) {
+	body, err := json.Marshal(&lhclient.RecurringJob{
+		Name:            "test-job",
+		Task:            string(longhorn.RecurringJobTypeSnapshot),
+		Cron:            "*/1 * * * *",
+		Retain:          50,
+		RetainAge:       "10m",
+		RetentionPolicy: string(longhorn.RecurringJobRetentionPolicyAgeBase),
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal client recurring job: %v", err)
+	}
+
+	var input RecurringJob
+	if err := json.Unmarshal(body, &input); err != nil {
+		t.Fatalf("failed to decode client request into API model: %v", err)
+	}
+	if input.RetentionPolicy != longhorn.RecurringJobRetentionPolicyAgeBase {
+		t.Fatalf("expected retentionPolicy %v, got %v", longhorn.RecurringJobRetentionPolicyAgeBase, input.RetentionPolicy)
+	}
+
+	// An unset policy must stay empty rather than being guessed at here; the CRD
+	// default fills it in, and filterExpiredItems reads empty as "count-base".
+	body, err = json.Marshal(&lhclient.RecurringJob{Name: "test-job", Retain: 50})
+	if err != nil {
+		t.Fatalf("failed to marshal client recurring job: %v", err)
+	}
+	input = RecurringJob{}
+	if err := json.Unmarshal(body, &input); err != nil {
+		t.Fatalf("failed to decode client request into API model: %v", err)
+	}
+	if input.RetentionPolicy != "" {
+		t.Fatalf("expected retentionPolicy to stay empty when unset, got %q", input.RetentionPolicy)
+	}
+}
+
+// toRecurringJobResource is what the UI reads back. If the policy is dropped
+// there, an "age-base" job is indistinguishable from a "count-base" one in the
+// UI, and both retain and retainAge are shown as if they were in force when only
+// one of them ever is.
+func TestToRecurringJobResourceIncludesRetentionPolicy(t *testing.T) {
+	recurringJob := &longhorn.RecurringJob{}
+	recurringJob.Name = "test-job"
+	recurringJob.Spec.Retain = 50
+	recurringJob.Spec.RetainAge = metav1.Duration{Duration: 10 * time.Minute}
+	recurringJob.Spec.RetentionPolicy = longhorn.RecurringJobRetentionPolicyAgeBase
+
+	resource := toRecurringJobResource(recurringJob, nil)
+	if resource.RetentionPolicy != longhorn.RecurringJobRetentionPolicyAgeBase {
+		t.Fatalf("expected retentionPolicy %v, got %v", longhorn.RecurringJobRetentionPolicyAgeBase, resource.RetentionPolicy)
 	}
 }
