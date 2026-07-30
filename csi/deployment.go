@@ -296,7 +296,20 @@ type PluginDeployment struct {
 
 func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, livenessProbeImage, managerImage, managerURL, rootDir string,
 	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string,
-	endpointNetworkForRWXVolumeSetting *longhorn.Setting, resourceLimits *types.ComponentResourceLimits) *PluginDeployment {
+	endpointNetworkForRWXVolumeSetting *longhorn.Setting, resourceLimits *types.ComponentResourceLimits, volumeGroupSnapshotEnabled bool) *PluginDeployment {
+
+	pluginArgs := []string{
+		"longhorn-manager",
+		"-d",
+		"csi",
+		"--nodeid=$(NODE_ID)",
+		"--endpoint=$(CSI_ENDPOINT)",
+		fmt.Sprintf("--drivername=%s", types.LonghornDriverName),
+		"--manager-url=" + managerURL,
+	}
+	if volumeGroupSnapshotEnabled {
+		pluginArgs = append(pluginArgs, "--volume-group-snapshot-enabled")
+	}
 
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -441,15 +454,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									},
 								},
 							},
-							Args: []string{
-								"longhorn-manager",
-								"-d",
-								"csi",
-								"--nodeid=$(NODE_ID)",
-								"--endpoint=$(CSI_ENDPOINT)",
-								fmt.Sprintf("--drivername=%s", types.LonghornDriverName),
-								"--manager-url=" + managerURL,
-							},
+							Args: pluginArgs,
 							Env: appendTimezoneEnv([]corev1.EnvVar{
 								{
 									Name: "NODE_ID",
