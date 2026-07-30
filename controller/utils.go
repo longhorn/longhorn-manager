@@ -117,7 +117,10 @@ func isCloneTargetNotCompletedAndNotCopyCompleted(v *longhorn.Volume) bool {
 // isLinkedCloneNeedingSourceForRebuild returns true if v is a linked-clone volume
 // that has completed (or nearly completed) initial clone but is degraded and needs
 // its source volume attached for rebuild (the src replicas must be running).
-func isLinkedCloneNeedingSourceForRebuild(v *longhorn.Volume, srcVolumeName string) bool {
+// isLinkedClonePotentiallyNeedingSource checks whether a volume is a linked-clone
+// of srcVolumeName that could have replicas needing a linked-clone rebuild.
+// The actual replica-level check is done separately by hasReplicasPendingLinkedCloneRebuild.
+func isLinkedClonePotentiallyNeedingSource(v *longhorn.Volume, srcVolumeName string) bool {
 	if v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
 		return false
 	}
@@ -135,10 +138,6 @@ func isLinkedCloneNeedingSourceForRebuild(v *longhorn.Volume, srcVolumeName stri
 	}
 	// Volume must be attached (rebuild only happens when attached)
 	if v.Status.State != longhorn.VolumeStateAttached {
-		return false
-	}
-	// Volume must be degraded (needs rebuild)
-	if v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 		return false
 	}
 	return true
