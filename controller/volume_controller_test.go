@@ -2381,7 +2381,7 @@ func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensB
 		nowHandler:     getTestNow,
 	}
 
-	cleaned, err := vc.cleanupAutoBalancedReplicas(volume, engine, replicas)
+	cleaned, err := vc.cleanupAutoBalancedReplicas(volume, engine, replicas, replicas)
 	c.Assert(err, IsNil)
 	c.Assert(cleaned, Equals, true)
 

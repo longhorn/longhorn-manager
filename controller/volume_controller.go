@@ -1375,6 +1375,57 @@ func (c *VolumeController) filterOutLinkedCloneSrcReplicas(rs map[string]*longho
 	return filtered, nil
 }
 
+// isDeletionCandidateNeededForBalance returns true when there is exactly
+// one deletion candidate and removing it would leave the volume in an
+// unbalanced state that auto-balance would immediately try to fix by creating
+// a new replica. Skipping cleanup in this case prevents an infinite
+// create/delete loop where auto-balance creates a replica on a new node and
+// cleanup immediately removes it.
+func (c *VolumeController) isDeletionCandidateNeededForBalance(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, candidateRNames []string) bool {
+	log := getLoggerForVolume(c.logger, v)
+
+	// Only applies when exactly 1 candidate remains. Auto-balance creates
+	// one extra at a time, so 2+ candidates means at least one is on an
+	// over-populated node and safe to remove.
+	if len(candidateRNames) != 1 {
+		return false
+	}
+
+	// Build replica map without the sole candidate to simulate removal.
+	candidateName := candidateRNames[0]
+	rsWithout := make(map[string]*longhorn.Replica, len(rs)-1)
+	for name, r := range rs {
+		if name == candidateName {
+			continue
+		}
+		rsWithout[name] = r
+	}
+
+	// Check node-level balance.
+	nodeAdjust, _, err := c.getReplicaCountForAutoBalanceNode(v, e, rsWithout)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to check node balance for deletion candidate %s protection, avoid the cleanup for now", candidateName)
+		return true
+	}
+	if nodeAdjust > 0 {
+		log.Debugf("Skipping cleanup of sole deletion candidate %v: removing it would require node-level rebalancing", candidateName)
+		return true
+	}
+
+	// Check zone-level balance.
+	zoneAdjust, _, err := c.getReplicaCountForAutoBalanceZone(v, e, rsWithout)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to check zone balance for deletion candidate %s protection, avoid the cleanup for now", candidateName)
+		return true
+	}
+	if zoneAdjust > 0 {
+		log.Debugf("Skipping cleanup of sole deletion candidate %v: removing it would require zone-level rebalancing", candidateName)
+		return true
+	}
+
+	return false
+}
+
 func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, rs, deletableRs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v)
 
@@ -1635,6 +1686,13 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, deletableRs)
 	if err != nil {
 		return false, err
+	}
+
+	// If there's only one deletion candidate and removing it would leave
+	// the volume unbalanced (auto-balance would immediately recreate it),
+	// skip cleanup to avoid an infinite create/delete loop.
+	if c.isDeletionCandidateNeededForBalance(v, e, rs, rNames) {
+		return false, nil
 	}
 
 	r := deletableRs[rNames[0]]
