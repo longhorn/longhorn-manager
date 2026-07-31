@@ -47,7 +47,7 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 	if err != nil {
 		return err
 	}
-	apiContext.Write(toSnapshotResource(snapshot, ""))
+	apiContext.Write(toSnapshotResource(snapshot, "", ""))
 	return nil
 }
 
@@ -88,11 +88,13 @@ func (s *Server) SnapshotGet(w http.ResponseWriter, req *http.Request) (err erro
 	}
 
 	checksum := ""
+	snapshotGroup := ""
 	if snapRO, err := s.m.GetSnapshotCR(snap.Name); err == nil {
 		checksum = snapRO.Status.Checksum
+		snapshotGroup = snapRO.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)]
 	}
 
-	api.GetApiContext(req).Write(toSnapshotResource(snap, checksum))
+	api.GetApiContext(req).Write(toSnapshotResource(snap, checksum, snapshotGroup))
 	return nil
 }
 
