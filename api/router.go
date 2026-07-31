@@ -212,6 +212,11 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("POST").Path("/v1/recurringjobs").Handler(f(schemas, s.RecurringJobCreate))
 	r.Methods("PUT").Path("/v1/recurringjobs/{name}").Handler(f(schemas, s.RecurringJobUpdate))
 
+	r.Methods("GET").Path("/v1/snapshotgroups").Handler(f(schemas, s.SnapshotGroupList))
+	r.Methods("GET").Path("/v1/snapshotgroups/{name}").Handler(f(schemas, s.SnapshotGroupGet))
+	r.Methods("DELETE").Path("/v1/snapshotgroups/{name}").Handler(f(schemas, s.SnapshotGroupDelete))
+	r.Methods("POST").Path("/v1/snapshotgroups").Handler(f(schemas, s.SnapshotGroupAction))
+
 	r.Methods("GET").Path("/v1/orphans").Handler(f(schemas, s.OrphanList))
 	r.Methods("GET").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanGet))
 	r.Methods("DELETE").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanDelete))
@@ -252,6 +257,10 @@ func NewRouter(s *Server) *mux.Router {
 	recurringJobListStream := NewStreamHandlerFunc("recurringjobs", s.wsc.NewWatcher("recurringJob"), s.recurringJobList)
 	r.Path("/v1/ws/recurringjobs").Handler(f(schemas, recurringJobListStream))
 	r.Path("/v1/ws/{period}/recurringjobs").Handler(f(schemas, recurringJobListStream))
+
+	snapshotGroupListStream := NewStreamHandlerFunc("snapshotgroups", s.wsc.NewWatcher("snapshotGroup"), s.snapshotGroupList)
+	r.Path("/v1/ws/snapshotgroups").Handler(f(schemas, snapshotGroupListStream))
+	r.Path("/v1/ws/{period}/snapshotgroups").Handler(f(schemas, snapshotGroupListStream))
 
 	orphanListStream := NewStreamHandlerFunc("orphans", s.wsc.NewWatcher("orphan"), s.orphanList)
 	r.Path("/v1/ws/orphans").Handler(f(schemas, orphanListStream))
