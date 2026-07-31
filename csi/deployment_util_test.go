@@ -409,6 +409,64 @@ func TestNeedToUpdateReplicas(t *testing.T) {
 	}
 }
 
+func TestNeedToUpdateArgs(t *testing.T) {
+	deploymentWithArgs := func(args ...string) *appsv1.Deployment {
+		return &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "csi-snapshotter", Args: args}}},
+		}}}
+	}
+	daemonSetWithArgs := func(args ...string) *appsv1.DaemonSet {
+		return &appsv1.DaemonSet{Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "longhorn-csi-plugin", Args: args}}},
+		}}}
+	}
+
+	for _, test := range []struct {
+		testName string
+		existing runtime.Object
+		new      runtime.Object
+		expected bool
+	}{
+		{
+			testName: "Should update when the group snapshot flag is added to a Deployment",
+			existing: deploymentWithArgs("--csi-address=$(ADDRESS)"),
+			new:      deploymentWithArgs("--csi-address=$(ADDRESS)", "--enable-volume-group-snapshots=true"),
+			expected: true,
+		},
+		{
+			testName: "Should not update when Deployment arguments match",
+			existing: deploymentWithArgs("--csi-address=$(ADDRESS)"),
+			new:      deploymentWithArgs("--csi-address=$(ADDRESS)"),
+			expected: false,
+		},
+		{
+			testName: "Should update when the group snapshot flag is added to a DaemonSet",
+			existing: daemonSetWithArgs("--nodeid=$(NODE_ID)"),
+			new:      daemonSetWithArgs("--nodeid=$(NODE_ID)", "--volume-group-snapshot-enabled"),
+			expected: true,
+		},
+		{
+			testName: "Should not update when DaemonSet arguments match",
+			existing: daemonSetWithArgs("--nodeid=$(NODE_ID)"),
+			new:      daemonSetWithArgs("--nodeid=$(NODE_ID)"),
+			expected: false,
+		},
+		{
+			testName: "Should not update for objects without a pod template",
+			existing: &corev1.Service{},
+			new:      &corev1.Service{},
+			expected: false,
+		},
+	} {
+		t.Run(test.testName, func(t *testing.T) {
+			res := needToUpdateArgs(test.existing, test.new)
+			if res != test.expected {
+				t.Errorf("expected result: %v, but got: %v", test.expected, res)
+			}
+		})
+	}
+}
+
 func TestDeployUpdatesOnReplicaCountChange(t *testing.T) {
 	two := int32(2)
 	three := int32(3)
