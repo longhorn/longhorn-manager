@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -108,6 +109,9 @@ type Snapshot struct {
 	client.Resource
 	longhorn.SnapshotInfo
 	Checksum string `json:"checksum"`
+	// SnapshotGroup is the owning snapshot group name, empty for standalone
+	// snapshots.
+	SnapshotGroup string `json:"snapshotGroup"`
 }
 
 // SnapshotCR struct is used for the snapshotCR* actions
@@ -130,6 +134,9 @@ type SnapshotCR struct {
 	RestoreSize  int64             `json:"restoreSize"`
 	ReadyToUse   bool              `json:"readyToUse"`
 	Checksum     string            `json:"checksum"`
+	// SnapshotGroup is the owning snapshot group name, empty for standalone
+	// snapshots.
+	SnapshotGroup string `json:"snapshotGroup"`
 }
 
 type BackupTarget struct {
@@ -642,6 +649,45 @@ type Orphan struct {
 	longhorn.OrphanSpec
 }
 
+type SnapshotGroup struct {
+	client.Resource
+	Name            string                               `json:"name"`
+	Created         string                               `json:"created"`
+	Volumes         []string                             `json:"volumes"`
+	VolumeSelector  *metav1.LabelSelector                `json:"volumeSelector"`
+	Labels          map[string]string                    `json:"labels"`
+	DeadlineSeconds int64                                `json:"deadlineSeconds"`
+	Phase           longhorn.SnapshotGroupPhase          `json:"phase"`
+	Members         []longhorn.SnapshotGroupMemberStatus `json:"members"`
+	ReadyToUse      bool                                 `json:"readyToUse"`
+	CreationTime    string                               `json:"creationTime"`
+	Error           string                               `json:"error,omitempty"`
+	Degraded        bool                                 `json:"degraded"`
+	Conditions      []longhorn.Condition                 `json:"conditions"`
+}
+
+// SnapshotGroupPreviewInput is the payload of the preview collection action.
+// Member snapshot names are generated at creation, so the preview neither
+// takes a group name nor returns names.
+type SnapshotGroupPreviewInput struct {
+	Volumes        []string              `json:"volumes"`
+	VolumeSelector *metav1.LabelSelector `json:"volumeSelector"`
+}
+
+type SnapshotGroupPreviewMember struct {
+	VolumeName        string `json:"volumeName"`
+	ValidationFailure string `json:"validationFailure,omitempty"`
+}
+
+// SnapshotGroupPreviewOutput previews which volumes a snapshot group spec
+// would select, without creating the group. Structural selection failures are
+// reported in Error; per-volume failures in the member's ValidationFailure.
+type SnapshotGroupPreviewOutput struct {
+	client.Resource
+	Members []SnapshotGroupPreviewMember `json:"members"`
+	Error   string                       `json:"error,omitempty"`
+}
+
 type ShardGroup struct {
 	client.Resource
 	Name                string                   `json:"name"`
@@ -807,6 +853,13 @@ func NewSchema() *client.Schemas {
 	backupBackingImageSchema(schemas.AddType("backupBackingImage", BackupBackingImage{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
+	schemas.AddType("labelSelectorRequirement", metav1.LabelSelectorRequirement{})
+	labelSelectorSchema(schemas.AddType("labelSelector", metav1.LabelSelector{}))
+	snapshotGroupPreviewInputSchema(schemas.AddType("snapshotGroupPreviewInput", SnapshotGroupPreviewInput{}))
+	schemas.AddType("snapshotGroupPreviewMember", SnapshotGroupPreviewMember{})
+	snapshotGroupPreviewOutputSchema(schemas.AddType("snapshotGroupPreviewOutput", SnapshotGroupPreviewOutput{}))
+	schemas.AddType("snapshotGroupMemberStatus", longhorn.SnapshotGroupMemberStatus{})
+	snapshotGroupSchema(schemas.AddType("snapshotGroup", SnapshotGroup{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 	backingImageSchema(schemas.AddType("backingImage", BackingImage{}))
 	nodeSchema(schemas.AddType("node", Node{}))
@@ -997,6 +1050,78 @@ func recurringJobSchema(job *client.Schema) {
 	parameters.Type = "map[string]"
 	parameters.Nullable = true
 	job.ResourceFields["parameters"] = parameters
+}
+
+func snapshotGroupSchema(snapshotGroup *client.Schema) {
+	snapshotGroup.CollectionMethods = []string{"GET", "POST"}
+	// The spec is immutable after creation, so there is no PUT.
+	snapshotGroup.ResourceMethods = []string{"GET", "DELETE"}
+
+	snapshotGroup.CollectionActions = map[string]client.Action{
+		"preview": {
+			Input:  "snapshotGroupPreviewInput",
+			Output: "snapshotGroupPreviewOutput",
+		},
+	}
+
+	name := snapshotGroup.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	snapshotGroup.ResourceFields["name"] = name
+
+	volumes := snapshotGroup.ResourceFields["volumes"]
+	volumes.Type = "array[string]"
+	volumes.Nullable = true
+	volumes.Create = true
+	snapshotGroup.ResourceFields["volumes"] = volumes
+
+	volumeSelector := snapshotGroup.ResourceFields["volumeSelector"]
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	volumeSelector.Type = "labelSelector"
+	volumeSelector.Nullable = true
+	volumeSelector.Create = true
+	snapshotGroup.ResourceFields["volumeSelector"] = volumeSelector
+
+	labels := snapshotGroup.ResourceFields["labels"]
+	labels.Type = "map[string]"
+	labels.Nullable = true
+	labels.Create = true
+	snapshotGroup.ResourceFields["labels"] = labels
+
+	deadlineSeconds := snapshotGroup.ResourceFields["deadlineSeconds"]
+	deadlineSeconds.Create = true
+	snapshotGroup.ResourceFields["deadlineSeconds"] = deadlineSeconds
+
+	members := snapshotGroup.ResourceFields["members"]
+	members.Type = "array[snapshotGroupMemberStatus]"
+	snapshotGroup.ResourceFields["members"] = members
+
+	conditions := snapshotGroup.ResourceFields["conditions"]
+	conditions.Type = "array[longhornCondition]"
+	snapshotGroup.ResourceFields["conditions"] = conditions
+}
+
+func snapshotGroupPreviewInputSchema(input *client.Schema) {
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	volumeSelector := input.ResourceFields["volumeSelector"]
+	volumeSelector.Type = "labelSelector"
+	volumeSelector.Nullable = true
+	input.ResourceFields["volumeSelector"] = volumeSelector
+}
+
+func snapshotGroupPreviewOutputSchema(output *client.Schema) {
+	members := output.ResourceFields["members"]
+	members.Type = "array[snapshotGroupPreviewMember]"
+	output.ResourceFields["members"] = members
+}
+
+func labelSelectorSchema(labelSelector *client.Schema) {
+	matchExpressions := labelSelector.ResourceFields["matchExpressions"]
+	matchExpressions.Type = "array[labelSelectorRequirement]"
+	labelSelector.ResourceFields["matchExpressions"] = matchExpressions
 }
 
 func kubernetesStatusSchema(status *client.Schema) {
@@ -1967,6 +2092,7 @@ func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {
 		RestoreSize:    s.Status.RestoreSize,
 		ReadyToUse:     s.Status.ReadyToUse,
 		Checksum:       s.Status.Checksum,
+		SnapshotGroup:  s.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)],
 	}
 }
 
@@ -1979,7 +2105,7 @@ func toSnapshotCRCollection(snapCRs map[string]*longhorn.Snapshot) *client.Gener
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshotCR"}}
 }
 
-func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {
+func toSnapshotResource(s *longhorn.SnapshotInfo, checksum, snapshotGroup string) *Snapshot {
 	if s == nil {
 		return nil
 	}
@@ -1988,8 +2114,9 @@ func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {
 			Id:   s.Name,
 			Type: "snapshot",
 		},
-		SnapshotInfo: *s,
-		Checksum:     checksum,
+		SnapshotInfo:  *s,
+		Checksum:      checksum,
+		SnapshotGroup: snapshotGroup,
 	}
 }
 
@@ -1998,12 +2125,14 @@ func toSnapshotCollection(ssList map[string]*longhorn.SnapshotInfo, ssListRO map
 
 	for name, v := range ssList {
 		checksum := ""
+		snapshotGroup := ""
 		if ssListRO != nil {
 			if ssRO, ok := ssListRO[name]; ok {
 				checksum = ssRO.Status.Checksum
+				snapshotGroup = ssRO.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)]
 			}
 		}
-		data = append(data, toSnapshotResource(v, checksum))
+		data = append(data, toSnapshotResource(v, checksum, snapshotGroup))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
@@ -2572,6 +2701,37 @@ func toRecurringJobCollection(jobs []*longhorn.RecurringJob, apiContext *api.Api
 		data = append(data, toRecurringJobResource(job, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "recurringJob"}}
+}
+
+func toSnapshotGroupResource(snapshotGroup *longhorn.SnapshotGroup, apiContext *api.ApiContext) *SnapshotGroup {
+	return &SnapshotGroup{
+		Resource: client.Resource{
+			Id:   snapshotGroup.Name,
+			Type: "snapshotGroup",
+		},
+		Name:            snapshotGroup.Name,
+		Created:         snapshotGroup.CreationTimestamp.Format(time.RFC3339),
+		Volumes:         snapshotGroup.Spec.Volumes,
+		VolumeSelector:  snapshotGroup.Spec.VolumeSelector,
+		Labels:          snapshotGroup.Spec.Labels,
+		DeadlineSeconds: snapshotGroup.Spec.DeadlineSeconds,
+		Phase:           snapshotGroup.Status.Phase,
+		Members:         snapshotGroup.Status.Members,
+		ReadyToUse:      snapshotGroup.Status.ReadyToUse,
+		CreationTime:    snapshotGroup.Status.CreationTime,
+		Error:           snapshotGroup.Status.Error,
+		Degraded: types.GetCondition(snapshotGroup.Status.Conditions,
+			longhorn.SnapshotGroupConditionTypeDegraded).Status == longhorn.ConditionStatusTrue,
+		Conditions: snapshotGroup.Status.Conditions,
+	}
+}
+
+func toSnapshotGroupCollection(snapshotGroups []*longhorn.SnapshotGroup, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, snapshotGroup := range snapshotGroups {
+		data = append(data, toSnapshotGroupResource(snapshotGroup, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshotGroup"}}
 }
 
 func toOrphanResource(orphan *longhorn.Orphan) *Orphan {
