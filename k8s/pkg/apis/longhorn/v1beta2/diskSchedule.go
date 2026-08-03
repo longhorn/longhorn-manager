@@ -121,6 +121,7 @@ func (ds *DiskSchedule) GetBackingImageScheduledStatus(biName string) *DiskSched
 func (ds *DiskSchedule) setRequirement(specMap *map[string]int64, resourceName string, size int64) {
 	if size == 0 {
 		delete(*specMap, resourceName)
+		return
 	}
 
 	if *specMap == nil {

@@ -197,17 +197,29 @@ func (dsc *DiskScheduleController) reconcile(diskScheduleName string) (err error
 			return
 		}
 		if !reflect.DeepEqual(existingDiskSchedule.Spec, diskSchedule.Spec) {
-			if _, err := dsc.ds.UpdateDiskSchedule(diskSchedule); err != nil && apierrors.IsConflict(errors.Cause(err)) {
-				log.WithError(err).Debugf("Requeue %v due to spec conflict", diskScheduleName)
-				dsc.enqueueDiskSchedule(diskSchedule)
+			updatedDiskSchedule, updateErr := dsc.ds.UpdateDiskSchedule(diskSchedule)
+			if updateErr != nil {
+				if apierrors.IsConflict(errors.Cause(updateErr)) {
+					log.WithError(updateErr).Debugf("Requeue %v due to spec conflict", diskScheduleName)
+					dsc.enqueueDiskSchedule(diskSchedule)
+					return
+				}
+				err = updateErr
+				return
 			}
+			// UpdateStatus must use the resource version returned by the preceding spec update.
+			diskSchedule.ResourceVersion = updatedDiskSchedule.ResourceVersion
 		}
 		if reflect.DeepEqual(existingDiskSchedule.Status, diskSchedule.Status) {
 			return
 		}
-		if _, updateStatusErr := dsc.ds.UpdateDiskScheduleStatus(diskSchedule); updateStatusErr != nil && datastore.ErrorIsConflict(errors.Cause(updateStatusErr)) {
-			log.WithError(updateStatusErr).Debugf("Requeue %v due to status conflict", diskScheduleName)
-			dsc.enqueueDiskSchedule(diskSchedule)
+		if _, updateStatusErr := dsc.ds.UpdateDiskScheduleStatus(diskSchedule); updateStatusErr != nil {
+			if datastore.ErrorIsConflict(errors.Cause(updateStatusErr)) {
+				log.WithError(updateStatusErr).Debugf("Requeue %v due to status conflict", diskScheduleName)
+				dsc.enqueueDiskSchedule(diskSchedule)
+				return
+			}
+			err = updateStatusErr
 		}
 	}()
 

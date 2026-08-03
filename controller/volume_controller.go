@@ -213,7 +213,9 @@ func NewVolumeController(
 	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
 	if _, err = ds.DiskScheduleInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj interface{}) { c.enqueueDiskScheduleChange(nil, obj) },
 		UpdateFunc: c.enqueueDiskScheduleChange,
+		DeleteFunc: func(obj interface{}) { c.enqueueDiskScheduleChange(obj, nil) },
 	}, 0); err != nil {
 		return nil, err
 	}
@@ -1913,10 +1915,6 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
-	if err := c.reconcileVolumeDiskAllocation(v, rs, log); err != nil {
-		return err
-	}
-
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
 
 	// Clear SalvageRequested flag if SalvageExecuted flag has been set.
@@ -2000,7 +1998,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				}
 				// For a linked-clone replica, also verify its source replica is healthy.
 				// If it is still rebuilding or failed, the CoW chain may not be accessible
-				// yet — skip this candidate and retry on the next reconcile.
+				// yet - skip this candidate and retry on the next reconcile.
 				if r.Spec.LinkedCloneSrcReplicaName != "" {
 					srcReplica, srcRepErr := c.ds.GetReplicaRO(r.Spec.LinkedCloneSrcReplicaName)
 					if srcRepErr != nil {
@@ -2977,7 +2975,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			ef.Spec.VolumeSize = v.Spec.Size
 			// Always propagate the target size to the EF so the EF
 			// monitor can detect that expansion is needed and trigger
-			// EngineFrontendExpand (which expands replicas → engine →
+			// EngineFrontendExpand (which expands replicas -> engine ->
 			// frontend).  The createEngineFrontend function already
 			// creates the SPDK EF at the pre-expansion size, so
 			// ef.Status.CurrentSize will correctly reflect the actual
@@ -3321,7 +3319,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 			}
 		}
 		if len(healthyReplicas) > v.Spec.NumberOfReplicas {
-			// Sort by HealthyAt ascending — oldest (most trusted) first.
+			// Sort by HealthyAt ascending - oldest (most trusted) first.
 			sort.Slice(healthyReplicas, func(i, j int) bool {
 				ti, _ := time.Parse(time.RFC3339, healthyReplicas[i].Spec.HealthyAt)
 				tj, _ := time.Parse(time.RFC3339, healthyReplicas[j].Spec.HealthyAt)
@@ -3550,114 +3548,22 @@ func (c *VolumeController) reconcileVolumeDiskAllocation(v *longhorn.Volume, rs 
 }
 
 func (c *VolumeController) syncReplicaDiskAllocation(r *longhorn.Replica) error {
-	diskSchedule, err := c.ds.GetDiskSchedule(r.Spec.DiskID)
+	persistedReplica, err := c.ds.GetReplicaRO(r.Name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			// DiskSchedule not found means disk is not initialized or removed.
-			// Nothing to sync; the replica controller will handle the rejection.
 			return nil
 		}
 		return err
 	}
-	if diskSchedule.GetReplicaRequirement(r.Name) == r.Spec.VolumeSize {
+	// Persist replica placement before reserving disk capacity. Otherwise, a
+	// conflicting replica update can leave an allocation that the next
+	// scheduling attempt counts against the still-unscheduled replica.
+	if persistedReplica.Spec.NodeID != r.Spec.NodeID ||
+		persistedReplica.Spec.DiskID != r.Spec.DiskID ||
+		persistedReplica.Spec.VolumeSize != r.Spec.VolumeSize {
 		return nil
 	}
-	diskSchedule.SetReplicaRequirement(r.Name, r.Spec.VolumeSize)
-	_, err = c.ds.UpdateDiskSchedule(diskSchedule)
-	return err
-}
 
-func (c *VolumeController) isDiskAllocationRejectedForReplica(r *longhorn.Replica) (bool, error) {
-	diskSchedule, err := c.ds.GetDiskScheduleRO(r.Spec.DiskID)
-	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return true, nil
-		}
-		return false, err
-	}
-	requiredSize := diskSchedule.GetReplicaRequirement(r.Name)
-	status := diskSchedule.GetReplicaScheduledStatus(r.Name)
-	if requiredSize == 0 || requiredSize != r.Spec.VolumeSize {
-		// requirement is outdated
-		return false, nil
-	}
-	if requiredSize <= status.Size {
-		// canceling expansion and waiting for disk scheduler update
-		return false, nil
-	}
-	return status.State == longhorn.DiskScheduledStateRejected, nil
-}
-
-func (c *VolumeController) isDiskAllocationAcceptedForReplica(r *longhorn.Replica) (bool, error) {
-	diskSchedule, err := c.ds.GetDiskScheduleRO(r.Spec.DiskID)
-	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	requiredSize := diskSchedule.GetReplicaRequirement(r.Name)
-	status := diskSchedule.GetReplicaScheduledStatus(r.Name)
-	if requiredSize == 0 || requiredSize != r.Spec.VolumeSize {
-		// requirement is outdated
-		return false, nil
-	}
-	if status.Size != requiredSize {
-		// disk allocation for size change is in progress or rejected
-		return false, nil
-	}
-	return status.State == longhorn.DiskScheduledStateScheduled, nil
-}
-
-func (c *VolumeController) isDiskAllocatedForReplica(r *longhorn.Replica) (bool, error) {
-	return c.isDiskAllocationAcceptedForReplica(r)
-}
-
-func (c *VolumeController) reconcileVolumeDiskAllocation(v *longhorn.Volume, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
-	rejectedRs := make(map[string]*longhorn.Replica)
-
-	// allocate disk for scheduled replicas
-	for rName, r := range rs {
-		if r.Spec.DiskID == "" {
-			continue
-		}
-
-		if err := c.syncReplicaDiskAllocation(r); err != nil {
-			log.WithError(err).Errorf("Failed to sync disk allocation for replica %v", r.Name)
-			return err
-		}
-
-		isRejected, err := c.isDiskAllocationRejectedForReplica(r)
-		if err != nil {
-			return err
-		}
-		if isRejected {
-			rejectedRs[rName] = r
-			// for failed replica creation, mark rejected replicas as failed and will be cleared later
-			// for failed replica expansion, keep the replica unchanged and the expansion might be canceled later
-			if r.Spec.FailedAt != "" && !v.Status.ExpansionRequired {
-				setReplicaFailedAt(r, c.nowHandler())
-			}
-		}
-	}
-
-	if len(rejectedRs) > 0 {
-		items := make([]string, 0, len(rejectedRs))
-		for _, r := range rejectedRs {
-			items = append(items, fmt.Sprintf("%v (disk %v)", r.Name, r.Spec.DiskID))
-		}
-		failureMessage := strings.Join(items, ", ")
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeDiskAllocation,
-			longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonReplicaDiskAllocationFailure, failureMessage)
-	} else {
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeDiskAllocation,
-			longhorn.ConditionStatusTrue, "", "")
-	}
-
-	return nil
-}
-
-func (c *VolumeController) syncReplicaDiskAllocation(r *longhorn.Replica) error {
 	diskSchedule, err := c.ds.GetDiskSchedule(r.Spec.DiskID)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
@@ -4699,7 +4605,7 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 	// Linked-clone uses a fast metadata operation (BdevLvolSetParent) and supports
 	// N simultaneous replicas when the instance manager proxy API supports DstReplicaSrcReplicaPairMap
 	// (proxy API >= MinProxyAPIVersionForNReplicaLinkedClone). In that case the engine receives an
-	// explicit dst→src map from the manager and clones all N replicas in one SnapshotClone call.
+	// explicit dst->src map from the manager and clones all N replicas in one SnapshotClone call.
 	linkedCloneAllowsN := false
 	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && e != nil {
 		im, imErr := c.ds.GetInstanceManagerByInstance(e)
@@ -5462,7 +5368,7 @@ func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume
 //  1. Rebuild retry count exhausted (RebuildRetryCount >= FailedReplicaMaxRetryCount)
 //  2. Stale timeout exceeded (FailedAt older than StaleReplicaTimeout)
 //  3. The replica was created more than StaleReplicaTimeout after the earliest
-//     healthy replica's HealthyAt — indicating the system has been stuck in the
+//     healthy replica's HealthyAt - indicating the system has been stuck in the
 //     replenish-and-fail loop for too long.
 //
 // If ALL non-healthy replicas satisfy at least one condition, the clone should
@@ -5494,7 +5400,7 @@ func (c *VolumeController) shouldCompleteLinkedCloneDespiteDegraded(v *longhorn.
 			continue
 		}
 		if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
-			// Healthy replica — skip.
+			// Healthy replica - skip.
 			continue
 		}
 		hasNonHealthyReplica = true
@@ -5522,7 +5428,7 @@ func (c *VolumeController) shouldCompleteLinkedCloneDespiteDegraded(v *longhorn.
 			continue
 		}
 
-		// This replica does not meet any condition — not ready to give up.
+		// This replica does not meet any condition - not ready to give up.
 		return false
 	}
 	return hasNonHealthyReplica
@@ -7440,21 +7346,84 @@ func (c *VolumeController) enqueueDiskScheduleChange(oldObj, curObj interface{})
 		return
 	}
 
-	for rName, curStatus := range curDs.Status.Replicas {
-		oldStatus := oldDs.Status.Replicas[rName]
-		if oldStatus == nil || *curStatus == *oldStatus {
+	diskScheduleName := ""
+	if curDs != nil {
+		diskScheduleName = curDs.Name
+	} else if oldDs != nil {
+		diskScheduleName = oldDs.Name
+	}
+
+	replicaNames := make(map[string]struct{})
+	if oldDs != nil {
+		for rName := range oldDs.Spec.Replicas {
+			replicaNames[rName] = struct{}{}
+		}
+		for rName := range oldDs.Status.Replicas {
+			replicaNames[rName] = struct{}{}
+		}
+	}
+	if curDs != nil {
+		for rName := range curDs.Spec.Replicas {
+			replicaNames[rName] = struct{}{}
+		}
+		for rName := range curDs.Status.Replicas {
+			replicaNames[rName] = struct{}{}
+		}
+	}
+	if oldDs == nil || curDs == nil {
+		replicas, err := c.ds.ListReplicasByDiskUUID(diskScheduleName)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("failed to list replicas for disk schedule %v event: %v", diskScheduleName, err))
+			return
+		}
+		for rName := range replicas {
+			replicaNames[rName] = struct{}{}
+		}
+	}
+
+	for rName := range replicaNames {
+		var oldStatus, curStatus *longhorn.DiskScheduledResourcesStatus
+		var oldStatusExists, curStatusExists bool
+		var oldRequirement, curRequirement int64
+		var oldRequirementExists, curRequirementExists bool
+		if oldDs != nil {
+			oldStatus, oldStatusExists = oldDs.Status.Replicas[rName]
+			oldRequirement, oldRequirementExists = oldDs.Spec.Replicas[rName]
+		}
+		if curDs != nil {
+			curStatus, curStatusExists = curDs.Status.Replicas[rName]
+			curRequirement, curRequirementExists = curDs.Spec.Replicas[rName]
+		}
+		if oldDs != nil && curDs != nil &&
+			oldStatusExists == curStatusExists &&
+			reflect.DeepEqual(oldStatus, curStatus) &&
+			oldRequirementExists == curRequirementExists &&
+			oldRequirement == curRequirement {
 			continue
 		}
+
 		replica, err := c.ds.GetReplicaRO(rName)
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
 				continue
 			} else {
-				utilruntime.HandleError(fmt.Errorf("failed to get replica %v for disk schedule %v update: %v ", rName, curDs.Name, err))
+				utilruntime.HandleError(fmt.Errorf("failed to get replica %v for disk schedule %v update: %v ", rName, diskScheduleName, err))
 				return
 			}
 		}
-		c.enqueueControlleeChange(replica)
+		if replica == nil {
+			continue
+		}
+
+		volume, err := c.ds.GetVolumeRO(replica.Spec.VolumeName)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("failed to get volume %v of replica %v when enqueuing disk schedule %v: %v", replica.Spec.VolumeName, replica.Name, diskScheduleName, err))
+			continue
+		}
+		if volume == nil {
+			continue
+		}
+		c.enqueueVolume(volume)
 	}
 }
 

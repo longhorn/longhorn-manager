@@ -645,18 +645,20 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteRecurringJobs(recurringJobs)
 	}
 
-	if nodes, err := c.ds.ListNodes(); err != nil {
-		return true, err
-	} else if len(nodes) > 0 {
-		c.logger.Infof("Found %d nodes remaining", len(nodes))
-		return true, c.deleteNodes(nodes)
-	}
-
+	// Delete DiskSchedules before their owning Nodes so garbage collection cannot
+	// race the DiskSchedule controller's finalizer removal.
 	if diskSchedules, err := c.ds.ListDiskSchedules(); err != nil {
 		return true, err
 	} else if len(diskSchedules) > 0 {
 		c.logger.Infof("Found %d disk schedules remaining", len(diskSchedules))
 		return true, c.deleteDiskSchedule(diskSchedules)
+	}
+
+	if nodes, err := c.ds.ListNodes(); err != nil {
+		return true, err
+	} else if len(nodes) > 0 {
+		c.logger.Infof("Found %d nodes remaining", len(nodes))
+		return true, c.deleteNodes(nodes)
 	}
 
 	if instanceManagers, err := c.ds.ListInstanceManagers(); err != nil {
@@ -1134,6 +1136,8 @@ func (c *UninstallController) deleteDiskSchedule(diskSchedules map[string]*longh
 	}()
 	for _, ds := range diskSchedules {
 		log := getLoggerForDiskSchedule(c.logger, ds)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if ds.DeletionTimestamp == nil {
 			log.Infof("Adding annotation %v to DiskSchedule %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn), ds.Name)
 			if err := c.prepareDiskScheduleForDeletion(ds.Name); err != nil {
@@ -1148,6 +1152,18 @@ func (c *UninstallController) deleteDiskSchedule(diskSchedules map[string]*longh
 				}
 			} else {
 				log.Info("Marked for deletion")
+			}
+		} else if ds.DeletionTimestamp.Before(&timeout) {
+			log.Warn("DiskSchedule deletion did not finish within timeout, removing finalizer forcibly")
+			if errRemove := c.ds.RemoveFinalizerForDiskSchedule(ds); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("DiskSchedule is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
 		}
 	}
