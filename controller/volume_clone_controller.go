@@ -322,7 +322,8 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 			return candidates[0], nil
 		}
 
-		return "", fmt.Errorf("cannot find a valid node for volume %v clone attachment", v.Name)
+		log.Warnf("Cannot find a valid node for volume %v clone attachment, will clean up stale tickets and retry", v.Name)
+		return "", nil
 	}
 
 	// case 1: this volume is target of a clone and the cloning hasn't completed
@@ -332,8 +333,10 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		if err != nil {
 			return err
 		}
-		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
-		expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		if chosenNodeID != "" {
+			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
+			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		}
 	}
 
 	// case 2: this volume is source of a clone (initial clone in progress)
@@ -350,9 +353,11 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 					return err
 				}
 			}
-			cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
-			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			if srcNodeID != "" {
+				cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+				createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+				expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			}
 		}
 	}
 
@@ -374,9 +379,11 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 				return err
 			}
 		}
-		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
-		expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		if srcNodeID != "" {
+			cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		}
 	}
 
 	// Delete unexpected attachment tickets
