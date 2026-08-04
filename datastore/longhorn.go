@@ -3701,6 +3701,28 @@ func (s *DataStore) ListReadyNodesRO() (map[string]*longhorn.Node, error) {
 	return readyNodes, nil
 }
 
+func (s *DataStore) ListReadyNodesWithReadyInstanceManagerRO(dataEngine longhorn.DataEngineType) (map[string]*longhorn.Node, error) {
+	readyNodes, err := s.ListReadyNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]*longhorn.Node, len(readyNodes))
+	for nodeName, node := range readyNodes {
+		imMap, err := s.ListInstanceManagersByNodeRO(nodeName, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		if err != nil {
+			return nil, err
+		}
+		for _, im := range imMap {
+			if im.DeletionTimestamp == nil && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+				result[nodeName] = node
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 func (s *DataStore) ListReadyAndSchedulableNodesRO() (map[string]*longhorn.Node, error) {
 	nodes, err := s.ListReadyNodesRO()
 	if err != nil {
