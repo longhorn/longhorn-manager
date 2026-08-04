@@ -3746,7 +3746,7 @@ func (s *DataStore) ListReadyNodesWithReadyInstanceManagerRO(dataEngine longhorn
 
 	result := make(map[string]*longhorn.Node, len(readyNodes))
 	for nodeName, node := range readyNodes {
-		imMap, err := s.ListInstanceManagersByNodeRO(nodeName, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		imMap, err := s.listInstanceManagers(nodeName, dataEngine)
 		if err != nil {
 			return nil, err
 		}
