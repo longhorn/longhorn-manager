@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -254,10 +255,84 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 
 	expectedAttachmentTickets := make(map[string]bool)
 
+	var attachableNodes map[string]*longhorn.Node
+	log := getLoggerForVolume(vcc.logger, vol)
+	pickNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (chosenNodeID string, err error) {
+		if attachableNodes == nil {
+			attachableNodes, err = vcc.ds.ListReadyNodesWithReadyInstanceManagerRO(v.Spec.DataEngine)
+			if err != nil {
+				return "", err
+			}
+		}
+
+		// The CurrentNodeID holds the 1st priority if it is valid.
+		// The corresponding ticket is implicitly satisfied.
+		if attachableNodes[v.Status.CurrentNodeID] != nil {
+			log.Debugf("Picked node %v for volume %v clone attachment: currently attached node", v.Status.CurrentNodeID, v.Name)
+			return v.Status.CurrentNodeID, nil
+		}
+
+		// The node already selected by other tickets holds the 2nd priority if it is valid.
+		// Among tickets with the highest priority level, pick the node that appears most
+		// frequently; break ties by sorting node IDs lexicographically.
+		highestPriority := -1
+		nodeCount := map[string]int{}
+		for _, ticket := range va.Spec.AttachmentTickets {
+			if attachableNodes[ticket.NodeID] == nil {
+				continue
+			}
+			priority := longhorn.GetAttacherPriorityLevel(ticket.Type)
+			if priority > highestPriority {
+				highestPriority = priority
+				nodeCount = map[string]int{ticket.NodeID: 1}
+			} else if priority == highestPriority {
+				nodeCount[ticket.NodeID]++
+			}
+		}
+		if len(nodeCount) > 0 {
+			maxCount := 0
+			var candidates []string
+			for nodeID, count := range nodeCount {
+				if count > maxCount {
+					maxCount = count
+					candidates = []string{nodeID}
+				} else if count == maxCount {
+					candidates = append(candidates, nodeID)
+				}
+			}
+			sort.Strings(candidates)
+			log.Debugf("Picked node %v for volume %v clone attachment: majority node among highest-priority tickets", candidates[0], v.Name)
+			return candidates[0], nil
+		}
+
+		// The node of v.Status.OwnerID holds the 3rd priority if it is valid
+		if attachableNodes[v.Status.OwnerID] != nil {
+			log.Debugf("Picked node %v for volume %v clone attachment: volume owner node", v.Status.OwnerID, v.Name)
+			return v.Status.OwnerID, nil
+		}
+
+		// Otherwise, pick up the 1st node in sorted order for determinism
+		candidates := make([]string, 0, len(attachableNodes))
+		for n := range attachableNodes {
+			candidates = append(candidates, n)
+		}
+		sort.Strings(candidates)
+		if len(candidates) > 0 {
+			log.Debugf("Picked node %v for volume %v clone attachment: first available ready node", candidates[0], v.Name)
+			return candidates[0], nil
+		}
+
+		return "", fmt.Errorf("cannot find a valid node for volume %v clone attachment", v.Name)
+	}
+
 	// case 1: this volume is target of a clone and the cloning hasn't completed
 	if isCloneTargetActive(vol) {
 		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, volName)
-		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, vol.Status.OwnerID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
+		chosenNodeID, err := pickNodeID(vol, va)
+		if err != nil {
+			return err
+		}
+		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
 		expectedAttachmentTickets[cloningAttachmentTicketID] = true
 	}
 
@@ -266,18 +341,25 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	if err != nil {
 		return err
 	}
+	var srcNodeID string
 	for _, v := range vols {
-		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
 		if isCloneTargetCopyInProgress(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
-			createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
-			expectedAttachmentTickets[attachmentTicketID] = true
+			if srcNodeID == "" {
+				srcNodeID, err = pickNodeID(vol, va)
+				if err != nil {
+					return err
+				}
+			}
+			cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+			expectedAttachmentTickets[cloningAttachmentTicketID] = true
 		}
 	}
 
 	// case 3: this volume is source of a linked-clone target that needs rebuild
 	// (post-initial-clone: clone completed or awaiting healthy, and has replicas pending rebuild)
-	var readyNodes map[string]*longhorn.Node
-	chosenNodeID := vol.Status.CurrentNodeID
+	// Use a single node for all clone tickets to avoid attaching the source to multiple nodes.
+	srcNodeID = ""
 	for _, v := range vols {
 		if !isLinkedClonePotentiallyNeedingSource(v, vol.Name) {
 			continue
@@ -286,26 +368,15 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		if !vcc.hasReplicasPendingLinkedCloneRebuild(v.Name) {
 			continue
 		}
-		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-		// Prefer the current attached node and the same node for all clones
-		if chosenNodeID == "" {
-			// Source not attached yet — pick a ready node
-			if readyNodes == nil {
-				readyNodes, err = vcc.ds.ListReadyNodesRO()
-				if err != nil {
-					return err
-				}
-			}
-			for n := range readyNodes {
-				chosenNodeID = n
-				break
-			}
-			if chosenNodeID == "" {
-				continue // no ready nodes, skip this ticket
+		if srcNodeID == "" {
+			srcNodeID, err = pickNodeID(vol, va)
+			if err != nil {
+				return err
 			}
 		}
-		createOrUpdateAttachmentTicket(va, attachmentTicketID, chosenNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
-		expectedAttachmentTickets[attachmentTicketID] = true
+		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+		expectedAttachmentTickets[cloningAttachmentTicketID] = true
 	}
 
 	// Delete unexpected attachment tickets
