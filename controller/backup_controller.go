@@ -635,10 +635,23 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	// When the backup targets an existing volume, require the responsible node to have a
+	// running instance manager for the volume's data engine. This ensures the backup is
+	// owned by a node that can actually process it and avoids selecting a node that passes
+	// the engine image readiness check but has no running instance manager, e.g. a node
+	// drained with --ignore-daemonsets, which keeps the engine image DaemonSet running while
+	// its instance manager pod is evicted. Ref: https://github.com/longhorn/longhorn/issues/12562
+	checkInstanceManager := false
+	var dataEngine longhorn.DataEngineType
+
 	volumeName, err := bc.getBackupVolumeName(b)
 	if err == nil {
 		if compatible, err := bc.ds.IsNodeSupportingDataEngine(volumeName, bc.controllerID); err != nil || !compatible {
 			return false, err
+		}
+		if volume, err := bc.ds.GetVolumeRO(volumeName); err == nil {
+			checkInstanceManager = true
+			dataEngine = volume.Spec.DataEngine
 		}
 	}
 
@@ -653,11 +666,51 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		return false, err
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && bc.controllerID == b.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	currentOwnerAvailable := currentOwnerEngineAvailable
+	currentNodeAvailable := currentNodeEngineAvailable
+	if checkInstanceManager {
+		ownerIMRunning, imErr := bc.isInstanceManagerRunningOnNode(b.Status.OwnerID, dataEngine)
+		if imErr != nil {
+			return false, imErr
+		}
+		nodeIMRunning, imErr := bc.isInstanceManagerRunningOnNode(bc.controllerID, dataEngine)
+		if imErr != nil {
+			return false, imErr
+		}
+		currentOwnerAvailable = currentOwnerAvailable && ownerIMRunning
+		currentNodeAvailable = currentNodeAvailable && nodeIMRunning
+	}
+
+	isPreferredOwner := currentNodeAvailable && isResponsible
+	continueToBeOwner := currentNodeAvailable && bc.controllerID == b.Status.OwnerID
+	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+// isInstanceManagerRunningOnNode returns true if the given node has a running, non-terminating
+// instance manager for the specified data engine. A terminating instance manager (its pod is
+// being removed, e.g. during a node drain) can still report Running, so it is excluded. Any
+// datastore error is returned so the caller can abort the responsibility decision instead of
+// treating a transient read failure as the node being unavailable, which could otherwise
+// trigger an unnecessary ownership transfer.
+func (bc *BackupController) isInstanceManagerRunningOnNode(nodeID string, dataEngine longhorn.DataEngineType) (bool, error) {
+	if nodeID == "" {
+		return false, nil
+	}
+	ims, err := bc.ds.ListInstanceManagersByNodeRO(nodeID, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+	if err != nil {
+		return false, err
+	}
+	for _, im := range ims {
+		if im.DeletionTimestamp != nil {
+			continue
+		}
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.BackupTarget, error) {
