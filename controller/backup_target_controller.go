@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -262,6 +263,14 @@ func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *dat
 			errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
 		}
 	}
+
+	if instanceManager == nil {
+		instanceManager, err = getFallbackRunningInstanceManager(ds, dataEngine)
+		if err != nil {
+			errs.Append("errors", err)
+		}
+	}
+
 	if instanceManager == nil {
 		return nil, nil, fmt.Errorf("failed to find a running instance manager for node %v: %v", nodeID, errs.Error())
 	}
@@ -278,6 +287,47 @@ func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *dat
 	}
 
 	return engineClientProxy, backupTargetClient, nil
+}
+
+// getFallbackRunningInstanceManager returns any running instance manager matching the given
+// data engine. It is used when the preferred node has no running instance manager (e.g. the
+// node has been drained), so that backup operations can still be processed on another node.
+// Only running, non-terminating all-in-one instance managers are eligible, matching the
+// constraints applied by DataStore.GetRunningInstanceManagerByNodeRO. Legacy engine/replica
+// instance managers are deprecated and never selected.
+func getFallbackRunningInstanceManager(ds *datastore.DataStore, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+	ims, err := ds.ListInstanceManagersRO()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list instance managers for fallback")
+	}
+
+	// Iterate in a deterministic order so the same instance manager is picked across reconciles.
+	imNames := make([]string, 0, len(ims))
+	for name := range ims {
+		imNames = append(imNames, name)
+	}
+	sort.Strings(imNames)
+
+	for _, name := range imNames {
+		im := ims[name]
+		// Skip terminating instance managers, they may still report Running.
+		if im.DeletionTimestamp != nil {
+			continue
+		}
+		// Only all-in-one instance managers are valid; legacy engine/replica managers are deprecated.
+		if im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+			continue
+		}
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			continue
+		}
+		if dataEngine != longhorn.DataEngineTypeAll && im.Spec.DataEngine != dataEngine {
+			continue
+		}
+		return im, nil
+	}
+
+	return nil, nil
 }
 
 func newBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget, engineImage string) (backupTargetClient *engineapi.BackupTargetClient, err error) {

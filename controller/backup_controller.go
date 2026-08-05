@@ -842,7 +842,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(engine.Spec.NodeID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}

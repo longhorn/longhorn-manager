@@ -2917,7 +2917,10 @@ func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longh
 	return s.CheckEngineImageReadiness(image, nodes...)
 }
 
-// IsDataEngineImageReady checks if the IMAGE is deployed on the NODEID and, if data locality is disabled, also on at least one replica node of the volume.
+// IsDataEngineImageReady checks if the IMAGE is ready on the NODEID and, for
+// data engine v1 with data locality disabled, also on at least one scheduled
+// replica node of the volume. Data engine v2 has no engine image DaemonSet to
+// verify, so the replica check is skipped.
 func (s *DataStore) IsDataEngineImageReady(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, dataEngine longhorn.DataEngineType) (bool, error) {
 	isReady, err := s.CheckDataEngineImageReadiness(image, dataEngine, nodeID)
 	if err != nil {
@@ -2931,27 +2934,22 @@ func (s *DataStore) IsDataEngineImageReady(image, volumeName, nodeID string, dat
 	return s.checkDataEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName)
 }
 
-// checkDataEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on at least one replica node of the volume.
+// checkDataEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on at least one scheduled replica node of the volume.
 func (s *DataStore) checkDataEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName string) (bool, error) {
 	replicas, err := s.ListVolumeReplicas(volumeName)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to get replicas for volume %v", volumeName)
 	}
 
-	hasScheduledReplica := false
 	for _, r := range replicas {
+		if r.Spec.NodeID == "" {
+			continue
+		}
 		isReady, err := s.CheckDataEngineImageReadiness(image, r.Spec.DataEngine, r.Spec.NodeID)
 		if err != nil || isReady {
 			return isReady, err
 		}
-		if r.Spec.NodeID != "" {
-			hasScheduledReplica = true
-		}
 	}
-	if !hasScheduledReplica {
-		return false, errors.Errorf("volume %v has no scheduled replicas", volumeName)
-	}
-
 	return false, nil
 }
 
