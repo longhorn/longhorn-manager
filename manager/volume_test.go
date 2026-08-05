@@ -24,7 +24,7 @@ func TestCreatePreservesSpecFields(t *testing.T) {
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories("default", kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
-	ds := datastore.NewDataStore("default", lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories)
 
 	// Start the informers so the datastore's create-then-verify lister sees
 	// objects created through the fake clientset.

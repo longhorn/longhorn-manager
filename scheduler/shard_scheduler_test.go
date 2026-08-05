@@ -68,8 +68,8 @@ func (s *TestSuite) TestScheduleShardTopologyRequirement(c *C) {
 	addSetting(types.SettingNameStorageMinimalAvailablePercentage, "10")
 
 	ss := &ShardScheduler{
-		ds:  datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
-		rcs: NewReplicaScheduler(datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)),
+		ds:  datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+		rcs: NewReplicaScheduler(datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)),
 	}
 
 	nodes := map[string]*longhorn.Node{

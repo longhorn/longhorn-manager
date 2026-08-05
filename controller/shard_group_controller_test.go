@@ -76,7 +76,7 @@ func (s *ShardGroupControllerSuite) SetUpTest(c *C) {
 func newTestShardGroupController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*ShardGroupController, error) {
 
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	c, err := NewShardGroupController(logger, ds, scheme.Scheme, kubeClient, controllerID, TestNamespace)
