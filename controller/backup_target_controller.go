@@ -243,6 +243,14 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
+// getBackupTarget returns an engine client proxy and a backup target client for the given
+// nodeID. The proxy is established through a running instance manager on nodeID, so the caller
+// must pass a node that actually has a running instance manager. For backups, the backup
+// controller guarantees this in isResponsibleFor by only owning a Backup CR on a node with a
+// running instance manager for the volume's data engine. This avoids selecting a node that
+// passes the engine image readiness check but has no running instance manager, for example a
+// node drained with --ignore-daemonsets, which keeps the engine image DaemonSet running while
+// its instance manager pod is evicted. Ref: https://github.com/longhorn/longhorn/issues/12562
 func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter, dataEngine longhorn.DataEngineType) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
 	var instanceManager *longhorn.InstanceManager
 	errs := multierr.NewMultiError()
