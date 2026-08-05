@@ -130,7 +130,7 @@ func TestLeaseInformerIsNamespaceScoped(t *testing.T) {
 	extensionsClient := apiextensionsfake.NewSimpleClientset()              // nolint: staticcheck
 
 	informerFactories := util.NewInformerFactories(longhornNamespace, kubeClient, lhClient, 0)
-	ds := NewDataStore(longhornNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := NewDataStoreForGlobal(longhornNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
