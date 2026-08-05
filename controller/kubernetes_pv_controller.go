@@ -30,11 +30,9 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+// KubernetesPVController is hosted by the longhorn-global-manager Deployment.
 type KubernetesPVController struct {
 	*baseController
-
-	// use as the OwnerID of the controller
-	controllerID string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -54,8 +52,7 @@ func NewKubernetesPVController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	kubeClient clientset.Interface,
-	controllerID string) (*KubernetesPVController, error) {
+	kubeClient clientset.Interface) (*KubernetesPVController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -64,8 +61,6 @@ func NewKubernetesPVController(
 
 	kc := &KubernetesPVController{
 		baseController: newBaseController("longhorn-kubernetes-pv", logger),
-
-		controllerID: controllerID,
 
 		ds: ds,
 
@@ -193,10 +188,6 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 			return nil
 		}
 		return err
-	}
-
-	if volume.Status.OwnerID != kc.controllerID {
-		return nil
 	}
 
 	existingVolume := volume.DeepCopy()
@@ -385,10 +376,6 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 			return true, nil
 		}
 		return false, errors.Wrap(err, "failed to get volume for cleanup in cleanupForPVDeletion")
-	}
-	if kc.controllerID != volume.Status.OwnerID {
-		kc.pvToVolumeCache.Delete(pvName)
-		return true, nil
 	}
 	pv, err := kc.ds.GetPersistentVolumeRO(pvName)
 	if err != nil && !datastore.ErrorIsNotFound(err) {

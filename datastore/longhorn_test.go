@@ -225,7 +225,7 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -298,7 +298,7 @@ func TestValidateSettingDefaultControlPath(t *testing.T) {
 			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
 			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
 			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 			stopCh := make(chan struct{})
 			defer close(stopCh)
@@ -385,7 +385,7 @@ func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
 			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
 			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
 			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 			stopCh := make(chan struct{})
 			defer close(stopCh)
