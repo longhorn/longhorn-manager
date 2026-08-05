@@ -450,6 +450,7 @@ func (c *UninstallController) deleteStorageClass() error {
 
 func (c *UninstallController) deleteLease() error {
 	for _, leaseName := range []string{upgrade.LeaseLockName,
+		types.LonghornGlobalManagerName,
 		"driver-longhorn-io",
 		"external-attacher-leader-driver-longhorn-io",
 		"external-resizer-driver-longhorn-io",
@@ -1419,6 +1420,21 @@ func (c *UninstallController) deleteManagerDependentResources() (bool, error) {
 }
 
 func (c *UninstallController) deleteManager() (bool, error) {
+	waitForDaemonSet, err := c.deleteManagerDaemonSet()
+	if err != nil {
+		return true, err
+	}
+	// The cluster-wide Pod controllers run in the longhorn-global-manager
+	// Deployment; stop it together with the DaemonSet so no controller keeps
+	// reconciling while the remaining resources are deleted.
+	waitForDeployment, err := c.deleteGlobalManagerDeployment()
+	if err != nil {
+		return true, err
+	}
+	return waitForDaemonSet || waitForDeployment, nil
+}
+
+func (c *UninstallController) deleteManagerDaemonSet() (bool, error) {
 	log := getLoggerForUninstallDaemonSet(c.logger, types.LonghornManagerDaemonSetName)
 
 	if ds, err := c.ds.GetDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
@@ -1428,6 +1444,26 @@ func (c *UninstallController) deleteManager() (bool, error) {
 		return true, err
 	} else if ds.DeletionTimestamp == nil {
 		if err := c.ds.DeleteDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
+			log.Warn("Failed to mark for deletion")
+			return true, err
+		}
+		log.Info("Marked for deletion")
+		return true, nil
+	}
+	log.Info("Already marked for deletion")
+	return true, nil
+}
+
+func (c *UninstallController) deleteGlobalManagerDeployment() (bool, error) {
+	log := getLoggerForUninstallDeployment(c.logger, types.LonghornGlobalManagerName)
+
+	if deployment, err := c.ds.GetDeployment(types.LonghornGlobalManagerName); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return true, err
+	} else if deployment.DeletionTimestamp == nil {
+		if err := c.ds.DeleteDeployment(types.LonghornGlobalManagerName); err != nil {
 			log.Warn("Failed to mark for deletion")
 			return true, err
 		}
