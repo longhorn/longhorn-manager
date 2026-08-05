@@ -245,6 +245,30 @@ func (m *VolumeManager) Delete(name string) error {
 	return nil
 }
 
+// validateVolumeHasScheduledReplica rejects attaching a volume that has no
+// scheduled replicas, since such a volume can never start.
+func (m *VolumeManager) validateVolumeHasScheduledReplica(v *longhorn.Volume) error {
+	// Sharded volumes place shards instead of replicas.
+	if v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded {
+		return nil
+	}
+	// Strict-local and best-effort data locality want a replica on the node the
+	// volume attaches to, so replicas stay unscheduled until the volume is attached.
+	if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal ||
+		v.Spec.DataLocality == longhorn.DataLocalityBestEffort {
+		return nil
+	}
+	// One scheduled replica is enough to keep a degraded volume attachable.
+	hasScheduledReplica, err := m.ds.HasVolumeScheduledReplica(v.Name)
+	if err != nil {
+		return err
+	}
+	if !hasScheduledReplica {
+		return fmt.Errorf("volume %v has no scheduled replicas", v.Name)
+	}
+	return nil
+}
+
 func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attachedBy, attacherType, attachmentID string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", name, nodeID)
@@ -261,6 +285,10 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 
 	v, err = m.ds.GetVolume(name)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := m.validateVolumeHasScheduledReplica(v); err != nil {
 		return nil, err
 	}
 
