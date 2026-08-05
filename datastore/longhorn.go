@@ -2514,6 +2514,21 @@ func (s *DataStore) ListVolumeReplicasROMapByNode(volumeName string) (map[string
 	return replicaMapByNode, nil
 }
 
+// HasVolumeScheduledReplica returns whether at least one replica of the volume
+// is scheduled to a node.
+func (s *DataStore) HasVolumeScheduledReplica(volumeName string) (bool, error) {
+	replicas, err := s.ListVolumeReplicasRO(volumeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to list replicas for volume %v", volumeName)
+	}
+	for _, r := range replicas {
+		if r.Spec.NodeID != "" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ReplicaAddressToReplicaName will directly return the address if the format
 // is invalid or the replica is not found.
 func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string {
