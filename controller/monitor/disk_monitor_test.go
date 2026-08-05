@@ -53,7 +53,7 @@ func newTestDiskMonitor(t *testing.T, getDiskConfig GetDiskConfigHandler, genera
 	lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset()
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	m, err := NewFakeDiskMonitor(logrus.StandardLogger(), ds, testNodeName, func(string) {})
 	require.NoError(t, err)
