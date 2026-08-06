@@ -323,6 +323,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		}
 
 		log.Warnf("Cannot find a valid node for volume %v clone attachment", v.Name)
+		vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
 		return "", nil
 	}
 
