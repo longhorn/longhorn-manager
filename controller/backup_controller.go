@@ -270,6 +270,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 	if !isResponsible {
+		bc.disableBackupMonitor(backup.Name)
 		return nil
 	}
 	if backup.Status.OwnerID != bc.controllerID {
@@ -635,12 +636,6 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// When the backup targets an existing volume, require the responsible node to have a
-	// running instance manager for the volume's data engine. This ensures the backup is
-	// owned by a node that can actually process it and avoids selecting a node that passes
-	// the engine image readiness check but has no running instance manager, e.g. a node
-	// drained with --ignore-daemonsets, which keeps the engine image DaemonSet running while
-	// its instance manager pod is evicted. Ref: https://github.com/longhorn/longhorn/issues/12562
 	checkInstanceManager := false
 	var dataEngine longhorn.DataEngineType
 
@@ -649,9 +644,20 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		if compatible, err := bc.ds.IsNodeSupportingDataEngine(volumeName, bc.controllerID); err != nil || !compatible {
 			return false, err
 		}
-		if volume, err := bc.ds.GetVolumeRO(volumeName); err == nil {
-			checkInstanceManager = true
-			dataEngine = volume.Spec.DataEngine
+		if bc.backupRequiresInstanceManager(b) {
+			// If the volume label exists but the Volume CR is gone (remote/synced backup),
+			// skip the IM check: there is no volume.Spec.DataEngine to scope against, and
+			// that path does not call getBackupTarget with a volume data engine. Any other
+			// error is transient and must abort the decision instead of silently disabling
+			// the IM check, which would fall back to the engine-image-only behavior.
+			volume, err := bc.ds.GetVolumeRO(volumeName)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return false, err
+			}
+			if err == nil {
+				checkInstanceManager = true
+				dataEngine = volume.Spec.DataEngine
+			}
 		}
 	}
 
@@ -669,16 +675,20 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 	currentOwnerAvailable := currentOwnerEngineAvailable
 	currentNodeAvailable := currentNodeEngineAvailable
 	if checkInstanceManager {
-		ownerIMRunning, imErr := bc.isInstanceManagerRunningOnNode(b.Status.OwnerID, dataEngine)
+		nodesWithIM, imErr := bc.ds.ListNodesWithReadyInstanceManagerRO(dataEngine)
 		if imErr != nil {
 			return false, imErr
 		}
-		nodeIMRunning, imErr := bc.isInstanceManagerRunningOnNode(bc.controllerID, dataEngine)
-		if imErr != nil {
-			return false, imErr
+		// Only require a running instance manager when at least one node has one to fall back to.
+		// If the data engine has no running instance manager anywhere (e.g. a full outage), keep the
+		// engine-image-only behavior so the backup still gets an owner that surfaces the error and
+		// retries, instead of being left ownerless and silently stalled.
+		if len(nodesWithIM) > 0 {
+			_, ownerIMRunning := nodesWithIM[b.Status.OwnerID]
+			_, nodeIMRunning := nodesWithIM[bc.controllerID]
+			currentOwnerAvailable = currentOwnerAvailable && ownerIMRunning
+			currentNodeAvailable = currentNodeAvailable && nodeIMRunning
 		}
-		currentOwnerAvailable = currentOwnerAvailable && ownerIMRunning
-		currentNodeAvailable = currentNodeAvailable && nodeIMRunning
 	}
 
 	isPreferredOwner := currentNodeAvailable && isResponsible
@@ -688,29 +698,11 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }
 
-// isInstanceManagerRunningOnNode returns true if the given node has a running, non-terminating
-// instance manager for the specified data engine. A terminating instance manager (its pod is
-// being removed, e.g. during a node drain) can still report Running, so it is excluded. Any
-// datastore error is returned so the caller can abort the responsibility decision instead of
-// treating a transient read failure as the node being unavailable, which could otherwise
-// trigger an unnecessary ownership transfer.
-func (bc *BackupController) isInstanceManagerRunningOnNode(nodeID string, dataEngine longhorn.DataEngineType) (bool, error) {
-	if nodeID == "" {
-		return false, nil
+func (bc *BackupController) backupRequiresInstanceManager(b *longhorn.Backup) bool {
+	if !b.DeletionTimestamp.IsZero() {
+		return false
 	}
-	ims, err := bc.ds.ListInstanceManagersByNodeRO(nodeID, longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	if err != nil {
-		return false, err
-	}
-	for _, im := range ims {
-		if im.DeletionTimestamp != nil {
-			continue
-		}
-		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
-			return true, nil
-		}
-	}
-	return false, nil
+	return b.Spec.SnapshotName != "" && b.Status.LastSyncedAt.IsZero() && !bc.backupInFinalState(b)
 }
 
 func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.BackupTarget, error) {
@@ -871,6 +863,29 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
+	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
+		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
+		volume.Status.State != longhorn.VolumeStateAttached {
+		bc.creationRetryCounter.IncreaseCount(backup.Name)
+		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
+			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
+			backup.Status.State = longhorn.BackupStateError
+			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+			bc.creationRetryCounter.DeleteEntry(backup.Name)
+			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+			return nil, err
+		}
+		backup.Status.State = longhorn.BackupStatePending
+		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
+		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+		return nil, err
+	}
+
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
@@ -899,29 +914,6 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 				bc.logger.Warnf("Failed to find the StorageClassName from the pvc %v", pvc.Name)
 			}
 		}
-	}
-
-	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
-		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
-		volume.Status.State != longhorn.VolumeStateAttached {
-		bc.creationRetryCounter.IncreaseCount(backup.Name)
-		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
-			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
-			backup.Status.State = longhorn.BackupStateError
-			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
-			bc.creationRetryCounter.DeleteEntry(backup.Name)
-			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-			return nil, err
-		}
-		backup.Status.State = longhorn.BackupStatePending
-		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
-		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-		return nil, err
 	}
 
 	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)

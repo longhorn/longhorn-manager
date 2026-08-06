@@ -83,6 +83,14 @@ func NewVolumeCloneController(
 	}
 	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { vcc.enqueueVolumesForInstanceManager(old, cur) },
+		DeleteFunc: func(obj interface{}) { vcc.enqueueVolumesForInstanceManager(obj, nil) },
+	}, 0); err != nil {
+		return nil, err
+	}
+	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+
 	return vcc, nil
 }
 
@@ -155,6 +163,61 @@ func (vcc *VolumeCloneController) enqueueSourceVolumeForReplica(obj interface{})
 
 	if srcVolName := types.GetVolumeName(vol.Spec.DataSource); srcVolName != "" {
 		vcc.queue.Add(vcc.namespace + "/" + srcVolName)
+	}
+}
+
+// enqueueVolumesForInstanceManager re-enqueues volumes that have a clone-controller
+// VA ticket targeting the IM's node when the IM state changes or gets deleted.
+// This ensures that if an IM goes down after a ticket was created but before it was
+// satisfied, the clone controller can re-evaluate and pick a different node.
+func (vcc *VolumeCloneController) enqueueVolumesForInstanceManager(oldObj, curObj interface{}) {
+	var oldIM *longhorn.InstanceManager
+	if oldObj != nil {
+		oldIM, _ = oldObj.(*longhorn.InstanceManager)
+		if oldIM == nil {
+			if deletedState, ok := oldObj.(cache.DeletedFinalStateUnknown); ok {
+				oldIM, _ = deletedState.Obj.(*longhorn.InstanceManager)
+			}
+		}
+	}
+
+	var curIM *longhorn.InstanceManager
+	if curObj != nil {
+		curIM, _ = curObj.(*longhorn.InstanceManager)
+	}
+
+	// Only react to state/deletion changes
+	if oldIM != nil && curIM != nil {
+		if oldIM.Status.CurrentState == curIM.Status.CurrentState &&
+			oldIM.DeletionTimestamp == curIM.DeletionTimestamp {
+			return
+		}
+	}
+
+	// Determine the affected node
+	var nodeID string
+	if curIM != nil {
+		nodeID = curIM.Spec.NodeID
+	} else if oldIM != nil {
+		nodeID = oldIM.Spec.NodeID
+	}
+	if nodeID == "" {
+		return
+	}
+
+	// Find volumes with clone-controller tickets targeting this node
+	vaList, err := vcc.ds.ListLHVolumeAttachmentsRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list volume attachments for IM change on node %v: %v", nodeID, err))
+		return
+	}
+	for _, va := range vaList {
+		for _, ticket := range va.Spec.AttachmentTickets {
+			if ticket.Type == longhorn.AttacherTypeVolumeCloneController && ticket.NodeID == nodeID {
+				vcc.queue.Add(vcc.namespace + "/" + va.Spec.Volume)
+				break
+			}
+		}
 	}
 }
 
@@ -259,7 +322,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	log := getLoggerForVolume(vcc.logger, vol)
 	pickNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (chosenNodeID string, err error) {
 		if attachableNodes == nil {
-			attachableNodes, err = vcc.ds.ListReadyNodesWithReadyInstanceManagerRO(v.Spec.DataEngine)
+			attachableNodes, err = vcc.ds.ListNodesWithReadyInstanceManagerRO(v.Spec.DataEngine)
 			if err != nil {
 				return "", err
 			}
@@ -322,20 +385,25 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 			return candidates[0], nil
 		}
 
-		log.Warnf("Cannot find a valid node for volume %v clone attachment, will clean up stale tickets and retry", v.Name)
+		log.Warnf("Cannot find a valid node for volume %v clone attachment", v.Name)
+		vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
 		return "", nil
 	}
 
 	// case 1: this volume is target of a clone and the cloning hasn't completed
 	if isCloneTargetActive(vol) {
 		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, volName)
-		chosenNodeID, err := pickNodeID(vol, va)
-		if err != nil {
-			return err
-		}
-		if chosenNodeID != "" {
-			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
+		if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
 			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		} else {
+			chosenNodeID, err := pickNodeID(vol, va)
+			if err != nil {
+				return err
+			}
+			if chosenNodeID != "" {
+				createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
+				expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			}
 		}
 	}
 
@@ -347,16 +415,20 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	var srcNodeID string
 	for _, v := range vols {
 		if isCloneTargetCopyInProgress(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
-			if srcNodeID == "" {
-				srcNodeID, err = pickNodeID(vol, va)
-				if err != nil {
-					return err
-				}
-			}
-			if srcNodeID != "" {
-				cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-				createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+			cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+			if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
 				expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			} else {
+				if srcNodeID == "" {
+					srcNodeID, err = pickNodeID(vol, va)
+					if err != nil {
+						return err
+					}
+				}
+				if srcNodeID != "" {
+					createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+					expectedAttachmentTickets[cloningAttachmentTicketID] = true
+				}
 			}
 		}
 	}
@@ -373,16 +445,21 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		if !vcc.hasReplicasPendingLinkedCloneRebuild(v.Name) {
 			continue
 		}
-		if srcNodeID == "" {
-			srcNodeID, err = pickNodeID(vol, va)
-			if err != nil {
-				return err
-			}
-		}
-		if srcNodeID != "" {
-			cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-			createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+
+		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+		if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
 			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		} else {
+			if srcNodeID == "" {
+				srcNodeID, err = pickNodeID(vol, va)
+				if err != nil {
+					return err
+				}
+			}
+			if srcNodeID != "" {
+				createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+				expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			}
 		}
 	}
 
