@@ -1,6 +1,7 @@
 package csi
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -31,6 +32,91 @@ func newTestControllerServer(t *testing.T, objs ...runtime.Object) *ControllerSe
 		log:         logrus.StandardLogger().WithField("component", "test"),
 		lhClient:    lhfake.NewSimpleClientset(objs...), // nolint: staticcheck
 		lhNamespace: testNamespace,
+	}
+}
+
+func TestControllerRequestLogsStripSecrets(t *testing.T) {
+	const secret = "sentinel-csi-secret-value"
+
+	for _, tc := range []struct {
+		name string
+		call func(*ControllerServer)
+	}{
+		{
+			name: "CreateVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.CreateVolume(context.Background(), &csi.CreateVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "DeleteVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerPublishVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerPublishVolume(context.Background(), &csi.ControllerPublishVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerUnpublishVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerUnpublishVolume(context.Background(), &csi.ControllerUnpublishVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "CreateSnapshot",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.CreateSnapshot(context.Background(), &csi.CreateSnapshotRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerExpandVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerModifyVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := logrus.New()
+			logger.SetOutput(&output)
+			cs := &ControllerServer{
+				log: logger.WithField("component", "test"),
+			}
+
+			tc.call(cs)
+
+			logOutput := output.String()
+			if strings.Contains(logOutput, secret) {
+				t.Fatalf("request log contains secret value: %s", logOutput)
+			}
+			if !strings.Contains(logOutput, tc.name+" is called with req") {
+				t.Fatalf("request log is missing method context: %s", logOutput)
+			}
+		})
 	}
 }
 

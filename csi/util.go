@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
@@ -37,6 +38,10 @@ const (
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
 )
+
+func logCSIRequest[R any](log *logrus.Entry, function string, req R) {
+	log.WithFields(logrus.Fields{"function": function}).Infof("%s is called with req %+v", function, protosanitizer.StripSecrets(req))
+}
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
 func NewForcedParamsExec(cmdParamMapping map[string]string) utilexec.Interface {

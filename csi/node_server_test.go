@@ -1,10 +1,70 @@
 package csi
 
 import (
+	"bytes"
+	"context"
+	"strings"
 	"testing"
+
+	"github.com/sirupsen/logrus"
+
+	csipb "github.com/container-storage-interface/spec/lib/go/csi"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 )
+
+func TestNodeRequestLogsStripSecrets(t *testing.T) {
+	const secret = "sentinel-csi-secret-value"
+
+	for _, tc := range []struct {
+		name string
+		call func(*NodeServer)
+	}{
+		{
+			name: "NodePublishVolume",
+			call: func(ns *NodeServer) {
+				_, _ = ns.NodePublishVolume(context.Background(), &csipb.NodePublishVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "NodeStageVolume",
+			call: func(ns *NodeServer) {
+				_, _ = ns.NodeStageVolume(context.Background(), &csipb.NodeStageVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "NodeExpandVolume",
+			call: func(ns *NodeServer) {
+				_, _ = ns.NodeExpandVolume(context.Background(), &csipb.NodeExpandVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := logrus.New()
+			logger.SetOutput(&output)
+			ns := &NodeServer{
+				log: logger.WithField("component", "test"),
+			}
+
+			tc.call(ns)
+
+			logOutput := output.String()
+			if strings.Contains(logOutput, secret) {
+				t.Fatalf("request log contains secret value: %s", logOutput)
+			}
+			if !strings.Contains(logOutput, tc.name+" is called with req") {
+				t.Fatalf("request log is missing method context: %s", logOutput)
+			}
+		})
+	}
+}
 
 func TestGetV2VolumeEndpointForNode(t *testing.T) {
 	for _, tc := range []struct {

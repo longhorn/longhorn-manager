@@ -110,7 +110,7 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "CreateVolume"})
 
-	log.Infof("CreateVolume is called with req %+v", req)
+	logCSIRequest(log, "CreateVolume", req)
 
 	volumeID := util.AutoCorrectName(req.GetName(), datastore.NameMaximumLength)
 	if len(volumeID) == 0 {
@@ -429,7 +429,7 @@ func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImage
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "DeleteVolume"})
 
-	log.Infof("DeleteVolume is called with req %+v", req)
+	logCSIRequest(log, "DeleteVolume", req)
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -496,7 +496,7 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "ControllerPublishVolume"})
 
-	log.Infof("ControllerPublishVolume is called with req %+v", req)
+	logCSIRequest(log, "ControllerPublishVolume", req)
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -641,7 +641,7 @@ func (cs *ControllerServer) updateVolumeAccessMode(volume *longhornclient.Volume
 func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "ControllerUnpublishVolume"})
 
-	log.Infof("ControllerUnpublishVolume is called with req %+v", req)
+	logCSIRequest(log, "ControllerUnpublishVolume", req)
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -708,7 +708,7 @@ func (cs *ControllerServer) ListVolumes(context.Context, *csi.ListVolumesRequest
 func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (rsp *csi.GetCapacityResponse, err error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "GetCapacity"})
 
-	log.Infof("GetCapacity is called with req %+v", req)
+	logCSIRequest(log, "GetCapacity", req)
 
 	defer func() {
 		if err != nil {
@@ -875,7 +875,7 @@ func (cs *ControllerServer) getSettingAsString(ctx context.Context, name types.S
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "CreateSnapshot"})
 
-	log.Infof("CreateSnapshot is called with req %+v", req)
+	logCSIRequest(log, "CreateSnapshot", req)
 
 	var rsp *csi.CreateSnapshotResponse
 	var err error
@@ -1348,7 +1348,7 @@ func (cs *ControllerServer) ListSnapshots(context.Context, *csi.ListSnapshotsReq
 func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "ControllerExpandVolume"})
 
-	log.Infof("ControllerExpandVolume is called with req %+v", req)
+	logCSIRequest(log, "ControllerExpandVolume", req)
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -1685,8 +1685,7 @@ func (cs *ControllerServer) waitForSnapshotToBeReady(snapshotName, volumeName st
 }
 
 func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
-	log := cs.log.WithFields(logrus.Fields{"function": "ControllerModifyVolume"})
-	log.Infof("ControllerModifyVolume: called with args %v", req)
+	logCSIRequest(cs.log, "ControllerModifyVolume", req)
 
 	return nil, status.Error(codes.Unimplemented, "")
 }
