@@ -311,6 +311,10 @@ func startManager(cmd *cli.Command) error {
 		return err
 	}
 
+	if err := clients.Datastore.ValidateCustomizedDefaultDataAndControlPathSettings(); err != nil {
+		return err
+	}
+
 	// Leader-elected periodic webhook cert rotation; only the leader writes.
 	go webhookcert.RotateLoop(ctx, clients.K8s, clients.Namespace, currentNodeID)
 

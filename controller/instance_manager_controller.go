@@ -36,7 +36,6 @@ import (
 
 	"github.com/longhorn/go-common-libs/multierr"
 
-	lhns "github.com/longhorn/go-common-libs/ns"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
@@ -910,18 +909,31 @@ func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *long
 	return pod.Spec.PriorityClassName == setting.Value, nil
 }
 
+func (imc *InstanceManagerController) getDefaultLogDirectoryOnHost() string {
+	controlPath, err := imc.ds.GetDefaultControlPath()
+	if err != nil {
+		imc.logger.WithError(err).Warn("Failed to get default control path, using historical default log directory")
+		return filepath.Join(types.DefaultControlPath, types.LogDirectorySubpath)
+	}
+	return filepath.Join(controlPath, types.LogDirectorySubpath)
+}
+
+func (imc *InstanceManagerController) resolveLogPath(logPath string) string {
+	logPath = filepath.Clean(logPath)
+	if !filepath.IsAbs(logPath) || logPath == string(filepath.Separator) {
+		return imc.getDefaultLogDirectoryOnHost()
+	}
+
+	return logPath
+}
+
 func (imc *InstanceManagerController) isSettingLogPathSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
 	if pod.Spec.Containers[0].VolumeMounts == nil {
 		// If there are no volume mounts, we consider it synced.
 		return true, nil
 	}
 
-	logPath := setting.Value
-	if logPath == "" {
-		logPath = types.GetDefaultLogDirectoryOnHost()
-	}
-
-	normalizedLogPath := filepath.Clean(logPath)
+	normalizedLogPath := filepath.Clean(imc.resolveLogPath(setting.Value))
 	for _, v := range pod.Spec.Volumes {
 		if v.Name == "log" {
 			if filepath.Clean(v.HostPath.Path) == normalizedLogPath {
@@ -1923,29 +1935,8 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	if logPath == "" || logPath == string(filepath.Separator) {
-		logPath = types.GetDefaultLogDirectoryOnHost()
-	} else {
-		logPath = filepath.Clean(logPath)
-	}
-
-	parent := filepath.Dir(logPath)
-	if parent == "." || parent == string(filepath.Separator) {
-		imc.logger.Warnf("Log path %q is not a valid directory, using default log directory", logPath)
-		logPath = types.GetDefaultLogDirectoryOnHost()
-	}
-
-	if st, err := lhns.Stat(parent); err != nil {
-		imc.logger.WithError(err).Warnf("Failed to stat parent of log path %q, using default log directory", logPath)
-		logPath = types.GetDefaultLogDirectoryOnHost()
-	} else {
-		if !st.IsDir() {
-			imc.logger.Warnf("Parent of log path %q is not a directory, using default log directory", logPath)
-			logPath = types.GetDefaultLogDirectoryOnHost()
-		}
-		imc.logger.Infof("Using log path %q", logPath)
-	}
+	logPath = imc.resolveLogPath(logPath)
+	imc.logger.Infof("Using log path %q", logPath)
 
 	return logPath, nil
 }
@@ -1962,6 +1953,20 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	if err != nil {
 		return nil, err
 	}
+
+	dataPathSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultDataPath)
+	if err != nil {
+		return nil, err
+	}
+	dataPath := dataPathSetting.Value
+	controlPath, err := imc.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, err
+	}
+	engineBinaryDir := filepath.Join(controlPath, types.EngineBinaryDirectorySubpath)
+	metadataDir := filepath.Join(controlPath, types.MetadataDirectorySubpath)
+	unixSocketDir := filepath.Join(controlPath, types.UnixDomainSocketDirectorySubpath)
+	unixSocketDirInContainer := filepath.Join(types.ReplicaHostPrefix, strings.TrimLeft(unixSocketDir, string(filepath.Separator)))
 
 	if types.IsDataEngineV2(dataEngine) {
 		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
@@ -2031,11 +2036,6 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
 		}
 
-		controlPath, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
-		}
-
 		args := []string{
 			"start-spdk-tgt",
 			"--spdk-log", logFlags,
@@ -2048,7 +2048,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
 		}
 		args = append(args,
-			"--longhorn-control-path", controlPath.Value,
+			"--longhorn-control-path", controlPath,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
@@ -2158,11 +2158,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		},
 		{
 			Name:  types.LonghornDataPathEnv,
-			Value: types.GetLonghornDataPath(),
+			Value: dataPath,
 		},
 		{
 			Name:  types.LonghornControlPathEnv,
-			Value: types.GetLonghornControlPath(),
+			Value: controlPath,
 		},
 	}
 	if tz := os.Getenv(types.EnvTZ); tz != "" {
@@ -2191,7 +2191,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
-			MountPath: types.GetUnixDomainSocketDirectoryInContainer(),
+			MountPath: unixSocketDirInContainer,
 			Name:      "unix-domain-socket",
 		},
 		{
@@ -2217,7 +2217,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "engine-binaries",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetEngineBinaryDirectoryOnHost(),
+					Path: engineBinaryDir,
 				},
 			},
 		},
@@ -2225,7 +2225,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "metadata",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetMetadataDirectoryOnHost(),
+					Path: metadataDir,
 					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
@@ -2234,7 +2234,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "unix-domain-socket",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetUnixDomainSocketDirectoryOnHost(),
+					Path: unixSocketDir,
 				},
 			},
 		},

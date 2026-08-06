@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -384,14 +385,25 @@ func (c *SystemRestoreController) CreateSystemRestoreJob(systemRestore *longhorn
 		return nil, err
 	}
 
-	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore, c.namespace, cfg.ManagerImage, serviceAccountName, tolerations))
+	dataPathSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultDataPath)
+	if err != nil {
+		return nil, err
+	}
+	dataPath := dataPathSetting.Value
+	controlPath, err := c.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore, c.namespace, cfg.ManagerImage, serviceAccountName, tolerations, dataPath, controlPath))
 }
 
-func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.SystemRestore, namespace, managerImage, serviceAccount string, tolerations []corev1.Toleration) *batchv1.Job {
+func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.SystemRestore, namespace, managerImage, serviceAccount string, tolerations []corev1.Toleration, dataPath, controlPath string) *batchv1.Job {
 	backoffLimit := int32(RestoreJobBackoffLimit)
 
 	// This is required for the NFS mount to access the backup store
 	privileged := true
+	engineBinaryDir := filepath.Join(controlPath, types.EngineBinaryDirectorySubpath)
 
 	cmd := []string{
 		"longhorn-manager", "system-rollout", systemRestore.Name,
@@ -431,17 +443,17 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.Sy
 								},
 								{
 									Name:  types.LonghornDataPathEnv,
-									Value: types.GetLonghornDataPath(),
+									Value: dataPath,
 								},
 								{
 									Name:  types.LonghornControlPathEnv,
-									Value: types.GetLonghornControlPath(),
+									Value: controlPath,
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "engine",
-									MountPath: types.GetEngineBinaryDirectoryOnHost(),
+									MountPath: engineBinaryDir,
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
@@ -454,7 +466,7 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.Sy
 							Name: "engine",
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
-									Path: types.GetEngineBinaryDirectoryOnHost(),
+									Path: engineBinaryDir,
 								},
 							},
 						},

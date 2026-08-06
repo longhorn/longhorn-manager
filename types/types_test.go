@@ -75,16 +75,22 @@ func (s *TestSuite) TestGetLonghornControlPath(c *C) {
 	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
 }
 
-func (s *TestSuite) TestContainerPathHelpersUseReplicaHostPrefix(c *C) {
+func (s *TestSuite) TestEngineBinaryDirectoryForReplicaManagerContainerUsesReplicaHostPrefix(c *C) {
 	customPath := "/control/longhorn"
 	image := "longhornio/longhorn-engine:v1.9.0"
 
 	c.Assert(os.Setenv(LonghornControlPathEnv, customPath), IsNil)
 
-	c.Assert(GetUnixDomainSocketDirectoryInContainer(), Equals,
-		filepath.Join(ReplicaHostPrefix, "control/longhorn", UnixDomainSocketDirectorySubpath))
 	c.Assert(GetEngineBinaryDirectoryForReplicaManagerContainer(image), Equals,
 		filepath.Join(ReplicaHostPrefix, "control/longhorn", EngineBinaryDirectorySubpath, GetImageCanonicalName(image)))
+}
+
+func (s *TestSuite) TestEngineBinaryDirectoryForReplicaManagerContainerWithControlPathUsesExplicitPath(c *C) {
+	controlPath := "/data/longhorn"
+	image := "longhornio/longhorn-engine:v1.9.0"
+
+	c.Assert(GetEngineBinaryDirectoryForReplicaManagerContainerWithControlPath(controlPath, image), Equals,
+		filepath.Join(ReplicaHostPrefix, "data/longhorn", EngineBinaryDirectorySubpath, GetImageCanonicalName(image)))
 }
 
 func (s *TestSuite) TestParseToleration(c *C) {

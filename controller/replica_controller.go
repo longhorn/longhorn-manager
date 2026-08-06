@@ -437,6 +437,11 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
+	controlPath, err := rc.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, err
+	}
+
 	r.Status.Starting = true
 	replicaName := r.Name
 	if r, err = rc.ds.UpdateReplicaStatus(r); err != nil {
@@ -445,6 +450,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
 		Replica:                       r,
+		ControlPath:                   controlPath,
 		Encrypted:                     v.Spec.Encrypted,
 		DiskName:                      diskName,
 		DataPath:                      dataPath,
@@ -662,7 +668,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 		return err
 	}
 
-	if err := deleteUnixSocketFile(r.Spec.VolumeName); err != nil && !types.ErrorIsNotFound(err) {
+	if err := rc.deleteUnixSocketFile(r.Spec.VolumeName); err != nil && !types.ErrorIsNotFound(err) {
 		log.WithError(err).Warnf("Failed to delete unix-domain-socket file for volume %v", r.Spec.VolumeName)
 	}
 
@@ -761,8 +767,13 @@ func engineStillHasReplica(e *longhorn.Engine, r *longhorn.Replica) bool {
 	return false
 }
 
-func deleteUnixSocketFile(volumeName string) error {
-	return os.RemoveAll(filepath.Join(types.GetUnixDomainSocketDirectoryOnHost(), volumeName+filepath.Ext(".sock")))
+func (rc *ReplicaController) deleteUnixSocketFile(volumeName string) error {
+	controlPath, err := rc.ds.GetDefaultControlPath()
+	if err != nil {
+		return err
+	}
+
+	return os.RemoveAll(filepath.Join(controlPath, types.UnixDomainSocketDirectorySubpath, volumeName+filepath.Ext(".sock")))
 }
 
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {

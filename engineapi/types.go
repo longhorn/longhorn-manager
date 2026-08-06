@@ -159,6 +159,7 @@ type EngineFrontendClient interface {
 type EngineClientRequest struct {
 	VolumeName   string
 	EngineImage  string
+	ControlPath  string
 	IP           string
 	Port         int
 	InstanceName string

@@ -259,7 +259,11 @@ func getLoggerForEngine(logger logrus.FieldLogger, e *longhorn.Engine) *logrus.E
 }
 
 func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine, image string) (engineapi.EngineClientProxy, error) {
-	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, image)
+	controlPath, err := ec.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, err
+	}
+	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, image, controlPath)
 	if err != nil {
 		return nil, err
 	}
@@ -1026,7 +1030,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		addressReplicaMap[address] = replica
 	}
 
-	engineCliClient, err := GetBinaryClientForEngine(engine, m.engines, engine.Status.CurrentImage)
+	controlPath, err := m.ds.GetDefaultControlPath()
+	if err != nil {
+		return err
+	}
+	engineCliClient, err := GetBinaryClientForEngine(engine, m.engines, engine.Status.CurrentImage, controlPath)
 	if err != nil {
 		return err
 	}
@@ -2071,7 +2079,7 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	return nil
 }
 
-func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollection, image string) (client *engineapi.EngineBinary, err error) {
+func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollection, image, controlPath string) (client *engineapi.EngineBinary, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
@@ -2093,6 +2101,7 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 	client, err = engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:   e.Spec.VolumeName,
 		EngineImage:  image,
+		ControlPath:  controlPath,
 		IP:           e.Status.IP,
 		Port:         e.Status.Port,
 		InstanceName: e.Name,

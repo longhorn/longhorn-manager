@@ -554,6 +554,49 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 	}
 }
 
+func (s *TestSuite) TestIsSettingLogPathSyncedUsesNormalizedSettingLogPath(c *C) {
+	kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+	extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	logPathSetting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameLogPath),
+		},
+		Value: "/var/lib/longhorn/logs/",
+	}
+
+	pod := &corev1.Pod{
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					VolumeMounts: []corev1.VolumeMount{
+						{Name: "log", MountPath: "/log"},
+					},
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "log",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/var/lib/longhorn/logs",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	isSynced, err := imc.isSettingLogPathSynced(logPathSetting, pod)
+	c.Assert(err, IsNil)
+	c.Assert(isSynced, Equals, true)
+}
+
 // createDangerZoneSettingsForV2 creates all the danger zone settings required by areDangerZoneSettingsSyncedToIMPod
 // with V2 data engine enabled. It auto-generates settings from types.GetDangerZoneSettings() using their
 // default values, then overrides specific settings that need non-default values for V2 to function.

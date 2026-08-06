@@ -35,6 +35,7 @@ type EngineCollection struct{}
 type EngineBinary struct {
 	volumeName   string
 	image        string
+	controlPath  string
 	ip           string
 	port         int
 	cURL         string
@@ -53,6 +54,7 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (*Engin
 	return &EngineBinary{
 		volumeName:   request.VolumeName,
 		image:        request.EngineImage,
+		controlPath:  request.ControlPath,
 		ip:           request.IP,
 		port:         request.Port,
 		cURL:         imutil.GetURL(request.IP, request.Port),
@@ -65,7 +67,10 @@ func (e *EngineBinary) Name() string {
 }
 
 func (e *EngineBinary) LonghornEngineBinary() string {
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn")
+	if e.controlPath == "" {
+		return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn")
+	}
+	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImageWithControlPath(e.controlPath, e.image), "longhorn")
 }
 
 func (e *EngineBinary) ExecuteEngineBinary(args ...string) (string, error) {

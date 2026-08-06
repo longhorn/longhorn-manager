@@ -281,7 +281,11 @@ func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longho
 }
 
 func (vc *VolumeCollector) getEngineClientProxy(engine *longhorn.Engine) (c engineapi.EngineClientProxy, err error) {
-	engineCliClient, err := controller.GetBinaryClientForEngine(engine, &engineapi.EngineCollection{}, engine.Status.CurrentImage)
+	controlPath, err := vc.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, err
+	}
+	engineCliClient, err := controller.GetBinaryClientForEngine(engine, &engineapi.EngineCollection{}, engine.Status.CurrentImage, controlPath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get binary client for engine %v", engine.Name)
 	}

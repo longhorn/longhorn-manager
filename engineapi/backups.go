@@ -32,15 +32,17 @@ const (
 
 type BackupTargetClient struct {
 	Image          string
+	ControlPath    string
 	URL            string
 	Credential     map[string]string
 	ExecuteTimeout time.Duration
 }
 
 // NewBackupTargetClient returns the backup target client
-func NewBackupTargetClient(engineImage, url string, credential map[string]string, executeTimeout time.Duration) *BackupTargetClient {
+func NewBackupTargetClient(engineImage, controlPath, url string, credential map[string]string, executeTimeout time.Duration) *BackupTargetClient {
 	return &BackupTargetClient{
 		Image:          engineImage,
+		ControlPath:    controlPath,
 		URL:            url,
 		Credential:     credential,
 		ExecuteTimeout: executeTimeout,
@@ -75,12 +77,19 @@ func NewBackupTargetClientFromBackupTarget(backupTarget *longhorn.BackupTarget, 
 		return nil, err
 	}
 	timeout := time.Duration(executeTimeout) * time.Minute
+	controlPath, err := ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, err
+	}
 
-	return NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
+	return NewBackupTargetClient(defaultEngineImage, controlPath, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
 }
 
 func (btc *BackupTargetClient) LonghornEngineBinary() string {
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(btc.Image), "longhorn")
+	if btc.ControlPath == "" {
+		return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(btc.Image), "longhorn")
+	}
+	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImageWithControlPath(btc.ControlPath, btc.Image), "longhorn")
 }
 
 // getBackupCredentialEnv returns the environment variables as KEY=VALUE in string slice
