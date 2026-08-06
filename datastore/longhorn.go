@@ -3738,21 +3738,21 @@ func (s *DataStore) ListReadyNodesRO() (map[string]*longhorn.Node, error) {
 	return readyNodes, nil
 }
 
-func (s *DataStore) ListReadyNodesWithReadyInstanceManagerRO(dataEngine longhorn.DataEngineType) (map[string]*longhorn.Node, error) {
-	readyNodes, err := s.ListReadyNodesRO()
+func (s *DataStore) ListNodesWithReadyInstanceManagerRO(dataEngine longhorn.DataEngineType) (map[string]*longhorn.Node, error) {
+	nodes, err := s.ListNodesRO()
 	if err != nil {
 		return nil, err
 	}
 
-	result := make(map[string]*longhorn.Node, len(readyNodes))
-	for nodeName, node := range readyNodes {
-		imMap, err := s.listInstanceManagers(nodeName, dataEngine)
+	result := make(map[string]*longhorn.Node, len(nodes))
+	for _, node := range nodes {
+		imMap, err := s.listInstanceManagers(node.Name, dataEngine)
 		if err != nil {
 			return nil, err
 		}
 		for _, im := range imMap {
 			if im.DeletionTimestamp == nil && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
-				result[nodeName] = node
+				result[node.Name] = node
 				break
 			}
 		}

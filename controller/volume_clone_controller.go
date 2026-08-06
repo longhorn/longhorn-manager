@@ -259,7 +259,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	log := getLoggerForVolume(vcc.logger, vol)
 	pickNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (chosenNodeID string, err error) {
 		if attachableNodes == nil {
-			attachableNodes, err = vcc.ds.ListReadyNodesWithReadyInstanceManagerRO(v.Spec.DataEngine)
+			attachableNodes, err = vcc.ds.ListNodesWithReadyInstanceManagerRO(v.Spec.DataEngine)
 			if err != nil {
 				return "", err
 			}
