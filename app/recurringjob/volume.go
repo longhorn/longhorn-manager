@@ -426,7 +426,7 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 
 	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retain.
 	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate || !allowBackupSnapshotDeleted {
-		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain, job.retainAge, job.retentionPolicy, time.Now())
 	}
 
 	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot when AutoCleanupRecurringJobBackupSnapshot is enabled.
@@ -441,7 +441,7 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 }
 
 func (job *VolumeJob) filterExpiredSnapshots(snapshotCRs []longhornclient.SnapshotCR) []string {
-	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain, job.retainAge, job.retentionPolicy, time.Now())
 }
 
 func (job *VolumeJob) doRecurringBackup() (err error) {
@@ -689,5 +689,5 @@ func (job *VolumeJob) listBackupsForCleanup(backups []longhornclient.Backup) []s
 			})
 		}
 	}
-	return filterExpiredItems(sts, job.retain)
+	return filterExpiredItems(sts, job.retain, job.retainAge, job.retentionPolicy, time.Now())
 }

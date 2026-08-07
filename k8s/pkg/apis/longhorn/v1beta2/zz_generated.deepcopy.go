@@ -2190,6 +2190,7 @@ func (in *RecurringJobSpec) DeepCopyInto(out *RecurringJobSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	out.RetainAge = in.RetainAge
 	if in.Labels != nil {
 		in, out := &in.Labels, &out.Labels
 		*out = make(map[string]string, len(*in))

@@ -72,6 +72,8 @@ func (m *VolumeManager) UpdateRecurringJob(spec longhorn.RecurringJobSpec) (*lon
 	recurringJob.Spec.Cron = spec.Cron
 	recurringJob.Spec.Groups = spec.Groups
 	recurringJob.Spec.Retain = spec.Retain
+	recurringJob.Spec.RetainAge = spec.RetainAge
+	recurringJob.Spec.RetentionPolicy = spec.RetentionPolicy
 	recurringJob.Spec.Concurrency = spec.Concurrency
 	recurringJob.Spec.Labels = spec.Labels
 	recurringJob.Spec.Parameters = spec.Parameters
