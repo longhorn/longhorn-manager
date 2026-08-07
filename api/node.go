@@ -35,7 +35,11 @@ func (s *Server) nodeList(apiContext *api.ApiContext) (*client.GenericCollection
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get node ip")
 	}
-	return toNodeCollection(nodeList, nodeIPMap, apiContext), nil
+	diskScheduleMap, err := s.m.ListDiskSchedules()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list disk schedules")
+	}
+	return toNodeCollection(nodeList, nodeIPMap, diskScheduleMap, apiContext), nil
 }
 
 func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {
@@ -50,7 +54,11 @@ func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to get node ip")
 	}
-	apiContext.Write(toNodeResource(node, nodeIPMap[node.Name], apiContext))
+	diskScheduleMap, err := s.m.ListNodeDiskSchedules(id)
+	if err != nil {
+		return errors.Wrap(err, "failed to list disk schedules")
+	}
+	apiContext.Write(toNodeResource(node, diskScheduleMap, nodeIPMap[node.Name], apiContext))
 	return nil
 }
 
@@ -88,7 +96,11 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 		return fmt.Errorf("failed to convert to node %v object", id)
 	}
 
-	apiContext.Write(toNodeResource(unode, nodeIPMap[id], apiContext))
+	diskScheduleMap, err := s.m.ListNodeDiskSchedules(id)
+	if err != nil {
+		return errors.Wrap(err, "failed to list disk schedules")
+	}
+	apiContext.Write(toNodeResource(unode, diskScheduleMap, nodeIPMap[id], apiContext))
 	return nil
 }
 
@@ -116,7 +128,11 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 	if !ok {
 		return fmt.Errorf("failed to convert to node %v object", id)
 	}
-	apiContext.Write(toNodeResource(unode, nodeIPMap[id], apiContext))
+	diskScheduleMap, err := s.m.ListNodeDiskSchedules(id)
+	if err != nil {
+		return errors.Wrap(err, "failed to list disk schedules")
+	}
+	apiContext.Write(toNodeResource(unode, diskScheduleMap, nodeIPMap[id], apiContext))
 	return nil
 }
 

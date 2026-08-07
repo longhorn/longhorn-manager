@@ -36,6 +36,7 @@ const (
 	CRDVolumeName                 = "volumes.longhorn.io"
 	CRDEngineImageName            = "engineimages.longhorn.io"
 	CRDNodeName                   = "nodes.longhorn.io"
+	CRDDiskScheduleName           = "diskschedules.longhorn.io"
 	CRDInstanceManagerName        = "instancemanagers.longhorn.io"
 	CRDShareManagerName           = "sharemanagers.longhorn.io"
 	CRDBackingImageName           = "backingimages.longhorn.io"
@@ -139,6 +140,12 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.NodeInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDDiskScheduleName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.DiskScheduleInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.DiskScheduleInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
 		if _, err = ds.InstanceManagerInformer.AddEventHandler(c.controlleeHandler()); err != nil {
@@ -638,6 +645,15 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteRecurringJobs(recurringJobs)
 	}
 
+	// Delete DiskSchedules before their owning Nodes so garbage collection cannot
+	// race the DiskSchedule controller's finalizer removal.
+	if diskSchedules, err := c.ds.ListDiskSchedules(); err != nil {
+		return true, err
+	} else if len(diskSchedules) > 0 {
+		c.logger.Infof("Found %d disk schedules remaining", len(diskSchedules))
+		return true, c.deleteDiskSchedule(diskSchedules)
+	}
+
 	if nodes, err := c.ds.ListNodes(); err != nil {
 		return true, err
 	} else if len(nodes) > 0 {
@@ -997,6 +1013,21 @@ func (c *UninstallController) prepareNodeForDeletion(name string) error {
 	return err
 }
 
+func (c *UninstallController) prepareDiskScheduleForDeletion(name string) error {
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		diskSchedule, err := c.ds.GetDiskSchedule(name)
+		if err != nil {
+			return nil, err
+		}
+		metav1.SetMetaDataAnnotation(&diskSchedule.ObjectMeta, types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn), "")
+		return c.ds.UpdateDiskSchedule(diskSchedule)
+	})
+	if err != nil && datastore.ErrorIsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 func (c *UninstallController) deleteEngineImages(engineImages map[string]*longhorn.EngineImage) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete engine images")
@@ -1087,6 +1118,46 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 			if errRemove := c.ds.RemoveFinalizerForNode(node); errRemove != nil {
 				if datastore.ErrorIsNotFound(errRemove) {
 					log.Info("Node is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return
+}
+
+func (c *UninstallController) deleteDiskSchedule(diskSchedules map[string]*longhorn.DiskSchedule) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete disk schedules")
+	}()
+	for _, ds := range diskSchedules {
+		log := getLoggerForDiskSchedule(c.logger, ds)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if ds.DeletionTimestamp == nil {
+			log.Infof("Adding annotation %v to DiskSchedule %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteDiskFromLonghorn), ds.Name)
+			if err := c.prepareDiskScheduleForDeletion(ds.Name); err != nil {
+				return errors.Wrap(err, "failed to update disk schedule annotations to mark for deletion")
+			}
+			if errDelete := c.ds.DeleteDiskSchedule(ds.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("DiskSchedule is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if ds.DeletionTimestamp.Before(&timeout) {
+			log.Warn("DiskSchedule deletion did not finish within timeout, removing finalizer forcibly")
+			if errRemove := c.ds.RemoveFinalizerForDiskSchedule(ds); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("DiskSchedule is not found")
 				} else {
 					err = errors.Wrap(errRemove, "failed to remove finalizer")
 					return

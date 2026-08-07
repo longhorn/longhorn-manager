@@ -60,6 +60,8 @@ type DataStore struct {
 	EngineImageInformer            cache.SharedInformer
 	nodeLister                     lhlisters.NodeLister
 	NodeInformer                   cache.SharedInformer
+	diskScheduleLister             lhlisters.DiskScheduleLister
+	DiskScheduleInformer           cache.SharedInformer
 	settingLister                  lhlisters.SettingLister
 	SettingInformer                cache.SharedInformer
 	instanceManagerLister          lhlisters.InstanceManagerLister
@@ -155,6 +157,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, engineImageInformer.Informer().HasSynced)
 	nodeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes()
 	cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
+	diskScheduleInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().DiskSchedules()
+	cacheSyncs = append(cacheSyncs, diskScheduleInformer.Informer().HasSynced)
 	settingInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings()
 	cacheSyncs = append(cacheSyncs, settingInformer.Informer().HasSynced)
 	instanceManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers()
@@ -250,6 +254,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		EngineImageInformer:            engineImageInformer.Informer(),
 		nodeLister:                     nodeInformer.Lister(),
 		NodeInformer:                   nodeInformer.Informer(),
+		diskScheduleLister:             diskScheduleInformer.Lister(),
+		DiskScheduleInformer:           diskScheduleInformer.Informer(),
 		settingLister:                  settingInformer.Lister(),
 		SettingInformer:                settingInformer.Informer(),
 		instanceManagerLister:          instanceManagerInformer.Lister(),

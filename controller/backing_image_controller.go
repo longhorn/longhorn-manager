@@ -52,7 +52,8 @@ type BackingImageController struct {
 
 	cacheSyncs []cache.InformerSynced
 
-	v2CopyBackoff *flowcontrol.Backoff
+	diskAllocationBackoff *flowcontrol.Backoff
+	v2CopyBackoff         *flowcontrol.Backoff
 
 	proxyConnCounter util.Counter
 }
@@ -83,7 +84,8 @@ func NewBackingImageController(
 
 		ds: ds,
 
-		v2CopyBackoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
+		diskAllocationBackoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
+		v2CopyBackoff:         flowcontrol.NewBackOff(time.Minute, time.Minute*5),
 
 		proxyConnCounter: proxyConnCounter,
 	}
@@ -140,6 +142,13 @@ func NewBackingImageController(
 		return nil, err
 	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+
+	if _, err = ds.DiskScheduleInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: bic.enqueueBackingImageForDiskScheduleUpdate,
+	}, 0); err != nil {
+		return nil, err
+	}
+	bic.cacheSyncs = append(bic.cacheSyncs, ds.DiskScheduleInformer.HasSynced)
 
 	return bic, nil
 }
@@ -310,6 +319,33 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 			}
 		}
 
+		// Release disk allocation before removing finalizer
+		diskIDs := make(map[string]struct{})
+		for diskID := range backingImage.Spec.DiskFileSpecMap {
+			diskIDs[diskID] = struct{}{}
+		}
+		for diskID := range backingImage.Status.DiskFileStatusMap {
+			diskIDs[diskID] = struct{}{}
+		}
+		for diskID := range diskIDs {
+			if diskID == "" {
+				continue
+			}
+			diskSchedule, err := bic.ds.GetDiskSchedule(diskID)
+			if err != nil {
+				if !datastore.ErrorIsNotFound(err) {
+					return errors.Wrapf(err, "failed to get disk schedule %v for backing image cleanup", diskID)
+				}
+				continue
+			}
+			if diskSchedule.GetBackingImageRequirement(backingImage.Name) > 0 {
+				diskSchedule.SetBackingImageRequirement(backingImage.Name, 0)
+				if _, err := bic.ds.UpdateDiskSchedule(diskSchedule); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+					return errors.Wrapf(err, "failed to release disk allocation on disk schedule %v", diskID)
+				}
+			}
+		}
+
 		return bic.ds.RemoveFinalizerForBackingImage(backingImage)
 	}
 
@@ -351,6 +387,10 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 
 	if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
 		return bic.handleV2BackingImage(backingImage)
+	}
+
+	if err := bic.syncDiskSchedule(backingImage); err != nil {
+		return err
 	}
 
 	return nil
@@ -493,6 +533,8 @@ func (bic *BackingImageController) prepareFirstV2Copy(bi *longhorn.BackingImage)
 		log.Debugf("Skip preparing first v2 backing image copy to disk %v since it is still in the backoff window", firstV2CopyDiskUUID)
 		return nil
 	}
+
+	// TODO: before creating the first copy on disk, it should first get approval by disk schedule
 
 	// Get proxy client for creating v2 backing image copy
 	engineClientProxy, err := bic.getEngineClientProxy(firstV2CopyNodeName, longhorn.DataEngineTypeV2, log)
@@ -1235,7 +1277,14 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 		for _, bim := range bimMap {
 			// Add current backing image record to the backing image manager
 			if bim.DeletionTimestamp == nil && bim.Spec.Image == bic.bimImageName {
-				if uuidInManager, exists := bim.Spec.BackingImages[bi.Name]; !exists || uuidInManager != bi.Status.UUID {
+				createCopy := false
+				uuidInManager, exists := bim.Spec.BackingImages[bi.Name]
+				if !exists {
+					// create copy on backing image manager after successfully disk allocation
+					createCopy = bic.isBackingImageAllocatedToDisk(bi.Name, bim.Spec.DiskUUID)
+				}
+				if createCopy || (exists && uuidInManager != bi.Status.UUID) {
+					bic.diskAllocationBackoff.Reset(bi.Status.UUID)
 					bim.Spec.BackingImages[bi.Name] = bi.Status.UUID
 					if _, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
 						return err
@@ -1310,6 +1359,34 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		if err := bic.updateStatusWithFileInfo(bi,
 			bids.Spec.DiskUUID, bids.Status.Message, bids.Status.Checksum, bids.Status.CurrentState, bids.Status.Progress, longhorn.DataEngineTypeV1); err != nil {
 			return err
+		}
+	}
+
+	// Sync with disk scheduler
+	diskScheduleMap, err := bic.ds.ListDiskSchedulesRO()
+	if err != nil {
+		return err
+	}
+	if bi.Status.Size == 0 {
+		// disk allocation is impossible before size information gets ready
+		diskScheduleMap = nil
+	}
+	for _, diskSchedule := range diskScheduleMap {
+		allocationStatus := diskSchedule.GetBackingImageScheduledStatus(bi.Name)
+		requiredSize := diskSchedule.GetBackingImageRequirement(bi.Name)
+		if requiredSize != bi.Status.Size {
+			continue
+		}
+		if allocationStatus.State == longhorn.DiskScheduledStateRejected {
+			diskUUID := diskSchedule.Spec.Name
+			log.Warnf("Disk allocation rejected on disk %v, removing from DiskFileSpecMap for reschedule", diskUUID)
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeWarning, constant.EventReasonFailed,
+				"Disk allocation rejected on disk %v, will attempt reschedule", diskUUID)
+			delete(bi.Spec.DiskFileSpecMap, diskUUID)
+			delete(bi.Status.DiskFileStatusMap, diskUUID)
+			if err := bic.deallocateBackingImageDisk(log, bi.Name, diskUUID); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1401,6 +1478,41 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		}
 	}
 
+	return nil
+}
+
+func (bic *BackingImageController) syncDiskSchedule(bi *longhorn.BackingImage) error {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	if bi.Status.Size == 0 {
+		// waiting for image file ready
+		return nil
+	}
+
+	// allocation
+	for diskUUID := range bi.Spec.DiskFileSpecMap {
+		if err := bic.allocateBackingImageDisk(log, bi.Name, diskUUID, bi.Status.Size); err != nil {
+			log.WithError(err).Errorf("failed to submit disk allocation on %v", diskUUID)
+			return err
+		}
+	}
+
+	// deallocation
+	diskSchedules, err := bic.ds.ListDiskSchedules()
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+	for diskUUID, diskSchedule := range diskSchedules {
+		if _, isCopyOnDisk := bi.Spec.DiskFileSpecMap[diskUUID]; isCopyOnDisk {
+			continue
+		}
+		if diskSchedule.GetBackingImageRequirement(bi.Name) == 0 {
+			continue
+		}
+		if err := bic.deallocateBackingImageDisk(log, bi.Name, diskUUID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1600,6 +1712,36 @@ func (bic *BackingImageController) enqueueBackingImageForReplica(obj interface{}
 		key := replica.Namespace + "/" + replica.Spec.BackingImage
 		bic.queue.Add(key)
 		return
+	}
+}
+
+func (bic *BackingImageController) enqueueBackingImageForDiskScheduleUpdate(old, cur any) {
+	oldDs, err := eventObjToTypedObj[longhorn.DiskSchedule](old)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	curDs, err := eventObjToTypedObj[longhorn.DiskSchedule](cur)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	for biName := range curDs.Status.BackingImages {
+		curStatus := curDs.GetBackingImageScheduledStatus(biName)
+		oldStatus := oldDs.GetBackingImageScheduledStatus(biName)
+		if *curStatus == *oldStatus {
+			continue
+		}
+		bi, err := bic.ds.GetBackingImageRO(biName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				utilruntime.HandleError(fmt.Errorf("failed to get backing image %v for disk schedule %v update: %v ", biName, curDs.Name, err))
+			}
+			return
+		}
+		bic.enqueueBackingImage(bi)
 	}
 }
 
@@ -1809,4 +1951,55 @@ func (bic *BackingImageController) deleteUnknownV2Copy(bi *longhorn.BackingImage
 		return false, errors.Wrapf(err, "failed to delete the v2 copy on diskUUID %v", v2DiskUUID)
 	}
 	return true, nil
+}
+
+func (bic *BackingImageController) allocateBackingImageDisk(logger *logrus.Entry, biName, diskUUID string, size int64) error {
+	diskSchedule, err := bic.ds.GetDiskSchedule(diskUUID)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get the disk schedule %v for allocating backing image %v", diskUUID, biName)
+	}
+
+	if diskSchedule.GetBackingImageRequirement(biName) == size {
+		return nil
+	}
+
+	logger.Infof("Submit disk allocation request on disk %v", diskUUID)
+	diskSchedule.SetBackingImageRequirement(biName, size)
+	_, updateErr := bic.ds.UpdateDiskSchedule(diskSchedule)
+	if apierrors.IsConflict(errors.Cause(updateErr)) {
+		bic.logger.WithError(updateErr).WithField("backingImageName", biName).Infof("Disk schedule %v is busy, try allocation later", diskUUID)
+		return nil
+	}
+	return errors.Wrapf(updateErr, "failed to insert backing image %v to disk schedule %v", biName, diskUUID)
+}
+
+func (bic *BackingImageController) deallocateBackingImageDisk(logger *logrus.Entry, biName, diskUUID string) error {
+	diskSchedule, err := bic.ds.GetDiskSchedule(diskUUID)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get the disk schedule %v for deallocating backing image %v", diskUUID, biName)
+	}
+
+	if diskSchedule.GetBackingImageRequirement(biName) == 0 {
+		return nil
+	}
+
+	logger.Infof("Remove disk allocation request on disk %v", diskUUID)
+	diskSchedule.SetBackingImageRequirement(biName, 0)
+	_, updateErr := bic.ds.UpdateDiskSchedule(diskSchedule)
+	return errors.Wrapf(updateErr, "failed to remove backing image %v from disk schedule %v", biName, diskUUID)
+}
+
+func (bic *BackingImageController) isBackingImageAllocatedToDisk(biName, diskUUID string) bool {
+	diskSchedule, err := bic.ds.GetDiskSchedule(diskUUID)
+	if err != nil {
+		return false
+	}
+	result := diskSchedule.GetBackingImageScheduledStatus(biName)
+	return result.State == longhorn.DiskScheduledStateScheduled
 }

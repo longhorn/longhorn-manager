@@ -26,11 +26,14 @@ import (
 // DiskStatusApplyConfiguration represents a declarative configuration of the DiskStatus type for use
 // with apply.
 type DiskStatusApplyConfiguration struct {
-	Conditions                []ConditionApplyConfiguration           `json:"conditions,omitempty"`
-	StorageAvailable          *int64                                  `json:"storageAvailable,omitempty"`
-	StorageScheduled          *int64                                  `json:"storageScheduled,omitempty"`
-	StorageMaximum            *int64                                  `json:"storageMaximum,omitempty"`
-	ScheduledReplica          map[string]int64                        `json:"scheduledReplica,omitempty"`
+	Conditions       []ConditionApplyConfiguration `json:"conditions,omitempty"`
+	StorageAvailable *int64                        `json:"storageAvailable,omitempty"`
+	// StorageScheduled is moved to DiskSchedule
+	StorageScheduled *int64 `json:"storageScheduled,omitempty"`
+	StorageMaximum   *int64 `json:"storageMaximum,omitempty"`
+	// ScheduledReplica is moved to DiskSchedule
+	ScheduledReplica map[string]int64 `json:"scheduledReplica,omitempty"`
+	// ScheduledBackingImage is moved to DiskSchedule
 	ScheduledBackingImage     map[string]int64                        `json:"scheduledBackingImage,omitempty"`
 	DiskUUID                  *string                                 `json:"diskUUID,omitempty"`
 	DiskName                  *string                                 `json:"diskName,omitempty"`
