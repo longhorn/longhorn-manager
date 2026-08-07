@@ -222,6 +222,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufLargePoolSize ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufSmallPoolSize ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize
@@ -842,6 +843,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
 		case types.SettingNameDataEngineIobufLargePoolSize:
 			isSettingSynced, err = imc.isSettingIobufLargePoolSizeSynced(im, pod)
+		case types.SettingNameDataEngineIobufSmallPoolSize:
+			isSettingSynced, err = imc.isSettingIobufSmallPoolSizeSynced(im, pod)
 		case types.SettingNameDataEngineCPUIsolationEnabled:
 			isSettingSynced, err = imc.isSettingCPUIsolationEnabledSynced(setting, im, pod)
 		}
@@ -1232,6 +1235,30 @@ func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *long
 		expected = fmt.Sprintf("%d", iobufLargePoolSize)
 	}
 	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-large-pool-size")
+	return current == expected, nil
+}
+
+// isSettingIobufSmallPoolSizeSynced checks the pod's --spdk-iobuf-small-pool-size against the
+// setting. At or below the SPDK default the flag is omitted, so an absent flag is synced.
+func (imc *InstanceManagerController) isSettingIobufSmallPoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	iobufSmallPoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	expected := ""
+	if iobufSmallPoolSize > types.SpdkDefaultIobufSmallPoolSize {
+		expected = fmt.Sprintf("%d", iobufSmallPoolSize)
+	}
+	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-small-pool-size")
 	return current == expected, nil
 }
 
@@ -2031,6 +2058,12 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
 		}
 
+		// iobuf small pool size (small_pool_count), handled the same way as the large pool above.
+		iobufSmallPoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufSmallPoolSize)
+		}
+
 		args := []string{
 			"start-spdk-tgt",
 			"--spdk-log", logFlags,
@@ -2041,6 +2074,9 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		// Must precede "daemon" so the launch wrapper consumes it as an SPDK option.
 		if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
 			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
+		}
+		if iobufSmallPoolSize > types.SpdkDefaultIobufSmallPoolSize {
+			args = append(args, "--spdk-iobuf-small-pool-size", fmt.Sprintf("%d", iobufSmallPoolSize))
 		}
 		args = append(args,
 			"--longhorn-control-path", types.DefaultControlPath,
