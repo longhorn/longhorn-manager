@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/sirupsen/logrus"
 
 	wranglerClients "github.com/rancher/wrangler/v3/pkg/clients"
 	wranglerSchemes "github.com/rancher/wrangler/v3/pkg/schemes"
 
-	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -36,7 +36,20 @@ type Clients struct {
 	StopCh        <-chan struct{}
 }
 
+// NewClients constructs a Clients whose datastore, when needDataStore is
+// true, uses the cluster-wide Pod informer.
 func NewClients(kubeconfigPath string, needDataStore bool, stopCh <-chan struct{}) (*Clients, error) {
+	return newClients(kubeconfigPath, needDataStore, false, stopCh)
+}
+
+// NewClientsForNodeLocal constructs a Clients whose datastore uses the
+// namespace-filtered (longhorn-system) Pod informer; the cluster-wide Pod
+// watch lives only in the longhorn-global-manager Deployment.
+func NewClientsForNodeLocal(kubeconfigPath string, stopCh <-chan struct{}) (*Clients, error) {
+	return newClients(kubeconfigPath, true, true, stopCh)
+}
+
+func newClients(kubeconfigPath string, needDataStore, nodeLocalOnly bool, stopCh <-chan struct{}) (*Clients, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, using default namespace", types.EnvPodNamespace)
@@ -93,7 +106,11 @@ func NewClients(kubeconfigPath string, needDataStore bool, stopCh <-chan struct{
 		//  if a specific controller requires a periodic resync, one enable it only for that informer, add a resync to the event handler, go routine, etc.
 		//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
 		informerFactories := util.NewInformerFactories(namespace, clients.K8s, lhClient, 30*time.Second)
-		ds = datastore.NewDataStore(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
+		if nodeLocalOnly {
+			ds = datastore.NewDataStoreForNodeLocal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
+		} else {
+			ds = datastore.NewDataStoreForGlobal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
+		}
 
 		informerFactories.Start(stopCh)
 		if !ds.Sync(stopCh) {

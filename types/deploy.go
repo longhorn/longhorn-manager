@@ -16,6 +16,11 @@ const (
 	LonghornManagerContainerName = LonghornManagerDaemonSetName
 	LonghornUIDeploymentName     = "longhorn-ui"
 
+	// LonghornGlobalManagerName names the longhorn-global-manager Deployment,
+	// its leader-election Lease, and the controller identity of the
+	// controllers it hosts.
+	LonghornGlobalManagerName = "longhorn-global-manager"
+
 	DriverDeployerName = "longhorn-driver-deployer"
 	CSIAttacherName    = "csi-attacher"
 	CSIProvisionerName = "csi-provisioner"
