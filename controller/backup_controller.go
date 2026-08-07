@@ -270,6 +270,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 	if !isResponsible {
+		bc.disableBackupMonitor(backup.Name)
 		return nil
 	}
 	if backup.Status.OwnerID != bc.controllerID {
@@ -635,10 +636,28 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	checkInstanceManager := false
+	var dataEngine longhorn.DataEngineType
+
 	volumeName, err := bc.getBackupVolumeName(b)
 	if err == nil {
 		if compatible, err := bc.ds.IsNodeSupportingDataEngine(volumeName, bc.controllerID); err != nil || !compatible {
 			return false, err
+		}
+		if bc.backupRequiresInstanceManager(b) {
+			// If the volume label exists but the Volume CR is gone (remote/synced backup),
+			// skip the IM check: there is no volume.Spec.DataEngine to scope against, and
+			// that path does not call getBackupTarget with a volume data engine. Any other
+			// error is transient and must abort the decision instead of silently disabling
+			// the IM check, which would fall back to the engine-image-only behavior.
+			volume, err := bc.ds.GetVolumeRO(volumeName)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return false, err
+			}
+			if err == nil {
+				checkInstanceManager = true
+				dataEngine = volume.Spec.DataEngine
+			}
 		}
 	}
 
@@ -653,11 +672,37 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		return false, err
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && bc.controllerID == b.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	currentOwnerAvailable := currentOwnerEngineAvailable
+	currentNodeAvailable := currentNodeEngineAvailable
+	if checkInstanceManager {
+		nodesWithIM, imErr := bc.ds.ListNodesWithReadyInstanceManagerRO(dataEngine)
+		if imErr != nil {
+			return false, imErr
+		}
+		// Only require a running instance manager when at least one node has one to fall back to.
+		// If the data engine has no running instance manager anywhere (e.g. a full outage), keep the
+		// engine-image-only behavior so the backup still gets an owner that surfaces the error and
+		// retries, instead of being left ownerless and silently stalled.
+		if len(nodesWithIM) > 0 {
+			_, ownerIMRunning := nodesWithIM[b.Status.OwnerID]
+			_, nodeIMRunning := nodesWithIM[bc.controllerID]
+			currentOwnerAvailable = currentOwnerAvailable && ownerIMRunning
+			currentNodeAvailable = currentNodeAvailable && nodeIMRunning
+		}
+	}
+
+	isPreferredOwner := currentNodeAvailable && isResponsible
+	continueToBeOwner := currentNodeAvailable && bc.controllerID == b.Status.OwnerID
+	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+func (bc *BackupController) backupRequiresInstanceManager(b *longhorn.Backup) bool {
+	if !b.DeletionTimestamp.IsZero() {
+		return false
+	}
+	return b.Spec.SnapshotName != "" && b.Status.LastSyncedAt.IsZero() && !bc.backupInFinalState(b)
 }
 
 func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.BackupTarget, error) {
@@ -818,6 +863,29 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
+	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
+		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
+		volume.Status.State != longhorn.VolumeStateAttached {
+		bc.creationRetryCounter.IncreaseCount(backup.Name)
+		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
+			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
+			backup.Status.State = longhorn.BackupStateError
+			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+			bc.creationRetryCounter.DeleteEntry(backup.Name)
+			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+			return nil, err
+		}
+		backup.Status.State = longhorn.BackupStatePending
+		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
+		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+		return nil, err
+	}
+
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
@@ -846,29 +914,6 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 				bc.logger.Warnf("Failed to find the StorageClassName from the pvc %v", pvc.Name)
 			}
 		}
-	}
-
-	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
-		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
-		volume.Status.State != longhorn.VolumeStateAttached {
-		bc.creationRetryCounter.IncreaseCount(backup.Name)
-		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
-			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
-			backup.Status.State = longhorn.BackupStateError
-			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
-			bc.creationRetryCounter.DeleteEntry(backup.Name)
-			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-			return nil, err
-		}
-		backup.Status.State = longhorn.BackupStatePending
-		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
-		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-		return nil, err
 	}
 
 	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
