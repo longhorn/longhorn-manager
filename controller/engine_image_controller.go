@@ -266,11 +266,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return err
 		}
 
-		priorityClassSetting, err := ic.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
+		priorityClass, err := ic.ds.GetSystemManagedComponentPriorityClass(types.SystemManagedComponentEngineImage)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get priority class setting before creating engine image daemonset")
 		}
-		priorityClass := priorityClassSetting.Value
 
 		registrySecretSetting, err := ic.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 		if err != nil {
