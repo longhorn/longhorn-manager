@@ -482,10 +482,16 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 		}
 	}
 
+	backupTargetName := job.backupTarget
+	if backupTargetName == "" {
+		backupTargetName = volume.BackupTargetName
+	}
+
 	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
-		Labels:     job.specLabels,
-		Name:       job.snapshotName,
-		BackupMode: string(backupMode),
+		Labels:       job.specLabels,
+		Name:         job.snapshotName,
+		BackupMode:   string(backupMode),
+		BackupTarget: backupTargetName,
 	}); err != nil {
 		return err
 	}
@@ -544,7 +550,7 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 		}
 	}()
 
-	backupVolume, err := job.getBackupVolume(volume.BackupTargetName)
+	backupVolume, err := job.getBackupVolume(backupTargetName)
 	if err != nil {
 		return err
 	}
@@ -657,7 +663,12 @@ func (job *VolumeJob) getLastBackup() (*longhornclient.Backup, error) {
 	if volume.LastBackup == "" {
 		return nil, nil
 	}
-	backupVolume, err := job.getBackupVolume(volume.BackupTargetName)
+
+	backupTargetName := volume.BackupTargetName
+	if job.backupTarget != "" {
+		backupTargetName = job.backupTarget
+	}
+	backupVolume, err := job.getBackupVolume(backupTargetName)
 	if err != nil {
 		return nil, err
 	}

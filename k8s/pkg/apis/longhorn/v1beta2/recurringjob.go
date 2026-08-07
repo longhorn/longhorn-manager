@@ -54,6 +54,9 @@ type RecurringJobSpec struct {
 	// The label of the snapshot/backup.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
+	// The backup target name of the backup.
+	// +optional
+	BackupTarget string `json:"backupTarget,omitempty"`
 	// The parameters of the snapshot/backup.
 	// Support parameters: "full-backup-interval", "volume-backup-policy".
 	// +optional

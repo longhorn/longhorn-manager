@@ -326,9 +326,10 @@ type DetachInput struct {
 }
 
 type SnapshotInput struct {
-	Name       string            `json:"name"`
-	Labels     map[string]string `json:"labels"`
-	BackupMode string            `json:"backupMode"`
+	Name         string            `json:"name"`
+	Labels       map[string]string `json:"labels"`
+	BackupMode   string            `json:"backupMode"`
+	BackupTarget string            `json:"backupTarget"`
 }
 
 type SnapshotCRInput struct {
@@ -2529,14 +2530,15 @@ func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api
 			Type: "recurringJob",
 		},
 		RecurringJobSpec: longhorn.RecurringJobSpec{
-			Name:        recurringJob.Name,
-			Groups:      recurringJob.Spec.Groups,
-			Task:        recurringJob.Spec.Task,
-			Cron:        recurringJob.Spec.Cron,
-			Retain:      recurringJob.Spec.Retain,
-			Concurrency: recurringJob.Spec.Concurrency,
-			Labels:      recurringJob.Spec.Labels,
-			Parameters:  recurringJob.Spec.Parameters,
+			Name:         recurringJob.Name,
+			Groups:       recurringJob.Spec.Groups,
+			Task:         recurringJob.Spec.Task,
+			Cron:         recurringJob.Spec.Cron,
+			Retain:       recurringJob.Spec.Retain,
+			Concurrency:  recurringJob.Spec.Concurrency,
+			Labels:       recurringJob.Spec.Labels,
+			BackupTarget: recurringJob.Spec.BackupTarget,
+			Parameters:   recurringJob.Spec.Parameters,
 		},
 		RecurringJobStatus: longhorn.RecurringJobStatus{
 			ExecutionCount: recurringJob.Status.ExecutionCount,

@@ -6318,6 +6318,11 @@ func (s *DataStore) ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) erro
 		if err := ValidateRecurringJob(job); err != nil {
 			return err
 		}
+		if job.BackupTarget != "" {
+			if _, err := s.GetBackupTargetRO(job.BackupTarget); err != nil {
+				return fmt.Errorf("recurring job %v has invalid backup target %v: %v", job.Name, job.BackupTarget, err)
+			}
+		}
 		totalJobRetainCount += job.Retain
 	}
 
