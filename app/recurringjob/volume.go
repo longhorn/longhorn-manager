@@ -342,9 +342,53 @@ func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error 
 	return nil
 }
 
+// isTransientPurgeRejection reports whether err is the engine declining to
+// start a purge because a replica is currently rebuilding.
+//
+// The engine guards ActionSnapshotPurge with a rebuild check and answers:
+//
+//	failed to purge snapshots: rpc error: code = Unknown desc =
+//	tcp://<replica>:<port>: cannot purge snapshots because
+//	tcp://<replica>:<port> is rebuilding
+//
+// That is a temporary, self-resolving condition rather than a fault: the next
+// scheduled run purges the volume once the rebuild finishes. It is matched on
+// the message because the engine surfaces it as a generic Unknown gRPC code
+// through the proxy, so there is no typed error or distinct status code to key
+// on. The substring is deliberately narrow so genuine failures still surface.
+func isTransientPurgeRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "is rebuilding")
+}
+
 func (job *VolumeJob) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
 	// Trigger snapshot purge of the volume
 	if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
+		// A rebuilding replica means "not now", not "broken". Returning the
+		// error here fails this volume's job, and because recurringJob()
+		// collects goroutine errors through an errgroup and RecurringJobCmd()
+		// turns any non-nil result into logrus.Fatal, ONE rebuilding volume
+		// aborts the whole run -- every volume not yet processed is silently
+		// skipped for that tick. Raising concurrency does not help, since the
+		// workers share a process.
+		//
+		// On a cluster large enough that some replica is usually rebuilding,
+		// the sweep can then go for hours without completing: snapshots
+		// marked for removal never coalesce, replica directories grow well
+		// past their volume's nominal size, and nodes eventually hit
+		// DiskPressure.
+		//
+		// Skip the volume instead. This also makes the function
+		// self-consistent: the purge-status poll below already tolerates
+		// per-replica purge errors, logging them as warnings and returning
+		// nil. Only this initial trigger was fatal.
+		if isTransientPurgeRejection(err) {
+			job.logger.WithField("volume", volume.Name).Info(
+				"Skipping snapshot purge because a replica is rebuilding; will retry on the next run")
+			return nil
+		}
 		return err
 	}
 
