@@ -64,14 +64,15 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 
 	jobs := []longhorn.RecurringJobSpec{
 		{
-			Name:        recurringJob.Spec.Name,
-			Groups:      recurringJob.Spec.Groups,
-			Task:        recurringJob.Spec.Task,
-			Cron:        recurringJob.Spec.Cron,
-			Retain:      recurringJob.Spec.Retain,
-			Concurrency: recurringJob.Spec.Concurrency,
-			Labels:      recurringJob.Spec.Labels,
-			Parameters:  recurringJob.Spec.Parameters,
+			Name:         recurringJob.Spec.Name,
+			Groups:       recurringJob.Spec.Groups,
+			Task:         recurringJob.Spec.Task,
+			Cron:         recurringJob.Spec.Cron,
+			Retain:       recurringJob.Spec.Retain,
+			Concurrency:  recurringJob.Spec.Concurrency,
+			Labels:       recurringJob.Spec.Labels,
+			BackupTarget: recurringJob.Spec.BackupTarget,
+			Parameters:   recurringJob.Spec.Parameters,
 		},
 	}
 	if err := r.ds.ValidateRecurringJobs(jobs); err != nil {
@@ -99,14 +100,15 @@ func (r *recurringJobValidator) Update(request *admission.Request, oldObj runtim
 
 	jobs := []longhorn.RecurringJobSpec{
 		{
-			Name:        newRecurringJob.Spec.Name,
-			Groups:      newRecurringJob.Spec.Groups,
-			Task:        newRecurringJob.Spec.Task,
-			Cron:        newRecurringJob.Spec.Cron,
-			Retain:      newRecurringJob.Spec.Retain,
-			Concurrency: newRecurringJob.Spec.Concurrency,
-			Labels:      newRecurringJob.Spec.Labels,
-			Parameters:  newRecurringJob.Spec.Parameters,
+			Name:         newRecurringJob.Spec.Name,
+			Groups:       newRecurringJob.Spec.Groups,
+			Task:         newRecurringJob.Spec.Task,
+			Cron:         newRecurringJob.Spec.Cron,
+			Retain:       newRecurringJob.Spec.Retain,
+			Concurrency:  newRecurringJob.Spec.Concurrency,
+			Labels:       newRecurringJob.Spec.Labels,
+			BackupTarget: newRecurringJob.Spec.BackupTarget,
+			Parameters:   newRecurringJob.Spec.Parameters,
 		},
 	}
 	if err := r.ds.ValidateRecurringJobs(jobs); err != nil {

@@ -9,6 +9,8 @@ type SnapshotInput struct {
 
 	BackupMode string `json:"backupMode,omitempty" yaml:"backup_mode,omitempty"`
 
+	BackupTarget string `json:"backupTarget,omitempty" yaml:"backup_target,omitempty"`
+
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`

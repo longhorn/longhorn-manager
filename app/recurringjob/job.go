@@ -93,6 +93,7 @@ func NewJob(name string, logger *logrus.Logger, managerURL string, recurringJob 
 		task:           recurringJob.Spec.Task,
 		parameters:     parameters,
 		executionCount: recurringJob.Status.ExecutionCount,
+		backupTarget:   recurringJob.Spec.BackupTarget,
 	}, nil
 }
 
