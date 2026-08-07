@@ -99,13 +99,13 @@ func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
 	return nodes, nil
 }
 
-func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]longhorn.DiskSpec) (*longhorn.Node, error) {
+func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]longhorn.DiskSpec, blockSizePresent map[string]bool) (*longhorn.Node, error) {
 	node, err := m.ds.GetNode(name)
 	if err != nil {
 		return nil, err
 	}
 
-	node.Spec.Disks = updateDisks
+	node.Spec.Disks = mergeOmittedDiskBlockSizes(node, updateDisks, blockSizePresent)
 
 	node, err = m.ds.UpdateNode(node)
 	if err != nil {
@@ -113,6 +113,18 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]longhorn.
 	}
 	logrus.Infof("Updated node disks of %v to %+v", name, node.Spec.Disks)
 	return node, nil
+}
+
+func mergeOmittedDiskBlockSizes(node *longhorn.Node, updateDisks map[string]longhorn.DiskSpec, blockSizePresent map[string]bool) map[string]longhorn.DiskSpec {
+	mergedDisks := make(map[string]longhorn.DiskSpec, len(updateDisks))
+	for diskName, updateDisk := range updateDisks {
+		currentDisk, exists := node.Spec.Disks[diskName]
+		if exists && currentDisk.Type == longhorn.DiskTypeBlock && currentDisk.BlockSize != 0 && !blockSizePresent[diskName] {
+			updateDisk.BlockSize = currentDisk.BlockSize
+		}
+		mergedDisks[diskName] = updateDisk
+	}
+	return mergedDisks
 }
 
 func (m *VolumeManager) DeleteNode(name string) error {

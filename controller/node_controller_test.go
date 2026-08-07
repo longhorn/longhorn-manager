@@ -22,6 +22,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	fake "k8s.io/client-go/kubernetes/fake"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -647,6 +649,106 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 	}
 
 	s.checkOrphans(c, expectation)
+}
+
+func (s *NodeControllerSuite) TestUpdateReadyBlockDiskStatusRecordsActualBlockSize(c *C) {
+	const diskName = "block-disk"
+	node := &longhorn.Node{
+		Status: longhorn.NodeStatus{
+			DiskStatus: map[string]*longhorn.DiskStatus{
+				diskName: {
+					DiskUUID: "disk-uuid",
+					Type:     longhorn.DiskTypeBlock,
+				},
+			},
+		},
+	}
+	diskInfoMap := map[string]*monitor.CollectedDiskInfo{
+		diskName: {
+			DiskUUID: "disk-uuid",
+			DiskStat: &lhtypes.DiskStat{BlockSize: 4096},
+		},
+	}
+
+	s.controller.updateReadyDiskStatusReadyCondition(node, diskInfoMap, false)
+
+	c.Assert(node.Status.DiskStatus[diskName].ActualBlockSize, Equals, int64(4096))
+}
+
+func (s *NodeControllerSuite) TestBlockDiskBlockSizeMismatchIsNotReady(c *C) {
+	const diskName = "block-disk"
+	node := &longhorn.Node{
+		Spec: longhorn.NodeSpec{
+			Disks: map[string]longhorn.DiskSpec{
+				diskName: {
+					Type:      longhorn.DiskTypeBlock,
+					BlockSize: 4096,
+				},
+			},
+		},
+		Status: longhorn.NodeStatus{
+			DiskStatus: map[string]*longhorn.DiskStatus{
+				diskName: {},
+			},
+		},
+	}
+	node.Name = "node-1"
+	diskInfoMap := map[string]*monitor.CollectedDiskInfo{
+		diskName: {
+			DiskName: diskName,
+			DiskUUID: "disk-uuid",
+			Path:     "/dev/loop0",
+			DiskStat: &lhtypes.DiskStat{
+				DiskID:    "disk-id",
+				BlockSize: 512,
+			},
+		},
+	}
+
+	notReady, ready := s.controller.findNotReadyAndReadyDiskMaps(node, diskInfoMap)
+
+	c.Assert(notReady["disk-id"][diskName].Condition.Reason, Equals, string(longhorn.DiskConditionReasonDiskBlockSizeMismatch))
+	c.Assert(ready["disk-id"], HasLen, 0)
+	c.Assert(node.Status.DiskStatus[diskName].ActualBlockSize, Equals, int64(512))
+}
+
+func (s *NodeControllerSuite) TestBlockDiskUUIDMismatchDoesNotOverwriteActualBlockSize(c *C) {
+	const diskName = "block-disk"
+	node := &longhorn.Node{
+		Spec: longhorn.NodeSpec{
+			Disks: map[string]longhorn.DiskSpec{
+				diskName: {
+					Type:      longhorn.DiskTypeBlock,
+					BlockSize: 4096,
+				},
+			},
+		},
+		Status: longhorn.NodeStatus{
+			DiskStatus: map[string]*longhorn.DiskStatus{
+				diskName: {
+					DiskUUID:        "recorded-disk-uuid",
+					ActualBlockSize: 4096,
+				},
+			},
+		},
+	}
+	node.Name = "node-1"
+	diskInfoMap := map[string]*monitor.CollectedDiskInfo{
+		diskName: {
+			DiskName: diskName,
+			DiskUUID: "replacement-disk-uuid",
+			Path:     "/dev/loop0",
+			DiskStat: &lhtypes.DiskStat{
+				DiskID:    "disk-id",
+				BlockSize: 512,
+			},
+		},
+	}
+
+	notReady, _ := s.controller.findNotReadyAndReadyDiskMaps(node, diskInfoMap)
+
+	c.Assert(notReady["disk-id"][diskName].Condition.Reason, Equals, string(longhorn.DiskConditionReasonDiskFilesystemChanged))
+	c.Assert(node.Status.DiskStatus[diskName].ActualBlockSize, Equals, int64(4096))
 }
 
 func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {

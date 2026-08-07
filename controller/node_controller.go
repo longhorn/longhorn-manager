@@ -828,6 +828,18 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			}
 		}
 
+		diskSpec := node.Spec.Disks[diskName]
+		if diskSpec.Type == longhorn.DiskTypeBlock && diskSpec.BlockSize != 0 && diskInfo.DiskStat != nil && diskInfo.DiskStat.BlockSize != diskSpec.BlockSize {
+			node.Status.DiskStatus[diskName].ActualBlockSize = diskInfo.DiskStat.BlockSize
+			notReadyDiskInfoMap[diskID][diskName] =
+				monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver,
+					diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat, diskInfo.OrphanedReplicaDataStores,
+					diskInfo.InstanceManagerName, string(longhorn.DiskConditionReasonDiskBlockSizeMismatch),
+					fmt.Sprintf("Disk %v(%v) on node %v is not ready: configured block size %v does not match actual block size %v",
+						diskName, diskInfo.Path, node.Name, diskSpec.BlockSize, diskInfo.DiskStat.BlockSize))
+			continue
+		}
+
 		diskIDDiskGroupMap[diskID][diskName] = diskInfo
 	}
 
@@ -896,6 +908,9 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			diskStatus.StorageAvailable = usableStorage
 			diskStatus.StorageMaximum = diskInfoMap[diskName].DiskStat.StorageMaximum
 			diskStatus.InstanceManagerName = diskInfoMap[diskName].InstanceManagerName
+			if diskStatus.Type == longhorn.DiskTypeBlock {
+				diskStatus.ActualBlockSize = diskInfoMap[diskName].DiskStat.BlockSize
+			}
 
 			if monitorDiskHealth {
 				diskStatus.HealthData = info.HealthData

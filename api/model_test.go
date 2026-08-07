@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,40 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+func TestDiskUpdateInputTracksBlockSizePresence(t *testing.T) {
+	var input DiskUpdateInput
+	err := json.Unmarshal([]byte(`{
+		"disks": {
+			"omitted": {"diskType": "block", "path": "/dev/omitted"},
+			"null": {"diskType": "block", "path": "/dev/null", "blockSize": null},
+			"zero": {"diskType": "block", "path": "/dev/zero", "blockSize": 0},
+			"four-k": {"diskType": "block", "path": "/dev/four-k", "blockSize": 4096}
+		}
+	}`), &input)
+	if err != nil {
+		t.Fatalf("failed to unmarshal disk update input: %v", err)
+	}
+
+	if input.blockSizePresent["omitted"] {
+		t.Fatal("expected omitted blockSize to remain absent")
+	}
+	if input.blockSizePresent["null"] {
+		t.Fatal("expected null blockSize to remain absent")
+	}
+	if !input.blockSizePresent["zero"] {
+		t.Fatal("expected explicit zero blockSize to be present")
+	}
+	if !input.blockSizePresent["four-k"] {
+		t.Fatal("expected explicit 4096 blockSize to be present")
+	}
+	if input.Disks["zero"].BlockSize != 0 {
+		t.Fatalf("expected explicit zero blockSize, got %d", input.Disks["zero"].BlockSize)
+	}
+	if input.Disks["four-k"].BlockSize != 4096 {
+		t.Fatalf("expected 4096 blockSize, got %d", input.Disks["four-k"].BlockSize)
+	}
+}
 
 func TestToVolumeResourceUsesEngineFrontendNodeForV2Controller(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)

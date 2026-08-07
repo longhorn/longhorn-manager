@@ -2480,6 +2480,17 @@ spec:
                   properties:
                     allowScheduling:
                       type: boolean
+                    blockSize:
+                      description: |-
+                        BlockSize is the block size in bytes for an AIO-backed block disk. Supported values are 512 and 4096.
+                        A value of 0 uses the default block size of 512 bytes.
+                        The effective block size is immutable after the disk is initialized.
+                      enum:
+                      - 0
+                      - 512
+                      - 4096
+                      format: int64
+                      type: integer
                     diskDriver:
                       enum:
                       - ""
@@ -2555,6 +2566,11 @@ spec:
               diskStatus:
                 additionalProperties:
                   properties:
+                    actualBlockSize:
+                      description: ActualBlockSize is the block size in bytes reported
+                        by an initialized block disk.
+                      format: int64
+                      type: integer
                     conditions:
                       items:
                         properties:

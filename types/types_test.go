@@ -75,6 +75,19 @@ func (s *TestSuite) TestGetLonghornControlPath(c *C) {
 	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
 }
 
+func (s *TestSuite) TestUnmarshalToDisksPreservesBlockSize(c *C) {
+	disks, err := UnmarshalToDisks(`[{"name":"disk-1","path":"/dev/nvme0n1","diskType":"block","diskDriver":"aio","blockSize":4096}]`)
+	c.Assert(err, IsNil)
+	c.Assert(disks, HasLen, 1)
+	c.Assert(disks[0].BlockSize, Equals, int64(4096))
+}
+
+func (s *TestSuite) TestIsBDFMatchesOnlyPCIAddresses(c *C) {
+	c.Assert(IsBDF("0000:00:1f.3"), Equals, true)
+	c.Assert(IsBDF("/dev/disk/by-path/pci-0000:00:1f.3-nvme-1"), Equals, false)
+	c.Assert(IsBDF("0000:00:1f.3-extra"), Equals, false)
+}
+
 func (s *TestSuite) TestContainerPathHelpersUseReplicaHostPrefix(c *C) {
 	customPath := "/control/longhorn"
 	image := "longhornio/longhorn-engine:v1.9.0"
