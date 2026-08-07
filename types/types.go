@@ -222,6 +222,8 @@ const (
 	LonghornLabelManagedBy                       = "managed-by"
 	LonghornLabelSnapshotForCloningVolume        = "for-cloning-volume"
 	LonghornLabelSnapshotGroup                   = "snapshot-group"
+	LonghornLabelSnapshotGroupCSIType            = "snapshot-group-csi-type"
+	LonghornLabelSnapshotGroupUID                = "snapshot-group-uid"
 	LonghornLabelBackingImageDataSource          = "backing-image-data-source"
 	LonghornLabelBackupTarget                    = "backup-target"
 	LonghornLabelBackupVolume                    = "backup-volume"
@@ -301,28 +303,37 @@ const (
 	// Shard CR bypasses the failure-recovery debounce.
 	ShardAnnotationIntentionalDelete = "longhorn.io/intentional-delete"
 
-	// SnapshotGroupAnnotationTerminalPhase records the outcome (Ready or Failed)
-	// when a SnapshotGroup reaches a terminal phase. It is the restore guard:
-	// restores that strip status still preserve annotations, so a reconcile that
-	// finds an empty phase with a terminal annotation restores the annotated
-	// phase and never cuts, instead of re-cutting fresh snapshots under the old
-	// group name in the middle of a disaster recovery.
+	// SnapshotGroupAnnotationTerminalPhase records the outcome (Ready or
+	// Failed) when a SnapshotGroup reaches a terminal phase. It is the restore
+	// guard: restores that strip status still preserve annotations, so when
+	// the annotation records an outcome the phase does not show, the
+	// controller restores the annotated phase instead of taking new snapshots.
 	SnapshotGroupAnnotationTerminalPhase = "longhorn.io/snapshot-group-terminal-phase"
 
-	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup. The cap
-	// bounds the simultaneous attach fan-out (a group of detached member volumes
-	// auto-attaches all of them at once), not the status size.
+	// SnapshotGroupAnnotationBackupsCompleted freezes the outcome of a
+	// bak-type CSI volume group snapshot. The CSI handler stamps it the first
+	// time it observes every member backup Completed; from then on the group
+	// is reported ready without reading live backup state. The value is a
+	// JSON map of member snapshot name to backup name; member snapshot
+	// handles fall back to it, so a backup deleted after completion does not
+	// change them.
+	SnapshotGroupAnnotationBackupsCompleted = "longhorn.io/snapshot-group-backups-completed"
+
+	// SnapshotGroupAnnotationCSIParameters records the class parameters a
+	// CSI-created group was created with. A create retry for the existing
+	// name compares against it and rejects different parameters, as the CSI
+	// spec requires.
+	SnapshotGroupAnnotationCSIParameters = "longhorn.io/snapshot-group-csi-parameters"
+
+	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
+	// also keeps the auto-attach of detached member volumes bounded.
 	SnapshotGroupMaxMemberCount = 64
 
 	// SnapshotGroupDefaultDeadlineSeconds is stamped by the mutating webhook
-	// when spec.deadlineSeconds is unset. It is sized for standalone use,
-	// leaving room to auto-attach detached members; callers holding an
-	// application pause should set an explicit deadline matched to their pause
-	// tolerance instead.
+	// when spec.deadlineSeconds is unset.
 	SnapshotGroupDefaultDeadlineSeconds = 300
-	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds bound
-	// spec.deadlineSeconds at admission. The floor is low enough to express an
-	// application pause tolerance of tens of seconds.
+	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds
+	// bound spec.deadlineSeconds; admission rejects values outside them.
 	SnapshotGroupMinDeadlineSeconds = 10
 	SnapshotGroupMaxDeadlineSeconds = 3600
 
