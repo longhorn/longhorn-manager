@@ -14,6 +14,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/types"
@@ -310,7 +311,18 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	}
 
 	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
+	activeBackupSnapshots := map[string]string{}
+	if len(cleanupSnapshotNames) != 0 {
+		activeBackupSnapshots, err = job.getSnapshotsReferencedByActiveBackups()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list active backups for volume %v", volumeName)
+		}
+	}
 	for _, snapshotName := range cleanupSnapshotNames {
+		if backupName, exists := activeBackupSnapshots[snapshotName]; exists {
+			job.logger.WithField("backup", backupName).Infof("Skipped cleaning up snapshot CR %v because an active backup references it", snapshotName)
+			continue
+		}
 		if _, err := job.api.Volume.ActionSnapshotCRDelete(volume, &longhornclient.SnapshotCRInput{
 			Name: snapshotName,
 		}); err != nil {
@@ -326,6 +338,34 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	}
 
 	return nil
+}
+
+func (job *VolumeJob) getSnapshotsReferencedByActiveBackups() (map[string]string, error) {
+	backupList, err := job.lhClient.LonghornV1beta2().Backups(job.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetBackupVolumeLabels(job.volumeName)).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := map[string]string{}
+	for _, backup := range backupList.Items {
+		if isBackupSnapshotCleanupSafe(backup.Status.State) || backup.Spec.SnapshotName == "" {
+			continue
+		}
+		result[backup.Spec.SnapshotName] = backup.Name
+	}
+	return result, nil
+}
+
+func isBackupSnapshotCleanupSafe(state longhorn.BackupState) bool {
+	// A deleting backup can still have remote cleanup and an engine monitor in flight.
+	switch state {
+	case longhorn.BackupStateCompleted, longhorn.BackupStateError, longhorn.BackupStateUnknown:
+		return true
+	default:
+		return false
+	}
 }
 
 func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error {
