@@ -2530,9 +2530,12 @@ func UnmarshalComponentPriorityClasses(priorityClassesSetting string) (*Componen
 	decoder := json.NewDecoder(strings.NewReader(priorityClassesSetting))
 	decoder.DisallowUnknownFields()
 
-	var priorityClasses ComponentPriorityClasses
+	var priorityClasses *ComponentPriorityClasses
 	if err := decoder.Decode(&priorityClasses); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal system managed components priority classes %v", priorityClassesSetting)
+	}
+	if priorityClasses == nil {
+		return nil, errors.Errorf("failed to unmarshal system managed components priority classes %v: must be a JSON object", priorityClassesSetting)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
@@ -2542,7 +2545,7 @@ func UnmarshalComponentPriorityClasses(priorityClassesSetting string) (*Componen
 		return nil, errors.Wrapf(err, "failed to unmarshal system managed components priority classes %v", priorityClassesSetting)
 	}
 
-	return &priorityClasses, nil
+	return priorityClasses, nil
 }
 
 func ResolveSystemManagedComponentPriorityClass(defaultPriorityClass, priorityClassesSetting, component string) (string, error) {

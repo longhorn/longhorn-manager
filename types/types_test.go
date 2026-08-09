@@ -91,6 +91,9 @@ func (s *TestSuite) TestResolveSystemManagedComponentPriorityClass(c *C) {
 
 	_, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", `{"unsupported":"system-node-critical"}`, SystemManagedComponentInstanceManager)
 	c.Assert(err, NotNil)
+
+	_, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", `null`, SystemManagedComponentInstanceManager)
+	c.Assert(err, NotNil)
 }
 
 func (s *TestSuite) TestContainerPathHelpersUseReplicaHostPrefix(c *C) {
