@@ -358,6 +358,71 @@ func (x *ShardGroupSpec) GetSalvageRequested() bool {
 	return false
 }
 
+// LinkedCloneSource identifies the source replica/engine for a linked-clone
+// rebuild or replica-add. Nil for non-clone operations.
+type LinkedCloneSource struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ReplicaName   string `protobuf:"bytes,1,opt,name=replica_name,json=replicaName,proto3" json:"replica_name,omitempty"`       // the source replica
+	EngineName    string `protobuf:"bytes,2,opt,name=engine_name,json=engineName,proto3" json:"engine_name,omitempty"`          // the source engine (for mode verification)
+	EngineAddress string `protobuf:"bytes,3,opt,name=engine_address,json=engineAddress,proto3" json:"engine_address,omitempty"` // the source engine address
+}
+
+func (x *LinkedCloneSource) Reset() {
+	*x = LinkedCloneSource{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_imrpc_common_proto_msgTypes[2]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LinkedCloneSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkedCloneSource) ProtoMessage() {}
+
+func (x *LinkedCloneSource) ProtoReflect() protoreflect.Message {
+	mi := &file_imrpc_common_proto_msgTypes[2]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkedCloneSource.ProtoReflect.Descriptor instead.
+func (*LinkedCloneSource) Descriptor() ([]byte, []int) {
+	return file_imrpc_common_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *LinkedCloneSource) GetReplicaName() string {
+	if x != nil {
+		return x.ReplicaName
+	}
+	return ""
+}
+
+func (x *LinkedCloneSource) GetEngineName() string {
+	if x != nil {
+		return x.EngineName
+	}
+	return ""
+}
+
+func (x *LinkedCloneSource) GetEngineAddress() string {
+	if x != nil {
+		return x.EngineAddress
+	}
+	return ""
+}
+
 var File_imrpc_common_proto protoreflect.FileDescriptor
 
 var file_imrpc_common_proto_rawDesc = []byte{
@@ -386,7 +451,15 @@ var file_imrpc_common_proto_rawDesc = []byte{
 	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12, 0x2a, 0x0a, 0x05, 0x76,
 	0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x69, 0x6d, 0x72,
 	0x70, 0x63, 0x2e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x45, 0x6e, 0x64, 0x70, 0x6f, 0x69, 0x6e, 0x74,
-	0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x2a, 0x24, 0x0a, 0x12, 0x42,
+	0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x22, 0x7e, 0x0a, 0x11, 0x4c,
+	0x69, 0x6e, 0x6b, 0x65, 0x64, 0x43, 0x6c, 0x6f, 0x6e, 0x65, 0x53, 0x6f, 0x75, 0x72, 0x63, 0x65,
+	0x12, 0x21, 0x0a, 0x0c, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x5f, 0x6e, 0x61, 0x6d, 0x65,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x4e,
+	0x61, 0x6d, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x65, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x5f, 0x6e, 0x61,
+	0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x65, 0x6e, 0x67, 0x69, 0x6e, 0x65,
+	0x4e, 0x61, 0x6d, 0x65, 0x12, 0x25, 0x0a, 0x0e, 0x65, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x5f, 0x61,
+	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0d, 0x65, 0x6e,
+	0x67, 0x69, 0x6e, 0x65, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x2a, 0x24, 0x0a, 0x12, 0x42,
 	0x61, 0x63, 0x6b, 0x65, 0x6e, 0x64, 0x53, 0x74, 0x6f, 0x72, 0x65, 0x44, 0x72, 0x69, 0x76, 0x65,
 	0x72, 0x12, 0x06, 0x0a, 0x02, 0x76, 0x31, 0x10, 0x00, 0x12, 0x06, 0x0a, 0x02, 0x76, 0x32, 0x10,
 	0x01, 0x2a, 0x34, 0x0a, 0x0a, 0x44, 0x61, 0x74, 0x61, 0x45, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x12,
@@ -421,18 +494,19 @@ func file_imrpc_common_proto_rawDescGZIP() []byte {
 }
 
 var file_imrpc_common_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_imrpc_common_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_imrpc_common_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_imrpc_common_proto_goTypes = []interface{}{
-	(BackendStoreDriver)(0), // 0: imrpc.BackendStoreDriver
-	(DataEngine)(0),         // 1: imrpc.DataEngine
-	(CloneMode)(0),          // 2: imrpc.CloneMode
-	(DataLayoutType)(0),     // 3: imrpc.DataLayoutType
-	(*ShardEndpoint)(nil),   // 4: imrpc.ShardEndpoint
-	(*ShardGroupSpec)(nil),  // 5: imrpc.ShardGroupSpec
-	nil,                     // 6: imrpc.ShardGroupSpec.ShardsEntry
+	(BackendStoreDriver)(0),   // 0: imrpc.BackendStoreDriver
+	(DataEngine)(0),           // 1: imrpc.DataEngine
+	(CloneMode)(0),            // 2: imrpc.CloneMode
+	(DataLayoutType)(0),       // 3: imrpc.DataLayoutType
+	(*ShardEndpoint)(nil),     // 4: imrpc.ShardEndpoint
+	(*ShardGroupSpec)(nil),    // 5: imrpc.ShardGroupSpec
+	(*LinkedCloneSource)(nil), // 6: imrpc.LinkedCloneSource
+	nil,                       // 7: imrpc.ShardGroupSpec.ShardsEntry
 }
 var file_imrpc_common_proto_depIdxs = []int32{
-	6, // 0: imrpc.ShardGroupSpec.shards:type_name -> imrpc.ShardGroupSpec.ShardsEntry
+	7, // 0: imrpc.ShardGroupSpec.shards:type_name -> imrpc.ShardGroupSpec.ShardsEntry
 	4, // 1: imrpc.ShardGroupSpec.ShardsEntry.value:type_name -> imrpc.ShardEndpoint
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
@@ -471,6 +545,18 @@ func file_imrpc_common_proto_init() {
 				return nil
 			}
 		}
+		file_imrpc_common_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LinkedCloneSource); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -478,7 +564,7 @@ func file_imrpc_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_imrpc_common_proto_rawDesc,
 			NumEnums:      4,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

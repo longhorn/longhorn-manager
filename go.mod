@@ -69,6 +69,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260722010828-e5f4ddc47e4d
 	github.com/longhorn/go-common-libs v0.0.0-20260717062941-2c0ab58da729
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
+<<<<<<< HEAD
 	github.com/longhorn/go-spdk-helper v0.7.1-0.20260728132652-3feba885fc22
 	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
 	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260730045117-4bd16a4f7e2a
@@ -76,6 +77,15 @@ require (
 	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260729150354-65c8c6a10598
 	github.com/longhorn/types v0.0.0-20260729075217-67e368561d11
 	github.com/prometheus/client_golang v1.23.2
+=======
+	github.com/longhorn/go-spdk-helper v0.8.1-0.20260805151852-965182d14959
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260722045630-fbcdec882798
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260811011024-affaada95801
+	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260811004518-ddc112d81591
+	github.com/longhorn/types v0.0.0-20260810232958-141f76734364
+	github.com/prometheus/client_golang v1.24.1
+>>>>>>> 979a1778 (fix(clone): update vendors for linked clone refactor)
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
@@ -110,6 +120,7 @@ require (
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/avast/retry-go/v4 v4.7.0 // indirect
+	github.com/avast/retry-go/v5 v5.0.0 // indirect
 	github.com/bits-and-blooms/bitset v1.16.0 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
