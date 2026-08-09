@@ -10,11 +10,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	etypes "github.com/longhorn/longhorn-engine/pkg/types"
-
 	lhexec "github.com/longhorn/go-common-libs/exec"
 	lhtypes "github.com/longhorn/go-common-libs/types"
+	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -135,7 +135,7 @@ func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error
 
 // ReplicaAdd calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string) error {
+func (e *EngineBinary) ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, linkedCloneSource *imrpc.LinkedCloneSource) error {
 	engine, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return fmt.Errorf("unsupported object type %T for engine binary replica add", obj)
