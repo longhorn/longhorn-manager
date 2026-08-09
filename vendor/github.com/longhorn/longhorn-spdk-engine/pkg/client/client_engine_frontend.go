@@ -278,12 +278,17 @@ func (c *SPDKClient) EngineFrontendSnapshotPurge(name string) error {
 
 // EngineFrontendReplicaAdd adds a replica through the engine frontend path.
 // The EngineReplicaAdd path is for internal orchestration; external callers should use EngineFrontendReplicaAdd.
-func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string) error {
+func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool, linkedCloneSource *spdkrpc.LinkedCloneSource) error {
 	if engineFrontendName == "" {
 		return fmt.Errorf("failed to add replica for engine frontend: missing required parameter engineFrontendName")
 	}
 	if replicaName == "" || replicaAddress == "" {
 		return fmt.Errorf("failed to add replica for engine frontend: missing required parameter replicaName or replicaAddress")
+	}
+	if linkedCloneSource != nil {
+		if linkedCloneSource.ReplicaName == "" || linkedCloneSource.EngineName == "" || linkedCloneSource.EngineAddress == "" {
+			return fmt.Errorf("failed to add replica for engine frontend: linked clone source info is incomplete")
+		}
 	}
 
 	client := c.getSPDKServiceClient()
@@ -291,13 +296,11 @@ func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, r
 	defer cancel()
 
 	_, err := client.EngineFrontendReplicaAdd(ctx, &spdkrpc.EngineFrontendReplicaAddRequest{
-		EngineFrontendName:          engineFrontendName,
-		ReplicaName:                 replicaName,
-		ReplicaAddress:              replicaAddress,
-		FastSync:                    fastSync,
-		LinkedCloneSrcReplicaName:   linkedCloneSrcReplicaName,
-		LinkedCloneSrcEngineName:    linkedCloneSrcEngineName,
-		LinkedCloneSrcEngineAddress: linkedCloneSrcEngineAddress,
+		EngineFrontendName: engineFrontendName,
+		ReplicaName:        replicaName,
+		ReplicaAddress:     replicaAddress,
+		FastSync:           fastSync,
+		LinkedCloneSource:  linkedCloneSource,
 	})
 	return errors.Wrapf(err, "failed to add replica %s with address %s by engine frontend %s", replicaName, replicaAddress, engineFrontendName)
 }

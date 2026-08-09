@@ -715,7 +715,7 @@ func (sg *ShardGroup) Create(spdkClient *spdkclient.Client, superiorPortAllocato
 		return nil, err
 	}
 	if err := spdkClient.StartExposeBdev(sg.Nqn, sg.HeadLvolUUID, generateNGUID(sg.HeadLvolName),
-		sg.IP, strconv.Itoa(int(sg.Port))); err != nil {
+		sg.IP, strconv.Itoa(int(sg.Port)), helpertypes.InternalHostNQN); err != nil {
 		return nil, errors.Wrapf(err, "failed to expose head lvol for shardgroup %s", sg.Name)
 	}
 	sg.IsExposed = true
@@ -1079,7 +1079,7 @@ func (sg *ShardGroup) Expand(spdkClient *spdkclient.Client, newSize, creationSiz
 	}
 
 	if err := spdkClient.StartExposeBdev(sg.Nqn, sg.HeadLvolUUID, generateNGUID(sg.HeadLvolName),
-		sg.IP, strconv.Itoa(int(sg.Port))); err != nil {
+		sg.IP, strconv.Itoa(int(sg.Port)), helpertypes.InternalHostNQN); err != nil {
 		return errors.Wrapf(err, "failed to re-expose shardgroup %s after head-lvol resize", sg.Name)
 	}
 
@@ -1263,7 +1263,7 @@ func (sg *ShardGroup) SnapshotRevert(spdkClient *spdkclient.Client, snapshotName
 	sg.HeadLvolUUID = newHeadUUID
 
 	if err := spdkClient.StartExposeBdev(sg.Nqn, sg.HeadLvolUUID, generateNGUID(sg.HeadLvolName),
-		sg.IP, strconv.Itoa(int(sg.Port))); err != nil {
+		sg.IP, strconv.Itoa(int(sg.Port)), helpertypes.InternalHostNQN); err != nil {
 		return errors.Wrapf(err, "failed to re-expose head lvol after revert")
 	}
 	sg.IsExposed = true
