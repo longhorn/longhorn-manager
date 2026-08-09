@@ -9,6 +9,11 @@ import (
 const (
 	NQNPrefix = "nqn.2023-01.io.longhorn.spdk"
 
+	// InternalHostNQN is the host NQN the SPDK bdev_nvme initiator presents when it attaches a
+	// subsystem that only SPDK consumes, never a host kernel initiator (e.g. a replica lvol
+	// attached by an engine). Subsystems restricted to it are hidden from other hosts.
+	InternalHostNQN = NQNPrefix + ":internal-host"
+
 	DefaultJSONServerNetwork    = "unix"
 	DefaultUnixDomainSocketPath = "/var/tmp/spdk.sock"
 

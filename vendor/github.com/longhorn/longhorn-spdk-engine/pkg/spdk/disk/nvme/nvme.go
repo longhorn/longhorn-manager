@@ -55,7 +55,7 @@ func (d *DiskDriverNvme) DiskCreate(spdkClient *spdkclient.Client, diskName, dis
 		}
 	}()
 	bdevs, err := spdkClient.BdevNvmeAttachController(diskName, "", diskPath, "", "PCIe", "",
-		diskCtrlrLossTimeoutSec, diskReconnectDelaySec, diskFastIOFailTimeoutSec, diskMultipath)
+		diskCtrlrLossTimeoutSec, diskReconnectDelaySec, diskFastIOFailTimeoutSec, diskMultipath, "")
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to attach NVMe disk %v", diskPath)
 	}
