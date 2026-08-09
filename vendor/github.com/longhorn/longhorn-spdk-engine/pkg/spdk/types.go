@@ -195,11 +195,20 @@ func ServiceLvolToProtoLvol(replicaName string, lvol *Lvol) *spdkrpc.Lvol {
 	if lvol == nil {
 		return nil
 	}
+	// Clear the parent field when it references a clone entrypoint or backing
+	// image lvol that is not part of this replica's snapshot chain.
+	parent := lvol.Parent
+	if parent != "" && !IsReplicaSnapshotLvol(replicaName, parent) {
+		parent = ""
+	} else {
+		parent = GetSnapshotNameFromReplicaSnapshotLvolName(replicaName, parent)
+	}
+
 	res := &spdkrpc.Lvol{
 		Uuid:              lvol.UUID,
 		SpecSize:          lvol.SpecSize,
 		ActualSize:        lvol.ActualSize,
-		Parent:            GetSnapshotNameFromReplicaSnapshotLvolName(replicaName, lvol.Parent),
+		Parent:            parent,
 		Children:          map[string]bool{},
 		CreationTime:      lvol.CreationTime,
 		UserCreated:       lvol.UserCreated,

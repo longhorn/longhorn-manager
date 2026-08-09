@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 
-	retrygo "github.com/avast/retry-go/v4"
+	retrygo "github.com/avast/retry-go/v5"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -1008,7 +1008,8 @@ func (e *Engine) replicaAddStart(spdkClient *spdkclient.Client,
 	}
 	e.checkAndUpdateInfoFromReplicasNoLock()
 
-	rebuildingSnapshotList, err = getRebuildingSnapshotList(srcReplicaServiceCli, srcReplicaName)
+	var linkedCloneSrcSnapshotName string
+	rebuildingSnapshotList, linkedCloneSrcSnapshotName, err = getRebuildingInfo(srcReplicaServiceCli, srcReplicaName)
 	if err != nil {
 		return nil, startUpdateRequired, nil, err
 	}
@@ -1019,8 +1020,21 @@ func (e *Engine) replicaAddStart(spdkClient *spdkclient.Client,
 		return nil, startUpdateRequired, nil, err
 	}
 
+	// Build LinkedCloneSource for linked-clone rebuilds (nil for normal rebuilds).
+	// If the src replica lost its clone identity (LinkedCloneInfo is nil / SourceSnapshotName
+	// is empty), fall back to a normal rebuild — the entrypoint was already lost.
+	var linkedCloneSource *spdkrpc.LinkedCloneSource
+	if linkedCloneSrcReplicaName != "" && linkedCloneSrcSnapshotName != "" {
+		linkedCloneSource = &spdkrpc.LinkedCloneSource{
+			SnapshotName:  linkedCloneSrcSnapshotName,
+			ReplicaName:   linkedCloneSrcReplicaName,
+			EngineName:    linkedCloneSrcEngineName,
+			EngineAddress: linkedCloneSrcEngineAddress,
+		}
+	}
+
 	// The destination replica attaches the source replica exposed snapshot as the external snapshot then create a head based on it.
-	dstHeadLvolAddress, err := dstReplicaServiceCli.ReplicaRebuildingDstStart(dstReplicaName, srcReplicaName, srcReplicaAddress, snapshotName, externalSnapshotAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, rebuildingSnapshotList)
+	dstHeadLvolAddress, err := dstReplicaServiceCli.ReplicaRebuildingDstStart(dstReplicaName, srcReplicaName, srcReplicaAddress, snapshotName, externalSnapshotAddress, rebuildingSnapshotList, linkedCloneSource)
 	if err != nil {
 		return nil, startUpdateRequired, nil, err
 	}
@@ -1468,14 +1482,15 @@ func (e *Engine) checkLinkedCloneSrcReplicaMode(linkedCloneSrcEngineName, linked
 	return nil
 }
 
-// getRebuildingSnapshotList fetches the snapshot tree from the src replica and
-// returns the ordered list of snapshots that need to be shallow-copied to the
-// dst replica. It finds the ancestor snapshot (empty parent or backing image
-// parent) and traverses the tree via DFS to produce the copy order.
-func getRebuildingSnapshotList(srcReplicaServiceCli *client.SPDKClient, srcReplicaName string) ([]*api.Lvol, error) {
+// getRebuildingInfo fetches the snapshot tree from the src replica and returns
+// the ordered list of snapshots that need to be shallow-copied to the dst
+// replica, along with the clone entrypoint snapshot name (non-empty only for
+// linked-clone replicas). It finds the ancestor snapshot (empty parent or
+// backing image parent) and traverses the tree via DFS to produce the copy order.
+func getRebuildingInfo(srcReplicaServiceCli *client.SPDKClient, srcReplicaName string) (rebuildingSnapshotList []*api.Lvol, linkedCloneSrcSnapshotName string, err error) {
 	rpcSrcReplica, err := srcReplicaServiceCli.ReplicaGet(srcReplicaName)
 	if err != nil {
-		return []*api.Lvol{}, err
+		return []*api.Lvol{}, "", err
 	}
 	ancestorSnapshotName, latestSnapshotName := "", ""
 	for snapshotName, snapApiLvol := range rpcSrcReplica.Snapshots {
@@ -1490,10 +1505,19 @@ func getRebuildingSnapshotList(srcReplicaServiceCli *client.SPDKClient, srcRepli
 		}
 	}
 	if ancestorSnapshotName == "" || latestSnapshotName == "" {
-		return []*api.Lvol{}, fmt.Errorf("cannot find the ancestor snapshot %s or latest snapshot %s from RW replica %s snapshot map during engine replica add", ancestorSnapshotName, latestSnapshotName, srcReplicaName)
+		return []*api.Lvol{}, "", fmt.Errorf("cannot find the ancestor snapshot %s or latest snapshot %s from RW replica %s snapshot map during rebuilding snapshot list retrieval", ancestorSnapshotName, latestSnapshotName, srcReplicaName)
 	}
 
-	return retrieveRebuildingSnapshotList(rpcSrcReplica, ancestorSnapshotName, []*api.Lvol{}), nil
+	// For linked-clone replicas, extract the source snapshot name
+	// so it can be passed explicitly to the DST replica at rebuild start.
+	if rpcSrcReplica.LinkedCloneInfo != nil {
+		if rpcSrcReplica.LinkedCloneInfo.SourceSnapshotName == "" {
+			return []*api.Lvol{}, "", fmt.Errorf("linked clone replica %s has LinkedCloneInfo but source snapshot name is empty", srcReplicaName)
+		}
+		linkedCloneSrcSnapshotName = rpcSrcReplica.LinkedCloneInfo.SourceSnapshotName
+	}
+
+	return retrieveRebuildingSnapshotList(rpcSrcReplica, ancestorSnapshotName, []*api.Lvol{}), linkedCloneSrcSnapshotName, nil
 }
 
 // retrieveRebuildingSnapshotList recursively traverses the replica snapshot tree with a DFS way
@@ -1725,10 +1749,9 @@ func (e *Engine) snapshotOperationPreCheckWithoutLock(snapshotName string, snaps
 			if err != nil {
 				return "", errors.Wrapf(err, "cannot verify clone-entrypoint guard for replica %s during snapshot %s deletion pre-check", replicaName, snapshotName)
 			}
-			epLvolName := GetCloneEntrypointLvolName(replicaName, snapshotName)
-			if _, hasEP := r.CloneEntrypointMap[epLvolName]; hasEP {
-				return "", fmt.Errorf("cannot delete snapshot %s: replica %s has an active linked-clone entrypoint %s; delete the linked-clone volume first",
-					snapshotName, replicaName, epLvolName)
+			if _, hasEP := r.CloneSnapshotUsage[snapshotName]; hasEP {
+				return "", fmt.Errorf("cannot delete snapshot %s: replica %s has an active linked-clone entrypoint for this snapshot; delete the linked-clone volume first",
+					snapshotName, replicaName)
 			}
 		}
 	}
@@ -1814,14 +1837,15 @@ func (e *Engine) snapshotOperationWithoutLock(spdkClient *spdkclient.Client, sna
 			replicaBdevList = append(replicaBdevList, replicaStatus.BdevName())
 		}
 
-		engineErr = retrygo.Do(
+		engineErr = retrygo.New(
+			retrygo.Attempts(uint(maxRetries)),
+			retrygo.Delay(retryInterval),
+			retrygo.LastErrorOnly(true),
+		).Do(
 			func() error {
 				_, err := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, "")
 				return err
 			},
-			retrygo.Attempts(uint(maxRetries)),
-			retrygo.Delay(retryInterval),
-			retrygo.LastErrorOnly(true),
 		)
 	}
 
@@ -2705,7 +2729,12 @@ func (e *Engine) waitForRestoreComplete() error {
 		"snapshotName": e.RestoringSnapshotName,
 	}).Info("Waiting for restore to complete")
 
-	err := retrygo.Do(
+	err := retrygo.New(
+		retrygo.Delay(restorePeriodicRefreshInterval),
+		retrygo.MaxDelay(restorePeriodicRefreshInterval),
+		retrygo.DelayType(retrygo.FixedDelay),
+		retrygo.Attempts(0), // retry forever until success or unrecoverable error
+	).Do(
 		func() error {
 			e.restore.RLock()
 			restoreProgress := e.restore.Progress
@@ -2735,10 +2764,6 @@ func (e *Engine) waitForRestoreComplete() error {
 
 			return fmt.Errorf("restore is still in progress")
 		},
-		retrygo.Delay(restorePeriodicRefreshInterval),
-		retrygo.MaxDelay(restorePeriodicRefreshInterval),
-		retrygo.DelayType(retrygo.FixedDelay),
-		retrygo.Attempts(0), // retry forever until success or unrecoverable error
 	)
 
 	if err != nil {
