@@ -6476,6 +6476,28 @@ func (s *DataStore) ListInstanceOrphansByInstanceManagerRO(instanceManager strin
 	return orphanList, nil
 }
 
+func (s *DataStore) ListReadyNodesWithReadyInstanceManagerRO(dataEngine longhorn.DataEngineType) (map[string]*longhorn.Node, error) {
+	nodes, err := s.ListReadyNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]*longhorn.Node, len(nodes))
+	for _, node := range nodes {
+		imMap, err := s.listInstanceManagers(node.Name, dataEngine)
+		if err != nil {
+			return nil, err
+		}
+		for _, im := range imMap {
+			if im.DeletionTimestamp == nil && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+				result[node.Name] = node
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 // DeleteOrphan won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteOrphan(orphanName string) error {
 	return s.lhClient.LonghornV1beta2().Orphans(s.namespace).Delete(context.TODO(), orphanName, metav1.DeleteOptions{})
