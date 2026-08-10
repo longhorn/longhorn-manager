@@ -2025,26 +2025,23 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 		return errors.Wrapf(err, "failed to get volume %v for cloneSnapshot", engine.Spec.VolumeName)
 	}
 
-	// For v2 linked-clone on a new enough instance manager, build the dst→src replica name map
-	// that was already computed by the scheduler (replica.Spec.LinkedCloneSrcReplicaName).
-	// This replaces the engine's auto-detection by IP+lvsUUID co-location.
+	// For v2 linked-clone, build the dst→src replica name map that was already
+	// computed by the volume controller (replica.Spec.LinkedCloneSrcReplicaName).
+	// The webhook guarantees all running IMs support this API.
 	var dstReplicaSrcReplicaPairMap map[string]string
 	if types.IsDataEngineV2(engine.Spec.DataEngine) && vol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-		im, imErr := ds.GetInstanceManagerByInstance(engine)
-		if imErr == nil && im != nil && im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
-			replicas, listErr := ds.ListVolumeReplicasRO(engine.Spec.VolumeName)
-			if listErr != nil {
-				return errors.Wrapf(listErr, "failed to list replicas for linked-clone pair map")
+		replicas, listErr := ds.ListVolumeReplicasRO(engine.Spec.VolumeName)
+		if listErr != nil {
+			return errors.Wrapf(listErr, "failed to list replicas for linked-clone pair map")
+		}
+		pairMap := map[string]string{}
+		for _, r := range replicas {
+			if r.Spec.LinkedCloneSrcReplicaName != "" {
+				pairMap[r.Name] = r.Spec.LinkedCloneSrcReplicaName
 			}
-			pairMap := map[string]string{}
-			for _, r := range replicas {
-				if r.Spec.LinkedCloneSrcReplicaName != "" {
-					pairMap[r.Name] = r.Spec.LinkedCloneSrcReplicaName
-				}
-			}
-			if len(pairMap) > 0 {
-				dstReplicaSrcReplicaPairMap = pairMap
-			}
+		}
+		if len(pairMap) > 0 {
+			dstReplicaSrcReplicaPairMap = pairMap
 		}
 	}
 

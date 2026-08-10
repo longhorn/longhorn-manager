@@ -852,21 +852,30 @@ func validateImmutable(field string, oldVal, newVal any) error {
 }
 
 // validateLinkedCloneInstanceManagerVersion rejects linked-clone volume creation
-// when no V2 instance manager with the required proxy API version is available.
-// This is a best-effort guard based on the informer cache.
+// when any running V2 instance manager has a proxy API version below the
+// required minimum. This rejects creation during mixed-version rollouts.
 func (v *volumeValidator) validateLinkedCloneInstanceManagerVersion(vol *longhorn.Volume) error {
 	ims, err := v.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
 	if err != nil {
 		return errors.Wrapf(err, "failed to list instance managers while validating linked-clone volume %v", vol.Name)
 	}
+	hasRunning := false
 	for _, im := range ims {
-		if im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
-			return nil
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			continue
+		}
+		hasRunning = true
+		if im.Status.ProxyAPIVersion < engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
+			return werror.NewForbiddenError(fmt.Sprintf(
+				"cannot create linked-clone volume %v: instance manager %v has proxy API version %d (need >= %d); upgrade all instance managers first",
+				vol.Name, im.Name, im.Status.ProxyAPIVersion, engineapi.MinProxyAPIVersionForNReplicaLinkedClone))
 		}
 	}
-	return werror.NewForbiddenError(fmt.Sprintf(
-		"cannot create linked-clone volume %v: no instance manager with proxy API version >= %d found; upgrade instance managers first",
-		vol.Name, engineapi.MinProxyAPIVersionForNReplicaLinkedClone))
+	if !hasRunning {
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot create linked-clone volume %v: no running instance manager found", vol.Name))
+	}
+	return nil
 }
 
 // validateLinkedCloneSize rejects a linked-clone volume creation when spec.size
