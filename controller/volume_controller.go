@@ -4441,18 +4441,9 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 	}
 
 	// Only create 1 replica during deep-copy clone to prevent data inconsistency.
-	// Linked-clone uses a fast metadata operation (BdevLvolSetParent) and supports
-	// N simultaneous replicas when the instance manager proxy API supports DstReplicaSrcReplicaPairMap
-	// (proxy API >= MinProxyAPIVersionForNReplicaLinkedClone). In that case the engine receives an
-	// explicit dst→src map from the manager and clones all N replicas in one SnapshotClone call.
-	linkedCloneAllowsN := false
-	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && e != nil {
-		im, imErr := c.ds.GetInstanceManagerByInstance(e)
-		if imErr == nil && im != nil && im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
-			linkedCloneAllowsN = true
-		}
-	}
-	if isCloneTargetNotCompletedAndNotCopyCompleted(v) && !linkedCloneAllowsN {
+	// Linked-clone creates all N replicas upfront since the webhook guarantees that
+	// all running instance managers support the N-replica simultaneous clone API.
+	if isCloneTargetNotCompletedAndNotCopyCompleted(v) && v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
 		if usableCount == 0 {
 			return 1, ""
 		}
