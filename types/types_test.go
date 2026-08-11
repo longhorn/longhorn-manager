@@ -605,8 +605,9 @@ func (s *TestSuite) TestIsHexCPUMask(c *C) {
 
 func (s *TestSuite) TestGetManagerLabels(c *C) {
 	labels := GetManagerLabels()
-	c.Assert(labels["app"], Equals, LonghornManagerDaemonSetName)
-	c.Assert(labels[GetLonghornLabelComponentKey()], Equals, LonghornLabelManager)
+	c.Assert(labels, DeepEquals, map[string]string{
+		"app": LonghornManagerDaemonSetName,
+	})
 }
 
 func (s *TestSuite) TestGetCSIPodLabels(c *C) {
