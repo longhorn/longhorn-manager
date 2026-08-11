@@ -245,7 +245,6 @@ const (
 	LonghornLabelVersion                         = "version"
 	LonghornLabelAdmissionWebhook                = "admission-webhook"
 	LonghornLabelConversionWebhook               = "conversion-webhook"
-	LonghornLabelManager                         = "manager"
 	LonghornLabelCSIPlugin                       = "csi-plugin"
 	LonghornLabelCSIAttacher                     = "csi-attacher"
 	LonghornLabelCSIProvisioner                  = "csi-provisioner"
@@ -579,10 +578,12 @@ func GetLonghornLabelCRDAPIVersionKey() string {
 	return GetLonghornLabelKey(LonghornLabelCRDAPIVersion)
 }
 
+// GetManagerLabels returns selector labels for longhorn-manager pods.
+// Must stay app-only so upgrade and discovery callers still match pre-upgrade
+// pods that lack longhorn.io/component. Manager pod template labels live in the chart.
 func GetManagerLabels() map[string]string {
 	return map[string]string{
-		"app":                          LonghornManagerDaemonSetName,
-		GetLonghornLabelComponentKey(): LonghornLabelManager,
+		"app": LonghornManagerDaemonSetName,
 	}
 }
 
