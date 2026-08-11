@@ -25,7 +25,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 			},
 		},
 		{
-			name: "volume without engine reported actual size can be encrypted",
+			name: "volume without engine reported actual size cannot be encrypted",
 			volume: &longhornclient.Volume{
 				Name:       "vol-b",
 				Encrypted:  true,
@@ -34,6 +34,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 					{Name: "vol-b-e-0"},
 				},
 			},
+			expectError: true,
 		},
 		{
 			name: "volume with actual size below the LUKS2 header size can be encrypted",
@@ -64,6 +65,9 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Name:       "vol-d",
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessUnknown),
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-d-e-0", ActualSize: "0"},
+				},
 			},
 			expectError: true,
 		},
@@ -86,6 +90,9 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				FromBackup: "s3://backupbucket@us-east-1/?backup=backup-1&volume=vol-x",
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-f-e-0", ActualSize: "0"},
+				},
 			},
 			expectError: true,
 		},
@@ -96,6 +103,9 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				DataSource: "vol://vol-x",
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-g-e-0", ActualSize: "0"},
+				},
 			},
 			expectError: true,
 		},
@@ -106,6 +116,22 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				LastBackup: "backup-1",
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-h-e-0", ActualSize: "0"},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "volume with backing image cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:         "vol-i",
+				Encrypted:    true,
+				Robustness:   string(longhorn.VolumeRobustnessHealthy),
+				BackingImage: "bi-1",
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-i-e-0", ActualSize: "0"},
+				},
 			},
 			expectError: true,
 		},

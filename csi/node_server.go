@@ -144,12 +144,15 @@ func canFormatEncryptedVolume(volume *longhornclient.Volume) error {
 		return fmt.Errorf("volume is required")
 	}
 
-	if reason := getExistingDataEvidence(volume); reason != "" {
-		return fmt.Errorf("device of volume %v is reported as blank but %v", volume.Name, reason)
+	if reason, err := getExistingDataEvidence(volume); err != nil {
+		return errors.Wrapf(err, "failed to check if volume %v already contains data", volume.Name)
+	} else if reason != "" {
+		return fmt.Errorf("the device is reported as blank but the volume %v already contains data: %v", volume.Name, reason)
 	}
 
 	if volume.Robustness != string(longhorn.VolumeRobustnessHealthy) {
-		return fmt.Errorf("device of volume %v is reported as blank but the volume robustness is %v rather than %v",
+		return fmt.Errorf("the device is reported as blank but the volume %v robustness is %v rather than %v, "+
+			"so the device content cannot be trusted. Wait for the volume to become healthy before staging it",
 			volume.Name, volume.Robustness, longhorn.VolumeRobustnessHealthy)
 	}
 
@@ -157,35 +160,39 @@ func canFormatEncryptedVolume(volume *longhornclient.Volume) error {
 }
 
 // getExistingDataEvidence returns a non-empty reason if Longhorn reports that the volume already
-// contains data. A device of such a volume must never be formatted.
-func getExistingDataEvidence(volume *longhornclient.Volume) string {
+// contains data. A device of such a volume must never be formatted. It returns an error if the
+// volume information is not conclusive, so that the caller can fail closed as well.
+func getExistingDataEvidence(volume *longhornclient.Volume) (string, error) {
 	for _, controller := range volume.Controllers {
-		// ActualSize is empty when the engine has not reported it yet.
 		actualSize, err := strconv.ParseInt(controller.ActualSize, 10, 64)
 		if err != nil {
-			continue
+			return "", errors.Wrapf(err, "failed to parse actual size %v reported by engine %v", controller.ActualSize, controller.Name)
 		}
 		// Compare with the LUKS2 header size rather than with 0, because an engine can report a
 		// small allocation for a volume that has never been written by a workload, while an
 		// encrypted volume in use always occupies at least the LUKS2 header.
 		if actualSize >= crypto.Luks2MinimalVolumeSize {
-			return fmt.Sprintf("engine %v reports actual size %v", controller.Name, actualSize)
+			return fmt.Sprintf("engine %v reports actual size %v", controller.Name, actualSize), nil
 		}
 	}
 
 	if volume.FromBackup != "" {
-		return fmt.Sprintf("it is restored from backup %v", volume.FromBackup)
+		return fmt.Sprintf("it is restored from backup %v", volume.FromBackup), nil
 	}
 
 	if volume.DataSource != "" {
-		return fmt.Sprintf("it is created from data source %v", volume.DataSource)
+		return fmt.Sprintf("it is created from data source %v", volume.DataSource), nil
 	}
 
 	if volume.LastBackup != "" {
-		return fmt.Sprintf("it has backup %v", volume.LastBackup)
+		return fmt.Sprintf("it has backup %v", volume.LastBackup), nil
 	}
 
-	return ""
+	if volume.BackingImage != "" {
+		return fmt.Sprintf("it is backed by backing image %v", volume.BackingImage), nil
+	}
+
+	return "", nil
 }
 
 // NodePublishVolume will mount the volume /dev/longhorn/<volume_name> to target_path
@@ -635,10 +642,16 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
 			// Fail closed if the blank device report cannot be trusted, since encrypting a device
-			// that already contains a LUKS header destroys the data permanently.
+			// that already contains a LUKS header destroys the data permanently. The volume is
+			// fetched again so that the check is based on the volume state as of the device probe
+			// rather than on the state fetched when the request started.
 			// Ref: https://github.com/longhorn/longhorn/issues/13668
-			if err := canFormatEncryptedVolume(volume); err != nil {
-				return nil, status.Errorf(codes.Aborted, "cannot encrypt device %v for volume %v: %v", devicePath, volumeID, err)
+			latestVolume, err := ns.apiClient.Volume.ById(volumeID)
+			if err != nil {
+				return nil, status.Errorf(codes.Aborted, "refused to encrypt device %v: failed to get the latest state of volume %v: %v", devicePath, volumeID, err)
+			}
+			if err := canFormatEncryptedVolume(latestVolume); err != nil {
+				return nil, status.Errorf(codes.Aborted, "refused to encrypt device %v: %v", devicePath, err)
 			}
 			if err := crypto.EncryptVolume(devicePath, passphrase, cryptoParams); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
