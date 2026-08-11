@@ -69,23 +69,13 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260722010828-e5f4ddc47e4d
 	github.com/longhorn/go-common-libs v0.0.0-20260717062941-2c0ab58da729
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-<<<<<<< HEAD
-	github.com/longhorn/go-spdk-helper v0.7.1-0.20260728132652-3feba885fc22
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260730045117-4bd16a4f7e2a
-	github.com/longhorn/longhorn-share-manager v1.12.0
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260729150354-65c8c6a10598
-	github.com/longhorn/types v0.0.0-20260729075217-67e368561d11
-	github.com/prometheus/client_golang v1.23.2
-=======
-	github.com/longhorn/go-spdk-helper v0.8.1-0.20260805151852-965182d14959
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260722045630-fbcdec882798
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260811011024-affaada95801
-	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260811004518-ddc112d81591
+	github.com/longhorn/go-spdk-helper v0.9.0
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20260811002413-f97d5257ac06
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260811020414-2b5d65ffe205
+	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260809094116-11ca196ed2f8
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260811013036-d19dbb3abcea
 	github.com/longhorn/types v0.0.0-20260810232958-141f76734364
 	github.com/prometheus/client_golang v1.24.1
->>>>>>> 979a1778 (fix(clone): update vendors for linked clone refactor)
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
@@ -95,10 +85,10 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.37.0
-	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sys v0.46.0
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.36.3
@@ -120,7 +110,6 @@ require (
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/avast/retry-go/v4 v4.7.0 // indirect
-	github.com/avast/retry-go/v5 v5.0.0 // indirect
 	github.com/bits-and-blooms/bitset v1.16.0 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
@@ -147,7 +136,7 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.25.4 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
@@ -161,10 +150,10 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.yaml.in/yaml/v2 v2.4.3 // indirect
+	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
@@ -205,23 +194,23 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.67.5 // indirect
-	github.com/prometheus/procfs v0.19.2 // indirect
+	github.com/prometheus/common v0.70.1 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/rancher/lasso v0.2.7 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/slok/goresilience v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	go.opentelemetry.io/otel v1.43.0 // indirect
-	go.opentelemetry.io/otel/trace v1.43.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.21.0
-	golang.org/x/term v0.44.0 // indirect
-	golang.org/x/text v0.39.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/term v0.45.0 // indirect
+	golang.org/x/text v0.40.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.36.3 // indirect
