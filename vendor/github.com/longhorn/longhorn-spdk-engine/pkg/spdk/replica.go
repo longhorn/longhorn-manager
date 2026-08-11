@@ -15,7 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
-	retrygo "github.com/avast/retry-go/v5"
+	retrygo "github.com/avast/retry-go/v4"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -2716,15 +2716,7 @@ func (r *Replica) SnapshotCloneDstFinish(spdkClient *spdkclient.Client, cloneMod
 		// entrypoint snapshot. SPDK can return EBUSY when another SetParent
 		// targeting the same parent is in flight. Retry to absorb that.
 		var set bool
-		if err := retrygo.New(
-			retrygo.Attempts(setParentRetryAttempts),
-			retrygo.Delay(setParentRetryDelay),
-			retrygo.DelayType(retrygo.BackOffDelay),
-			retrygo.LastErrorOnly(true),
-			retrygo.OnRetry(func(n uint, err error) {
-				r.log.WithError(err).Debugf("BdevLvolSetParent returned busy (attempt %d), probably there is another SetParent targeting the same parent in flight, retrying", n+1)
-			}),
-		).Do(
+		if err := retrygo.Do(
 			func() error {
 				var setParentErr error
 				set, setParentErr = spdkClient.BdevLvolSetParent(r.Head.Alias, epAlias)
@@ -2733,6 +2725,13 @@ func (r *Replica) SnapshotCloneDstFinish(spdkClient *spdkclient.Client, cloneMod
 				}
 				return setParentErr
 			},
+			retrygo.Attempts(setParentRetryAttempts),
+			retrygo.Delay(setParentRetryDelay),
+			retrygo.DelayType(retrygo.BackOffDelay),
+			retrygo.LastErrorOnly(true),
+			retrygo.OnRetry(func(n uint, err error) {
+				r.log.WithError(err).Debugf("BdevLvolSetParent returned busy (attempt %d), probably there is another SetParent targeting the same parent in flight, retrying", n+1)
+			}),
 		); err != nil {
 			return err
 		}

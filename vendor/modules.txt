@@ -25,9 +25,6 @@ github.com/avast/retry-go
 # github.com/avast/retry-go/v4 v4.7.0
 ## explicit; go 1.20
 github.com/avast/retry-go/v4
-# github.com/avast/retry-go/v5 v5.0.0
-## explicit; go 1.20
-github.com/avast/retry-go/v5
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -254,8 +251,8 @@ github.com/jinzhu/copier
 # github.com/json-iterator/go v1.1.12
 ## explicit; go 1.12
 github.com/json-iterator/go
-# github.com/klauspost/compress v1.18.1
-## explicit; go 1.23
+# github.com/klauspost/compress v1.19.1
+## explicit; go 1.24
 github.com/klauspost/compress/flate
 github.com/klauspost/compress/internal/le
 # github.com/kr/pretty v0.3.1
@@ -310,7 +307,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.8.1-0.20260805151852-965182d14959
+# github.com/longhorn/go-spdk-helper v0.9.0
 ## explicit; go 1.25.10
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -319,35 +316,26 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.13.0-dev-20260712
+# github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20260811002413-f97d5257ac06
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-<<<<<<< HEAD
-# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260730045117-4bd16a4f7e2a
-=======
-# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260811011024-affaada95801
->>>>>>> 979a1778 (fix(clone): update vendors for linked clone refactor)
+# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260811020414-2b5d65ffe205
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.12.0
+# github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260809094116-11ca196ed2f8
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-<<<<<<< HEAD
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260729150354-65c8c6a10598
+# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260811013036-d19dbb3abcea
 ## explicit; go 1.25.10
-=======
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260811004518-ddc112d81591
-## explicit; go 1.26.0
->>>>>>> 979a1778 (fix(clone): update vendors for linked clone refactor)
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
 github.com/longhorn/longhorn-spdk-engine/pkg/log
@@ -421,8 +409,8 @@ github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/prometheus/client_golang v1.23.2
-## explicit; go 1.23.0
+# github.com/prometheus/client_golang v1.24.1
+## explicit; go 1.25.0
 github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil
 github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil/header
 github.com/prometheus/client_golang/prometheus
@@ -433,12 +421,12 @@ github.com/prometheus/client_golang/prometheus/promhttp/internal
 # github.com/prometheus/client_model v0.6.2
 ## explicit; go 1.22.0
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.67.5
-## explicit; go 1.24.0
+# github.com/prometheus/common v0.70.1
+## explicit; go 1.25.0
 github.com/prometheus/common/expfmt
 github.com/prometheus/common/model
-# github.com/prometheus/procfs v0.19.2
-## explicit; go 1.24.0
+# github.com/prometheus/procfs v0.21.1
+## explicit; go 1.25.0
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
@@ -560,14 +548,14 @@ github.com/x448/float16
 # github.com/yusufpapurcu/wmi v1.2.4
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi
-# go.opentelemetry.io/otel v1.43.0
+# go.opentelemetry.io/otel v1.44.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/attribute
 go.opentelemetry.io/otel/attribute/internal
 go.opentelemetry.io/otel/attribute/internal/xxhash
 go.opentelemetry.io/otel/codes
-go.opentelemetry.io/otel/semconv/v1.40.0
-# go.opentelemetry.io/otel/trace v1.43.0
+go.opentelemetry.io/otel/semconv/v1.41.0
+# go.opentelemetry.io/otel/trace v1.44.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
@@ -578,13 +566,13 @@ go.uber.org/atomic
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
-# go.yaml.in/yaml/v2 v2.4.3
+# go.yaml.in/yaml/v2 v2.4.4
 ## explicit; go 1.15
 go.yaml.in/yaml/v2
 # go.yaml.in/yaml/v3 v3.0.4
 ## explicit; go 1.16
 go.yaml.in/yaml/v3
-# golang.org/x/crypto v0.53.0
+# golang.org/x/crypto v0.54.0
 ## explicit; go 1.25.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -607,7 +595,7 @@ golang.org/x/exp/slog/internal/buffer
 # golang.org/x/mod v0.37.0
 ## explicit; go 1.25.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.56.0
+# golang.org/x/net v0.57.0
 ## explicit; go 1.25.0
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
@@ -623,10 +611,10 @@ golang.org/x/net/trace
 ## explicit; go 1.25.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.21.0
+# golang.org/x/sync v0.22.0
 ## explicit; go 1.25.0
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.46.0
+# golang.org/x/sys v0.47.0
 ## explicit; go 1.25.0
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -634,10 +622,10 @@ golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.44.0
+# golang.org/x/term v0.45.0
 ## explicit; go 1.25.0
 golang.org/x/term
-# golang.org/x/text v0.39.0
+# golang.org/x/text v0.40.0
 ## explicit; go 1.25.0
 golang.org/x/text/cases
 golang.org/x/text/internal
@@ -652,10 +640,10 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.15.0
 ## explicit; go 1.25.0
 golang.org/x/time/rate
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.82.1
+# google.golang.org/grpc v1.83.0
 ## explicit; go 1.25.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
