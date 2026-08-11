@@ -168,6 +168,10 @@ func getExistingDataEvidence(volume *longhornclient.Volume) (string, error) {
 	}
 
 	for _, controller := range volume.Controllers {
+		if !controller.Running {
+			return "", fmt.Errorf("engine %v is not running", controller.Name)
+		}
+
 		actualSize, err := strconv.ParseInt(controller.ActualSize, 10, 64)
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to parse actual size %v reported by engine %v", controller.ActualSize, controller.Name)

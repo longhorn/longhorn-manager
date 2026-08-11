@@ -20,9 +20,21 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-a-e-0", ActualSize: "0"},
+					{Name: "vol-a-e-0", Running: true, ActualSize: "0"},
 				},
 			},
+		},
+		{
+			name: "healthy volume with stopped engine cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-a1",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-a1-e-0", ActualSize: "0"},
+				},
+			},
+			expectError: true,
 		},
 		{
 			name: "volume without engine reported actual size cannot be encrypted",
@@ -31,7 +43,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-b-e-0"},
+					{Name: "vol-b-e-0", Running: true},
 				},
 			},
 			expectError: true,
@@ -52,7 +64,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-b2-e-0", ActualSize: "4194304"},
+					{Name: "vol-b2-e-0", Running: true, ActualSize: "4194304"},
 				},
 			},
 		},
@@ -63,7 +75,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessDegraded),
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-c-e-0", ActualSize: "0"},
+					{Name: "vol-c-e-0", Running: true, ActualSize: "0"},
 				},
 			},
 			expectError: true,
@@ -75,7 +87,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessUnknown),
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-d-e-0", ActualSize: "0"},
+					{Name: "vol-d-e-0", Running: true, ActualSize: "0"},
 				},
 			},
 			expectError: true,
@@ -87,7 +99,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-e-e-0", ActualSize: "20971520"},
+					{Name: "vol-e-e-0", Running: true, ActualSize: "20971520"},
 				},
 			},
 			expectError: true,
@@ -100,7 +112,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				FromBackup: "s3://backupbucket@us-east-1/?backup=backup-1&volume=vol-x",
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-f-e-0", ActualSize: "0"},
+					{Name: "vol-f-e-0", Running: true, ActualSize: "0"},
 				},
 			},
 			expectError: true,
@@ -113,7 +125,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				DataSource: "vol://vol-x",
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-g-e-0", ActualSize: "0"},
+					{Name: "vol-g-e-0", Running: true, ActualSize: "0"},
 				},
 			},
 			expectError: true,
@@ -126,7 +138,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				LastBackup: "backup-1",
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-h-e-0", ActualSize: "0"},
+					{Name: "vol-h-e-0", Running: true, ActualSize: "0"},
 				},
 			},
 			expectError: true,
@@ -139,7 +151,7 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 				Robustness:   string(longhorn.VolumeRobustnessHealthy),
 				BackingImage: "bi-1",
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-i-e-0", ActualSize: "0"},
+					{Name: "vol-i-e-0", Running: true, ActualSize: "0"},
 				},
 			},
 			expectError: true,
