@@ -58,15 +58,16 @@ func TestCanFormatEncryptedVolume(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "volume with actual size below the LUKS2 header size can be encrypted",
+			name: "volume with non-zero actual size cannot be encrypted",
 			volume: &longhornclient.Volume{
 				Name:       "vol-b2",
 				Encrypted:  true,
 				Robustness: string(longhorn.VolumeRobustnessHealthy),
 				Controllers: []longhornclient.Controller{
-					{Name: "vol-b2-e-0", Running: true, ActualSize: "4194304"},
+					{Name: "vol-b2-e-0", Running: true, ActualSize: "4096"},
 				},
 			},
+			expectError: true,
 		},
 		{
 			name: "degraded volume cannot be encrypted",

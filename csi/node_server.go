@@ -176,10 +176,10 @@ func getExistingDataEvidence(volume *longhornclient.Volume) (string, error) {
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to parse actual size %v reported by engine %v", controller.ActualSize, controller.Name)
 		}
-		// Compare with the LUKS2 header size rather than with 0, because an engine can report a
-		// small allocation for a volume that has never been written by a workload, while an
-		// encrypted volume in use always occupies at least the LUKS2 header.
-		if actualSize >= crypto.Luks2MinimalVolumeSize {
+		// Treat any non-zero allocation as evidence of existing data. A previously initialized
+		// encrypted volume can legitimately stay below the full LUKS2 reserved area because
+		// snapshot sizes only account for the blocks actually written by luksFormat/workloads.
+		if actualSize > 0 {
 			return fmt.Sprintf("engine %v reports actual size %v", controller.Name, actualSize), nil
 		}
 	}
