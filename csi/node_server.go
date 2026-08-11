@@ -129,6 +129,65 @@ func getV2VolumeEndpointForNode(volume *longhornclient.Volume, nodeID string) (s
 	return "", fmt.Errorf("volume %s has no ready controller on node %s", volume.Name, nodeID)
 }
 
+// canFormatEncryptedVolume checks if it is safe to encrypt (luksFormat) the device of an encrypted
+// volume whose device is reported as containing no filesystem.
+//
+// A Longhorn device can be present and readable but transiently serve zeros while the engine is
+// unhealthy, for instance while the volume is degraded or the engine is restarting. In that window
+// both blkid and `cryptsetup isLuks` report the device as blank, which is indistinguishable from a
+// brand new volume. Encrypting the device then overwrites the existing LUKS header and permanently
+// destroys the data. Hence, the check fails closed and lets the caller retry the staging later
+// whenever the blank device report cannot be trusted.
+// Ref: https://github.com/longhorn/longhorn/issues/13668
+func canFormatEncryptedVolume(volume *longhornclient.Volume) error {
+	if volume == nil {
+		return fmt.Errorf("volume is required")
+	}
+
+	if reason := getExistingDataEvidence(volume); reason != "" {
+		return fmt.Errorf("device of volume %v is reported as blank but %v", volume.Name, reason)
+	}
+
+	if volume.Robustness != string(longhorn.VolumeRobustnessHealthy) {
+		return fmt.Errorf("device of volume %v is reported as blank but the volume robustness is %v rather than %v",
+			volume.Name, volume.Robustness, longhorn.VolumeRobustnessHealthy)
+	}
+
+	return nil
+}
+
+// getExistingDataEvidence returns a non-empty reason if Longhorn reports that the volume already
+// contains data. A device of such a volume must never be formatted.
+func getExistingDataEvidence(volume *longhornclient.Volume) string {
+	for _, controller := range volume.Controllers {
+		// ActualSize is empty when the engine has not reported it yet.
+		actualSize, err := strconv.ParseInt(controller.ActualSize, 10, 64)
+		if err != nil {
+			continue
+		}
+		// Compare with the LUKS2 header size rather than with 0, because an engine can report a
+		// small allocation for a volume that has never been written by a workload, while an
+		// encrypted volume in use always occupies at least the LUKS2 header.
+		if actualSize >= crypto.Luks2MinimalVolumeSize {
+			return fmt.Sprintf("engine %v reports actual size %v", controller.Name, actualSize)
+		}
+	}
+
+	if volume.FromBackup != "" {
+		return fmt.Sprintf("it is restored from backup %v", volume.FromBackup)
+	}
+
+	if volume.DataSource != "" {
+		return fmt.Sprintf("it is created from data source %v", volume.DataSource)
+	}
+
+	if volume.LastBackup != "" {
+		return fmt.Sprintf("it has backup %v", volume.LastBackup)
+	}
+
+	return ""
+}
+
 // NodePublishVolume will mount the volume /dev/longhorn/<volume_name> to target_path
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
@@ -575,6 +634,12 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
+			// Fail closed if the blank device report cannot be trusted, since encrypting a device
+			// that already contains a LUKS header destroys the data permanently.
+			// Ref: https://github.com/longhorn/longhorn/issues/13668
+			if err := canFormatEncryptedVolume(volume); err != nil {
+				return nil, status.Errorf(codes.Aborted, "cannot encrypt device %v for volume %v: %v", devicePath, volumeID, err)
+			}
 			if err := crypto.EncryptVolume(devicePath, passphrase, cryptoParams); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}

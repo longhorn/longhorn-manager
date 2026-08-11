@@ -4,7 +4,131 @@ import (
 	"testing"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+func TestCanFormatEncryptedVolume(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		volume      *longhornclient.Volume
+		expectError bool
+	}{
+		{
+			name: "healthy blank volume can be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-a",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-a-e-0", ActualSize: "0"},
+				},
+			},
+		},
+		{
+			name: "volume without engine reported actual size can be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-b",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-b-e-0"},
+				},
+			},
+		},
+		{
+			name: "volume with actual size below the LUKS2 header size can be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-b2",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-b2-e-0", ActualSize: "4194304"},
+				},
+			},
+		},
+		{
+			name: "degraded volume cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-c",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessDegraded),
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-c-e-0", ActualSize: "0"},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "volume with unknown robustness cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-d",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessUnknown),
+			},
+			expectError: true,
+		},
+		{
+			name: "volume with data cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-e",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				Controllers: []longhornclient.Controller{
+					{Name: "vol-e-e-0", ActualSize: "20971520"},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "volume restored from backup cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-f",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				FromBackup: "s3://backupbucket@us-east-1/?backup=backup-1&volume=vol-x",
+			},
+			expectError: true,
+		},
+		{
+			name: "cloned volume cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-g",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				DataSource: "vol://vol-x",
+			},
+			expectError: true,
+		},
+		{
+			name: "volume with backup cannot be encrypted",
+			volume: &longhornclient.Volume{
+				Name:       "vol-h",
+				Encrypted:  true,
+				Robustness: string(longhorn.VolumeRobustnessHealthy),
+				LastBackup: "backup-1",
+			},
+			expectError: true,
+		},
+		{
+			name:        "missing volume cannot be encrypted",
+			volume:      nil,
+			expectError: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := canFormatEncryptedVolume(tc.volume)
+			if tc.expectError {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
 
 func TestGetV2VolumeEndpointForNode(t *testing.T) {
 	for _, tc := range []struct {
