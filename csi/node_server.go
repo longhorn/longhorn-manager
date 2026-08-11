@@ -163,6 +163,10 @@ func canFormatEncryptedVolume(volume *longhornclient.Volume) error {
 // contains data. A device of such a volume must never be formatted. It returns an error if the
 // volume information is not conclusive, so that the caller can fail closed as well.
 func getExistingDataEvidence(volume *longhornclient.Volume) (string, error) {
+	if len(volume.Controllers) == 0 {
+		return "", fmt.Errorf("volume %v has no engine to report its actual size", volume.Name)
+	}
+
 	for _, controller := range volume.Controllers {
 		actualSize, err := strconv.ParseInt(controller.ActualSize, 10, 64)
 		if err != nil {
