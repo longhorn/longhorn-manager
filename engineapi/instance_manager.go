@@ -29,6 +29,10 @@ const (
 	MinInstanceManagerAPIVersion     = 1
 	UnknownInstanceManagerAPIVersion = 0
 
+	// MinInstanceManagerAPIVersionForReplicaHostACL is the minimum IM API version
+	// whose initiators present the internal host NQN, so restricted replicas stay reachable.
+	MinInstanceManagerAPIVersionForReplicaHostACL = 8
+
 	UnknownInstanceManagerProxyAPIVersion = 0
 	// UnsupportedInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
 	UnsupportedInstanceManagerProxyAPIVersion = 0
@@ -535,6 +539,9 @@ type ReplicaInstanceCreateRequest struct {
 	EngineCLIAPIVersion           int
 	Encrypted                     bool
 	ExtraLUKS2HeaderSpaceRequired bool
+	// RestrictHostACL requests that every subsystem the replica exposes be
+	// restricted to the internal host NQN (v2 data engine only).
+	RestrictHostACL bool
 }
 
 // EngineFrontendInstanceCreateRequest contains the parameters to create an engine frontend (initiator) instance
@@ -689,6 +696,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 			DiskName:         req.DiskName,
 			DiskUUID:         req.Replica.Spec.DiskID,
 			BackingImageName: req.Replica.Spec.BackingImage,
+			RestrictHostACL:  req.RestrictHostACL,
 		},
 	})
 	if err != nil {

@@ -437,6 +437,11 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
+	restrictHostACL, err := rc.shouldRestrictReplicaHostACL(r)
+	if err != nil {
+		return nil, err
+	}
+
 	r.Status.Starting = true
 	replicaName := r.Name
 	if r, err = rc.ds.UpdateReplicaStatus(r); err != nil {
@@ -452,7 +457,36 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		DataLocality:                  v.Spec.DataLocality,
 		EngineCLIAPIVersion:           cliAPIVersion,
 		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v),
+		RestrictHostACL:               restrictHostACL,
 	})
+}
+
+// shouldRestrictReplicaHostACL evaluates, fresh on every replica create, whether
+// every non-terminated v2 instance manager presents the internal host NQN on attach.
+func (rc *ReplicaController) shouldRestrictReplicaHostACL(r *longhorn.Replica) (bool, error) {
+	if !types.IsDataEngineV2(r.Spec.DataEngine) {
+		return false, nil
+	}
+
+	ims, err := rc.ds.ListInstanceManagersRO()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list instance managers to evaluate the replica host-ACL gate")
+	}
+	for _, im := range ims {
+		// v1 instance managers never act as NVMe-oF initiators for v2 replicas.
+		if !types.IsDataEngineV2(im.Spec.DataEngine) {
+			continue
+		}
+		// Only stopped/error are safe to skip; starting/unknown pods may resurface old code.
+		switch im.Status.CurrentState {
+		case longhorn.InstanceManagerStateStopped, longhorn.InstanceManagerStateError:
+			continue
+		}
+		if im.Status.APIVersion < engineapi.MinInstanceManagerAPIVersionForReplicaHostACL {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (rc *ReplicaController) getDiskNameFromUUID(r *longhorn.Replica) (string, error) {
