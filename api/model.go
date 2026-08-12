@@ -65,6 +65,7 @@ type Volume struct {
 	ReplicaRebuildingBandwidthLimit int64                                  `json:"replicaRebuildingBandwidthLimit"`
 	UblkQueueDepth                  int                                    `json:"ublkQueueDepth"`
 	UblkNumberOfQueue               int                                    `json:"ublkNumberOfQueue"`
+	NvmeTcpNrIoQueues               int                                    `json:"nvmeTcpNrIoQueues"`
 	FreezeFilesystemForSnapshot     longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
 	BackupTargetName                string                                 `json:"backupTargetName"`
 	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`

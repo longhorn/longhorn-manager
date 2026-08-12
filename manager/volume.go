@@ -226,6 +226,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			RebuildConcurrentSyncLimit:      spec.RebuildConcurrentSyncLimit,
 			UblkQueueDepth:                  spec.UblkQueueDepth,
 			UblkNumberOfQueue:               spec.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues:               spec.NvmeTcpNrIoQueues,
 		},
 	}
 

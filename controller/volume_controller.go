@@ -2976,6 +2976,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 				ef.Spec.Frontend = v.Spec.Frontend
 				ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
 				ef.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+				ef.Spec.NvmeTcpNrIoQueues = v.Spec.NvmeTcpNrIoQueues
 				ef.Spec.DisableFrontend = v.Status.FrontendDisabled
 				ef.Spec.DesireState = longhorn.InstanceStateRunning
 				// During an engine switchover, processEngineSwitchover drives
@@ -3101,6 +3102,7 @@ func (c *VolumeController) openVolumeDependentResourcesEC(v *longhorn.Volume, e 
 			ef.Spec.Frontend = v.Spec.Frontend
 			ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
 			ef.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+			ef.Spec.NvmeTcpNrIoQueues = v.Spec.NvmeTcpNrIoQueues
 			ef.Spec.DisableFrontend = v.Status.FrontendDisabled
 			ef.Spec.DesireState = longhorn.InstanceStateRunning
 			// The v2 engine exposes its NVMe-TCP target on StorageIP, so the initiator
@@ -5531,6 +5533,7 @@ func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, e *longhorn.
 			Frontend:          v.Spec.Frontend,
 			UblkQueueDepth:    v.Spec.UblkQueueDepth,
 			UblkNumberOfQueue: v.Spec.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues: v.Spec.NvmeTcpNrIoQueues,
 			EngineName:        engineName,
 			DisableFrontend:   v.Status.FrontendDisabled,
 		},
