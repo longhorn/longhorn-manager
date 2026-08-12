@@ -246,6 +246,23 @@ func (rcs *ReplicaScheduler) buildLinkedCloneSrcNodeDiskMap(replica *longhorn.Re
 func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
 	errs = multierr.NewMultiError()
 
+	nodesUnderUpgrade := map[string]bool{}
+	if types.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
+		imuList, err := rcs.ds.ListInstanceManagerUpgradesRO()
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to list instance manager upgrades while scheduling replica %v, continuing without upgrade-node exclusion", schedulingReplica.Name)
+		} else {
+			for _, imu := range imuList {
+				if imu.Status.State == longhorn.InstanceManagerUpgradeStateRelocatingEngines ||
+					imu.Status.State == longhorn.InstanceManagerUpgradeStateWaitingForSourceIM ||
+					imu.Status.State == longhorn.InstanceManagerUpgradeStateRestoringEngines {
+					logrus.Debugf("Excluding node %v from replica scheduling because it has an active instance manager upgrade in state %v", imu.Spec.NodeID, imu.Status.State)
+					nodesUnderUpgrade[imu.Spec.NodeID] = true
+				}
+			}
+		}
+	}
+
 	// If the replica has a hard node affinity, filter nodes based on that.
 	if schedulingReplica.Spec.HardNodeAffinity != "" {
 		node, exist := nodes[schedulingReplica.Spec.HardNodeAffinity]
@@ -298,6 +315,13 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, 
 			}
 			log.Debugf("Excluding node in node candidates because data engine image on node is not ready")
 			continue
+		}
+
+		if types.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
+			if nodesUnderUpgrade[node.Name] {
+				log.Debugf("Excluding node %v from candidates because it has an active instance manager upgrade", node.Name)
+				continue
+			}
 		}
 
 		nodeCandidates[node.Name] = node

@@ -242,6 +242,52 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	require.Contains(t, err.Error(), "cannot find the current engine frontend")
 }
 
+func TestValidateSettingBlocksV2IMUpgradeStartTimeWhenActiveIMUExistsWithoutIMUC(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	testCases := map[string]longhorn.InstanceManagerUpgradeStatus{
+		"active relocating IMU": {
+			State: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		},
+		"pending IMU with startedAt": {
+			State:     longhorn.InstanceManagerUpgradeStatePending,
+			StartedAt: "2026-04-20T15:00:00Z",
+		},
+	}
+
+	for name, status := range testCases {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+			kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+			imu := &longhorn.InstanceManagerUpgrade{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-imu",
+					Namespace: testNamespace,
+				},
+				Spec: longhorn.InstanceManagerUpgradeSpec{
+					NodeID:      "test-node-1",
+					TargetImage: "im:target",
+				},
+				Status: status,
+			}
+			createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(testNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, imuIndexer.Add(createdIMU))
+
+			err = ds.ValidateSetting(string(types.SettingNameV2InstanceManagerUpgradeStartTime), "2026-04-20T15:00:00Z")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "actively in progress")
+			assert.Contains(t, err.Error(), "IMU")
+		})
+	}
+}
+
 func TestValidateSettingDefaultControlPath(t *testing.T) {
 	const testNamespace = "longhorn-system"
 

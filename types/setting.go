@@ -190,6 +190,9 @@ const (
 	SettingNameEngineImagePodLivenessProbeTimeout                       = SettingName("engine-image-pod-liveness-probe-timeout")
 	SettingNameEngineImagePodLivenessProbeFailureThreshold              = SettingName("engine-image-pod-liveness-probe-failure-threshold")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
+	SettingNameAllowV2InstanceManagerAutomaticUpgrade                   = SettingName("allow-v2-instance-manager-automatic-upgrade")
+	SettingNameV2InstanceManagerUpgradeStartTime                        = SettingName("v2-instance-manager-upgrade-start-time")
+	SettingNameV2InstanceManagerUpgradeTimeout                          = SettingName("v2-instance-manager-upgrade-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
@@ -324,6 +327,9 @@ var (
 		SettingNameEngineImagePodLivenessProbeTimeout,
 		SettingNameEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
+		SettingNameAllowV2InstanceManagerAutomaticUpgrade,
+		SettingNameV2InstanceManagerUpgradeStartTime,
+		SettingNameV2InstanceManagerUpgradeTimeout,
 		SettingNameLogPath,
 		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
@@ -492,6 +498,9 @@ var (
 		SettingNameEngineImagePodLivenessProbeTimeout:                       SettingDefinitionEngineImagePodLivenessProbeTimeout,
 		SettingNameEngineImagePodLivenessProbeFailureThreshold:              SettingDefinitionEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
+		SettingNameAllowV2InstanceManagerAutomaticUpgrade:                   SettingDefinitionAllowV2InstanceManagerAutomaticUpgrade,
+		SettingNameV2InstanceManagerUpgradeStartTime:                        SettingDefinitionV2InstanceManagerUpgradeStartTime,
+		SettingNameV2InstanceManagerUpgradeTimeout:                          SettingDefinitionV2InstanceManagerUpgradeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
 		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
@@ -1778,6 +1787,53 @@ var (
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 60,
+		},
+	}
+
+	SettingDefinitionAllowV2InstanceManagerAutomaticUpgrade = SettingDefinition{
+		DisplayName: "Allow V2 Instance Manager Automatic Upgrade",
+		Description: "This setting allows Longhorn to automatically upgrade V2 instance managers after Longhorn manager is upgraded. " +
+			"During the live upgrade, Longhorn may temporarily relocate engines, detach replicas from engines, and trigger replica rebuilding. " +
+			"When disabled, Longhorn does not automatically upgrade V2 instance managers, and existing V2 instance managers remain on the current image. " +
+			"If this setting is disabled while an automatic V2 instance manager upgrade is in progress, Longhorn allows the current node upgrade to finish but does not start upgrades on additional nodes.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
+	}
+
+	SettingDefinitionV2InstanceManagerUpgradeStartTime = SettingDefinition{
+		DisplayName: "V2 Instance Manager Upgrade Start Time",
+		Description: "In RFC3339 format. Specifies when the rolling upgrade of V2 instance managers should begin. " +
+			"This provides flexibility for scheduling the upgrade at a preferred time. If empty, the upgrade starts immediately. " +
+			"Updates to this setting are rejected while an upgrade is actively in progress.\n\n" +
+			"Example: 2026-04-20T15:00:00Z\n\n",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
+	}
+
+	SettingDefinitionV2InstanceManagerUpgradeTimeout = SettingDefinition{
+		DisplayName: "V2 Instance Manager Upgrade Timeout",
+		Description: "In minutes. Since the V2 instance manager is upgraded node by node, an unexpected issue on one node could block upgrades on the remaining nodes. " +
+			"This timeout defines how long the timed phases of a single-node upgrade can run before the upgrade is aborted, allowing other nodes to continue their upgrade process. " +
+			"It applies while the upgrade is waiting in Pending, relocating engines, waiting for the source instance manager, or restoring engines, but not while waiting for post-restore volume health. " +
+			"The default value is 60 minutes.\n\n" +
+			"**Important**: Changes to this setting take effect immediately and apply to all in-flight upgrade operations. " +
+			"Increasing the timeout gives more time to struggling upgrades; decreasing it may cause currently running upgrades to abort if they exceed the new limit.\n\n",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "60",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
 		},
 	}
 
