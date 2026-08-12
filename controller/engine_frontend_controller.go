@@ -694,6 +694,20 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		}
 	}
 
+	// Check ef.Spec.Frontend instead of the computed frontend so that
+	// maintenance-mode attach (DisableFrontend) still resolves the setting
+	// fallback; the stored value is used when the frontend is enabled later.
+	nvmeTcpNrIoQueues := ef.Spec.NvmeTcpNrIoQueues
+	if types.IsDataEngineV2(ef.Spec.DataEngine) && ef.Spec.Frontend == longhorn.VolumeFrontendBlockDev && nvmeTcpNrIoQueues == 0 {
+		nvmeTcpNrIoQueuesInt64, err := efc.ds.GetSettingAsIntByDataEngine(types.SettingNameDefaultNvmeTcpNrIoQueues, ef.Spec.DataEngine)
+		if err != nil {
+			efc.logger.WithError(err).Warnf("Failed to get %v setting, connecting with the kernel default number of I/O queues",
+				types.SettingNameDefaultNvmeTcpNrIoQueues)
+		} else {
+			nvmeTcpNrIoQueues = int(nvmeTcpNrIoQueuesInt64)
+		}
+	}
+
 	ef.Status.Starting = true
 	efName := ef.Name
 	if ef, err = efc.ds.UpdateEngineFrontendStatus(ef); err != nil {
@@ -712,6 +726,7 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		VolumeFrontend:                frontend,
 		UblkQueueDepth:                ublkQueueDepth,
 		UblkNumberOfQueue:             ublkNumberOfQueue,
+		NvmeTcpNrIoQueues:             nvmeTcpNrIoQueues,
 		TargetIP:                      ef.Spec.TargetIP,
 		TargetPort:                    ef.Spec.TargetPort,
 		EngineName:                    ef.Spec.EngineName,

@@ -543,6 +543,7 @@ type EngineFrontendInstanceCreateRequest struct {
 	VolumeFrontend                longhorn.VolumeFrontend
 	UblkQueueDepth                int
 	UblkNumberOfQueue             int
+	NvmeTcpNrIoQueues             int
 	TargetIP                      string
 	TargetPort                    int
 	EngineName                    string
@@ -600,6 +601,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 			Frontend:          frontend,
 			UblkQueueDepth:    req.UblkQueueDepth,
 			UblkNumberOfQueue: req.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues: req.NvmeTcpNrIoQueues,
 			TargetAddress:     targetAddress,
 			EngineName:        req.EngineName,
 		},

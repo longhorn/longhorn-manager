@@ -188,6 +188,14 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.UblkQueueDepth = int64(depth)
 	}
 
+	if nvmeTcpNrIoQueues, ok := volOptions["nvmeTcpNrIoQueues"]; ok {
+		nrIoQueues, err := strconv.Atoi(nvmeTcpNrIoQueues)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter nvmeTcpNrIoQueues")
+		}
+		vol.NvmeTcpNrIoQueues = int64(nrIoQueues)
+	}
+
 	if replicaAutoBalance, ok := volOptions["replicaAutoBalance"]; ok {
 		err := types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(replicaAutoBalance))
 		if err != nil {

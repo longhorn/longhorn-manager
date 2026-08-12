@@ -1826,6 +1826,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameDefaultBackupBlockSize:                                   true,
 		types.SettingNameReplicaRebuildingBandwidthLimit:                          true,
 		types.SettingNameDefaultUblkQueueDepth:                                    true,
+		types.SettingNameDefaultNvmeTcpNrIoQueues:                                 true,
 		types.SettingNameDefaultUblkNumberOfQueue:                                 true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
