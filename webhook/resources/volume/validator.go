@@ -81,6 +81,9 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
 	}
 
+	if err := validateNvmeTcpNrIoQueues(volume.Spec.NvmeTcpNrIoQueues, volume.Spec.DataEngine); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 	if err := validateUblkNumberOfQueue(volume.Spec.UblkNumberOfQueue); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
@@ -265,6 +268,9 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
 	}
 
+	if err := validateNvmeTcpNrIoQueues(newVolume.Spec.NvmeTcpNrIoQueues, newVolume.Spec.DataEngine); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 	if err := validateUblkNumberOfQueue(newVolume.Spec.UblkNumberOfQueue); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
@@ -733,6 +739,19 @@ func validateReplicaCount(cloneMode longhorn.CloneMode, dataLocality longhorn.Da
 		if replicaCount != 1 {
 			return werror.NewInvalidError(fmt.Sprintf("number of replica count should be 1 when data locality is %v", longhorn.DataLocalityStrictLocal), "")
 		}
+	}
+	return nil
+}
+
+func validateNvmeTcpNrIoQueues(n int, dataEngine longhorn.DataEngineType) error {
+	if n == 0 {
+		return nil
+	}
+	if n < 1 || n > 128 {
+		return fmt.Errorf("NVMe-TCP number of I/O queues must be either 0 (meaning unspecified) or between 1 and 128. Got %d", n)
+	}
+	if !types.IsDataEngineV2(dataEngine) {
+		return fmt.Errorf("NVMe-TCP number of I/O queues is only supported by data engine v2. Got data engine %v", dataEngine)
 	}
 	return nil
 }

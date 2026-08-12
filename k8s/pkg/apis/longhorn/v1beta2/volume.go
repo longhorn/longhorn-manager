@@ -313,6 +313,12 @@ type VolumeSpec struct {
 	// ublkNumberOfQueue controls the number of queues for ublk frontend.
 	// +optional
 	UblkNumberOfQueue int `json:"ublkNumberOfQueue,omitempty"`
+	// nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+	// creates when connecting the blockdev frontend over NVMe-TCP.
+	// 0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+	// Takes effect on (re)attach.
+	// +optional
+	NvmeTcpNrIoQueues int `json:"nvmeTcpNrIoQueues,omitempty"`
 	// +optional
 	FromBackup string `json:"fromBackup"`
 	// +optional

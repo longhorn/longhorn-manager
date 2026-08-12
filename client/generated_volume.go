@@ -125,6 +125,8 @@ type Volume struct {
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
+	NvmeTcpNrIoQueues int64 `json:"nvmeTcpNrIoQueues,omitempty" yaml:"nvme_tcp_nr_io_queues,omitempty"`
+
 	UblkNumberOfQueue int64 `json:"ublkNumberOfQueue,omitempty" yaml:"ublk_number_of_queue,omitempty"`
 
 	UblkQueueDepth int64 `json:"ublkQueueDepth,omitempty" yaml:"ublk_queue_depth,omitempty"`
