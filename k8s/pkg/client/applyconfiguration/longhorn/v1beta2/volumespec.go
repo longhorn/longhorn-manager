@@ -32,7 +32,12 @@ type VolumeSpecApplyConfiguration struct {
 	// ublkQueueDepth controls the depth of each queue for ublk frontend.
 	UblkQueueDepth *int `json:"ublkQueueDepth,omitempty"`
 	// ublkNumberOfQueue controls the number of queues for ublk frontend.
-	UblkNumberOfQueue         *int                                           `json:"ublkNumberOfQueue,omitempty"`
+	UblkNumberOfQueue *int `json:"ublkNumberOfQueue,omitempty"`
+	// nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+	// creates when connecting the blockdev frontend over NVMe-TCP.
+	// 0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+	// Takes effect on (re)attach.
+	NvmeTcpNrIoQueues         *int                                           `json:"nvmeTcpNrIoQueues,omitempty"`
 	FromBackup                *string                                        `json:"fromBackup,omitempty"`
 	RestoreVolumeRecurringJob *longhornv1beta2.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob,omitempty"`
 	DataSource                *longhornv1beta2.VolumeDataSource              `json:"dataSource,omitempty"`
@@ -134,6 +139,14 @@ func (b *VolumeSpecApplyConfiguration) WithUblkQueueDepth(value int) *VolumeSpec
 // If called multiple times, the UblkNumberOfQueue field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithUblkNumberOfQueue(value int) *VolumeSpecApplyConfiguration {
 	b.UblkNumberOfQueue = &value
+	return b
+}
+
+// WithNvmeTcpNrIoQueues sets the NvmeTcpNrIoQueues field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the NvmeTcpNrIoQueues field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithNvmeTcpNrIoQueues(value int) *VolumeSpecApplyConfiguration {
+	b.NvmeTcpNrIoQueues = &value
 	return b
 }
 
