@@ -133,7 +133,7 @@ func getV2VolumeEndpointForNode(volume *longhornclient.Volume, nodeID string) (s
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
 
-	log.Infof("NodePublishVolume is called with req %+v", req)
+	logCSIRequest(log, "NodePublishVolume", req)
 
 	targetPath := req.GetTargetPath()
 	if targetPath == "" {
@@ -424,7 +424,7 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeUnpublishVolume"})
 
-	log.Infof("NodeUnpublishVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeUnpublishVolume", req)
 
 	targetPath := req.GetTargetPath()
 	if targetPath == "" {
@@ -447,7 +447,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeStageVolume"})
 
-	log.Infof("NodeStageVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeStageVolume", req)
 
 	stagingTargetPath := req.GetStagingTargetPath()
 	if stagingTargetPath == "" {
@@ -662,7 +662,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeUnstageVolume"})
 
-	log.Infof("NodeUnstageVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeUnstageVolume", req)
 
 	stagingTargetPath := req.GetStagingTargetPath()
 	if stagingTargetPath == "" {
@@ -831,7 +831,7 @@ func (ns *NodeServer) NodeExpandSharedVolume(volumeName string) error {
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeExpandVolume"})
 
-	log.Infof("NodeExpandVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeExpandVolume", req)
 
 	if req.CapacityRange == nil {
 		return nil, status.Error(codes.InvalidArgument, "capacity range missing in request")
