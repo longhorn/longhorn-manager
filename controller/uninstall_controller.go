@@ -47,6 +47,7 @@ const (
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 	CRDOrphanName                 = "orphans.longhorn.io"
 	CRDSnapshotName               = "snapshots.longhorn.io"
+	CRDSnapshotGroupName          = "snapshotgroups.longhorn.io"
 	CRDShardGroupName             = "shardgroups.longhorn.io"
 	CRDShardName                  = "shards.longhorn.io"
 
@@ -205,6 +206,12 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDSnapshotGroupName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.SnapshotGroupInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.SnapshotGroupInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDShardGroupName, metav1.GetOptions{}); err == nil {
 		if _, err = ds.ShardGroupInformer.AddEventHandler(c.controlleeHandler()); err != nil {
@@ -516,6 +523,15 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteVolumes(volumes)
 	}
 
+	// Delete snapshot groups before snapshots. Otherwise the snapshot group
+	// controller marks groups Degraded when their member snapshots disappear.
+	if snapshotGroups, err := c.ds.ListSnapshotGroups(); err != nil {
+		return true, err
+	} else if len(snapshotGroups) > 0 {
+		c.logger.Infof("Found %d snapshot groups remaining", len(snapshotGroups))
+		return true, c.deleteSnapshotGroups(snapshotGroups)
+	}
+
 	if snapshots, err := c.ds.ListSnapshots(); err != nil {
 		return true, err
 	} else if len(snapshots) > 0 {
@@ -803,6 +819,42 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 		}
 	}
 	return
+}
+
+func (c *UninstallController) deleteSnapshotGroups(snapshotGroups map[string]*longhorn.SnapshotGroup) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete snapshot groups")
+	}()
+	for _, snapshotGroup := range snapshotGroups {
+		log := c.logger.WithField("snapshotGroup", snapshotGroup.Name)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if snapshotGroup.DeletionTimestamp == nil {
+			if errDelete := c.ds.DeleteSnapshotGroup(snapshotGroup.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("SnapshotGroup is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if snapshotGroup.DeletionTimestamp.Before(&timeout) {
+			log.Warn("SnapshotGroup deletion did not finish within timeout, removing finalizer forcibly")
+			if errRemove := c.ds.RemoveFinalizerForSnapshotGroup(snapshotGroup); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("SnapshotGroup is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return nil
 }
 
 func (c *UninstallController) deleteShardGroups(shardGroups map[string]*longhorn.ShardGroup) (err error) {
