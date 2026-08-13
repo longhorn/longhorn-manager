@@ -2890,6 +2890,9 @@ spec:
             description: RecurringJobSpec defines the desired state of the Longhorn
               recurring job
             properties:
+              backupTarget:
+                description: The backup target name of the backup.
+                type: string
               concurrency:
                 description: The concurrency of taking the snapshot/backup.
                 type: integer

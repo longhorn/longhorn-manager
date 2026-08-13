@@ -444,7 +444,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		// v2 backing image currently doesn't support backup
 		if types.IsDataEngineV1(volume.Spec.DataEngine) {
-			if err := bc.backupBackingImage(volume); err != nil {
+			if err := bc.backupBackingImage(volume, backupTargetName); err != nil {
 				return err
 			}
 		}
@@ -712,7 +712,7 @@ func (bc *BackupController) getEngineBinaryClient(volumeName string) (*engineapi
 }
 
 // validateBackingImageChecksum validates backing image checksum
-func (bc *BackupController) validateBackingImageChecksum(volName, biName string) (string, error) {
+func (bc *BackupController) validateBackingImageChecksum(backupTargetName, volName, biName string) (string, error) {
 	if biName == "" {
 		return "", nil
 	}
@@ -722,7 +722,7 @@ func (bc *BackupController) validateBackingImageChecksum(volName, biName string)
 		return "", err
 	}
 
-	bv, err := bc.ds.GetBackupVolumeRO(volName)
+	bv, err := bc.ds.GetBackupVolumeByBackupTargetAndVolumeRO(backupTargetName, volName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return "", err
 	}
@@ -736,7 +736,7 @@ func (bc *BackupController) validateBackingImageChecksum(volName, biName string)
 	return bi.Status.Checksum, nil
 }
 
-func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
+func (bc *BackupController) backupBackingImage(volume *longhorn.Volume, backupTargetName string) error {
 	if volume == nil {
 		return nil
 	}
@@ -752,7 +752,6 @@ func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
 		return errors.Wrapf(err, "failed to get backing image %v", biName)
 	}
 
-	backupTargetName := volume.Spec.BackupTargetName
 	if backupTargetName == "" {
 		backupTargetName = types.DefaultBackupTargetName
 	}
@@ -800,7 +799,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	}
 
 	// Backing image checksum validation
-	biChecksum, err := bc.validateBackingImageChecksum(volume.Name, volume.Spec.BackingImage)
+	biChecksum, err := bc.validateBackingImageChecksum(backupTarget.Name, volume.Name, volume.Spec.BackingImage)
 	if err != nil {
 		return nil, err
 	}

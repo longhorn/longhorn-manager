@@ -406,3 +406,87 @@ func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateRecurringJobsBackupTarget covers the per-job backup target
+// (longhorn/longhorn#11421). A job may now point at a backup target other than
+// the one its volumes use, so the target has to be verified to exist at
+// admission time: otherwise the job is accepted and then fails on every single
+// run, which is only visible in the job pod logs. An empty backup target must
+// stay valid because that is what every job predating the field carries, and it
+// means "use the volume's backup target".
+func TestValidateRecurringJobsBackupTarget(t *testing.T) {
+	const (
+		testNamespace        = "longhorn-system"
+		testBackupTargetName = "secondary-backup-target"
+	)
+
+	backupTarget := &longhorn.BackupTarget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testBackupTargetName,
+			Namespace: testNamespace,
+		},
+	}
+
+	newJob := func(name, backupTargetName string) longhorn.RecurringJobSpec {
+		return longhorn.RecurringJobSpec{
+			Name:         name,
+			Task:         longhorn.RecurringJobTypeBackup,
+			Cron:         "0 0 * * *",
+			Retain:       1,
+			BackupTarget: backupTargetName,
+		}
+	}
+
+	tests := map[string]struct {
+		existingObjects []runtime.Object
+		jobs            []longhorn.RecurringJobSpec
+		expectError     string
+	}{
+		"job without a backup target defers to the volume backup target": {
+			jobs: []longhorn.RecurringJobSpec{newJob("test-job", "")},
+		},
+		"job with an existing backup target is accepted": {
+			existingObjects: []runtime.Object{backupTarget.DeepCopy()},
+			jobs:            []longhorn.RecurringJobSpec{newJob("test-job", testBackupTargetName)},
+		},
+		"job with a nonexistent backup target is rejected": {
+			jobs:        []longhorn.RecurringJobSpec{newJob("test-job", testBackupTargetName)},
+			expectError: fmt.Sprintf("recurring job test-job has invalid backup target %v", testBackupTargetName),
+		},
+		"a nonexistent backup target on any job rejects the whole set": {
+			existingObjects: []runtime.Object{backupTarget.DeepCopy()},
+			jobs: []longhorn.RecurringJobSpec{
+				newJob("test-job-1", testBackupTargetName),
+				newJob("test-job-2", "missing-backup-target"),
+			},
+			expectError: "recurring job test-job-2 has invalid backup target missing-backup-target",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset(tc.existingObjects...) // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			informerFactories.Start(stopCh)
+
+			require.True(t, cache.WaitForCacheSync(stopCh,
+				ds.BackupTargetInformer.HasSynced,
+				ds.SettingInformer.HasSynced,
+			))
+
+			err := ds.ValidateRecurringJobs(tc.jobs)
+			if tc.expectError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectError)
+			}
+		})
+	}
+}

@@ -96,10 +96,25 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 			return werror.NewInvalidError(fmt.Sprintf("snapshot volume name %s and label volume name %s does not match", snapshotVolumeName, labelVolumeName), "")
 		}
 
-		//check if volume backup target matches labelbackup target
+		//check if recurring job backup target or volume backup target matches labelbackup target
 		volumeBackupTargetName := volume.Spec.BackupTargetName
 		if volumeBackupTargetName != backupTargetName {
-			return werror.NewInvalidError(fmt.Sprintf("volume backup target %s and label backup target %s does not match", volumeBackupTargetName, backupTargetName), "")
+			if backup.Spec.Labels == nil || backup.Spec.Labels[types.RecurringJobLabel] == "" {
+				return werror.NewInvalidError(fmt.Sprintf("volume backup target %s and label backup target %s does not match", volumeBackupTargetName, backupTargetName), "")
+			}
+			backupRecurringJobName := backup.Spec.Labels[types.RecurringJobLabel]
+			backupRecurringJob, err := b.ds.GetRecurringJobRO(backupRecurringJobName)
+			if err != nil {
+				return werror.NewInvalidError(fmt.Sprintf("failed to get recurring job %s: %v", backupRecurringJobName, err), "")
+			}
+
+			//check if an empty recurring job backup target means the recurring job is using the volume backup target
+			if backupRecurringJob.Spec.BackupTarget == "" {
+				return werror.NewInvalidError(fmt.Sprintf("volume backup target %s and label backup target %s does not match", volumeBackupTargetName, backupTargetName), "")
+			}
+			if backupRecurringJob.Spec.BackupTarget != backupTargetName {
+				return werror.NewInvalidError(fmt.Sprintf("recurring job backup target %s and label backup target %s does not match", backupRecurringJob.Spec.BackupTarget, backupTargetName), "")
+			}
 		}
 	}
 

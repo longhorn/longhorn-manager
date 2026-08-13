@@ -433,7 +433,14 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 	retainingSnapshotCRs := map[string]struct{}{job.snapshotName: {}}
 	if !backupDone {
 		lastBackup, err := job.getLastBackup()
-		if err == nil && lastBackup != nil {
+		if err != nil {
+			// Without the last backup we cannot tell which snapshot to keep, and
+			// deleting it costs the incremental base of the next backup. Keep
+			// everything this run rather than guess; the next run cleans up.
+			job.logger.WithError(err).Warn("Failed to get the last backup, skipping the backup snapshot cleanup for this run")
+			return []string{}
+		}
+		if lastBackup != nil {
 			retainingSnapshotCRs[lastBackup.SnapshotName] = struct{}{}
 		}
 	}
@@ -482,10 +489,13 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 		}
 	}
 
+	backupTargetName := job.resolveBackupTargetName(volume)
+
 	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
-		Labels:     job.specLabels,
-		Name:       job.snapshotName,
-		BackupMode: string(backupMode),
+		Labels:       job.specLabels,
+		Name:         job.snapshotName,
+		BackupMode:   string(backupMode),
+		BackupTarget: backupTargetName,
 	}); err != nil {
 		return err
 	}
@@ -544,9 +554,12 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 		}
 	}()
 
-	backupVolume, err := job.getBackupVolume(volume.BackupTargetName)
+	backupVolume, err := job.getBackupVolume(backupTargetName)
 	if err != nil {
 		return err
+	}
+	if backupVolume == nil {
+		return fmt.Errorf("cannot find the backup volume of volume %v on backup target %v to clean up backups", job.volumeName, backupTargetName)
 	}
 	backups, err := job.api.BackupVolume.ActionBackupList(backupVolume)
 	if err != nil {
@@ -568,21 +581,35 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 	return nil
 }
 
+// resolveBackupTargetName returns the backup target the job backs up to: its own
+// when one is configured, the volume's otherwise. Every recurring job predating
+// RecurringJobSpec.BackupTarget carries an empty one and must keep using the
+// volume's backup target.
+// ref: https://github.com/longhorn/longhorn/issues/11421
+func (job *VolumeJob) resolveBackupTargetName(volume *longhornclient.Volume) string {
+	if job.backupTarget != "" {
+		return job.backupTarget
+	}
+	return volume.BackupTargetName
+}
+
+// getBackupVolume returns the backup volume of the job's volume on the given
+// backup target, or nil when there is none. A job with its own backup target has
+// no backup volume there until it has completed a backup, so a missing one is
+// not an error.
 func (job *VolumeJob) getBackupVolume(backupTargetName string) (*longhornclient.BackupVolume, error) {
 	list, err := job.api.BackupVolume.List(&longhornclient.ListOpts{})
 	if err != nil {
 		return nil, err
 	}
 
-	backupVolumeName := ""
 	for _, bv := range list.Data {
 		if bv.BackupTargetName == backupTargetName && bv.VolumeName == job.volumeName {
-			backupVolumeName = bv.Name
-			break
+			return job.api.BackupVolume.ById(bv.Name)
 		}
 	}
 
-	return job.api.BackupVolume.ById(backupVolumeName)
+	return nil, nil
 }
 
 func (job *VolumeJob) doRecurringFilesystemTrim(volume *longhornclient.Volume) (err error) {
@@ -639,8 +666,9 @@ func (job *VolumeJob) waitForBackupProcessStart(timeout int) error {
 	return fmt.Errorf("timeout waiting for the backup of the snapshot %v of volume %v to start", snapshot, volumeName)
 }
 
-// getLastBackup return the last backup of the volume
-// return nil, nil if volume doesn't have any backup
+// getLastBackup return the last backup of the volume on the backup target this
+// job backs up to
+// return nil, nil if the volume doesn't have any backup there
 func (job *VolumeJob) getLastBackup() (*longhornclient.Backup, error) {
 	var err error
 	defer func() {
@@ -654,15 +682,25 @@ func (job *VolumeJob) getLastBackup() (*longhornclient.Backup, error) {
 	if volume == nil {
 		return nil, fmt.Errorf("volume %v not found", job.volumeName)
 	}
-	if volume.LastBackup == "" {
-		return nil, nil
-	}
-	backupVolume, err := job.getBackupVolume(volume.BackupTargetName)
+
+	// Volume.Status.LastBackup only ever tracks the volume's own backup target
+	// (see VolumeController.ReconcileBackupVolumeState), so it cannot answer for
+	// a job backing up somewhere else: it names a backup that does not exist on
+	// this job's target, and it is empty whenever the volume's own target has no
+	// backup at all. Ask the backup volume of the target this job actually uses
+	// instead -- for a job without its own target that is the very value
+	// Volume.Status.LastBackup is copied from, so the default case is unchanged.
+	// ref: https://github.com/longhorn/longhorn/issues/11421
+	backupVolume, err := job.getBackupVolume(job.resolveBackupTargetName(volume))
 	if err != nil {
 		return nil, err
 	}
+	if backupVolume == nil || backupVolume.LastBackupName == "" {
+		return nil, nil
+	}
+
 	return job.api.BackupVolume.ActionBackupGet(backupVolume, &longhornclient.BackupInput{
-		Name: volume.LastBackup,
+		Name: backupVolume.LastBackupName,
 	})
 }
 
