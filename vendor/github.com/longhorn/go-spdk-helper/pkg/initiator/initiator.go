@@ -100,6 +100,9 @@ type NVMeTCPInfo struct {
 	TransportServiceID string
 	ControllerName     string
 	NamespaceName      string
+	// NrIoQueues limits the number of I/O queues the kernel initiator
+	// creates on connect (0 means unspecified, kernel default).
+	NrIoQueues int32
 }
 
 type UblkInfo struct {
@@ -213,7 +216,14 @@ func (i *Initiator) ConnectNVMeTCPTarget(ip, port, nqn string) (string, error) {
 		defer lock.Unlock()
 	}
 
-	return ConnectTarget(ip, port, nqn, i.executor)
+	return ConnectTargetWithNrIoQueues(ip, port, nqn, i.nrIoQueues(), i.executor)
+}
+
+func (i *Initiator) nrIoQueues() int32 {
+	if i.NVMeTCPInfo == nil {
+		return 0
+	}
+	return i.NVMeTCPInfo.NrIoQueues
 }
 
 // executeNVMeTCPPathOp validates initiator state, acquires the file lock, and
@@ -890,7 +900,7 @@ func (i *Initiator) discoverAndConnectNVMeTCPTarget(transportAddress, transportS
 			}
 
 			i.logger.Infof("Connecting to NVMe/TCP target %s:%s with subsystemNQN %s", transportAddress, transportServiceID, subsystemNQN)
-			controllerName, e = ConnectTarget(transportAddress, transportServiceID, subsystemNQN, i.executor)
+			controllerName, e = ConnectTargetWithNrIoQueues(transportAddress, transportServiceID, subsystemNQN, i.nrIoQueues(), i.executor)
 			if e != nil {
 				// "already connected" means the path is present in the kernel
 				// but GetDevices() couldn't find a namespace device yet (e.g.
