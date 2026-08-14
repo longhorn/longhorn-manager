@@ -7316,7 +7316,9 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 	// If the default instance manager is not running, then try to get another running instance manager.
 	im, err := s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
 	if err == nil {
-		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+		// Skip terminating instance managers, they may still report Running while their pod is
+		// being removed (e.g. during a node drain).
+		if im.DeletionTimestamp == nil && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
 			return im, nil
 		}
 	}
@@ -7329,6 +7331,11 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 	}
 
 	for _, im := range ims {
+		// Skip terminating instance managers, they may still report Running while their pod is
+		// being removed (e.g. during a node drain).
+		if im.DeletionTimestamp != nil {
+			continue
+		}
 		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
 			return im, nil
 		}

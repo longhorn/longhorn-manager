@@ -636,12 +636,6 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// When the backup targets an existing volume, require the responsible node to have a
-	// running instance manager for the volume's data engine. This ensures the backup is
-	// owned by a node that can actually process it and avoids selecting a node that passes
-	// the engine image readiness check but has no running instance manager, e.g. a node
-	// drained with --ignore-daemonsets, which keeps the engine image DaemonSet running while
-	// its instance manager pod is evicted. Ref: https://github.com/longhorn/longhorn/issues/12562
 	checkInstanceManager := false
 	var dataEngine longhorn.DataEngineType
 
@@ -650,9 +644,20 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		if compatible, err := bc.ds.IsNodeSupportingDataEngine(volumeName, bc.controllerID); err != nil || !compatible {
 			return false, err
 		}
-		if volume, err := bc.ds.GetVolumeRO(volumeName); err == nil {
-			checkInstanceManager = true
-			dataEngine = volume.Spec.DataEngine
+		if bc.backupRequiresInstanceManager(b) {
+			// If the volume label exists but the Volume CR is gone (remote/synced backup),
+			// skip the IM check: there is no volume.Spec.DataEngine to scope against, and
+			// that path does not call getBackupTarget with a volume data engine. Any other
+			// error is transient and must abort the decision instead of silently disabling
+			// the IM check, which would fall back to the engine-image-only behavior.
+			volume, err := bc.ds.GetVolumeRO(volumeName)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return false, err
+			}
+			if err == nil {
+				checkInstanceManager = true
+				dataEngine = volume.Spec.DataEngine
+			}
 		}
 	}
 
@@ -691,6 +696,13 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+func (bc *BackupController) backupRequiresInstanceManager(b *longhorn.Backup) bool {
+	if !b.DeletionTimestamp.IsZero() {
+		return false
+	}
+	return b.Spec.SnapshotName != "" && b.Status.LastSyncedAt.IsZero() && !bc.backupInFinalState(b)
 }
 
 func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.BackupTarget, error) {
