@@ -56,13 +56,14 @@ var supportedFs = map[string]fsParameters{
 
 type NodeServer struct {
 	csi.UnimplementedNodeServer
-	apiClient   *longhornclient.RancherClient
-	nodeID      string
-	caps        []*csi.NodeServiceCapability
-	log         *logrus.Entry
-	lhNamespace string
-	kubeClient  *clientset.Clientset
-	lhClient    *lhclientset.Clientset
+	apiClient     *longhornclient.RancherClient
+	nodeID        string
+	caps          []*csi.NodeServiceCapability
+	log           *logrus.Entry
+	lhNamespace   string
+	kubeClient    clientset.Interface
+	lhClient      *lhclientset.Clientset
+	directVolumes kataConfidentialDirectVolumeOperations
 }
 
 func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) (*NodeServer, error) {
@@ -96,10 +97,11 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) (*Nod
 				csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 				csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 			}),
-		log:         logrus.StandardLogger().WithField("component", "csi-node-server"),
-		lhNamespace: lhNamespace,
-		kubeClient:  kubeClient,
-		lhClient:    lhClient,
+		log:           logrus.StandardLogger().WithField("component", "csi-node-server"),
+		lhNamespace:   lhNamespace,
+		kubeClient:    kubeClient,
+		lhClient:      lhClient,
+		directVolumes: newKataConfidentialDirectVolumeManager(),
 	}, nil
 }
 
@@ -154,6 +156,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
+	direct, err := ns.kataConfidentialDirectVolumeMode(volumeID, req.GetVolumeContext())
+	if err != nil {
+		return nil, err
+	}
 
 	volume, err := ns.apiClient.Volume.ById(volumeID)
 	if err != nil {
@@ -161,6 +167,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 	if volume == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
+	}
+	if direct {
+		return ns.nodePublishKataConfidentialDirectVolume(ctx, req, volume)
 	}
 
 	mounter, err := ns.getMounter(volume, volumeCapability, req.VolumeContext)
@@ -435,6 +444,16 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
+	direct, err := ns.directVolumes.IsManaged(volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to read confidential direct-volume lifecycle metadata: %v", err)
+	}
+	if direct {
+		if err := ns.directVolumes.Unpublish(ctx, volumeID, targetPath); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to unregister confidential direct volume from Kata: %v", err)
+		}
+		return &csi.NodeUnpublishVolumeResponse{}, nil
+	}
 
 	if err := unmountAndCleanupMountPoint(targetPath, mount.New("")); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to cleanup volume %s mount point %v: %v", volumeID, targetPath, err)
@@ -463,6 +482,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
+	direct, err := ns.kataConfidentialDirectVolumeMode(volumeID, req.GetVolumeContext())
+	if err != nil {
+		return nil, err
+	}
 
 	volume, err := ns.apiClient.Volume.ById(volumeID)
 	if err != nil {
@@ -470,6 +493,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	if volume == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
+	}
+	if direct {
+		return ns.nodeStageKataConfidentialDirectVolume(ctx, req, volume)
 	}
 
 	mounter, err := ns.getMounter(volume, volumeCapability, req.VolumeContext)
@@ -673,6 +699,16 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
+	direct, err := ns.directVolumes.IsManaged(volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to read confidential direct-volume lifecycle metadata: %v", err)
+	}
+	if direct {
+		if err := ns.directVolumes.Unstage(ctx, volumeID); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to clean up confidential direct-volume lifecycle metadata: %v", err)
+		}
+		return &csi.NodeUnstageVolumeResponse{}, nil
+	}
 
 	mounter := mount.New("")
 
@@ -725,6 +761,17 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
+	}
+	direct, err := ns.directVolumes.IsManaged(volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to read confidential direct-volume lifecycle metadata: %v", err)
+	}
+	if direct {
+		response, err := ns.directVolumes.Stats(ctx, volumeID, volumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to retrieve confidential direct-volume statistics: %v", err)
+		}
+		return response, nil
 	}
 
 	existVol, err := ns.apiClient.Volume.ById(volumeID)
@@ -846,6 +893,13 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
+	}
+	direct, err := ns.directVolumes.IsManaged(volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to read confidential direct-volume lifecycle metadata: %v", err)
+	}
+	if direct {
+		return nil, status.Error(codes.FailedPrecondition, kataConfidentialDirectVolumeResizeUnsupported)
 	}
 
 	volume, err := ns.apiClient.Volume.ById(volumeID)
