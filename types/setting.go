@@ -1938,7 +1938,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV2),
+		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
