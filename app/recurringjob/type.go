@@ -26,6 +26,7 @@ type Job struct {
 	task           longhorn.RecurringJobType // Type of task to be executed.
 	parameters     map[string]string         // Additional parameters for the task.
 	executionCount int                       // Number of times the job has been executed.
+	backupTarget   string                    // Backup target name for backup tasks.
 }
 
 // VolumeJob is a job for volume tasks.

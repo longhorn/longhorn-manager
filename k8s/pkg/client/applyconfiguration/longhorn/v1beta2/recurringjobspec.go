@@ -42,6 +42,8 @@ type RecurringJobSpecApplyConfiguration struct {
 	Concurrency *int `json:"concurrency,omitempty"`
 	// The label of the snapshot/backup.
 	Labels map[string]string `json:"labels,omitempty"`
+	// The backup target name of the backup.
+	BackupTarget *string `json:"backupTarget,omitempty"`
 	// The parameters of the snapshot/backup.
 	// Support parameters: "full-backup-interval", "volume-backup-policy".
 	Parameters map[string]string `json:"parameters,omitempty"`
@@ -114,6 +116,14 @@ func (b *RecurringJobSpecApplyConfiguration) WithLabels(entries map[string]strin
 	for k, v := range entries {
 		b.Labels[k] = v
 	}
+	return b
+}
+
+// WithBackupTarget sets the BackupTarget field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BackupTarget field is set to the value of the last call.
+func (b *RecurringJobSpecApplyConfiguration) WithBackupTarget(value string) *RecurringJobSpecApplyConfiguration {
+	b.BackupTarget = &value
 	return b
 }
 
