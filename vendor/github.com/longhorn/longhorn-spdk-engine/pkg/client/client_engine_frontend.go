@@ -15,7 +15,7 @@ import (
 
 // EngineFrontendCreate creates and starts an engine frontend for an existing engine.
 func (c *SPDKClient) EngineFrontendCreate(name, volumeName, engineName, frontend string, specSize uint64, targetAddress string,
-	ublkQueueDepth, ublkNumberOfQueue int32) (*api.EngineFrontend, error) {
+	ublkQueueDepth, ublkNumberOfQueue, nvmeTcpNrIoQueues int32) (*api.EngineFrontend, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to start engine frontend: missing required parameter name")
 	}
@@ -44,6 +44,7 @@ func (c *SPDKClient) EngineFrontendCreate(name, volumeName, engineName, frontend
 		Frontend:          frontend,
 		UblkQueueDepth:    ublkQueueDepth,
 		UblkNumberOfQueue: ublkNumberOfQueue,
+		NvmeTcpNrIoQueues: nvmeTcpNrIoQueues,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start engine frontend")
