@@ -231,6 +231,9 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	if !types.IsFrontendSupported(req.Frontend) {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "frontend %v is not supported", req.Frontend)
 	}
+	if req.NvmeTcpNrIoQueues < 0 {
+		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid nvme_tcp_nr_io_queues %d", req.NvmeTcpNrIoQueues)
+	}
 
 	// Derive and validate targetAddress BEFORE evicting any Pending recovery
 	// ef, so that a malformed address does not permanently cancel a valid
@@ -299,6 +302,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 
 	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
 		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
 	ef.metadataDir = s.metadataDir
 
 	s.Unlock()

@@ -113,6 +113,10 @@ type NvmeTcpFrontend struct {
 
 	Nqn   string
 	Nguid string
+
+	// NrIoQueues limits the number of I/O queues the kernel initiator
+	// creates on connect (0 means unspecified, kernel default).
+	NrIoQueues int32
 }
 
 type NvmeTCPANAState string
@@ -891,6 +895,7 @@ func (ef *EngineFrontend) newNvmeTcpInitiator() (i *initiator.Initiator, nqn, ng
 
 	nvmeTCPInfo := &initiator.NVMeTCPInfo{
 		SubsystemNQN: nqn,
+		NrIoQueues:   ef.NvmeTcpFrontend.NrIoQueues,
 	}
 	i, err = initiator.NewInitiator(ef.VolumeName, initiator.HostProc, nvmeTCPInfo, nil)
 	if err != nil {
@@ -1366,6 +1371,7 @@ func (ef *EngineFrontend) Suspend(_ *spdkclient.Client) (err error) {
 	case types.FrontendSPDKTCPBlockdev:
 		nvmeTCPInfo := &initiator.NVMeTCPInfo{
 			SubsystemNQN: ef.NvmeTcpFrontend.Nqn,
+			NrIoQueues:   ef.NvmeTcpFrontend.NrIoQueues,
 		}
 		i, err := initiator.NewInitiator(ef.VolumeName, initiator.HostProc, nvmeTCPInfo, nil)
 		if err != nil {
@@ -1413,6 +1419,7 @@ func (ef *EngineFrontend) Resume(_ *spdkclient.Client) (err error) {
 	case types.FrontendSPDKTCPBlockdev:
 		nvmeTCPInfo := &initiator.NVMeTCPInfo{
 			SubsystemNQN: ef.NvmeTcpFrontend.Nqn,
+			NrIoQueues:   ef.NvmeTcpFrontend.NrIoQueues,
 		}
 		i, err := initiator.NewInitiator(ef.VolumeName, initiator.HostProc, nvmeTCPInfo, nil)
 		if err != nil {
@@ -2520,6 +2527,7 @@ func (ef *EngineFrontend) validateAndUpdateNvmeTcpFrontend() (err error) {
 		if ef.initiator == nil {
 			nvmeTCPInfo := &initiator.NVMeTCPInfo{
 				SubsystemNQN: ef.NvmeTcpFrontend.Nqn,
+				NrIoQueues:   ef.NvmeTcpFrontend.NrIoQueues,
 			}
 			i, err := initiator.NewInitiator(ef.VolumeName, initiator.HostProc, nvmeTCPInfo, nil)
 			if err != nil {
