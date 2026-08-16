@@ -21,17 +21,12 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-<<<<<<< HEAD
-func RecurringJobCmd() cli.Command {
-	return cli.Command{
-=======
 type recurringJobGetter interface {
 	Get(context.Context, string, metav1.GetOptions) (*longhorn.RecurringJob, error)
 }
 
-func RecurringJobCmd() *cli.Command {
-	return &cli.Command{
->>>>>>> 13d9d49f (fix(recurring-job): retry transient startup API errors)
+func RecurringJobCmd() cli.Command {
+	return cli.Command{
 		Name: "recurring-job",
 		Flags: []cli.Flag{
 			cli.StringFlag{
@@ -39,25 +34,17 @@ func RecurringJobCmd() *cli.Command {
 				Usage: "Longhorn manager API URL",
 			},
 		},
-<<<<<<< HEAD
 		Action: func(c *cli.Context) {
 			if err := recurringJob(c); err != nil {
-=======
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if err := recurringJob(ctx, cmd); err != nil {
->>>>>>> 13d9d49f (fix(recurring-job): retry transient startup API errors)
 				logrus.WithError(err).Fatal("Failed to do a recurring job")
 			}
 		},
 	}
 }
 
-<<<<<<< HEAD
 func recurringJob(c *cli.Context) (err error) {
-=======
-func recurringJob(ctx context.Context, cmd *cli.Command) (err error) {
->>>>>>> 13d9d49f (fix(recurring-job): retry transient startup API errors)
 	logger := logrus.StandardLogger()
+	ctx := context.Background()
 
 	var managerURL = c.String(FlagManagerURL)
 	if managerURL == "" {
