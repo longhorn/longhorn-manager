@@ -1299,6 +1299,7 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
 	credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
 	credentialSecret[types.VirtualHostedStyle] = string(secret.Data[types.VirtualHostedStyle])
+	credentialSecret[types.AWSSignAcceptEncoding] = string(secret.Data[types.AWSSignAcceptEncoding])
 	return credentialSecret, nil
 }
 
