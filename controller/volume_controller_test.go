@@ -28,6 +28,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -2451,6 +2452,162 @@ func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForV2StrictLocalVolume(c 
 	c.Assert(err, IsNil)
 	c.Assert(len(rs), Equals, 1)
 	c.Assert(rs[replica.Name], Equals, replica)
+}
+
+// setupReplenishReplicasTestInfra builds a degraded 2-replica volume whose replica on TestNode1 has
+// failed with the given rebuild failure reason and is still within the volume controller reuse backoff.
+func setupReplenishReplicasTestInfra(c *C, rebuildFailedReason string) (
+	*VolumeController, *longhorn.Volume, *longhorn.Engine, map[string]*longhorn.Replica, *longhorn.Replica) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+
+	ei := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+	ei.Status.NodeDeploymentMap[TestNode1] = true
+	ei.Status.NodeDeploymentMap[TestNode2] = true
+	createdEI, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), ei, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(eiIndexer.Add(createdEI), IsNil)
+
+	for _, nodeID := range []string{TestNode1, TestNode2} {
+		createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(),
+			newNode(nodeID, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(nIndexer.Add(createdNode), IsNil)
+
+		im := newInstanceManager(TestInstanceManagerName+"-"+nodeID, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, nodeID, TestIP1,
+			map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{},
+			longhorn.DataEngineTypeV1, TestInstanceManagerImage, false)
+		createdIM, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imIndexer.Add(createdIM), IsNil)
+	}
+
+	settings := map[string]string{
+		string(types.SettingNameDefaultEngineImage):          TestEngineImage,
+		string(types.SettingNameDefaultInstanceManagerImage): TestInstanceManagerImage,
+		// The replenishment wait interval has already passed, so only the reuse backoff can hold a replacement back.
+		string(types.SettingNameReplicaReplenishmentWaitInterval): "0",
+		string(types.SettingNameReplicaSoftAntiAffinity):          "false",
+		string(types.SettingNameReplicaZoneSoftAntiAffinity):      "true",
+		string(types.SettingNameReplicaDiskSoftAntiAffinity):      "true",
+	}
+	for name, value := range settings {
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(),
+			initSettingsNameValue(name, value), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(sIndexer.Add(setting), IsNil)
+	}
+
+	v := newVolume(TestVolumeName, 2)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV1
+	v.Spec.NodeID = TestNode1
+	v.Status.State = longhorn.VolumeStateAttached
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentImage = TestEngineImage
+	v.Status.Robustness = longhorn.VolumeRobustnessDegraded
+	v.Status.LastDegradedAt = getTestNow()
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV1
+	e.Spec.NodeID = TestNode1
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+
+	// Keep the healthy replica on a different disk so that the failed replica's disk stays a reuse candidate.
+	healthyReplica := newReplicaForVolume(v, e, TestNode2, TestDiskID2)
+	healthyReplica.Spec.DataEngine = longhorn.DataEngineTypeV1
+	healthyReplica.Spec.HealthyAt = getTestNow()
+	healthyReplica.Status.CurrentState = longhorn.InstanceStateRunning
+	healthyReplica.Status.IP = TestIP2
+	healthyReplica.Status.StorageIP = TestIP2
+	healthyReplica.Status.Port = randomPort()
+
+	failedReplica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	failedReplica.Spec.DataEngine = longhorn.DataEngineTypeV1
+	failedReplica.Spec.HealthyAt = getTestNow()
+	setReplicaFailedAt(failedReplica, getTestNow())
+	failedReplica.Status.Conditions = types.SetCondition(failedReplica.Status.Conditions,
+		longhorn.ReplicaConditionTypeRebuildFailed, longhorn.ConditionStatusTrue, rebuildFailedReason, "")
+
+	e.Spec.ReplicaAddressMap = map[string]string{
+		healthyReplica.Name: imutil.GetURL(healthyReplica.Status.StorageIP, healthyReplica.Status.Port),
+	}
+	e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		healthyReplica.Name: longhorn.ReplicaModeRW,
+	}
+
+	rs := map[string]*longhorn.Replica{}
+	for _, r := range []*longhorn.Replica{healthyReplica, failedReplica} {
+		createdReplica, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(rIndexer.Add(createdReplica), IsNil)
+		rs[r.Name] = r
+	}
+
+	vc.backoff.Next(failedReplica.Name, time.Now())
+
+	return vc, v, e, rs, failedReplica
+}
+
+// https://github.com/longhorn/longhorn/issues/13705
+func (s *TestSuite) TestReplenishReplicasWaitsForReusableReplicaFailedByNetwork(c *C) {
+	vc, v, e, rs, failedReplica := setupReplenishReplicasTestInfra(c, longhorn.ReplicaConditionReasonRebuildFailedDisconnection)
+
+	err := vc.replenishReplicas(v, e, rs, "")
+	c.Assert(err, IsNil)
+
+	c.Assert(rs, HasLen, 2)
+	c.Assert(rs[failedReplica.Name], NotNil)
+	c.Assert(failedReplica.Spec.FailedAt, Not(Equals), "")
+}
+
+// A reusable replica is retried rather than replaced, whatever broke its rebuild, so that a replacement
+// never lands on the node of the replica it replaces.
+func (s *TestSuite) TestReplenishReplicasDoesNotReplaceReusableReplicaWhileRetriesRemain(c *C) {
+	vc, v, e, rs, failedReplica := setupReplenishReplicasTestInfra(c, longhorn.ReplicaConditionReasonRebuildFailedGeneral)
+
+	err := vc.replenishReplicas(v, e, rs, "")
+	c.Assert(err, IsNil)
+
+	c.Assert(rs, HasLen, 2)
+	c.Assert(rs[failedReplica.Name], NotNil)
+}
+
+// A data path that keeps breaking on a ready node must not be retried forever.
+func (s *TestSuite) TestReplenishReplicasCreatesReplacementWhenReuseRetriesAreExhausted(c *C) {
+	vc, v, e, rs, failedReplica := setupReplenishReplicasTestInfra(c, longhorn.ReplicaConditionReasonRebuildFailedDisconnection)
+	failedReplica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
+
+	err := vc.replenishReplicas(v, e, rs, "")
+	c.Assert(err, IsNil)
+
+	c.Assert(rs, HasLen, 3)
+}
+
+// Reusing a replica must bound connectivity failures, otherwise the retry count never grows.
+func (s *TestSuite) TestReplenishReplicasCountsRetryWhenReusingReplicaFailedByNetwork(c *C) {
+	vc, v, e, rs, failedReplica := setupReplenishReplicasTestInfra(c, longhorn.ReplicaConditionReasonRebuildFailedDisconnection)
+	vc.backoff.DeleteEntry(failedReplica.Name)
+
+	err := vc.replenishReplicas(v, e, rs, "")
+	c.Assert(err, IsNil)
+
+	c.Assert(rs, HasLen, 2)
+	c.Assert(failedReplica.Spec.FailedAt, Equals, "")
+	c.Assert(failedReplica.Spec.RebuildRetryCount, Equals, 1)
 }
 
 func (s *TestSuite) TestReconcileEngineReplicaStateV1CanRecoverFromFaultedRobustness(c *C) {

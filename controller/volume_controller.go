@@ -3756,9 +3756,9 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				setReplicaFailedAt(reusableFailedReplica, "")
 				reusableFailedReplica.Spec.HealthyAt = ""
 
-				if datastore.IsReplicaRebuildingFailed(reusableFailedReplica) {
-					reusableFailedReplica.Spec.RebuildRetryCount++
-				}
+				// Connectivity failures are counted as well, otherwise a replica whose data path keeps breaking
+				// on a node that stays ready would be reused forever instead of being replaced.
+				reusableFailedReplica.Spec.RebuildRetryCount++
 				c.backoff.Next(reusableFailedReplica.Name, time.Now())
 
 				rs[reusableFailedReplica.Name] = reusableFailedReplica
@@ -3768,6 +3768,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				reusableFailedReplica.Name, c.backoff.Get(reusableFailedReplica.Name).Seconds())
 			// Couldn't reuse the replica. Add the volume back to the workqueue to check it later
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
+			continue
 		}
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
 			newReplica := newReplicaCR(v, e, hardNodeAffinity)
