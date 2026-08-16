@@ -69,9 +69,9 @@ type BdevLvolCreateLvstoreRequest struct {
 	BdevName string `json:"bdev_name"`
 	LvsName  string `json:"lvs_name"`
 
-	ClusterSz uint32 `json:"cluster_sz,omitempty"`
-	// ClearMethod               string `json:"clear_method,omitempty"`
-	// NumMdPagesPerClusterRatio uint32 `json:"num_md_pages_per_cluster_ratio,omitempty"`
+	ClusterSz                 uint32 `json:"cluster_sz,omitempty"`
+	NumMdPagesPerClusterRatio uint32 `json:"num_md_pages_per_cluster_ratio,omitempty"`
+	// ClearMethod string `json:"clear_method,omitempty"`
 }
 
 type BdevLvolDeleteLvstoreRequest struct {
@@ -82,6 +82,11 @@ type BdevLvolDeleteLvstoreRequest struct {
 type BdevLvolRenameLvstoreRequest struct {
 	OldName string `json:"old_name"`
 	NewName string `json:"new_name"`
+}
+
+type BdevLvolGrowLvstoreRequest struct {
+	UUID    string `json:"uuid,omitempty"`
+	LvsName string `json:"lvs_name,omitempty"`
 }
 
 type BdevLvolSetXattrRequest struct {

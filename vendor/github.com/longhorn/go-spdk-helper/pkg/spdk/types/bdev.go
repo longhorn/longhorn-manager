@@ -9,6 +9,7 @@ const (
 	BdevProductNameNvme       = BdevProductName("NVMe disk")
 	BdevProductNameVirtioBlk  = BdevProductName("VirtioBlk Disk")
 	BdevProductNameVirtioScsi = BdevProductName("Virtio SCSI Disk")
+	BdevProductNameEc         = BdevProductName("ErasureCode Volume")
 )
 
 type BdevType string
@@ -18,6 +19,7 @@ const (
 	BdevTypeLvol = "lvol"
 	BdevTypeRaid = "raid"
 	BdevTypeNvme = "nvme"
+	BdevTypeEc   = "ec"
 )
 
 func GetBdevType(bdev *BdevInfo) BdevType {
@@ -35,6 +37,9 @@ func GetBdevType(bdev *BdevInfo) BdevType {
 	}
 	if bdev.ProductName == BdevProductNameNvme && bdev.DriverSpecific.Nvme != nil {
 		return BdevTypeNvme
+	}
+	if bdev.ProductName == BdevProductNameEc && bdev.DriverSpecific.Ec != nil {
+		return BdevTypeEc
 	}
 	return ""
 }
@@ -116,6 +121,12 @@ type BdevDriverSpecific struct {
 
 	Nvme     *BdevDriverSpecificNvme `json:"nvme,omitempty"`
 	MpPolicy BdevNvmeMultipathPolicy `json:"mp_policy,omitempty"`
+
+	// Ec is populated from driver_specific.ec in bdev_get_bdevs output and is used
+	// by GetBdevType only as a presence check. That object uses different JSON keys
+	// than the bdev_ec_get_bdevs RPC (e.g. data_chunk_count, not k) and omits the
+	// counters, so read full EC fields via BdevEcGetBdevs, not through this field.
+	Ec *BdevEcInfo `json:"ec,omitempty"`
 }
 
 type BdevInfo struct {

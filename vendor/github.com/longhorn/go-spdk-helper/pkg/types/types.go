@@ -30,6 +30,7 @@ const (
 const (
 	ErrorMessageCannotFindValidNvmeDevice = "cannot find a valid NVMe device"
 	ErrorMessageDeviceOrResourceBusy      = "device or resource busy"
+	ErrorMessageNoSuchFileOrDirectory     = "no such file or directory"
 )
 
 const (
