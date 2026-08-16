@@ -118,6 +118,7 @@ func getBackupCredentialEnv(backupTarget string, credential map[string]string) (
 		envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPProxy, credential[types.HTTPProxy]))
 		envs = append(envs, fmt.Sprintf("%s=%s", types.NOProxy, credential[types.NOProxy]))
 		envs = append(envs, fmt.Sprintf("%s=%s", types.VirtualHostedStyle, credential[types.VirtualHostedStyle]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.AWSSignAcceptEncoding, credential[types.AWSSignAcceptEncoding]))
 	case types.BackupStoreTypeCIFS:
 		envs = append(envs, fmt.Sprintf("%s=%s", types.CIFSUsername, credential[types.CIFSUsername]))
 		envs = append(envs, fmt.Sprintf("%s=%s", types.CIFSPassword, credential[types.CIFSPassword]))
