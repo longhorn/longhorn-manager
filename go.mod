@@ -19,6 +19,7 @@ go 1.25.10
 
 replace (
 	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
+	github.com/longhorn/types => github.com/longhorn/types v0.0.0-20260327130848-66f6de8a2fb3
 	k8s.io/api => k8s.io/api v0.35.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.4
 	k8s.io/apimachinery => k8s.io/apimachinery v0.35.4
