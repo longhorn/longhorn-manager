@@ -96,7 +96,7 @@ github.com/distatus/battery
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
 github.com/distribution/reference
-# github.com/docker/go-connections v0.8.0
+# github.com/docker/go-connections v0.8.1
 ## explicit; go 1.23
 github.com/docker/go-connections/sockets
 # github.com/dolthub/maphash v0.1.0
@@ -283,7 +283,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20260717062941-2c0ab58da729
+# github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c
 ## explicit; go 1.25.10
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
