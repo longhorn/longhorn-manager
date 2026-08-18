@@ -1765,6 +1765,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		ReplicaRebuildingBandwidthLimit: v.Spec.ReplicaRebuildingBandwidthLimit,
 		UblkQueueDepth:                  v.Spec.UblkQueueDepth,
 		UblkNumberOfQueue:               v.Spec.UblkNumberOfQueue,
+		NvmeTcpNrIoQueues:               v.Spec.NvmeTcpNrIoQueues,
 		BackupCompressionMethod:         v.Spec.BackupCompressionMethod,
 		BackupBlockSize:                 strconv.FormatInt(v.Spec.BackupBlockSize, 10),
 		StaleReplicaTimeout:             v.Spec.StaleReplicaTimeout,
