@@ -25,7 +25,21 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+// startVolumeJobFn runs a single volume's recurring job. It is injected so tests
+// can substitute a stub without a live Longhorn API.
+type startVolumeJobFn func(
+	job *Job,
+	recurringJob *longhorn.RecurringJob,
+	volumeName string,
+	concurrentLimiter chan struct{},
+	jobGroups []string,
+) error
+
 func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
+	return startVolumeJobs(job, recurringJob, startVolumeJob)
+}
+
+func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob startVolumeJobFn) (err error) {
 	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
 	allowDetached, err := getSettingAsBoolean(allowDetachedSetting, job.namespace, job.lhClient)
 	if err != nil {
@@ -57,7 +71,16 @@ func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
-			return startVolumeJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups)
+			// A per-volume failure (for example, a rebuilding replica blocking
+			// snapshot purge) must not abort the whole sweep. Log it and continue
+			// so the next scheduled run retries this volume instead of the process
+			// exiting non-zero and re-running every volume from scratch. Task
+			// handlers (doSnapshotCleanup, doRecurringFilesystemTrim) already emit
+			// their own Warning events, so we don't record a duplicate here.
+			if jobErr := startJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups); jobErr != nil {
+				job.logger.WithError(jobErr).WithField("volume", startJobVolumeName).Warn("Failed to run recurring job for volume; will retry on the next run")
+			}
+			return nil
 		})
 	}
 
