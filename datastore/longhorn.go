@@ -6232,6 +6232,9 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 	if !isValidRecurringJobTask(job.Task) {
 		return fmt.Errorf("recurring job task %v is not valid", job.Task)
 	}
+	if !isValidRecurringJobRetainPolicy(job.RetentionPolicy) {
+		return fmt.Errorf("recurring job retention policy %v is not valid", job.RetentionPolicy)
+	}
 	if _, err := cron.ParseStandard(job.Cron); err != nil {
 		return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
 	}
@@ -6305,6 +6308,11 @@ func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
 		task == longhorn.RecurringJobTypeSnapshotCleanup ||
 		task == longhorn.RecurringJobTypeSnapshotDelete ||
 		task == longhorn.RecurringJobTypeSystemBackup
+}
+
+func isValidRecurringJobRetainPolicy(retainPolicy longhorn.RecurringJobRetentionPolicy) bool {
+	return retainPolicy == longhorn.RecurringJobRetentionPolicyAgeBased ||
+		retainPolicy == longhorn.RecurringJobRetentionPolicyCountBased
 }
 
 // ValidateRecurringJobs validates data and formats for recurring jobs

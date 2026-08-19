@@ -71,6 +71,11 @@ func recurringJob(ctx context.Context, cmd *cli.Command) (err error) {
 		return err
 	}
 
+	if recurringJob.Spec.RetentionPolicy == longhorn.RecurringJobRetentionPolicyAgeBased && recurringJob.Spec.RetainAge.Duration == 0 {
+		logger.Debugf("recurring job %v will not start due to an retainAge value of %v with the policy %v", jobName, recurringJob.Spec.RetainAge, recurringJob.Spec.RetentionPolicy)
+		return nil
+	}
+
 	recurringJob.Status.ExecutionCount += 1
 	if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).UpdateStatus(ctx, recurringJob, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrap(err, "failed to update job execution count")

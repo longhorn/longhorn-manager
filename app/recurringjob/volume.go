@@ -134,7 +134,7 @@ func newVolumeJob(job *Job, recurringJob *longhorn.RecurringJob, volumeName stri
 		// job-specific fields
 		"job":            job.name,
 		"task":           job.task,
-		"retain":         job.retain,
+		"retainCount":    job.retainCount,
 		"parameters":     job.parameters,
 		"executionCount": job.executionCount,
 		// volume-specific fields
@@ -482,9 +482,9 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 		return []string{}
 	}
 
-	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retain.
+	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retainCount.
 	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate || !allowBackupSnapshotDeleted {
-		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 	}
 
 	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot when AutoCleanupRecurringJobBackupSnapshot is enabled.
@@ -499,7 +499,7 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 }
 
 func (job *VolumeJob) filterExpiredSnapshots(snapshotCRs []longhornclient.SnapshotCR) []string {
-	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 }
 
 func (job *VolumeJob) doRecurringBackup() (err error) {
@@ -747,5 +747,5 @@ func (job *VolumeJob) listBackupsForCleanup(backups []longhornclient.Backup) []s
 			})
 		}
 	}
-	return filterExpiredItems(sts, job.retain)
+	return filterExpiredItems(sts, job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 }

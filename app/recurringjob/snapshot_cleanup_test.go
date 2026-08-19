@@ -52,13 +52,14 @@ func newCleanupTestJob(task longhorn.RecurringJobType, retain int, snapshots []l
 	logger.SetOutput(io.Discard)
 	operations := &cleanupVolumeOperations{snapshots: snapshots}
 	job := &Job{
-		api:       &longhornclient.RancherClient{Volume: operations},
-		lhClient:  lhfake.NewSimpleClientset(objects...), // nolint: staticcheck
-		logger:    logger,
-		name:      cleanupTestJobName,
-		namespace: cleanupTestNamespace,
-		retain:    retain,
-		task:      task,
+		api:             &longhornclient.RancherClient{Volume: operations},
+		lhClient:        lhfake.NewSimpleClientset(objects...), // nolint: staticcheck
+		logger:          logger,
+		name:            cleanupTestJobName,
+		namespace:       cleanupTestNamespace,
+		retentionPolicy: longhorn.RecurringJobRetentionPolicyCountBased,
+		retainCount:     retain,
+		task:            task,
 	}
 	return &VolumeJob{
 		Job:          job,
