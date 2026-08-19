@@ -211,8 +211,6 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
 	priorityClassInformer := informerFactories.KubeInformerFactory.Scheduling().V1().PriorityClasses()
 	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
-	leaseInformer := informerFactories.KubeInformerFactory.Coordination().V1().Leases()
-	cacheSyncs = append(cacheSyncs, leaseInformer.Informer().HasSynced)
 
 	// Filtered kube Informers by longhorn-system namespace
 	cronJobInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Batch().V1().CronJobs()
@@ -231,6 +229,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
 	deploymentInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().Deployments()
 	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
+	leaseInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Coordination().V1().Leases()
+	cacheSyncs = append(cacheSyncs, leaseInformer.Informer().HasSynced)
 
 	return &DataStore{
 		namespace: namespace,
