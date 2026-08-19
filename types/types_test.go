@@ -2,7 +2,6 @@ package types
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -31,62 +30,37 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
-	c.Assert(os.Unsetenv(LonghornDataPathEnv), IsNil)
-	c.Assert(os.Unsetenv(LonghornControlPathEnv), IsNil)
 }
 
 func (s *TestSuite) TearDownTest(c *C) {
-	c.Assert(os.Unsetenv(LonghornDataPathEnv), IsNil)
-	c.Assert(os.Unsetenv(LonghornControlPathEnv), IsNil)
 }
 
 func (s *TestSuite) TestGetLonghornDataPath(c *C) {
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+	c.Assert(GetLonghornDataPath(""), Equals, DefaultDataPath)
 
 	customPath := "/data/longhorn/"
-	c.Assert(os.Setenv(LonghornDataPathEnv, customPath), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, filepath.Clean(customPath))
+	c.Assert(GetLonghornDataPath(customPath), Equals, filepath.Clean(customPath))
 
-	c.Assert(os.Setenv(LonghornDataPathEnv, "relative/path"), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+	c.Assert(GetLonghornDataPath("relative/path"), Equals, DefaultDataPath)
 
-	c.Assert(os.Setenv(LonghornDataPathEnv, string(filepath.Separator)), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+	c.Assert(GetLonghornDataPath(string(filepath.Separator)), Equals, DefaultDataPath)
 
-	c.Assert(os.Setenv(LonghornDataPathEnv, "/dev/nvme0n1"), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, "/dev/nvme0n1")
+	c.Assert(GetLonghornDataPath("/dev/nvme0n1"), Equals, "/dev/nvme0n1")
 
-	c.Assert(os.Setenv(LonghornDataPathEnv, "0000:00:1e.0"), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
+	c.Assert(GetLonghornDataPath("0000:00:1e.0"), Equals, DefaultDataPath)
 }
 
 func (s *TestSuite) TestGetLonghornControlPath(c *C) {
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
+	c.Assert(GetLonghornControlPath(""), Equals, DefaultControlPath)
 
 	customPath := "/control/longhorn/"
-	c.Assert(os.Setenv(LonghornControlPathEnv, customPath), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, filepath.Clean(customPath))
+	c.Assert(GetLonghornControlPath(customPath), Equals, filepath.Clean(customPath))
 
-	c.Assert(os.Setenv(LonghornControlPathEnv, "relative/path"), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
+	c.Assert(GetLonghornControlPath("relative/path"), Equals, DefaultControlPath)
 
-	c.Assert(os.Setenv(LonghornControlPathEnv, string(filepath.Separator)), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
+	c.Assert(GetLonghornControlPath(string(filepath.Separator)), Equals, DefaultControlPath)
 
-	c.Assert(os.Setenv(LonghornControlPathEnv, "/dev/nvme0n1"), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
-}
-
-func (s *TestSuite) TestContainerPathHelpersUseReplicaHostPrefix(c *C) {
-	customPath := "/control/longhorn"
-	image := "longhornio/longhorn-engine:v1.9.0"
-
-	c.Assert(os.Setenv(LonghornControlPathEnv, customPath), IsNil)
-
-	c.Assert(GetUnixDomainSocketDirectoryInContainer(), Equals,
-		filepath.Join(ReplicaHostPrefix, "control/longhorn", UnixDomainSocketDirectorySubpath))
-	c.Assert(GetEngineBinaryDirectoryForReplicaManagerContainer(image), Equals,
-		filepath.Join(ReplicaHostPrefix, "control/longhorn", EngineBinaryDirectorySubpath, GetImageCanonicalName(image)))
+	c.Assert(GetLonghornControlPath("/dev/nvme0n1"), Equals, DefaultControlPath)
 }
 
 func (s *TestSuite) TestParseToleration(c *C) {

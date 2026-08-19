@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -594,7 +595,7 @@ var (
 	SettingDefinitionDefaultControlPath = SettingDefinition{
 		DisplayName: "Default Control Path",
 		Description: "Default path used for storing runtime and control-plane artifacts on a host. " +
-			"This setting must be an absolute directory path. Engine binaries, metadata, sockets, and logs " +
+			"This setting must be an absolute directory path. Engine binaries, metadata and sockets " +
 			"are stored under this path for both V1 and V2 engines. Note: This is an installation-time " +
 			"setting and cannot be changed after Longhorn is initialized.",
 		Type:               SettingTypeString,
@@ -2137,7 +2138,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            GetDefaultLogDirectoryOnHost(),
+		Default:            filepath.Join(DefaultControlPath, LogDirectorySubpath),
 	}
 
 	SettingDefinitionNodeDiskHealthMonitoring = SettingDefinition{

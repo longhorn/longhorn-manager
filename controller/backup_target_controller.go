@@ -314,8 +314,7 @@ func newBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 		return nil, err
 	}
 	timeout := time.Duration(executeTimeout) * time.Minute
-
-	return engineapi.NewBackupTargetClient(engineImage, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
+	return engineapi.NewBackupTargetClient(engineImage, ds, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
 }
 
 func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (*engineapi.BackupTargetClient, error) {

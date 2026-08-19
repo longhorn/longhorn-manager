@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -475,6 +476,11 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 		return nil, err
 	}
 	registrySecret := registrySecretSetting.Value
+	controlPath, err := c.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+	}
+	engineBinaryDir := filepath.Join(controlPath, types.EngineBinaryDirectorySubpath)
 
 	// for mounting inside container
 	cronJob := &batchv1.CronJob{
@@ -519,18 +525,14 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 											},
 										},
 										{
-											Name:  types.LonghornDataPathEnv,
-											Value: types.GetLonghornDataPath(),
-										},
-										{
 											Name:  types.LonghornControlPathEnv,
-											Value: types.GetLonghornControlPath(),
+											Value: controlPath,
 										},
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "engine-binaries",
-											MountPath: types.GetEngineBinaryDirectoryOnHost(),
+											MountPath: engineBinaryDir,
 										},
 									},
 								},
@@ -540,7 +542,7 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 									Name: "engine-binaries",
 									VolumeSource: corev1.VolumeSource{
 										HostPath: &corev1.HostPathVolumeSource{
-											Path: types.GetEngineBinaryDirectoryOnHost(),
+											Path: engineBinaryDir,
 										},
 									},
 								},

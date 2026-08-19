@@ -11,6 +11,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/controller"
@@ -22,12 +24,11 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -625,11 +626,11 @@ func randomPort() int {
 	return rand.Int() % 30000
 }
 
-func fakeEngineBinaryChecker(image string) (bool, error) {
+func fakeEngineBinaryChecker(image string, ds *datastore.DataStore) (bool, error) {
 	return true, nil
 }
 
-func fakeEngineImageUpdater(ei *longhorn.EngineImage) error {
+func fakeEngineImageUpdater(ei *longhorn.EngineImage, ds *datastore.DataStore) error {
 	return nil
 }
 

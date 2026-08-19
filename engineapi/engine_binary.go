@@ -47,6 +47,7 @@ func GetEngineBinaryClient(ds *datastore.DataStore, volumeName, nodeID string) (
 	return engineCollection.NewEngineClient(&EngineClientRequest{
 		VolumeName:   e.Spec.VolumeName,
 		EngineImage:  e.Status.CurrentImage,
+		DataStore:    ds,
 		IP:           e.Status.IP,
 		Port:         e.Status.Port,
 		InstanceName: e.Name,

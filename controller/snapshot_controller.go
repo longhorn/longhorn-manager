@@ -773,7 +773,7 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 		return err
 	}
 
-	engineCliClient, err := GetBinaryClientForEngine(engine, sc.engineClientCollection, engine.Status.CurrentImage)
+	engineCliClient, err := GetBinaryClientForEngine(engine, sc.engineClientCollection, engine.Status.CurrentImage, sc.ds)
 	if err != nil {
 		return err
 	}
@@ -806,7 +806,7 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 
 // handleSnapshotDeletion reaches out to engine process to check and delete the snapshot
 func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot, engine *longhorn.Engine) error {
-	engineCliClient, err := GetBinaryClientForEngine(engine, sc.engineClientCollection, engine.Status.CurrentImage)
+	engineCliClient, err := GetBinaryClientForEngine(engine, sc.engineClientCollection, engine.Status.CurrentImage, sc.ds)
 	if err != nil {
 		return err
 	}
