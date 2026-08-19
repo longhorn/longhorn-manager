@@ -965,6 +965,22 @@ func recurringJobSchema(job *client.Schema) {
 	retain.Create = true
 	job.ResourceFields["retain"] = retain
 
+	retainAge := job.ResourceFields["retainAge"]
+	// metav1.Duration reflects to the "v1.Duration" struct type, but it is a Go
+	// duration string on the wire. Describe it as such so the schema stays
+	// resolvable.
+	retainAge.Type = "string"
+	retainAge.Required = false
+	retainAge.Unique = false
+	retainAge.Create = true
+	job.ResourceFields["retainAge"] = retainAge
+
+	retentionPolicy := job.ResourceFields["retentionPolicy"]
+	retentionPolicy.Required = false
+	retentionPolicy.Unique = false
+	retentionPolicy.Create = true
+	job.ResourceFields["retentionPolicy"] = retentionPolicy
+
 	concurrency := job.ResourceFields["concurrency"]
 	concurrency.Required = true
 	concurrency.Unique = false
@@ -2531,14 +2547,16 @@ func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api
 			Type: "recurringJob",
 		},
 		RecurringJobSpec: longhorn.RecurringJobSpec{
-			Name:        recurringJob.Name,
-			Groups:      recurringJob.Spec.Groups,
-			Task:        recurringJob.Spec.Task,
-			Cron:        recurringJob.Spec.Cron,
-			Retain:      recurringJob.Spec.Retain,
-			Concurrency: recurringJob.Spec.Concurrency,
-			Labels:      recurringJob.Spec.Labels,
-			Parameters:  recurringJob.Spec.Parameters,
+			Name:            recurringJob.Name,
+			Groups:          recurringJob.Spec.Groups,
+			Task:            recurringJob.Spec.Task,
+			Cron:            recurringJob.Spec.Cron,
+			Retain:          recurringJob.Spec.Retain,
+			RetainAge:       recurringJob.Spec.RetainAge,
+			RetentionPolicy: recurringJob.Spec.RetentionPolicy,
+			Concurrency:     recurringJob.Spec.Concurrency,
+			Labels:          recurringJob.Spec.Labels,
+			Parameters:      recurringJob.Spec.Parameters,
 		},
 		RecurringJobStatus: longhorn.RecurringJobStatus{
 			ExecutionCount: recurringJob.Status.ExecutionCount,
