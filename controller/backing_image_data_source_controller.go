@@ -229,8 +229,13 @@ func getLoggerForBackingImageDataSource(logger logrus.FieldLogger, bids *longhor
 
 func (c *BackingImageDataSourceController) getEngineClientProxy(e *longhorn.Engine) (engineapi.EngineClientProxy, error) {
 	engineCollection := &engineapi.EngineCollection{}
+	controlPath, err := c.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+	}
 	engineCliClient, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
 		EngineImage: e.Status.CurrentImage,
+		ControlPath: controlPath,
 		VolumeName:  e.Spec.VolumeName,
 		IP:          e.Status.IP,
 		Port:        e.Status.Port,

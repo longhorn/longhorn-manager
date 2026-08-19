@@ -35,6 +35,7 @@ type EngineCollection struct{}
 type EngineBinary struct {
 	volumeName   string
 	image        string
+	controlPath  string
 	ip           string
 	port         int
 	cURL         string
@@ -49,10 +50,14 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (*Engin
 	if request.IP != "" && request.Port == 0 {
 		return nil, fmt.Errorf("invalid empty port from request with valid IP")
 	}
+	if request.ControlPath == "" {
+		return nil, fmt.Errorf("invalid empty control path from request")
+	}
 
 	return &EngineBinary{
 		volumeName:   request.VolumeName,
 		image:        request.EngineImage,
+		controlPath:  request.ControlPath,
 		ip:           request.IP,
 		port:         request.Port,
 		cURL:         imutil.GetURL(request.IP, request.Port),
@@ -64,8 +69,8 @@ func (e *EngineBinary) Name() string {
 	return e.volumeName
 }
 
-func (e *EngineBinary) LonghornEngineBinary() string {
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn")
+func (e *EngineBinary) LonghornEngineBinary() (string, error) {
+	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image, e.controlPath), types.EngineBinaryName), nil
 }
 
 func (e *EngineBinary) ExecuteEngineBinary(args ...string) (string, error) {
@@ -73,7 +78,11 @@ func (e *EngineBinary) ExecuteEngineBinary(args ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, lhtypes.ExecuteDefaultTimeout)
+	binary, err := e.LonghornEngineBinary()
+	if err != nil {
+		return "", err
+	}
+	return lhexec.NewExecutor().Execute([]string{}, binary, args, lhtypes.ExecuteDefaultTimeout)
 }
 
 func (e *EngineBinary) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
@@ -81,7 +90,11 @@ func (e *EngineBinary) ExecuteEngineBinaryWithTimeout(timeout time.Duration, arg
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, timeout)
+	binary, err := e.LonghornEngineBinary()
+	if err != nil {
+		return "", err
+	}
+	return lhexec.NewExecutor().Execute([]string{}, binary, args, timeout)
 }
 
 func (e *EngineBinary) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...string) (string, error) {
@@ -89,7 +102,11 @@ func (e *EngineBinary) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute(envs, e.LonghornEngineBinary(), args, lhtypes.ExecuteNoTimeout)
+	binary, err := e.LonghornEngineBinary()
+	if err != nil {
+		return "", err
+	}
+	return lhexec.NewExecutor().Execute(envs, binary, args, lhtypes.ExecuteNoTimeout)
 }
 
 func parseReplica(s string) (*Replica, error) {
@@ -221,7 +238,11 @@ func (e *EngineBinary) VersionGet(obj DataEngineObject, clientOnly bool) (*Engin
 	} else {
 		cmdline = append([]string{"--url", e.cURL}, cmdline...)
 	}
-	output, err := lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), cmdline, lhtypes.ExecuteDefaultTimeout)
+	binary, err := e.LonghornEngineBinary()
+	if err != nil {
+		return nil, err
+	}
+	output, err := lhexec.NewExecutor().Execute([]string{}, binary, cmdline, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume version")
 	}

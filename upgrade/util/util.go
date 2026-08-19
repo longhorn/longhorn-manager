@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -199,7 +200,7 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 	return nil
 }
 
-func CheckUpgradePath(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
+func CheckUpgradePath(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool, requestedControlPath string) error {
 	lhCurrentVersion, err := GetCurrentLonghornVersion(namespace, lhClient)
 	if err != nil {
 		return err
@@ -217,7 +218,39 @@ func CheckUpgradePath(namespace string, lhClient lhclientset.Interface, eventRec
 		return err
 	}
 
+	if err := checkDefaultControlPathUpgrade(namespace, lhClient, requestedControlPath); err != nil {
+		return err
+	}
+
 	return checkEngineUpgradePath(namespace, lhClient, emeta.GetVersion())
+}
+
+func checkDefaultControlPathUpgrade(namespace string, lhClient lhclientset.Interface, requestedControlPath string) error {
+	requestedControlPath = strings.TrimSpace(requestedControlPath)
+	if requestedControlPath == "" {
+		return nil
+	}
+
+	requestedControlPath = filepath.Clean(requestedControlPath)
+	if !types.IsValidLonghornControlPath(requestedControlPath) {
+		return fmt.Errorf("failed to upgrade since the requested %v %q is invalid", types.SettingNameDefaultControlPath, requestedControlPath)
+	}
+
+	currentControlPath := types.DefaultControlPath
+	setting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameDefaultControlPath), metav1.GetOptions{})
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get current %v setting", types.SettingNameDefaultControlPath)
+		}
+	} else {
+		currentControlPath = types.GetLonghornControlPath(setting.Value)
+	}
+
+	if currentControlPath != requestedControlPath {
+		return fmt.Errorf("failed to upgrade since changing %v from %q to %q is not supported", types.SettingNameDefaultControlPath, currentControlPath, requestedControlPath)
+	}
+
+	return nil
 }
 
 // checkLHUpgradePath returns if the upgrade path from lhCurrentVersion to meta.Version is supported.

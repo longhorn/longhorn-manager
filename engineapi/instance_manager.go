@@ -88,11 +88,6 @@ func (c *InstanceManagerClient) Close() error {
 	return err
 }
 
-func GetDeprecatedInstanceManagerBinary(image string) string {
-	cname := types.GetImageCanonicalName(image)
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHost(), cname, DeprecatedInstanceManagerBinaryName)
-}
-
 func CheckInstanceManagerCompatibility(imMinVersion, imVersion int) error {
 	if MinInstanceManagerAPIVersion > imVersion || CurrentInstanceManagerAPIVersion < imMinVersion {
 		return fmt.Errorf("current InstanceManager version %v-%v is not compatible with InstanceManagerAPIVersion %v and InstanceManagerAPIMinVersion %v",
@@ -377,7 +372,7 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 }
 
 func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
+	controlPath, dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
 
 	requestSize, err := util.GetActualBackendSize(r.Spec.VolumeSize, encrypted, engineCLIAPIVersion)
 	if err != nil {
@@ -427,7 +422,10 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 	syncAgentPortCount := portCount - 3
 	args = append(args, "--sync-agent-port-count", strconv.Itoa(syncAgentPortCount))
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.Image), types.EngineBinaryName)
+	if controlPath == "" {
+		return "", nil, fmt.Errorf("control path is required")
+	}
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.Image, controlPath), types.EngineBinaryName)
 
 	return binary, args, nil
 }
@@ -528,6 +526,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 type ReplicaInstanceCreateRequest struct {
 	Replica                       *longhorn.Replica
+	ControlPath                   string
 	DiskName                      string
 	DataPath                      string
 	BackingImagePath              string
@@ -647,7 +646,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	args := []string{}
 	var err error
 	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
-		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
+		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.ControlPath, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
 		if err != nil {
 			return nil, err
 		}

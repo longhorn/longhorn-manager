@@ -42,11 +42,16 @@ func GetEngineBinaryClient(ds *datastore.DataStore, volumeName, nodeID string) (
 		}
 		return nil, fmt.Errorf("cannot get engine client with image %v because it isn't deployed", e.Status.CurrentImage)
 	}
+	controlPath, err := ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+	}
 
 	engineCollection := &EngineCollection{}
 	return engineCollection.NewEngineClient(&EngineClientRequest{
 		VolumeName:   e.Spec.VolumeName,
 		EngineImage:  e.Status.CurrentImage,
+		ControlPath:  controlPath,
 		IP:           e.Status.IP,
 		Port:         e.Status.Port,
 		InstanceName: e.Name,

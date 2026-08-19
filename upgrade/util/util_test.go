@@ -224,6 +224,70 @@ func newCheckLHUpgradePathSupported(lhClient lhclientset.Interface) error {
 	return checkLHUpgradePath(TestNamespace, lhClient)
 }
 
+func TestCheckDefaultControlPathUpgrade(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		currentSettingValue  string
+		requestedControlPath string
+		expectError          bool
+	}{
+		{
+			name:                 "skip when requested control path is empty",
+			requestedControlPath: "",
+			expectError:          false,
+		},
+		{
+			name:                 "allow fresh install upgrade path from implicit default",
+			requestedControlPath: types.DefaultControlPath,
+			expectError:          false,
+		},
+		{
+			name:                 "reject changing implicit default control path",
+			requestedControlPath: "/data/longhorn",
+			expectError:          true,
+		},
+		{
+			name:                 "allow matching existing control path",
+			currentSettingValue:  "/data/longhorn/",
+			requestedControlPath: "/data/longhorn",
+			expectError:          false,
+		},
+		{
+			name:                 "reject changing existing control path",
+			currentSettingValue:  "/var/lib/longhorn",
+			requestedControlPath: "/data/longhorn",
+			expectError:          true,
+		},
+		{
+			name:                 "reject invalid requested control path",
+			requestedControlPath: "/dev/nvme0n1",
+			expectError:          true,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
+			if tt.currentSettingValue != "" {
+				_, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), &longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: string(types.SettingNameDefaultControlPath),
+					},
+					Value: tt.currentSettingValue,
+				}, metav1.CreateOptions{})
+				require.NoError(t, err)
+			}
+
+			err := checkDefaultControlPathUpgrade(TestNamespace, lhClient, tt.requestedControlPath)
+			if tt.expectError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {

@@ -81,7 +81,7 @@ func Upgrade(kubeconfigPath, currentNodeID, managerImage string, enableUpgradeVe
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 	eventRecorder := eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-upgrade"})
 
-	if err := upgradeutil.CheckUpgradePath(namespace, lhClient, eventRecorder, enableUpgradeVersionCheck); err != nil {
+	if err := upgradeutil.CheckUpgradePath(namespace, lhClient, eventRecorder, enableUpgradeVersionCheck, ""); err != nil {
 		return err
 	}
 

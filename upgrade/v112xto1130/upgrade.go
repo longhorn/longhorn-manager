@@ -1,10 +1,15 @@
 package v112xto1130
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -21,6 +26,36 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	}
 
 	if err := upgradeRecurringJobs(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := createDefaultControlPathSetting(namespace, lhClient); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func createDefaultControlPathSetting(namespace string, lhClient lhclientset.Interface) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"create default control path setting failed")
+	}()
+
+	_, err = lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameDefaultControlPath), metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	setting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameDefaultControlPath),
+		},
+		Value: types.DefaultControlPath,
+	}
+	if _, err = lhClient.LonghornV1beta2().Settings(namespace).Create(context.TODO(), setting, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
 

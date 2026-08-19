@@ -32,15 +32,17 @@ const (
 
 type BackupTargetClient struct {
 	Image          string
+	ds             *datastore.DataStore
 	URL            string
 	Credential     map[string]string
 	ExecuteTimeout time.Duration
 }
 
 // NewBackupTargetClient returns the backup target client
-func NewBackupTargetClient(engineImage, url string, credential map[string]string, executeTimeout time.Duration) *BackupTargetClient {
+func NewBackupTargetClient(engineImage string, ds *datastore.DataStore, url string, credential map[string]string, executeTimeout time.Duration) *BackupTargetClient {
 	return &BackupTargetClient{
 		Image:          engineImage,
+		ds:             ds,
 		URL:            url,
 		Credential:     credential,
 		ExecuteTimeout: executeTimeout,
@@ -76,11 +78,19 @@ func NewBackupTargetClientFromBackupTarget(backupTarget *longhorn.BackupTarget, 
 	}
 	timeout := time.Duration(executeTimeout) * time.Minute
 
-	return NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
+	return NewBackupTargetClient(defaultEngineImage, ds, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
 }
 
-func (btc *BackupTargetClient) LonghornEngineBinary() string {
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(btc.Image), "longhorn")
+func (btc *BackupTargetClient) LonghornEngineBinary() (string, error) {
+	controlPath := types.DefaultControlPath
+	if btc.ds != nil {
+		settingControlPath, err := btc.ds.GetDefaultControlPath()
+		if err != nil {
+			return "", errors.Wrap(err, "failed to get default control path")
+		}
+		controlPath = settingControlPath
+	}
+	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(btc.Image, controlPath), types.EngineBinaryName), nil
 }
 
 // getBackupCredentialEnv returns the environment variables as KEY=VALUE in string slice
@@ -139,7 +149,11 @@ func (btc *BackupTargetClient) ExecuteEngineBinary(args ...string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute(envs, btc.LonghornEngineBinary(), args, btc.ExecuteTimeout)
+	binary, err := btc.LonghornEngineBinary()
+	if err != nil {
+		return "", err
+	}
+	return lhexec.NewExecutor().Execute(envs, binary, args, btc.ExecuteTimeout)
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
@@ -147,7 +161,11 @@ func (btc *BackupTargetClient) ExecuteEngineBinaryWithTimeout(timeout time.Durat
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute(envs, btc.LonghornEngineBinary(), args, timeout)
+	binary, err := btc.LonghornEngineBinary()
+	if err != nil {
+		return "", err
+	}
+	return lhexec.NewExecutor().Execute(envs, binary, args, timeout)
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
@@ -155,7 +173,11 @@ func (btc *BackupTargetClient) ExecuteEngineBinaryWithoutTimeout(args ...string)
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute(envs, btc.LonghornEngineBinary(), args, lhtypes.ExecuteNoTimeout)
+	binary, err := btc.LonghornEngineBinary()
+	if err != nil {
+		return "", err
+	}
+	return lhexec.NewExecutor().Execute(envs, binary, args, lhtypes.ExecuteNoTimeout)
 }
 
 // parseBackupVolumeNamesList parses a list of backup volume names into a sorted string slice

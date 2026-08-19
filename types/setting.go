@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -577,12 +578,8 @@ var (
 		DisplayName: "Default Data Path",
 		Description: "Default path to use for storing data on a host. " +
 			"An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, " +
-			"whereas a path to a block device indicates a block-type disk used by the V2 Data Engine. " +
-			"Bare PCI identifiers (such as '0000:00:1e.0') are not supported here since this setting may be " +
-			"used as a host path for pod mounts. " +
-			"When this setting is a block device path, runtime and control-plane paths are configured " +
-			"separately via the 'default-control-path' setting. Note: This is an installation-time setting " +
-			"and cannot be changed after Longhorn is initialized.",
+			"while a path to a block device indicates a block-type disk used by the V2 Data Engine. " +
+			"The default value is \"/var/lib/longhorn/\".",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -594,7 +591,7 @@ var (
 	SettingDefinitionDefaultControlPath = SettingDefinition{
 		DisplayName: "Default Control Path",
 		Description: "Default path used for storing runtime and control-plane artifacts on a host. " +
-			"This setting must be an absolute directory path. Engine binaries, metadata, sockets, and logs " +
+			"This setting must be an absolute directory path. Engine binaries, metadata and sockets " +
 			"are stored under this path for both V1 and V2 engines. Note: This is an installation-time " +
 			"setting and cannot be changed after Longhorn is initialized.",
 		Type:               SettingTypeString,
@@ -2137,7 +2134,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            GetDefaultLogDirectoryOnHost(),
+		Default:            filepath.Join(DefaultControlPath, LogDirectorySubpath),
 	}
 
 	SettingDefinitionNodeDiskHealthMonitoring = SettingDefinition{

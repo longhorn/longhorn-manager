@@ -320,6 +320,65 @@ func TestValidateSettingDefaultControlPath(t *testing.T) {
 	}
 }
 
+func TestGetDefaultDataAndControlPath(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	tests := map[string]struct {
+		existingObjects     []runtime.Object
+		expectedDataPath    string
+		expectedControlPath string
+	}{
+		"uses setting values": {
+			existingObjects: []runtime.Object{
+				&longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      string(types.SettingNameDefaultDataPath),
+						Namespace: testNamespace,
+					},
+					Value: "/data/longhorn/",
+				},
+				&longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      string(types.SettingNameDefaultControlPath),
+						Namespace: testNamespace,
+					},
+					Value: "/control/longhorn/",
+				},
+			},
+			expectedDataPath:    "/data/longhorn",
+			expectedControlPath: "/control/longhorn",
+		},
+		"falls back to historical defaults when settings are missing": {
+			expectedDataPath:    types.DefaultDataPath,
+			expectedControlPath: types.DefaultControlPath,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset(tc.existingObjects...) // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			informerFactories.Start(stopCh)
+
+			require.True(t, cache.WaitForCacheSync(stopCh, ds.SettingInformer.HasSynced))
+
+			dataPath, err := ds.GetDefaultDataPath()
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedDataPath, dataPath)
+
+			controlPath, err := ds.GetDefaultControlPath()
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedControlPath, controlPath)
+		})
+	}
+}
+
 func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
 	const testNamespace = "longhorn-system"
 
@@ -367,15 +426,17 @@ func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
 			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
 			newValue:        "/data/longhorn",
 		},
-		"bare pci identifier is rejected": {
+		"bare pci identifier is allowed": {
 			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
 			newValue:        "0000:00:1e.0",
-			expectError:     "the value of default-data-path is invalid",
 		},
-		"changing path after initialization is rejected": {
+		"scsi by-id path is allowed": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
+			newValue:        "/dev/disk/by-id/scsi-36001405b8f1e2d3c4b5a697887766554",
+		},
+		"changing path after initialization is allowed": {
 			existingObjects: []runtime.Object{baseSetting.DeepCopy(), newNode("node-1")},
 			newValue:        "/data/longhorn",
-			expectError:     "cannot change default-data-path after Longhorn has been initialized",
 		},
 	}
 
@@ -403,6 +464,64 @@ func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectError)
 			}
+		})
+	}
+}
+
+func TestFilterCustomizedDefaultSettingsPreservesExistingDefaultControlPath(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	tests := map[string]struct {
+		existingControlPath string
+		customizedValue     string
+		expectAvailable     bool
+	}{
+		"skip changed control path": {
+			existingControlPath: "/var/lib/longhorn",
+			customizedValue:     "/data/longhorn",
+			expectAvailable:     false,
+		},
+		"allow same control path with normalization": {
+			existingControlPath: "/var/lib/longhorn",
+			customizedValue:     "/var/lib/longhorn/",
+			expectAvailable:     true,
+		},
+		"allow invalid control path for validation to reject": {
+			existingControlPath: "/var/lib/longhorn",
+			customizedValue:     "/dev/nvme0n1",
+			expectAvailable:     false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset(&longhorn.Setting{ // nolint: staticcheck
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      string(types.SettingNameDefaultControlPath),
+					Namespace: testNamespace,
+				},
+				Value: tc.existingControlPath,
+			}) // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			informerFactories.Start(stopCh)
+
+			require.True(t, cache.WaitForCacheSync(stopCh,
+				ds.SettingInformer.HasSynced,
+				ds.NodeInformer.HasSynced,
+			))
+
+			availableSettings := ds.filterCustomizedDefaultSettings(map[string]string{
+				string(types.SettingNameDefaultControlPath): tc.customizedValue,
+			}, "test-resource-version")
+
+			_, ok := availableSettings[string(types.SettingNameDefaultControlPath)]
+			require.Equal(t, tc.expectAvailable, ok)
 		})
 	}
 }

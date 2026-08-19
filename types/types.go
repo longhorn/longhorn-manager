@@ -12,11 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
@@ -503,43 +501,31 @@ func GetDefaultManagerURL() string {
 	return "http://longhorn-backend:" + strconv.Itoa(DefaultAPIPort) + "/v1"
 }
 
-// GetLonghornDataPath returns the process-scoped Longhorn data path.
-// LONGHORN_DATA_PATH is expected to be populated from the configured
-// default-data-path during installation or pod creation. This is an
-// installation-time default rather than a dynamically reloadable setting;
-// when the env var is unset, empty, or invalid, the historical default path
-// is used for backward compatibility.
-func GetLonghornDataPath() string {
-	path := strings.TrimSpace(os.Getenv(LonghornDataPathEnv))
+func GetLonghornDataPath(path string) string {
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return DefaultDataPath
 	}
 	path = filepath.Clean(path)
 	if !IsValidLonghornDataPath(path) {
-		logrus.Warnf("Falling back to default data path %q because %s is unset or invalid", DefaultDataPath, LonghornDataPathEnv)
+		logrus.Warnf("Falling back to default data path %q because data path is unset or invalid", DefaultDataPath)
 		return DefaultDataPath
 	}
 	return path
 }
 
-// GetLonghornControlPath returns the process-scoped Longhorn control path.
-// LONGHORN_CONTROL_PATH is expected to be populated from the configured
-// default-control-path during installation or pod creation. This is an
-// installation-time default rather than a dynamically reloadable setting;
-// when the env var is unset, empty, or invalid, the historical default path
-// is used for backward compatibility.
-func GetLonghornControlPath() string {
-	path := strings.TrimSpace(os.Getenv(LonghornControlPathEnv))
+func GetLonghornControlPath(path string) string {
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return DefaultControlPath
 	}
 	path = filepath.Clean(path)
 	if !IsValidLonghornControlPath(path) {
 		if path == "/dev" || strings.HasPrefix(path, "/dev/") {
-			logrus.Warnf("Falling back to default control path %q because %s cannot point to /dev", DefaultControlPath, LonghornControlPathEnv)
+			logrus.Warnf("Falling back to default control path %q because control path cannot point to /dev", DefaultControlPath)
 			return DefaultControlPath
 		}
-		logrus.Warnf("Falling back to default control path %q because %s is unset or invalid", DefaultControlPath, LonghornControlPathEnv)
+		logrus.Warnf("Falling back to default control path %q because control path is unset or invalid", DefaultControlPath)
 		return DefaultControlPath
 	}
 	return path
@@ -547,6 +533,9 @@ func GetLonghornControlPath() string {
 
 func IsValidLonghornDataPath(path string) bool {
 	path = filepath.Clean(strings.TrimSpace(path))
+	if IsBDF(path) {
+		return true
+	}
 	return path != "." && path != "" && path != string(filepath.Separator) && filepath.IsAbs(path)
 }
 
@@ -558,39 +547,36 @@ func IsValidLonghornControlPath(path string) bool {
 	return path != "/dev" && !strings.HasPrefix(path, "/dev/")
 }
 
-// Defaults to /var/lib/longhorn/engine-binaries when LONGHORN_CONTROL_PATH is unset.
-func GetEngineBinaryDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), EngineBinaryDirectorySubpath)
-}
-
-// Defaults to /var/lib/longhorn/metadata when LONGHORN_CONTROL_PATH is unset.
-func GetMetadataDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), MetadataDirectorySubpath)
-}
-
-// Defaults to /var/lib/longhorn/unix-domain-socket when LONGHORN_CONTROL_PATH is unset.
-func GetUnixDomainSocketDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), UnixDomainSocketDirectorySubpath)
-}
-
-// Defaults to /host/var/lib/longhorn/unix-domain-socket inside the container.
-func GetUnixDomainSocketDirectoryInContainer() string {
-	return filepath.Join(ReplicaHostPrefix,
-		strings.TrimLeft(GetUnixDomainSocketDirectoryOnHost(), string(filepath.Separator)))
-}
-
-// Defaults to /var/lib/longhorn/logs when LONGHORN_CONTROL_PATH is unset.
-func GetDefaultLogDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), LogDirectorySubpath)
-}
-
 func GetImageCanonicalName(image string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(image, ":", "-"), "/", "-")
 }
 
-func GetEngineBinaryDirectoryOnHostForImage(image string) string {
+func GetEngineBinaryDirectoryOnHost(controlPath string) string {
+	return filepath.Join(controlPath, EngineBinaryDirectorySubpath)
+}
+
+func GetMetadataDirectoryOnHost(controlPath string) string {
+	return filepath.Join(controlPath, MetadataDirectorySubpath)
+}
+
+func GetUnixDomainSocketDirectoryOnHost(controlPath string) string {
+	return filepath.Join(controlPath, UnixDomainSocketDirectorySubpath)
+}
+
+func GetPathForReplicaManagerContainer(path string) string {
+	return filepath.Join(
+		ReplicaHostPrefix,
+		strings.TrimLeft(path, string(filepath.Separator)),
+	)
+}
+
+func GetUnixDomainSocketDirectoryInContainer(controlPath string) string {
+	return GetPathForReplicaManagerContainer(GetUnixDomainSocketDirectoryOnHost(controlPath))
+}
+
+func GetEngineBinaryDirectoryOnHostForImage(image, controlPath string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(GetEngineBinaryDirectoryOnHost(), cname)
+	return filepath.Join(GetEngineBinaryDirectoryOnHost(controlPath), cname)
 }
 
 func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
@@ -598,25 +584,9 @@ func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
 	return filepath.Join(EngineBinaryDirectoryInContainer, cname)
 }
 
-func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
+func GetEngineBinaryDirectoryForReplicaManagerContainer(image, controlPath string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(
-		ReplicaHostPrefix,
-		strings.TrimLeft(GetEngineBinaryDirectoryOnHost(), string(filepath.Separator)),
-		cname,
-	)
-}
-
-func EngineBinaryExistOnHostForImage(image string) (bool, error) {
-	engineBinaryPath := filepath.Join(GetEngineBinaryDirectoryOnHostForImage(image), "longhorn")
-	st, err := os.Stat(engineBinaryPath)
-	if err != nil {
-		return false, err
-	}
-	if st.IsDir() {
-		return false, errors.Errorf("expected %s to be a file, but it is a directory", engineBinaryPath)
-	}
-	return true, nil
+	return filepath.Join(GetPathForReplicaManagerContainer(GetEngineBinaryDirectoryOnHost(controlPath)), cname)
 }
 
 func GetBackingImageManagerName(image, diskUUID string) string {
@@ -625,6 +595,10 @@ func GetBackingImageManagerName(image, diskUUID string) string {
 
 func GetBackingImageDirectoryName(backingImageName, backingImageUUID string) string {
 	return fmt.Sprintf("%s-%s", backingImageName, backingImageUUID)
+}
+
+func GetDefaultLogDirectoryOnHost() string {
+	return filepath.Join(DefaultControlPath, LogDirectorySubpath)
 }
 
 func GetBackingImageManagerDirectoryOnHost(diskPath string) string {
@@ -1471,45 +1445,53 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 		if disk.Path == "" {
 			return nil, fmt.Errorf("invalid disk %+v", disk)
 		}
-		diskStat, err := lhns.GetDiskStat(disk.Path)
-		if err != nil {
-			return nil, err
+
+		if disk.StorageReserved < 0 {
+			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
 		}
+
+		if disk.Type == longhorn.DiskTypeBlock {
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + util.RandomID()
+			}
+			if disk.DiskDriver == "" {
+				disk.DiskDriver = longhorn.DiskDriverAuto
+			}
+		} else {
+			diskStat, err := lhns.GetDiskStat(disk.Path)
+			if err != nil {
+				return nil, err
+			}
+
+			// Set to default disk name
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + diskStat.DiskID
+			}
+
+			if _, exist := existDiskID[diskStat.DiskID]; exist {
+				return nil, fmt.Errorf(
+					"the disk %v is the same"+
+						"file system with %v, diskID %v",
+					disk.Path, existDiskID[diskStat.DiskID],
+					diskStat.DiskID)
+			}
+
+			existDiskID[diskStat.DiskID] = disk.Path
+
+			if disk.StorageReserved > diskStat.StorageMaximum {
+				return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
+			}
+			if disk.StorageReserved == 0 {
+				disk.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
+			}
+		}
+
 		for _, vDisk := range validDisks {
 			if vDisk.Path == disk.Path {
 				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
 			}
 		}
 
-		// Set to default disk name
-		if disk.Name == "" {
-			disk.Name = DefaultDiskPrefix + diskStat.DiskID
-		}
-
-		if _, exist := existDiskID[diskStat.DiskID]; exist {
-			return nil, fmt.Errorf(
-				"the disk %v is the same"+
-					"file system with %v, diskID %v",
-				disk.Path, existDiskID[diskStat.DiskID],
-				diskStat.DiskID)
-		}
-
-		existDiskID[diskStat.DiskID] = disk.Path
-
-		if disk.StorageReserved < 0 || disk.StorageReserved > diskStat.StorageMaximum {
-			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
-		}
-		if disk.StorageReserved == 0 {
-			if disk.Type == longhorn.DiskTypeBlock {
-				size, err := getBlockDeviceSize(ReplicaHostPrefix + disk.Path)
-				if err != nil {
-					return nil, err
-				}
-				disk.StorageReserved = int64(size) * storageReservedPercentage / 100
-			} else {
-				disk.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
-			}
-		}
 		tags, err := util.ValidateTags(disk.Tags)
 		if err != nil {
 			return nil, err
@@ -1523,25 +1505,6 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 	}
 
 	return validDisks, nil
-}
-
-func getBlockDeviceSize(devicePath string) (uint64, error) {
-	file, err := os.Open(devicePath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open block device at %s: %w", devicePath, err)
-	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			logrus.WithError(closeErr).Warnf("Failed to close block device %s", devicePath)
-		}
-	}()
-	var size uint64
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
-	if errno != 0 {
-		return 0, fmt.Errorf("failed to get block device size for %s: errno=%v", devicePath, errno)
-	}
-
-	return size, nil
 }
 
 func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
@@ -1584,7 +1547,7 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 }
 
 func IsBDF(addr string) bool {
-	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfFormat := "^[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}$"
 	bdfPattern := regexp.MustCompile(bdfFormat)
 	return bdfPattern.MatchString(addr)
 }
@@ -1609,10 +1572,6 @@ func IsPotentialBlockDisk(path string) bool {
 
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	if IsPotentialBlockDisk(dataPath) {
-		size, err := getBlockDeviceSize(dataPath)
-		if err != nil {
-			return nil, err
-		}
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
@@ -1620,7 +1579,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 				DiskDriver:        longhorn.DiskDriverAuto,
 				AllowScheduling:   true,
 				EvictionRequested: false,
-				StorageReserved:   int64(size) * storageReservedPercentage / 100,
+				StorageReserved:   0,
 				Tags:              []string{},
 			},
 		}, nil

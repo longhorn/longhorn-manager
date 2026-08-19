@@ -1985,6 +1985,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		return nil, errors.Wrap(err, "failed to get log path for instance manager pod")
 	}
 
+	controlPath, err := imc.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+	}
+
 	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector, dataEngine)
 	if err != nil {
 		return nil, err
@@ -2064,11 +2069,6 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufSmallPoolSize)
 		}
 
-		controlPath, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
-		}
-
 		args := []string{
 			"start-spdk-tgt",
 			"--spdk-log", logFlags,
@@ -2084,7 +2084,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			args = append(args, "--spdk-iobuf-small-pool-size", fmt.Sprintf("%d", iobufSmallPoolSize))
 		}
 		args = append(args,
-			"--longhorn-control-path", controlPath.Value,
+			"--longhorn-control-path", controlPath,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
@@ -2193,12 +2193,8 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Value: string(dataEngine),
 		},
 		{
-			Name:  types.LonghornDataPathEnv,
-			Value: types.GetLonghornDataPath(),
-		},
-		{
 			Name:  types.LonghornControlPathEnv,
-			Value: types.GetLonghornControlPath(),
+			Value: controlPath,
 		},
 	}
 	if tz := os.Getenv(types.EnvTZ); tz != "" {
@@ -2227,7 +2223,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
-			MountPath: types.GetUnixDomainSocketDirectoryInContainer(),
+			MountPath: types.GetUnixDomainSocketDirectoryInContainer(controlPath),
 			Name:      "unix-domain-socket",
 		},
 		{
@@ -2253,7 +2249,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "engine-binaries",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetEngineBinaryDirectoryOnHost(),
+					Path: types.GetEngineBinaryDirectoryOnHost(controlPath),
 				},
 			},
 		},
@@ -2261,7 +2257,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "metadata",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetMetadataDirectoryOnHost(),
+					Path: types.GetMetadataDirectoryOnHost(controlPath),
 					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
@@ -2270,7 +2266,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "unix-domain-socket",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetUnixDomainSocketDirectoryOnHost(),
+					Path: types.GetUnixDomainSocketDirectoryOnHost(controlPath),
 				},
 			},
 		},

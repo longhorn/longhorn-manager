@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -59,8 +61,8 @@ type EngineImageController struct {
 
 	// for unit test
 	nowHandler                func() string
-	engineBinaryChecker       func(string) (bool, error)
-	engineImageVersionUpdater func(*longhorn.EngineImage) error
+	engineBinaryChecker       func(string, *datastore.DataStore) (bool, error)
+	engineImageVersionUpdater func(*longhorn.EngineImage, *datastore.DataStore) error
 }
 
 func NewEngineImageController(
@@ -88,7 +90,7 @@ func NewEngineImageController(
 		ds: ds,
 
 		nowHandler:                util.Now,
-		engineBinaryChecker:       types.EngineBinaryExistOnHostForImage,
+		engineBinaryChecker:       engineBinaryExists,
 		engineImageVersionUpdater: updateEngineImageVersion,
 	}
 
@@ -337,14 +339,14 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
-	ok, err := ic.engineBinaryChecker(engineImage.Spec.Image)
+	ok, err := ic.engineBinaryChecker(engineImage.Spec.Image, ic.ds)
 	if !ok {
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.EngineImageConditionTypeReadyReasonDaemonSet, errors.Errorf("engine binary check failed: %v", err).Error())
 		engineImage.Status.State = longhorn.EngineImageStateDeploying
 		return nil
 	}
 
-	if err := ic.engineImageVersionUpdater(engineImage); err != nil {
+	if err := ic.engineImageVersionUpdater(engineImage, ic.ds); err != nil {
 		return err
 	}
 
@@ -589,11 +591,32 @@ func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume,
 	return true
 }
 
-func updateEngineImageVersion(ei *longhorn.EngineImage) error {
+func engineBinaryExists(image string, ds *datastore.DataStore) (bool, error) {
+	controlPath, err := ds.GetDefaultControlPath()
+	if err != nil {
+		return false, err
+	}
+	engineBinaryPath := filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(image, controlPath), types.EngineBinaryName)
+	st, err := os.Stat(engineBinaryPath)
+	if err != nil {
+		return false, err
+	}
+	if st.IsDir() {
+		return false, fmt.Errorf("engine binary path %v is a directory", engineBinaryPath)
+	}
+	return true, nil
+}
+
+func updateEngineImageVersion(ei *longhorn.EngineImage, ds *datastore.DataStore) error {
 	engineCollection := &engineapi.EngineCollection{}
+	controlPath, err := ds.GetDefaultControlPath()
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+	}
 	// we're getting local longhorn engine version, don't need volume etc
 	client, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
 		EngineImage: ei.Spec.Image,
+		ControlPath: controlPath,
 		VolumeName:  "",
 		IP:          "",
 		Port:        0,
@@ -910,6 +933,10 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
+	controlPath, err := ic.ds.GetDefaultControlPath()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+	}
 	podProbePeriodSeconds, podProbeTimeoutSeconds, podLivenessProbeFailureThreshold := ic.getEngineImagePodLivenessProbeParameters()
 	cmd := []string{
 		"/bin/bash",
@@ -1004,7 +1031,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 							Name: "data",
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
-									Path: types.GetEngineBinaryDirectoryOnHostForImage(image),
+									Path: types.GetEngineBinaryDirectoryOnHostForImage(image, controlPath),
 								},
 							},
 						},

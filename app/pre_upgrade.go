@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -114,7 +115,7 @@ func (u *preUpgrader) Run() error {
 		}
 	}()
 
-	if err = upgradeutil.CheckUpgradePath(u.namespace, u.lhClient, u.eventRecorder, true); err != nil {
+	if err = upgradeutil.CheckUpgradePath(u.namespace, u.lhClient, u.eventRecorder, true, os.Getenv(types.LonghornControlPathEnv)); err != nil {
 		return err
 	}
 
