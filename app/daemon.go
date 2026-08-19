@@ -121,29 +121,32 @@ func DaemonCmd() *cli.Command {
 //
 // https://github.com/longhorn/longhorn/issues/10054
 //
+// It returns the clients built for the admission webhook so the caller reuses
+// them instead of constructing a second set of informer caches.
+//
 // Parameters:
 // - ctx: The context used to manage the webhook servers lifecycle.
 // - kubeconfigPath: The path to the kubeconfig file.
 // - currentNodeID: The ID of the current node attempting to acquire the leadership.
-func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentNodeID string) error {
+func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentNodeID string) (*client.Clients, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		return errors.Wrap(err, "failed to get client config")
+		return nil, errors.Wrap(err, "failed to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "failed to get k8s client")
+		return nil, errors.Wrap(err, "failed to get k8s client")
 	}
 
 	podName, err := util.GetRequiredEnv(types.EnvPodName)
 	if err != nil {
-		return fmt.Errorf("failed to detect the manager pod name")
+		return nil, fmt.Errorf("failed to detect the manager pod name")
 	}
 
 	podNamespace, err := util.GetRequiredEnv(types.EnvPodNamespace)
 	if err != nil {
-		return fmt.Errorf("failed to detect the manager pod namespace")
+		return nil, fmt.Errorf("failed to detect the manager pod namespace")
 	}
 
 	lock := &resourcelock.LeaseLock{
@@ -156,6 +159,9 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			Identity: currentNodeID,
 		},
 	}
+
+	var clients *client.Clients
+	webhookStarted := make(chan struct{})
 
 	fnStartWebhook := func(ctx context.Context) error {
 		if enableConversionWebhook {
@@ -190,7 +196,8 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			}
 		}
 
-		clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+		var err error
+		clients, err = client.NewClients(kubeconfigPath, true, ctx.Done())
 		if err != nil {
 			return err
 		}
@@ -231,6 +238,7 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 					logrus.Fatalf("Error starting webhooks: %v", err)
 				}
 
+				close(webhookStarted)
 				cancel()
 			},
 			OnStoppedLeading: func() {
@@ -245,7 +253,14 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 		},
 	})
 
-	return nil
+	// OnStartedLeading runs on its own goroutine, so RunOrDie may return while
+	// fnStartWebhook is still in flight; read clients only after the completion signal.
+	select {
+	case <-webhookStarted:
+		return clients, nil
+	default:
+		return nil, fmt.Errorf("terminated before the admission webhook startup completed")
+	}
 }
 
 func startManager(cmd *cli.Command) error {
@@ -301,12 +316,7 @@ func startManager(cmd *cli.Command) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
-	err = startWebhooksByLeaderElection(ctx, kubeconfigPath, currentNodeID)
-	if err != nil {
-		return err
-	}
-
-	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+	clients, err := startWebhooksByLeaderElection(ctx, kubeconfigPath, currentNodeID)
 	if err != nil {
 		return err
 	}
