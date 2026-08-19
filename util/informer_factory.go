@@ -9,6 +9,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
 
@@ -42,7 +43,7 @@ func (f *InformerFactories) Start(stopCh <-chan struct{}) {
 // from Kubernetes Pod objects cached by the cluster-wide KubeInformerFactory.
 //
 // Only Pod objects are transformed because they dominate informer memory usage
-// in large clusters. Other resources (PV, PVC, StorageClass, Lease, etc.) are
+// in large clusters. Other resources (PV, PVC, StorageClass, etc.) are
 // left intact to preserve ManagedFields for safe Update operations and future
 // server-side apply compatibility.
 func kubeResourceTransform(namespace string) func(interface{}) (interface{}, error) {
