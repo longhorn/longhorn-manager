@@ -24,44 +24,51 @@ const (
 	nodeValidatorTestNamespace = "longhorn-system"
 )
 
-func TestValidateNodeDiskPathsDuplicate(t *testing.T) {
-	disks := map[string]longhorn.DiskSpec{
-		"disk-1": {Path: "/fake/path/disk1"},
-		"disk-2": {Path: "/fake/path/disk1"},
+func TestValidateNodeDiskPaths(t *testing.T) {
+	testCases := []struct {
+		name          string
+		disks         map[string]longhorn.DiskSpec
+		errorMessages []string
+	}{
+		{
+			name: "duplicate paths",
+			disks: map[string]longhorn.DiskSpec{
+				"disk-1": {Path: "/fake/path/disk1"},
+				"disk-2": {Path: "/fake/path/disk1"},
+			},
+			errorMessages: []string{"duplicate disk paths", "node1", "disk-1", "disk-2", "/fake/path/disk1"},
+		},
+		{
+			name: "unique paths",
+			disks: map[string]longhorn.DiskSpec{
+				"disk-1": {Path: "/fake/path/disk1"},
+				"disk-2": {Path: "/fake/path/disk2"},
+			},
+		},
+		{
+			name: "normalized duplicate paths",
+			disks: map[string]longhorn.DiskSpec{
+				"disk-1": {Path: "/fake/path/disk1"},
+				"disk-2": {Path: "/fake/path/../path/disk1"},
+			},
+			errorMessages: []string{"duplicate disk paths", "node1", "/fake/path/disk1"},
+		},
 	}
 
-	err := validateNodeDiskPaths("node1", disks)
-	assert.Error(t, err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateNodeDiskPaths("node1", tc.disks)
+			if len(tc.errorMessages) == 0 {
+				require.NoError(t, err)
+				return
+			}
 
-	assert.Contains(t, err.Error(), "duplicate disk paths")
-	assert.Contains(t, err.Error(), "node1")
-	assert.Contains(t, err.Error(), "disk-1")
-	assert.Contains(t, err.Error(), "disk-2")
-	assert.Contains(t, err.Error(), "/fake/path/disk1")
-}
-
-func TestValidateNodeDiskPathsUnique(t *testing.T) {
-	disks := map[string]longhorn.DiskSpec{
-		"disk-1": {Path: "/fake/path/disk1"},
-		"disk-2": {Path: "/fake/path/disk2"},
+			require.Error(t, err)
+			for _, message := range tc.errorMessages {
+				assert.Contains(t, err.Error(), message)
+			}
+		})
 	}
-
-	err := validateNodeDiskPaths("node1", disks)
-	assert.NoError(t, err)
-}
-
-func TestValidateNodeDiskPathsNormalizedDuplicate(t *testing.T) {
-	disks := map[string]longhorn.DiskSpec{
-		"disk-1": {Path: "/fake/path/disk1"},
-		"disk-2": {Path: "/fake/path/disk1"},
-	}
-
-	err := validateNodeDiskPaths("node1", disks)
-	assert.Error(t, err)
-
-	assert.Contains(t, err.Error(), "duplicate disk paths")
-	assert.Contains(t, err.Error(), "node1")
-	assert.Contains(t, err.Error(), "/fake/path/disk1")
 }
 
 func TestFilepathCleanWithBDF(t *testing.T) {
@@ -107,6 +114,77 @@ func TestNodeValidatorUpdateLostKubernetesNode(t *testing.T) {
 				}
 				newNode.Annotations["example.com/test-annotation"] = "updated-value"
 			},
+		},
+		{
+			name: "deleted node with unsynchronized disks allows scheduling disable",
+			mutate: func(_, newNode *longhorn.Node) {
+				newNode.Spec.AllowScheduling = false
+			},
+		},
+		{
+			name:        "deleted node with synchronized disks allows scheduling disable",
+			disksSynced: true,
+			mutate: func(_, newNode *longhorn.Node) {
+				newNode.Spec.AllowScheduling = false
+			},
+		},
+		{
+			name: "deleted node with unsynchronized disks rejects disk change",
+			mutate: func(_, newNode *longhorn.Node) {
+				disk := newNode.Spec.Disks["disk-1"]
+				disk.AllowScheduling = false
+				newNode.Spec.Disks["disk-1"] = disk
+			},
+			expectedErrorMsg: "cannot modify disks",
+		},
+		{
+			name:        "deleted node with synchronized disks rejects disk change",
+			disksSynced: true,
+			mutate: func(_, newNode *longhorn.Node) {
+				disk := newNode.Spec.Disks["disk-1"]
+				disk.AllowScheduling = false
+				newNode.Spec.Disks["disk-1"] = disk
+			},
+			expectedErrorMsg: "cannot modify disks",
+		},
+		{
+			name: "deleted node rejects scheduling disable with node spec co-update",
+			mutate: func(_, newNode *longhorn.Node) {
+				newNode.Spec.AllowScheduling = false
+				newNode.Spec.Tags = []string{"changed"}
+			},
+			expectedErrorMsg: "only disabling scheduling",
+		},
+		{
+			name: "deleted node with unsynchronized disks rejects unchanged scheduling",
+			mutate: func(_, _ *longhorn.Node) {
+			},
+			expectedErrorMsg: "only disabling scheduling",
+		},
+		{
+			name: "deleted node with unsynchronized disks rejects scheduling enable",
+			mutate: func(oldNode, newNode *longhorn.Node) {
+				oldNode.Spec.AllowScheduling = false
+				newNode.Spec.AllowScheduling = true
+			},
+			expectedErrorMsg: "only disabling scheduling",
+		},
+		{
+			name:        "deleted node with synchronized disks rejects scheduling enable",
+			disksSynced: true,
+			mutate: func(oldNode, newNode *longhorn.Node) {
+				oldNode.Spec.AllowScheduling = false
+				newNode.Spec.AllowScheduling = true
+			},
+			expectedErrorMsg: "only disabling scheduling",
+		},
+		{
+			name:           "existing node with unsynchronized disks rejects scheduling disable",
+			kubeNodeExists: true,
+			mutate: func(_, newNode *longhorn.Node) {
+				newNode.Spec.AllowScheduling = false
+			},
+			expectedErrorMsg: "spec and status of disks",
 		},
 	}
 
