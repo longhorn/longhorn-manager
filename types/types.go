@@ -26,30 +26,32 @@ import (
 )
 
 const (
-	LonghornKindNode                = "Node"
-	LonghornKindVolume              = "Volume"
-	LonghornKindVolumeAttachment    = "VolumeAttachment"
-	LonghornKindEngine              = "Engine"
-	LonghornKindEngineFrontend      = "EngineFrontend"
-	LonghornKindReplica             = "Replica"
-	LonghornKindBackupTarget        = "BackupTarget"
-	LonghornKindBackupVolume        = "BackupVolume"
-	LonghornKindBackup              = "Backup"
-	LonghornKindBackupBackingImage  = "BackupBackingImage"
-	LonghornKindSnapshot            = "Snapshot"
-	LonghornKindEngineImage         = "EngineImage"
-	LonghornKindInstanceManager     = "InstanceManager"
-	LonghornKindShareManager        = "ShareManager"
-	LonghornKindBackingImage        = "BackingImage"
-	LonghornKindBackingImageManager = "BackingImageManager"
-	LonghornKindRecurringJob        = "RecurringJob"
-	LonghornKindSetting             = "Setting"
-	LonghornKindSupportBundle       = "SupportBundle"
-	LonghornKindSystemBackup        = "SystemBackup"
-	LonghornKindSystemRestore       = "SystemRestore"
-	LonghornKindOrphan              = "Orphan"
-	LonghornKindShardGroup          = "ShardGroup"
-	LonghornKindShard               = "Shard"
+	LonghornKindNode                          = "Node"
+	LonghornKindVolume                        = "Volume"
+	LonghornKindVolumeAttachment              = "VolumeAttachment"
+	LonghornKindEngine                        = "Engine"
+	LonghornKindEngineFrontend                = "EngineFrontend"
+	LonghornKindReplica                       = "Replica"
+	LonghornKindBackupTarget                  = "BackupTarget"
+	LonghornKindBackupVolume                  = "BackupVolume"
+	LonghornKindBackup                        = "Backup"
+	LonghornKindBackupBackingImage            = "BackupBackingImage"
+	LonghornKindSnapshot                      = "Snapshot"
+	LonghornKindEngineImage                   = "EngineImage"
+	LonghornKindInstanceManager               = "InstanceManager"
+	LonghornKindShareManager                  = "ShareManager"
+	LonghornKindBackingImage                  = "BackingImage"
+	LonghornKindBackingImageManager           = "BackingImageManager"
+	LonghornKindRecurringJob                  = "RecurringJob"
+	LonghornKindSetting                       = "Setting"
+	LonghornKindSupportBundle                 = "SupportBundle"
+	LonghornKindSystemBackup                  = "SystemBackup"
+	LonghornKindSystemRestore                 = "SystemRestore"
+	LonghornKindOrphan                        = "Orphan"
+	LonghornKindInstanceManagerUpgrade        = "InstanceManagerUpgrade"
+	LonghornKindInstanceManagerUpgradeControl = "InstanceManagerUpgradeControl"
+	LonghornKindShardGroup                    = "ShardGroup"
+	LonghornKindShard                         = "Shard"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -100,6 +102,8 @@ const (
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
 	CRDAPIVersionV1beta2  = "longhorn.io/v1beta2"
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
+
+	InstanceManagerUpgradeControlName = "longhorn-instance-manager-upgrade-control"
 )
 
 // ECMaxBaseBdevs is the maximum number of base bdevs (k+m) an EC array may have.
@@ -205,6 +209,7 @@ const (
 
 	LonghornLabelEngineImage                     = "engine-image"
 	LonghornLabelInstanceManager                 = "instance-manager"
+	LonghornLabelInstanceManagerUpgrade          = "instance-manager-upgrade"
 	LonghornLabelNode                            = "node"
 	LonghornLabelDiskUUID                        = "disk-uuid"
 	LonghornLabelInstanceManagerType             = "instance-manager-type"
@@ -1679,4 +1684,16 @@ func GetBackingImageMonitorName(imName string) string {
 
 func GetV2BackingImageWithDiskUUIDName(biName, v2DiskUUID string) string {
 	return fmt.Sprintf("%v-%v", biName, v2DiskUUID)
+}
+
+func IsActiveInstanceManagerUpgradeState(state longhorn.InstanceManagerUpgradeState) bool {
+	switch state {
+	case longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
+		longhorn.InstanceManagerUpgradeStateRestoringEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes:
+		return true
+	default:
+		return false
+	}
 }

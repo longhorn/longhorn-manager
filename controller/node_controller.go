@@ -1151,6 +1151,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			if err != nil {
 				return err
 			}
+			preserveV2AIOInstanceManagers := imType == longhorn.InstanceManagerTypeAllInOne && types.IsDataEngineV2(dataEngine) && len(imMap) > 0
+			if preserveV2AIOInstanceManagers {
+				// V2 AIO image changes are handled by IMU/IMUC. When automatic
+				// upgrade is disabled, keep the existing IM on the old image.
+				defaultInstanceManagerCreated = true
+			}
 			for _, im := range imMap {
 				if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
 					return fmt.Errorf("instance manager %v nodeID %v is not consistent with the label %v=%v",
@@ -1169,7 +1175,9 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				cleanupRequired := true
 
-				if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
+				if preserveV2AIOInstanceManagers {
+					cleanupRequired = false
+				} else if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
 					// Keep default instance manager or instance manager matching argument image (during rolling update)
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false

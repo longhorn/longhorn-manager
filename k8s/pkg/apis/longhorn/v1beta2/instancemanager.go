@@ -14,11 +14,12 @@ const (
 type InstanceManagerState string
 
 const (
-	InstanceManagerStateError    = InstanceManagerState("error")
-	InstanceManagerStateRunning  = InstanceManagerState("running")
-	InstanceManagerStateStopped  = InstanceManagerState("stopped")
-	InstanceManagerStateStarting = InstanceManagerState("starting")
-	InstanceManagerStateUnknown  = InstanceManagerState("unknown")
+	InstanceManagerStateError     = InstanceManagerState("error")
+	InstanceManagerStateRunning   = InstanceManagerState("running")
+	InstanceManagerStateStopped   = InstanceManagerState("stopped")
+	InstanceManagerStateStarting  = InstanceManagerState("starting")
+	InstanceManagerStateUpgrading = InstanceManagerState("upgrading")
+	InstanceManagerStateUnknown   = InstanceManagerState("unknown")
 )
 
 const (
@@ -29,11 +30,12 @@ const (
 	InstanceManagerConditionReasonNodeDown          = "Down"
 	InstanceManagerConditionReasonNodeUnschedulable = "Unschedulable"
 
-	InstanceManagerConditionReasonPodDeleting = "Deleting"
-	InstanceManagerConditionReasonPodFailed   = "Failed"
-	InstanceManagerConditionReasonPodNotFound = "NotFound"
-	InstanceManagerConditionReasonPodRunning  = "Running"
-	InstanceManagerConditionReasonPodStarting = "Starting"
+	InstanceManagerConditionReasonPodDeleting  = "Deleting"
+	InstanceManagerConditionReasonPodFailed    = "Failed"
+	InstanceManagerConditionReasonPodNotFound  = "NotFound"
+	InstanceManagerConditionReasonPodRunning   = "Running"
+	InstanceManagerConditionReasonPodStarting  = "Starting"
+	InstanceManagerConditionReasonPodUpgrading = "Upgrading"
 
 	InstanceManagerConditionReasonSettingNotSynced = "SettingNotSynced"
 )

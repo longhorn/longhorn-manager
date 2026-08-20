@@ -200,6 +200,8 @@ func NewInstanceManagerController(
 		return nil, err
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeControlInformer.HasSynced)
 
 	return imc, nil
 }
@@ -407,6 +409,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
+	if err := imc.syncInstanceManagerUpgrade(im); err != nil {
+		return err
+	}
+
 	if err := imc.syncInstanceManagerAPIVersion(im); err != nil {
 		return err
 	}
@@ -452,6 +458,56 @@ func (imc *InstanceManagerController) canProceedWithInstanceManagerSync(currentI
 	return currentIm.Spec.Image == defaultInstanceManagerImage, nil
 }
 
+func (imc *InstanceManagerController) syncInPlaceUpgradedInstanceManagerPod(im *longhorn.InstanceManager, imu *longhorn.InstanceManagerUpgrade) (bool, error) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) || im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+		return false, nil
+	}
+	if imu == nil {
+		return false, nil
+	}
+
+	pod, err := imc.ds.GetPod(im.Name)
+	if err != nil {
+		return true, err
+	}
+	if pod == nil {
+		return false, nil
+	}
+
+	currentImage := getInstanceManagerPodImage(pod, "instance-manager")
+	if currentImage == "" || currentImage == im.Spec.Image {
+		return true, nil
+	}
+
+	patch := []byte(fmt.Sprintf(`{"spec":{"containers":[{"name":%q,"image":%q}]}}`, "instance-manager", im.Spec.Image))
+	if _, err := imc.ds.PatchPod(pod.Name, patch); err != nil {
+		return true, errors.Wrapf(err, "failed to patch instance manager pod %v image from %v to %v", pod.Name, currentImage, im.Spec.Image)
+	}
+
+	getLoggerForInstanceManager(imc.logger, im).Infof("Patched instance manager pod %v image from %v to %v for instance manager upgrade %v",
+		pod.Name, currentImage, im.Spec.Image, imu.Name)
+	return true, nil
+}
+
+func isInstanceManagerUpgradeTransientPodState(pod *corev1.Pod) bool {
+	if pod == nil || pod.DeletionTimestamp != nil {
+		return false
+	}
+
+	switch pod.Status.Phase {
+	case corev1.PodPending:
+		return true
+	case corev1.PodRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldRecreateInstanceManagerPodDuringInstanceManagerUpgrade(pod *corev1.Pod) bool {
+	return !isInstanceManagerUpgradeTransientPodState(pod)
+}
+
 // syncStatusWithPod updates the InstanceManager based on the pod current phase only,
 // regardless of the InstanceManager previous status.
 func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceManager) error {
@@ -468,8 +524,18 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 	if err != nil {
 		return errors.Wrapf(err, "failed get pod for instance manager %v", im.Name)
 	}
+	imu, err := imc.ds.GetPendingOrActiveInstanceManagerUpgradeByNodeAndImageRO(im.Spec.NodeID, im.Spec.Image)
+	if err != nil {
+		return err
+	}
 
 	if pod == nil {
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			return nil
+		}
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
 			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodNotFound, "")
 		if im.Status.CurrentState == "" || im.Status.CurrentState == longhorn.InstanceManagerStateStopped {
@@ -484,6 +550,12 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 
 	// By design instance manager pods should not be terminated.
 	if pod.DeletionTimestamp != nil {
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			return nil
+		}
 		imc.logger.Warnf("Instance manager pod %v is being deleted, updating the instance manager state from %s to error", im.Name, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
@@ -494,7 +566,13 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 	// Blindly update the state based on the pod phase.
 	switch pod.Status.Phase {
 	case corev1.PodPending:
-		im.Status.CurrentState = longhorn.InstanceManagerStateStarting
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+		} else {
+			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
+		}
 	case corev1.PodRunning:
 		isReady := true
 		// Make sure readiness probe has passed.
@@ -508,11 +586,23 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
 				longhorn.ConditionStatusTrue, longhorn.InstanceManagerConditionReasonPodRunning, "")
 		} else {
-			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
-			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
-				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodStarting, "")
+			if imu != nil {
+				im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+				im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+					longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			} else {
+				im.Status.CurrentState = longhorn.InstanceManagerStateStarting
+				im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+					longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodStarting, "")
+			}
 		}
 	default:
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			return nil
+		}
 		imc.logger.Warnf("Instance manager pod %v is in phase %s, updating the instance manager state from %s to error", im.Name, pod.Status.Phase, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
@@ -549,7 +639,8 @@ func (imc *InstanceManagerController) syncStatusWithNode(im *longhorn.InstanceMa
 func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceManager) error {
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped ||
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
-		im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
+		im.Status.CurrentState == longhorn.InstanceManagerStateStarting ||
+		im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
 		// In these states, instance processes either are not running or will soon not be running.
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
@@ -656,7 +747,26 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) error {
 	log := getLoggerForInstanceManager(imc.logger, im)
 
-	err := imc.annotateCASafeToEvict(im)
+	imu, err := imc.ds.GetPendingOrActiveInstanceManagerUpgradeByNodeAndImageRO(im.Spec.NodeID, im.Spec.Image)
+	if err != nil {
+		return err
+	}
+
+	instanceManagerUpgradeInProgress, err := imc.syncInPlaceUpgradedInstanceManagerPod(im, imu)
+	if err != nil {
+		return err
+	}
+	instanceManagerUpgradeInProgress = instanceManagerUpgradeInProgress || imu != nil
+
+	pod, err := imc.ds.GetPodRO(im.Namespace, im.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get pod for instance manager %v", im.Name)
+	}
+	if instanceManagerUpgradeInProgress && isInstanceManagerUpgradeTransientPodState(pod) {
+		return nil
+	}
+
+	err = imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
 	}
@@ -690,6 +800,8 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	recreatePodDuringInstanceManagerUpgrade := instanceManagerUpgradeInProgress && shouldRecreateInstanceManagerPodDuringInstanceManagerUpgrade(pod)
+
 	// When hugepage settings are not synced and the pod is eligible for deletion,
 	// decide whether to block or allow based on node hugepage capacity.
 	if !hugepageSettingsSynced && !isPodDeletedOrNotRunning && !areInstancesRunningInPod {
@@ -709,7 +821,8 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, fmt.Sprintf("Settings %v are not synced", unSyncedSettings))
 	}
 
-	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied && hugepageSettingApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	isPodDeletionNotRequired := !recreatePodDuringInstanceManagerUpgrade &&
+		((isSettingSynced && dataEngineCPUMaskIsApplied && hugepageSettingApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning)
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
 		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
 		isPodDeletionNotRequired {
@@ -794,6 +907,9 @@ func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.Instanc
 }
 
 func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *longhorn.InstanceManager) (isSynced bool, unSyncedDangerSettings []types.SettingName, isPodDeletedOrNotRunning, areInstancesRunningInPod bool, err error) {
+	if im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
+		return true, nil, true, false, nil
+	}
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return false, nil, true, false, nil
 	}
@@ -2793,6 +2909,98 @@ func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, insta
 	m.createOrphanForInstances(existOrphans, im, shardGroupProcesses, longhorn.OrphanTypeShardGroupInstance, m.isShardGroupInstanceOrphaned, longhorn.DataEngineTypeV2)
 }
 
+// syncInstanceManagerUpgrade ensures an InstanceManagerUpgradeControl CR exists
+// and tracks the current default instance manager image for v2 AllInOne IMs.
+func (imc *InstanceManagerController) syncInstanceManagerUpgrade(im *longhorn.InstanceManager) error {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) || im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+		return nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil
+	}
+
+	defaultIMImage, err := imc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+	if im.Spec.Image == defaultIMImage {
+		return nil
+	}
+
+	log := getLoggerForInstanceManager(imc.logger, im)
+
+	allowed, err := imc.ds.GetSettingAsBool(types.SettingNameAllowV2InstanceManagerAutomaticUpgrade)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		log.Debugf("Skipping automatic V2 instance manager upgrade because %v is disabled", types.SettingNameAllowV2InstanceManagerAutomaticUpgrade)
+		return nil
+	}
+
+	imuc, existingErr := imc.ds.GetInstanceManagerUpgradeControl(types.InstanceManagerUpgradeControlName)
+	if existingErr != nil && !datastore.ErrorIsNotFound(existingErr) {
+		return existingErr
+	}
+
+	startTimeSetting, err := imc.ds.GetSetting(types.SettingNameV2InstanceManagerUpgradeStartTime)
+	if err != nil {
+		return err
+	}
+	startTime := startTimeSetting.Value
+
+	if datastore.ErrorIsNotFound(existingErr) {
+		newIMUC := &longhorn.InstanceManagerUpgradeControl{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: types.InstanceManagerUpgradeControlName,
+			},
+			Spec: longhorn.InstanceManagerUpgradeControlSpec{
+				TargetImage: defaultIMImage,
+				StartAt:     startTime,
+			},
+		}
+		log.Infof("Creating InstanceManagerUpgradeControl for target image %v with start time %v", defaultIMImage, startTime)
+		if _, err := imc.ds.CreateInstanceManagerUpgradeControl(newIMUC); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+
+	upgradeStarted := imuc.Status.CurrentNode != ""
+	if !upgradeStarted {
+		for _, info := range imuc.Status.Nodes {
+			if info.State == longhorn.NodeUpgradeStateInProgress {
+				upgradeStarted = true
+				break
+			}
+		}
+	}
+
+	needsUpdate := false
+	if imuc.Spec.TargetImage != defaultIMImage {
+		log.Infof("Updating InstanceManagerUpgradeControl target image from %v to %v", imuc.Spec.TargetImage, defaultIMImage)
+		imuc.Spec.TargetImage = defaultIMImage
+		needsUpdate = true
+	}
+
+	if !upgradeStarted && imuc.Spec.StartAt != startTime {
+		log.Infof("Updating InstanceManagerUpgradeControl start time from %v to %v", imuc.Spec.StartAt, startTime)
+		imuc.Spec.StartAt = startTime
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		if _, err := imc.ds.UpdateInstanceManagerUpgradeControl(imuc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // isEngineOrphaned returns true only when it is very certain that an engine is scheduled on another instance manager
 func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, instanceManager string) (bool, error) {
 	existEngine, err := m.ds.GetEngineRO(instanceName)
@@ -3040,4 +3248,16 @@ func isReplicaInTransitionState(replica *longhorn.Replica) bool {
 	}
 
 	return false
+}
+
+func getInstanceManagerPodImage(pod *corev1.Pod, containerName string) string {
+	if pod == nil {
+		return ""
+	}
+	for _, container := range pod.Spec.Containers {
+		if container.Name == containerName {
+			return container.Image
+		}
+	}
+	return ""
 }
