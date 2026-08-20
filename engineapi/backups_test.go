@@ -147,6 +147,48 @@ func TestGetBackupCredentialEnv(t *testing.T) {
 	}
 }
 
+// TestGetBackupCredentialEnvSignAcceptEncoding pins that the S3 branch forwards
+// AWS_SIGN_ACCEPT_ENCODING. TestGetBackupCredentialEnv above only checks the
+// value of whatever is returned, so it stays green if the entry is dropped
+// entirely, which is the silent drop this guards against.
+func TestGetBackupCredentialEnvSignAcceptEncoding(t *testing.T) {
+	tests := []struct {
+		name       string
+		credential map[string]string
+		expectEnv  string
+	}{
+		{
+			name: "forwards the value set in the secret",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":        "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY":    "my-aws-secret-access-key",
+				"AWS_SIGN_ACCEPT_ENCODING": "false",
+			},
+			expectEnv: "AWS_SIGN_ACCEPT_ENCODING=false",
+		},
+		{
+			// The entry is sent whether or not the secret sets it, which is why
+			// the instance manager has to allowlist the key before this ships.
+			name: "forwards an empty value when the secret omits the key",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":     "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY": "my-aws-secret-access-key",
+			},
+			expectEnv: "AWS_SIGN_ACCEPT_ENCODING=",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert := require.New(t)
+
+			envs, err := getBackupCredentialEnv("s3://backupbucket@us-east-1/", tt.credential)
+			assert.Nil(err)
+			assert.Contains(envs, tt.expectEnv)
+		})
+	}
+}
+
 func TestParseBackupVolumeNamesList(t *testing.T) {
 	assert := require.New(t)
 
