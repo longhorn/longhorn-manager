@@ -72,6 +72,7 @@ type Volume struct {
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
+	TopologyRequirement  []longhorn.VolumeTopologyTerm `json:"topologyRequirement"`
 	RecurringJobSelector []longhorn.VolumeRecurringJob `json:"recurringJobSelector"`
 
 	NumberOfReplicas           int                         `json:"numberOfReplicas"`
@@ -1791,6 +1792,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		Standby:                         v.Spec.Standby,
 		DiskSelector:                    v.Spec.DiskSelector,
 		NodeSelector:                    v.Spec.NodeSelector,
+		TopologyRequirement:             v.Spec.TopologyRequirement,
 		RestoreVolumeRecurringJob:       v.Spec.RestoreVolumeRecurringJob,
 		FreezeFilesystemForSnapshot:     v.Spec.FreezeFilesystemForSnapshot,
 		BackupTargetName:                v.Spec.BackupTargetName,

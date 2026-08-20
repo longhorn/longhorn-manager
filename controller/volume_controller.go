@@ -4286,6 +4286,18 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 		}
 	}
 
+	// Auto-balance must stay inside the failure domains of a volume that
+	// resolved a topology requirement. A candidate outside them is replenished
+	// with a hard node affinity the replica scheduler then rejects, and the
+	// unschedulable replica is cleaned up and proposed again on the next sync.
+	if len(volume.Spec.TopologyRequirement) != 0 {
+		for nodeName, node := range readyNodes {
+			if !types.NodeMatchesTopologyRequirement(node, volume.Spec.TopologyRequirement) {
+				delete(filteredReadyNodes, nodeName)
+			}
+		}
+	}
+
 	log.WithField("volume", volume.Name).Tracef("Found %v ready and schedulable nodes", len(filteredReadyNodes))
 
 	// Including unschedulable node because the replica is already scheduled and running

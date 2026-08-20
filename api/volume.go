@@ -213,6 +213,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		RevisionCounterDisabled:         volume.RevisionCounterDisabled,
 		DiskSelector:                    volume.DiskSelector,
 		NodeSelector:                    volume.NodeSelector,
+		TopologyRequirement:             volume.TopologyRequirement,
 		SnapshotDataIntegrity:           volume.SnapshotDataIntegrity,
 		SnapshotMaxCount:                volume.SnapshotMaxCount,
 		SnapshotMaxSize:                 snapshotMaxSize,

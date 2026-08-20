@@ -13,6 +13,8 @@ import (
 	. "gopkg.in/check.v1"
 
 	corev1 "k8s.io/api/core/v1"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -601,4 +603,46 @@ func (s *TestSuite) TestIsHexCPUMask(c *C) {
 		result := IsHexCPUMask(testCase.input)
 		c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
+}
+
+func (s *TestSuite) TestNodeMatchesTopologyRequirement(c *C) {
+	node := func(zone, region string) *longhorn.Node {
+		return &longhorn.Node{Status: longhorn.NodeStatus{Zone: zone, Region: region}}
+	}
+
+	// An empty requirement leaves the volume unconstrained.
+	c.Assert(NodeMatchesTopologyRequirement(node("", ""), nil), Equals, true)
+
+	zonal := []longhorn.VolumeTopologyTerm{{Zone: "zone-1", Region: "region-1"}}
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-1", "region-1"), zonal), Equals, true)
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", "region-1"), zonal), Equals, false)
+	c.Assert(NodeMatchesTopologyRequirement(node("", ""), zonal), Equals, false)
+
+	// A region-only term matches every zone in the region.
+	regional := []longhorn.VolumeTopologyTerm{{Region: "region-1"}}
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", "region-1"), regional), Equals, true)
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", "region-2"), regional), Equals, false)
+
+	// A node only has to satisfy one of the terms.
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", ""), []longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-2"},
+	}), Equals, true)
+}
+
+func (s *TestSuite) TestIsTopologyZonePinned(c *C) {
+	c.Assert(IsTopologyZonePinned(nil), Equals, false)
+
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{{Zone: "zone-1"}}), Equals, true)
+
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-1", Region: "region-1"},
+	}), Equals, true)
+
+	// A region-only term allows any zone in the region.
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{{Region: "region-1"}}), Equals, false)
+
+	// Terms naming different zones allow spreading across those zones.
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-2"},
+	}), Equals, false)
 }

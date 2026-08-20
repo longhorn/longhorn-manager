@@ -139,6 +139,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// This will be used to set PV nodeAffinity via external-provisioner
 
 	var accessibleTopology []*csi.Topology
+	topologyConsidered := false
 
 	if volumeParameters["dataLocality"] == string(longhorn.DataLocalityStrictLocal) {
 		log.Infof(
@@ -148,6 +149,47 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	} else {
 		strictTopology := volumeParameters["strictTopology"] == "true"
 		accessibleTopology = cs.getAccessibleTopologyFromRequirements(ctx, req.GetAccessibilityRequirements(), strictTopology)
+		topologyConsidered = true
+	}
+
+	// The volumeTopology parameter pins the volume to a single failure domain
+	// resolved at provisioning time. The resolved terms are stored on the
+	// volume and returned as the accessible topology instead of the full
+	// requirement echo, so the PV node affinity and the replica scheduler
+	// constrain pods and replicas to the same failure domain.
+	if err := checkVolumeTopologyParameters(volumeParameters); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	topologyTerms, err := volumeTopologyTerms(accessibleTopology, volumeParameters["volumeTopology"])
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if len(topologyTerms) > 0 {
+		accessibleTopology = termsToCSITopology(topologyTerms)
+	} else if vt := volumeParameters["volumeTopology"]; vt == types.VolumeTopologyZonal || vt == types.VolumeTopologyRegional {
+		// The failure domain could not be resolved. Two causes need different
+		// answers: the nodes do not carry the label at all, or they do and the
+		// key is not in the csi-allowed-topology-keys setting.
+		domainKey := types.KubernetesTopologyZoneLabelKey
+		if vt == types.VolumeTopologyRegional {
+			domainKey = types.KubernetesTopologyRegionLabelKey
+		}
+		if topologyConsidered && requirementsHaveTopologyKey(req.GetAccessibilityRequirements(), domainKey) {
+			// The request carries the domain, so the nodes are labeled and only
+			// the setting hides it. Creating the volume anyway would leave it
+			// unconstrained without any sign, and pinning replicas without the
+			// matching PV node affinity would let pods drift out of the domain.
+			// Fail with what has to change instead.
+			return nil, status.Errorf(codes.InvalidArgument,
+				"volumeTopology %q cannot resolve a failure domain for volume %v: the nodes report %v, but it is not listed in the %v setting, so it is dropped from the accessible topology and the PV node affinity",
+				vt, volumeID, domainKey, types.SettingNameCSIAllowedTopologyKeys)
+		}
+		// Degenerate on purpose: clusters without topology labels fall back to
+		// unconstrained placement so one StorageClass can serve both labeled and
+		// unlabeled clusters. The PV gets no node affinity from the same empty
+		// topology, so pods are not pinned either. Warn so a mislabeled
+		// multi-zone cluster is noticeable.
+		log.Warnf("CreateVolume for %s requested volumeTopology %q but the nodes report no %v; the volume is unconstrained", volumeID, vt, domainKey)
 	}
 
 	volumeSource := req.GetVolumeContentSource()
@@ -246,6 +288,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if existVol != nil {
 		log.Infof("Volume %v already exists with name %v", volumeID, existVol.Name)
 
+		// Respond with the topology already resolved on the existing volume:
+		// recomputing from the request could resolve a different failure
+		// domain on retries (the preferred order is not stable under
+		// immediate binding) and diverge from the stored terms.
+		if len(existVol.TopologyRequirement) > 0 {
+			accessibleTopology = termsToCSITopology(existVol.TopologyRequirement)
+		}
+
 		exVolSize, err := util.ConvertSize(existVol.Size)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
@@ -289,6 +339,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	vol.TopologyRequirement = topologyTerms
 
 	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters, vol.DataEngine); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -1688,6 +1740,100 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	logCSIRequest(cs.log, "ControllerModifyVolume", req)
 
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// checkVolumeTopologyParameters rejects explicitly contradictory volume
+// parameters: a zonal volume keeps all of its replicas in one zone, which hard
+// zone anti-affinity can never satisfy for more than one replica. The volume
+// webhook enforces the same invariant on the volume itself (the mutator fills
+// replicaZoneSoftAntiAffinity enabled for zone-pinned volumes, the validator
+// rejects other values); this check just fails provisioning fast with a
+// parameter-level error when the StorageClass asks for both at once.
+func checkVolumeTopologyParameters(volumeParameters map[string]string) error {
+	if volumeParameters["volumeTopology"] == types.VolumeTopologyZonal &&
+		volumeParameters["replicaZoneSoftAntiAffinity"] == string(longhorn.ReplicaZoneSoftAntiAffinityDisabled) {
+		return fmt.Errorf("volumeTopology %q cannot be combined with replicaZoneSoftAntiAffinity %q: all replicas of a zonal volume are kept in one zone", types.VolumeTopologyZonal, longhorn.ReplicaZoneSoftAntiAffinityDisabled)
+	}
+	return nil
+}
+
+// volumeTopologyTerms resolves the volumeTopology volume parameter against the
+// accessible topology, pinning the volume to a single failure domain at
+// provisioning time: "any" (default) returns nothing (unconstrained, current
+// behavior), "zonal" resolves the zone of the first entry (the selected node's
+// zone under delayed binding), "regional" only its region. The resolved terms
+// are stored on the volume so every replica is scheduled in that failure
+// domain, and rendered back into the response topology (the PV node affinity)
+// so pods follow the volume.
+func volumeTopologyTerms(accessibleTopology []*csi.Topology, volumeTopology string) ([]longhornclient.VolumeTopologyTerm, error) {
+	switch volumeTopology {
+	case "", types.VolumeTopologyAny:
+		return nil, nil
+	case types.VolumeTopologyZonal, types.VolumeTopologyRegional:
+	default:
+		return nil, fmt.Errorf("invalid volumeTopology %q, must be one of %q, %q, %q", volumeTopology, types.VolumeTopologyAny, types.VolumeTopologyZonal, types.VolumeTopologyRegional)
+	}
+
+	if len(accessibleTopology) == 0 {
+		return nil, nil
+	}
+
+	segments := accessibleTopology[0].GetSegments()
+	term := longhornclient.VolumeTopologyTerm{
+		Region: segments[types.KubernetesTopologyRegionLabelKey],
+	}
+	if volumeTopology == types.VolumeTopologyZonal {
+		term.Zone = segments[types.KubernetesTopologyZoneLabelKey]
+		if term.Zone == "" {
+			// A zonal volume cannot be pinned without a zone; degenerate to
+			// unconstrained placement instead of storing a region-only term
+			// that would silently behave as regional.
+			return nil, nil
+		}
+	}
+	if term.Zone == "" && term.Region == "" {
+		return nil, nil
+	}
+	return []longhornclient.VolumeTopologyTerm{term}, nil
+}
+
+// requirementsHaveTopologyKey reports whether the topology requirement of the
+// request carries the given key. The node plugin registers the zone and region
+// keys in CSINode regardless of the csi-allowed-topology-keys setting, so a key
+// that is in the requirement but not in the accessible topology was dropped by
+// that setting rather than missing from the nodes.
+func requirementsHaveTopologyKey(accessibilityReqs *csi.TopologyRequirement, key string) bool {
+	if accessibilityReqs == nil {
+		return false
+	}
+	for _, topologies := range [][]*csi.Topology{accessibilityReqs.GetPreferred(), accessibilityReqs.GetRequisite()} {
+		for _, topology := range topologies {
+			if topology.GetSegments()[key] != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// termsToCSITopology renders stored volume topology terms back into CSI
+// topology entries for the CreateVolumeResponse.
+func termsToCSITopology(terms []longhornclient.VolumeTopologyTerm) []*csi.Topology {
+	var topologies []*csi.Topology
+	for _, term := range terms {
+		segments := map[string]string{}
+		if term.Zone != "" {
+			segments[types.KubernetesTopologyZoneLabelKey] = term.Zone
+		}
+		if term.Region != "" {
+			segments[types.KubernetesTopologyRegionLabelKey] = term.Region
+		}
+		if len(segments) == 0 {
+			continue
+		}
+		topologies = append(topologies, &csi.Topology{Segments: segments})
+	}
+	return topologies
 }
 
 // getAccessibleTopologyFromRequirements converts AccessibilityRequirements from CreateVolumeRequest

@@ -993,12 +993,13 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		}
 	}
 
-	// Always expose hostname and zone topology keys in CSINode regardless of the csi-allowed-topology-keys setting.
+	// Always expose hostname, zone and region topology keys in CSINode regardless of the csi-allowed-topology-keys setting.
 	// Controller server relies on these keys to locate the correct node or zone when responding to capacity queries.
 	// Note: these keys are only included in PV node affinity if listed in the csi-allowed-topology-keys setting.
 	if kubeNode != nil {
 		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelHostname)
 		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelTopologyZone)
+		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelTopologyRegion)
 	}
 
 	return &csi.NodeGetInfoResponse{
