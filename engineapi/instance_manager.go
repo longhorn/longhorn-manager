@@ -443,6 +443,7 @@ type EngineInstanceCreateRequest struct {
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
 	DataLayoutType                   imrpc.DataLayoutType
+	DataEngineTransport              imrpc.DataEngineTransport
 	EngineCLIAPIVersion              int
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
@@ -494,15 +495,16 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(req.Engine.Spec.DataEngine),
-		DataEngine:         string(req.Engine.Spec.DataEngine),
-		Name:               req.Engine.Name,
-		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
-		VolumeName:         req.Engine.Spec.VolumeName,
-		Size:               uint64(volumeSize),
-		PortCount:          DefaultEnginePortCount,
-		PortArgs:           []string{DefaultPortArg},
-		DataLayoutType:     req.DataLayoutType,
+		BackendStoreDriver:  string(req.Engine.Spec.DataEngine),
+		DataEngine:          string(req.Engine.Spec.DataEngine),
+		Name:                req.Engine.Name,
+		InstanceType:        string(longhorn.InstanceManagerTypeEngine),
+		VolumeName:          req.Engine.Spec.VolumeName,
+		Size:                uint64(volumeSize),
+		PortCount:           DefaultEnginePortCount,
+		PortArgs:            []string{DefaultPortArg},
+		DataLayoutType:      req.DataLayoutType,
+		DataEngineTransport: req.DataEngineTransport,
 
 		Binary:     binary,
 		BinaryArgs: args,
@@ -532,6 +534,7 @@ type ReplicaInstanceCreateRequest struct {
 	DataPath                      string
 	BackingImagePath              string
 	DataLocality                  longhorn.DataLocality
+	DataEngineTransport           imrpc.DataEngineTransport
 	EngineCLIAPIVersion           int
 	Encrypted                     bool
 	ExtraLUKS2HeaderSpaceRequired bool
@@ -675,14 +678,15 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(req.Replica.Spec.DataEngine),
-		DataEngine:         string(req.Replica.Spec.DataEngine),
-		Name:               req.Replica.Name,
-		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
-		VolumeName:         req.Replica.Spec.VolumeName,
-		Size:               uint64(volumeSize),
-		PortCount:          portCount,
-		PortArgs:           []string{DefaultPortArg},
+		BackendStoreDriver:  string(req.Replica.Spec.DataEngine),
+		DataEngine:          string(req.Replica.Spec.DataEngine),
+		Name:                req.Replica.Name,
+		InstanceType:        string(longhorn.InstanceManagerTypeReplica),
+		VolumeName:          req.Replica.Spec.VolumeName,
+		Size:                uint64(volumeSize),
+		PortCount:           portCount,
+		PortArgs:            []string{DefaultPortArg},
+		DataEngineTransport: req.DataEngineTransport,
 
 		Binary:     binary,
 		BinaryArgs: args,

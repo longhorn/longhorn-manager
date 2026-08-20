@@ -269,6 +269,16 @@ const (
 	DataEngineTypeAll = DataEngineType("all")
 )
 
+// DataEngineTransport declares the NVMe-oF transport used for the internal
+// engine<->replica fabric of a v2 (SPDK) data engine volume. It has no effect
+// on v1 volumes. The host frontend always uses TCP regardless of this value.
+type DataEngineTransport string
+
+const (
+	DataEngineTransportTCP  = DataEngineTransport("tcp")
+	DataEngineTransportRDMA = DataEngineTransport("rdma")
+)
+
 type KubernetesStatus struct {
 	// +optional
 	PVName string `json:"pvName"`
@@ -393,6 +403,13 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
+	// DataEngineTransport selects the NVMe-oF transport for the internal
+	// engine<->replica fabric of a v2 volume (tcp or rdma). Empty defaults to tcp.
+	// It is immutable and has no effect on v1 volumes.
+	// +kubebuilder:validation:Enum=tcp;rdma
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="DataEngineTransport is immutable"
+	// +optional
+	DataEngineTransport DataEngineTransport `json:"dataEngineTransport,omitempty"`
 	// +optional
 	SnapshotMaxCount int `json:"snapshotMaxCount"`
 	// +kubebuilder:validation:Type=string
