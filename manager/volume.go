@@ -220,6 +220,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaDiskSoftAntiAffinity:     spec.ReplicaDiskSoftAntiAffinity,
 			DataEngine:                      spec.DataEngine,
 			DataLayout:                      spec.DataLayout,
+			DataEngineTransport:             spec.DataEngineTransport,
 			FreezeFilesystemForSnapshot:     spec.FreezeFilesystemForSnapshot,
 			BackupTargetName:                backupTargetName,
 			OfflineRebuilding:               spec.OfflineRebuilding,
