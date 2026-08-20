@@ -1261,6 +1261,55 @@ func ValidateReplicaZoneSoftAntiAffinity(value longhorn.ReplicaZoneSoftAntiAffin
 	return nil
 }
 
+// The values of the volumeTopology volume parameter, which pins a volume to a
+// single failure domain resolved at provisioning time.
+const (
+	VolumeTopologyAny      = "any"
+	VolumeTopologyZonal    = "zonal"
+	VolumeTopologyRegional = "regional"
+)
+
+// NodeMatchesTopologyRequirement reports whether a node is in one of the
+// failure domains a volume's replicas may be scheduled in. A node satisfies a
+// term when it matches the non-empty fields of that term, and it only has to
+// satisfy one of them, like the PV node affinity terms the requirement is
+// derived from. An empty requirement leaves the volume unconstrained, so every
+// node matches.
+func NodeMatchesTopologyRequirement(node *longhorn.Node, terms []longhorn.VolumeTopologyTerm) bool {
+	if len(terms) == 0 {
+		return true
+	}
+	for _, term := range terms {
+		if (term.Zone == "" || node.Status.Zone == term.Zone) &&
+			(term.Region == "" || node.Status.Region == term.Region) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTopologyZonePinned reports whether a volume topology requirement confines
+// replica candidates to exactly one zone. A term without a zone (region-only)
+// allows any zone in the region, so it does not pin; terms naming different
+// zones allow spreading across those zones.
+func IsTopologyZonePinned(terms []longhorn.VolumeTopologyTerm) bool {
+	if len(terms) == 0 {
+		return false
+	}
+	zone := ""
+	for _, term := range terms {
+		if term.Zone == "" {
+			return false
+		}
+		if zone == "" {
+			zone = term.Zone
+		} else if term.Zone != zone {
+			return false
+		}
+	}
+	return true
+}
+
 func ValidateReplicaDiskSoftAntiAffinity(value longhorn.ReplicaDiskSoftAntiAffinity) error {
 	if value != longhorn.ReplicaDiskSoftAntiAffinityDefault &&
 		value != longhorn.ReplicaDiskSoftAntiAffinityEnabled &&

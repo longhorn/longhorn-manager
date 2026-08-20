@@ -167,7 +167,7 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 		}
 	}
 
-	nodeCandidates, errs := rcs.getNodeCandidates(nodes, replica)
+	nodeCandidates, errs := rcs.getNodeCandidates(nodes, replica, volume)
 
 	if len(nodeCandidates) == 0 {
 		return nil, errs
@@ -243,7 +243,7 @@ func (rcs *ReplicaScheduler) buildLinkedCloneSrcNodeDiskMap(replica *longhorn.Re
 	return nodeDiskMap, nil
 }
 
-func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
+func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica, volume *longhorn.Volume) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
 	errs = multierr.NewMultiError()
 
 	// If the replica has a hard node affinity, filter nodes based on that.
@@ -256,6 +256,26 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, 
 		}
 		nodes = map[string]*longhorn.Node{}
 		nodes[schedulingReplica.Spec.HardNodeAffinity] = node
+	}
+
+	// If the volume has a topology requirement, replicas must be scheduled on a
+	// node in one of its failure domains (the PV nodeAffinity terms — a node
+	// must match at least one term). There is no fallback outside the
+	// requirement: an empty candidate set fails scheduling. An empty
+	// requirement leaves the volume unconstrained (existing behavior).
+	if len(volume.Spec.TopologyRequirement) > 0 {
+		matched := map[string]*longhorn.Node{}
+		for nodeName, node := range nodes {
+			if types.NodeMatchesTopologyRequirement(node, volume.Spec.TopologyRequirement) {
+				matched[nodeName] = node
+			}
+		}
+		if len(matched) == 0 {
+			errs.Append(longhorn.ErrorReplicaScheduleTopologyNotSatisfied,
+				fmt.Errorf("no node matches topology requirement %+v for scheduling replica %v", volume.Spec.TopologyRequirement, schedulingReplica.Name))
+			return map[string]*longhorn.Node{}, errs
+		}
+		nodes = matched
 	}
 
 	if len(nodes) == 0 {
