@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.25.10
+go 1.25.11
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -67,14 +67,14 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20251228.0.20260125135229-1c3981801092
-	github.com/longhorn/backupstore v0.0.0-20260618071319-84c767bdab16
-	github.com/longhorn/go-common-libs v0.0.0-20260709061022-21a84065aa86
-	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
+	github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0
+	github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c
+	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.8.0
-	github.com/longhorn/longhorn-engine v1.12.0-dev-20251228.0.20260127130923-10b074f5bf78
-	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20251228.0.20260127140337-f4fd700aba81
+	github.com/longhorn/longhorn-engine v1.12.0-dev-20251228.0.20260821033200-571574ebd967
+	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20251228.0.20260821070919-20ab44b70921
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20251228.0.20260125094554-850cb68cc193
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260127055837-f422df0f5ac7
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260304090835-8b93a5453dcd
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.7.5
@@ -127,7 +127,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20260608145242-38c27234df4b // indirect
+	github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
