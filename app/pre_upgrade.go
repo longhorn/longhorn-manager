@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
+	kubeclientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/types"
@@ -84,7 +86,12 @@ func preUpgrade(cmd *cli.Command) error {
 		return errors.Wrap(err, "failed to get clientset")
 	}
 
-	err = newPreUpgrader(namespace, lhClient, eventRecorder).Run()
+	kubeClient, err := kubeclientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "failed to get Kubernetes clientset")
+	}
+
+	err = newPreUpgrader(namespace, lhClient, kubeClient, eventRecorder).Run()
 	if err != nil {
 		logrus.Warnf("Done with Run() ... err is %v", err)
 	}
@@ -95,11 +102,12 @@ func preUpgrade(cmd *cli.Command) error {
 type preUpgrader struct {
 	namespace     string
 	lhClient      lhclientset.Interface
+	kubeClient    kubeclientset.Interface
 	eventRecorder record.EventRecorder
 }
 
-func newPreUpgrader(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder) *preUpgrader {
-	return &preUpgrader{namespace, lhClient, eventRecorder}
+func newPreUpgrader(namespace string, lhClient lhclientset.Interface, kubeClient kubeclientset.Interface, eventRecorder record.EventRecorder) *preUpgrader {
+	return &preUpgrader{namespace, lhClient, kubeClient, eventRecorder}
 }
 
 func (u *preUpgrader) Run() error {
@@ -114,7 +122,7 @@ func (u *preUpgrader) Run() error {
 		}
 	}()
 
-	if err = upgradeutil.CheckUpgradePath(u.namespace, u.lhClient, u.eventRecorder, true); err != nil {
+	if err = upgradeutil.CheckUpgradePath(u.namespace, u.lhClient, u.kubeClient, u.eventRecorder, true, os.Getenv(types.LonghornControlPathEnv)); err != nil {
 		return err
 	}
 

@@ -155,6 +155,15 @@ func (s *DataStore) shouldApplyCustomizedSettingValue(name types.SettingName, va
 		return true
 	}
 
+	if name == types.SettingNameDefaultControlPath {
+		controlPath := filepath.Clean(strings.TrimSpace(value))
+		existingControlPath := filepath.Clean(strings.TrimSpace(setting.Value))
+		if existingControlPath != controlPath {
+			logrus.Warnf("Skip customized default setting %v with value %v since the existing setting value is %v", name, value, existingControlPath)
+			return false
+		}
+	}
+
 	configMapResourceVersion := ""
 	if setting.Annotations != nil {
 		configMapResourceVersion = setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]
@@ -664,24 +673,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
-	case types.SettingNameDefaultDataPath:
-		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultDataPath)
-		if err != nil {
-			return err
-		}
-
-		oldPath := filepath.Clean(strings.TrimSpace(old.Value))
-		newPath := filepath.Clean(strings.TrimSpace(value))
-		if oldPath != newPath {
-			nodes, err := s.ListNodesRO()
-			if err != nil {
-				return err
-			}
-			if len(nodes) != 0 {
-				return errors.Errorf("cannot change %v after Longhorn has been initialized", types.SettingNameDefaultDataPath)
-			}
-		}
-
 	case types.SettingNameDefaultControlPath:
 		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
 		if err != nil {
@@ -1109,6 +1100,24 @@ func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, erro
 		return nil, err
 	}
 	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetDefaultDataPath() (string, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultDataPath)
+	if err != nil {
+		return "", err
+	}
+
+	return types.GetLonghornDataPath(setting.Value), nil
+}
+
+func (s *DataStore) GetDefaultControlPath() (string, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
+	if err != nil {
+		return "", err
+	}
+
+	return types.GetLonghornControlPath(setting.Value), nil
 }
 
 // GetSettingValueExisted returns the value of the given setting name.

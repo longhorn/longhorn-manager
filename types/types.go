@@ -465,43 +465,31 @@ func GetDefaultManagerURL() string {
 	return "http://longhorn-backend:" + strconv.Itoa(DefaultAPIPort) + "/v1"
 }
 
-// GetLonghornDataPath returns the process-scoped Longhorn data path.
-// LONGHORN_DATA_PATH is expected to be populated from the configured
-// default-data-path during installation or pod creation. This is an
-// installation-time default rather than a dynamically reloadable setting;
-// when the env var is unset, empty, or invalid, the historical default path
-// is used for backward compatibility.
-func GetLonghornDataPath() string {
-	path := strings.TrimSpace(os.Getenv(LonghornDataPathEnv))
+func GetLonghornDataPath(path string) string {
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return DefaultDataPath
 	}
 	path = filepath.Clean(path)
 	if !IsValidLonghornDataPath(path) {
-		logrus.Warnf("Falling back to default data path %q because %s is unset or invalid", DefaultDataPath, LonghornDataPathEnv)
+		logrus.Warnf("Falling back to default data path %q because data path is unset or invalid", DefaultDataPath)
 		return DefaultDataPath
 	}
 	return path
 }
 
-// GetLonghornControlPath returns the process-scoped Longhorn control path.
-// LONGHORN_CONTROL_PATH is expected to be populated from the configured
-// default-control-path during installation or pod creation. This is an
-// installation-time default rather than a dynamically reloadable setting;
-// when the env var is unset, empty, or invalid, the historical default path
-// is used for backward compatibility.
-func GetLonghornControlPath() string {
-	path := strings.TrimSpace(os.Getenv(LonghornControlPathEnv))
+func GetLonghornControlPath(path string) string {
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return DefaultControlPath
 	}
 	path = filepath.Clean(path)
 	if !IsValidLonghornControlPath(path) {
 		if path == "/dev" || strings.HasPrefix(path, "/dev/") {
-			logrus.Warnf("Falling back to default control path %q because %s cannot point to /dev", DefaultControlPath, LonghornControlPathEnv)
+			logrus.Warnf("Falling back to default control path %q because control path cannot point to /dev", DefaultControlPath)
 			return DefaultControlPath
 		}
-		logrus.Warnf("Falling back to default control path %q because %s is unset or invalid", DefaultControlPath, LonghornControlPathEnv)
+		logrus.Warnf("Falling back to default control path %q because control path is unset or invalid", DefaultControlPath)
 		return DefaultControlPath
 	}
 	return path
@@ -520,39 +508,13 @@ func IsValidLonghornControlPath(path string) bool {
 	return path != "/dev" && !strings.HasPrefix(path, "/dev/")
 }
 
-// Defaults to /var/lib/longhorn/engine-binaries when LONGHORN_CONTROL_PATH is unset.
-func GetEngineBinaryDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), EngineBinaryDirectorySubpath)
-}
-
-// Defaults to /var/lib/longhorn/metadata when LONGHORN_CONTROL_PATH is unset.
-func GetMetadataDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), MetadataDirectorySubpath)
-}
-
-// Defaults to /var/lib/longhorn/unix-domain-socket when LONGHORN_CONTROL_PATH is unset.
-func GetUnixDomainSocketDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), UnixDomainSocketDirectorySubpath)
-}
-
-// Defaults to /host/var/lib/longhorn/unix-domain-socket inside the container.
-func GetUnixDomainSocketDirectoryInContainer() string {
-	return filepath.Join(ReplicaHostPrefix,
-		strings.TrimLeft(GetUnixDomainSocketDirectoryOnHost(), string(filepath.Separator)))
-}
-
-// Defaults to /var/lib/longhorn/logs when LONGHORN_CONTROL_PATH is unset.
-func GetDefaultLogDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), LogDirectorySubpath)
-}
-
 func GetImageCanonicalName(image string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(image, ":", "-"), "/", "-")
 }
 
-func GetEngineBinaryDirectoryOnHostForImage(image string) string {
+func GetEngineBinaryDirectoryOnHostForImage(image, controlPath string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(GetEngineBinaryDirectoryOnHost(), cname)
+	return filepath.Join(controlPath, EngineBinaryDirectorySubpath, cname)
 }
 
 func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
@@ -560,25 +522,14 @@ func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
 	return filepath.Join(EngineBinaryDirectoryInContainer, cname)
 }
 
-func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
+func GetEngineBinaryDirectoryForReplicaManagerContainer(image, controlPath string) string {
 	cname := GetImageCanonicalName(image)
 	return filepath.Join(
 		ReplicaHostPrefix,
-		strings.TrimLeft(GetEngineBinaryDirectoryOnHost(), string(filepath.Separator)),
+		strings.TrimLeft(controlPath, string(filepath.Separator)),
+		EngineBinaryDirectorySubpath,
 		cname,
 	)
-}
-
-func EngineBinaryExistOnHostForImage(image string) (bool, error) {
-	engineBinaryPath := filepath.Join(GetEngineBinaryDirectoryOnHostForImage(image), "longhorn")
-	st, err := os.Stat(engineBinaryPath)
-	if err != nil {
-		return false, err
-	}
-	if st.IsDir() {
-		return false, errors.Errorf("expected %s to be a file, but it is a directory", engineBinaryPath)
-	}
-	return true, nil
 }
 
 func GetBackingImageManagerName(image, diskUUID string) string {
@@ -587,6 +538,10 @@ func GetBackingImageManagerName(image, diskUUID string) string {
 
 func GetBackingImageDirectoryName(backingImageName, backingImageUUID string) string {
 	return fmt.Sprintf("%s-%s", backingImageName, backingImageUUID)
+}
+
+func GetDefaultLogDirectoryOnHost() string {
+	return filepath.Join(DefaultControlPath, LogDirectorySubpath)
 }
 
 func GetBackingImageManagerDirectoryOnHost(diskPath string) string {

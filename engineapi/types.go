@@ -15,6 +15,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -159,6 +160,7 @@ type EngineFrontendClient interface {
 type EngineClientRequest struct {
 	VolumeName   string
 	EngineImage  string
+	DataStore    *datastore.DataStore
 	IP           string
 	Port         int
 	InstanceName string

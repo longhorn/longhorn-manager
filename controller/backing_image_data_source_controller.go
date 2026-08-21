@@ -231,6 +231,7 @@ func (c *BackingImageDataSourceController) getEngineClientProxy(e *longhorn.Engi
 	engineCollection := &engineapi.EngineCollection{}
 	engineCliClient, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
 		EngineImage: e.Status.CurrentImage,
+		DataStore:   c.ds,
 		VolumeName:  e.Spec.VolumeName,
 		IP:          e.Status.IP,
 		Port:        e.Status.Port,

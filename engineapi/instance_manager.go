@@ -18,6 +18,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -86,11 +87,6 @@ func (c *InstanceManagerClient) Close() error {
 	}
 
 	return err
-}
-
-func GetDeprecatedInstanceManagerBinary(image string) string {
-	cname := types.GetImageCanonicalName(image)
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHost(), cname, DeprecatedInstanceManagerBinaryName)
 }
 
 func CheckInstanceManagerCompatibility(imMinVersion, imVersion int) error {
@@ -377,7 +373,7 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 }
 
 func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
+	ds *datastore.DataStore, dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
 
 	requestSize, err := util.GetActualBackendSize(r.Spec.VolumeSize, encrypted, engineCLIAPIVersion)
 	if err != nil {
@@ -427,7 +423,14 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 	syncAgentPortCount := portCount - 3
 	args = append(args, "--sync-agent-port-count", strconv.Itoa(syncAgentPortCount))
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.Image), types.EngineBinaryName)
+	controlPath := types.DefaultControlPath
+	if ds != nil {
+		controlPath, err = ds.GetDefaultControlPath()
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.Image, controlPath), types.EngineBinaryName)
 
 	return binary, args, nil
 }
@@ -528,6 +531,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 type ReplicaInstanceCreateRequest struct {
 	Replica                       *longhorn.Replica
+	DataStore                     *datastore.DataStore
 	DiskName                      string
 	DataPath                      string
 	BackingImagePath              string
@@ -647,7 +651,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	args := []string{}
 	var err error
 	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
-		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
+		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataStore, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
 		if err != nil {
 			return nil, err
 		}
