@@ -1769,7 +1769,7 @@ func (e *Engine) reconnectFrontend(spdkClient *spdkclient.Client, bdevRaidUUID s
 	return nil
 }
 
-func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstReplicaAddress string) (err error) {
+func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstReplicaAddress string, fastSync bool) (err error) {
 	updateRequired := false
 
 	e.Lock()
@@ -1864,7 +1864,7 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 			}()
 
 			if err == nil && engineErr == nil {
-				if err = e.replicaShallowCopy(dstReplicaServiceCli, srcReplicaName, dstReplicaName, rebuildingSnapshotList); err != nil {
+				if err = e.replicaShallowCopy(dstReplicaServiceCli, srcReplicaName, dstReplicaName, rebuildingSnapshotList, fastSync); err != nil {
 					e.log.WithError(err).Errorf("Engine %s failed to do the shallow copy for replica %s add", e.Name, dstReplicaName)
 				}
 			} else {
@@ -1979,7 +1979,7 @@ func (e *Engine) getSrcAndDstReplicaClients(srcReplicaName, srcReplicaAddress, d
 	return
 }
 
-func (e *Engine) replicaShallowCopy(dstReplicaServiceCli *client.SPDKClient, srcReplicaName, dstReplicaName string, rebuildingSnapshotList []*api.Lvol) (err error) {
+func (e *Engine) replicaShallowCopy(dstReplicaServiceCli *client.SPDKClient, srcReplicaName, dstReplicaName string, rebuildingSnapshotList []*api.Lvol, fastSync bool) (err error) {
 	updateRequired := false
 	defer func() {
 		if updateRequired {
@@ -2017,7 +2017,7 @@ func (e *Engine) replicaShallowCopy(dstReplicaServiceCli *client.SPDKClient, src
 		currentSnapshotName = rebuildingSnapshotList[idx].Name
 		e.log.Debugf("Engine is syncing snapshot %s from rebuilding src replica %s to rebuilding dst replica %s", currentSnapshotName, srcReplicaName, dstReplicaName)
 
-		if err := dstReplicaServiceCli.ReplicaRebuildingDstShallowCopyStart(dstReplicaName, currentSnapshotName); err != nil {
+		if err := dstReplicaServiceCli.ReplicaRebuildingDstShallowCopyStart(dstReplicaName, currentSnapshotName, fastSync); err != nil {
 			return errors.Wrapf(err, "failed to start shallow copy snapshot %s", currentSnapshotName)
 		}
 

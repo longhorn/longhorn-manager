@@ -582,7 +582,7 @@ func (c *SPDKClient) ReplicaRebuildingDstFinish(replicaName string) error {
 	return errors.Wrapf(err, "failed to finish replica rebuilding dst %s", replicaName)
 }
 
-func (c *SPDKClient) ReplicaRebuildingDstShallowCopyStart(dstReplicaName, snapshotName string) error {
+func (c *SPDKClient) ReplicaRebuildingDstShallowCopyStart(dstReplicaName, snapshotName string, fastSync bool) error {
 	if dstReplicaName == "" {
 		return fmt.Errorf("failed to start rebuilding dst replica shallow copy: missing required parameter dst replica name")
 	}
@@ -597,6 +597,7 @@ func (c *SPDKClient) ReplicaRebuildingDstShallowCopyStart(dstReplicaName, snapsh
 	_, err := client.ReplicaRebuildingDstShallowCopyStart(ctx, &spdkrpc.ReplicaRebuildingDstShallowCopyStartRequest{
 		Name:         dstReplicaName,
 		SnapshotName: snapshotName,
+		FastSync:     fastSync,
 	})
 	return errors.Wrapf(err, "failed to start rebuilding dst replica %v shallow copy snapshot %v", dstReplicaName, snapshotName)
 }
@@ -970,7 +971,7 @@ func (c *SPDKClient) EngineSnapshotClone(name, snapshotName, srcEngineName, srcE
 		"srcEngineName %s, srcEngineAddress %v", name, snapshotName, srcEngineName, srcEngineAddress)
 }
 
-func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress string) error {
+func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress string, fastSync bool) error {
 	if engineName == "" {
 		return fmt.Errorf("failed to add replica for SPDK engine: missing required parameter engine name")
 	}
@@ -986,6 +987,7 @@ func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress st
 		EngineName:     engineName,
 		ReplicaName:    replicaName,
 		ReplicaAddress: replicaAddress,
+		FastSync:       fastSync,
 	})
 	return errors.Wrapf(err, "failed to add replica %s with address %s to engine %s", replicaName, replicaAddress, engineName)
 }
