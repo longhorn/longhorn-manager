@@ -77,7 +77,7 @@ type CollectedDiskInfo struct {
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
 type GetDiskHealthHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, time.Time, *DiskServiceClient, logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*util.DiskConfig, error)
-type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, *DiskServiceClient, *datastore.DataStore) (*util.DiskConfig, error)
+type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, int64, int64, *DiskServiceClient, *datastore.DataStore) (*util.DiskConfig, error)
 type GetReplicaDataStoresHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)
 
 func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*DiskMonitor, error) {
@@ -302,9 +302,11 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 			diskUUID := ""
 			diskDriver := disk.DiskDriver
+			actualBlockSize := int64(0)
 			if node.Status.DiskStatus != nil {
 				if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
 					diskUUID = diskStatus.DiskUUID
+					actualBlockSize = diskStatus.ActualBlockSize
 					if diskStatus.DiskDriver != "" {
 						diskDriver = diskStatus.DiskDriver
 					}
@@ -316,7 +318,7 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			//   The handling of all disks containing the same fsid will be done in NodeController.
 			// Block-type disk
 			//   Create a bdev lvstore
-			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), diskServiceClient, m.ds)
+			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), disk.BlockSize, actualBlockSize, diskServiceClient, m.ds)
 			if err != nil {
 				errs.Append("errors", errors.Wrap(err, "failed to generate disk config"))
 

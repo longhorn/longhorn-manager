@@ -63,6 +63,10 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	for name, disk := range node.Spec.Disks {
+		if err := validateDiskBlockSize(name, disk); err != nil {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
 		if !v2DataEngineEnabled {
 			if disk.Type == longhorn.DiskTypeBlock {
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since v2 data engine is disabled", name, disk.Type), "")
@@ -171,6 +175,10 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 
 	// Validate Disks StorageReserved, Tags and Type
 	for name, disk := range newNode.Spec.Disks {
+		if err := validateDiskBlockSize(name, disk); err != nil {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
 		if disk.StorageReserved < 0 {
 			return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The storageReserved setting of disk %v(%v) is not valid, should be positive and no more than storageMaximum and storageAvailable",
 				newNode.Name, name, disk.Path), "")
@@ -215,8 +223,71 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			}
 		}
 	}
+	if err := validateDiskBlockSizeUpdate(oldNode, newNode); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 
 	return nil
+}
+
+func validateDiskBlockSize(diskName string, disk longhorn.DiskSpec) error {
+	if disk.BlockSize == 0 {
+		return nil
+	}
+	if disk.BlockSize != 512 && disk.BlockSize != 4096 {
+		return fmt.Errorf("disk %v block size %v is invalid; supported values are 0, 512, and 4096", diskName, disk.BlockSize)
+	}
+
+	if disk.Type != longhorn.DiskTypeBlock {
+		return fmt.Errorf("disk %v type %v does not support a configurable block size", diskName, disk.Type)
+	}
+
+	if disk.DiskDriver != longhorn.DiskDriverNone && disk.DiskDriver != longhorn.DiskDriverAuto && disk.DiskDriver != longhorn.DiskDriverAio {
+		return fmt.Errorf("disk %v driver %v does not support a configurable block size", diskName, disk.DiskDriver)
+	}
+	if disk.DiskDriver == longhorn.DiskDriverAuto && types.IsBDF(disk.Path) {
+		return fmt.Errorf("disk %v uses a PCI address with the auto driver, which does not support a configurable block size", diskName)
+	}
+
+	return nil
+}
+
+func validateDiskBlockSizeUpdate(oldNode, newNode *longhorn.Node) error {
+	for diskName, oldDisk := range oldNode.Spec.Disks {
+		newDisk, exists := newNode.Spec.Disks[diskName]
+		if !exists || oldDisk.Type != longhorn.DiskTypeBlock {
+			continue
+		}
+		if oldDisk.BlockSize == newDisk.BlockSize {
+			continue
+		}
+
+		oldDiskStatus, exists := oldNode.Status.DiskStatus[diskName]
+		if !exists || oldDiskStatus == nil || oldDiskStatus.DiskUUID == "" {
+			continue
+		}
+
+		if oldDiskStatus.ActualBlockSize == 0 {
+			if oldDisk.BlockSize == 0 &&
+				types.GetCondition(oldDiskStatus.Conditions, longhorn.DiskConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+				continue
+			}
+			return fmt.Errorf("update disk on node %v error: The actual block size of initialized disk %v(%v) is not available", newNode.Name, diskName, oldDisk.Path)
+		}
+		if effectiveDiskBlockSize(newDisk.BlockSize) != oldDiskStatus.ActualBlockSize {
+			return fmt.Errorf("update disk on node %v error: The block size of initialized disk %v(%v) is not allowed to change", newNode.Name, diskName, oldDisk.Path)
+		}
+	}
+
+	return nil
+}
+
+func effectiveDiskBlockSize(blockSize int64) int64 {
+	if blockSize == 0 {
+		return 512
+	}
+
+	return blockSize
 }
 
 func validateNodeDiskPaths(nodeName string, disks map[string]longhorn.DiskSpec) error {
