@@ -62,6 +62,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ShardGroupList{},
 		&Snapshot{},
 		&SnapshotList{},
+		&SnapshotGroup{},
+		&SnapshotGroupList{},
 		&SupportBundle{},
 		&SupportBundleList{},
 		&SystemBackup{},

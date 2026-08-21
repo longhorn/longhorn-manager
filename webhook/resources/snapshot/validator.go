@@ -87,6 +87,14 @@ func (o *snapshotValidator) Update(request *admission.Request, oldObj runtime.Ob
 		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", types.LonghornLabelVolume), "metadata.labels")
 	}
 
+	// The label routes member snapshot events to the owning group and marks
+	// membership; adding, changing, or removing it would detach the snapshot
+	// from its group without the group ever seeing an event for it.
+	snapshotGroupLabelKey := types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)
+	if oldSnapshot.Labels[snapshotGroupLabelKey] != newSnapshot.Labels[snapshotGroupLabelKey] {
+		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", snapshotGroupLabelKey), "metadata.labels")
+	}
+
 	return nil
 }
 

@@ -201,6 +201,7 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 			annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil &&
 			!needToUpdateImage(existing, obj) &&
+			!needToUpdateArgs(existing, obj) &&
 			!needToUpdatePodAntiAffinity(existing, obj) &&
 			!needToUpdateReplicas(existing, obj) {
 			// deployment of correct version already deployed
@@ -293,6 +294,31 @@ func needToUpdateDaemonSetImage(existingObj, newObj runtime.Object) bool {
 	}
 
 	return !reflect.DeepEqual(existingImages, newImages)
+}
+
+func podTemplateContainers(obj runtime.Object) []corev1.Container {
+	switch workload := obj.(type) {
+	case *appsv1.Deployment:
+		return workload.Spec.Template.Spec.Containers
+	case *appsv1.DaemonSet:
+		return workload.Spec.Template.Spec.Containers
+	}
+	return nil
+}
+
+// needToUpdateArgs reports whether any container's arguments differ between
+// the existing and the desired workload. Arguments can change at the same
+// Longhorn version, such as when the volume group snapshot toggle flips.
+func needToUpdateArgs(existingObj, newObj runtime.Object) bool {
+	existingArgs := make(map[string][]string)
+	for _, container := range podTemplateContainers(existingObj) {
+		existingArgs[container.Name] = container.Args
+	}
+	newArgs := make(map[string][]string)
+	for _, container := range podTemplateContainers(newObj) {
+		newArgs[container.Name] = container.Args
+	}
+	return !reflect.DeepEqual(existingArgs, newArgs)
 }
 
 func needToUpdatePodAntiAffinity(existingObj, newObj runtime.Object) bool {

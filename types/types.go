@@ -50,6 +50,7 @@ const (
 	LonghornKindOrphan              = "Orphan"
 	LonghornKindShardGroup          = "ShardGroup"
 	LonghornKindShard               = "Shard"
+	LonghornKindSnapshotGroup       = "SnapshotGroup"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -220,6 +221,9 @@ const (
 	LonghornLabelBackingImageManager             = "backing-image-manager"
 	LonghornLabelManagedBy                       = "managed-by"
 	LonghornLabelSnapshotForCloningVolume        = "for-cloning-volume"
+	LonghornLabelSnapshotGroup                   = "snapshot-group"
+	LonghornLabelSnapshotGroupCSIType            = "snapshot-group-csi-type"
+	LonghornLabelSnapshotGroupUID                = "snapshot-group-uid"
 	LonghornLabelBackingImageDataSource          = "backing-image-data-source"
 	LonghornLabelBackupTarget                    = "backup-target"
 	LonghornLabelBackupVolume                    = "backup-volume"
@@ -298,6 +302,40 @@ const (
 	// records the slot in ShardGroup.Status.IntentionalDeleteSlots so the replacement
 	// Shard CR bypasses the failure-recovery debounce.
 	ShardAnnotationIntentionalDelete = "longhorn.io/intentional-delete"
+
+	// SnapshotGroupAnnotationTerminalPhase records the outcome (Ready or
+	// Failed) when a SnapshotGroup reaches a terminal phase. It is the restore
+	// guard: restores that strip status still preserve annotations, so when
+	// the annotation records an outcome the phase does not show, the
+	// controller restores the annotated phase instead of taking new snapshots.
+	SnapshotGroupAnnotationTerminalPhase = "longhorn.io/snapshot-group-terminal-phase"
+
+	// SnapshotGroupAnnotationBackupsCompleted freezes the outcome of a
+	// bak-type CSI volume group snapshot. The CSI handler stamps it the first
+	// time it observes every member backup Completed; from then on the group
+	// is reported ready without reading live backup state. The value is a
+	// JSON map of member snapshot name to backup name; member snapshot
+	// handles fall back to it, so a backup deleted after completion does not
+	// change them.
+	SnapshotGroupAnnotationBackupsCompleted = "longhorn.io/snapshot-group-backups-completed"
+
+	// SnapshotGroupAnnotationCSIParameters records the class parameters a
+	// CSI-created group was created with. A create retry for the existing
+	// name compares against it and rejects different parameters, as the CSI
+	// spec requires.
+	SnapshotGroupAnnotationCSIParameters = "longhorn.io/snapshot-group-csi-parameters"
+
+	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
+	// also keeps the auto-attach of detached member volumes bounded.
+	SnapshotGroupMaxMemberCount = 64
+
+	// SnapshotGroupDefaultDeadlineSeconds is stamped by the mutating webhook
+	// when spec.deadlineSeconds is unset.
+	SnapshotGroupDefaultDeadlineSeconds = 300
+	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds
+	// bound spec.deadlineSeconds; admission rejects values outside them.
+	SnapshotGroupMinDeadlineSeconds = 10
+	SnapshotGroupMaxDeadlineSeconds = 3600
 
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
@@ -982,6 +1020,43 @@ func GetInstanceManagerImageChecksumName(image string) string {
 
 func GetShareManagerImageChecksumName(image string) string {
 	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+const (
+	// SnapshotGroupMemberSnapshotNameSuffixLength is the number of random
+	// characters after the group name in a member snapshot name.
+	SnapshotGroupMemberSnapshotNameSuffixLength = 8
+
+	// SnapshotGroupNameMaxLength bounds the group name at admission so every
+	// member name fits 63 characters by construction - the label-value
+	// bound (the group name is stamped verbatim as the value of the
+	// longhorn.io/snapshot-group label on every member), minus the 1-character
+	// separator and the random suffix. No truncation happens anywhere.
+	SnapshotGroupNameMaxLength = 63 - 1 - SnapshotGroupMemberSnapshotNameSuffixLength
+)
+
+// GenerateSnapshotGroupMemberSnapshotName generates a member Snapshot name:
+// the group name plus a random suffix, stamped into spec.members once at
+// admission. The name must not repeat when a group name is reused, or a new
+// group could adopt a leftover member of an earlier deleted group with the
+// same name; a random name per group makes that impossible, the same way
+// member backups are named.
+func GenerateSnapshotGroupMemberSnapshotName(groupName string) string {
+	return groupName + "-" + util.UUID()[:SnapshotGroupMemberSnapshotNameSuffixLength]
+}
+
+// GetSnapshotGroupTerminalPhase returns the phase the terminal-phase
+// annotation records, if it carries a valid outcome. The controller and the
+// admission webhook share this: a group the webhook admits as a restore must
+// be one the controller will not take snapshots for.
+func GetSnapshotGroupTerminalPhase(snapshotGroup *longhorn.SnapshotGroup) (longhorn.SnapshotGroupPhase, bool) {
+	switch snapshotGroup.Annotations[SnapshotGroupAnnotationTerminalPhase] {
+	case string(longhorn.SnapshotGroupPhaseReady):
+		return longhorn.SnapshotGroupPhaseReady, true
+	case string(longhorn.SnapshotGroupPhaseFailed):
+		return longhorn.SnapshotGroupPhaseFailed, true
+	}
+	return "", false
 }
 
 func GetOrphanChecksumNameForOrphanedDataStore(nodeID, diskName, diskPath, diskUUID, dataStore string) string {

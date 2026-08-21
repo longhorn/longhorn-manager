@@ -108,6 +108,10 @@ func (c *FakeLonghornV1beta2) Snapshots(namespace string) v1beta2.SnapshotInterf
 	return newFakeSnapshots(c, namespace)
 }
 
+func (c *FakeLonghornV1beta2) SnapshotGroups(namespace string) v1beta2.SnapshotGroupInterface {
+	return newFakeSnapshotGroups(c, namespace)
+}
+
 func (c *FakeLonghornV1beta2) SupportBundles(namespace string) v1beta2.SupportBundleInterface {
 	return newFakeSupportBundles(c, namespace)
 }

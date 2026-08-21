@@ -27,6 +27,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/shard"
 	"github.com/longhorn/longhorn-manager/webhook/resources/shardgroup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
+	"github.com/longhorn/longhorn-manager/webhook/resources/snapshotgroup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/supportbundle"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systemrestore"
@@ -53,6 +54,7 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		volume.NewValidator(ds, currentNodeID),
 		orphan.NewValidator(ds),
 		snapshot.NewValidator(ds),
+		snapshotgroup.NewValidator(ds),
 		shardgroup.NewValidator(ds),
 		shard.NewValidator(ds),
 		supportbundle.NewValidator(ds),

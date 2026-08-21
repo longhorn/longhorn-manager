@@ -58,6 +58,8 @@ type ShareManagerExpansion interface{}
 
 type SnapshotExpansion interface{}
 
+type SnapshotGroupExpansion interface{}
+
 type SupportBundleExpansion interface{}
 
 type SystemBackupExpansion interface{}
