@@ -274,7 +274,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20260722010828-e5f4ddc47e4d
+# github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0
 ## explicit; go 1.25.10
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -316,14 +316,14 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260722045630-fbcdec882798
+# github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260821031814-5939910cc1fe
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260814132221-4d252011bef8
+# github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260821035755-d4070d38705e
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -334,7 +334,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260814120037-66c5cd076ebb
+# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260821025959-57f5131c863e
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -525,10 +525,12 @@ github.com/slok/goresilience/timeout
 # github.com/spf13/pflag v1.0.10
 ## explicit; go 1.12
 github.com/spf13/pflag
-# github.com/stretchr/testify v1.11.1
+# github.com/stretchr/testify v1.12.0
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
+github.com/stretchr/testify/internal/difflib
+github.com/stretchr/testify/internal/spew
 github.com/stretchr/testify/require
 # github.com/tklauser/go-sysconf v0.3.16
 ## explicit; go 1.24.0

@@ -945,12 +945,8 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 
 	if frontendSuspendResumeWrapper != nil {
 		if wrapErr := frontendSuspendResumeWrapper(startFn); wrapErr != nil {
-			// The wrapper itself may fail (e.g. suspend or resume failure).
-			// If the inner startFn already set engineErr, those are captured
-			// via closure.
-			if err == nil && engineErr == nil {
-				engineErr = wrapErr
-			}
+			// startFn captures fatal engine errors in engineErr. The wrapper
+			// returns the work error, so keep setup failures replica-scoped.
 			setupErr = wrapErr
 		}
 	} else {
