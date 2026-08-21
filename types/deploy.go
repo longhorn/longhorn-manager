@@ -22,6 +22,9 @@ const (
 	CSIResizerName     = "csi-resizer"
 	CSISnapshotterName = "csi-snapshotter"
 	CSIPluginName      = "longhorn-csi-plugin"
+
+	SystemManagedComponentInstanceManager = "instance-manager"
+	SystemManagedComponentEngineImage     = "engine-image"
 )
 
 // AddGoCoverDirToPod adds GOCOVERDIR env and host path volume to a pod.
