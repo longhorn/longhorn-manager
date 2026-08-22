@@ -450,6 +450,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		DataPath:                      dataPath,
 		BackingImagePath:              backingImagePath,
 		DataLocality:                  v.Spec.DataLocality,
+		DataEngineTransport:           toIMRPCDataEngineTransport(v.Spec.DataEngineTransport),
 		EngineCLIAPIVersion:           cliAPIVersion,
 		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v),
 	})

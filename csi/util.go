@@ -296,6 +296,10 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.DataEngine = driver
 	}
 
+	if transport, ok := volOptions["dataEngineTransport"]; ok {
+		vol.DataEngineTransport = transport
+	}
+
 	layoutType, hasLayoutType := volOptions["dataLayout.type"]
 	layoutMode, hasLayoutMode := volOptions["dataLayout.mode"]
 	dataChunksRaw, hasDataChunks := volOptions["dataLayout.dataChunks"]

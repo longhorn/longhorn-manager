@@ -2130,6 +2130,23 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 
 		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+
+		// When the engine-replica NVMe-oF fabric runs over RDMA (RoCEv2), request the extended
+		// resource advertised by an RDMA shared device plugin (for example, k8s-rdma-shared-dev-plugin)
+		// so the pod gains declarative access to the /dev/infiniband verbs devices. Empty (default)
+		// keeps the previous behavior, where devices come from the privileged host mount.
+		// This setting is optional (Required: false, Default: ""), so read it with a getter
+		// that tolerates an empty value instead of GetSettingValueExisted, which errors when
+		// the value is empty. An empty value is the default and means the previous behavior
+		// (privileged host mount), so it must not block Instance Manager pod creation.
+		rdmaDeviceSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineRDMADeviceResource)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameV2DataEngineRDMADeviceResource)
+		}
+		if rdmaDeviceResource := rdmaDeviceSetting.Value; rdmaDeviceResource != "" {
+			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName(rdmaDeviceResource)] = resource.MustParse("1")
+		}
+
 		if dynamicCPUPinningEnabled {
 			cpuQty, ok := podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
 			if !ok {

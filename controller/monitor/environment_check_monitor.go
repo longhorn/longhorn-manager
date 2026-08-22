@@ -173,9 +173,39 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 
 	if isV2DataEngine {
 		m.checkHugePages(kubeNode, collectedData)
+		m.checkRDMACapability(namespaces, collectedData)
 	}
 
 	return collectedData
+}
+
+// checkRDMACapability reports whether the node exposes at least one RDMA device.
+// It is a prerequisite for scheduling v2 volumes that request the RDMA NVMe-oF
+// transport (dataEngineTransport=rdma). The condition is informational: it does
+// not gate TCP volumes, and mixed clusters (only some nodes RDMA-capable) are
+// handled at volume validation/scheduling time by consulting this condition.
+func (m *EnvironmentCheckMonitor) checkRDMACapability(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRDMACapable, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonNamespaceExecutorErr),
+			fmt.Sprintf("Failed to get namespace executor: %v", err.Error()))
+		return
+	}
+
+	// RDMA devices are enumerated by the kernel under /sys/class/infiniband. A
+	// non-empty listing means at least one RoCE/IB-capable device is present.
+	result, _ := nsexec.Execute(nil, "sh", []string{"-c", "ls -A /sys/class/infiniband 2>/dev/null"}, lhtypes.ExecuteDefaultTimeout)
+	devices := strings.Fields(result)
+	if len(devices) == 0 {
+		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRDMACapable, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonRDMADeviceNotFound),
+			"No RDMA device found under /sys/class/infiniband; volumes with dataEngineTransport=rdma cannot be scheduled here")
+		return
+	}
+
+	collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRDMACapable, longhorn.ConditionStatusTrue, "",
+		fmt.Sprintf("RDMA devices %v are available", devices))
 }
 
 func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
