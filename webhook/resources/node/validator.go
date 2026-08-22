@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"reflect"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -114,8 +115,32 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			oldNode.Name), "")
 	}
 
-	// Ensure the node controller already syncs the disk spec and status.
-	if !isNodeDiskSpecAndStatusSynced(oldNode) {
+	// If the Kubernetes Node is deleted without properly evicting the Longhorn
+	// Node, the disk status may never be synced. Prevent disk configuration
+	// changes in this state, while allowing a limited spec update to disable
+	// node scheduling. Ref: https://github.com/longhorn/longhorn/issues/13494
+	disksSynced := isNodeDiskSpecAndStatusSynced(oldNode)
+	disksSpecChanged := !reflect.DeepEqual(oldNode.Spec.Disks, newNode.Spec.Disks)
+	if _, err := n.ds.GetKubernetesNodeRO(oldNode.Name); err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		if disksSpecChanged {
+			return werror.NewForbiddenError(fmt.Sprintf(
+				"cannot modify disks on node %v after the Kubernetes node is deleted",
+				oldNode.Name))
+		}
+
+		allowedSpec := oldNode.Spec
+		allowedSpec.AllowScheduling = false
+		if !oldNode.Spec.AllowScheduling || !reflect.DeepEqual(allowedSpec, newNode.Spec) {
+			return werror.NewForbiddenError(fmt.Sprintf(
+				"only disabling scheduling on node %v is allowed after the Kubernetes node is deleted",
+				oldNode.Name))
+		}
+		return nil
+	}
+	if !disksSynced {
 		return werror.NewForbiddenError(fmt.Sprintf("spec and status of disks on node %v are being syncing and please retry later.", oldNode.Name))
 	}
 
