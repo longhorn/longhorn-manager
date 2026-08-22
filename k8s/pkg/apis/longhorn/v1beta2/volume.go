@@ -434,9 +434,8 @@ type VolumeSpec struct {
 	DataEngine DataEngineType `json:"dataEngine"`
 	// DataEngineTransport selects the NVMe-oF transport for the internal
 	// engine<->replica fabric of a v2 volume (tcp or rdma). Empty defaults to tcp.
-	// It is immutable and has no effect on v1 volumes.
+	// It can only be changed while the volume is detached and has no effect on v1 volumes.
 	// +kubebuilder:validation:Enum=tcp;rdma
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="DataEngineTransport is immutable"
 	// +optional
 	DataEngineTransport DataEngineTransport `json:"dataEngineTransport,omitempty"`
 	// +optional

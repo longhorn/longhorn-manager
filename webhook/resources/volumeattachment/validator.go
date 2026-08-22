@@ -99,6 +99,10 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 		return err
 	}
 
+	if err := v.verifyRDMAVolumeAttachment(oldVA, newVA, volume); err != nil {
+		return err
+	}
+
 	return verifyAttachmentTicketIDConsistency(newVA.Spec.AttachmentTickets)
 }
 
@@ -152,6 +156,33 @@ func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *lon
 		msg := fmt.Sprintf("cannot have more than 2 CSI tickets for migratable volume %v: %s", vol.Name, ticketsJson)
 		return werror.NewInvalidError(msg, "spec.attachmentTickets")
 	}
+}
+
+// verifyRDMAVolumeAttachment rejects new attachment tickets that would place the
+// engine of an RDMA volume on a node without an RDMA device. Existing tickets are
+// not re-checked, so they can always be updated or removed.
+func (v *volumeAttachmentValidator) verifyRDMAVolumeAttachment(oldVA, newVA *longhorn.VolumeAttachment, vol *longhorn.Volume) error {
+	if !types.IsRDMAVolume(vol) {
+		return nil
+	}
+
+	for ticketID, ticket := range newVA.Spec.AttachmentTickets {
+		if _, exists := oldVA.Spec.AttachmentTickets[ticketID]; exists || ticket.NodeID == "" {
+			continue
+		}
+		node, err := v.ds.GetNodeRO(ticket.NodeID)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to get node %v for validating attachment ticket %v of RDMA volume %v", ticket.NodeID, ticketID, vol.Name)
+			return werror.NewInvalidError(err.Error(), "spec.attachmentTickets")
+		}
+		if !types.IsNodeRDMACapable(node) {
+			err := fmt.Errorf("cannot attach volume %v to node %v: the volume uses data engine transport %v but the node is not RDMA-capable",
+				vol.Name, ticket.NodeID, vol.Spec.DataEngineTransport)
+			return werror.NewInvalidError(err.Error(), "spec.attachmentTickets")
+		}
+	}
+
+	return nil
 }
 
 func (v *volumeAttachmentValidator) verifyStrictLocalVolumeAttachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) error {
