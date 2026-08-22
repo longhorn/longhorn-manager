@@ -747,11 +747,11 @@ func toIMRPCDataLayoutType(t longhorn.VolumeDataLayoutType) imrpc.DataLayoutType
 
 // toIMRPCDataEngineTransport maps the volume's data engine transport to the
 // instance-manager RPC enum. Empty or unknown values default to TCP.
-func toIMRPCDataEngineTransport(t longhorn.DataEngineTransport) imrpc.DataEngineTransport {
+func toIMRPCDataEngineTransport(t longhorn.DataEngineTransport) imrpc.TransportType {
 	if t == longhorn.DataEngineTransportRDMA {
-		return imrpc.DataEngineTransport_DATA_ENGINE_TRANSPORT_RDMA
+		return imrpc.TransportType_TRANSPORT_TYPE_RDMA
 	}
-	return imrpc.DataEngineTransport_DATA_ENGINE_TRANSPORT_TCP
+	return imrpc.TransportType_TRANSPORT_TYPE_TCP
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
