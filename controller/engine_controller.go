@@ -2650,10 +2650,19 @@ func (ec *EngineController) startPostRebuildPurge(
 			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
 		return
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
-		log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
+
+	// Unlike the pre-rebuild purge, a failure here has no later reconcile that
+	// retriggers rebuild and retries the purge as a side effect, since the
+	// rebuild already succeeded. Retry the start call directly so a transient
+	// failure does not leave the post-rebuild snapshot un-purged forever.
+	var purgeErr error
+	if err := wait.PollUntilContextTimeout(context.Background(), EnginePollInterval, EnginePollTimeout, true, func(context.Context) (bool, error) {
+		purgeErr = cleanupProxy.SnapshotPurge(dataEngineObj)
+		return purgeErr == nil, nil
+	}); err != nil {
+		log.WithError(purgeErr).Error("Failed to start snapshot purge after rebuilding")
 		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
+			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, purgeErr)
 		return
 	}
 }
