@@ -32,6 +32,15 @@ func TestSanitizeBackupStoreErrorMessage(t *testing.T) {
 			expected: "AWS Error: SlowDown Please reduce your request rate. <redacted>",
 		},
 		{
+			// The RequestId value is opaque and alphanumeric on many
+			// S3-compatible backends, not purely hexadecimal. The whole
+			// token must be redacted; leaving an alphanumeric suffix would
+			// keep repeated messages distinct and preserve the reconcile storm.
+			name:     "explicit RequestId field with alphanumeric id",
+			input:    "AWS Error: SlowDown Please reduce your request rate. RequestID: ABCDXYZ123456789",
+			expected: "AWS Error: SlowDown Please reduce your request rate. <redacted>",
+		},
+		{
 			name:     "no volatile content",
 			input:    "failed to init backup target clients: credential secret not found",
 			expected: "failed to init backup target clients: credential secret not found",
@@ -54,7 +63,7 @@ func TestSanitizeBackupStoreErrorMessage(t *testing.T) {
 				`error: AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n403 dcc174e30ac8453c\n" pkg=s3`,
 			expected: `failed to list system backups in s3://bucket@region/: error listing system backup in s3://bucket@region/: ` +
 				`failed to execute: /path/longhorn [/path/longhorn system-backup list s3://bucket@region/], output , stderr ` +
-				`time="2026-07-24T16:26:21.852427323Z" level=error msg="Failed to list s3" func="s3.(*BackupStoreDriver).List" file="s3.go:116" ` +
+				`time="<timestamp>" level=error msg="Failed to list s3" func="s3.(*BackupStoreDriver).List" file="s3.go:116" ` +
 				`error="failed to list objects with param: {\n  Bucket: \"bucket\",\n  Delimiter: \"/\",\n  Prefix: \"/\"\n} ` +
 				`error: AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n<redacted>\n" pkg=s3`,
 		},

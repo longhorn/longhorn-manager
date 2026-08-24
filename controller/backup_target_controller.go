@@ -332,14 +332,19 @@ func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backup
 // AWS/S3-compatible SDKs embed in error messages, e.g.
 // "403 1eed0c50c2cb9133" (HTTP status + hex request ID) as produced by
 // backupstore's parseAwsError, or an explicit "RequestId: ..." field.
+// The explicit "RequestId:" field matches the complete opaque token
+// ([0-9A-Za-z-]+), not just a hex prefix: S3-compatible backends issue
+// alphanumeric request IDs, and matching only the hex prefix would leave
+// the volatile alphanumeric suffix in the message, so repeated failures
+// would still differ and preserve the reconcile storm.
 // Note: no leading \b before the status code - error messages captured from
 // exec'd subprocess stderr often contain a literal two-character "\n"
 // escape sequence (backslash + n) rather than a real newline byte
 // immediately before the status code, which defeats a \b word-boundary
 // check (both 'n' and the following digit are word characters, so no
-// boundary exists between them). A trailing \b after the hex ID is safe
+// boundary exists between them). A trailing \b after the ID is safe
 // since it's normally followed by a quote, space, or real newline.
-var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-f-]+|[0-9]{3}\s+[0-9a-f]{16}\b)`)
+var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-z-]+|[0-9]{3}\s+[0-9a-f]{16}\b)`)
 
 // timestampPattern matches RFC3339(-nano) timestamps that the exec'd
 // `longhorn` engine binary's own logrus output embeds in every log line
