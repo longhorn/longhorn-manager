@@ -187,6 +187,13 @@ func NewInstanceManagerController(
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: imc.enqueueLonghornNodeChange,
+	}, 0); err != nil {
+		return nil, err
+	}
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.NodeInformer.HasSynced)
+
 	if _, err = ds.OrphanInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc: imc.enqueueInstanceManagerOrphan,
 	}, 0); err != nil {
@@ -210,6 +217,29 @@ func NewInstanceManagerController(
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeControlInformer.HasSynced)
 
 	return imc, nil
+}
+
+func (imc *InstanceManagerController) enqueueLonghornNodeChange(old, cur interface{}) {
+	oldNode, ok := old.(*longhorn.Node)
+	if !ok {
+		return
+	}
+	curNode, ok := cur.(*longhorn.Node)
+	if !ok {
+		return
+	}
+	if reflect.DeepEqual(oldNode.Spec.InstanceManagerResources, curNode.Spec.InstanceManagerResources) &&
+		reflect.DeepEqual(oldNode.Spec.DataEngineResources, curNode.Spec.DataEngineResources) {
+		return
+	}
+	ims, err := imc.ds.ListInstanceManagersByNodeRO(curNode.Name, longhorn.InstanceManagerTypeAllInOne, "")
+	if err != nil {
+		imc.logger.WithError(err).Warnf("Failed to list instance managers on node %v for resource override change", curNode.Name)
+		return
+	}
+	for _, im := range ims {
+		imc.enqueueInstanceManager(im)
+	}
 }
 
 func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) bool {
@@ -684,9 +714,18 @@ func (imc *InstanceManagerController) isDateEngineCPUMaskCoreNumberApplied(im *l
 		return true, nil
 	}
 
-	spdkCoreNumber, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+	spdkCoreNumber, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to get %v setting for checking data engine CPU mask", types.SettingNameDataEngineNumberOfCPUCores)
+	}
+
+	nodeIMResources, err := imc.ds.GetNodeInstanceManagerResources(im.Spec.DataEngine, im.Spec.NodeID)
+	if err != nil {
+		return false, err
+	}
+	if nodeIMResources != nil {
+		// Pinning would derive the pod resources the node override already owns.
+		spdkCoreNumber = 0
 	}
 
 	if spdkCoreNumber > 0 {
@@ -697,7 +736,7 @@ func (imc *InstanceManagerController) isDateEngineCPUMaskCoreNumberApplied(im *l
 		return im.Spec.DataEngineSpec.V2.CPUMask == im.Status.DataEngineStatus.V2.CPUMask, nil
 	}
 
-	value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, im.Spec.DataEngine)
+	value, err := imc.ds.GetNodeEffectiveCPUMask(im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameDataEngineCPUMask)
 	}
@@ -1038,12 +1077,12 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 		return true, nil
 	}
 
-	resourceReq, err := GetInstanceManagerCPURequirement(imc.ds, pod.Name)
+	resourceReq, err := GetInstanceManagerResourceRequirement(imc.ds, pod.Name)
 	if err != nil {
 		return false, err
 	}
 	podResourceReq := pod.Spec.Containers[0].Resources
-	return IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq), nil
+	return IsSameInstanceManagerResourceRequirement(resourceReq, &podResourceReq), nil
 }
 
 func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -1267,12 +1306,12 @@ func (imc *InstanceManagerController) isSettingHugepageLimitSynced(im *longhorn.
 		return true, nil
 	}
 
-	hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+	hugepageEnabled, err := imc.ds.GetNodeEffectiveSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
 
-	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	memorySize, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
@@ -1301,7 +1340,7 @@ func (imc *InstanceManagerController) isSettingMemorySizeArgSynced(im *longhorn.
 		return true, nil
 	}
 
-	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	memorySize, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
@@ -1325,7 +1364,7 @@ func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *lon
 		return true, nil
 	}
 
-	hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+	hugepageEnabled, err := imc.ds.GetNodeEffectiveSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
@@ -1334,7 +1373,7 @@ func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *lon
 		return true, nil
 	}
 
-	memorySize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+	memorySize, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
@@ -1372,7 +1411,7 @@ func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *long
 		return false, nil
 	}
 
-	iobufLargePoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, im.Spec.DataEngine)
+	iobufLargePoolSize, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
@@ -1396,7 +1435,7 @@ func (imc *InstanceManagerController) isSettingIobufSmallPoolSizeSynced(im *long
 		return false, nil
 	}
 
-	iobufSmallPoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, im.Spec.DataEngine)
+	iobufSmallPoolSize, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
@@ -2013,13 +2052,13 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	}
 
 	// Apply resource requirements to newly created Instance Manager Pods.
-	cpuResourceReq, err := GetInstanceManagerCPURequirement(imc.ds, im.Name)
+	resourceReq, err := GetInstanceManagerResourceRequirement(imc.ds, im.Name)
 	if err != nil {
 		return nil, err
 	}
 	// Do nothing for the CPU requests if the value is 0.
-	if cpuResourceReq != nil {
-		podSpec.Spec.Containers[0].Resources = *cpuResourceReq
+	if resourceReq != nil {
+		podSpec.Spec.Containers[0].Resources = *resourceReq
 	}
 
 	return podSpec, nil
@@ -2130,9 +2169,17 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			logFlags = strings.ToLower(logFlagsSetting)
 		}
 
-		spdkCoreNumber, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+		spdkCoreNumber, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine, im.Spec.NodeID)
 		if err != nil {
 			return nil, err
+		}
+		nodeIMResources, err := imc.ds.GetNodeInstanceManagerResources(im.Spec.DataEngine, im.Spec.NodeID)
+		if err != nil {
+			return nil, err
+		}
+		// Pinning would derive the pod resources the node override already owns.
+		if nodeIMResources != nil {
+			spdkCoreNumber = 0
 		}
 		dynamicCPUPinningEnabled := spdkCoreNumber != 0
 
@@ -2141,7 +2188,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		if !dynamicCPUPinningEnabled {
 			cpuMask = im.Spec.DataEngineSpec.V2.CPUMask
 			if cpuMask == "" {
-				value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
+				value, err := imc.ds.GetNodeEffectiveCPUMask(dataEngine, im.Spec.NodeID)
 				if err != nil {
 					return nil, err
 				}
@@ -2157,13 +2204,13 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		im.Status.DataEngineStatus.V2.CPUCoreNumber = spdkCoreNumber
 
 		// Hugepage or legacy memory preallocation is required for SPDK.
-		hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+		hugepageEnabled, err := imc.ds.GetNodeEffectiveSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine, im.Spec.NodeID)
 		if err != nil {
 			return nil, err
 		}
 
 		memory := int64(0)
-		memory, err = imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+		memory, err = imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine, im.Spec.NodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -2180,16 +2227,22 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		// a no-op, so the flag is omitted and behavior is unchanged. A larger value is
 		// consumed by the instance-manager launch wrapper, which generates an SPDK
 		// startup JSON config (the iobuf pool can only be sized during spdk_tgt startup).
-		iobufLargePoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, dataEngine)
+		iobufLargePoolSize, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, dataEngine, im.Spec.NodeID)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
 		}
 
+		im.Status.DataEngineStatus.V2.MemorySizeMiB = &memory
+		im.Status.DataEngineStatus.V2.HugepageEnabled = &hugepageEnabled
+
 		// iobuf small pool size (small_pool_count), handled the same way as the large pool above.
-		iobufSmallPoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, dataEngine)
+		iobufSmallPoolSize, err := imc.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, dataEngine, im.Spec.NodeID)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufSmallPoolSize)
 		}
+
+		im.Status.DataEngineStatus.V2.IobufSmallPoolSize = &iobufSmallPoolSize
+		im.Status.DataEngineStatus.V2.IobufLargePoolSize = &iobufLargePoolSize
 
 		args := []string{
 			"start-spdk-tgt",
@@ -2242,25 +2295,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		podSpec.Spec.Containers[0].Args = args
 
-		if podSpec.Spec.Containers[0].Resources.Requests == nil {
-			podSpec.Spec.Containers[0].Resources.Requests = corev1.ResourceList{}
-		}
-		podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
-
 		if podSpec.Spec.Containers[0].Resources.Limits == nil {
 			podSpec.Spec.Containers[0].Resources.Limits = corev1.ResourceList{}
 		}
 
 		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
-		if dynamicCPUPinningEnabled {
-			cpuQty, ok := podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
-			if !ok {
-				cpuQty = resource.MustParse(fmt.Sprintf("%d", spdkCoreNumber))
-				podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = cpuQty
-			}
-			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = cpuQty
-			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceMemory] = resource.MustParse("128Mi")
-		}
 
 		podSpec.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{

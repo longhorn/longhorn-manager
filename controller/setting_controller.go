@@ -1431,12 +1431,12 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 			continue
 		}
 
-		resourceReq, err := GetInstanceManagerCPURequirement(sc.ds, imPod.Name)
+		resourceReq, err := GetInstanceManagerResourceRequirement(sc.ds, imPod.Name)
 		if err != nil {
 			return err
 		}
 		podResourceReq := imPod.Spec.Containers[0].Resources
-		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
+		if IsSameInstanceManagerResourceRequirement(resourceReq, &podResourceReq) {
 			continue
 		}
 
@@ -1447,22 +1447,35 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		return nil
 	}
 
-	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
-	if err != nil {
-		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
-	}
-	if !stopped {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
-	}
-
+	// Same condition the instance manager controller uses before recreating pods for unsynced settings.
+	pendingPods := []string{}
 	for _, pod := range notUpdatedPods {
+		if instanceManagerHasRunningInstances(imMap[pod.Name]) {
+			pendingPods = append(pendingPods, pod.Name)
+			continue
+		}
 		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
 	}
+	if len(pendingPods) > 0 {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to instance manager pods %v while they have running instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine, pendingPods)}
+	}
 
 	return nil
+}
+
+func instanceManagerHasRunningInstances(im *longhorn.InstanceManager) bool {
+	if im == nil {
+		return true
+	}
+	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceEngineFrontends, im.Status.InstanceReplicas) {
+		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
+			return true
+		}
+	}
+	return false
 }
 
 func (sc *SettingController) cleanupFailedSupportBundles() error {
