@@ -12,7 +12,7 @@ import "testing"
 // attempt has a distinct message, the controller storms the remote backup
 // target instead of respecting Spec.PollInterval.
 //
-// Regression test for https://github.com/longhorn/longhorn/issues/1547
+// Regression test for https://github.com/longhorn/longhorn/issues/13831
 func TestSanitizeBackupStoreErrorMessage(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -23,6 +23,16 @@ func TestSanitizeBackupStoreErrorMessage(t *testing.T) {
 			name: "s3 status code and hex request id",
 			input: "failed to list objects with param: {\n  Bucket: \"mybucket\",\n  Delimiter: \"/\",\n  Prefix: \"/\"\n} " +
 				"error: AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n403 1eed0c50c2cb9133\n",
+			expected: "failed to list objects with param: {\n  Bucket: \"mybucket\",\n  Delimiter: \"/\",\n  Prefix: \"/\"\n} " +
+				"error: AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n<redacted>\n",
+		},
+		{
+			// S3-compatible backends' bare status-code + request-ID pairs are
+			// not guaranteed to be purely hexadecimal either; the alternative
+			// must match opaque alphanumeric IDs, not just [0-9a-f]{16}.
+			name: "s3 status code and alphanumeric request id",
+			input: "failed to list objects with param: {\n  Bucket: \"mybucket\",\n  Delimiter: \"/\",\n  Prefix: \"/\"\n} " +
+				"error: AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n403 ABCDXYZ123456789\n",
 			expected: "failed to list objects with param: {\n  Bucket: \"mybucket\",\n  Delimiter: \"/\",\n  Prefix: \"/\"\n} " +
 				"error: AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n<redacted>\n",
 		},

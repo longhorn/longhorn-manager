@@ -344,7 +344,7 @@ func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backup
 // check (both 'n' and the following digit are word characters, so no
 // boundary exists between them). A trailing \b after the ID is safe
 // since it's normally followed by a quote, space, or real newline.
-var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-z-]+|[0-9]{3}\s+[0-9a-f]{16}\b)`)
+var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-z-]+|[0-9]{3}\s+[0-9a-z-]{16,}\b)`)
 
 // timestampPattern matches RFC3339(-nano) timestamps that the exec'd
 // `longhorn` engine binary's own logrus output embeds in every log line
@@ -370,7 +370,7 @@ var timestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\
 // invalid credentials, instead of one attempt per 5-minute poll
 // interval).
 //
-// See https://github.com/longhorn/longhorn/issues/1547
+// See https://github.com/longhorn/longhorn/issues/13831
 func sanitizeBackupStoreErrorMessage(message string) string {
 	message = requestIDPattern.ReplaceAllString(message, "<redacted>")
 	message = timestampPattern.ReplaceAllString(message, "<timestamp>")
