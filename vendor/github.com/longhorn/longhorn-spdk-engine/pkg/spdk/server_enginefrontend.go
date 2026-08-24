@@ -206,7 +206,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 	}()
 
 	// Delegate to EngineReplicaAdd on the Engine node, passing EF info for callback.
-	if err := engineClient.EngineReplicaAdd(engineName, req.ReplicaName, req.ReplicaAddress, req.FastSync, ef.Name, efAddress, req.LinkedCloneSource); err != nil {
+	if err := engineClient.EngineReplicaAdd(engineName, req.ReplicaName, req.ReplicaAddress, req.FastSync, ef.Name, efAddress, req.LinkedCloneSrcReplicaName, req.LinkedCloneSrcEngineName, req.LinkedCloneSrcEngineAddress); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to add replica %s on engine %s: %v", req.ReplicaName, engineName, err)
 	}
 
@@ -230,9 +230,6 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 
 	if !types.IsFrontendSupported(req.Frontend) {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "frontend %v is not supported", req.Frontend)
-	}
-	if req.NvmeTcpNrIoQueues < 0 {
-		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid nvme_tcp_nr_io_queues %d", req.NvmeTcpNrIoQueues)
 	}
 
 	// Derive and validate targetAddress BEFORE evicting any Pending recovery
@@ -302,7 +299,6 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 
 	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
 		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
-	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
 	ef.metadataDir = s.metadataDir
 
 	s.Unlock()

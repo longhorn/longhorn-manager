@@ -358,17 +358,12 @@ func (c *SPDKClient) EngineSnapshotClone(name, snapshotName, srcEngineName, srcE
 // EngineReplicaAdd calls the full-flow EngineReplicaAdd gRPC on the Engine node.
 // When efName and efAddress are non-empty, they are set on the request so
 // Engine can call back to the EngineFrontend for suspend/resume.
-func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress string, fastSync bool, efName, efAddress string, linkedCloneSource *spdkrpc.LinkedCloneSource) error {
+func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress string, fastSync bool, efName, efAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string) error {
 	if engineName == "" {
 		return fmt.Errorf("failed to add replica for engine: missing required parameter engineName")
 	}
 	if replicaName == "" || replicaAddress == "" {
 		return fmt.Errorf("failed to add replica for engine: missing required parameter replicaName or replicaAddress")
-	}
-	if linkedCloneSource != nil {
-		if linkedCloneSource.ReplicaName == "" || linkedCloneSource.EngineName == "" || linkedCloneSource.EngineAddress == "" {
-			return fmt.Errorf("failed to add replica for engine: linked clone source info is incomplete")
-		}
 	}
 
 	client := c.getSPDKServiceClient()
@@ -376,13 +371,15 @@ func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress st
 	defer cancel()
 
 	req := &spdkrpc.EngineReplicaAddRequest{
-		EngineName:            engineName,
-		ReplicaName:           replicaName,
-		ReplicaAddress:        replicaAddress,
-		FastSync:              fastSync,
-		EngineFrontendName:    efName,
-		EngineFrontendAddress: efAddress,
-		LinkedCloneSource:     linkedCloneSource,
+		EngineName:                  engineName,
+		ReplicaName:                 replicaName,
+		ReplicaAddress:              replicaAddress,
+		FastSync:                    fastSync,
+		EngineFrontendName:          efName,
+		EngineFrontendAddress:       efAddress,
+		LinkedCloneSrcReplicaName:   linkedCloneSrcReplicaName,
+		LinkedCloneSrcEngineName:    linkedCloneSrcEngineName,
+		LinkedCloneSrcEngineAddress: linkedCloneSrcEngineAddress,
 	}
 
 	_, err := client.EngineReplicaAdd(ctx, req)

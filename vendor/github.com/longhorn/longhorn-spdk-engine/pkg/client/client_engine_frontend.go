@@ -15,7 +15,7 @@ import (
 
 // EngineFrontendCreate creates and starts an engine frontend for an existing engine.
 func (c *SPDKClient) EngineFrontendCreate(name, volumeName, engineName, frontend string, specSize uint64, targetAddress string,
-	ublkQueueDepth, ublkNumberOfQueue, nvmeTcpNrIoQueues int32) (*api.EngineFrontend, error) {
+	ublkQueueDepth, ublkNumberOfQueue int32) (*api.EngineFrontend, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to start engine frontend: missing required parameter name")
 	}
@@ -44,7 +44,6 @@ func (c *SPDKClient) EngineFrontendCreate(name, volumeName, engineName, frontend
 		Frontend:          frontend,
 		UblkQueueDepth:    ublkQueueDepth,
 		UblkNumberOfQueue: ublkNumberOfQueue,
-		NvmeTcpNrIoQueues: nvmeTcpNrIoQueues,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start engine frontend")
@@ -279,17 +278,12 @@ func (c *SPDKClient) EngineFrontendSnapshotPurge(name string) error {
 
 // EngineFrontendReplicaAdd adds a replica through the engine frontend path.
 // The EngineReplicaAdd path is for internal orchestration; external callers should use EngineFrontendReplicaAdd.
-func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool, linkedCloneSource *spdkrpc.LinkedCloneSource) error {
+func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string) error {
 	if engineFrontendName == "" {
 		return fmt.Errorf("failed to add replica for engine frontend: missing required parameter engineFrontendName")
 	}
 	if replicaName == "" || replicaAddress == "" {
 		return fmt.Errorf("failed to add replica for engine frontend: missing required parameter replicaName or replicaAddress")
-	}
-	if linkedCloneSource != nil {
-		if linkedCloneSource.ReplicaName == "" || linkedCloneSource.EngineName == "" || linkedCloneSource.EngineAddress == "" {
-			return fmt.Errorf("failed to add replica for engine frontend: linked clone source info is incomplete")
-		}
 	}
 
 	client := c.getSPDKServiceClient()
@@ -297,11 +291,13 @@ func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, r
 	defer cancel()
 
 	_, err := client.EngineFrontendReplicaAdd(ctx, &spdkrpc.EngineFrontendReplicaAddRequest{
-		EngineFrontendName: engineFrontendName,
-		ReplicaName:        replicaName,
-		ReplicaAddress:     replicaAddress,
-		FastSync:           fastSync,
-		LinkedCloneSource:  linkedCloneSource,
+		EngineFrontendName:          engineFrontendName,
+		ReplicaName:                 replicaName,
+		ReplicaAddress:              replicaAddress,
+		FastSync:                    fastSync,
+		LinkedCloneSrcReplicaName:   linkedCloneSrcReplicaName,
+		LinkedCloneSrcEngineName:    linkedCloneSrcEngineName,
+		LinkedCloneSrcEngineAddress: linkedCloneSrcEngineAddress,
 	})
 	return errors.Wrapf(err, "failed to add replica %s with address %s by engine frontend %s", replicaName, replicaAddress, engineFrontendName)
 }

@@ -103,7 +103,6 @@ type EngineFrontendCreateRequest struct {
 	Frontend          string
 	UblkQueueDepth    int
 	UblkNumberOfQueue int
-	NvmeTcpNrIoQueues int
 	TargetAddress     string
 	EngineName        string
 }
@@ -193,7 +192,6 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				Frontend:          req.EngineFrontend.Frontend,
 				UblkQueueDepth:    int32(req.EngineFrontend.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.EngineFrontend.UblkNumberOfQueue),
-				NvmeTcpNrIoQueues: int32(req.EngineFrontend.NvmeTcpNrIoQueues),
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
