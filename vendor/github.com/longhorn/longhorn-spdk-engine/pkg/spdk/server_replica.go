@@ -606,14 +606,7 @@ func (s *Server) ReplicaRebuildingDstStart(ctx context.Context, req *spdkrpc.Rep
 	for _, snapshot := range req.RebuildingSnapshotList {
 		rebuildingSnapshotList = append(rebuildingSnapshotList, api.ProtoLvolToLvol(snapshot))
 	}
-	var linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, linkedCloneSrcSnapshotName string
-	if req.LinkedCloneSource != nil {
-		linkedCloneSrcReplicaName = req.LinkedCloneSource.ReplicaName
-		linkedCloneSrcEngineName = req.LinkedCloneSource.EngineName
-		linkedCloneSrcEngineAddress = req.LinkedCloneSource.EngineAddress
-		linkedCloneSrcSnapshotName = req.LinkedCloneSource.SnapshotName
-	}
-	address, err := r.RebuildingDstStart(spdkClient, req.SrcReplicaName, req.SrcReplicaAddress, req.ExternalSnapshotName, req.ExternalSnapshotAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, rebuildingSnapshotList, linkedCloneSrcSnapshotName)
+	address, err := r.RebuildingDstStart(spdkClient, req.SrcReplicaName, req.SrcReplicaAddress, req.ExternalSnapshotName, req.ExternalSnapshotAddress, req.LinkedCloneSrcReplicaName, req.LinkedCloneSrcEngineName, req.LinkedCloneSrcEngineAddress, rebuildingSnapshotList)
 	if err != nil {
 		return nil, err
 	}

@@ -31,7 +31,6 @@ type EngineFrontendRecord struct {
 	SpecSize      uint64                      `json:"specSize"`
 	TargetIP      string                      `json:"targetIP"`
 	TargetPort    int32                       `json:"targetPort"`
-	NrIoQueues    int32                       `json:"nrIoQueues,omitempty"`
 	ActivePath    string                      `json:"activePath,omitempty"`
 	PreferredPath string                      `json:"preferredPath,omitempty"`
 	Paths         []*EngineFrontendPathRecord `json:"paths,omitempty"`
@@ -91,7 +90,6 @@ func saveEngineFrontendRecord(metadataDir string, ef *EngineFrontend) error {
 		SpecSize:      ef.SpecSize,
 		TargetIP:      targetIP,
 		TargetPort:    targetPort,
-		NrIoQueues:    ef.NvmeTcpFrontend.NrIoQueues,
 		ActivePath:    ef.ActivePath,
 		PreferredPath: ef.PreferredPath,
 	}

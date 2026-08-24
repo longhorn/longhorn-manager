@@ -945,8 +945,12 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 
 	if frontendSuspendResumeWrapper != nil {
 		if wrapErr := frontendSuspendResumeWrapper(startFn); wrapErr != nil {
-			// startFn captures fatal engine errors in engineErr. The wrapper
-			// returns the work error, so keep setup failures replica-scoped.
+			// The wrapper itself may fail (e.g. suspend or resume failure).
+			// If the inner startFn already set engineErr, those are captured
+			// via closure.
+			if err == nil && engineErr == nil {
+				engineErr = wrapErr
+			}
 			setupErr = wrapErr
 		}
 	} else {
@@ -1004,8 +1008,7 @@ func (e *Engine) replicaAddStart(spdkClient *spdkclient.Client,
 	}
 	e.checkAndUpdateInfoFromReplicasNoLock()
 
-	var linkedCloneSrcSnapshotName string
-	rebuildingSnapshotList, linkedCloneSrcSnapshotName, err = getRebuildingInfo(srcReplicaServiceCli, srcReplicaName)
+	rebuildingSnapshotList, err = getRebuildingSnapshotList(srcReplicaServiceCli, srcReplicaName)
 	if err != nil {
 		return nil, startUpdateRequired, nil, err
 	}
@@ -1016,21 +1019,8 @@ func (e *Engine) replicaAddStart(spdkClient *spdkclient.Client,
 		return nil, startUpdateRequired, nil, err
 	}
 
-	// Build LinkedCloneSource for linked-clone rebuilds (nil for normal rebuilds).
-	// If the src replica lost its clone identity (LinkedCloneInfo is nil / SourceSnapshotName
-	// is empty), fall back to a normal rebuild — the entrypoint was already lost.
-	var linkedCloneSource *spdkrpc.LinkedCloneSource
-	if linkedCloneSrcReplicaName != "" && linkedCloneSrcSnapshotName != "" {
-		linkedCloneSource = &spdkrpc.LinkedCloneSource{
-			SnapshotName:  linkedCloneSrcSnapshotName,
-			ReplicaName:   linkedCloneSrcReplicaName,
-			EngineName:    linkedCloneSrcEngineName,
-			EngineAddress: linkedCloneSrcEngineAddress,
-		}
-	}
-
 	// The destination replica attaches the source replica exposed snapshot as the external snapshot then create a head based on it.
-	dstHeadLvolAddress, err := dstReplicaServiceCli.ReplicaRebuildingDstStart(dstReplicaName, srcReplicaName, srcReplicaAddress, snapshotName, externalSnapshotAddress, rebuildingSnapshotList, linkedCloneSource)
+	dstHeadLvolAddress, err := dstReplicaServiceCli.ReplicaRebuildingDstStart(dstReplicaName, srcReplicaName, srcReplicaAddress, snapshotName, externalSnapshotAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, rebuildingSnapshotList)
 	if err != nil {
 		return nil, startUpdateRequired, nil, err
 	}
@@ -1478,15 +1468,14 @@ func (e *Engine) checkLinkedCloneSrcReplicaMode(linkedCloneSrcEngineName, linked
 	return nil
 }
 
-// getRebuildingInfo fetches the snapshot tree from the src replica and returns
-// the ordered list of snapshots that need to be shallow-copied to the dst
-// replica, along with the clone entrypoint snapshot name (non-empty only for
-// linked-clone replicas). It finds the ancestor snapshot (empty parent or
-// backing image parent) and traverses the tree via DFS to produce the copy order.
-func getRebuildingInfo(srcReplicaServiceCli *client.SPDKClient, srcReplicaName string) (rebuildingSnapshotList []*api.Lvol, linkedCloneSrcSnapshotName string, err error) {
+// getRebuildingSnapshotList fetches the snapshot tree from the src replica and
+// returns the ordered list of snapshots that need to be shallow-copied to the
+// dst replica. It finds the ancestor snapshot (empty parent or backing image
+// parent) and traverses the tree via DFS to produce the copy order.
+func getRebuildingSnapshotList(srcReplicaServiceCli *client.SPDKClient, srcReplicaName string) ([]*api.Lvol, error) {
 	rpcSrcReplica, err := srcReplicaServiceCli.ReplicaGet(srcReplicaName)
 	if err != nil {
-		return []*api.Lvol{}, "", err
+		return []*api.Lvol{}, err
 	}
 	ancestorSnapshotName, latestSnapshotName := "", ""
 	for snapshotName, snapApiLvol := range rpcSrcReplica.Snapshots {
@@ -1501,19 +1490,10 @@ func getRebuildingInfo(srcReplicaServiceCli *client.SPDKClient, srcReplicaName s
 		}
 	}
 	if ancestorSnapshotName == "" || latestSnapshotName == "" {
-		return []*api.Lvol{}, "", fmt.Errorf("cannot find the ancestor snapshot %s or latest snapshot %s from RW replica %s snapshot map during rebuilding snapshot list retrieval", ancestorSnapshotName, latestSnapshotName, srcReplicaName)
+		return []*api.Lvol{}, fmt.Errorf("cannot find the ancestor snapshot %s or latest snapshot %s from RW replica %s snapshot map during engine replica add", ancestorSnapshotName, latestSnapshotName, srcReplicaName)
 	}
 
-	// For linked-clone replicas, extract the source snapshot name
-	// so it can be passed explicitly to the DST replica at rebuild start.
-	if rpcSrcReplica.LinkedCloneInfo != nil {
-		if rpcSrcReplica.LinkedCloneInfo.SourceSnapshotName == "" {
-			return []*api.Lvol{}, "", fmt.Errorf("linked clone replica %s has LinkedCloneInfo but source snapshot name is empty", srcReplicaName)
-		}
-		linkedCloneSrcSnapshotName = rpcSrcReplica.LinkedCloneInfo.SourceSnapshotName
-	}
-
-	return retrieveRebuildingSnapshotList(rpcSrcReplica, ancestorSnapshotName, []*api.Lvol{}), linkedCloneSrcSnapshotName, nil
+	return retrieveRebuildingSnapshotList(rpcSrcReplica, ancestorSnapshotName, []*api.Lvol{}), nil
 }
 
 // retrieveRebuildingSnapshotList recursively traverses the replica snapshot tree with a DFS way
@@ -1745,9 +1725,10 @@ func (e *Engine) snapshotOperationPreCheckWithoutLock(snapshotName string, snaps
 			if err != nil {
 				return "", errors.Wrapf(err, "cannot verify clone-entrypoint guard for replica %s during snapshot %s deletion pre-check", replicaName, snapshotName)
 			}
-			if _, hasEP := r.CloneSnapshotUsage[snapshotName]; hasEP {
-				return "", fmt.Errorf("cannot delete snapshot %s: replica %s has an active linked-clone entrypoint for this snapshot; delete the linked-clone volume first",
-					snapshotName, replicaName)
+			epLvolName := GetCloneEntrypointLvolName(replicaName, snapshotName)
+			if _, hasEP := r.CloneEntrypointMap[epLvolName]; hasEP {
+				return "", fmt.Errorf("cannot delete snapshot %s: replica %s has an active linked-clone entrypoint %s; delete the linked-clone volume first",
+					snapshotName, replicaName, epLvolName)
 			}
 		}
 	}
