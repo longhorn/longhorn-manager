@@ -860,7 +860,22 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 			continue
 		}
 
-		if dataEngineEnabled && hugepageEnabled {
+		nodeHugepageEnabled := hugepageEnabled
+		nodeHugepageRequested := hugepageRequested
+		if lhNode.Spec.DataEngineResources != nil && lhNode.Spec.DataEngineResources.V2 != nil {
+			v2Resources := lhNode.Spec.DataEngineResources.V2
+			if v2Resources.HugepageEnabled != nil {
+				nodeHugepageEnabled = *v2Resources.HugepageEnabled
+			}
+			if v2Resources.MemorySizeMiB != nil {
+				nodeHugepageRequested, err = resource.ParseQuantity(fmt.Sprintf("%dMi", *v2Resources.MemorySizeMiB))
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi for node %v", *v2Resources.MemorySizeMiB, lhNode.Name)
+				}
+			}
+		}
+
+		if dataEngineEnabled && nodeHugepageEnabled {
 			capacity, ok := kubeNode.Status.Capacity["hugepages-2Mi"]
 			if !ok {
 				return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", kubeNode.Name)
@@ -871,8 +886,8 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 				return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
 			}
 
-			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
-				return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", kubeNode.Name, hugepageRequested.String(), hugepageCapacity.String())
+			if hugepageCapacity.Cmp(nodeHugepageRequested) < 0 {
+				return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", kubeNode.Name, nodeHugepageRequested.String(), hugepageCapacity.String())
 			}
 		}
 	}

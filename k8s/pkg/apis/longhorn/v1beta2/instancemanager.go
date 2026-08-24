@@ -222,6 +222,18 @@ type V2DataEngineStatus struct {
 	// +optional
 	// +kubebuilder:validation:Enum="";"true";"false"
 	InterruptModeEnabled string `json:"interruptModeEnabled"`
+
+	// Applied node effective values (node spec override or global setting) as of
+	// the last pod creation; nil until this manager version has created the pod.
+	// Set by Longhorn manager; read-only to users.
+	// +optional
+	MemorySizeMiB *int64 `json:"memorySizeMiB,omitempty"`
+	// +optional
+	HugepageEnabled *bool `json:"hugepageEnabled,omitempty"`
+	// +optional
+	IobufSmallPoolSize *int64 `json:"iobufSmallPoolSize,omitempty"`
+	// +optional
+	IobufLargePoolSize *int64 `json:"iobufLargePoolSize,omitempty"`
 }
 
 type DataEngineStatus struct {
