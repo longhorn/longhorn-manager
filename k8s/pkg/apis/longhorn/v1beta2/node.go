@@ -1,6 +1,9 @@
 package v1beta2
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 const (
 	NodeConditionTypeReady               = "Ready"
@@ -213,6 +216,41 @@ type DiskStatus struct {
 	HealthDataLastCollectedAt metav1.Time `json:"healthDataLastCollectedAt,omitempty"`
 }
 
+// NodeInstanceManagerResources overrides the instance manager pod resource requirements
+// on this node. A set engine entry replaces the derived pod resource requirements as a whole.
+type NodeInstanceManagerResources struct {
+	// +optional
+	V2 *corev1.ResourceRequirements `json:"v2,omitempty"`
+}
+
+// NodeDataEngineResources overrides data engine resource settings on this node.
+// Each nil field inherits the corresponding global setting.
+type NodeDataEngineResources struct {
+	// +optional
+	V2 *NodeV2DataEngineResources `json:"v2,omitempty"`
+}
+
+type NodeV2DataEngineResources struct {
+	// Overrides the data-engine-number-of-cpu-cores setting for this node.
+	// +optional
+	NumberOfCPUCores *int64 `json:"numberOfCPUCores,omitempty"`
+	// Overrides the data-engine-cpu-mask setting for this node (static CPU mask path only).
+	// +optional
+	CPUMask *string `json:"cpuMask,omitempty"`
+	// Overrides the data-engine-memory-size setting for this node.
+	// +optional
+	MemorySizeMiB *int64 `json:"memorySizeMiB,omitempty"`
+	// Overrides the data-engine-hugepage-enabled setting for this node.
+	// +optional
+	HugepageEnabled *bool `json:"hugepageEnabled,omitempty"`
+	// Overrides the data-engine-iobuf-small-pool-size setting for this node.
+	// +optional
+	IobufSmallPoolSize *int64 `json:"iobufSmallPoolSize,omitempty"`
+	// Overrides the data-engine-iobuf-large-pool-size setting for this node.
+	// +optional
+	IobufLargePoolSize *int64 `json:"iobufLargePoolSize,omitempty"`
+}
+
 // NodeSpec defines the desired state of the Longhorn node
 type NodeSpec struct {
 	// +optional
@@ -227,6 +265,10 @@ type NodeSpec struct {
 	Tags []string `json:"tags"`
 	// +optional
 	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
+	// +optional
+	InstanceManagerResources *NodeInstanceManagerResources `json:"instanceManagerResources,omitempty"`
+	// +optional
+	DataEngineResources *NodeDataEngineResources `json:"dataEngineResources,omitempty"`
 }
 
 // NodeStatus defines the observed state of the Longhorn node

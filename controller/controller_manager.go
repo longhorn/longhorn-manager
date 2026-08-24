@@ -283,8 +283,8 @@ func ParseResourceRequirement(val string) (*corev1.ResourceRequirements, error) 
 	}, nil
 }
 
-// GetInstanceManagerCPURequirement returns the instance manager CPU requirement
-func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*corev1.ResourceRequirements, error) {
+// GetInstanceManagerResourceRequirement returns the CPU and memory requirements of the instance manager pod
+func GetInstanceManagerResourceRequirement(ds *datastore.DataStore, imName string) (*corev1.ResourceRequirements, error) {
 	im, err := ds.GetInstanceManager(imName)
 	if err != nil {
 		return nil, err
@@ -301,8 +301,13 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 
 	cpuRequest := 0
 	cpuRequestVal := ""
+	spdkCoreNumber := int64(0)
 	switch im.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
+		if types.IsDataEngineV2(im.Spec.DataEngine) &&
+			lhNode.Spec.InstanceManagerResources != nil && lhNode.Spec.InstanceManagerResources.V2 != nil {
+			return withRequestsDefaultedFromLimits(lhNode.Spec.InstanceManagerResources.V2), nil
+		}
 		// TODO: Currently lhNode.Spec.InstanceManagerCPURequest is applied to both v1 and v2 data engines.
 		// In the future, we may want to support different CPU requests for them.
 		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
@@ -317,7 +322,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 			cpuRequestVal = fmt.Sprintf("%dm", cpuRequest)
 		}
 		if types.IsDataEngineV2(im.Spec.DataEngine) {
-			spdkCoreNumber, err := ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+			spdkCoreNumber, err = ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine, im.Spec.NodeID)
 			if err != nil {
 				return nil, err
 			}
@@ -333,7 +338,25 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 		return nil, fmt.Errorf("unknown data engine %v", im.Spec.DataEngine)
 	}
 
-	return ParseResourceRequirement(cpuRequestVal)
+	resourceReq, err := ParseResourceRequirement(cpuRequestVal)
+	if err != nil || types.IsDataEngineV1(im.Spec.DataEngine) {
+		return resourceReq, err
+	}
+	if resourceReq == nil {
+		resourceReq = &corev1.ResourceRequirements{}
+	}
+	if resourceReq.Requests == nil {
+		resourceReq.Requests = corev1.ResourceList{}
+	}
+	resourceReq.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
+	// Dynamic CPU pinning needs a Guaranteed pod for exclusive CPUs from the kubelet CPU manager.
+	if spdkCoreNumber > 0 {
+		resourceReq.Limits = corev1.ResourceList{
+			corev1.ResourceCPU:    resourceReq.Requests[corev1.ResourceCPU],
+			corev1.ResourceMemory: resource.MustParse("128Mi"),
+		}
+	}
+	return resourceReq, nil
 }
 
 func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
@@ -363,14 +386,41 @@ func EnhancedDefaultControllerRateLimiter() workqueue.TypedRateLimiter[any] {
 	)
 }
 
-// IsSameGuaranteedCPURequirement returns true if the resource requirement a is equal to the resource requirement b
-func IsSameGuaranteedCPURequirement(a, b *corev1.ResourceRequirements) bool {
-	var aQ, bQ resource.Quantity
-	if a != nil && a.Requests != nil {
-		aQ = a.Requests[corev1.ResourceCPU]
+// withRequestsDefaultedFromLimits mirrors the Pod API defaulting of a missing request to its
+// limit, so the desired requirements compare equal to the pod the API server actually stores.
+func withRequestsDefaultedFromLimits(req *corev1.ResourceRequirements) *corev1.ResourceRequirements {
+	out := req.DeepCopy()
+	for name, limit := range out.Limits {
+		if _, ok := out.Requests[name]; ok {
+			continue
+		}
+		if out.Requests == nil {
+			out.Requests = corev1.ResourceList{}
+		}
+		out.Requests[name] = limit.DeepCopy()
 	}
-	if b != nil && b.Requests != nil {
-		bQ = b.Requests[corev1.ResourceCPU]
+	return out
+}
+
+// Other resources, such as the separately managed hugepages limit, are ignored.
+func IsSameInstanceManagerResourceRequirement(a, b *corev1.ResourceRequirements) bool {
+	for _, name := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+		var aReq, bReq, aLim, bLim resource.Quantity
+		if a != nil && a.Requests != nil {
+			aReq = a.Requests[name]
+		}
+		if b != nil && b.Requests != nil {
+			bReq = b.Requests[name]
+		}
+		if a != nil && a.Limits != nil {
+			aLim = a.Limits[name]
+		}
+		if b != nil && b.Limits != nil {
+			bLim = b.Limits[name]
+		}
+		if (&aReq).Cmp(bReq) != 0 || (&aLim).Cmp(bLim) != 0 {
+			return false
+		}
 	}
-	return (&aQ).Cmp(bQ) == 0
+	return true
 }

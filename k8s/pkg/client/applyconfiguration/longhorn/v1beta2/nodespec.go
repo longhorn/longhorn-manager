@@ -23,12 +23,14 @@ package v1beta2
 //
 // NodeSpec defines the desired state of the Longhorn node
 type NodeSpecApplyConfiguration struct {
-	Name                      *string                               `json:"name,omitempty"`
-	Disks                     map[string]DiskSpecApplyConfiguration `json:"disks,omitempty"`
-	AllowScheduling           *bool                                 `json:"allowScheduling,omitempty"`
-	EvictionRequested         *bool                                 `json:"evictionRequested,omitempty"`
-	Tags                      []string                              `json:"tags,omitempty"`
-	InstanceManagerCPURequest *int                                  `json:"instanceManagerCPURequest,omitempty"`
+	Name                      *string                                         `json:"name,omitempty"`
+	Disks                     map[string]DiskSpecApplyConfiguration           `json:"disks,omitempty"`
+	AllowScheduling           *bool                                           `json:"allowScheduling,omitempty"`
+	EvictionRequested         *bool                                           `json:"evictionRequested,omitempty"`
+	Tags                      []string                                        `json:"tags,omitempty"`
+	InstanceManagerCPURequest *int                                            `json:"instanceManagerCPURequest,omitempty"`
+	InstanceManagerResources  *NodeInstanceManagerResourcesApplyConfiguration `json:"instanceManagerResources,omitempty"`
+	DataEngineResources       *NodeDataEngineResourcesApplyConfiguration      `json:"dataEngineResources,omitempty"`
 }
 
 // NodeSpecApplyConfiguration constructs a declarative configuration of the NodeSpec type for use with
@@ -90,5 +92,21 @@ func (b *NodeSpecApplyConfiguration) WithTags(values ...string) *NodeSpecApplyCo
 // If called multiple times, the InstanceManagerCPURequest field is set to the value of the last call.
 func (b *NodeSpecApplyConfiguration) WithInstanceManagerCPURequest(value int) *NodeSpecApplyConfiguration {
 	b.InstanceManagerCPURequest = &value
+	return b
+}
+
+// WithInstanceManagerResources sets the InstanceManagerResources field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InstanceManagerResources field is set to the value of the last call.
+func (b *NodeSpecApplyConfiguration) WithInstanceManagerResources(value *NodeInstanceManagerResourcesApplyConfiguration) *NodeSpecApplyConfiguration {
+	b.InstanceManagerResources = value
+	return b
+}
+
+// WithDataEngineResources sets the DataEngineResources field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DataEngineResources field is set to the value of the last call.
+func (b *NodeSpecApplyConfiguration) WithDataEngineResources(value *NodeDataEngineResourcesApplyConfiguration) *NodeSpecApplyConfiguration {
+	b.DataEngineResources = value
 	return b
 }
