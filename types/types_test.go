@@ -588,3 +588,65 @@ func (s *TestSuite) TestIsTopologyZonePinned(c *C) {
 		{Zone: "zone-1"}, {Zone: "zone-2"},
 	}), Equals, false)
 }
+
+func (s *TestSuite) TestIsBDF(c *C) {
+	testCases := map[string]bool{
+		"0000:00:1f.0":             true,
+		"0000:00:1f":               false,
+		"0000:00:1f.00":            false,
+		"prefix0000:00:1f.0":       false,
+		"0000:00:1f.0suffix":       false,
+		"/dev/disk/by-id/scsi-foo": false,
+	}
+
+	for input, expected := range testCases {
+		c.Assert(IsBDF(input), Equals, expected, Commentf(TestErrResultFmt, input))
+	}
+}
+
+func (s *TestSuite) TestCreateDefaultDiskWithBlockDiskPath(c *C) {
+	testCases := map[string]string{
+		"bdf":        "0000:00:1f.0",
+		"disk by id": "/dev/disk/by-id/scsi-36001405b8f1e2d3c4b5a697887766554",
+	}
+
+	for testName, dataPath := range testCases {
+		disks, err := CreateDefaultDisk(dataPath, 30)
+		c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		c.Assert(disks, HasLen, 1, Commentf(TestErrResultFmt, testName))
+
+		for diskName, disk := range disks {
+			c.Assert(strings.HasPrefix(diskName, DefaultDiskPrefix), Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Type, Equals, longhorn.DiskTypeBlock, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Path, Equals, dataPath, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.DiskDriver, Equals, longhorn.DiskDriverAuto, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.AllowScheduling, Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.StorageReserved, Equals, int64(0), Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Tags, DeepEquals, []string{}, Commentf(TestErrResultFmt, testName))
+		}
+	}
+}
+
+func (s *TestSuite) TestCreateDisksFromAnnotationWithBlockDiskPath(c *C) {
+	testCases := map[string]string{
+		"bdf":        "0000:00:1f.0",
+		"disk by id": "/dev/disk/by-id/scsi-36001405b8f1e2d3c4b5a697887766554",
+	}
+
+	for testName, dataPath := range testCases {
+		annotation := fmt.Sprintf(`[{"path":"%s","diskType":"block","allowScheduling":true}]`, dataPath)
+
+		disks, err := CreateDisksFromAnnotation(annotation, 30)
+		c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		c.Assert(disks, HasLen, 1, Commentf(TestErrResultFmt, testName))
+
+		for diskName, disk := range disks {
+			c.Assert(strings.HasPrefix(diskName, DefaultDiskPrefix), Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Type, Equals, longhorn.DiskTypeBlock, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Path, Equals, dataPath, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.DiskDriver, Equals, longhorn.DiskDriverAuto, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.AllowScheduling, Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.StorageReserved, Equals, int64(0), Commentf(TestErrResultFmt, testName))
+		}
+	}
+}
