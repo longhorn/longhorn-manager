@@ -12,6 +12,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
+	"k8s.io/apimachinery/pkg/labels"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -23,7 +25,21 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+// startVolumeJobFn runs a single volume's recurring job. It is injected so tests
+// can substitute a stub without a live Longhorn API.
+type startVolumeJobFn func(
+	job *Job,
+	recurringJob *longhorn.RecurringJob,
+	volumeName string,
+	concurrentLimiter chan struct{},
+	jobGroups []string,
+) error
+
 func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
+	return startVolumeJobs(job, recurringJob, startVolumeJob)
+}
+
+func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob startVolumeJobFn) (err error) {
 	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
 	allowDetached, err := getSettingAsBoolean(allowDetachedSetting, job.namespace, job.lhClient)
 	if err != nil {
@@ -52,19 +68,19 @@ func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
 
 	concurrentLimiter := make(chan struct{}, recurringJob.Spec.Concurrency)
 	ewg := &errgroup.Group{}
-	defer func() {
-		if wgError := ewg.Wait(); wgError != nil {
-			err = wgError
-		}
-	}()
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
-			return startVolumeJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups)
+			// errgroup.Group has no context here, so returning an error does not stop sibling volume jobs.
+			jobErr := startJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups)
+			if jobErr != nil {
+				job.logger.WithError(jobErr).WithField("volume", startJobVolumeName).Warn("Failed to run recurring job for volume")
+			}
+			return jobErr
 		})
 	}
 
-	return err
+	return ewg.Wait()
 }
 
 func startVolumeJob(job *Job, recurringJob *longhorn.RecurringJob,
@@ -114,7 +130,7 @@ func newVolumeJob(job *Job, recurringJob *longhorn.RecurringJob, volumeName stri
 		// job-specific fields
 		"job":            job.name,
 		"task":           job.task,
-		"retain":         job.retain,
+		"retainCount":    job.retainCount,
 		"parameters":     job.parameters,
 		"executionCount": job.executionCount,
 		// volume-specific fields
@@ -310,7 +326,18 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	}
 
 	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
+	activeBackupSnapshots := map[string]string{}
+	if len(cleanupSnapshotNames) != 0 {
+		activeBackupSnapshots, err = job.getSnapshotsReferencedByActiveBackups()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list active backups for volume %v", volumeName)
+		}
+	}
 	for _, snapshotName := range cleanupSnapshotNames {
+		if backupName, exists := activeBackupSnapshots[snapshotName]; exists {
+			job.logger.WithField("backup", backupName).Debugf("Skipped cleaning up snapshot CR %v because an active backup references it", snapshotName)
+			continue
+		}
 		if _, err := job.api.Volume.ActionSnapshotCRDelete(volume, &longhornclient.SnapshotCRInput{
 			Name: snapshotName,
 		}); err != nil {
@@ -326,6 +353,33 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	}
 
 	return nil
+}
+
+func (job *VolumeJob) getSnapshotsReferencedByActiveBackups() (map[string]string, error) {
+	backupList, err := job.lhClient.LonghornV1beta2().Backups(job.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetBackupVolumeLabels(job.volumeName)).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := map[string]string{}
+	for _, backup := range backupList.Items {
+		if isBackupSnapshotCleanupSafe(backup.Status.State) || backup.Spec.SnapshotName == "" {
+			continue
+		}
+		result[backup.Spec.SnapshotName] = backup.Name
+	}
+	return result, nil
+}
+
+func isBackupSnapshotCleanupSafe(state longhorn.BackupState) bool {
+	switch state {
+	case longhorn.BackupStateCompleted, longhorn.BackupStateError, longhorn.BackupStateUnknown, longhorn.BackupStateDeleting:
+		return true
+	default:
+		return false
+	}
 }
 
 func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error {
@@ -424,9 +478,9 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 		return []string{}
 	}
 
-	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retain.
+	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retainCount.
 	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate || !allowBackupSnapshotDeleted {
-		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 	}
 
 	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot when AutoCleanupRecurringJobBackupSnapshot is enabled.
@@ -441,7 +495,7 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 }
 
 func (job *VolumeJob) filterExpiredSnapshots(snapshotCRs []longhornclient.SnapshotCR) []string {
-	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 }
 
 func (job *VolumeJob) doRecurringBackup() (err error) {
@@ -689,5 +743,5 @@ func (job *VolumeJob) listBackupsForCleanup(backups []longhornclient.Backup) []s
 			})
 		}
 	}
-	return filterExpiredItems(sts, job.retain)
+	return filterExpiredItems(sts, job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 }

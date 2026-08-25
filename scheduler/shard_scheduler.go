@@ -67,6 +67,14 @@ func (ss *ShardScheduler) ScheduleShard(sg *longhorn.ShardGroup, vol *longhorn.V
 			continue
 		}
 
+		// Shards hold the volume data, so like replicas they must stay in one of
+		// the failure domains the volume resolved at creation. An empty topology
+		// requirement leaves the volume unconstrained.
+		if !types.NodeMatchesTopologyRequirement(node, vol.Spec.TopologyRequirement) {
+			skipReasons.Append("node is outside the volume topology requirement", fmt.Errorf("node %v", nodeName))
+			continue
+		}
+
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			diskSpec, ok := node.Spec.Disks[diskName]
 			if !ok {

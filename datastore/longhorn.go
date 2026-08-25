@@ -7,9 +7,9 @@ import (
 	"math/rand"
 	"net"
 	"net/url"
-	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +29,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	lhutils "github.com/longhorn/go-common-libs/utils"
@@ -698,42 +699,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
-	case types.SettingNameDefaultDataPath:
-		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultDataPath)
-		if err != nil {
-			return err
-		}
-
-		oldPath := filepath.Clean(strings.TrimSpace(old.Value))
-		newPath := filepath.Clean(strings.TrimSpace(value))
-		if oldPath != newPath {
-			nodes, err := s.ListNodesRO()
-			if err != nil {
-				return err
-			}
-			if len(nodes) != 0 {
-				return errors.Errorf("cannot change %v after Longhorn has been initialized", types.SettingNameDefaultDataPath)
-			}
-		}
-
-	case types.SettingNameDefaultControlPath:
-		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
-		if err != nil {
-			return err
-		}
-
-		oldPath := filepath.Clean(strings.TrimSpace(old.Value))
-		newPath := filepath.Clean(strings.TrimSpace(value))
-		if oldPath != newPath {
-			nodes, err := s.ListNodesRO()
-			if err != nil {
-				return err
-			}
-			if len(nodes) != 0 {
-				return errors.Errorf("cannot change %v after Longhorn has been initialized", types.SettingNameDefaultControlPath)
-			}
-		}
-
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -1333,6 +1298,7 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
 	credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
 	credentialSecret[types.VirtualHostedStyle] = string(secret.Data[types.VirtualHostedStyle])
+	credentialSecret[types.AWSSignAcceptEncoding] = string(secret.Data[types.AWSSignAcceptEncoding])
 	return credentialSecret, nil
 }
 
@@ -6148,6 +6114,221 @@ func (s *DataStore) DeleteSnapshot(snapshotName string) error {
 	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Delete(context.TODO(), snapshotName, metav1.DeleteOptions{})
 }
 
+// DeleteSnapshotWithUIDPrecondition deletes the snapshot only while it still
+// has the given UID: the API server rejects the deletion with a Conflict once
+// the name is reused by a different snapshot.
+func (s *DataStore) DeleteSnapshotWithUIDPrecondition(snapshotName string, uid k8stypes.UID) error {
+	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Delete(context.TODO(), snapshotName, metav1.DeleteOptions{
+		Preconditions: &metav1.Preconditions{UID: &uid},
+	})
+}
+
+// CreateSnapshotGroup creates a Longhorn SnapshotGroup resource and verifies
+// creation
+func (s *DataStore) CreateSnapshotGroup(snapshotGroup *longhorn.SnapshotGroup) (*longhorn.SnapshotGroup, error) {
+	ret, err := s.lhClient.LonghornV1beta2().SnapshotGroups(s.namespace).Create(context.TODO(), snapshotGroup, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "snapshot group", func(name string) (k8sruntime.Object, error) {
+		return s.GetSnapshotGroupRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.SnapshotGroup)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for snapshot group")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateSnapshotGroup updates Longhorn SnapshotGroup and verifies update
+func (s *DataStore) UpdateSnapshotGroup(snapshotGroup *longhorn.SnapshotGroup) (*longhorn.SnapshotGroup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().SnapshotGroups(s.namespace).Update(context.TODO(), snapshotGroup, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(snapshotGroup.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetSnapshotGroupRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateSnapshotGroupStatus updates Longhorn SnapshotGroup status and verifies
+// update
+func (s *DataStore) UpdateSnapshotGroupStatus(snapshotGroup *longhorn.SnapshotGroup) (*longhorn.SnapshotGroup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().SnapshotGroups(s.namespace).UpdateStatus(context.TODO(), snapshotGroup, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(snapshotGroup.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetSnapshotGroupRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteSnapshotGroup won't result in immediate deletion since the finalizer
+// was set by the mutating webhook at admission
+func (s *DataStore) DeleteSnapshotGroup(name string) error {
+	return s.lhClient.LonghornV1beta2().SnapshotGroups(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForSnapshotGroup will result in deletion if DeletionTimestamp
+// was set
+func (s *DataStore) RemoveFinalizerForSnapshotGroup(obj *longhorn.SnapshotGroup) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().SnapshotGroups(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for snapshot group %v", obj.Name)
+	}
+	return nil
+}
+
+// GetSnapshotGroup gets SnapshotGroup for the given name and returns a new
+// SnapshotGroup object
+func (s *DataStore) GetSnapshotGroup(name string) (*longhorn.SnapshotGroup, error) {
+	resultRO, err := s.GetSnapshotGroupRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// GetSnapshotGroupRO gets SnapshotGroup for the given name.
+// The returned object MUST NOT be modified.
+func (s *DataStore) GetSnapshotGroupRO(name string) (*longhorn.SnapshotGroup, error) {
+	return s.snapshotGroupLister.SnapshotGroups(s.namespace).Get(name)
+}
+
+func (s *DataStore) listSnapshotGroups(selector labels.Selector) (map[string]*longhorn.SnapshotGroup, error) {
+	list, err := s.snapshotGroupLister.SnapshotGroups(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.SnapshotGroup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListSnapshotGroups returns a map of all SnapshotGroups in the namespace
+func (s *DataStore) ListSnapshotGroups() (map[string]*longhorn.SnapshotGroup, error) {
+	return s.listSnapshotGroups(labels.Everything())
+}
+
+// ListSnapshotGroupsRO returns a list of all SnapshotGroups in the namespace.
+// The returned objects MUST NOT be modified.
+func (s *DataStore) ListSnapshotGroupsRO() ([]*longhorn.SnapshotGroup, error) {
+	return s.snapshotGroupLister.SnapshotGroups(s.namespace).List(labels.Everything())
+}
+
+// SnapshotGroupMemberCandidate is one volume resolved from the group's volume
+// selection. ValidationFailure is empty when the volume passed validation,
+// and states why it failed otherwise.
+type SnapshotGroupMemberCandidate struct {
+	VolumeName        string
+	ValidationFailure string
+}
+
+// ResolveSnapshotGroupMemberCandidates resolves a spec's volume selection
+// (exactly one of Volumes or VolumeSelector) into member candidates, sorted
+// by volume name. It is the single resolver shared by the admission webhook
+// and the REST preview action; the member snapshot names are not part of
+// resolution, the mutating webhook generates them. Failures of the selection
+// itself return an error; a failure of one volume is recorded in its
+// candidate.
+func (s *DataStore) ResolveSnapshotGroupMemberCandidates(spec *longhorn.SnapshotGroupSpec) ([]SnapshotGroupMemberCandidate, error) {
+	hasVolumes := len(spec.Volumes) > 0
+	hasSelector := spec.VolumeSelector != nil
+	if hasVolumes == hasSelector {
+		return nil, fmt.Errorf("exactly one of volumes or volumeSelector must be set")
+	}
+
+	var volumes []*longhorn.Volume
+	if hasVolumes {
+		listed := map[string]bool{}
+		for _, volumeName := range spec.Volumes {
+			if listed[volumeName] {
+				return nil, fmt.Errorf("volume %v is listed more than once", volumeName)
+			}
+			listed[volumeName] = true
+			volume, err := s.GetVolumeRO(volumeName)
+			if err != nil {
+				if ErrorIsNotFound(err) {
+					return nil, fmt.Errorf("volume %v does not exist", volumeName)
+				}
+				return nil, err
+			}
+			volumes = append(volumes, volume)
+		}
+	} else {
+		selector, err := metav1.LabelSelectorAsSelector(spec.VolumeSelector)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid volumeSelector")
+		}
+		volumes, err = s.ListVolumesBySelectorRO(selector)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(volumes) == 0 {
+		return nil, fmt.Errorf("the volume selection resolves to no volumes")
+	}
+	if len(volumes) > types.SnapshotGroupMaxMemberCount {
+		return nil, fmt.Errorf("the volume selection resolves to %v volumes, above the member cap %v", len(volumes), types.SnapshotGroupMaxMemberCount)
+	}
+
+	sort.Slice(volumes, func(i, j int) bool { return volumes[i].Name < volumes[j].Name })
+
+	candidates := make([]SnapshotGroupMemberCandidate, 0, len(volumes))
+	for _, volume := range volumes {
+		candidates = append(candidates, SnapshotGroupMemberCandidate{
+			VolumeName:        volume.Name,
+			ValidationFailure: snapshotGroupMemberValidationFailure(volume),
+		})
+	}
+	return candidates, nil
+}
+
+// snapshotGroupMemberValidationFailure mirrors the per-volume snapshot
+// webhook restrictions, so creating a member snapshot can never fail on a
+// rule that admission did not check. Detached volumes are allowed; the
+// snapshot controller auto-attaches them. A volume in live migration is also
+// allowed: the migration settles in seconds and is tolerated as a transient
+// member error instead.
+func snapshotGroupMemberValidationFailure(volume *longhorn.Volume) string {
+	switch {
+	case volume.Status.IsStandby:
+		return fmt.Sprintf("volume %v is a standby volume and cannot be a member", volume.Name)
+	case volume.Status.RestoreRequired:
+		return fmt.Sprintf("volume %v is being restored and cannot be a member", volume.Name)
+	case volume.Status.Robustness == longhorn.VolumeRobustnessFaulted:
+		return fmt.Sprintf("volume %v is faulted and cannot be a member", volume.Name)
+	case types.IsLegacyLinkedCloneVolume(volume):
+		return fmt.Sprintf("volume %v is a legacy linked-clone volume and cannot be a member", volume.Name)
+	}
+	return ""
+}
+
 // CreateRecurringJob creates a Longhorn RecurringJob resource and verifies
 // creation
 func (s *DataStore) CreateRecurringJob(recurringJob *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
@@ -6266,6 +6447,9 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 	if !isValidRecurringJobTask(job.Task) {
 		return fmt.Errorf("recurring job task %v is not valid", job.Task)
 	}
+	if !isValidRecurringJobRetainPolicy(job.RetentionPolicy) {
+		return fmt.Errorf("recurring job retention policy %v is not valid", job.RetentionPolicy)
+	}
 	if _, err := cron.ParseStandard(job.Cron); err != nil {
 		return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
 	}
@@ -6339,6 +6523,11 @@ func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
 		task == longhorn.RecurringJobTypeSnapshotCleanup ||
 		task == longhorn.RecurringJobTypeSnapshotDelete ||
 		task == longhorn.RecurringJobTypeSystemBackup
+}
+
+func isValidRecurringJobRetainPolicy(retainPolicy longhorn.RecurringJobRetentionPolicy) bool {
+	return retainPolicy == longhorn.RecurringJobRetentionPolicyAgeBased ||
+		retainPolicy == longhorn.RecurringJobRetentionPolicyCountBased
 }
 
 // ValidateRecurringJobs validates data and formats for recurring jobs
@@ -7350,7 +7539,9 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 	// If the default instance manager is not running, then try to get another running instance manager.
 	im, err := s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
 	if err == nil {
-		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+		// Skip terminating instance managers, they may still report Running while their pod is
+		// being removed (e.g. during a node drain).
+		if im.DeletionTimestamp == nil && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
 			return im, nil
 		}
 	}
@@ -7363,6 +7554,11 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 	}
 
 	for _, im := range ims {
+		// Skip terminating instance managers, they may still report Running while their pod is
+		// being removed (e.g. during a node drain).
+		if im.DeletionTimestamp != nil {
+			continue
+		}
 		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
 			return im, nil
 		}

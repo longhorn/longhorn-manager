@@ -1,6 +1,7 @@
 package csi
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -31,6 +32,91 @@ func newTestControllerServer(t *testing.T, objs ...runtime.Object) *ControllerSe
 		log:         logrus.StandardLogger().WithField("component", "test"),
 		lhClient:    lhfake.NewSimpleClientset(objs...), // nolint: staticcheck
 		lhNamespace: testNamespace,
+	}
+}
+
+func TestControllerRequestLogsStripSecrets(t *testing.T) {
+	const secret = "sentinel-csi-secret-value"
+
+	for _, tc := range []struct {
+		name string
+		call func(*ControllerServer)
+	}{
+		{
+			name: "CreateVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.CreateVolume(context.Background(), &csi.CreateVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "DeleteVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerPublishVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerPublishVolume(context.Background(), &csi.ControllerPublishVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerUnpublishVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerUnpublishVolume(context.Background(), &csi.ControllerUnpublishVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "CreateSnapshot",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.CreateSnapshot(context.Background(), &csi.CreateSnapshotRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerExpandVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+		{
+			name: "ControllerModifyVolume",
+			call: func(cs *ControllerServer) {
+				_, _ = cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+					Secrets: map[string]string{"secret": secret},
+				})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := logrus.New()
+			logger.SetOutput(&output)
+			cs := &ControllerServer{
+				log: logger.WithField("component", "test"),
+			}
+
+			tc.call(cs)
+
+			logOutput := output.String()
+			if strings.Contains(logOutput, secret) {
+				t.Fatalf("request log contains secret value: %s", logOutput)
+			}
+			if !strings.Contains(logOutput, tc.name+" is called with req") {
+				t.Fatalf("request log is missing method context: %s", logOutput)
+			}
+		})
 	}
 }
 
@@ -839,5 +925,204 @@ func TestGetAccessibleTopologyStrictTopology(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCheckVolumeTopologyParameters(t *testing.T) {
+	invalid := map[string]string{"volumeTopology": "zonal", "replicaZoneSoftAntiAffinity": "disabled"}
+	if err := checkVolumeTopologyParameters(invalid); err == nil {
+		t.Errorf("expected error for parameters %v", invalid)
+	}
+
+	for _, params := range []map[string]string{
+		{},
+		{"volumeTopology": "zonal"},
+		{"volumeTopology": "zonal", "replicaZoneSoftAntiAffinity": "enabled"},
+		{"volumeTopology": "regional", "replicaZoneSoftAntiAffinity": "disabled"},
+		{"volumeTopology": "any", "replicaZoneSoftAntiAffinity": "disabled"},
+		{"replicaZoneSoftAntiAffinity": "disabled"},
+	} {
+		if err := checkVolumeTopologyParameters(params); err != nil {
+			t.Errorf("unexpected error for parameters %v: %v", params, err)
+		}
+	}
+}
+
+func TestVolumeTopologyTerms(t *testing.T) {
+	zoneKey := types.KubernetesTopologyZoneLabelKey
+	regionKey := types.KubernetesTopologyRegionLabelKey
+	topology := []*csi.Topology{
+		{Segments: map[string]string{zoneKey: "zone-a", regionKey: "region-1"}},
+		{Segments: map[string]string{zoneKey: "zone-b", regionKey: "region-1"}},
+		{Segments: map[string]string{"kubernetes.io/hostname": "node-1"}},
+	}
+
+	tests := []struct {
+		name           string
+		volumeTopology string
+		topology       []*csi.Topology
+		expectedTerms  []longhornclient.VolumeTopologyTerm
+		expectError    bool
+	}{
+		{
+			name:           "default (empty) stores nothing",
+			volumeTopology: "",
+			topology:       topology,
+			expectedTerms:  nil,
+		},
+		{
+			name:           "any stores nothing",
+			volumeTopology: "any",
+			topology:       topology,
+			expectedTerms:  nil,
+		},
+		{
+			name:           "zonal resolves the first entry's zone",
+			volumeTopology: "zonal",
+			topology:       topology,
+			expectedTerms: []longhornclient.VolumeTopologyTerm{
+				{Zone: "zone-a", Region: "region-1"},
+			},
+		},
+		{
+			name:           "regional resolves the first entry's region",
+			volumeTopology: "regional",
+			topology:       topology,
+			expectedTerms: []longhornclient.VolumeTopologyTerm{
+				{Region: "region-1"},
+			},
+		},
+		{
+			name:           "zonal with no topology stores nothing",
+			volumeTopology: "zonal",
+			topology:       nil,
+			expectedTerms:  nil,
+		},
+		{
+			name:           "zonal with no failure-domain labels stores nothing",
+			volumeTopology: "zonal",
+			topology:       []*csi.Topology{{Segments: map[string]string{"kubernetes.io/hostname": "node-1"}}},
+			expectedTerms:  nil,
+		},
+		{
+			// Without a zone, storing the region would silently turn a zonal
+			// volume into a regional one; it must degenerate instead.
+			name:           "zonal with a region but no zone stores nothing",
+			volumeTopology: "zonal",
+			topology:       []*csi.Topology{{Segments: map[string]string{regionKey: "region-1"}}},
+			expectedTerms:  nil,
+		},
+		{
+			name:           "regional with a zone but no region stores nothing",
+			volumeTopology: "regional",
+			topology:       []*csi.Topology{{Segments: map[string]string{zoneKey: "zone-a"}}},
+			expectedTerms:  nil,
+		},
+		{
+			name:           "invalid value is rejected",
+			volumeTopology: "cross-zone",
+			topology:       topology,
+			expectError:    true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			terms, err := volumeTopologyTerms(test.topology, test.volumeTopology)
+			if test.expectError {
+				if err == nil {
+					t.Errorf("expected error, got terms %+v", terms)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(terms) != len(test.expectedTerms) {
+				t.Fatalf("terms count mismatch: expected %+v, got %+v", test.expectedTerms, terms)
+			}
+			for i, expected := range test.expectedTerms {
+				if terms[i].Zone != expected.Zone || terms[i].Region != expected.Region {
+					t.Errorf("terms[%d]: expected %+v, got %+v", i, expected, terms[i])
+				}
+			}
+		})
+	}
+}
+
+func TestTermsToCSITopology(t *testing.T) {
+	zoneKey := types.KubernetesTopologyZoneLabelKey
+	regionKey := types.KubernetesTopologyRegionLabelKey
+
+	topologies := termsToCSITopology([]longhornclient.VolumeTopologyTerm{{Zone: "zone-a", Region: "region-1"}})
+	if len(topologies) != 1 {
+		t.Fatalf("expected 1 topology entry, got %+v", topologies)
+	}
+	if topologies[0].Segments[zoneKey] != "zone-a" || topologies[0].Segments[regionKey] != "region-1" {
+		t.Errorf("unexpected segments: %+v", topologies[0].Segments)
+	}
+
+	topologies = termsToCSITopology([]longhornclient.VolumeTopologyTerm{{Region: "region-1"}})
+	if len(topologies) != 1 || len(topologies[0].Segments) != 1 || topologies[0].Segments[regionKey] != "region-1" {
+		t.Errorf("expected region-only entry, got %+v", topologies)
+	}
+
+	if topologies = termsToCSITopology(nil); len(topologies) != 0 {
+		t.Errorf("expected no entries for nil terms, got %+v", topologies)
+	}
+}
+
+func TestRequirementsHaveTopologyKey(t *testing.T) {
+	zoneKey := types.KubernetesTopologyZoneLabelKey
+	regionKey := types.KubernetesTopologyRegionLabelKey
+	hostnameKey := corev1.LabelHostname
+
+	testCases := map[string]struct {
+		reqs     *csi.TopologyRequirement
+		key      string
+		expected bool
+	}{
+		"no requirement": {
+			reqs: nil, key: zoneKey, expected: false,
+		},
+		"key in preferred": {
+			reqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{{Segments: map[string]string{hostnameKey: "node-1", zoneKey: "zone-a"}}},
+			},
+			key: zoneKey, expected: true,
+		},
+		"key only in requisite": {
+			reqs: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{{Segments: map[string]string{zoneKey: "zone-a"}}},
+			},
+			key: zoneKey, expected: true,
+		},
+		"key in a later entry": {
+			reqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{hostnameKey: "node-1"}},
+					{Segments: map[string]string{zoneKey: "zone-b"}},
+				},
+			},
+			key: zoneKey, expected: true,
+		},
+		"nodes report no region": {
+			reqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{{Segments: map[string]string{hostnameKey: "node-1", zoneKey: "zone-a"}}},
+			},
+			key: regionKey, expected: false,
+		},
+		"empty value does not count": {
+			reqs: &csi.TopologyRequirement{
+				Preferred: []*csi.Topology{{Segments: map[string]string{zoneKey: ""}}},
+			},
+			key: zoneKey, expected: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		if got := requirementsHaveTopologyKey(tc.reqs, tc.key); got != tc.expected {
+			t.Errorf("case %q: requirementsHaveTopologyKey() = %v, expected %v", name, got, tc.expected)
+		}
 	}
 }

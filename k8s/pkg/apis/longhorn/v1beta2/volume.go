@@ -300,6 +300,16 @@ type WorkloadStatus struct {
 	WorkloadType string `json:"workloadType"`
 }
 
+// VolumeTopologyTerm is one failure domain a volume's replicas may be
+// scheduled in. A node satisfies the term when its zone and region match the
+// non-empty fields.
+type VolumeTopologyTerm struct {
+	// +optional
+	Zone string `json:"zone"`
+	// +optional
+	Region string `json:"region"`
+}
+
 // VolumeSpec defines the desired state of the Longhorn volume
 type VolumeSpec struct {
 	// +kubebuilder:validation:Type=string
@@ -313,6 +323,12 @@ type VolumeSpec struct {
 	// ublkNumberOfQueue controls the number of queues for ublk frontend.
 	// +optional
 	UblkNumberOfQueue int `json:"ublkNumberOfQueue,omitempty"`
+	// nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+	// creates when connecting the blockdev frontend over NVMe-TCP.
+	// 0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+	// Takes effect on (re)attach.
+	// +optional
+	NvmeTcpNrIoQueues int `json:"nvmeTcpNrIoQueues,omitempty"`
 	// +optional
 	FromBackup string `json:"fromBackup"`
 	// +optional
@@ -345,6 +361,13 @@ type VolumeSpec struct {
 	DiskSelector []string `json:"diskSelector"`
 	// +optional
 	NodeSelector []string `json:"nodeSelector"`
+	// TopologyRequirement lists the failure domains the volume's replicas must
+	// be scheduled in, derived from the CSI accessible topology at creation —
+	// the same failure domains as the PV nodeAffinity terms (a node must match
+	// at least one term). Empty means unconstrained.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="TopologyRequirement is immutable"
+	TopologyRequirement []VolumeTopologyTerm `json:"topologyRequirement"`
 	// +optional
 	DisableFrontend bool `json:"disableFrontend"`
 	// +optional

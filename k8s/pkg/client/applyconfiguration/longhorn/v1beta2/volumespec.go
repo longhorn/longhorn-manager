@@ -32,7 +32,12 @@ type VolumeSpecApplyConfiguration struct {
 	// ublkQueueDepth controls the depth of each queue for ublk frontend.
 	UblkQueueDepth *int `json:"ublkQueueDepth,omitempty"`
 	// ublkNumberOfQueue controls the number of queues for ublk frontend.
-	UblkNumberOfQueue         *int                                           `json:"ublkNumberOfQueue,omitempty"`
+	UblkNumberOfQueue *int `json:"ublkNumberOfQueue,omitempty"`
+	// nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+	// creates when connecting the blockdev frontend over NVMe-TCP.
+	// 0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+	// Takes effect on (re)attach.
+	NvmeTcpNrIoQueues         *int                                           `json:"nvmeTcpNrIoQueues,omitempty"`
 	FromBackup                *string                                        `json:"fromBackup,omitempty"`
 	RestoreVolumeRecurringJob *longhornv1beta2.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob,omitempty"`
 	DataSource                *longhornv1beta2.VolumeDataSource              `json:"dataSource,omitempty"`
@@ -43,13 +48,18 @@ type VolumeSpecApplyConfiguration struct {
 	NodeID *string `json:"nodeID,omitempty"`
 	// engineNodeID defines the node where the backend engine (target) runs.
 	// If empty, falls back to NodeID.
-	EngineNodeID              *string                                    `json:"engineNodeID,omitempty"`
-	MigrationNodeID           *string                                    `json:"migrationNodeID,omitempty"`
-	Image                     *string                                    `json:"image,omitempty"`
-	BackingImage              *string                                    `json:"backingImage,omitempty"`
-	Standby                   *bool                                      `json:"Standby,omitempty"`
-	DiskSelector              []string                                   `json:"diskSelector,omitempty"`
-	NodeSelector              []string                                   `json:"nodeSelector,omitempty"`
+	EngineNodeID    *string  `json:"engineNodeID,omitempty"`
+	MigrationNodeID *string  `json:"migrationNodeID,omitempty"`
+	Image           *string  `json:"image,omitempty"`
+	BackingImage    *string  `json:"backingImage,omitempty"`
+	Standby         *bool    `json:"Standby,omitempty"`
+	DiskSelector    []string `json:"diskSelector,omitempty"`
+	NodeSelector    []string `json:"nodeSelector,omitempty"`
+	// TopologyRequirement lists the failure domains the volume's replicas must
+	// be scheduled in, derived from the CSI accessible topology at creation —
+	// the same failure domains as the PV nodeAffinity terms (a node must match
+	// at least one term). Empty means unconstrained.
+	TopologyRequirement       []VolumeTopologyTermApplyConfiguration     `json:"topologyRequirement,omitempty"`
 	DisableFrontend           *bool                                      `json:"disableFrontend,omitempty"`
 	RevisionCounterDisabled   *bool                                      `json:"revisionCounterDisabled,omitempty"`
 	UnmapMarkSnapChainRemoved *longhornv1beta2.UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved,omitempty"`
@@ -134,6 +144,14 @@ func (b *VolumeSpecApplyConfiguration) WithUblkQueueDepth(value int) *VolumeSpec
 // If called multiple times, the UblkNumberOfQueue field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithUblkNumberOfQueue(value int) *VolumeSpecApplyConfiguration {
 	b.UblkNumberOfQueue = &value
+	return b
+}
+
+// WithNvmeTcpNrIoQueues sets the NvmeTcpNrIoQueues field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the NvmeTcpNrIoQueues field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithNvmeTcpNrIoQueues(value int) *VolumeSpecApplyConfiguration {
+	b.NvmeTcpNrIoQueues = &value
 	return b
 }
 
@@ -249,6 +267,19 @@ func (b *VolumeSpecApplyConfiguration) WithDiskSelector(values ...string) *Volum
 func (b *VolumeSpecApplyConfiguration) WithNodeSelector(values ...string) *VolumeSpecApplyConfiguration {
 	for i := range values {
 		b.NodeSelector = append(b.NodeSelector, values[i])
+	}
+	return b
+}
+
+// WithTopologyRequirement adds the given value to the TopologyRequirement field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the TopologyRequirement field.
+func (b *VolumeSpecApplyConfiguration) WithTopologyRequirement(values ...*VolumeTopologyTermApplyConfiguration) *VolumeSpecApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithTopologyRequirement")
+		}
+		b.TopologyRequirement = append(b.TopologyRequirement, *values[i])
 	}
 	return b
 }

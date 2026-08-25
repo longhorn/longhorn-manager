@@ -31,12 +31,12 @@ replace (
 	k8s.io/component-base => k8s.io/component-base v0.36.3
 	k8s.io/component-helpers => k8s.io/component-helpers v0.36.3
 	k8s.io/controller-manager => k8s.io/controller-manager v0.36.3
-	k8s.io/cri-api => k8s.io/cri-api v0.36.3
+	k8s.io/cri-api => k8s.io/cri-api v0.36.4
 	k8s.io/cri-client => k8s.io/cri-client v0.36.3
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.36.3
 	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.36.3
 	k8s.io/endpointslice => k8s.io/endpointslice v0.36.3
-	k8s.io/externaljwt => k8s.io/externaljwt v0.36.3
+	k8s.io/externaljwt => k8s.io/externaljwt v0.36.4
 	k8s.io/kms => k8s.io/kms v0.36.3
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.36.3
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.36.3
@@ -46,7 +46,7 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.36.3
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
 	k8s.io/metrics => k8s.io/metrics v0.36.3
-	k8s.io/mount-utils => k8s.io/mount-utils v0.36.3
+	k8s.io/mount-utils => k8s.io/mount-utils v0.36.4
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.36.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.36.3
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.36.3
@@ -56,7 +56,7 @@ replace (
 require (
 	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.13.0
-	github.com/docker/go-connections v0.8.0
+	github.com/docker/go-connections v0.8.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
@@ -65,15 +65,15 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20260722010828-e5f4ddc47e4d
-	github.com/longhorn/go-common-libs v0.0.0-20260717062941-2c0ab58da729
+	github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0
+	github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.7.1-0.20260728132652-3feba885fc22
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260712.0.20260722045630-fbcdec882798
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260712.0.20260730002653-104048512546
+	github.com/longhorn/go-spdk-helper v0.9.1-0.20260814082531-318b4a23bb34
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260809
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260809.0.20260823110817-d5dfb889d77f
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260712.0.20260729133759-1aed45b5c879
-	github.com/longhorn/types v0.0.0-20260729075217-67e368561d11
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260809.0.20260821025959-57f5131c863e
+	github.com/longhorn/types v0.0.0-20260823161010-ff82caee1e8b
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.9.0
@@ -81,13 +81,13 @@ require (
 	github.com/rancher/wrangler/v3 v3.7.0
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.4
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.0
 	github.com/urfave/cli/v3 v3.10.1
 	golang.org/x/mod v0.38.0
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.36.3
@@ -97,7 +97,7 @@ require (
 	k8s.io/client-go v0.36.3
 	k8s.io/kubernetes v1.36.3
 	k8s.io/metrics v0.36.3
-	k8s.io/mount-utils v0.36.3
+	k8s.io/mount-utils v0.36.4
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
@@ -114,6 +114,7 @@ require (
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/avast/retry-go/v4 v4.7.0 // indirect
+	github.com/avast/retry-go/v5 v5.0.0 // indirect
 	github.com/bits-and-blooms/bitset v1.16.0 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
@@ -157,7 +158,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	howett.net/plist v1.0.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
@@ -203,8 +204,8 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/slok/goresilience v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	go.opentelemetry.io/otel v1.43.0 // indirect
-	go.opentelemetry.io/otel/trace v1.43.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	golang.org/x/crypto v0.54.0 // indirect

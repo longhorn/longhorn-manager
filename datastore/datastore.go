@@ -86,6 +86,8 @@ type DataStore struct {
 	OrphanInformer                 cache.SharedInformer
 	snapshotLister                 lhlisters.SnapshotLister
 	SnapshotInformer               cache.SharedInformer
+	snapshotGroupLister            lhlisters.SnapshotGroupLister
+	SnapshotGroupInformer          cache.SharedInformer
 	supportBundleLister            lhlisters.SupportBundleLister
 	SupportBundleInformer          cache.SharedInformer
 	systemBackupLister             lhlisters.SystemBackupLister
@@ -181,6 +183,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, orphanInformer.Informer().HasSynced)
 	snapshotInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots()
 	cacheSyncs = append(cacheSyncs, snapshotInformer.Informer().HasSynced)
+	snapshotGroupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SnapshotGroups()
+	cacheSyncs = append(cacheSyncs, snapshotGroupInformer.Informer().HasSynced)
 	supportBundleInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SupportBundles()
 	cacheSyncs = append(cacheSyncs, supportBundleInformer.Informer().HasSynced)
 	systemBackupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SystemBackups()
@@ -211,8 +215,6 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
 	priorityClassInformer := informerFactories.KubeInformerFactory.Scheduling().V1().PriorityClasses()
 	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
-	leaseInformer := informerFactories.KubeInformerFactory.Coordination().V1().Leases()
-	cacheSyncs = append(cacheSyncs, leaseInformer.Informer().HasSynced)
 
 	// Filtered kube Informers by longhorn-system namespace
 	cronJobInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Batch().V1().CronJobs()
@@ -231,6 +233,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
 	deploymentInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().Deployments()
 	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
+	leaseInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Coordination().V1().Leases()
+	cacheSyncs = append(cacheSyncs, leaseInformer.Informer().HasSynced)
 
 	return &DataStore{
 		namespace: namespace,
@@ -276,6 +280,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		OrphanInformer:                 orphanInformer.Informer(),
 		snapshotLister:                 snapshotInformer.Lister(),
 		SnapshotInformer:               snapshotInformer.Informer(),
+		snapshotGroupLister:            snapshotGroupInformer.Lister(),
+		SnapshotGroupInformer:          snapshotGroupInformer.Informer(),
 		supportBundleLister:            supportBundleInformer.Lister(),
 		SupportBundleInformer:          supportBundleInformer.Informer(),
 		systemBackupLister:             systemBackupInformer.Lister(),

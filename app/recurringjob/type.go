@@ -20,12 +20,18 @@ type Job struct {
 	eventRecorder record.EventRecorder // Used to record events related to the job.
 	logger        *logrus.Logger       // Log messages related to the job.
 
-	name           string                    // Name for the RecurringJob.
-	namespace      string                    // Kubernetes namespace in which the RecurringJob is running.
-	retain         int                       // Number of task CRs to retain.
-	task           longhorn.RecurringJobType // Type of task to be executed.
-	parameters     map[string]string         // Additional parameters for the task.
-	executionCount int                       // Number of times the job has been executed.
+	name        string        // Name for the RecurringJob.
+	namespace   string        // Kubernetes namespace in which the RecurringJob is running.
+	retainCount int           // Number of task CRs to retain.
+	retainAge   time.Duration // Max age of task CRs; older ones are cleaned up. Only read under the "age-based" policy.
+	// Which of retainCount and retainAge the cleanup goes by: "count-based" goes by
+	// retainCount and ignores retainAge; "age-based" goes by retainAge and ignores
+	// retainCount. New jobs default to "count-based" and jobs predating this field are
+	// backfilled to it on upgrade, so the value is always one of these two at runtime.
+	retentionPolicy longhorn.RecurringJobRetentionPolicy
+	task            longhorn.RecurringJobType // Type of task to be executed.
+	parameters      map[string]string         // Additional parameters for the task.
+	executionCount  int                       // Number of times the job has been executed.
 }
 
 // VolumeJob is a job for volume tasks.

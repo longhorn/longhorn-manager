@@ -40,6 +40,12 @@ func DiscoverTarget(ip, port string, executor *commonns.Executor) (subnqn string
 
 // ConnectTarget connects to a target
 func ConnectTarget(ip, port, nqn string, executor *commonns.Executor) (controllerName string, err error) {
+	return ConnectTargetWithNrIoQueues(ip, port, nqn, 0, executor)
+}
+
+// ConnectTargetWithNrIoQueues connects to a target with a limited number of
+// I/O queues (nrIoQueues 0 means unspecified, kernel default)
+func ConnectTargetWithNrIoQueues(ip, port, nqn string, nrIoQueues int32, executor *commonns.Executor) (controllerName string, err error) {
 	// Trying to connect an existing subsystem will error out with exit code 114.
 	// Hence, it's better to check the existence first.
 	if devices, err := GetDevices(ip, port, nqn, executor); err == nil && len(devices) > 0 {
@@ -55,7 +61,7 @@ func ConnectTarget(ip, port, nqn string, executor *commonns.Executor) (controlle
 		return "", err
 	}
 
-	return connect(hostID, hostNQN, nqn, DefaultTransportType, ip, port, executor)
+	return connect(hostID, hostNQN, nqn, DefaultTransportType, ip, port, nrIoQueues, executor)
 }
 
 // DisconnectTarget disconnects from a target

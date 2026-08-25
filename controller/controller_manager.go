@@ -120,6 +120,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	snapshotGroupController, err := NewSnapshotGroupController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	supportBundleController, err := NewSupportBundleController(logger, ds, scheme, kubeClient, controllerID, namespace, serviceAccount)
 	if err != nil {
 		return nil, err
@@ -212,6 +216,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go recurringJobController.Run(Workers, stopCh)
 	go orphanController.Run(Workers, stopCh)
 	go snapshotController.Run(Workers, stopCh)
+	go snapshotGroupController.Run(Workers, stopCh)
 	go supportBundleController.Run(Workers, stopCh)
 	go systemBackupController.Run(Workers, stopCh)
 	go systemRestoreController.Run(Workers, stopCh)

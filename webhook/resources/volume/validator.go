@@ -81,6 +81,9 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
 	}
 
+	if err := validateNvmeTcpNrIoQueues(volume.Spec.NvmeTcpNrIoQueues, volume.Spec.DataEngine); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 	if err := validateUblkNumberOfQueue(volume.Spec.UblkNumberOfQueue); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
@@ -106,6 +109,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if err := types.ValidateReplicaZoneSoftAntiAffinity(volume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
+	}
+
+	if err := validateTopologyZonePin(volume); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
@@ -265,6 +272,9 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
 	}
 
+	if err := validateNvmeTcpNrIoQueues(newVolume.Spec.NvmeTcpNrIoQueues, newVolume.Spec.DataEngine); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 	if err := validateUblkNumberOfQueue(newVolume.Spec.UblkNumberOfQueue); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
@@ -289,6 +299,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
+	if err := validateTopologyZonePin(newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
+	}
+
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(newVolume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
 	}
@@ -299,6 +313,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := validateImmutable(".spec.dataSource", oldVolume.Spec.DataSource, newVolume.Spec.DataSource); err != nil {
 		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
+	}
+
+	if err := validateImmutable(".spec.topologyRequirement", oldVolume.Spec.TopologyRequirement, newVolume.Spec.TopologyRequirement); err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.topologyRequirement")
 	}
 
 	if oldVolume.Spec.CloneMode != longhorn.CloneModeNone {
@@ -737,6 +755,19 @@ func validateReplicaCount(cloneMode longhorn.CloneMode, dataLocality longhorn.Da
 	return nil
 }
 
+func validateNvmeTcpNrIoQueues(n int, dataEngine longhorn.DataEngineType) error {
+	if n == 0 {
+		return nil
+	}
+	if n < 1 || n > 128 {
+		return fmt.Errorf("NVMe-TCP number of I/O queues must be either 0 (meaning unspecified) or between 1 and 128. Got %d", n)
+	}
+	if !types.IsDataEngineV2(dataEngine) {
+		return fmt.Errorf("NVMe-TCP number of I/O queues is only supported by data engine v2. Got data engine %v", dataEngine)
+	}
+	return nil
+}
+
 func validateUblkQueueDepth(d int) error {
 	if d != 0 && d < 32 {
 		return fmt.Errorf("ublk queue depth must be either 0 (meaning unspecified) or at least 32. Got %d", d)
@@ -844,6 +875,23 @@ func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(oldVolume, new
 	return nil
 }
 
+// validateTopologyZonePin enforces the invariant that a volume pinned to a
+// single zone by its topology requirement has replicaZoneSoftAntiAffinity
+// enabled. Zone anti-affinity can never be satisfied within one zone, so any
+// other value would leave every replica beyond the first unschedulable
+// forever. The volume mutator fills enabled when the field is empty or
+// ignored, so this only rejects an explicit disabled.
+func validateTopologyZonePin(volume *longhorn.Volume) error {
+	if !types.IsTopologyZonePinned(volume.Spec.TopologyRequirement) {
+		return nil
+	}
+	if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityEnabled {
+		return fmt.Errorf("spec.replicaZoneSoftAntiAffinity must be %v for a volume pinned to a single zone by spec.topologyRequirement: zone anti-affinity cannot be satisfied within one zone (got %v)",
+			longhorn.ReplicaZoneSoftAntiAffinityEnabled, volume.Spec.ReplicaZoneSoftAntiAffinity)
+	}
+	return nil
+}
+
 func validateImmutable(field string, oldVal, newVal any) error {
 	if !apiequality.Semantic.DeepEqual(oldVal, newVal) {
 		return fmt.Errorf("%s is immutable (old=%+v, new=%+v)", field, oldVal, newVal)
@@ -852,21 +900,30 @@ func validateImmutable(field string, oldVal, newVal any) error {
 }
 
 // validateLinkedCloneInstanceManagerVersion rejects linked-clone volume creation
-// when no V2 instance manager with the required proxy API version is available.
-// This is a best-effort guard based on the informer cache.
+// when any running V2 instance manager has a proxy API version below the
+// required minimum. This rejects creation during mixed-version rollouts.
 func (v *volumeValidator) validateLinkedCloneInstanceManagerVersion(vol *longhorn.Volume) error {
 	ims, err := v.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
 	if err != nil {
 		return errors.Wrapf(err, "failed to list instance managers while validating linked-clone volume %v", vol.Name)
 	}
+	hasRunning := false
 	for _, im := range ims {
-		if im.Status.ProxyAPIVersion >= engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
-			return nil
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			continue
+		}
+		hasRunning = true
+		if im.Status.ProxyAPIVersion < engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
+			return werror.NewForbiddenError(fmt.Sprintf(
+				"cannot create linked-clone volume %v: instance manager %v has proxy API version %d (need >= %d); upgrade all instance managers first",
+				vol.Name, im.Name, im.Status.ProxyAPIVersion, engineapi.MinProxyAPIVersionForNReplicaLinkedClone))
 		}
 	}
-	return werror.NewForbiddenError(fmt.Sprintf(
-		"cannot create linked-clone volume %v: no instance manager with proxy API version >= %d found; upgrade instance managers first",
-		vol.Name, engineapi.MinProxyAPIVersionForNReplicaLinkedClone))
+	if !hasRunning {
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot create linked-clone volume %v: no running instance manager found", vol.Name))
+	}
+	return nil
 }
 
 // validateLinkedCloneSize rejects a linked-clone volume creation when spec.size

@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/sirupsen/logrus"
 
 	wranglerClients "github.com/rancher/wrangler/v3/pkg/clients"
 	wranglerSchemes "github.com/rancher/wrangler/v3/pkg/schemes"
 
-	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -55,8 +56,10 @@ func NewClients(kubeconfigPath string, needDataStore bool, stopCh <-chan struct{
 		return nil, err
 	}
 
-	// Create k8s client
-	clients, err := wranglerClients.NewFromConfig(config, nil)
+	// Bound the wrangler caches to this namespace: their only consumer is the webhook
+	// Secret handler, which watches one Secret here. Direct client calls are unaffected,
+	// but a cached read of another namespace would come back empty instead of erroring.
+	clients, err := wranglerClients.NewFromConfig(config, &generic.FactoryOptions{Namespace: namespace})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to get k8s client")
 	}

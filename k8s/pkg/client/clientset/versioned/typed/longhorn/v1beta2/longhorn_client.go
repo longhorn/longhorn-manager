@@ -48,6 +48,7 @@ type LonghornV1beta2Interface interface {
 	ShardGroupsGetter
 	ShareManagersGetter
 	SnapshotsGetter
+	SnapshotGroupsGetter
 	SupportBundlesGetter
 	SystemBackupsGetter
 	SystemRestoresGetter
@@ -138,6 +139,10 @@ func (c *LonghornV1beta2Client) ShareManagers(namespace string) ShareManagerInte
 
 func (c *LonghornV1beta2Client) Snapshots(namespace string) SnapshotInterface {
 	return newSnapshots(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) SnapshotGroups(namespace string) SnapshotGroupInterface {
+	return newSnapshotGroups(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) SupportBundles(namespace string) SupportBundleInterface {

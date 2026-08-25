@@ -2,8 +2,6 @@ package types
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +11,8 @@ import (
 	. "gopkg.in/check.v1"
 
 	corev1 "k8s.io/api/core/v1"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -29,50 +29,6 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
-	c.Assert(os.Unsetenv(LonghornDataPathEnv), IsNil)
-	c.Assert(os.Unsetenv(LonghornControlPathEnv), IsNil)
-}
-
-func (s *TestSuite) TearDownTest(c *C) {
-	c.Assert(os.Unsetenv(LonghornDataPathEnv), IsNil)
-	c.Assert(os.Unsetenv(LonghornControlPathEnv), IsNil)
-}
-
-func (s *TestSuite) TestGetLonghornDataPath(c *C) {
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
-
-	customPath := "/data/longhorn/"
-	c.Assert(os.Setenv(LonghornDataPathEnv, customPath), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, filepath.Clean(customPath))
-
-	c.Assert(os.Setenv(LonghornDataPathEnv, "relative/path"), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
-
-	c.Assert(os.Setenv(LonghornDataPathEnv, string(filepath.Separator)), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
-
-	c.Assert(os.Setenv(LonghornDataPathEnv, "/dev/nvme0n1"), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, "/dev/nvme0n1")
-
-	c.Assert(os.Setenv(LonghornDataPathEnv, "0000:00:1e.0"), IsNil)
-	c.Assert(GetLonghornDataPath(), Equals, DefaultDataPath)
-}
-
-func (s *TestSuite) TestGetLonghornControlPath(c *C) {
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
-
-	customPath := "/control/longhorn/"
-	c.Assert(os.Setenv(LonghornControlPathEnv, customPath), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, filepath.Clean(customPath))
-
-	c.Assert(os.Setenv(LonghornControlPathEnv, "relative/path"), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
-
-	c.Assert(os.Setenv(LonghornControlPathEnv, string(filepath.Separator)), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
-
-	c.Assert(os.Setenv(LonghornControlPathEnv, "/dev/nvme0n1"), IsNil)
-	c.Assert(GetLonghornControlPath(), Equals, DefaultControlPath)
 }
 
 func (s *TestSuite) TestResolveSystemManagedComponentPriorityClass(c *C) {
@@ -94,18 +50,6 @@ func (s *TestSuite) TestResolveSystemManagedComponentPriorityClass(c *C) {
 
 	_, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", `null`, SystemManagedComponentInstanceManager)
 	c.Assert(err, NotNil)
-}
-
-func (s *TestSuite) TestContainerPathHelpersUseReplicaHostPrefix(c *C) {
-	customPath := "/control/longhorn"
-	image := "longhornio/longhorn-engine:v1.9.0"
-
-	c.Assert(os.Setenv(LonghornControlPathEnv, customPath), IsNil)
-
-	c.Assert(GetUnixDomainSocketDirectoryInContainer(), Equals,
-		filepath.Join(ReplicaHostPrefix, "control/longhorn", UnixDomainSocketDirectorySubpath))
-	c.Assert(GetEngineBinaryDirectoryForReplicaManagerContainer(image), Equals,
-		filepath.Join(ReplicaHostPrefix, "control/longhorn", EngineBinaryDirectorySubpath, GetImageCanonicalName(image)))
 }
 
 func (s *TestSuite) TestParseToleration(c *C) {
@@ -621,5 +565,109 @@ func (s *TestSuite) TestIsHexCPUMask(c *C) {
 	for testName, testCase := range testCases {
 		result := IsHexCPUMask(testCase.input)
 		c.Assert(result, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
+	}
+}
+
+func (s *TestSuite) TestNodeMatchesTopologyRequirement(c *C) {
+	node := func(zone, region string) *longhorn.Node {
+		return &longhorn.Node{Status: longhorn.NodeStatus{Zone: zone, Region: region}}
+	}
+
+	// An empty requirement leaves the volume unconstrained.
+	c.Assert(NodeMatchesTopologyRequirement(node("", ""), nil), Equals, true)
+
+	zonal := []longhorn.VolumeTopologyTerm{{Zone: "zone-1", Region: "region-1"}}
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-1", "region-1"), zonal), Equals, true)
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", "region-1"), zonal), Equals, false)
+	c.Assert(NodeMatchesTopologyRequirement(node("", ""), zonal), Equals, false)
+
+	// A region-only term matches every zone in the region.
+	regional := []longhorn.VolumeTopologyTerm{{Region: "region-1"}}
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", "region-1"), regional), Equals, true)
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", "region-2"), regional), Equals, false)
+
+	// A node only has to satisfy one of the terms.
+	c.Assert(NodeMatchesTopologyRequirement(node("zone-2", ""), []longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-2"},
+	}), Equals, true)
+}
+
+func (s *TestSuite) TestIsTopologyZonePinned(c *C) {
+	c.Assert(IsTopologyZonePinned(nil), Equals, false)
+
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{{Zone: "zone-1"}}), Equals, true)
+
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-1", Region: "region-1"},
+	}), Equals, true)
+
+	// A region-only term allows any zone in the region.
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{{Region: "region-1"}}), Equals, false)
+
+	// Terms naming different zones allow spreading across those zones.
+	c.Assert(IsTopologyZonePinned([]longhorn.VolumeTopologyTerm{
+		{Zone: "zone-1"}, {Zone: "zone-2"},
+	}), Equals, false)
+}
+
+func (s *TestSuite) TestIsBDF(c *C) {
+	testCases := map[string]bool{
+		"0000:00:1f.0":             true,
+		"0000:00:1f":               false,
+		"0000:00:1f.00":            false,
+		"prefix0000:00:1f.0":       false,
+		"0000:00:1f.0suffix":       false,
+		"/dev/disk/by-id/scsi-foo": false,
+	}
+
+	for input, expected := range testCases {
+		c.Assert(IsBDF(input), Equals, expected, Commentf(TestErrResultFmt, input))
+	}
+}
+
+func (s *TestSuite) TestCreateDefaultDiskWithBlockDiskPath(c *C) {
+	testCases := map[string]string{
+		"bdf":        "0000:00:1f.0",
+		"disk by id": "/dev/disk/by-id/scsi-36001405b8f1e2d3c4b5a697887766554",
+	}
+
+	for testName, dataPath := range testCases {
+		disks, err := CreateDefaultDisk(dataPath, 30)
+		c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		c.Assert(disks, HasLen, 1, Commentf(TestErrResultFmt, testName))
+
+		for diskName, disk := range disks {
+			c.Assert(strings.HasPrefix(diskName, DefaultDiskPrefix), Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Type, Equals, longhorn.DiskTypeBlock, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Path, Equals, dataPath, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.DiskDriver, Equals, longhorn.DiskDriverAuto, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.AllowScheduling, Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.StorageReserved, Equals, int64(0), Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Tags, DeepEquals, []string{}, Commentf(TestErrResultFmt, testName))
+		}
+	}
+}
+
+func (s *TestSuite) TestCreateDisksFromAnnotationWithBlockDiskPath(c *C) {
+	testCases := map[string]string{
+		"bdf":        "0000:00:1f.0",
+		"disk by id": "/dev/disk/by-id/scsi-36001405b8f1e2d3c4b5a697887766554",
+	}
+
+	for testName, dataPath := range testCases {
+		annotation := fmt.Sprintf(`[{"path":"%s","diskType":"block","allowScheduling":true}]`, dataPath)
+
+		disks, err := CreateDisksFromAnnotation(annotation, 30)
+		c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		c.Assert(disks, HasLen, 1, Commentf(TestErrResultFmt, testName))
+
+		for diskName, disk := range disks {
+			c.Assert(strings.HasPrefix(diskName, DefaultDiskPrefix), Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Type, Equals, longhorn.DiskTypeBlock, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.Path, Equals, dataPath, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.DiskDriver, Equals, longhorn.DiskDriverAuto, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.AllowScheduling, Equals, true, Commentf(TestErrResultFmt, testName))
+			c.Assert(disk.StorageReserved, Equals, int64(0), Commentf(TestErrResultFmt, testName))
+		}
 	}
 }

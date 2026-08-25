@@ -505,7 +505,7 @@ func (c *SPDKClient) ReplicaRebuildingSrcShallowCopyCheck(srcReplicaName, dstRep
 // It creates a new head lvol, exposes it as needed, and returns the destination head lvol address.
 // The external snapshot address is a local alias when source and destination share the same host,
 // otherwise it is the exported NVMf address of the source snapshot lvol.
-func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcReplicaAddress, externalSnapshotName, externalSnapshotAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string, rebuildingSnapshotList []*api.Lvol) (dstHeadLvolAddress string, err error) {
+func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcReplicaAddress, externalSnapshotName, externalSnapshotAddress string, rebuildingSnapshotList []*api.Lvol, linkedCloneSource *spdkrpc.LinkedCloneSource) (dstHeadLvolAddress string, err error) {
 	if replicaName == "" {
 		return "", fmt.Errorf("failed to start replica rebuilding dst: missing required parameter replica name")
 	}
@@ -515,9 +515,10 @@ func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcR
 	if externalSnapshotName == "" || externalSnapshotAddress == "" {
 		return "", fmt.Errorf("failed to start replica rebuilding dst: missing required parameter external snapshot name or address")
 	}
-	if (linkedCloneSrcReplicaName != "" || linkedCloneSrcEngineName != "" || linkedCloneSrcEngineAddress != "") &&
-		(linkedCloneSrcReplicaName == "" || linkedCloneSrcEngineName == "" || linkedCloneSrcEngineAddress == "") {
-		return "", fmt.Errorf("failed to start replica rebuilding dst: linked clone source replica info is incomplete")
+	if linkedCloneSource != nil {
+		if linkedCloneSource.ReplicaName == "" || linkedCloneSource.EngineName == "" || linkedCloneSource.EngineAddress == "" || linkedCloneSource.SnapshotName == "" {
+			return "", fmt.Errorf("failed to start replica rebuilding dst: linked clone source info is incomplete")
+		}
 	}
 
 	client := c.getSPDKServiceClient()
@@ -529,15 +530,13 @@ func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcR
 		protoRebuildingSnapshotList = append(protoRebuildingSnapshotList, api.LvolToProtoLvol(snapshot))
 	}
 	resp, err := client.ReplicaRebuildingDstStart(ctx, &spdkrpc.ReplicaRebuildingDstStartRequest{
-		Name:                        replicaName,
-		SrcReplicaName:              srcReplicaName,
-		SrcReplicaAddress:           srcReplicaAddress,
-		ExternalSnapshotName:        externalSnapshotName,
-		ExternalSnapshotAddress:     externalSnapshotAddress,
-		RebuildingSnapshotList:      protoRebuildingSnapshotList,
-		LinkedCloneSrcReplicaName:   linkedCloneSrcReplicaName,
-		LinkedCloneSrcEngineName:    linkedCloneSrcEngineName,
-		LinkedCloneSrcEngineAddress: linkedCloneSrcEngineAddress,
+		Name:                    replicaName,
+		SrcReplicaName:          srcReplicaName,
+		SrcReplicaAddress:       srcReplicaAddress,
+		ExternalSnapshotName:    externalSnapshotName,
+		ExternalSnapshotAddress: externalSnapshotAddress,
+		RebuildingSnapshotList:  protoRebuildingSnapshotList,
+		LinkedCloneSource:       linkedCloneSource,
 	})
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to start replica rebuilding dst %s", replicaName)

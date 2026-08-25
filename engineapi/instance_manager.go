@@ -90,7 +90,7 @@ func (c *InstanceManagerClient) Close() error {
 
 func GetDeprecatedInstanceManagerBinary(image string) string {
 	cname := types.GetImageCanonicalName(image)
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHost(), cname, DeprecatedInstanceManagerBinaryName)
+	return filepath.Join(types.EngineBinaryDirectoryOnHost, cname, DeprecatedInstanceManagerBinaryName)
 }
 
 func CheckInstanceManagerCompatibility(imMinVersion, imVersion int) error {
@@ -543,6 +543,7 @@ type EngineFrontendInstanceCreateRequest struct {
 	VolumeFrontend                longhorn.VolumeFrontend
 	UblkQueueDepth                int
 	UblkNumberOfQueue             int
+	NvmeTcpNrIoQueues             int
 	TargetIP                      string
 	TargetPort                    int
 	EngineName                    string
@@ -600,6 +601,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 			Frontend:          frontend,
 			UblkQueueDepth:    req.UblkQueueDepth,
 			UblkNumberOfQueue: req.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues: req.NvmeTcpNrIoQueues,
 			TargetAddress:     targetAddress,
 			EngineName:        req.EngineName,
 		},

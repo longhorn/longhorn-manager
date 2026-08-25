@@ -243,6 +243,14 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
+// getBackupTarget returns an engine client proxy and a backup target client for the given
+// nodeID. The proxy is established through a running instance manager on nodeID, so the caller
+// must pass a node that actually has a running instance manager. For backups, the backup
+// controller guarantees this in isResponsibleFor by only owning a Backup CR on a node with a
+// running instance manager for the volume's data engine. This avoids selecting a node that
+// passes the engine image readiness check but has no running instance manager, for example a
+// node drained with --ignore-daemonsets, which keeps the engine image DaemonSet running while
+// its instance manager pod is evicted. Ref: https://github.com/longhorn/longhorn/issues/12562
 func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter, dataEngine longhorn.DataEngineType) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
 	var instanceManager *longhorn.InstanceManager
 	errs := multierr.NewMultiError()
@@ -900,25 +908,58 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 		return false, err
 	}
 
-	// Skip instance manager readiness check when the BackupTarget is being deleted.
-	// During cluster uninstallation or when data engines are disabled,
-	// instance-manager pods on this node might already have been removed.
+	currentOwnerAvailable := currentOwnerEngineAvailable
+	currentNodeAvailable := currentNodeEngineAvailable
+
+	// A responsible node must also have a running instance manager, because reaching the remote
+	// backup target goes through an engine client proxy served by an instance manager. The engine
+	// image readiness check alone is not enough: a node drained with --ignore-daemonsets keeps the
+	// engine image DaemonSet (and longhorn-manager) running while its instance manager pod is
+	// evicted. Without accounting for the instance manager, ownership can stay pinned to such a
+	// node, so the BackupTarget is never synced and BackupVolume CRs are never created.
+	// Ref: https://github.com/longhorn/longhorn/issues/13775
+	// Skip this while the BackupTarget is being deleted. During cluster uninstallation or when data
+	// engines are disabled, instance-manager pods might already have been removed.
 	// Ref: https://github.com/longhorn/longhorn/issues/11934
 	if bt.DeletionTimestamp.IsZero() {
-		instanceManager, err := btc.ds.GetRunningInstanceManagerByNodeRO(btc.controllerID, "")
+		nodesWithRunningIM, err := btc.listNodesWithRunningInstanceManager()
 		if err != nil {
 			return false, err
 		}
-		if instanceManager == nil {
-			return false, errors.New("failed to get running instance manager")
+		// Only require a running instance manager when at least one node has one to fall back to.
+		// If no node has a running instance manager (e.g. a full outage), keep the engine-image-only
+		// behavior so the backup target still gets an owner that surfaces the error and retries,
+		// instead of being left ownerless and silently stalled.
+		if len(nodesWithRunningIM) > 0 {
+			_, ownerIMRunning := nodesWithRunningIM[bt.Status.OwnerID]
+			_, nodeIMRunning := nodesWithRunningIM[btc.controllerID]
+			currentOwnerAvailable = currentOwnerAvailable && ownerIMRunning
+			currentNodeAvailable = currentNodeAvailable && nodeIMRunning
 		}
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && btc.controllerID == bt.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	isPreferredOwner := currentNodeAvailable && isResponsible
+	continueToBeOwner := currentNodeAvailable && btc.controllerID == bt.Status.OwnerID
+	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+// listNodesWithRunningInstanceManager returns the set of nodes that have a running instance
+// manager for any enabled data engine. A backup target reconcile can be served by any such node,
+// so the union across data engines is used to decide ownership.
+func (btc *BackupTargetController) listNodesWithRunningInstanceManager() (map[string]*longhorn.Node, error) {
+	nodesWithRunningIM := map[string]*longhorn.Node{}
+	for dataEngine := range btc.ds.GetDataEngines() {
+		nodes, err := btc.ds.ListNodesWithReadyInstanceManagerRO(dataEngine)
+		if err != nil {
+			return nil, err
+		}
+		for name, node := range nodes {
+			nodesWithRunningIM[name] = node
+		}
+	}
+	return nodesWithRunningIM, nil
 }
 
 // cleanupBackupVolumes deletes all BackupVolume CRs

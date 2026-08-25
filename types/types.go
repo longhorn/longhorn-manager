@@ -12,11 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
@@ -50,6 +48,7 @@ const (
 	LonghornKindOrphan              = "Orphan"
 	LonghornKindShardGroup          = "ShardGroup"
 	LonghornKindShard               = "Shard"
+	LonghornKindSnapshotGroup       = "SnapshotGroup"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -139,17 +138,18 @@ const (
 	DefaultRecoveryBackendServerPort = 9503
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
+	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
 	MetadataDirectoryInContainer     = "/metadata/"
+	MetadataDirectoryOnHost          = "/var/lib/longhorn/metadata/"
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
-	DefaultDataPath                  = "/var/lib/longhorn"
-	DefaultControlPath               = "/var/lib/longhorn"
-	LonghornDataPathEnv              = "LONGHORN_DATA_PATH"
-	LonghornControlPathEnv           = "LONGHORN_CONTROL_PATH"
-	EngineBinaryDirectorySubpath     = "engine-binaries"
-	MetadataDirectorySubpath         = "metadata"
-	UnixDomainSocketDirectorySubpath = "unix-domain-socket"
-	LogDirectorySubpath              = "logs"
+
+	UnixDomainSocketDirectoryInContainer = "/host/var/lib/longhorn/unix-domain-socket/"
+	UnixDomainSocketDirectoryOnHost      = "/var/lib/longhorn/unix-domain-socket/"
+
+	DefaultLogDirectoryOnHost = "/var/lib/longhorn/logs/"
+
+	DefaultControlPath = "/var/lib/longhorn"
 
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
@@ -220,6 +220,9 @@ const (
 	LonghornLabelBackingImageManager             = "backing-image-manager"
 	LonghornLabelManagedBy                       = "managed-by"
 	LonghornLabelSnapshotForCloningVolume        = "for-cloning-volume"
+	LonghornLabelSnapshotGroup                   = "snapshot-group"
+	LonghornLabelSnapshotGroupCSIType            = "snapshot-group-csi-type"
+	LonghornLabelSnapshotGroupUID                = "snapshot-group-uid"
 	LonghornLabelBackingImageDataSource          = "backing-image-data-source"
 	LonghornLabelBackupTarget                    = "backup-target"
 	LonghornLabelBackupVolume                    = "backup-volume"
@@ -299,6 +302,40 @@ const (
 	// Shard CR bypasses the failure-recovery debounce.
 	ShardAnnotationIntentionalDelete = "longhorn.io/intentional-delete"
 
+	// SnapshotGroupAnnotationTerminalPhase records the outcome (Ready or
+	// Failed) when a SnapshotGroup reaches a terminal phase. It is the restore
+	// guard: restores that strip status still preserve annotations, so when
+	// the annotation records an outcome the phase does not show, the
+	// controller restores the annotated phase instead of taking new snapshots.
+	SnapshotGroupAnnotationTerminalPhase = "longhorn.io/snapshot-group-terminal-phase"
+
+	// SnapshotGroupAnnotationBackupsCompleted freezes the outcome of a
+	// bak-type CSI volume group snapshot. The CSI handler stamps it the first
+	// time it observes every member backup Completed; from then on the group
+	// is reported ready without reading live backup state. The value is a
+	// JSON map of member snapshot name to backup name; member snapshot
+	// handles fall back to it, so a backup deleted after completion does not
+	// change them.
+	SnapshotGroupAnnotationBackupsCompleted = "longhorn.io/snapshot-group-backups-completed"
+
+	// SnapshotGroupAnnotationCSIParameters records the class parameters a
+	// CSI-created group was created with. A create retry for the existing
+	// name compares against it and rejects different parameters, as the CSI
+	// spec requires.
+	SnapshotGroupAnnotationCSIParameters = "longhorn.io/snapshot-group-csi-parameters"
+
+	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
+	// also keeps the auto-attach of detached member volumes bounded.
+	SnapshotGroupMaxMemberCount = 64
+
+	// SnapshotGroupDefaultDeadlineSeconds is stamped by the mutating webhook
+	// when spec.deadlineSeconds is unset.
+	SnapshotGroupDefaultDeadlineSeconds = 300
+	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds
+	// mirror the CRD schema bounds on spec.deadlineSeconds.
+	SnapshotGroupMinDeadlineSeconds = 10
+	SnapshotGroupMaxDeadlineSeconds = 3600
+
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
 	EndpointNetworkInterface = "lhnet2" // RWX volume nfs server endpoint
@@ -358,6 +395,8 @@ const (
 	NOProxy    = "NO_PROXY"
 
 	VirtualHostedStyle = "VIRTUAL_HOSTED_STYLE"
+
+	AWSSignAcceptEncoding = "AWS_SIGN_ACCEPT_ENCODING"
 
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplicas    = "numberOfReplicas"
@@ -463,94 +502,13 @@ func GetDefaultManagerURL() string {
 	return "http://longhorn-backend:" + strconv.Itoa(DefaultAPIPort) + "/v1"
 }
 
-// GetLonghornDataPath returns the process-scoped Longhorn data path.
-// LONGHORN_DATA_PATH is expected to be populated from the configured
-// default-data-path during installation or pod creation. This is an
-// installation-time default rather than a dynamically reloadable setting;
-// when the env var is unset, empty, or invalid, the historical default path
-// is used for backward compatibility.
-func GetLonghornDataPath() string {
-	path := strings.TrimSpace(os.Getenv(LonghornDataPathEnv))
-	if path == "" {
-		return DefaultDataPath
-	}
-	path = filepath.Clean(path)
-	if !IsValidLonghornDataPath(path) {
-		logrus.Warnf("Falling back to default data path %q because %s is unset or invalid", DefaultDataPath, LonghornDataPathEnv)
-		return DefaultDataPath
-	}
-	return path
-}
-
-// GetLonghornControlPath returns the process-scoped Longhorn control path.
-// LONGHORN_CONTROL_PATH is expected to be populated from the configured
-// default-control-path during installation or pod creation. This is an
-// installation-time default rather than a dynamically reloadable setting;
-// when the env var is unset, empty, or invalid, the historical default path
-// is used for backward compatibility.
-func GetLonghornControlPath() string {
-	path := strings.TrimSpace(os.Getenv(LonghornControlPathEnv))
-	if path == "" {
-		return DefaultControlPath
-	}
-	path = filepath.Clean(path)
-	if !IsValidLonghornControlPath(path) {
-		if path == "/dev" || strings.HasPrefix(path, "/dev/") {
-			logrus.Warnf("Falling back to default control path %q because %s cannot point to /dev", DefaultControlPath, LonghornControlPathEnv)
-			return DefaultControlPath
-		}
-		logrus.Warnf("Falling back to default control path %q because %s is unset or invalid", DefaultControlPath, LonghornControlPathEnv)
-		return DefaultControlPath
-	}
-	return path
-}
-
-func IsValidLonghornDataPath(path string) bool {
-	path = filepath.Clean(strings.TrimSpace(path))
-	return path != "." && path != "" && path != string(filepath.Separator) && filepath.IsAbs(path)
-}
-
-func IsValidLonghornControlPath(path string) bool {
-	path = filepath.Clean(strings.TrimSpace(path))
-	if path == "." || path == "" || path == string(filepath.Separator) || !filepath.IsAbs(path) {
-		return false
-	}
-	return path != "/dev" && !strings.HasPrefix(path, "/dev/")
-}
-
-// Defaults to /var/lib/longhorn/engine-binaries when LONGHORN_CONTROL_PATH is unset.
-func GetEngineBinaryDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), EngineBinaryDirectorySubpath)
-}
-
-// Defaults to /var/lib/longhorn/metadata when LONGHORN_CONTROL_PATH is unset.
-func GetMetadataDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), MetadataDirectorySubpath)
-}
-
-// Defaults to /var/lib/longhorn/unix-domain-socket when LONGHORN_CONTROL_PATH is unset.
-func GetUnixDomainSocketDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), UnixDomainSocketDirectorySubpath)
-}
-
-// Defaults to /host/var/lib/longhorn/unix-domain-socket inside the container.
-func GetUnixDomainSocketDirectoryInContainer() string {
-	return filepath.Join(ReplicaHostPrefix,
-		strings.TrimLeft(GetUnixDomainSocketDirectoryOnHost(), string(filepath.Separator)))
-}
-
-// Defaults to /var/lib/longhorn/logs when LONGHORN_CONTROL_PATH is unset.
-func GetDefaultLogDirectoryOnHost() string {
-	return filepath.Join(GetLonghornControlPath(), LogDirectorySubpath)
-}
-
 func GetImageCanonicalName(image string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(image, ":", "-"), "/", "-")
 }
 
 func GetEngineBinaryDirectoryOnHostForImage(image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(GetEngineBinaryDirectoryOnHost(), cname)
+	return filepath.Join(EngineBinaryDirectoryOnHost, cname)
 }
 
 func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
@@ -560,11 +518,7 @@ func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
 
 func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(
-		ReplicaHostPrefix,
-		strings.TrimLeft(GetEngineBinaryDirectoryOnHost(), string(filepath.Separator)),
-		cname,
-	)
+	return filepath.Join(filepath.Join(ReplicaHostPrefix, EngineBinaryDirectoryOnHost), cname)
 }
 
 func EngineBinaryExistOnHostForImage(image string) (bool, error) {
@@ -982,6 +936,44 @@ func GetShareManagerImageChecksumName(image string) string {
 	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
 }
 
+const (
+	// SnapshotGroupMemberSnapshotNameSuffixLength is the number of random
+	// characters after the group name in a member snapshot name.
+	SnapshotGroupMemberSnapshotNameSuffixLength = 8
+
+	// SnapshotGroupNameMaxLength bounds the group name at admission so every
+	// member name fits 63 characters by construction - the label-value
+	// bound (the group name is stamped verbatim as the value of the
+	// longhorn.io/snapshot-group label on every member), minus the 1-character
+	// separator and the random suffix. No truncation happens anywhere.
+	SnapshotGroupNameMaxLength = 63 - 1 - SnapshotGroupMemberSnapshotNameSuffixLength
+)
+
+// GenerateSnapshotGroupMemberSnapshotName generates a member Snapshot name:
+// the group name plus a random suffix, stamped into spec.members once at
+// admission. The name must not repeat when a group name is reused, or a new
+// group could adopt a leftover member of an earlier deleted group with the
+// same name; a random name per group prevents that in practice, the same
+// way member backups are named, and the Ready transition also rejects
+// members created before the group.
+func GenerateSnapshotGroupMemberSnapshotName(groupName string) string {
+	return groupName + "-" + util.UUID()[:SnapshotGroupMemberSnapshotNameSuffixLength]
+}
+
+// GetSnapshotGroupTerminalPhase returns the phase the terminal-phase
+// annotation records, if it carries a valid outcome. The controller and the
+// admission webhook share this: a group the webhook admits as a restore must
+// be one the controller will not take snapshots for.
+func GetSnapshotGroupTerminalPhase(snapshotGroup *longhorn.SnapshotGroup) (longhorn.SnapshotGroupPhase, bool) {
+	switch snapshotGroup.Annotations[SnapshotGroupAnnotationTerminalPhase] {
+	case string(longhorn.SnapshotGroupPhaseReady):
+		return longhorn.SnapshotGroupPhaseReady, true
+	case string(longhorn.SnapshotGroupPhaseFailed):
+		return longhorn.SnapshotGroupPhaseFailed, true
+	}
+	return "", false
+}
+
 func GetOrphanChecksumNameForOrphanedDataStore(nodeID, diskName, diskPath, diskUUID, dataStore string) string {
 	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s-%s-%s", nodeID, diskName, diskPath, diskUUID, dataStore)))
 }
@@ -1261,6 +1253,55 @@ func ValidateReplicaZoneSoftAntiAffinity(value longhorn.ReplicaZoneSoftAntiAffin
 	return nil
 }
 
+// The values of the volumeTopology volume parameter, which pins a volume to a
+// single failure domain resolved at provisioning time.
+const (
+	VolumeTopologyAny      = "any"
+	VolumeTopologyZonal    = "zonal"
+	VolumeTopologyRegional = "regional"
+)
+
+// NodeMatchesTopologyRequirement reports whether a node is in one of the
+// failure domains a volume's replicas may be scheduled in. A node satisfies a
+// term when it matches the non-empty fields of that term, and it only has to
+// satisfy one of them, like the PV node affinity terms the requirement is
+// derived from. An empty requirement leaves the volume unconstrained, so every
+// node matches.
+func NodeMatchesTopologyRequirement(node *longhorn.Node, terms []longhorn.VolumeTopologyTerm) bool {
+	if len(terms) == 0 {
+		return true
+	}
+	for _, term := range terms {
+		if (term.Zone == "" || node.Status.Zone == term.Zone) &&
+			(term.Region == "" || node.Status.Region == term.Region) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTopologyZonePinned reports whether a volume topology requirement confines
+// replica candidates to exactly one zone. A term without a zone (region-only)
+// allows any zone in the region, so it does not pin; terms naming different
+// zones allow spreading across those zones.
+func IsTopologyZonePinned(terms []longhorn.VolumeTopologyTerm) bool {
+	if len(terms) == 0 {
+		return false
+	}
+	zone := ""
+	for _, term := range terms {
+		if term.Zone == "" {
+			return false
+		}
+		if zone == "" {
+			zone = term.Zone
+		} else if term.Zone != zone {
+			return false
+		}
+	}
+	return true
+}
+
 func ValidateReplicaDiskSoftAntiAffinity(value longhorn.ReplicaDiskSoftAntiAffinity) error {
 	if value != longhorn.ReplicaDiskSoftAntiAffinityDefault &&
 		value != longhorn.ReplicaDiskSoftAntiAffinityEnabled &&
@@ -1344,45 +1385,53 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 		if disk.Path == "" {
 			return nil, fmt.Errorf("invalid disk %+v", disk)
 		}
-		diskStat, err := lhns.GetDiskStat(disk.Path)
-		if err != nil {
-			return nil, err
-		}
+
 		for _, vDisk := range validDisks {
 			if vDisk.Path == disk.Path {
 				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
 			}
 		}
 
-		// Set to default disk name
-		if disk.Name == "" {
-			disk.Name = DefaultDiskPrefix + diskStat.DiskID
-		}
-
-		if _, exist := existDiskID[diskStat.DiskID]; exist {
-			return nil, fmt.Errorf(
-				"the disk %v is the same"+
-					"file system with %v, diskID %v",
-				disk.Path, existDiskID[diskStat.DiskID],
-				diskStat.DiskID)
-		}
-
-		existDiskID[diskStat.DiskID] = disk.Path
-
-		if disk.StorageReserved < 0 || disk.StorageReserved > diskStat.StorageMaximum {
+		if disk.StorageReserved < 0 {
 			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
 		}
-		if disk.StorageReserved == 0 {
-			if disk.Type == longhorn.DiskTypeBlock {
-				size, err := getBlockDeviceSize(ReplicaHostPrefix + disk.Path)
-				if err != nil {
-					return nil, err
-				}
-				disk.StorageReserved = int64(size) * storageReservedPercentage / 100
-			} else {
+
+		if disk.Type == longhorn.DiskTypeBlock {
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + util.RandomID()
+			}
+			if disk.DiskDriver == "" {
+				disk.DiskDriver = longhorn.DiskDriverAuto
+			}
+		} else {
+			diskStat, err := lhns.GetDiskStat(disk.Path)
+			if err != nil {
+				return nil, err
+			}
+
+			// Set to default disk name
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + diskStat.DiskID
+			}
+
+			if _, exist := existDiskID[diskStat.DiskID]; exist {
+				return nil, fmt.Errorf(
+					"the disk %v is the same"+
+						"file system with %v, diskID %v",
+					disk.Path, existDiskID[diskStat.DiskID],
+					diskStat.DiskID)
+			}
+
+			existDiskID[diskStat.DiskID] = disk.Path
+
+			if disk.StorageReserved > diskStat.StorageMaximum {
+				return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
+			}
+			if disk.StorageReserved == 0 {
 				disk.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
 			}
 		}
+
 		tags, err := util.ValidateTags(disk.Tags)
 		if err != nil {
 			return nil, err
@@ -1396,25 +1445,6 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 	}
 
 	return validDisks, nil
-}
-
-func getBlockDeviceSize(devicePath string) (uint64, error) {
-	file, err := os.Open(devicePath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open block device at %s: %w", devicePath, err)
-	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			logrus.WithError(closeErr).Warnf("Failed to close block device %s", devicePath)
-		}
-	}()
-	var size uint64
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
-	if errno != 0 {
-		return 0, fmt.Errorf("failed to get block device size for %s: errno=%v", devicePath, errno)
-	}
-
-	return size, nil
 }
 
 func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
@@ -1457,7 +1487,7 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 }
 
 func IsBDF(addr string) bool {
-	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfFormat := "^[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}$"
 	bdfPattern := regexp.MustCompile(bdfFormat)
 	return bdfPattern.MatchString(addr)
 }
@@ -1482,10 +1512,6 @@ func IsPotentialBlockDisk(path string) bool {
 
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	if IsPotentialBlockDisk(dataPath) {
-		size, err := getBlockDeviceSize(dataPath)
-		if err != nil {
-			return nil, err
-		}
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
@@ -1493,7 +1519,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 				DiskDriver:        longhorn.DiskDriverAuto,
 				AllowScheduling:   true,
 				EvictionRequested: false,
-				StorageReserved:   int64(size) * storageReservedPercentage / 100,
+				StorageReserved:   0,
 				Tags:              []string{},
 			},
 		}, nil

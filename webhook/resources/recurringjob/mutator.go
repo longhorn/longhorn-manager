@@ -73,23 +73,7 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 		"recurringJob": recurringjob.Name,
 		"task":         recurringjob.Spec.Task,
 	})
-	switch recurringjob.Spec.Task {
-	case longhorn.RecurringJobTypeSnapshotCleanup, longhorn.RecurringJobTypeFilesystemTrim:
-		if recurringjob.Spec.Retain != 0 {
-			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", recurringjob.Spec.Retain)
-			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
-		}
-	case longhorn.RecurringJobTypeSnapshotDelete:
-		if recurringjob.Spec.Retain < 0 {
-			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", recurringjob.Spec.Retain)
-			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
-		}
-	default:
-		if recurringjob.Spec.Retain < 1 {
-			log.Debugf("Replacing invalid retain value in RecurringJob: from %v to 1", recurringjob.Spec.Retain)
-			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 1}`)
-		}
-	}
+	patchOps = mutateRetainCountAndRetainAge(patchOps, recurringjob, log)
 
 	return patchOps, nil
 }
@@ -121,23 +105,42 @@ func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.
 		"recurringJob": newRecurringjob.Name,
 		"task":         newRecurringjob.Spec.Task,
 	})
-	switch newRecurringjob.Spec.Task {
+	patchOps = mutateRetainCountAndRetainAge(patchOps, newRecurringjob, log)
+
+	return patchOps, nil
+}
+
+func mutateRetainCountAndRetainAge(patchOps admission.PatchOps, recurringJob *longhorn.RecurringJob, log *logrus.Entry) admission.PatchOps {
+	switch recurringJob.Spec.Task {
 	case longhorn.RecurringJobTypeSnapshotCleanup, longhorn.RecurringJobTypeFilesystemTrim:
-		if newRecurringjob.Spec.Retain != 0 {
-			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", newRecurringjob.Spec.Retain)
+		if recurringJob.Spec.Retain != 0 {
+			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", recurringJob.Spec.Retain)
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
+		}
+		if recurringJob.Spec.RetainAge.Duration != 0 {
+			log.Debugf("Replacing ineffective retainAge value in RecurringJob: from %v to 0s", recurringJob.Spec.RetainAge)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retainAge", "value": "0s"}`)
 		}
 	case longhorn.RecurringJobTypeSnapshotDelete:
-		if newRecurringjob.Spec.Retain < 0 {
-			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", newRecurringjob.Spec.Retain)
+		if recurringJob.Spec.Retain < 0 {
+			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", recurringJob.Spec.Retain)
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
 		}
+		if recurringJob.Spec.RetainAge.Duration != 0 {
+			log.Debugf("Replacing ineffective retainAge value in RecurringJob: from %v to 0s", recurringJob.Spec.RetainAge)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retainAge", "value": "0s"}`)
+		}
 	default:
-		if newRecurringjob.Spec.Retain < 1 {
-			log.Debugf("Replacing invalid retain value in RecurringJob: from %v to 1", newRecurringjob.Spec.Retain)
+		if recurringJob.Spec.Retain < 1 {
+			log.Debugf("Replacing invalid retain value in RecurringJob: from %v to 1", recurringJob.Spec.Retain)
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 1}`)
+		}
+		if recurringJob.Spec.RetainAge.Duration <= 0 {
+			// The default value of RetainAge is 0, which means recurring jobs will not start if retention policy is age-based.
+			log.Debugf("Replacing ineffective retainAge value in RecurringJob: from %v to 0s", recurringJob.Spec.RetainAge)
+			patchOps = append(patchOps, `{"op": "add", "path": "/spec/retainAge", "value": "0s"}`)
 		}
 	}
 
-	return patchOps, nil
+	return patchOps
 }
