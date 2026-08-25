@@ -12,11 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
@@ -1262,45 +1260,53 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 		if disk.Path == "" {
 			return nil, fmt.Errorf("invalid disk %+v", disk)
 		}
-		diskStat, err := lhns.GetDiskStat(disk.Path)
-		if err != nil {
-			return nil, err
-		}
+
 		for _, vDisk := range validDisks {
 			if vDisk.Path == disk.Path {
 				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
 			}
 		}
 
-		// Set to default disk name
-		if disk.Name == "" {
-			disk.Name = DefaultDiskPrefix + diskStat.DiskID
-		}
-
-		if _, exist := existDiskID[diskStat.DiskID]; exist {
-			return nil, fmt.Errorf(
-				"the disk %v is the same"+
-					"file system with %v, diskID %v",
-				disk.Path, existDiskID[diskStat.DiskID],
-				diskStat.DiskID)
-		}
-
-		existDiskID[diskStat.DiskID] = disk.Path
-
-		if disk.StorageReserved < 0 || disk.StorageReserved > diskStat.StorageMaximum {
+		if disk.StorageReserved < 0 {
 			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
 		}
-		if disk.StorageReserved == 0 {
-			if disk.Type == longhorn.DiskTypeBlock {
-				size, err := getBlockDeviceSize(ReplicaHostPrefix + disk.Path)
-				if err != nil {
-					return nil, err
-				}
-				disk.StorageReserved = int64(size) * storageReservedPercentage / 100
-			} else {
+
+		if disk.Type == longhorn.DiskTypeBlock {
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + util.RandomID()
+			}
+			if disk.DiskDriver == "" {
+				disk.DiskDriver = longhorn.DiskDriverAuto
+			}
+		} else {
+			diskStat, err := lhns.GetDiskStat(disk.Path)
+			if err != nil {
+				return nil, err
+			}
+
+			// Set to default disk name
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + diskStat.DiskID
+			}
+
+			if _, exist := existDiskID[diskStat.DiskID]; exist {
+				return nil, fmt.Errorf(
+					"the disk %v is the same"+
+						"file system with %v, diskID %v",
+					disk.Path, existDiskID[diskStat.DiskID],
+					diskStat.DiskID)
+			}
+
+			existDiskID[diskStat.DiskID] = disk.Path
+
+			if disk.StorageReserved > diskStat.StorageMaximum {
+				return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
+			}
+			if disk.StorageReserved == 0 {
 				disk.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
 			}
 		}
+
 		tags, err := util.ValidateTags(disk.Tags)
 		if err != nil {
 			return nil, err
@@ -1314,25 +1320,6 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 	}
 
 	return validDisks, nil
-}
-
-func getBlockDeviceSize(devicePath string) (uint64, error) {
-	file, err := os.Open(devicePath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open block device at %s: %w", devicePath, err)
-	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			logrus.WithError(closeErr).Warnf("Failed to close block device %s", devicePath)
-		}
-	}()
-	var size uint64
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
-	if errno != 0 {
-		return 0, fmt.Errorf("failed to get block device size for %s: errno=%v", devicePath, errno)
-	}
-
-	return size, nil
 }
 
 func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
@@ -1375,7 +1362,7 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 }
 
 func IsBDF(addr string) bool {
-	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfFormat := "^[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}$"
 	bdfPattern := regexp.MustCompile(bdfFormat)
 	return bdfPattern.MatchString(addr)
 }
@@ -1400,10 +1387,6 @@ func IsPotentialBlockDisk(path string) bool {
 
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	if IsPotentialBlockDisk(dataPath) {
-		size, err := getBlockDeviceSize(dataPath)
-		if err != nil {
-			return nil, err
-		}
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
@@ -1411,7 +1394,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 				DiskDriver:        longhorn.DiskDriverAuto,
 				AllowScheduling:   true,
 				EvictionRequested: false,
-				StorageReserved:   int64(size) * storageReservedPercentage / 100,
+				StorageReserved:   0,
 				Tags:              []string{},
 			},
 		}, nil
