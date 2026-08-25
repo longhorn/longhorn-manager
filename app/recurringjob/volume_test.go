@@ -54,11 +54,12 @@ func newAttachedRecurringVolume(name, jobName string) *longhorn.Volume {
 	}
 }
 
-// TestStartVolumeJobsSkipsFailedVolumes verifies the core fix for
-// longhorn/longhorn#13623: a per-volume failure (for example, a rebuilding
-// replica blocking snapshot purge) must not abort the whole sweep. Every volume
-// is still attempted, the run returns nil so the process exits zero and the next
-// scheduled run retries, and each failure is surfaced in the logs.
+// TestStartVolumeJobsSkipsFailedVolumes verifies that a per-volume failure (for
+// example, a rebuilding replica blocking snapshot purge) does not abort the
+// whole sweep (longhorn/longhorn#13623): every volume is still attempted and
+// each failure is surfaced in the logs. It also verifies that the sweep still
+// returns a non-nil error so the process exits non-zero and Kubernetes applies
+// the Job's OnFailure/backoff retry (longhorn/longhorn#13587).
 func TestStartVolumeJobsSkipsFailedVolumes(t *testing.T) {
 	assert := assert.New(t)
 
@@ -114,9 +115,10 @@ func TestStartVolumeJobsSkipsFailedVolumes(t *testing.T) {
 
 	err := startVolumeJobs(job, recurringJob, startJob)
 
-	// One volume failing must not fail the run; otherwise the CronJob Job exits
-	// non-zero and re-runs every volume from scratch.
-	assert.NoError(err, "a single volume's failure must not abort the sweep")
+	// A per-volume failure must not abort the sweep, but it must still be
+	// propagated so the CronJob Job exits non-zero and Kubernetes can retry.
+	assert.Error(err, "a failing volume must surface an error from the sweep")
+	assert.ErrorIs(err, rebuildErr)
 
 	sort.Strings(attempted)
 	assert.Equal([]string{"vol-a", "vol-c", "vol-fail"}, attempted,
@@ -163,10 +165,10 @@ func TestStartVolumeJobs(t *testing.T) {
 		Spec: longhorn.RecurringJobSpec{Concurrency: 1},
 	}
 
-	t.Run("swallows a volume worker error", func(t *testing.T) {
-		// A per-volume worker failure must not propagate: it is logged and the
-		// sweep returns nil so the next run retries. Here the real worker path
-		// fails at Volume.ById.
+	t.Run("propagates a volume worker error", func(t *testing.T) {
+		// A per-volume worker failure is logged and propagated so the sweep
+		// returns non-nil and the process exits non-zero. Here the real worker
+		// path fails at Volume.ById.
 		volume := &longhorn.Volume{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      volumeName,
@@ -181,7 +183,7 @@ func TestStartVolumeJobs(t *testing.T) {
 
 		err := StartVolumeJobs(job, recurringJob)
 
-		assert.NoError(t, err, "a per-volume worker error must not abort the sweep")
+		assert.Error(t, err, "a per-volume worker error must be propagated")
 	})
 
 	t.Run("returns nil with no selected volumes", func(t *testing.T) {
