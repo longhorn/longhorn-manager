@@ -80,7 +80,6 @@ const (
 	SettingNameAllowRecurringJobWhileVolumeDetached                     = SettingName("allow-recurring-job-while-volume-detached")
 	SettingNameCreateDefaultDiskLabeledNodes                            = SettingName("create-default-disk-labeled-nodes")
 	SettingNameDefaultDataPath                                          = SettingName("default-data-path")
-	SettingNameDefaultControlPath                                       = SettingName("default-control-path")
 	SettingNameDefaultEngineImage                                       = SettingName("default-engine-image")
 	SettingNameDefaultInstanceManagerImage                              = SettingName("default-instance-manager-image")
 	SettingNameDefaultBackingImageManagerImage                          = SettingName("default-backing-image-manager-image")
@@ -214,7 +213,6 @@ var (
 		SettingNameAllowRecurringJobWhileVolumeDetached,
 		SettingNameCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath,
-		SettingNameDefaultControlPath,
 		SettingNameDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage,
@@ -383,7 +381,6 @@ var (
 		SettingNameAllowRecurringJobWhileVolumeDetached:                     SettingDefinitionAllowRecurringJobWhileVolumeDetached,
 		SettingNameCreateDefaultDiskLabeledNodes:                            SettingDefinitionCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath:                                          SettingDefinitionDefaultDataPath,
-		SettingNameDefaultControlPath:                                       SettingDefinitionDefaultControlPath,
 		SettingNameDefaultEngineImage:                                       SettingDefinitionDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage:                              SettingDefinitionDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage:                          SettingDefinitionDefaultBackingImageManagerImage,
@@ -574,34 +571,14 @@ var (
 	}
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
-		DisplayName: "Default Data Path",
-		Description: "Default path to use for storing data on a host. " +
-			"An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, " +
-			"whereas a path to a block device indicates a block-type disk used by the V2 Data Engine. " +
-			"Bare PCI identifiers (such as '0000:00:1e.0') are not supported here since this setting may be " +
-			"used as a host path for pod mounts. " +
-			"When this setting is a block device path, runtime and control-plane paths are configured " +
-			"separately via the 'default-control-path' setting. Note: This is an installation-time setting " +
-			"and cannot be changed after Longhorn is initialized.",
+		DisplayName:        "Default Data Path",
+		Description:        "Default path to use for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, while a path to a block device indicates a block-type disk used by the V2 Data Engine.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            DefaultDataPath,
-	}
-
-	SettingDefinitionDefaultControlPath = SettingDefinition{
-		DisplayName: "Default Control Path",
-		Description: "Default path used for storing runtime and control-plane artifacts on a host. " +
-			"This setting must be an absolute directory path. Engine binaries, metadata, sockets, and logs " +
-			"are stored under this path for both V1 and V2 engines. Note: This is an installation-time " +
-			"setting and cannot be changed after Longhorn is initialized.",
-		Type:               SettingTypeString,
-		Required:           true,
-		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Default:            DefaultControlPath,
+		Default:            "/var/lib/longhorn/",
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
@@ -2137,7 +2114,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            GetDefaultLogDirectoryOnHost(),
+		Default:            DefaultLogDirectoryOnHost,
 	}
 
 	SettingDefinitionNodeDiskHealthMonitoring = SettingDefinition{
@@ -2991,14 +2968,6 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 		case SettingNameDataEngineCPUMask:
 			if _, err := NormalizeCPUMask(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
-			}
-		case SettingNameDefaultDataPath:
-			if !IsValidLonghornDataPath(strValue) {
-				return fmt.Errorf("the value of %v is invalid", name)
-			}
-		case SettingNameDefaultControlPath:
-			if !IsValidLonghornControlPath(strValue) {
-				return fmt.Errorf("the value of %v is invalid", name)
 			}
 		}
 	}

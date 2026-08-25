@@ -518,19 +518,11 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 												},
 											},
 										},
-										{
-											Name:  types.LonghornDataPathEnv,
-											Value: types.GetLonghornDataPath(),
-										},
-										{
-											Name:  types.LonghornControlPathEnv,
-											Value: types.GetLonghornControlPath(),
-										},
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "engine-binaries",
-											MountPath: types.GetEngineBinaryDirectoryOnHost(),
+											MountPath: types.EngineBinaryDirectoryOnHost,
 										},
 									},
 								},
@@ -540,7 +532,7 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 									Name: "engine-binaries",
 									VolumeSource: corev1.VolumeSource{
 										HostPath: &corev1.HostPathVolumeSource{
-											Path: types.GetEngineBinaryDirectoryOnHost(),
+											Path: types.EngineBinaryDirectoryOnHost,
 										},
 									},
 								},
