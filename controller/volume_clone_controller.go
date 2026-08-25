@@ -22,6 +22,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -39,6 +40,7 @@ type VolumeCloneController struct {
 	eventRecorder record.EventRecorder
 
 	ds         *datastore.DataStore
+	scheduler  *scheduler.ReplicaScheduler
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -59,7 +61,8 @@ func NewVolumeCloneController(
 		namespace:    namespace,
 		controllerID: controllerID,
 
-		ds: ds,
+		ds:        ds,
+		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-clone-controller"}),
@@ -328,53 +331,67 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 			}
 		}
 
-		// The CurrentNodeID holds the 1st priority if it is valid.
-		// The corresponding ticket is implicitly satisfied.
+		preferredNodeID := ""
 		if attachableNodes[v.Status.CurrentNodeID] != nil {
-			log.Debugf("Picked node %v for volume %v clone attachment: currently attached node", v.Status.CurrentNodeID, v.Name)
-			return v.Status.CurrentNodeID, nil
-		}
-
-		// The node already selected by other tickets holds the 2nd priority if it is valid.
-		// Among tickets with the highest priority level, pick the node that appears most
-		// frequently; break ties by sorting node IDs lexicographically.
-		highestPriority := -1
-		nodeCount := map[string]int{}
-		for _, ticket := range va.Spec.AttachmentTickets {
-			if attachableNodes[ticket.NodeID] == nil {
-				continue
-			}
-			priority := longhorn.GetAttacherPriorityLevel(ticket.Type)
-			if priority > highestPriority {
-				highestPriority = priority
-				nodeCount = map[string]int{ticket.NodeID: 1}
-			} else if priority == highestPriority {
-				nodeCount[ticket.NodeID]++
-			}
-		}
-		if len(nodeCount) > 0 {
-			maxCount := 0
-			var candidates []string
-			for nodeID, count := range nodeCount {
-				if count > maxCount {
-					maxCount = count
-					candidates = []string{nodeID}
-				} else if count == maxCount {
-					candidates = append(candidates, nodeID)
+			preferredNodeID = v.Status.CurrentNodeID
+		} else {
+			highestPriority := -1
+			nodeCount := map[string]int{}
+			for _, ticket := range va.Spec.AttachmentTickets {
+				if attachableNodes[ticket.NodeID] == nil {
+					continue
+				}
+				priority := longhorn.GetAttacherPriorityLevel(ticket.Type)
+				if priority > highestPriority {
+					highestPriority = priority
+					nodeCount = map[string]int{ticket.NodeID: 1}
+				} else if priority == highestPriority {
+					nodeCount[ticket.NodeID]++
 				}
 			}
-			sort.Strings(candidates)
-			log.Debugf("Picked node %v for volume %v clone attachment: majority node among highest-priority tickets", candidates[0], v.Name)
-			return candidates[0], nil
+			if len(nodeCount) > 0 {
+				maxCount := 0
+				var candidates []string
+				for nodeID, count := range nodeCount {
+					if count > maxCount {
+						maxCount = count
+						candidates = []string{nodeID}
+					} else if count == maxCount {
+						candidates = append(candidates, nodeID)
+					}
+				}
+				sort.Strings(candidates)
+				preferredNodeID = candidates[0]
+			} else if attachableNodes[v.Status.OwnerID] != nil {
+				preferredNodeID = v.Status.OwnerID
+			}
 		}
 
-		// The node of v.Status.OwnerID holds the 3rd priority if it is valid
-		if attachableNodes[v.Status.OwnerID] != nil {
-			log.Debugf("Picked node %v for volume %v clone attachment: volume owner node", v.Status.OwnerID, v.Name)
-			return v.Status.OwnerID, nil
+		needsScheduler := len(v.Spec.NodeSelector) > 0 ||
+			len(v.Spec.DiskSelector) > 0 ||
+			v.Spec.DataLocality == longhorn.DataLocalityStrictLocal ||
+			v.Spec.BackingImage != "" ||
+			v.Spec.CloneMode == longhorn.CloneModeLinkedClone
+
+		if needsScheduler {
+			chosenNodeID, err = vcc.scheduler.GetReadyNodeForVolumeAttach(v, preferredNodeID)
+			if err != nil {
+				return "", err
+			}
+			if chosenNodeID == "" {
+				log.Warnf("Cannot find a schedulable node for volume %v clone attachment", v.Name)
+				vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+				return "", nil
+			}
+			log.Debugf("Picked node %v for volume %v clone attachment via scheduler (preferred %v)", chosenNodeID, v.Name, preferredNodeID)
+			return chosenNodeID, nil
 		}
 
-		// Otherwise, pick up the 1st node in sorted order for determinism
+		if preferredNodeID != "" {
+			log.Debugf("Picked node %v for volume %v clone attachment: preferred attachable node", preferredNodeID, v.Name)
+			return preferredNodeID, nil
+		}
+
 		candidates := make([]string, 0, len(attachableNodes))
 		for n := range attachableNodes {
 			candidates = append(candidates, n)
