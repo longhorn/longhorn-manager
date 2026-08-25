@@ -71,16 +71,12 @@ func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob sta
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
-			// A per-volume failure (for example, a rebuilding replica blocking
-			// snapshot purge) must not abort the whole sweep. Log it and continue
-			// so the next scheduled run retries this volume instead of the process
-			// exiting non-zero and re-running every volume from scratch. Task
-			// handlers (doSnapshotCleanup, doRecurringFilesystemTrim) already emit
-			// their own Warning events, so we don't record a duplicate here.
-			if jobErr := startJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups); jobErr != nil {
-				job.logger.WithError(jobErr).WithField("volume", startJobVolumeName).Warn("Failed to run recurring job for volume; will retry on the next run")
+			// errgroup.Group has no context here, so returning an error does not stop sibling volume jobs.
+			jobErr := startJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups)
+			if jobErr != nil {
+				job.logger.WithError(jobErr).WithField("volume", startJobVolumeName).Warn("Failed to run recurring job for volume")
 			}
-			return nil
+			return jobErr
 		})
 	}
 
