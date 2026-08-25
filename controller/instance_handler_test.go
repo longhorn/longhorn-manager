@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -26,8 +28,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -679,4 +679,178 @@ func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
 	default:
 		c.Fatal("expected one FailedStarting event")
 	}
+}
+
+// stubInstanceManagerHandler is a configurable InstanceManagerHandler stub that records
+// whether CreateInstance and DeleteInstance were invoked.
+type stubInstanceManagerHandler struct {
+	getInstance  *longhorn.InstanceProcess
+	getErr       error
+	createCalled bool
+	deleteCalled bool
+	createErr    error
+	deleteErr    error
+}
+
+func (h *stubInstanceManagerHandler) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+	return h.getInstance, h.getErr
+}
+
+func (h *stubInstanceManagerHandler) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+	h.createCalled = true
+	if h.createErr != nil {
+		return nil, h.createErr
+	}
+	return &longhorn.InstanceProcess{}, nil
+}
+
+func (h *stubInstanceManagerHandler) DeleteInstance(obj interface{}) error {
+	h.deleteCalled = true
+	return h.deleteErr
+}
+
+func (h *stubInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
+	return nil, nil, fmt.Errorf("LogInstance is not mocked")
+}
+
+// TestCreateInstanceReapsStaleStoppedV1Record covers longhorn/longhorn#13687: a stale
+// `stopped` v1 process record makes GetInstance succeed, which must not turn createInstance
+// into a silent no-op. The stale record has to be reaped so the next reconcile can recreate.
+func (s *TestSuite) TestCreateInstanceReapsStaleStoppedV1Record(c *C) {
+	newEngineObj := func() *longhorn.Engine {
+		return &longhorn.Engine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      ExistingInstance,
+				Namespace: TestNamespace,
+			},
+		}
+	}
+
+	testCases := map[string]struct {
+		dataEngine   longhorn.DataEngineType
+		getInstance  *longhorn.InstanceProcess
+		getErr       error
+		expectDelete bool
+		expectCreate bool
+	}{
+		"v1 stale stopped record is reaped, not created": {
+			dataEngine:   longhorn.DataEngineTypeV1,
+			getInstance:  &longhorn.InstanceProcess{Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateStopped}},
+			getErr:       nil,
+			expectDelete: true,
+			expectCreate: false,
+		},
+		"v1 running record is left untouched": {
+			dataEngine:   longhorn.DataEngineTypeV1,
+			getInstance:  &longhorn.InstanceProcess{Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateRunning}},
+			getErr:       nil,
+			expectDelete: false,
+			expectCreate: false,
+		},
+		"v1 missing record proceeds to create": {
+			dataEngine:   longhorn.DataEngineTypeV1,
+			getInstance:  nil,
+			getErr:       fmt.Errorf("cannot find process"),
+			expectDelete: false,
+			expectCreate: true,
+		},
+		"v2 stopped instance proceeds to create": {
+			dataEngine:   longhorn.DataEngineTypeV2,
+			getInstance:  nil,
+			getErr:       fmt.Errorf("instance is stopped"),
+			expectDelete: false,
+			expectCreate: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing createInstance stale stopped record: %v\n", name)
+
+		stub := &stubInstanceManagerHandler{
+			getInstance: tc.getInstance,
+			getErr:      tc.getErr,
+		}
+		h := &InstanceHandler{
+			instanceManagerHandler: stub,
+			eventRecorder:          record.NewFakeRecorder(10),
+		}
+
+		err := h.createInstance(ExistingInstance, tc.dataEngine, newEngineObj())
+		c.Assert(err, IsNil)
+		c.Assert(stub.deleteCalled, Equals, tc.expectDelete)
+		c.Assert(stub.createCalled, Equals, tc.expectCreate)
+	}
+}
+
+// registryInstanceManagerHandler models a v1 process registry: GetInstance answers for a
+// recorded instance (a stopped record answers successfully, matching ProcessGet), DeleteInstance
+// removes the record, and CreateInstance registers a running one but fails if the name is still
+// taken (matching registerProcess returning AlreadyExists). It is used to drive the full recovery
+// sequence across successive reconciles.
+type registryInstanceManagerHandler struct {
+	instance *longhorn.InstanceProcess // nil means the process is not registered
+	calls    []string
+}
+
+func (h *registryInstanceManagerHandler) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+	if h.instance == nil {
+		return nil, fmt.Errorf("cannot find process")
+	}
+	return h.instance, nil
+}
+
+func (h *registryInstanceManagerHandler) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+	if h.instance != nil {
+		return nil, fmt.Errorf("already exists")
+	}
+	h.instance = &longhorn.InstanceProcess{Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateRunning}}
+	h.calls = append(h.calls, "create")
+	return h.instance, nil
+}
+
+func (h *registryInstanceManagerHandler) DeleteInstance(obj interface{}) error {
+	h.instance = nil
+	h.calls = append(h.calls, "delete")
+	return nil
+}
+
+func (h *registryInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
+	return nil, nil, fmt.Errorf("LogInstance is not mocked")
+}
+
+// TestCreateInstanceRecoversFromStaleStoppedV1Record drives the end-to-end recovery sequence for
+// longhorn/longhorn#13687: starting from a leaked `stopped` v1 process record, the stale record is
+// reaped, the following reconcile recreates the engine successfully, and a healthy instance then
+// stays a stable no-op. A regression in the reap-then-recreate wiring would leave the engine
+// wedged and fail these assertions.
+func (s *TestSuite) TestCreateInstanceRecoversFromStaleStoppedV1Record(c *C) {
+	engine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ExistingInstance,
+			Namespace: TestNamespace,
+		},
+	}
+	// Start with a leaked stopped v1 process record in the registry.
+	stub := &registryInstanceManagerHandler{
+		instance: &longhorn.InstanceProcess{Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateStopped}},
+	}
+	h := &InstanceHandler{
+		instanceManagerHandler: stub,
+		eventRecorder:          record.NewFakeRecorder(10),
+	}
+
+	// Reconcile 1: the stale stopped record is reaped instead of being treated as already created.
+	c.Assert(h.createInstance(ExistingInstance, longhorn.DataEngineTypeV1, engine), IsNil)
+	c.Assert(stub.instance, IsNil)
+	c.Assert(stub.calls, DeepEquals, []string{"delete"})
+
+	// Reconcile 2: with the record gone, the engine is recreated successfully.
+	c.Assert(h.createInstance(ExistingInstance, longhorn.DataEngineTypeV1, engine), IsNil)
+	c.Assert(stub.instance, NotNil)
+	c.Assert(stub.instance.Status.State, Equals, longhorn.InstanceStateRunning)
+	c.Assert(stub.calls, DeepEquals, []string{"delete", "create"})
+
+	// Reconcile 3: a running instance is a stable no-op, so the loop converges without churning.
+	c.Assert(h.createInstance(ExistingInstance, longhorn.DataEngineTypeV1, engine), IsNil)
+	c.Assert(stub.calls, DeepEquals, []string{"delete", "create"})
 }

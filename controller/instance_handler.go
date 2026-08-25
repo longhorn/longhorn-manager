@@ -542,8 +542,16 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 }
 
 func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhorn.DataEngineType, obj runtime.Object) error {
-	_, err := h.instanceManagerHandler.GetInstance(obj)
+	instance, err := h.instanceManagerHandler.GetInstance(obj)
 	if err == nil {
+		// For a v1 data engine, a stale `stopped` process record still answers GetInstance
+		// successfully, so create would short-circuit into a silent no-op forever and the
+		// volume stays stuck in attaching (longhorn/longhorn#13687). Reap the stale record
+		// here so the next reconcile can recreate the instance from a clean state.
+		if types.IsDataEngineV1(dataEngine) && instance != nil && instance.Status.State == longhorn.InstanceStateStopped {
+			logrus.Warnf("Reaping stale stopped instance %v before recreating it", instanceName)
+			return h.deleteInstance(instanceName, obj)
+		}
 		return nil
 	}
 	isStoppedV2Engine := types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)
