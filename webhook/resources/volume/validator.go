@@ -926,32 +926,51 @@ func (v *volumeValidator) validateLinkedCloneInstanceManagerVersion(vol *longhor
 	return nil
 }
 
-// validateLinkedCloneSize rejects a linked-clone volume creation when spec.size
-// is set to a value that does not match the source snapshot RestoreSize.
-// spec.size == 0 is always accepted; the mutator fills it in automatically.
-// Falls back to the source volume spec.size when RestoreSize is not yet synced.
-func (v *volumeValidator) validateLinkedCloneSize(vol *longhorn.Volume) error {
-	if vol.Spec.Size == 0 {
-		return nil // mutator will fill in the correct size
+// linkedCloneSourceSize returns the size a linked clone inherits from its source:
+// the source snapshot's RestoreSize, or the source volume's spec.size when no
+// snapshot is named. It fails when the size is not known yet, since the source
+// volume's current size is not a stand-in for an unsynced RestoreSize: the source
+// may have been expanded after the snapshot was taken.
+func linkedCloneSourceSize(ds *datastore.DataStore, dataSource longhorn.VolumeDataSource) (int64, error) {
+	srcVolName := types.GetVolumeName(dataSource)
+	if srcVolName == "" {
+		return 0, werror.NewInvalidError(fmt.Sprintf("cannot parse source volume name from dataSource %v", dataSource), ".spec.dataSource")
 	}
-	var expectedSize int64
-	snapName := types.GetSnapshotName(vol.Spec.DataSource)
-	if snapName != "" {
-		snap, err := v.ds.GetSnapshotRO(snapName)
+
+	snapName := types.GetSnapshotName(dataSource)
+	if snapName == "" {
+		// The entrypoint snapshot is taken from the source volume as it stands now.
+		srcVol, err := ds.GetVolumeRO(srcVolName)
 		if err != nil {
-			return werror.NewInternalError(errors.Wrapf(err, "failed to get source snapshot %v", snapName).Error())
+			return 0, werror.NewInvalidError(errors.Wrapf(err, "failed to get source volume %v", srcVolName).Error(), ".spec.dataSource")
 		}
-		expectedSize = snap.Status.RestoreSize
+		return srcVol.Spec.Size, nil
 	}
-	if expectedSize == 0 {
-		// No snapshot specified or RestoreSize not yet synced; fall back to the source volume spec.size.
-		srcVolName := types.GetVolumeName(vol.Spec.DataSource)
-		if srcVolName != "" {
-			srcVol, srcErr := v.ds.GetVolumeRO(srcVolName)
-			if srcErr == nil {
-				expectedSize = srcVol.Spec.Size
-			}
-		}
+
+	snap, err := ds.GetSnapshotRO(snapName)
+	if err != nil {
+		return 0, werror.NewInvalidError(errors.Wrapf(err, "failed to get source snapshot %v", snapName).Error(), ".spec.dataSource")
+	}
+	if snap.Status.RestoreSize == 0 {
+		return 0, werror.NewInvalidError(fmt.Sprintf(
+			"source snapshot %v of volume %v has no restore size yet, please retry once it is synced",
+			snapName, srcVolName), ".spec.dataSource")
+	}
+	return snap.Status.RestoreSize, nil
+}
+
+// validateLinkedCloneSize rejects a linked-clone volume whose spec.size does not
+// match the size it will inherit from its source.
+func (v *volumeValidator) validateLinkedCloneSize(vol *longhorn.Volume) error {
+	// A restored volume's size is set from the backup by the mutator, so there is no
+	// user input left to check here.
+	if vol.Spec.FromBackup != "" {
+		return nil
+	}
+
+	expectedSize, err := linkedCloneSourceSize(v.ds, vol.Spec.DataSource)
+	if err != nil {
+		return err
 	}
 	if expectedSize > 0 && vol.Spec.Size != expectedSize {
 		return werror.NewInvalidError(fmt.Sprintf(
