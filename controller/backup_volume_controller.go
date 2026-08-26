@@ -454,6 +454,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageName = backupVolumeInfo.BackingImageName
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
+	backupVolume.Status.LinkedCloneSourceVolume = backupVolumeInfo.LinkedCloneSourceVolume
+	backupVolume.Status.LinkedCloneSourceSnapshot = backupVolumeInfo.LinkedCloneSourceSnapshot
 	backupVolume.Status.LastSyncedAt = syncTime
 	backupVolume.Status.Size, err = getCorrectedEncryptedVolumeSize(backupVolumeInfo.Size, backupVolumeInfo.Labels)
 	if err != nil {
