@@ -862,3 +862,75 @@ func (s *TestSuite) TestCreateInstanceRecoversFromStaleStoppedV1Record(c *C) {
 	c.Assert(h.createInstance(ExistingInstance, longhorn.DataEngineTypeV1, engine), IsNil)
 	c.Assert(stub.calls, DeepEquals, []string{"delete", "create"})
 }
+
+// TestReconcileInstanceStateKeepsSalvageRequestedWhenReapingStaleStoppedV1Record drives the reap
+// through the full ReconcileInstanceState path to prove the salvage flag is preserved: when a stale
+// stopped v1 record coexists with SalvageRequested=true, the first reconcile only reaps the record
+// and must leave SalvageExecuted=false (so the volume controller does not clear SalvageRequested
+// before the salvaged instance exists); the next reconcile recreates the instance and only then
+// sets SalvageExecuted=true. A regression that set SalvageExecuted after a reap would fail here.
+func (s *TestSuite) TestReconcileInstanceStateKeepsSalvageRequestedWhenReapingStaleStoppedV1Record(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer().Add(ei)
+	c.Assert(err, IsNil)
+
+	imImageSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), newDefaultInstanceManagerImageSetting(), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer().Add(imImageSetting)
+	c.Assert(err, IsNil)
+
+	im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), newInstanceManager(
+		TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1,
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
+		false,
+	), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im)
+	c.Assert(err, IsNil)
+
+	pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
+	err = informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer().Add(pod)
+	c.Assert(err, IsNil)
+	_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	node, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node)
+	c.Assert(err, IsNil)
+
+	h := newTestInstanceHandler(lhClient, kubeClient, extensionsClient, informerFactories)
+	// Start with a leaked stopped v1 process record so the first createInstance reaps it.
+	registry := &registryInstanceManagerHandler{
+		instance: &longhorn.InstanceProcess{Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateStopped}},
+	}
+	h.instanceManagerHandler = registry
+
+	engine := newEngine(ExistingInstance, "", TestInstanceManagerName, TestNode1, "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateRunning)
+	engine.Spec.SalvageRequested = true
+
+	// Reconcile 1: the stale stopped record is reaped, and SalvageExecuted must stay false so the
+	// salvage request survives until the instance is actually recreated.
+	c.Assert(h.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus), IsNil)
+	c.Assert(registry.calls, DeepEquals, []string{"delete"})
+	c.Assert(engine.Status.SalvageExecuted, Equals, false)
+	c.Assert(engine.Spec.SalvageRequested, Equals, true)
+	c.Assert(engine.Status.CurrentState, Equals, longhorn.InstanceStateStopped)
+
+	// Reconcile 2: with the record gone the instance is recreated, and only now is SalvageExecuted set.
+	c.Assert(h.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus), IsNil)
+	c.Assert(registry.calls, DeepEquals, []string{"delete", "create"})
+	c.Assert(engine.Status.SalvageExecuted, Equals, true)
+}
