@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -148,6 +149,95 @@ func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 		vol.Spec.MigrationNodeID == "" &&
 		vol.Status.CurrentMigrationNodeID == "" &&
 		vol.Status.State == longhorn.VolumeStateDetached
+}
+
+// pickAttachmentTicketNodeID chooses the node an internal controller should put its
+// attachment ticket on, in descending order of preference:
+//
+//  1. vol.Status.CurrentNodeID, the node the volume is already attached to.
+//  2. The node the existing tickets have already settled on: among the tickets at the
+//     highest attacher priority level, the node named most often, ties broken by node
+//     name so the choice is stable across reconciles.
+//  3. vol.Status.OwnerID, the node running the volume's controller.
+//  4. The first ready node in sorted order, again for stability.
+//
+// Only nodes with a ready instance manager for the volume's data engine are eligible at
+// any step. "" is returned when none is, which is not an error: the caller decides
+// whether to retry, since a node may simply not be ready yet.
+//
+// The first choice is the one that carries weight, for a reason beyond avoiding a
+// pointless move. A ticket is only marked satisfied when its NodeID matches
+// vol.Status.CurrentNodeID, and shouldDoDetach detaches the volume as soon as no ticket
+// names the node it is currently on. A ticket parked on any other node is therefore both
+// permanently unsatisfied and useless as protection: when whichever attacher was holding
+// the volume drops its own ticket, the volume detaches and the operation in flight is
+// interrupted. Landing on the current node instead keeps the ticket satisfied and lets it
+// hold the volume in place on its own.
+func pickAttachmentTicketNodeID(ds *datastore.DataStore, log logrus.FieldLogger,
+	vol *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
+	attachableNodes, err := ds.ListNodesWithReadyInstanceManagerRO(vol.Spec.DataEngine)
+	if err != nil {
+		return "", err
+	}
+
+	// The currently attached node holds the 1st priority: the ticket is then satisfied
+	// right away and keeps the volume where it already is.
+	if attachableNodes[vol.Status.CurrentNodeID] != nil {
+		log.Debugf("Picked node %v for volume %v attachment ticket: currently attached node", vol.Status.CurrentNodeID, vol.Name)
+		return vol.Status.CurrentNodeID, nil
+	}
+
+	// Otherwise follow the node other tickets have already settled on, taking the most
+	// common node among the highest-priority tickets and breaking ties by name.
+	highestPriority := -1
+	nodeCount := map[string]int{}
+	for _, ticket := range va.Spec.AttachmentTickets {
+		if attachableNodes[ticket.NodeID] == nil {
+			continue
+		}
+		priority := longhorn.GetAttacherPriorityLevel(ticket.Type)
+		if priority > highestPriority {
+			highestPriority = priority
+			nodeCount = map[string]int{ticket.NodeID: 1}
+		} else if priority == highestPriority {
+			nodeCount[ticket.NodeID]++
+		}
+	}
+	if len(nodeCount) > 0 {
+		maxCount := 0
+		var candidates []string
+		for nodeID, count := range nodeCount {
+			if count > maxCount {
+				maxCount = count
+				candidates = []string{nodeID}
+			} else if count == maxCount {
+				candidates = append(candidates, nodeID)
+			}
+		}
+		sort.Strings(candidates)
+		log.Debugf("Picked node %v for volume %v attachment ticket: majority node among highest-priority tickets", candidates[0], vol.Name)
+		return candidates[0], nil
+	}
+
+	// The volume owner holds the 3rd priority if it can host the volume.
+	if attachableNodes[vol.Status.OwnerID] != nil {
+		log.Debugf("Picked node %v for volume %v attachment ticket: volume owner node", vol.Status.OwnerID, vol.Name)
+		return vol.Status.OwnerID, nil
+	}
+
+	// Otherwise pick the first ready node in sorted order, for determinism.
+	candidates := make([]string, 0, len(attachableNodes))
+	for nodeID := range attachableNodes {
+		candidates = append(candidates, nodeID)
+	}
+	sort.Strings(candidates)
+	if len(candidates) > 0 {
+		log.Debugf("Picked node %v for volume %v attachment ticket: first available ready node", candidates[0], vol.Name)
+		return candidates[0], nil
+	}
+
+	log.Warnf("Cannot find a valid node for the attachment ticket of volume %v", vol.Name)
+	return "", nil
 }
 
 func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nodeID, disableFrontend string, attacherType longhorn.AttacherType) {
