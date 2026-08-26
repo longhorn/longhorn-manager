@@ -922,19 +922,19 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 	// engines are disabled, instance-manager pods might already have been removed.
 	// Ref: https://github.com/longhorn/longhorn/issues/11934
 	if bt.DeletionTimestamp.IsZero() {
-		nodesWithRunningIM, err := btc.listNodesWithRunningInstanceManager()
+		eligibleNodes, err := btc.ds.ListNodesEligibleForBackupReconcileRO(defaultEngineImage)
 		if err != nil {
 			return false, err
 		}
-		// Only require a running instance manager when at least one node has one to fall back to.
-		// If no node has a running instance manager (e.g. a full outage), keep the engine-image-only
+		// Only require a running instance manager when at least one node can actually serve the
+		// reconcile. If no node is eligible (e.g. a full outage), keep the engine-image-only
 		// behavior so the backup target still gets an owner that surfaces the error and retries,
 		// instead of being left ownerless and silently stalled.
-		if len(nodesWithRunningIM) > 0 {
-			_, ownerIMRunning := nodesWithRunningIM[bt.Status.OwnerID]
-			_, nodeIMRunning := nodesWithRunningIM[btc.controllerID]
-			currentOwnerAvailable = currentOwnerAvailable && ownerIMRunning
-			currentNodeAvailable = currentNodeAvailable && nodeIMRunning
+		if len(eligibleNodes) > 0 {
+			_, ownerEligible := eligibleNodes[bt.Status.OwnerID]
+			_, nodeEligible := eligibleNodes[btc.controllerID]
+			currentOwnerAvailable = ownerEligible
+			currentNodeAvailable = nodeEligible
 		}
 	}
 
@@ -943,23 +943,6 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
-}
-
-// listNodesWithRunningInstanceManager returns the set of nodes that have a running instance
-// manager for any enabled data engine. A backup target reconcile can be served by any such node,
-// so the union across data engines is used to decide ownership.
-func (btc *BackupTargetController) listNodesWithRunningInstanceManager() (map[string]*longhorn.Node, error) {
-	nodesWithRunningIM := map[string]*longhorn.Node{}
-	for dataEngine := range btc.ds.GetDataEngines() {
-		nodes, err := btc.ds.ListNodesWithReadyInstanceManagerRO(dataEngine)
-		if err != nil {
-			return nil, err
-		}
-		for name, node := range nodes {
-			nodesWithRunningIM[name] = node
-		}
-	}
-	return nodesWithRunningIM, nil
 }
 
 // cleanupBackupVolumes deletes all BackupVolume CRs
