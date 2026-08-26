@@ -71,10 +71,12 @@ type Volume struct {
 	BackupTargetName                string                                 `json:"backupTargetName"`
 	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`
 
-	DiskSelector         []string                      `json:"diskSelector"`
-	NodeSelector         []string                      `json:"nodeSelector"`
-	TopologyRequirement  []longhorn.VolumeTopologyTerm `json:"topologyRequirement"`
-	RecurringJobSelector []longhorn.VolumeRecurringJob `json:"recurringJobSelector"`
+	DiskSelector              []string                           `json:"diskSelector"`
+	NodeSelector              []string                           `json:"nodeSelector"`
+	TopologyRequirement       []longhorn.VolumeTopologyTerm      `json:"topologyRequirement"`
+	VolumeAntiAffinity        *longhorn.VolumeAntiAffinity       `json:"volumeAntiAffinity"`
+	VolumeAntiAffinityFromPod longhorn.VolumeAntiAffinityFromPod `json:"volumeAntiAffinityFromPod"`
+	RecurringJobSelector      []longhorn.VolumeRecurringJob      `json:"recurringJobSelector"`
 
 	NumberOfReplicas           int                         `json:"numberOfReplicas"`
 	ReplicaAutoBalance         longhorn.ReplicaAutoBalance `json:"replicaAutoBalance"`
@@ -866,6 +868,7 @@ func NewSchema() *client.Schemas {
 	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
 	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
 	kubernetesStatusSchema(schemas.AddType("kubernetesStatus", longhorn.KubernetesStatus{}))
+	schemas.AddType("volumeAntiAffinity", longhorn.VolumeAntiAffinity{})
 	backupTargetListOutputSchema(schemas.AddType("backupTargetListOutput", BackupTargetListOutput{}))
 	backupVolumeListOutputSchema(schemas.AddType("backupVolumeListOutput", BackupVolumeListOutput{}))
 	backupListOutputSchema(schemas.AddType("backupListOutput", BackupListOutput{}))
@@ -1216,6 +1219,13 @@ func settingSchema(setting *client.Schema) {
 func volumeSchema(volume *client.Schema) {
 	volume.CollectionMethods = []string{"GET", "POST"}
 	volume.ResourceMethods = []string{"GET", "DELETE"}
+	// Pointer fields are not picked up by the schema reflection and would be
+	// dropped from responses without an explicit entry.
+	volume.ResourceFields["volumeAntiAffinity"] = client.Field{
+		Type:     "volumeAntiAffinity",
+		Nullable: true,
+		Create:   true,
+	}
 	volume.ResourceActions = map[string]client.Action{
 		"attach": {
 			Input:  "attachInput",
@@ -1918,6 +1928,8 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		DiskSelector:                    v.Spec.DiskSelector,
 		NodeSelector:                    v.Spec.NodeSelector,
 		TopologyRequirement:             v.Spec.TopologyRequirement,
+		VolumeAntiAffinity:              v.Spec.VolumeAntiAffinity,
+		VolumeAntiAffinityFromPod:       v.Spec.VolumeAntiAffinityFromPod,
 		RestoreVolumeRecurringJob:       v.Spec.RestoreVolumeRecurringJob,
 		FreezeFilesystemForSnapshot:     v.Spec.FreezeFilesystemForSnapshot,
 		BackupTargetName:                v.Spec.BackupTargetName,

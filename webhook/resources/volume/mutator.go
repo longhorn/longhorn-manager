@@ -437,6 +437,9 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
 	}
+	if string(volume.Spec.VolumeAntiAffinityFromPod) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/volumeAntiAffinityFromPod", "value": "%s"}`, longhorn.VolumeAntiAffinityFromPodDefault))
+	}
 	// A volume pinned to a single zone by its topology requirement must keep
 	// replicaZoneSoftAntiAffinity enabled: zone anti-affinity can never be
 	// satisfied within one zone (see the volume validator). "ignored" would

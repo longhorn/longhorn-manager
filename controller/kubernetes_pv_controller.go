@@ -202,6 +202,13 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	existingVolume := volume.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
+		if err == nil && !reflect.DeepEqual(existingVolume.Spec, volume.Spec) {
+			var updated *longhorn.Volume
+			if updated, err = kc.ds.UpdateVolume(volume); err == nil {
+				updated.Status = volume.Status
+				volume = updated
+			}
+		}
 		if err == nil && !reflect.DeepEqual(existingVolume.Status, volume.Status) {
 			_, err = kc.ds.UpdateVolumeStatus(volume)
 		}
@@ -259,6 +266,48 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	}
 	kc.setWorkloads(ks, pods)
 
+	if ks.PVStatus == string(corev1.VolumeBound) {
+		return kc.syncVolumeAntiAffinityInheritance(volume, pods)
+	}
+	return nil
+}
+
+// syncVolumeAntiAffinityInheritance derives the volume's anti-affinity from the
+// pod using it and releases the scheduling hold set at creation. The hold is
+// released whenever the PV is bound, even without a pod or with the setting
+// off, so a volume never stays unschedulable because of it.
+func (kc *KubernetesPVController) syncVolumeAntiAffinityInheritance(volume *longhorn.Volume, pods []*corev1.Pod) error {
+	setting, err := kc.ds.GetSettingAsBool(types.SettingNameVolumeAntiAffinityFromPod)
+	if err != nil {
+		return err
+	}
+	if types.IsVolumeAntiAffinityFromPodEnabled(volume.Spec.VolumeAntiAffinityFromPod, setting) {
+		live := []*corev1.Pod{}
+		for _, pod := range pods {
+			if pod.DeletionTimestamp == nil {
+				live = append(live, pod)
+			}
+		}
+		switch {
+		case len(live) == 1:
+			// The field follows the pod while inheritance is in effect: rules
+			// go away with the declarations that produced them.
+			volume.Spec.VolumeAntiAffinity = types.DeriveVolumeAntiAffinityFromPod(live[0])
+			return nil
+		case len(live) > 1:
+			// Several pods reference the PVC (e.g. a rolling update); the next
+			// pod change re-syncs once a single pod is left.
+			kc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonSkippedAntiAffinityInheritance,
+				"Skipped deriving anti-affinity: %d pods reference PVC %v/%v", len(live), volume.Status.KubernetesStatus.Namespace, volume.Status.KubernetesStatus.PVCName)
+		}
+	}
+	if aa := volume.Spec.VolumeAntiAffinity; aa != nil && aa.PendingInheritance {
+		if len(aa.Labels) == 0 && len(aa.Selectors) == 0 {
+			volume.Spec.VolumeAntiAffinity = nil
+		} else {
+			aa.PendingInheritance = false
+		}
+	}
 	return nil
 }
 
