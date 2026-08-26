@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.26.0@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
-FROM registry.suse.com/bci/golang:1.26@sha256:f8e55755eb0254b1ce0874eb58b3862edb1f4ff5509df68b2fb3fbbbe6e0e8eb AS builder
+FROM registry.suse.com/bci/golang:1.26@sha256:f6f04957fbc16399c76b1e8266cc7d0f3b4a5434b824fb251d7e3ae559d6a910 AS builder
 
 ARG LONGHORN_TWO_MINOR_UPGRADE_DISTROS
 ENV LONGHORN_TWO_MINOR_UPGRADE_DISTROS=${LONGHORN_TWO_MINOR_UPGRADE_DISTROS}
