@@ -21,6 +21,7 @@ import (
 
 	btypes "github.com/longhorn/backupstore/types"
 	butil "github.com/longhorn/backupstore/util"
+	commonlonghorn "github.com/longhorn/go-common-libs/longhorn"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/api"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
@@ -780,6 +781,35 @@ func (s *Server) ReplicaBackupCreate(ctx context.Context, req *spdkrpc.BackupCre
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find replica %v for volume %v backup creation", req.ReplicaName, req.VolumeName)
 	}
 
+	// Whether a backup is a linked-clone delta is decided by the replica that
+	// produces it, not by the volume's clone mode: a clone replica that lost its
+	// entrypoint is rebuilt as a normal replica (see Engine.replicaAddStart), and
+	// its backup is self-contained.  Everything needed to describe the source is
+	// already on the replica, so nothing has to be passed in: the clone entrypoint
+	// records the source snapshot and the source replica, and the volume prefix of
+	// that replica name identifies the source volume.
+	linkedCloneSourceVolume, linkedCloneSourceSnapshot := "", ""
+	if cloneInfo := replica.Get().GetLinkedCloneInfo(); cloneInfo != nil {
+		srcReplicaName := cloneInfo.GetSourceReplicaName()
+		linkedCloneSourceSnapshot = cloneInfo.GetSourceSnapshotName()
+
+		linkedCloneSourceVolume, err = commonlonghorn.GetVolumeNameFromReplicaCRName(srcReplicaName)
+		// A linked-clone backup only holds the data the clone wrote itself, so it
+		// is restorable only by re-establishing the link to the source.  Refuse to
+		// produce one that cannot say where that source is; it would silently
+		// restore to incomplete data.
+		if err != nil {
+			return nil, grpcstatus.Errorf(grpccodes.Internal,
+				"failed to get the linked-clone source volume of replica %v for backup %v: %v",
+				req.ReplicaName, backupName, err)
+		}
+		if linkedCloneSourceSnapshot == "" {
+			return nil, grpcstatus.Errorf(grpccodes.Internal,
+				"replica %v is a linked clone of source replica %v but reports no source snapshot for backup %v",
+				req.ReplicaName, srcReplicaName, backupName)
+		}
+	}
+
 	var backup *Backup
 	backup, err = NewBackup(s.spdkClient, backupName, req.VolumeName, req.SnapshotName, replica, s.portAllocator, func() {
 		s.Lock()
@@ -804,6 +834,9 @@ func (s *Server) ReplicaBackupCreate(ctx context.Context, req *spdkrpc.BackupCre
 			StorageClassName:     req.StorageClassName,
 			CreatedTime:          util.Now(),
 			DataEngine:           string(backupstore.DataEngineV2),
+
+			LinkedCloneSourceVolume:   linkedCloneSourceVolume,
+			LinkedCloneSourceSnapshot: linkedCloneSourceSnapshot,
 		},
 		Snapshot: &backupstore.Snapshot{
 			Name:        req.SnapshotName,
@@ -918,6 +951,9 @@ func (s *Server) pruneRetainedBackupsLocked() {
 	}
 }
 
+// Deprecated: unused. The backup restore workflow was moved from the replica to the
+// engine level by commit fe318421, so the live path is EngineBackupRestore. The
+// replica-side restore below is kept only so the rpc still has an implementation.
 func (s *Server) ReplicaBackupRestore(ctx context.Context, req *spdkrpc.ReplicaBackupRestoreRequest) (ret *emptypb.Empty, err error) {
 	s.RLock()
 	replica := s.replicaMap[req.ReplicaName]

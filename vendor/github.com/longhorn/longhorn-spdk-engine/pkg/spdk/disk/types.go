@@ -32,6 +32,22 @@ const (
 	BlockDiskTypeLoop = BlockDiskType("loop")
 )
 
+// PCI device types reported by the SPDK setup script for a BDF. They are derived
+// from a PCI class/vendor scan, so they stay accurate even after the device has
+// been bound to a userspace PCI driver such as vfio-pci.
+const (
+	PciDeviceTypeNvme   = "NVMe"
+	PciDeviceTypeVirtio = "virtio"
+)
+
+// PciDriverNone is what the SPDK setup script reports for a device that is not
+// bound to any driver.
+const PciDriverNone = "-"
+
+// UnbindHintFmt tells the user how to release a device that is still held by a
+// userspace PCI driver.
+const UnbindHintFmt = "unbind it first with '/usr/src/spdk/scripts/setup.sh unbind %s' or specify the disk driver explicitly instead of using 'auto'"
+
 func GetDiskDriver(diskDriver commontypes.DiskDriver, diskPathOrBdf string) (commontypes.DiskDriver, error) {
 	if isBDF(diskPathOrBdf) {
 		return getDiskDriverForBDF(diskDriver, diskPathOrBdf)
@@ -52,6 +68,21 @@ func isUioPciGeneric(driver string) bool {
 	return normalized == string(commontypes.DiskDriverUioPciGeneric)
 }
 
+// IsBoundToUserspaceDriver reports whether the device is currently bound to a
+// userspace PCI driver. Such a device is invisible to the kernel, so it has
+// neither a block device node nor a kernel driver to derive the disk driver from.
+func IsBoundToUserspaceDriver(driver string) bool {
+	return isVfioPci(driver) || isUioPciGeneric(driver)
+}
+
+// IsDetachedFromKernelDriver reports whether the device exposes no block device
+// because the kernel does not drive it. An interrupted disk creation leaves the
+// device either bound to a userspace PCI driver or, when the userspace bind
+// failed after the kernel driver was already released, bound to nothing at all.
+func IsDetachedFromKernelDriver(driver string) bool {
+	return IsBoundToUserspaceDriver(driver) || driver == "" || driver == PciDriverNone
+}
+
 func getDiskDriverForBDF(diskDriver commontypes.DiskDriver, bdf string) (commontypes.DiskDriver, error) {
 	executor, err := helperutil.NewExecutor(commontypes.ProcDirectory)
 	if err != nil {
@@ -65,20 +96,37 @@ func getDiskDriverForBDF(diskDriver commontypes.DiskDriver, bdf string) (commont
 
 	switch diskDriver {
 	case commontypes.DiskDriverAuto:
-		diskPath := ""
-		if !isVfioPci(diskStatus.Driver) && !isUioPciGeneric(diskStatus.Driver) {
-			devName, err := util.GetDevNameFromBDF(bdf)
-			if err != nil {
-				return "", errors.Wrapf(err, "failed to get device name from BDF %s", bdf)
-			}
-			diskPath = fmt.Sprintf("/dev/%s", devName)
+		if IsDetachedFromKernelDriver(diskStatus.Driver) {
+			return getDriverForDetachedDevice(diskStatus, bdf)
 		}
-		return getDriverForAuto(diskStatus, diskPath)
+
+		devName, err := util.GetDevNameFromBDF(bdf)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to get device name from BDF %s", bdf)
+		}
+		return getDriverForAuto(diskStatus, fmt.Sprintf("/dev/%s", devName))
 	case commontypes.DiskDriverAio, commontypes.DiskDriverNvme, commontypes.DiskDriverVirtioScsi, commontypes.DiskDriverVirtioBlk:
 		return diskDriver, nil
 	default:
 		return commontypes.DiskDriverNone, fmt.Errorf("unsupported disk driver %s for BDF %s", diskDriver, bdf)
 	}
+}
+
+// getDriverForDetachedDevice resolves the disk driver of a device that the
+// kernel does not drive, which typically happens when a previous disk creation
+// was interrupted while rebinding the device. There is no kernel driver nor
+// block device to derive the disk driver from, so the PCI device type reported
+// by the SPDK setup script is used instead. Without this, such a device can
+// never be resolved back to nvme and the disk stays unusable forever.
+func getDriverForDetachedDevice(diskStatus *helpertypes.DiskStatus, bdf string) (commontypes.DiskDriver, error) {
+	if strings.EqualFold(diskStatus.Type, PciDeviceTypeNvme) {
+		return commontypes.DiskDriverNvme, nil
+	}
+
+	// A virtio device without a kernel driver exposes no block device, so
+	// virtio-blk and virtio-scsi cannot be told apart here.
+	return commontypes.DiskDriverNone, fmt.Errorf("cannot determine the disk driver of device %s of type %q because the kernel does not drive it, current driver %q: %s",
+		bdf, diskStatus.Type, diskStatus.Driver, fmt.Sprintf(UnbindHintFmt, bdf))
 }
 
 func getDriverForAuto(diskStatus *helpertypes.DiskStatus, diskPath string) (commontypes.DiskDriver, error) {
