@@ -33,7 +33,9 @@ func init() {
 	disk.RegisterDiskDriver(string(commontypes.DiskDriverNvme), driver)
 }
 
-func (d *DiskDriverNvme) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64) (string, error) {
+// DiskCreate uses named return values so that every failure path, including the
+// ones that do not come from a callee, triggers the deferred unbind below.
+func (d *DiskDriverNvme) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64) (bdevName string, err error) {
 	// TODO: validate the diskPath
 	executor, err := helperutil.NewExecutor(commontypes.ProcDirectory)
 	if err != nil {
@@ -60,12 +62,18 @@ func (d *DiskDriverNvme) DiskCreate(spdkClient *spdkclient.Client, diskName, dis
 		return "", errors.Wrapf(err, "failed to attach NVMe disk %v", diskPath)
 	}
 	if len(bdevs) == 0 {
-		return "", errors.Errorf("failed to attach NVMe disk %v", diskPath)
+		return "", errors.Errorf("no bdev is created after attaching NVMe disk %v", diskPath)
 	}
 	return bdevs[0], nil
 }
 
 func (d *DiskDriverNvme) DiskDelete(spdkClient *spdkclient.Client, diskName, diskPath string) (deleted bool, err error) {
+	// Without the BDF the device cannot be unbound, so reporting success here
+	// would silently leave it bound to the userspace PCI driver.
+	if diskPath == "" {
+		return false, errors.Errorf("disk path is required for deleting NVMe disk %v", diskName)
+	}
+
 	executor, err := helperutil.NewExecutor(commontypes.ProcDirectory)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to get the executor for NVMe disk %v deletion", diskName)
@@ -89,9 +97,8 @@ func (d *DiskDriverNvme) DiskDelete(spdkClient *spdkclient.Client, diskName, dis
 		}
 	}
 
-	_, err = spdksetup.Unbind(diskPath, executor)
-	if err != nil {
-		logrus.WithError(err).Warnf("Failed to unbind NVMe disk %v", diskPath)
+	if _, err = spdksetup.Unbind(diskPath, executor); err != nil {
+		return false, errors.Wrapf(err, "failed to unbind NVMe disk %v", diskPath)
 	}
 	return true, nil
 }

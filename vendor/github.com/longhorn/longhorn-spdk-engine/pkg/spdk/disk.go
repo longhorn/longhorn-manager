@@ -65,6 +65,9 @@ type Disk struct {
 	ClusterSize int64
 
 	State DiskState
+	// ErrorMsg keeps the reason of the last failure so that it can be reported
+	// back to the caller, which otherwise only sees the asynchronous state.
+	ErrorMsg string
 }
 
 func (d *Disk) GetState() DiskState {
@@ -74,7 +77,11 @@ func (d *Disk) GetState() DiskState {
 }
 
 func NewDisk(diskName, diskUUID, diskPath, diskDriver string, blockSize int64) *Disk {
+	// DiskDriver is intentionally left unset: it holds the resolved driver, which
+	// is only known once DiskCreate has translated the requested one.
 	return &Disk{
+		Name:      diskName,
+		UUID:      diskUUID,
 		DiskPath:  diskPath,
 		BlockSize: blockSize,
 		DiskType:  DiskTypeBlock,
@@ -97,9 +104,11 @@ func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 	defer func() {
 		if err != nil {
 			d.State = DiskStateError
+			d.ErrorMsg = err.Error()
 			log.WithError(err).Error("Failed to create disk")
 		} else {
 			d.State = DiskStateReady
+			d.ErrorMsg = ""
 			log.Info("Created disk successfully")
 		}
 		d.Unlock()
@@ -111,8 +120,21 @@ func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 
 	exactDiskDriver, err := spdkdisk.GetDiskDriver(commontypes.DiskDriver(diskDriver), diskPath)
 	if err != nil {
-		log.WithError(err).Error("Failed to determine disk driver")
-		return grpcstatus.Errorf(grpccodes.InvalidArgument, "failed to get disk driver for disk %q: %v", diskName, err)
+		// An interrupted creation can leave the device bound to a userspace PCI
+		// driver. An NVMe device is still resolvable from its PCI type, but a
+		// virtio device exposes no block device while bound, so its driver
+		// cannot be resolved until it is released back to the kernel. Release the
+		// orphaned device and retry the detection once so virtio disks, not just
+		// NVMe ones, can recover from an interrupted creation.
+		if released, releaseErr := spdkdisk.ReleaseOrphanDevice(spdkClient, diskName, diskPath); releaseErr != nil {
+			log.WithError(releaseErr).Warn("Failed to release the possibly orphaned device after disk driver detection failed")
+		} else if released {
+			exactDiskDriver, err = spdkdisk.GetDiskDriver(commontypes.DiskDriver(diskDriver), diskPath)
+		}
+		if err != nil {
+			log.WithError(err).Error("Failed to determine disk driver")
+			return grpcstatus.Errorf(grpccodes.InvalidArgument, "failed to get disk driver for disk %q: %v", diskName, err)
+		}
 	}
 	d.DiskDriver = string(exactDiskDriver)
 
@@ -121,6 +143,18 @@ func (d *Disk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 		log.WithError(err).Error("Failed to add block device")
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to add disk block device: %v", err)
 	}
+
+	// Any failure after the block device is added must release the device again,
+	// otherwise it stays bound to a userspace PCI driver and the next attempt
+	// cannot even detect its driver anymore.
+	defer func() {
+		if err == nil {
+			return
+		}
+		if _, errDelete := spdkdisk.DiskDelete(spdkClient, diskName, diskPath, string(exactDiskDriver)); errDelete != nil {
+			log.WithError(errDelete).Warnf("Failed to roll back the block device of disk %v after a failed creation", diskName)
+		}
+	}()
 
 	diskID, err := getDiskID(diskPath, exactDiskDriver)
 	if err != nil {
@@ -181,8 +215,20 @@ func (d *Disk) DiskDelete(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 		log.Warn("Disk UUID is not provided, blindly delete the disk")
 	}
 
+	if diskPath == "" {
+		diskPath = d.DiskPath
+	}
 	if diskDriver == "" {
 		diskDriver = d.DiskDriver
+	}
+	if diskDriver == "" || diskDriver == string(commontypes.DiskDriverAuto) {
+		// The creation failed before the driver could be resolved, but the device
+		// may already be bound to a userspace PCI driver and must be released.
+		log.Warn("Disk driver is unknown, trying to release the underlying device")
+		if _, err := spdkdisk.ReleaseOrphanDevice(spdkClient, diskName, diskPath); err != nil {
+			return nil, errors.Wrapf(err, "failed to release the device of disk %v", diskName)
+		}
+		return &emptypb.Empty{}, nil
 	}
 	if _, err := spdkdisk.DiskDelete(spdkClient, diskName, diskPath, diskDriver); err != nil {
 		return nil, errors.Wrapf(err, "failed to delete disk %v", diskName)
@@ -289,6 +335,7 @@ func (d *Disk) DiskGet(spdkClient *spdkclient.Client, diskName, diskPath, diskDr
 			BlockSize:   d.BlockSize,
 			ClusterSize: d.ClusterSize,
 			State:       string(d.State),
+			Message:     d.ErrorMsg,
 		}, nil
 	}
 	d.RUnlock()
