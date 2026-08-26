@@ -443,6 +443,7 @@ type EngineInstanceCreateRequest struct {
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
 	DataLayoutType                   imrpc.DataLayoutType
+	DataEngineTransport              imrpc.TransportType
 	EngineCLIAPIVersion              int
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
@@ -503,6 +504,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
 		DataLayoutType:     req.DataLayoutType,
+		TransportType:      req.DataEngineTransport,
 
 		Binary:     binary,
 		BinaryArgs: args,
@@ -532,6 +534,7 @@ type ReplicaInstanceCreateRequest struct {
 	DataPath                      string
 	BackingImagePath              string
 	DataLocality                  longhorn.DataLocality
+	DataEngineTransport           imrpc.TransportType
 	EngineCLIAPIVersion           int
 	Encrypted                     bool
 	ExtraLUKS2HeaderSpaceRequired bool
@@ -683,6 +686,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		Size:               uint64(volumeSize),
 		PortCount:          portCount,
 		PortArgs:           []string{DefaultPortArg},
+		TransportType:      req.DataEngineTransport,
 
 		Binary:     binary,
 		BinaryArgs: args,

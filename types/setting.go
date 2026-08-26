@@ -173,6 +173,7 @@ const (
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
 	SettingNameDataEngineInterruptModeEnabled                           = SettingName("data-engine-interrupt-mode-enabled")
 	SettingNameDataEngineCPUIsolationEnabled                            = SettingName("data-engine-cpu-isolation-enabled")
+	SettingNameV2DataEngineRDMADeviceResource                           = SettingName("v2-data-engine-rdma-device-resource")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -302,6 +303,7 @@ var (
 		SettingNameSnapshotDataIntegrity,
 		SettingNameDataEngineInterruptModeEnabled,
 		SettingNameDataEngineCPUIsolationEnabled,
+		SettingNameV2DataEngineRDMADeviceResource,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -469,6 +471,7 @@ var (
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
 		SettingNameDataEngineInterruptModeEnabled:                           SettingDefinitionDataEngineInterruptModeEnabled,
 		SettingNameDataEngineCPUIsolationEnabled:                            SettingDefinitionDataEngineCPUIsolationEnabled,
+		SettingNameV2DataEngineRDMADeviceResource:                           SettingDefinitionV2DataEngineRDMADeviceResource,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -1919,6 +1922,20 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionV2DataEngineRDMADeviceResource = SettingDefinition{
+		DisplayName: "V2 Data Engine RDMA Device Resource",
+		Description: "Applies only to the V2 Data Engine. Name of the Kubernetes extended resource, advertised by an RDMA shared device plugin (for example, k8s-rdma-shared-dev-plugin), " +
+			"that the V2 Instance Manager pod should request so it gains declarative access to the RoCE-capable RDMA verbs device(s) (the `/dev/infiniband/*` devices) instead of relying on the privileged host device mount. \n\n" +
+			"  - This is only relevant when the engine-replica NVMe-oF fabric runs over RDMA (RoCEv2); it is orthogonal to the network attachment, which is provided by the Storage Network. \n\n" +
+			"  - Because the plugin advertises the port as a *shared* resource, many Instance Manager pods (and, in the future, a host-facing frontend consumer) can share the same physical function without a bond, preserving per-pod RoCEv2 GIDs. \n\n" +
+			"  - Example value: `rdma/hca_shared_f0`. Leave empty (default) to keep the previous behavior, where the pod obtains RDMA devices via its privileged host mount and no extended resource is requested. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeString,
+		Required: false,
+		ReadOnly: false,
+		Default:  "",
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{

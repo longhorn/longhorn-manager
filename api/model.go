@@ -70,6 +70,7 @@ type Volume struct {
 	FreezeFilesystemForSnapshot     longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
 	BackupTargetName                string                                 `json:"backupTargetName"`
 	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`
+	DataEngineTransport             longhorn.DataEngineTransport           `json:"dataEngineTransport"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -1525,6 +1526,10 @@ func volumeSchema(volume *client.Schema) {
 	dataLayout.Create = true
 	volume.ResourceFields["dataLayout"] = dataLayout
 
+	dataEngineTransport := volume.ResourceFields["dataEngineTransport"]
+	dataEngineTransport.Create = true
+	volume.ResourceFields["dataEngineTransport"] = dataEngineTransport
+
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
@@ -1922,6 +1927,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		FreezeFilesystemForSnapshot:     v.Spec.FreezeFilesystemForSnapshot,
 		BackupTargetName:                v.Spec.BackupTargetName,
 		DataLayout:                      v.Spec.DataLayout,
+		DataEngineTransport:             v.Spec.DataEngineTransport,
 
 		State:                       v.Status.State,
 		Robustness:                  v.Status.Robustness,

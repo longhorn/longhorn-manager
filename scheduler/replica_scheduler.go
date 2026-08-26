@@ -145,6 +145,23 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 		return nil, errs
 	}
 
+	// A volume using the RDMA NVMe-oF transport can only be served from nodes
+	// that expose an RDMA device, so its replicas must be confined to
+	// RDMA-capable nodes (reported by the RDMACapable node condition). This
+	// keeps mixed clusters correct: replicas never land on TCP-only nodes.
+	if volume.Spec.DataEngineTransport == longhorn.DataEngineTransportRDMA {
+		for nodeName, node := range nodes {
+			if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRDMACapable).Status != longhorn.ConditionStatusTrue {
+				delete(nodes, nodeName)
+			}
+		}
+		if len(nodes) == 0 {
+			errs.Append(longhorn.ErrorReplicaScheduleSchedulingFailed,
+				fmt.Errorf("no RDMA-capable node available for scheduling replica %v of RDMA volume %v", replica.Name, volume.Name))
+			return nil, errs
+		}
+	}
+
 	linkedClone := volume.Spec.CloneMode == longhorn.CloneModeLinkedClone
 	srcNodeDiskMap := map[string]map[string]struct{}{}
 	if linkedClone {

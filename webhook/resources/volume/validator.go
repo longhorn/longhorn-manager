@@ -88,6 +88,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
 
+	if err := v.validateDataEngineTransport(volume.Spec.DataEngine, volume.Spec.DataEngineTransport, volume.Spec.NumberOfReplicas); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.dataEngineTransport")
+	}
+
 	if err := types.ValidateDataLocalityAndReplicaCount(volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.dataLocality and spec.numberOfReplicas")
 	}
@@ -277,6 +281,12 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	}
 	if err := validateUblkNumberOfQueue(newVolume.Spec.UblkNumberOfQueue); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
+	}
+
+	// Transport is immutable, but NumberOfReplicas is not: re-check that an RDMA
+	// volume still has enough RDMA-capable nodes after a replica scale-up.
+	if err := v.validateDataEngineTransport(newVolume.Spec.DataEngine, newVolume.Spec.DataEngineTransport, newVolume.Spec.NumberOfReplicas); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.dataEngineTransport")
 	}
 
 	if err := types.ValidateAccessMode(newVolume.Spec.AccessMode); err != nil {
@@ -764,6 +774,41 @@ func validateNvmeTcpNrIoQueues(n int, dataEngine longhorn.DataEngineType) error 
 	}
 	if !types.IsDataEngineV2(dataEngine) {
 		return fmt.Errorf("NVMe-TCP number of I/O queues is only supported by data engine v2. Got data engine %v", dataEngine)
+	}
+	return nil
+}
+
+// validateDataEngineTransport rejects an RDMA volume that cannot possibly be
+// served: RDMA is a v2-only transport, and every engine/replica of the volume
+// must run on a node exposing an RDMA device. We therefore require at least
+// NumberOfReplicas RDMA-capable nodes (reported by the environment check monitor
+// via the RDMACapable node condition). An unset/TCP transport is always allowed.
+func (v *volumeValidator) validateDataEngineTransport(dataEngine longhorn.DataEngineType, transport longhorn.DataEngineTransport, numberOfReplicas int) error {
+	if transport == "" || transport == longhorn.DataEngineTransportTCP {
+		return nil
+	}
+	if transport != longhorn.DataEngineTransportRDMA {
+		return fmt.Errorf("invalid data engine transport %v, must be one of %v or %v",
+			transport, longhorn.DataEngineTransportTCP, longhorn.DataEngineTransportRDMA)
+	}
+	if !types.IsDataEngineV2(dataEngine) {
+		return fmt.Errorf("data engine transport %v is only supported by data engine v2. Got data engine %v",
+			transport, dataEngine)
+	}
+
+	nodes, err := v.ds.ListNodesRO()
+	if err != nil {
+		return errors.Wrap(err, "failed to list nodes for RDMA capability validation")
+	}
+	rdmaCapableNodes := 0
+	for _, node := range nodes {
+		if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRDMACapable).Status == longhorn.ConditionStatusTrue {
+			rdmaCapableNodes++
+		}
+	}
+	if rdmaCapableNodes < numberOfReplicas {
+		return fmt.Errorf("data engine transport %v requires at least %d RDMA-capable node(s) to place all replicas, but only %d available; check the RDMACapable node condition",
+			transport, numberOfReplicas, rdmaCapableNodes)
 	}
 	return nil
 }
