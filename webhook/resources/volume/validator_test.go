@@ -4,12 +4,21 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"k8s.io/client-go/kubernetes/fake"
+
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
 
 const tib = int64(1) << 40
@@ -163,4 +172,130 @@ func TestValidateTopologyZonePin(t *testing.T) {
 	regionOnly := []longhorn.VolumeTopologyTerm{{Region: "region-1"}}
 	assert.NoError(t, validateTopologyZonePin(newVolume(regionOnly, longhorn.ReplicaZoneSoftAntiAffinityDisabled)))
 	assert.NoError(t, validateTopologyZonePin(newVolume(nil, longhorn.ReplicaZoneSoftAntiAffinityDisabled)))
+}
+
+const linkedCloneTestNamespace = "longhorn-system"
+
+// newLinkedCloneTestDataStore returns a datastore whose volume and snapshot
+// listers serve the given objects, as if the informers had already delivered them.
+func newLinkedCloneTestDataStore(t *testing.T, volumes []*longhorn.Volume, snapshots []*longhorn.Snapshot) *datastore.DataStore {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(linkedCloneTestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStore(linkedCloneTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	for _, volume := range volumes {
+		require.NoError(t, volumeIndexer.Add(volume))
+	}
+	snapshotIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+	for _, snapshot := range snapshots {
+		require.NoError(t, snapshotIndexer.Add(snapshot))
+	}
+	return ds
+}
+
+// TestValidateLinkedCloneSize checks the size a linked clone inherits from its
+// source. Restores are skipped: their size comes from the backup, which the mutator
+// has already applied, so there is no user input to validate.
+func TestValidateLinkedCloneSize(t *testing.T) {
+	const (
+		srcVolName = "src-vol"
+		snapName   = "snap-0"
+		gib        = int64(1) << 30
+	)
+
+	testCases := []struct {
+		name        string
+		size        int64
+		fromBackup  string
+		dataSource  longhorn.VolumeDataSource
+		restoreSize int64
+		srcSpecSize int64
+		wantErr     bool
+	}{
+		{
+			name:        "size matching the source snapshot is accepted",
+			size:        2 * gib,
+			dataSource:  types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			restoreSize: 2 * gib,
+			srcSpecSize: 2 * gib,
+		},
+		{
+			name:        "size not matching the source snapshot is rejected",
+			size:        3 * gib,
+			dataSource:  types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			restoreSize: 2 * gib,
+			srcSpecSize: 2 * gib,
+			wantErr:     true,
+		},
+		{
+			// The source volume spec.size must not stand in for the snapshot's, so an
+			// expanded source cannot make a stale size look valid.
+			name:        "unsynced RestoreSize is rejected",
+			size:        3 * gib,
+			dataSource:  types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			restoreSize: 0,
+			srcSpecSize: 3 * gib,
+			wantErr:     true,
+		},
+		{
+			name:        "without a snapshot the source volume size is used",
+			size:        2 * gib,
+			dataSource:  types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcSpecSize: 2 * gib,
+		},
+		{
+			// Larger than the source: the clone may have been expanded before backup.
+			name:        "restore is not checked against the source",
+			size:        3 * gib,
+			fromBackup:  "s3://backupbucket@us-east-1/?backup=backup-1&volume=clone-vol",
+			dataSource:  types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			restoreSize: 2 * gib,
+			srcSpecSize: 2 * gib,
+		},
+		{
+			// Syncing RestoreSize needs a running engine, so a detached source must not
+			// block a restore that does not depend on its size.
+			name:        "restore with unsynced RestoreSize is accepted",
+			size:        3 * gib,
+			fromBackup:  "s3://backupbucket@us-east-1/?backup=backup-1&volume=clone-vol",
+			dataSource:  types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			restoreSize: 0,
+			srcSpecSize: 2 * gib,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			srcVol := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: srcVolName, Namespace: linkedCloneTestNamespace},
+				Spec:       longhorn.VolumeSpec{Size: tc.srcSpecSize},
+			}
+			snap := &longhorn.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: snapName, Namespace: linkedCloneTestNamespace},
+				Spec:       longhorn.SnapshotSpec{Volume: srcVolName},
+				Status:     longhorn.SnapshotStatus{RestoreSize: tc.restoreSize},
+			}
+			v := &volumeValidator{ds: newLinkedCloneTestDataStore(t,
+				[]*longhorn.Volume{srcVol}, []*longhorn.Snapshot{snap})}
+
+			err := v.validateLinkedCloneSize(&longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: "clone-vol", Namespace: linkedCloneTestNamespace},
+				Spec: longhorn.VolumeSpec{
+					Size:       tc.size,
+					FromBackup: tc.fromBackup,
+					DataSource: tc.dataSource,
+					CloneMode:  longhorn.CloneModeLinkedClone,
+				},
+			})
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
 }
