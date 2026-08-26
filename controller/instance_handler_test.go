@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
+
 	. "gopkg.in/check.v1"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -732,6 +734,7 @@ func (s *TestSuite) TestCreateInstanceReapsStaleStoppedV1Record(c *C) {
 		getErr       error
 		expectDelete bool
 		expectCreate bool
+		expectReaped bool
 	}{
 		"v1 stale stopped record is reaped, not created": {
 			dataEngine:   longhorn.DataEngineTypeV1,
@@ -739,6 +742,7 @@ func (s *TestSuite) TestCreateInstanceReapsStaleStoppedV1Record(c *C) {
 			getErr:       nil,
 			expectDelete: true,
 			expectCreate: false,
+			expectReaped: true,
 		},
 		"v1 running record is left untouched": {
 			dataEngine:   longhorn.DataEngineTypeV1,
@@ -776,7 +780,11 @@ func (s *TestSuite) TestCreateInstanceReapsStaleStoppedV1Record(c *C) {
 		}
 
 		err := h.createInstance(ExistingInstance, tc.dataEngine, newEngineObj())
-		c.Assert(err, IsNil)
+		if tc.expectReaped {
+			c.Assert(errors.Is(err, errStaleInstanceReaped), Equals, true)
+		} else {
+			c.Assert(err, IsNil)
+		}
 		c.Assert(stub.deleteCalled, Equals, tc.expectDelete)
 		c.Assert(stub.createCalled, Equals, tc.expectCreate)
 	}
@@ -840,7 +848,7 @@ func (s *TestSuite) TestCreateInstanceRecoversFromStaleStoppedV1Record(c *C) {
 	}
 
 	// Reconcile 1: the stale stopped record is reaped instead of being treated as already created.
-	c.Assert(h.createInstance(ExistingInstance, longhorn.DataEngineTypeV1, engine), IsNil)
+	c.Assert(errors.Is(h.createInstance(ExistingInstance, longhorn.DataEngineTypeV1, engine), errStaleInstanceReaped), Equals, true)
 	c.Assert(stub.instance, IsNil)
 	c.Assert(stub.calls, DeepEquals, []string{"delete"})
 
