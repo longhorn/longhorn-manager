@@ -1235,6 +1235,28 @@ func ValidateUnmapMarkSnapChainRemoved(dataEngine longhorn.DataEngineType, unmap
 	return nil
 }
 
+func ValidateVolumeAntiAffinityFromPod(value longhorn.VolumeAntiAffinityFromPod) error {
+	if value != longhorn.VolumeAntiAffinityFromPodDefault &&
+		value != longhorn.VolumeAntiAffinityFromPodEnabled &&
+		value != longhorn.VolumeAntiAffinityFromPodDisabled {
+		return fmt.Errorf("invalid VolumeAntiAffinityFromPod setting: %v", value)
+	}
+	return nil
+}
+
+// IsVolumeAntiAffinityFromPodEnabled resolves the per-volume tri-state against
+// the global setting: an explicit value on the volume wins, "ignored" follows
+// the setting.
+func IsVolumeAntiAffinityFromPodEnabled(value longhorn.VolumeAntiAffinityFromPod, setting bool) bool {
+	switch value {
+	case longhorn.VolumeAntiAffinityFromPodEnabled:
+		return true
+	case longhorn.VolumeAntiAffinityFromPodDisabled:
+		return false
+	}
+	return setting
+}
+
 func ValidateReplicaSoftAntiAffinity(value longhorn.ReplicaSoftAntiAffinity) error {
 	if value != longhorn.ReplicaSoftAntiAffinityDefault &&
 		value != longhorn.ReplicaSoftAntiAffinityEnabled &&

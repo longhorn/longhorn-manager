@@ -73,6 +73,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.accessMode")
 	}
 
+	if err := types.ValidateVolumeAntiAffinity(volume.Spec.VolumeAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.volumeAntiAffinity")
+	}
+
 	if err := validateReplicaCount(volume.Spec.CloneMode, volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
 	}
@@ -106,6 +110,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	if err := types.ValidateReplicaSoftAntiAffinity(volume.Spec.ReplicaSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaSoftAntiAffinity")
+	}
+
+	if err := types.ValidateVolumeAntiAffinityFromPod(volume.Spec.VolumeAntiAffinityFromPod); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.volumeAntiAffinityFromPod")
 	}
 
 	if err := types.ValidateReplicaZoneSoftAntiAffinity(volume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
@@ -295,6 +303,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.replicaSoftAntiAffinity")
 	}
 
+	if err := types.ValidateVolumeAntiAffinityFromPod(newVolume.Spec.VolumeAntiAffinityFromPod); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.volumeAntiAffinityFromPod")
+	}
+
 	if err := types.ValidateReplicaZoneSoftAntiAffinity(newVolume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
@@ -317,6 +329,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := validateImmutable(".spec.topologyRequirement", oldVolume.Spec.TopologyRequirement, newVolume.Spec.TopologyRequirement); err != nil {
 		return werror.NewInvalidError(err.Error(), ".spec.topologyRequirement")
+	}
+
+	if err := types.ValidateVolumeAntiAffinity(newVolume.Spec.VolumeAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.volumeAntiAffinity")
 	}
 
 	if oldVolume.Spec.CloneMode != longhorn.CloneModeNone {
