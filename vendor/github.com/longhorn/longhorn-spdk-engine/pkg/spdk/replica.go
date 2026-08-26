@@ -4829,6 +4829,9 @@ func (r *Replica) RebuildingDstSetQos(spdkClient *spdkclient.Client, qosLimitMbp
 	return nil
 }
 
+// Deprecated: unused. The backup restore workflow was moved from the replica to the
+// engine level by commit fe318421, so the live path is EngineBackupRestore. The
+// replica-side restore below is kept only so the rpc still has an implementation.
 func (r *Replica) BackupRestore(spdkClient *spdkclient.Client, backupUrl, snapshotName string, credential map[string]string, concurrentLimit int32) (err error) {
 	r.Lock()
 	defer r.Unlock()
