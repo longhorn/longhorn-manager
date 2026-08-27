@@ -62,11 +62,20 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 		err = errors.Wrapf(err, "failed to get spdk setting")
 		return werror.NewInvalidError(err.Error(), "")
 	}
+	localDataEngineEnabled, err := n.ds.GetSettingAsBool(types.SettingNameLocalDataEngine)
+	if err != nil {
+		return werror.NewInvalidError(errors.Wrapf(err, "failed to get local data engine setting").Error(), "")
+	}
 
 	for name, disk := range node.Spec.Disks {
 		if !v2DataEngineEnabled {
 			if disk.Type == longhorn.DiskTypeBlock {
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since v2 data engine is disabled", name, disk.Type), "")
+			}
+		}
+		if disk.Type == longhorn.DiskTypeLVM {
+			if !localDataEngineEnabled {
+				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since the local data engine is disabled", name, disk.Type), "")
 			}
 		}
 
@@ -193,6 +202,10 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		err = errors.Wrapf(err, "failed to get spdk setting")
 		return werror.NewInvalidError(err.Error(), "")
 	}
+	localDataEngineEnabled, err := n.ds.GetSettingAsBool(types.SettingNameLocalDataEngine)
+	if err != nil {
+		return werror.NewInvalidError(errors.Wrapf(err, "failed to get local data engine setting").Error(), "")
+	}
 
 	// Validate Disks StorageReserved, Tags and Type
 	for name, disk := range newNode.Spec.Disks {
@@ -207,6 +220,12 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		if !v2DataEngineEnabled {
 			if disk.Type == longhorn.DiskTypeBlock {
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) is a block device, but the SPDK feature is not enabled",
+					newNode.Name, name, disk.Path), "")
+			}
+		}
+		if disk.Type == longhorn.DiskTypeLVM {
+			if !localDataEngineEnabled {
+				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: disk %v(%v) is an LVM disk, but the local data engine is not enabled",
 					newNode.Name, name, disk.Path), "")
 			}
 		}
@@ -225,6 +244,20 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	// Validate delete disks
 	for name, disk := range oldNode.Spec.Disks {
 		if _, ok := newNode.Spec.Disks[name]; !ok {
+			if disk.Type == longhorn.DiskTypeLVM {
+				storageLayout, err := n.ds.GetSettingValueExisted(types.SettingNameLocalDataEngineStorageLayout)
+				if err != nil {
+					return werror.NewInvalidError(errors.Wrap(err, "failed to get local data engine storage layout").Error(), "")
+				}
+				if storageLayout == types.LocalDataEngineStorageLayoutPerNode {
+					if countLVMDisks(oldNode.Spec.Disks) > 1 && oldNode.Status.DiskStatus[name].StorageMaximum > 0 {
+						return werror.NewInvalidError(fmt.Sprintf("cannot remove representative LVM disk %v while its volume group has multiple physical volumes; remove the member disks first", name), "")
+					}
+					if lvmStorageScheduled(oldNode.Status.DiskStatus) > 0 {
+						return werror.NewInvalidError(fmt.Sprintf("cannot remove LVM disk %v while its volume group contains local volumes", name), "")
+					}
+				}
+			}
 			if disk.AllowScheduling || oldNode.Status.DiskStatus[name].StorageScheduled != 0 {
 				logrus.Infof("Delete Disk on node %v error: Please disable the disk %v and remove all replicas and backing images first", name, disk.Path)
 				return werror.NewInvalidError(fmt.Sprintf("Delete Disk on node %v error: Please disable the disk %v and remove all replicas and backing images first ", name, disk.Path), "")
@@ -242,6 +275,26 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	}
 
 	return nil
+}
+
+func countLVMDisks(disks map[string]longhorn.DiskSpec) int {
+	count := 0
+	for _, disk := range disks {
+		if disk.Type == longhorn.DiskTypeLVM {
+			count++
+		}
+	}
+	return count
+}
+
+func lvmStorageScheduled(diskStatus map[string]*longhorn.DiskStatus) int64 {
+	var scheduled int64
+	for _, status := range diskStatus {
+		if status.Type == longhorn.DiskTypeLVM {
+			scheduled += status.StorageScheduled
+		}
+	}
+	return scheduled
 }
 
 func validateNodeDiskPaths(nodeName string, disks map[string]longhorn.DiskSpec) error {

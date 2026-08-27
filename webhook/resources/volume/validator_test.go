@@ -164,3 +164,47 @@ func TestValidateTopologyZonePin(t *testing.T) {
 	assert.NoError(t, validateTopologyZonePin(newVolume(regionOnly, longhorn.ReplicaZoneSoftAntiAffinityDisabled)))
 	assert.NoError(t, validateTopologyZonePin(newVolume(nil, longhorn.ReplicaZoneSoftAntiAffinityDisabled)))
 }
+
+func TestValidateLocalVolume(t *testing.T) {
+	base := func() *longhorn.Volume {
+		return &longhorn.Volume{
+			Spec: longhorn.VolumeSpec{
+				DataEngine:       longhorn.DataEngineTypeLocal,
+				NumberOfReplicas: 1,
+				DataLocality:     longhorn.DataLocalityStrictLocal,
+				AccessMode:       longhorn.AccessModeReadWriteOnce,
+			},
+		}
+	}
+
+	testCases := []struct {
+		name    string
+		mutate  func(*longhorn.Volume)
+		wantErr bool
+	}{
+		{name: "valid local volume", mutate: func(v *longhorn.Volume) {}},
+		{name: "non-local volume is ignored", mutate: func(v *longhorn.Volume) {
+			v.Spec.DataEngine = longhorn.DataEngineTypeV1
+			v.Spec.NumberOfReplicas = 3
+			v.Spec.DataLocality = longhorn.DataLocalityDisabled
+		}},
+		{name: "multiple replicas", mutate: func(v *longhorn.Volume) { v.Spec.NumberOfReplicas = 2 }, wantErr: true},
+		{name: "wrong data locality", mutate: func(v *longhorn.Volume) { v.Spec.DataLocality = longhorn.DataLocalityBestEffort }, wantErr: true},
+		{name: "rwx", mutate: func(v *longhorn.Volume) { v.Spec.AccessMode = longhorn.AccessModeReadWriteMany }, wantErr: true},
+		{name: "migratable", mutate: func(v *longhorn.Volume) { v.Spec.Migratable = true }, wantErr: true},
+		{name: "encrypted", mutate: func(v *longhorn.Volume) { v.Spec.Encrypted = true }, wantErr: true},
+		{name: "backing image", mutate: func(v *longhorn.Volume) { v.Spec.BackingImage = "bi" }, wantErr: true},
+		{name: "from backup", mutate: func(v *longhorn.Volume) { v.Spec.FromBackup = "s3://backup" }, wantErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := base()
+			tc.mutate(v)
+			err := validateLocalVolume(v)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validateLocalVolume() error = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}

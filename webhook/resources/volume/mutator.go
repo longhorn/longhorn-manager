@@ -46,8 +46,8 @@ func (v *volumeMutator) Resource() admission.Resource {
 	}
 }
 
-func (v *volumeMutator) areAllDefaultInstanceManagersStopped(defaultInstanceManagerImage string) (bool, error) {
-	ims, err := v.ds.ListInstanceManagersBySelectorRO("", defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+func (v *volumeMutator) areAllDefaultInstanceManagersStopped(dataEngine longhorn.DataEngineType, defaultInstanceManagerImage string) (bool, error) {
+	ims, err := v.ds.ListInstanceManagersBySelectorRO("", defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to list instance managers")
 	}
@@ -60,18 +60,18 @@ func (v *volumeMutator) areAllDefaultInstanceManagersStopped(defaultInstanceMana
 	return true, nil
 }
 
-func (v *volumeMutator) getActiveInstanceManagerImage(defaultInstanceManagerImage string) (string, error) {
+func (v *volumeMutator) getActiveInstanceManagerImage(dataEngine longhorn.DataEngineType, defaultInstanceManagerImage string) (string, error) {
 	// Check whether all default instance managers are stopped.
 	// If all default instance managers are stopped, we can use the current active instance manager image.
 	// If not, we use the default instance manager image because system is in the middle of upgrade.
-	allStopped, err := v.areAllDefaultInstanceManagersStopped(defaultInstanceManagerImage)
+	allStopped, err := v.areAllDefaultInstanceManagersStopped(dataEngine, defaultInstanceManagerImage)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to check whether all default instance managers are stopped")
 	}
 
 	if allStopped {
 		// Get the active instance manager image from the non-default instance manager.
-		ims, err := v.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+		ims, err := v.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 		if err != nil {
 			return "", errors.Wrap(err, "failed to list instance managers")
 		}
@@ -116,7 +116,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		// EC (sharded) volumes distribute chunks across k+m nodes, so the validator
 		// requires data locality disabled regardless of the cluster default.
 		dataLocality := string(longhorn.DataLocalityDisabled)
-		if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+		if types.IsDataEngineLocal(volume.Spec.DataEngine) {
+			// Local data engine volumes are always strict-local.
+			dataLocality = string(longhorn.DataLocalityStrictLocal)
+		} else if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
 			setting, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
 			if err != nil {
 				return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name).Error(), "")
@@ -261,17 +264,18 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(newSize, 10)))
 
-	// Mutate the image to the default one
+	// Mutate the image to the default one. V2 and local volumes use the
+	// implementation bundled in the instance manager image.
 	defaultImageSetting := types.SettingNameDefaultEngineImage
-	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+	if types.IsDataEngineV2(volume.Spec.DataEngine) || types.IsDataEngineLocal(volume.Spec.DataEngine) {
 		defaultImageSetting = types.SettingNameDefaultInstanceManagerImage
 	}
 	defaultImage, _ := v.ds.GetSettingValueExisted(defaultImageSetting)
 	if defaultImage == "" {
 		return nil, werror.NewInvalidError(fmt.Sprintf("invalid empty setting %s", defaultImageSetting), "")
 	}
-	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		activeInstanceManagerImage, err := v.getActiveInstanceManagerImage(defaultImage)
+	if types.IsDataEngineV2(volume.Spec.DataEngine) || types.IsDataEngineLocal(volume.Spec.DataEngine) {
+		activeInstanceManagerImage, err := v.getActiveInstanceManagerImage(volume.Spec.DataEngine, defaultImage)
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("failed to get active instance manager image for volume %v: %v", name, err), "")
 		}
@@ -420,14 +424,17 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	if volume.Spec.NodeSelector == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/nodeSelector", "value": []}`)
 	}
-	if string(volume.Spec.SnapshotDataIntegrity) == "" {
+	if types.IsDataEngineLocal(volume.Spec.DataEngine) && volume.Spec.SnapshotDataIntegrity != longhorn.SnapshotDataIntegrityDisabled {
+		// Snapshot data integrity hashes engine snapshot data and is not supported by the local data engine.
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityDisabled))
+	} else if string(volume.Spec.SnapshotDataIntegrity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityIgnored))
 	}
 	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
 	}
-	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		// The field is not meaningful for v2 volumes
+	if types.IsDataEngineV2(volume.Spec.DataEngine) || types.IsDataEngineLocal(volume.Spec.DataEngine) {
+		// The field is meaningful only for v1 volumes.
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedDisabled))
 	} else {
 		if volume.Spec.UnmapMarkSnapChainRemoved == "" {
@@ -454,6 +461,9 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	}
 	if string(volume.Spec.DataEngine) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
+	}
+	if types.IsDataEngineLocal(volume.Spec.DataEngine) && volume.Spec.LocalProvisioningMode == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/localProvisioningMode", "value": "%s"}`, longhorn.LocalVolumeProvisioningModeThick))
 	}
 	if string(volume.Spec.FreezeFilesystemForSnapshot) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/freezeFilesystemForSnapshot", "value": "%s"}`, longhorn.FreezeFilesystemForSnapshotDefault))
@@ -494,6 +504,11 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	if labels == nil {
 		labels = map[string]string{}
 	}
+	dataEngine := volume.Spec.DataEngine
+	if dataEngine == "" {
+		dataEngine = longhorn.DataEngineTypeV1
+	}
+	labels[types.GetLonghornLabelKey(types.LonghornLabelDataEngine)] = string(dataEngine)
 	for k, v := range moreLabels {
 		labels[k] = v
 	}

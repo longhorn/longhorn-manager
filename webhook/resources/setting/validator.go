@@ -2,7 +2,10 @@ package setting
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -58,6 +61,40 @@ func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Obj
 	_, isFromLH := setting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)]
 	if settingDef.ReadOnly && !isFromLHOld && !isFromLH {
 		return werror.NewInvalidError(fmt.Sprintf("setting %s is read-only", setting.Name), "metadata.name")
+	}
+	if setting.Name == string(types.SettingNameLocalDataEngineProvisioningMode) && setting.Value != existingSetting.Value {
+		selector := labels.SelectorFromSet(labels.Set{
+			types.GetLonghornLabelKey(types.LonghornLabelDataEngine): string(longhorn.DataEngineTypeLocal),
+		})
+		volumes, err := v.ds.ListVolumesBySelectorRO(selector)
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("failed to list local volumes before changing local provisioning mode: %v", err), "value")
+		}
+		if len(volumes) > 0 {
+			return werror.NewInvalidError(fmt.Sprintf("cannot change local provisioning mode while %d local volumes exist; delete all local volumes before changing the mode", len(volumes)), "value")
+		}
+	}
+	if setting.Name == string(types.SettingNameLocalDataEngineStorageLayout) && setting.Value != existingSetting.Value {
+		nodes, err := v.ds.ListNodesRO()
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("failed to list nodes before changing local storage layout: %v", err), "value")
+		}
+		nodesWithMultipleLVMDisks := []string{}
+		for _, node := range nodes {
+			lvmDiskCount := 0
+			for _, disk := range node.Spec.Disks {
+				if disk.Type == longhorn.DiskTypeLVM {
+					lvmDiskCount++
+				}
+			}
+			if lvmDiskCount > 1 {
+				nodesWithMultipleLVMDisks = append(nodesWithMultipleLVMDisks, node.Name)
+			}
+		}
+		if len(nodesWithMultipleLVMDisks) > 0 {
+			sort.Strings(nodesWithMultipleLVMDisks)
+			return werror.NewInvalidError(fmt.Sprintf("cannot change local storage layout: each node must have at most one LVM disk; remove additional LVM disks from nodes: %s", strings.Join(nodesWithMultipleLVMDisks, ", ")), "value")
+		}
 	}
 
 	return v.validateSetting(newObj)
