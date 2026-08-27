@@ -16,6 +16,7 @@ import (
 
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util/fake"
 )
 
@@ -30,6 +31,25 @@ type TestSuite struct {
 }
 
 var _ = Suite(&TestSuite{})
+
+func TestGetDataEngineForDiskType(t *testing.T) {
+	tests := []struct {
+		name     string
+		diskType longhorn.DiskType
+		expected longhorn.DataEngineType
+	}{
+		{name: "filesystem", diskType: longhorn.DiskTypeFilesystem, expected: longhorn.DataEngineTypeV1},
+		{name: "block", diskType: longhorn.DiskTypeBlock, expected: longhorn.DataEngineTypeV2},
+		{name: "lvm", diskType: longhorn.DiskTypeLVM, expected: longhorn.DataEngineTypeLocal},
+		{name: "unknown falls back to v1", diskType: "unknown", expected: longhorn.DataEngineTypeV1},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, GetDataEngineForDiskType(test.diskType))
+		})
+	}
+}
 
 func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)

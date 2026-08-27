@@ -273,9 +273,18 @@ const (
 type DataEngineType string
 
 const (
-	DataEngineTypeV1  = DataEngineType("v1")
-	DataEngineTypeV2  = DataEngineType("v2")
-	DataEngineTypeAll = DataEngineType("all")
+	DataEngineTypeV1    = DataEngineType("v1")
+	DataEngineTypeV2    = DataEngineType("v2")
+	DataEngineTypeLocal = DataEngineType("local")
+	DataEngineTypeAll   = DataEngineType("all")
+)
+
+// +kubebuilder:validation:Enum=thick;thin
+type LocalVolumeProvisioningMode string
+
+const (
+	LocalVolumeProvisioningModeThick = LocalVolumeProvisioningMode("thick")
+	LocalVolumeProvisioningModeThin  = LocalVolumeProvisioningMode("thin")
 )
 
 type KubernetesStatus struct {
@@ -416,9 +425,13 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum="2097152";"16777216"
 	// +optional
 	BackupBlockSize int64 `json:"backupBlockSize,string"`
-	// +kubebuilder:validation:Enum=v1;v2
+	// +kubebuilder:validation:Enum=v1;v2;local
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
+	// LocalProvisioningMode records the immutable LVM allocation mode used by a local data engine volume.
+	// It is empty for v1 and v2 volumes.
+	// +optional
+	LocalProvisioningMode LocalVolumeProvisioningMode `json:"localProvisioningMode,omitempty"`
 	// +optional
 	SnapshotMaxCount int `json:"snapshotMaxCount"`
 	// +kubebuilder:validation:Type=string
