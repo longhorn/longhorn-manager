@@ -482,6 +482,8 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 				return nil, err
 			}
 		}
+	case longhorn.DataEngineTypeLocal:
+		replicaAddresses = req.Engine.Spec.ReplicaAddressMap
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -528,6 +530,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 type ReplicaInstanceCreateRequest struct {
 	Replica                       *longhorn.Replica
+	LocalProvisioningMode         longhorn.LocalVolumeProvisioningMode
 	DiskName                      string
 	DataPath                      string
 	BackingImagePath              string
@@ -642,7 +645,6 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-
 	binary := ""
 	args := []string{}
 	var err error
@@ -664,6 +666,10 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	portCount := DefaultReplicaPortCountV1
 	volumeSize := req.Replica.Spec.VolumeSize
+	if types.IsDataEngineLocal(req.Replica.Spec.DataEngine) {
+		// Local replicas are kernel block devices without ports.
+		portCount = 0
+	}
 	if types.IsDataEngineV2(req.Replica.Spec.DataEngine) {
 		portCount = DefaultReplicaPortCountV2
 		if req.ExtraLUKS2HeaderSpaceRequired {
@@ -690,6 +696,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		Replica: imclient.ReplicaCreateRequest{
 			DiskName:         req.DiskName,
 			DiskUUID:         req.Replica.Spec.DiskID,
+			ProvisioningMode: string(req.LocalProvisioningMode),
 			BackingImageName: req.Replica.Spec.BackingImage,
 		},
 	})
@@ -697,6 +704,16 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		return nil, err
 	}
 	return parseInstance(instance), nil
+}
+
+// LocalReplicaInstanceExpand expands the LV backing a local replica.
+func (c *InstanceManagerClient) LocalReplicaInstanceExpand(replica *longhorn.Replica, diskName string) error {
+	if !types.IsDataEngineLocal(replica.Spec.DataEngine) {
+		return fmt.Errorf("replica %v does not use the local data engine", replica.Name)
+	}
+	_, err := c.instanceServiceGrpcClient.LocalReplicaInstanceExpand(
+		replica.Name, diskName, replica.Spec.DiskID, uint64(replica.Spec.VolumeSize))
+	return err
 }
 
 // ShardInstanceCreateRequest carries the parameters for creating a shard instance.

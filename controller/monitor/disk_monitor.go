@@ -175,7 +175,7 @@ func (m *DiskMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngine
 	switch dataEngine {
 	case longhorn.DataEngineTypeV1:
 		return m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
-	case longhorn.DataEngineTypeV2:
+	case longhorn.DataEngineTypeV2, longhorn.DataEngineTypeLocal:
 		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
@@ -267,7 +267,7 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		errReason := ""
 
 		if diskServiceClient == nil {
-			if types.IsDataEngineV2(dataEngine) {
+			if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
 				errs.Append("errors", fmt.Errorf("data engine is disabled"))
 				errReason = string(longhorn.DiskConditionReasonDiskServiceUnreachable)
 			} else {
@@ -394,6 +394,10 @@ func getReplicaDataStores(diskType longhorn.DiskType, node *longhorn.Node, diskN
 		return getReplicaDirectoryNames(node, diskName, diskUUID, diskPath)
 	case longhorn.DiskTypeBlock:
 		return getSpdkReplicaInstanceNames(client, string(diskType), diskName, diskDriver)
+	case longhorn.DiskTypeLVM:
+		// TODO: Discover replica LVs so abandoned local replica data can be
+		// detected and managed as Longhorn orphan data.
+		return map[string]string{}, nil
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -454,6 +458,10 @@ func (m *DiskMonitor) getOrphanedReplicaDataStores(diskType longhorn.DiskType, d
 		return m.getOrphanedReplicaDirectoryNames(diskUUID, diskPath, replicaDataStores)
 	case longhorn.DiskTypeBlock:
 		return m.getOrphanedReplicaLvolNames(replicaDataStores)
+	case longhorn.DiskTypeLVM:
+		// TODO: Identify local replica LVs without matching Replica CRs after
+		// local replica data-store discovery is implemented.
+		return map[string]string{}, nil
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}

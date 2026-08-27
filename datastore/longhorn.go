@@ -665,6 +665,24 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
+	case types.SettingNameLocalDataEngine:
+		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameLocalDataEngine)
+		if err != nil {
+			return err
+		}
+
+		if old.Value != value {
+			dataEngineEnabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return err
+			}
+
+			_, err = s.ValidateLocalDataEngineEnabled(dataEngineEnabled)
+			if err != nil {
+				return err
+			}
+		}
+
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -878,6 +896,22 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	}
 
 	return
+}
+
+func (s *DataStore) ValidateLocalDataEngineEnabled(dataEngineEnabled bool) (ims []*longhorn.InstanceManager, err error) {
+	if dataEngineEnabled {
+		return nil, nil
+	}
+
+	allLocalVolumesDetached, ims, err := s.AreAllEngineInstancesStopped(longhorn.DataEngineTypeLocal)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameLocalDataEngine)
+	}
+	if !allLocalVolumesDetached {
+		return nil, &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached local volumes", types.SettingNameLocalDataEngine)}
+	}
+
+	return ims, nil
 }
 
 func (s *DataStore) getMinNumCPUsFromAvailableNodes() (int64, error) {
@@ -2816,7 +2850,7 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 }
 
 func (s *DataStore) CheckDataEngineImageCompatiblityByImage(image string, dataEngine longhorn.DataEngineType) error {
-	if types.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
 		return nil
 	}
 
@@ -2870,7 +2904,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 }
 
 func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
-	if types.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
 		if len(nodes) == 0 {
 			return false, nil
 		}
@@ -2893,7 +2927,8 @@ func (s *DataStore) IsDataEngineImageReady(image, volumeName, nodeID string, dat
 		return false, errors.Wrapf(err, "failed to check data engine image readiness of node %v", nodeID)
 	}
 
-	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal || dataLocality == longhorn.DataLocalityBestEffort || types.IsDataEngineV2(dataEngine) {
+	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal || dataLocality == longhorn.DataLocalityBestEffort ||
+		types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
 		return isReady, nil
 	}
 
@@ -3889,14 +3924,15 @@ func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.Backi
 			if !types.IsSelectorsInTags(diskSpec.Tags, backingImage.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
 				continue
 			}
-			if types.IsDataEngineV2(dataEngine) {
-				if diskSpec.Type != longhorn.DiskTypeBlock {
-					continue
-				}
-			} else {
-				if diskSpec.Type != longhorn.DiskTypeFilesystem {
-					continue
-				}
+			expectedDiskType := longhorn.DiskTypeFilesystem
+			switch {
+			case types.IsDataEngineV2(dataEngine):
+				expectedDiskType = longhorn.DiskTypeBlock
+			case types.IsDataEngineLocal(dataEngine):
+				expectedDiskType = longhorn.DiskTypeLVM
+			}
+			if diskSpec.Type != expectedDiskType {
+				continue
 			}
 			if _, exists := backingImage.Spec.DiskFileSpecMap[diskStatus.DiskUUID]; exists {
 				continue
@@ -4941,7 +4977,7 @@ func (s *DataStore) CheckInstanceManagersReadiness(dataEngine longhorn.DataEngin
 	for _, node := range nodes {
 		var instanceManager *longhorn.InstanceManager
 
-		if types.IsDataEngineV2(dataEngine) {
+		if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
 			instanceManager, err = s.GetRunningInstanceManagerByNodeRO(node, dataEngine)
 		} else {
 			instanceManager, err = s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
@@ -5043,9 +5079,9 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 }
 
 func (s *DataStore) listInstanceManagers(nodeID string, dataEngine longhorn.DataEngineType) (imMap map[string]*longhorn.InstanceManager, err error) {
-	if types.IsDataEngineV2(dataEngine) {
-		// Because there is only one active instance manager image for v2 data engine,
-		// use spec.image as the instance manager image instead.
+	if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
+		// V2 and local data engines use the implementation bundled in the active
+		// instance manager image, so use spec.image as the instance manager image instead.
 		imMap, err = s.ListInstanceManagersByNodeRO(nodeID, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list all instance managers for node %v: %w", nodeID, err)
@@ -5077,9 +5113,8 @@ func filterInstanceManagers(nodeID string, dataEngine longhorn.DataEngineType, i
 		}
 	}
 
-	// Because there is only one active instance manager image for v2 data engine,
-	// find a running instance manager for v2 data engine.
-	if types.IsDataEngineV2(dataEngine) {
+	// V2 and local data engines each have only one active instance manager image.
+	if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
 		return findRunningInstanceManager(imMap)
 	}
 
@@ -5253,7 +5288,7 @@ func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, dataEngine
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
 
-	if types.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
 		return 0, nil
 	}
 
@@ -7332,8 +7367,11 @@ func IsSupportedVolumeSize(dataEngine longhorn.DataEngineType, fsType string, vo
 // IsDataEngineEnabled returns true if the given dataEngine is enabled
 func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (bool, error) {
 	dataEngineSetting := types.SettingNameV1DataEngine
-	if types.IsDataEngineV2(dataEngine) {
+	switch {
+	case types.IsDataEngineV2(dataEngine):
 		dataEngineSetting = types.SettingNameV2DataEngine
+	case types.IsDataEngineLocal(dataEngine):
+		dataEngineSetting = types.SettingNameLocalDataEngine
 	}
 
 	enabled, err := s.GetSettingAsBool(dataEngineSetting)
@@ -7347,19 +7385,19 @@ func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (boo
 func (s *DataStore) GetDataEngines() map[longhorn.DataEngineType]struct{} {
 	dataEngines := map[longhorn.DataEngineType]struct{}{}
 
-	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+	settingDataEngines := map[types.SettingName]longhorn.DataEngineType{
+		types.SettingNameV1DataEngine:    longhorn.DataEngineTypeV1,
+		types.SettingNameV2DataEngine:    longhorn.DataEngineTypeV2,
+		types.SettingNameLocalDataEngine: longhorn.DataEngineTypeLocal,
+	}
+	for setting, dataEngine := range settingDataEngines {
 		dataEngineEnabled, err := s.GetSettingAsBool(setting)
 		if err != nil {
 			logrus.WithError(err).Warnf("Failed to get setting %v", setting)
 			continue
 		}
 		if dataEngineEnabled {
-			switch setting {
-			case types.SettingNameV1DataEngine:
-				dataEngines[longhorn.DataEngineTypeV1] = struct{}{}
-			case types.SettingNameV2DataEngine:
-				dataEngines[longhorn.DataEngineTypeV2] = struct{}{}
-			}
+			dataEngines[dataEngine] = struct{}{}
 		}
 	}
 

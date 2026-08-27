@@ -7,6 +7,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,6 +39,7 @@ type InstanceHandler struct {
 	ds                     *datastore.DataStore
 	instanceManagerHandler InstanceManagerHandler
 	eventRecorder          record.EventRecorder
+	instanceGetter         func(*longhorn.InstanceManager, longhorn.DataEngineType, string, runtime.Object) (*longhorn.InstanceProcess, error)
 }
 
 type InstanceManagerHandler interface {
@@ -51,7 +54,18 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 		ds:                     ds,
 		instanceManagerHandler: instanceManagerHandler,
 		eventRecorder:          eventRecorder,
+		instanceGetter:         getInstanceFromInstanceManager,
 	}
+}
+
+func (h *InstanceHandler) setInstanceUnknown(status *longhorn.InstanceStatus) {
+	status.CurrentState = longhorn.InstanceStateUnknown
+	status.IP = ""
+	status.StorageIP = ""
+	status.Port = 0
+	status.UblkID = 0
+	status.UUID = ""
+	h.resetInstanceErrorCondition(status)
 }
 
 func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
@@ -144,9 +158,14 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 	}
 
 	if status.InstanceManagerName != "" && status.InstanceManagerName != im.Name {
-		log.Errorf("The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
-			"The instance manager name shouldn't change except for cleanup",
-			instanceName, im.Name, status.InstanceManagerName)
+		if types.IsDataEngineLocal(spec.DataEngine) {
+			log.Infof("Rebinding local instance %v from instance manager %v to %v after rediscovery",
+				instanceName, status.InstanceManagerName, im.Name)
+		} else {
+			log.Errorf("The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
+				"The instance manager name shouldn't change except for cleanup",
+				instanceName, im.Name, status.InstanceManagerName)
+		}
 	}
 	// `status.InstanceManagerName` should be set when the related instance process status
 	// exists in the instance manager.
@@ -337,6 +356,15 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 
 	log := logrus.WithFields(logrus.Fields{"instance": instanceName, "volumeName": spec.VolumeName, "dataEngine": spec.DataEngine, "specNodeID": spec.NodeID})
+	isStartedLocalInstance := types.IsDataEngineLocal(spec.DataEngine) &&
+		status.Started && spec.DesireState == longhorn.InstanceStateRunning
+	isNodeUnavailable := false
+	if isStartedLocalInstance {
+		isNodeUnavailable, err = h.ds.IsNodeDownOrDeletedOrDelinquent(spec.NodeID, spec.VolumeName)
+		if err != nil {
+			return err
+		}
+	}
 
 	stateBeforeReconcile := status.CurrentState
 	defer func() {
@@ -354,8 +382,20 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			}
 		}
 	}
+	// A local instance outlives the IM that created it. During an IM restart or
+	// upgrade, prefer the replacement running IM over the stale recorded one.
+	if isStartedLocalInstance && !isNodeUnavailable &&
+		(im == nil || im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning) {
+		im, err = h.ds.GetRunningInstanceManagerByNodeRO(spec.NodeID, spec.DataEngine)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+			im = nil
+		}
+	}
 	// There should be an available instance manager for a scheduled instance when its related engine image is compatible
-	if im == nil && spec.Image != "" && spec.NodeID != "" {
+	if im == nil && !isStartedLocalInstance && spec.Image != "" && spec.NodeID != "" {
 		dataEngineEnabled, err := h.ds.IsDataEngineEnabled(spec.DataEngine)
 		if err != nil {
 			return err
@@ -409,6 +449,39 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		instances, err = h.getInstancesFromInstanceManager(runtimeObj, im)
 		if err != nil {
 			return err
+		}
+	}
+	if isStartedLocalInstance && isNodeUnavailable {
+		if status.CurrentState != longhorn.InstanceStateUnknown {
+			log.Info("Marking local instance unknown because its node is unavailable")
+		}
+		h.setInstanceUnknown(status)
+		return nil
+	}
+	if isStartedLocalInstance {
+		if im == nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.DeletionTimestamp != nil {
+			if status.CurrentState != longhorn.InstanceStateUnknown {
+				log.Info("Marking local instance unknown while its instance manager is unavailable")
+			}
+			h.setInstanceUnknown(status)
+			return nil
+		}
+		if _, exists := instances[instanceName]; !exists {
+			// A replacement IM can be running before its first InstanceList result is
+			// reflected in the CR. Query the local device directly only on this miss.
+			instanceGetter := h.instanceGetter
+			if instanceGetter == nil {
+				instanceGetter = getInstanceFromInstanceManager
+			}
+			instance, getErr := instanceGetter(im, spec.DataEngine, instanceName, runtimeObj)
+			if getErr == nil {
+				instances[instanceName] = *instance
+			} else if grpcstatus.Code(getErr) != grpccodes.NotFound && !types.ErrorIsNotFound(getErr) {
+				// A replacement IM may not be running yet, temporarily set status to unknown until next InstanceList succeeds.
+				log.WithError(getErr).Warn("Failed to query local instance directly from the instance manager")
+				h.setInstanceUnknown(status)
+				return nil
+			}
 		}
 	}
 	// do nothing for incompatible instance except for deleting
@@ -525,6 +598,30 @@ func (h *InstanceHandler) getInstancesFromInstanceManager(obj runtime.Object, in
 		return types.ConsolidateInstances(instanceManager.Status.InstanceReplicas), nil
 	}
 	return nil, fmt.Errorf("unknown type for getInstancesFromInstanceManager: %+v", obj)
+}
+
+func getInstanceFromInstanceManager(im *longhorn.InstanceManager, dataEngine longhorn.DataEngineType, instanceName string, obj runtime.Object) (*longhorn.InstanceProcess, error) {
+	var kind string
+	switch obj.(type) {
+	case *longhorn.Engine:
+		kind = string(longhorn.InstanceManagerTypeEngine)
+	case *longhorn.Replica:
+		kind = string(longhorn.InstanceManagerTypeReplica)
+	default:
+		return nil, fmt.Errorf("unknown type for instance get: %T", obj)
+	}
+
+	client, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return nil, err
+	}
+	defer func(client io.Closer) {
+		if closeErr := client.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(client)
+
+	return client.InstanceGet(dataEngine, instanceName, kind)
 }
 
 func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Object) error {

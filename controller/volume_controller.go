@@ -804,6 +804,44 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 
 	log := getLoggerForVolume(c.logger, v).WithField("currentEngine", e.Name)
 
+	// A local volume has exactly one replica and no engine replica mode map.
+	// Derive robustness directly from that replica's instance state.
+	if types.IsDataEngineLocal(v.Spec.DataEngine) {
+		if len(rs) > 1 {
+			return fmt.Errorf("local volume %v has more than one replica", v.Name)
+		}
+
+		oldRobustness := v.Status.Robustness
+		v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+		for _, r := range rs {
+			switch {
+			case r.Spec.FailedAt != "" || r.Status.CurrentState == longhorn.InstanceStateError:
+				v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+			case r.Status.CurrentState == longhorn.InstanceStateRunning:
+				v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+				now := c.nowHandler()
+				if r.Spec.HealthyAt == "" {
+					r.Spec.HealthyAt = now
+				}
+				if r.Spec.LastHealthyAt == "" {
+					r.Spec.LastHealthyAt = now
+				}
+			}
+		}
+
+		if oldRobustness != v.Status.Robustness {
+			switch v.Status.Robustness {
+			case longhorn.VolumeRobustnessHealthy:
+				c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonHealthy, "volume %v became healthy", v.Name)
+			case longhorn.VolumeRobustnessFaulted:
+				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFaulted, "volume %v became faulted", v.Name)
+			case longhorn.VolumeRobustnessUnknown:
+				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonUnknown, "volume %v robustness is unknown", v.Name)
+			}
+		}
+		return nil
+	}
+
 	if e.Status.CurrentState == longhorn.InstanceStateUnknown {
 		if v.Status.Robustness != longhorn.VolumeRobustnessUnknown {
 			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
@@ -2330,7 +2368,17 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				case longhorn.VolumeStateAttached:
-					// This is a stable state
+					// Local engine I/O does not pass through the IM, so an IM restart
+					// must not detach the volume. The replica is temporarily unknown
+					// while the IM is unavailable and recovers after the new IM starts.
+					if types.IsDataEngineLocal(v.Spec.DataEngine) {
+						for _, r := range rs {
+							if r.Spec.DesireState == longhorn.InstanceStateRunning && r.Spec.FailedAt == "" && r.Status.CurrentState == longhorn.InstanceStateUnknown {
+								return nil
+							}
+						}
+					}
+
 					// Try to openVolumeDependentResources so that we start the newly added replicas if they exist
 					if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 						return err
@@ -2913,6 +2961,12 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			}
 			return nil
 		}
+		if types.IsDataEngineLocal(v.Spec.DataEngine) {
+			// A local replica is a kernel block device without an address; the
+			// engine only needs its name.
+			replicaAddressMap[r.Name] = ""
+			continue
+		}
 		if r.Status.IP == "" {
 			log.WithField("replica", r.Name).Warn("Replica is running but IP is empty")
 			continue
@@ -3390,7 +3444,17 @@ func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volu
 func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) error {
 	log := getLoggerForVolume(c.logger, v)
 
-	if e.Status.SnapshotsError == "" {
+	if types.IsDataEngineLocal(v.Spec.DataEngine) {
+		if v.Spec.LocalProvisioningMode == "" || v.Spec.LocalProvisioningMode == longhorn.LocalVolumeProvisioningModeThick {
+			v.Status.ActualSize = v.Spec.Size
+		} else {
+			// TODO: Report the unique physical chunks used by the thin head and
+			// its snapshots when local-engine snapshot support is implemented.
+			// Per-LV Data% misses chunks retained only by snapshots, while
+			// summing Data% across the chain double-counts shared chunks.
+			v.Status.ActualSize = 0
+		}
+	} else if e != nil && e.Status.SnapshotsError == "" {
 		actualSize := int64(0)
 		for _, snapshot := range e.Status.Snapshots {
 			size, err := util.ConvertSize(snapshot.Size)

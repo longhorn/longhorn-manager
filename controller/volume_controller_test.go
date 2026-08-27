@@ -1613,6 +1613,31 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecs(c *C) {
 	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
 }
 
+func (s *TestSuite) TestReconcileLocalVolumeActualSize(c *C) {
+	tests := []struct {
+		mode     longhorn.LocalVolumeProvisioningMode
+		expected int64
+	}{
+		{mode: "", expected: TestVolumeSize},
+		{mode: longhorn.LocalVolumeProvisioningModeThick, expected: TestVolumeSize},
+		{mode: longhorn.LocalVolumeProvisioningModeThin, expected: 0},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+	for _, test := range tests {
+		v := newVolume(TestVolumeName, 1)
+		v.Spec.DataEngine = longhorn.DataEngineTypeLocal
+		v.Spec.LocalProvisioningMode = test.mode
+
+		err := vc.reconcileVolumeSize(v, nil, nil, nil)
+		c.Assert(err, IsNil)
+		c.Assert(v.Status.ActualSize, Equals, test.expected)
+	}
+}
+
 func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgress(c *C) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
@@ -2640,6 +2665,52 @@ func (s *TestSuite) TestReconcileEngineReplicaStateV1CanRecoverFromFaultedRobust
 	err = vc.ReconcileEngineReplicaState(v, es, rs)
 	c.Assert(err, IsNil)
 	c.Assert(v.Status.Robustness, Equals, longhorn.VolumeRobustnessHealthy)
+}
+
+func (s *TestSuite) TestLocalUnknownInstanceKeepsAttachedVolumeIntact(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	v.Spec.NodeID = TestNode1
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.State = longhorn.VolumeStateAttached
+	v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	e.Spec.NodeID = TestNode1
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	r.Spec.DesireState = longhorn.InstanceStateRunning
+	r.Status.CurrentState = longhorn.InstanceStateUnknown
+
+	es := map[string]*longhorn.Engine{e.Name: e}
+	rs := map[string]*longhorn.Replica{r.Name: r}
+
+	err = vc.ReconcileEngineReplicaState(v, es, rs)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.State, Equals, longhorn.VolumeStateAttached)
+	c.Assert(v.Status.Robustness, Equals, longhorn.VolumeRobustnessUnknown)
+	c.Assert(v.Status.RemountRequestedAt, Equals, "")
+	c.Assert(r.Spec.FailedAt, Equals, "")
+	c.Assert(r.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+
+	err = vc.reconcileAttachDetachStateMachine(v, e, rs, nil, false, logrus.WithField("volume", v.Name))
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.State, Equals, longhorn.VolumeStateAttached)
+	c.Assert(v.Status.CurrentNodeID, Equals, TestNode1)
+	c.Assert(e.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(r.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
 }
 
 func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensBalance(c *C) {

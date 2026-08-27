@@ -1052,8 +1052,7 @@ func (c *SystemBackupController) BackupBackingImage() (map[string]*longhorn.Back
 
 	backingImageBackups := make(map[string]*longhorn.BackupBackingImage, len(backingImages))
 	for _, backingImage := range backingImages {
-		// TODO: support backup backing image v2
-		if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
+		if !types.IsDataEngineV1(backingImage.Spec.DataEngine) {
 			continue
 		}
 		backupBackingImage, err := c.createBackingImageBackup(backingImage)

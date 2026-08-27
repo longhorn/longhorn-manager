@@ -1336,7 +1336,8 @@ func (rcs *ReplicaScheduler) IsDiskEligibleForVolume(diskSpec longhorn.DiskSpec,
 	// Validate disk type compatibility with the volume's data engine.
 	isV1EngineFilesystemDisk := types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem
 	isV2EngineBlockDisk := types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock
-	if !isV1EngineFilesystemDisk && !isV2EngineBlockDisk {
+	isLocalEngineLVMDisk := types.IsDataEngineLocal(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeLVM
+	if !isV1EngineFilesystemDisk && !isV2EngineBlockDisk && !isLocalEngineLVMDisk {
 		return false, longhorn.ErrorReplicaScheduleDiskUnavailable,
 			fmt.Sprintf("disk type %v is not compatible with data engine %v", diskSpec.Type, volume.Spec.DataEngine)
 	}
@@ -1448,6 +1449,15 @@ func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskS
 	overProvisioningPercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
 	if err != nil {
 		return nil, err
+	}
+	if disk.Type == longhorn.DiskTypeLVM {
+		mode, err := rcs.ds.GetSettingValueExisted(types.SettingNameLocalDataEngineProvisioningMode)
+		if err != nil {
+			return nil, err
+		}
+		if mode == string(longhorn.LocalVolumeProvisioningModeThick) && overProvisioningPercentage > 100 {
+			overProvisioningPercentage = 100
+		}
 	}
 	minimalAvailablePercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageMinimalAvailablePercentage)
 	if err != nil {

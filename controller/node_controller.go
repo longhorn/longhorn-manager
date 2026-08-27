@@ -1082,7 +1082,11 @@ func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn
 		longhorn.InstanceManagerTypeReplica:  {},
 	}
 
-	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+	for _, setting := range []types.SettingName{
+		types.SettingNameV1DataEngine,
+		types.SettingNameV2DataEngine,
+		types.SettingNameLocalDataEngine,
+	} {
 		enabled, err := nc.ds.GetSettingAsBool(setting)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to get %v setting", setting)
@@ -1105,6 +1109,8 @@ func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn
 			} else {
 				log.WithError(err).Warnf("Failed to validate %v setting", types.SettingNameV2DataEngine)
 			}
+		case types.SettingNameLocalDataEngine:
+			dataEngines[longhorn.InstanceManagerTypeAllInOne] = append(dataEngines[longhorn.InstanceManagerTypeAllInOne], longhorn.DataEngineTypeLocal)
 		}
 	}
 
@@ -1173,6 +1179,16 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			if err != nil {
 				return err
 			}
+			defaultLocalInstanceManagerRunning := false
+			if types.IsDataEngineLocal(dataEngine) {
+				for _, im := range imMap {
+					if im.Spec.Image == defaultInstanceManagerImage && im.DeletionTimestamp == nil &&
+						im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+						defaultLocalInstanceManagerRunning = true
+						break
+					}
+				}
+			}
 			for _, im := range imMap {
 				if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
 					return fmt.Errorf("instance manager %v nodeID %v is not consistent with the label %v=%v",
@@ -1218,8 +1234,9 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						}
 					}
 				} else {
-					// Clean up old instance managers if there is no running instance.
-					if runningOrStartingInstanceFound {
+					// Local instances are kernel LVs discovered by every local instance manager,
+					// so an obsolete pod can report them after its replacement is ready.
+					if runningOrStartingInstanceFound && !(types.IsDataEngineLocal(dataEngine) && defaultLocalInstanceManagerRunning) {
 						cleanupRequired = false
 					}
 

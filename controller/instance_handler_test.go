@@ -577,6 +577,70 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			false,
 		},
+		"running local engine becomes unknown while instance manager is deleting": {
+			longhorn.InstanceTypeEngine,
+			newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeLocal,
+				TestInstanceManagerImage,
+				true,
+			),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
+			false,
+		},
+		"running local engine becomes unknown without a replacement instance manager": {
+			longhorn.InstanceTypeEngine,
+			newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateError,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeLocal,
+				TestInstanceManagerImage,
+				false,
+			),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
+			false,
+		},
+		"running local engine recovers through direct lookup before instance list": {
+			longhorn.InstanceTypeEngine,
+			newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeLocal,
+				TestInstanceManagerImage,
+				false,
+			),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			false,
+		},
+		"missing local engine becomes error after direct lookup": {
+			longhorn.InstanceTypeEngine,
+			newInstanceManager(
+				TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				longhorn.DataEngineTypeLocal,
+				TestInstanceManagerImage,
+				false,
+			),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName, TestNode1, "", 0, true, longhorn.InstanceStateError, longhorn.InstanceStateRunning),
+			false,
+		},
 	}
 	for name, tc := range testCases {
 		fmt.Printf("testing instance handler: %v\n", name)
@@ -624,6 +688,11 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		err = nodeIndexer.Add(node)
 		c.Assert(err, IsNil)
 
+		if tc.instanceManager != nil && types.IsDataEngineLocal(tc.instanceManager.Spec.DataEngine) {
+			tc.obj.(*longhorn.Engine).Spec.DataEngine = longhorn.DataEngineTypeLocal
+			tc.expectedObj.(*longhorn.Engine).Spec.DataEngine = longhorn.DataEngineTypeLocal
+		}
+
 		var spec *longhorn.InstanceSpec
 		var status *longhorn.InstanceStatus
 		if tc.instanceType == longhorn.InstanceTypeEngine {
@@ -650,7 +719,23 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 func newTestInstanceHandler(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) *InstanceHandler {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	fakeRecorder := record.NewFakeRecorder(100)
-	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
+	h := NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
+	h.instanceGetter = func(_ *longhorn.InstanceManager, dataEngine longhorn.DataEngineType, instanceName string, _ runtime.Object) (*longhorn.InstanceProcess, error) {
+		if strings.Contains(instanceName, NonExistingInstance) {
+			return nil, fmt.Errorf("cannot find instance %v", instanceName)
+		}
+		return &longhorn.InstanceProcess{
+			Spec: longhorn.InstanceProcessSpec{
+				Name:       instanceName,
+				DataEngine: dataEngine,
+			},
+			Status: longhorn.InstanceProcessStatus{
+				State:     longhorn.InstanceStateRunning,
+				PortStart: TestPort1,
+			},
+		}, nil
+	}
+	return h
 }
 
 func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
@@ -933,4 +1018,58 @@ func (s *TestSuite) TestReconcileInstanceStateKeepsSalvageRequestedWhenReapingSt
 	c.Assert(h.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus), IsNil)
 	c.Assert(registry.calls, DeepEquals, []string{"delete", "create"})
 	c.Assert(engine.Status.SalvageExecuted, Equals, true)
+}
+
+func (s *TestSuite) TestRunningLocalEngineRebindsToReplacementInstanceManager(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	h := newTestInstanceHandler(lhClient, kubeClient, extensionsClient, informerFactories)
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+	oldIM := newInstanceManager(
+		"old-local-im", longhorn.InstanceManagerStateError,
+		TestOwnerID1, TestNode1, TestIP1,
+		map[string]longhorn.InstanceProcess{}, nil, map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeLocal, TestInstanceManagerImage, true)
+	replacementIM := newInstanceManager(
+		"replacement-local-im", longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP2,
+		map[string]longhorn.InstanceProcess{
+			ExistingInstance: {
+				Spec: longhorn.InstanceProcessSpec{Name: ExistingInstance},
+				Status: longhorn.InstanceProcessStatus{
+					State:     longhorn.InstanceStateRunning,
+					PortStart: TestPort1,
+				},
+			},
+		}, nil, map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeLocal, TestInstanceManagerImage, false)
+
+	for _, im := range []*longhorn.InstanceManager{oldIM, replacementIM} {
+		created, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imIndexer.Add(created), IsNil)
+	}
+
+	pod := newPod(&corev1.PodStatus{PodIP: TestIP2, Phase: corev1.PodRunning}, replacementIM.Name, replacementIM.Namespace, replacementIM.Spec.NodeID)
+	_, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(podIndexer.Add(pod), IsNil)
+
+	node, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(nodeIndexer.Add(node), IsNil)
+
+	e := newEngine(ExistingInstance, TestEngineImage, oldIM.Name, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning)
+	e.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	err = h.ReconcileInstanceState(e, &e.Spec.InstanceSpec, &e.Status.InstanceStatus)
+	c.Assert(err, IsNil)
+	c.Assert(e.Status.CurrentState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(e.Status.InstanceManagerName, Equals, replacementIM.Name)
+	c.Assert(e.Status.IP, Equals, TestIP2)
 }

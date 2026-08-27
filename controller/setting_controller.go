@@ -369,18 +369,23 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	dangerSettingsRequiringSpecificDataEngineVolumesDetached := []types.SettingName{
 		types.SettingNameV1DataEngine,
 		types.SettingNameV2DataEngine,
+		types.SettingNameLocalDataEngine,
 		types.SettingNameGuaranteedInstanceManagerCPU,
 	}
 
 	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
 		switch settingName {
-		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
+		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine, types.SettingNameLocalDataEngine:
 			if err := sc.updateDataEngine(settingName); err != nil {
 				return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
 					"It will be eventually applied", settingName)
 			}
 		case types.SettingNameGuaranteedInstanceManagerCPU:
-			for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+			for _, dataEngine := range []longhorn.DataEngineType{
+				longhorn.DataEngineTypeV1,
+				longhorn.DataEngineTypeV2,
+				longhorn.DataEngineTypeLocal,
+			} {
 				if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
 					return err
 				}
@@ -974,6 +979,12 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 	case types.SettingNameV2DataEngine:
 		dataEngine = longhorn.DataEngineTypeV2
 		ims, err = sc.ds.ValidateV2DataEngineEnabled(enabled)
+		if err != nil {
+			return err
+		}
+	case types.SettingNameLocalDataEngine:
+		dataEngine = longhorn.DataEngineTypeLocal
+		ims, err = sc.ds.ValidateLocalDataEngineEnabled(enabled)
 		if err != nil {
 			return err
 		}
@@ -1832,6 +1843,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameDefaultUblkNumberOfQueue:                                 true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
+		types.SettingNameLocalDataEngine:                                          true,
 	}
 
 	settings, err := info.ds.ListSettings()

@@ -376,8 +376,14 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.Status.CurrentState == longhorn.InstanceStateRunning {
-		// we allow across monitoring temporarily due to migration case
-		if !ec.isMonitoring(engine) {
+		// A local data engine has no process to monitor; its endpoint is the
+		// replica LV device path reported by the instance manager.
+		if types.IsDataEngineLocal(engine.Spec.DataEngine) {
+			if err := ec.syncLocalEngineEndpoint(engine); err != nil {
+				return err
+			}
+		} else if !ec.isMonitoring(engine) {
+			// we allow across monitoring temporarily due to migration case
 			ec.startMonitoring(engine)
 		} else if engine.Status.ReplicaModeMap != nil && engine.Spec.DesireState != longhorn.InstanceStateStopped {
 			// If engine.Spec.DesireState == longhorn.InstanceStateStopped, we have likely already issued a command to
@@ -388,6 +394,10 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 			}
 		}
 	} else {
+		// A local data engine has no monitor to reset its status on stop.
+		if types.IsDataEngineLocal(engine.Spec.DataEngine) && engine.Status.Endpoint != "" {
+			engine.Status.Endpoint = ""
+		}
 		if ec.isMonitoring(engine) {
 			// engine is not running
 			ec.resetAndStopMonitoring(engine)
@@ -408,6 +418,65 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		engine.Status.CloneStatus = nil
 	}
 
+	return nil
+}
+
+// syncLocalEngineEndpoint copies the endpoint of a running local data engine
+// instance (the replica LV device path) from the instance manager status.
+func (ec *EngineController) syncLocalEngineEndpoint(engine *longhorn.Engine) error {
+	if engine.Status.InstanceManagerName == "" {
+		return nil
+	}
+	im, err := ec.ds.GetInstanceManagerRO(engine.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+	instance, exists := im.Status.InstanceEngines[engine.Name]
+	if !exists {
+		return nil
+	}
+	if instance.Status.Endpoint != "" && engine.Status.Endpoint != instance.Status.Endpoint {
+		engine.Status.Endpoint = instance.Status.Endpoint
+	}
+	if engine.Status.CurrentSize == engine.Spec.VolumeSize {
+		return nil
+	}
+	if engine.Status.CurrentSize > engine.Spec.VolumeSize {
+		return fmt.Errorf("cannot shrink local engine %v from %v to %v bytes", engine.Name, engine.Status.CurrentSize, engine.Spec.VolumeSize)
+	}
+	if len(engine.Spec.ReplicaAddressMap) != 1 {
+		return fmt.Errorf("local engine %v requires exactly one replica for expansion, found %v", engine.Name, len(engine.Spec.ReplicaAddressMap))
+	}
+	var replicaName string
+	for name := range engine.Spec.ReplicaAddressMap {
+		replicaName = name
+	}
+	replica, err := ec.ds.GetReplicaRO(replicaName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get local replica %v for expansion", replicaName)
+	}
+	diskName, err := ec.ds.GetReadyDisk(replica.Spec.NodeID, replica.Spec.DiskID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to find LVM disk for local replica %v", replicaName)
+	}
+	c, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := c.Close(); closeErr != nil {
+			ec.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}()
+	if err := c.LocalReplicaInstanceExpand(replica, diskName); err != nil {
+		return errors.Wrapf(err, "failed to expand local replica %v to %v bytes", replicaName, engine.Spec.VolumeSize)
+	}
+	oldSize := engine.Status.CurrentSize
+	engine.Status.CurrentSize = engine.Spec.VolumeSize
+	if oldSize != 0 {
+		ec.eventRecorder.Eventf(engine, corev1.EventTypeNormal, constant.EventReasonSucceededExpansion,
+			"Engine successfully expanded size from %v to %v", oldSize, engine.Status.CurrentSize)
+	}
 	return nil
 }
 
@@ -2073,7 +2142,7 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
 
-	if types.IsDataEngineV2(e.Spec.DataEngine) {
+	if types.IsDataEngineV2(e.Spec.DataEngine) || types.IsDataEngineLocal(e.Spec.DataEngine) {
 		return nil, nil
 	}
 

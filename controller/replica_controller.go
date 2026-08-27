@@ -445,6 +445,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
 		Replica:                       r,
+		LocalProvisioningMode:         v.Spec.LocalProvisioningMode,
 		Encrypted:                     v.Spec.Encrypted,
 		DiskName:                      diskName,
 		DataPath:                      dataPath,
@@ -678,8 +679,10 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 }
 
 func canDeleteInstance(r *longhorn.Replica) bool {
+	// For v2 and local replicas the data (lvol / LV) outlives the instance, so
+	// it is only cleaned up when the replica itself is being deleted.
 	return types.IsDataEngineV1(r.Spec.DataEngine) ||
-		(types.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
+		((types.IsDataEngineV2(r.Spec.DataEngine) || types.IsDataEngineLocal(r.Spec.DataEngine)) && r.DeletionTimestamp != nil)
 }
 
 // shouldWaitForEngineReplicaRemoval reports whether a v2 replica's instance deletion should be held off

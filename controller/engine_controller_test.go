@@ -33,6 +33,23 @@ func (m *mockEngineClientProxy) ReplicaRebuildVerify(_ *longhorn.Engine, replica
 	return m.verifyErr
 }
 
+func TestGetBinaryClientForEngineSkipsNonV1Engines(t *testing.T) {
+	for _, dataEngine := range []longhorn.DataEngineType{
+		longhorn.DataEngineTypeV2,
+		longhorn.DataEngineTypeLocal,
+	} {
+		t.Run(string(dataEngine), func(t *testing.T) {
+			client, err := GetBinaryClientForEngine(&longhorn.Engine{
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{DataEngine: dataEngine},
+				},
+			}, nil, "")
+			require.NoError(t, err)
+			require.Nil(t, client)
+		})
+	}
+}
+
 func TestNeedStatusUpdate(t *testing.T) {
 	newMonitor := func() *EngineMonitor {
 		logger := logrus.New()

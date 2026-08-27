@@ -274,8 +274,8 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	cpuRequest := 0
 	cpuRequestVal := ""
 	switch im.Spec.DataEngine {
-	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
-		// TODO: Currently lhNode.Spec.InstanceManagerCPURequest is applied to both v1 and v2 data engines.
+	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2, longhorn.DataEngineTypeLocal:
+		// TODO: Currently lhNode.Spec.InstanceManagerCPURequest is applied to every data engine.
 		// In the future, we may want to support different CPU requests for them.
 		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
 		cpuRequestVal = fmt.Sprintf("%dm", cpuRequest)

@@ -833,7 +833,8 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 			storageSchedulable := overProvisionLimit - diskStatus.StorageScheduled
 			storageSchedulable = max(storageSchedulable, 0)
 			validDisk := (dataEngine == longhorn.DataEngineTypeV1 && diskStatus.Type == longhorn.DiskTypeFilesystem) ||
-				(dataEngine == longhorn.DataEngineTypeV2 && diskStatus.Type == longhorn.DiskTypeBlock)
+				(dataEngine == longhorn.DataEngineTypeV2 && diskStatus.Type == longhorn.DiskTypeBlock) ||
+				(dataEngine == longhorn.DataEngineTypeLocal && diskStatus.Type == longhorn.DiskTypeLVM)
 
 			if validDisk {
 				maximumVolumeSize = max(maximumVolumeSize, storageSchedulable)

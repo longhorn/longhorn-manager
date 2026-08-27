@@ -1233,6 +1233,47 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 	s.checkOrphans(c, expectation)
 }
 
+func (s *NodeControllerSuite) TestCleanupObsoleteLocalInstanceManagerAfterReplacementIsRunning(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	instance := map[string]longhorn.InstanceProcess{
+		ExistingInstance: {
+			Spec: longhorn.InstanceProcessSpec{Name: ExistingInstance},
+			Status: longhorn.InstanceProcessStatus{
+				State: longhorn.InstanceStateRunning,
+			},
+		},
+	}
+	current := newInstanceManager(
+		"current-local-instance-manager", longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1, instance, map[string]longhorn.InstanceProcess{}, instance,
+		longhorn.DataEngineTypeLocal, TestInstanceManagerImage, false,
+	)
+	obsolete := newInstanceManager(
+		"obsolete-local-instance-manager", longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1, instance, map[string]longhorn.InstanceProcess{}, instance,
+		longhorn.DataEngineTypeLocal, TestExtraInstanceManagerImage, false,
+	)
+
+	s.initTest(c, &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{TestNode1: node},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameLocalDataEngine):             newSetting(string(types.SettingNameLocalDataEngine), "true"),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+			current.Name:            current,
+			obsolete.Name:           obsolete,
+		},
+	})
+
+	c.Assert(s.controller.syncInstanceManagers(node), IsNil)
+	_, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), current.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	_, err = s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), obsolete.Name, metav1.GetOptions{})
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+}
+
 func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 	var err error
 

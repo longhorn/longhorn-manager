@@ -564,7 +564,7 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 }
 
 func (imc *InstanceManagerController) isDateEngineCPUMaskCoreNumberApplied(im *longhorn.InstanceManager) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -830,7 +830,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingPriorityClassSynced(setting, pod)
 		case types.SettingNameStorageNetwork:
 			isSettingSynced, err = imc.isSettingStorageNetworkSynced(setting, pod)
-		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
+		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine, types.SettingNameLocalDataEngine:
 			isSettingSynced, err = imc.isSettingDataEngineSynced(settingName, im)
 		case types.SettingNameInstanceManagerPodLivenessProbeTimeout:
 			isSettingSynced, err = imc.isSettingInstanceManagerPodLivenessProbeTimeoutSynced(setting, pod)
@@ -975,6 +975,8 @@ func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName type
 		dataEngine = longhorn.DataEngineTypeV1
 	case types.SettingNameV2DataEngine:
 		dataEngine = longhorn.DataEngineTypeV2
+	case types.SettingNameLocalDataEngine:
+		dataEngine = longhorn.DataEngineTypeLocal
 	}
 	if !enabled && im.Spec.DataEngine == dataEngine {
 		return false, nil
@@ -984,7 +986,7 @@ func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName type
 }
 
 func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -1027,7 +1029,7 @@ func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.In
 // pod's args. All flags are set together, so the effective state is "enabled"
 // only when all are present.
 func (imc *InstanceManagerController) isSettingCPUIsolationEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 	if pod == nil || len(pod.Spec.Containers) == 0 {
@@ -1070,7 +1072,7 @@ func (imc *InstanceManagerController) isSettingCPUIsolationEnabledSynced(setting
 //   - The settings are NOT synced but the node lacks sufficient total hugepage
 //     capacity to reschedule the pod, making deletion unsafe
 func (imc *InstanceManagerController) isHugepageSettingApplied(im *longhorn.InstanceManager) (applied, synced bool, err error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, true, nil
 	}
 
@@ -1116,7 +1118,7 @@ func (imc *InstanceManagerController) isHugepageSettingApplied(im *longhorn.Inst
 // isSettingHugepageLimitSynced checks whether the pod's hugepages-2Mi resource limit
 // matches the expected value derived from the hugepage-enabled and memory-size settings.
 func (imc *InstanceManagerController) isSettingHugepageLimitSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -1150,7 +1152,7 @@ func (imc *InstanceManagerController) isSettingHugepageLimitSynced(im *longhorn.
 // isSettingMemorySizeArgSynced checks whether the pod's --spdk-memory-size argument
 // matches the current memory-size setting value.
 func (imc *InstanceManagerController) isSettingMemorySizeArgSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -1174,7 +1176,7 @@ func (imc *InstanceManagerController) isSettingMemorySizeArgSynced(im *longhorn.
 // is necessary but not sufficient for the new IM pod to be schedulable. A false
 // result, however, guarantees the pod cannot schedule and deletion should be skipped.
 func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *longhorn.InstanceManager) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -1217,7 +1219,7 @@ func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *lon
 // (types.SpdkDefaultIobufLargePoolSize) means the flag is omitted from the pod args, so an
 // absent flag is considered synced; this prevents recreating existing pods that predate the setting.
 func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -2146,6 +2148,9 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		podSpec.Spec.Containers[0].Args = []string{
 			"instance-manager", "--debug", "daemon", "--listen", fmt.Sprintf(":%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
 		}
+		if types.IsDataEngineLocal(dataEngine) {
+			podSpec.Spec.Containers[0].Args = append(podSpec.Spec.Containers[0].Args, "--local-data-engine-enabled")
+		}
 	}
 
 	podProbeTimeout, err := imc.ds.GetSettingAsInt(types.SettingNameInstanceManagerPodLivenessProbeTimeout)
@@ -2279,6 +2284,27 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 				},
 			},
 		},
+	}
+
+	// Local LVM commands share persistent device discovery across IM upgrades.
+	if types.IsDataEngineLocal(dataEngine) {
+		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts,
+			corev1.VolumeMount{
+				Name:      "lvm-devices",
+				MountPath: types.LVMDevicesDirectoryInContainer,
+			},
+		)
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes,
+			corev1.Volume{
+				Name: "lvm-devices",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: types.LVMDevicesDirectoryOnHost,
+						Type: ptr.To(corev1.HostPathDirectoryOrCreate),
+					},
+				},
+			},
+		)
 	}
 
 	if types.IsDataEngineV2(dataEngine) {

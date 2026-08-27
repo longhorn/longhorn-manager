@@ -81,8 +81,8 @@ func (s *DiskService) Close() {
 	}
 }
 
-func (s *DiskService) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*imapi.DiskInfo, error) {
-	return s.grpcClient.DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver, blockSize, rpc.LVMStorageLayout_LVM_STORAGE_LAYOUT_INVALID)
+func (s *DiskService) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64, storageLayout rpc.LVMStorageLayout) (*imapi.DiskInfo, error) {
+	return s.grpcClient.DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver, blockSize, storageLayout)
 }
 
 func (s *DiskService) DiskGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskInfo, error) {
