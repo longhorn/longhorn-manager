@@ -341,6 +341,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               diskFileSpecMap:
                 additionalProperties:
@@ -349,6 +350,7 @@ spec:
                       enum:
                       - v1
                       - v2
+                      - local
                       type: string
                     evictionRequested:
                       type: boolean
@@ -400,6 +402,7 @@ spec:
                       enum:
                       - v1
                       - v2
+                      - local
                       type: string
                     lastStateTransitionTime:
                       type: string
@@ -1152,6 +1155,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               desireState:
                 type: string
@@ -1549,6 +1553,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               desireState:
                 type: string
@@ -2498,6 +2503,7 @@ spec:
                       enum:
                       - filesystem
                       - block
+                      - lvm
                       type: string
                     evictionRequested:
                       type: boolean
@@ -2760,10 +2766,11 @@ spec:
               dataEngine:
                 description: |-
                   The type of data engine for instance orphan.
-                  Can be "v1", "v2".
+                  Can be "v1", "v2", "local".
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               nodeID:
                 description: The node ID on which the controller is responsible to
@@ -3077,6 +3084,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               desireState:
                 type: string
@@ -4866,6 +4874,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               dataLayout:
                 description: |-
@@ -4958,6 +4967,14 @@ spec:
               image:
                 type: string
               lastAttachedBy:
+                type: string
+              localProvisioningMode:
+                description: |-
+                  LocalProvisioningMode records the immutable LVM allocation mode used by a local data engine volume.
+                  It is empty for v1 and v2 volumes.
+                enum:
+                - thick
+                - thin
                 type: string
               migratable:
                 type: boolean

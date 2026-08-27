@@ -890,11 +890,14 @@ func WaitForResourceDeletion(kubeClient *clientset.Clientset, name, namespace, r
 }
 
 func GetDataEngineForDiskType(diskType longhorn.DiskType) longhorn.DataEngineType {
-	if diskType == longhorn.DiskTypeBlock {
+	switch diskType {
+	case longhorn.DiskTypeBlock:
 		return longhorn.DataEngineTypeV2
+	case longhorn.DiskTypeLVM:
+		return longhorn.DataEngineTypeLocal
+	default:
+		return longhorn.DataEngineTypeV1
 	}
-	return longhorn.DataEngineTypeV1
-
 }
 
 // GetDataContentFromYAML unmarshals the data content YAML data into a map

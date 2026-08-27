@@ -141,6 +141,8 @@ const (
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
 	MetadataDirectoryInContainer     = "/metadata/"
 	MetadataDirectoryOnHost          = "/var/lib/longhorn/metadata/"
+	LVMDevicesDirectoryInContainer   = "/etc/lvm/devices/"
+	LVMDevicesDirectoryOnHost        = "/var/lib/longhorn/lvm/devices/"
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
@@ -428,6 +430,11 @@ type NotFoundError struct {
 
 func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("cannot find %v", e.Name)
+}
+
+func (e *NotFoundError) Is(target error) bool {
+	_, ok := target.(*NotFoundError)
+	return ok
 }
 
 type ErrorInvalidState struct {
@@ -1680,12 +1687,18 @@ func GetIMNameFromPDBName(pdbName string) string {
 
 // IsDataEngineV1 returns true if the given dataEngine is v1
 func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
-	return dataEngine != longhorn.DataEngineTypeV2
+	// An unset data engine is v1 for objects created before the field existed.
+	return dataEngine == longhorn.DataEngineTypeV1 || dataEngine == ""
 }
 
 // IsDataEngineV2 returns true if the given dataEngine is v2
 func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
 	return dataEngine == longhorn.DataEngineTypeV2
+}
+
+// IsDataEngineLocal returns true if the given dataEngine is local.
+func IsDataEngineLocal(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine == longhorn.DataEngineTypeLocal
 }
 
 func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {

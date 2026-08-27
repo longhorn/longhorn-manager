@@ -307,6 +307,12 @@ func CheckCLICompatibility(cliVersion, cliMinVersion int) error {
 }
 
 func GetEngineInstanceFrontend(dataEngine longhorn.DataEngineType, volumeFrontend longhorn.VolumeFrontend) (frontend string, err error) {
+	if types.IsDataEngineLocal(dataEngine) {
+		// The replica LV is exposed directly as a kernel block device; there
+		// is no frontend process.
+		return "", nil
+	}
+
 	switch volumeFrontend {
 	case longhorn.VolumeFrontendBlockDev:
 		frontend = string(iscsidevtypes.FrontendTGTBlockDev)

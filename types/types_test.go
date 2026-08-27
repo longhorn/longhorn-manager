@@ -1,11 +1,13 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	. "gopkg.in/check.v1"
@@ -26,6 +28,83 @@ type TestSuite struct {
 }
 
 var _ = Suite(&TestSuite{})
+
+func TestNotFoundErrorSupportsErrorsIs(t *testing.T) {
+	err := &NotFoundError{Name: "test resource"}
+	target := &NotFoundError{}
+
+	if !errors.Is(err, target) {
+		t.Fatal("expected errors.Is to recognize NotFoundError")
+	}
+	if !errors.Is(errors.Wrap(err, "get failed"), target) {
+		t.Fatal("expected errors.Is to recognize a wrapped NotFoundError")
+	}
+	if errors.Is(fmt.Errorf("some other error"), target) {
+		t.Fatal("expected errors.Is to reject an unrelated error")
+	}
+}
+
+func TestDataEnginePredicates(t *testing.T) {
+	tests := []struct {
+		name    string
+		engine  longhorn.DataEngineType
+		isV1    bool
+		isV2    bool
+		isLocal bool
+	}{
+		{name: "v1", engine: longhorn.DataEngineTypeV1, isV1: true},
+		{name: "v2", engine: longhorn.DataEngineTypeV2, isV2: true},
+		{name: "local", engine: longhorn.DataEngineTypeLocal, isLocal: true},
+		// An unset data engine is treated as v1 for objects created before the field existed.
+		{name: "empty", engine: "", isV1: true},
+		{name: "unknown", engine: "unknown"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := IsDataEngineV1(test.engine); got != test.isV1 {
+				t.Fatalf("IsDataEngineV1(%q) = %v, want %v", test.engine, got, test.isV1)
+			}
+			if got := IsDataEngineV2(test.engine); got != test.isV2 {
+				t.Fatalf("IsDataEngineV2(%q) = %v, want %v", test.engine, got, test.isV2)
+			}
+			if got := IsDataEngineLocal(test.engine); got != test.isLocal {
+				t.Fatalf("IsDataEngineLocal(%q) = %v, want %v", test.engine, got, test.isLocal)
+			}
+		})
+	}
+}
+
+func TestLocalDataEngineSettings(t *testing.T) {
+	definition, ok := GetSettingDefinition(SettingNameLocalDataEngine)
+	if !ok {
+		t.Fatal("local data engine setting definition is missing")
+	}
+	if definition.Type != SettingTypeBool || definition.Default != "false" {
+		t.Fatalf("unexpected local data engine setting definition: %#v", definition)
+	}
+
+	tests := []struct {
+		name     SettingName
+		expected string
+	}{
+		{name: SettingNameDefaultReplicaCount, expected: "1"},
+		{name: SettingNameGuaranteedInstanceManagerCPU, expected: "1"},
+	}
+	for _, test := range tests {
+		definition, ok := GetSettingDefinition(test.name)
+		if !ok {
+			t.Fatalf("setting definition %v is missing", test.name)
+		}
+		defaults := map[string]string{}
+		if err := json.Unmarshal([]byte(definition.Default), &defaults); err != nil {
+			t.Fatalf("failed to parse %v defaults: %v", test.name, err)
+		}
+		if got := defaults[string(longhorn.DataEngineTypeLocal)]; got != test.expected {
+			t.Fatalf("%v local default = %q, want %q", test.name, got, test.expected)
+		}
+	}
+}
 
 func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)

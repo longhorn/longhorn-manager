@@ -61,6 +61,7 @@ type Volume struct {
 	ReplicaZoneSoftAntiAffinity     longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
 	ReplicaDiskSoftAntiAffinity     longhorn.ReplicaDiskSoftAntiAffinity   `json:"replicaDiskSoftAntiAffinity"`
 	DataEngine                      longhorn.DataEngineType                `json:"dataEngine"`
+	LocalProvisioningMode           longhorn.LocalVolumeProvisioningMode   `json:"localProvisioningMode"`
 	SnapshotMaxCount                int                                    `json:"snapshotMaxCount"`
 	SnapshotMaxSize                 string                                 `json:"snapshotMaxSize"`
 	ReplicaRebuildingBandwidthLimit int64                                  `json:"replicaRebuildingBandwidthLimit"`
@@ -1521,6 +1522,10 @@ func volumeSchema(volume *client.Schema) {
 	dataEngine.Default = longhorn.DataEngineTypeV1
 	volume.ResourceFields["dataEngine"] = dataEngine
 
+	localProvisioningMode := volume.ResourceFields["localProvisioningMode"]
+	localProvisioningMode.Create = true
+	volume.ResourceFields["localProvisioningMode"] = localProvisioningMode
+
 	dataLayout := volume.ResourceFields["dataLayout"]
 	dataLayout.Create = true
 	volume.ResourceFields["dataLayout"] = dataLayout
@@ -1936,6 +1941,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		ReplicaZoneSoftAntiAffinity: v.Spec.ReplicaZoneSoftAntiAffinity,
 		ReplicaDiskSoftAntiAffinity: v.Spec.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                  v.Spec.DataEngine,
+		LocalProvisioningMode:       v.Spec.LocalProvisioningMode,
 		Ready:                       ready,
 		NotReadyMessage:             notReadyMessage,
 

@@ -58,6 +58,14 @@ func TestToVolumeResourceUsesEngineFrontendNodeForV2Controller(t *testing.T) {
 	}
 }
 
+func TestVolumeSchemaAllowsLocalProvisioningModeOnCreate(t *testing.T) {
+	volumeSchema := NewSchema().Schema("volume")
+	field := volumeSchema.Field("localProvisioningMode")
+	if !field.Create {
+		t.Fatal("expected localProvisioningMode to be accepted when creating a volume")
+	}
+}
+
 func TestToVolumeResourceUsesOldSizeUntilLiveFrontendCatchesUp(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
 	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
