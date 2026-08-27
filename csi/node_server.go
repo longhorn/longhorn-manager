@@ -183,7 +183,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// Check volume attachment status
-	if types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
+	if types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) || types.IsDataEngineLocal(longhorn.DataEngineType(volume.DataEngine)) {
 		if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
 			log.WithField("state", volume.State).Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, targetPath)
 			if err := unmount(targetPath, mounter); err != nil {
@@ -527,9 +527,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			log.WithError(err).Warnf("Volume %v does not have a ready v2 engine frontend on node %v", volumeID, ns.nodeID)
 		}
 	}
+	volumeDataEngine := longhorn.DataEngineType(volume.DataEngine)
 	if volume.State != string(longhorn.VolumeStateAttached) ||
-		(types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) && volume.Controllers[0].Endpoint == "") ||
-		(types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) && v2DevicePath == "") {
+		((types.IsDataEngineV1(volumeDataEngine) || types.IsDataEngineLocal(volumeDataEngine)) && volume.Controllers[0].Endpoint == "") ||
+		(types.IsDataEngineV2(volumeDataEngine) && v2DevicePath == "") {
 		log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, stagingTargetPath)
 		if err := unmount(stagingTargetPath, mounter); err != nil {
 			log.WithError(err).Warnf("Failed to unmount stagingTargetPath %v", stagingTargetPath)

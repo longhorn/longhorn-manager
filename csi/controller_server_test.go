@@ -267,6 +267,18 @@ func TestGetCapacity(t *testing.T) {
 			disks:                      []*disk{newDisk(1950, 300, 0, "", true, true, true, false), newDisk(1500, 500, 0, "", true, true, true, false), newDisk(2000, 100, 0, "", false, true, true, false)},
 		},
 		{
+			testName:                   "local engine with two LVM disks",
+			overProvisioningPercentage: "100",
+			node:                       newNode("node-0", "storage", "", true, true, true, false),
+			dataEngine:                 "local",
+			maximumVolumeSize:          1650,
+			disks: []*disk{
+				newDiskWithType(1950, 300, 0, "", longhorn.DiskTypeLVM, true, true, false),
+				newDiskWithType(1500, 500, 0, "", longhorn.DiskTypeLVM, true, true, false),
+				newDisk(2000, 100, 0, "", false, true, true, false),
+			},
+		},
+		{
 			testName:                   "v2 engine with one valid disk and two with unmatched tags",
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
@@ -510,6 +522,14 @@ func TestGetCapacityPerZone(t *testing.T) {
 }
 
 func newDisk(storageMaximum, storageReserved, storageScheduled int64, tags string, isBlockType, isCondOk, allowScheduling, evictionRequested bool) *disk {
+	diskType := longhorn.DiskTypeFilesystem
+	if isBlockType {
+		diskType = longhorn.DiskTypeBlock
+	}
+	return newDiskWithType(storageMaximum, storageReserved, storageScheduled, tags, diskType, isCondOk, allowScheduling, evictionRequested)
+}
+
+func newDiskWithType(storageMaximum, storageReserved, storageScheduled int64, tags string, diskType longhorn.DiskType, isCondOk, allowScheduling, evictionRequested bool) *disk {
 	disk := &disk{
 		spec: longhorn.DiskSpec{
 			StorageReserved:   storageReserved,
@@ -520,11 +540,8 @@ func newDisk(storageMaximum, storageReserved, storageScheduled int64, tags strin
 		status: longhorn.DiskStatus{
 			StorageMaximum:   storageMaximum,
 			StorageScheduled: storageScheduled,
-			Type:             longhorn.DiskTypeFilesystem,
+			Type:             diskType,
 		},
-	}
-	if isBlockType {
-		disk.status.Type = longhorn.DiskTypeBlock
 	}
 	if isCondOk {
 		disk.status.Conditions = []longhorn.Condition{{Type: longhorn.DiskConditionTypeSchedulable, Status: longhorn.ConditionStatusTrue}}
