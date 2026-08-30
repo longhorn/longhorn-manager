@@ -176,6 +176,7 @@ github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c h1:WR2BAcT
 github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c/go.mod h1:pjOR2fdQA0dNp3is1xfA+Ni2PjPDP+JuOoSEjdL2cfQ=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4 h1:i4yKScA3sFjO9wJUMqlIQ0JjpQhhGd14jziljO3Og34=
 github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4/go.mod h1:tx8IHeQXisTCpcg9gB4S+P8rPifC1D98qpWcDwI19tU=
+<<<<<<< HEAD
 github.com/longhorn/go-spdk-helper v0.9.1-0.20260814082531-318b4a23bb34 h1:Z2wW5IKkz3NaLsVYl2TsBjAt2jhbMsHeIUsqTFvY5XY=
 github.com/longhorn/go-spdk-helper v0.9.1-0.20260814082531-318b4a23bb34/go.mod h1:YUwrW7NQVp3WS4o/i2ModjHu7BELeJWBKtsCkBwU7xI=
 github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20260821031756-28866d9a7f79 h1:HAOsomXEpScFF8PSI/DINvMQ9+7LG73Loca0w0GF7wc=
@@ -188,6 +189,20 @@ github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260821024438-6
 github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260821024438-641f387e74d2/go.mod h1:ejhjja+AW13FY+jKsYALd+xEme4zV2fpgpC29bc9z8o=
 github.com/longhorn/types v0.0.0-20260814104707-529643438923 h1:Zvsu1JrjCuyk15diqGt3GM5WsZF4pdwKHygIZe45xnQ=
 github.com/longhorn/types v0.0.0-20260814104707-529643438923/go.mod h1:fmaMw+kNcCfoil6w9VNlEmXzBWIpZpofb2FvmxQFA8A=
+=======
+github.com/longhorn/go-spdk-helper v0.9.1-0.20260828012436-4ec507083142 h1:UjcSekzUXjujX4N/5GPAnxESwltV4D4Ud9P35OLlvR8=
+github.com/longhorn/go-spdk-helper v0.9.1-0.20260828012436-4ec507083142/go.mod h1:r9Yrw5Pi/tIOPUIU4auCGcKIOfQG3cv7XAzR+4zrnyc=
+github.com/longhorn/longhorn-engine v1.13.0-dev-20260809.0.20260901065543-e0f8f0952a6e h1:SdlUWjvpNGA237drZEVbnQRDLT/7MgZPd5U4qpU0KVQ=
+github.com/longhorn/longhorn-engine v1.13.0-dev-20260809.0.20260901065543-e0f8f0952a6e/go.mod h1:uAlWrmxnKvGAELDE47gn4Vbg7V+9cIESlyxKFEeQ+EA=
+github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260809.0.20260902015206-8066229072b8 h1:cQ6Mv2p3BYFaq26F3vKMqyWiwnCwGxS6mfb9b7Ru5oo=
+github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260809.0.20260902015206-8066229072b8/go.mod h1:qBAOHKHm2a79EkEpFsvWUbXH9wPkR8tZF6QVjRR/X/M=
+github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260809.0.20260830145720-5093e4c95410 h1:w+mY3UNXln0X6f0FTxR0YxxyuaUT4TUq/987KP06MCI=
+github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260809.0.20260830145720-5093e4c95410/go.mod h1:kGs77fGF+9spg2VJQ1sC6bSKp/OXA4ZYtwr+jAbTXc0=
+github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260809.0.20260901011635-a650e4d8d56f h1:nygp67IVTw5Xdbp+3BK3FA23YjWf3qiAqndzCeKoaK8=
+github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260809.0.20260901011635-a650e4d8d56f/go.mod h1:R4f7bFUPVfuW+lmkmAyoxvzR1fDd5+BjLsKsc/yWI54=
+github.com/longhorn/types v0.0.0-20260831072945-0bac432e7872 h1:PzsqquPSCChJa+sPq8yp0pjvw3MR48ieqRcq90+PhYs=
+github.com/longhorn/types v0.0.0-20260831072945-0bac432e7872/go.mod h1:UCRIjvAQyIJWEcacibTptHWvgS/sNUhOX+up1xFSHik=
+>>>>>>> d8074e1 (chore(vendor): update dependencies)
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=
