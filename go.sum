@@ -166,8 +166,8 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
-github.com/longhorn/backing-image-manager v1.12.0 h1:+wyh6oLgNzyOXA6FuOurqrpCp6Oz9YK3xcdlXFpSNCc=
-github.com/longhorn/backing-image-manager v1.12.0/go.mod h1:zUSePDmX3HCcr7JARv8gFrnFXjb+WQndABkyF8lt4N4=
+github.com/longhorn/backing-image-manager v1.12.1 h1:ap83VpOun/vc+GaFpG0xE8NKR5xhJWddyyEaMuE97q8=
+github.com/longhorn/backing-image-manager v1.12.1/go.mod h1:nkHw/fmieMGyB9uwgKP62c6OlIYzSEUdqDlz1ELiB+M=
 github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0 h1:uCHIrr18haucJAhFdJar1fRXrV6Mphljjs85UnnG3as=
 github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0/go.mod h1:Vb1kh30oG5znu8vpr/imYLzf6gq23mietPXrHtxSwVw=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=

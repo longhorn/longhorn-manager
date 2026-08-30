@@ -65,7 +65,7 @@ require (
 	github.com/henrygd/beszel v0.18.2
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
-	github.com/longhorn/backing-image-manager v1.12.0
+	github.com/longhorn/backing-image-manager v1.12.1
 	github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0
 	github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
