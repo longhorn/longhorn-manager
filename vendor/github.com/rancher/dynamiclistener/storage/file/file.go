@@ -1,6 +1,7 @@
 package file
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 
@@ -27,16 +28,23 @@ func (s *storage) Get() (*v1.Secret, error) {
 	}
 	defer f.Close()
 
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if fi.Size() == 0 {
+		return nil, nil
+	}
+
 	secret := v1.Secret{}
 	return &secret, json.NewDecoder(f).Decode(&secret)
 }
 
 func (s *storage) Update(secret *v1.Secret) error {
-	f, err := os.OpenFile(s.file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
+	b := &bytes.Buffer{}
+	if err := json.NewEncoder(b).Encode(secret); err != nil {
 		return err
 	}
-	defer f.Close()
 
-	return json.NewEncoder(f).Encode(secret)
+	return writeFile(s.file, b.Bytes(), 0600)
 }
