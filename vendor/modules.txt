@@ -147,8 +147,6 @@ github.com/gliderlabs/ssh
 # github.com/go-co-op/gocron v1.37.0
 ## explicit; go 1.16
 github.com/go-co-op/gocron
-# github.com/go-co-op/gocron/v2 v2.22.0
-## explicit; go 1.22
 # github.com/go-logr/logr v1.4.3
 ## explicit; go 1.18
 github.com/go-logr/logr
@@ -518,8 +516,8 @@ github.com/shirou/gopsutil/v4/mem
 github.com/shirou/gopsutil/v4/net
 github.com/shirou/gopsutil/v4/process
 github.com/shirou/gopsutil/v4/sensors
-# github.com/sirupsen/logrus v1.9.4
-## explicit; go 1.17
+# github.com/sirupsen/logrus v1.10.0
+## explicit; go 1.23
 github.com/sirupsen/logrus
 # github.com/slok/goresilience v0.2.0
 ## explicit
@@ -629,7 +627,7 @@ golang.org/x/sys/windows/registry
 # golang.org/x/term v0.45.0
 ## explicit; go 1.25.0
 golang.org/x/term
-# golang.org/x/text v0.40.0
+# golang.org/x/text v0.41.0
 ## explicit; go 1.25.0
 golang.org/x/text/cases
 golang.org/x/text/internal
@@ -1337,7 +1335,7 @@ k8s.io/metrics/pkg/client/clientset/versioned
 k8s.io/metrics/pkg/client/clientset/versioned/scheme
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1alpha1
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
-# k8s.io/mount-utils v0.36.4 => k8s.io/mount-utils v0.36.4
+# k8s.io/mount-utils v0.37.0 => k8s.io/mount-utils v0.37.0
 ## explicit; go 1.26.0
 k8s.io/mount-utils
 # k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
@@ -1389,12 +1387,12 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/component-base => k8s.io/component-base v0.36.3
 # k8s.io/component-helpers => k8s.io/component-helpers v0.36.3
 # k8s.io/controller-manager => k8s.io/controller-manager v0.36.3
-# k8s.io/cri-api => k8s.io/cri-api v0.36.4
+# k8s.io/cri-api => k8s.io/cri-api v0.37.0
 # k8s.io/cri-client => k8s.io/cri-client v0.36.3
 # k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.36.3
 # k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.36.3
 # k8s.io/endpointslice => k8s.io/endpointslice v0.36.3
-# k8s.io/externaljwt => k8s.io/externaljwt v0.36.4
+# k8s.io/externaljwt => k8s.io/externaljwt v0.37.0
 # k8s.io/kms => k8s.io/kms v0.36.3
 # k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.36.3
 # k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.36.3
@@ -1404,7 +1402,7 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/kubelet => k8s.io/kubelet v0.36.3
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
 # k8s.io/metrics => k8s.io/metrics v0.36.3
-# k8s.io/mount-utils => k8s.io/mount-utils v0.36.4
+# k8s.io/mount-utils => k8s.io/mount-utils v0.37.0
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.36.3
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.36.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.36.3
