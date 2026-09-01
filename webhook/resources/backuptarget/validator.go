@@ -151,7 +151,6 @@ func (b *backupTargetValidator) validateCredentialSecret(secretName string) erro
 		types.HTTPProxy,
 		types.NOProxy,
 		types.VirtualHostedStyle,
-		types.AWSSignAcceptEncoding,
 	}
 
 	errs := multierr.NewMultiError()
