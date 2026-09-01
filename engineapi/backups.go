@@ -83,8 +83,11 @@ func (btc *BackupTargetClient) LonghornEngineBinary() string {
 	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(btc.Image), "longhorn")
 }
 
-// getBackupCredentialEnv returns the environment variables as KEY=VALUE in string slice
-func getBackupCredentialEnv(backupTarget string, credential map[string]string) ([]string, error) {
+// getBackupCredentialEnv returns the environment variables as KEY=VALUE in string slice.
+// supportsSignAcceptEncoding tells whether the consumer accepts AWS_SIGN_ACCEPT_ENCODING; an
+// instance manager proxy older than MinProxyAPIVersionForBackupSignAcceptEncoding rejects the
+// whole request when the key is present.
+func getBackupCredentialEnv(backupTarget string, credential map[string]string, supportsSignAcceptEncoding bool) ([]string, error) {
 	envs := []string{}
 	backupType, err := util.CheckBackupType(backupTarget)
 	if err != nil {
@@ -118,7 +121,9 @@ func getBackupCredentialEnv(backupTarget string, credential map[string]string) (
 		envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPProxy, credential[types.HTTPProxy]))
 		envs = append(envs, fmt.Sprintf("%s=%s", types.NOProxy, credential[types.NOProxy]))
 		envs = append(envs, fmt.Sprintf("%s=%s", types.VirtualHostedStyle, credential[types.VirtualHostedStyle]))
-		envs = append(envs, fmt.Sprintf("%s=%s", types.AWSSignAcceptEncoding, credential[types.AWSSignAcceptEncoding]))
+		if supportsSignAcceptEncoding {
+			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSSignAcceptEncoding, credential[types.AWSSignAcceptEncoding]))
+		}
 	case types.BackupStoreTypeCIFS:
 		envs = append(envs, fmt.Sprintf("%s=%s", types.CIFSUsername, credential[types.CIFSUsername]))
 		envs = append(envs, fmt.Sprintf("%s=%s", types.CIFSPassword, credential[types.CIFSPassword]))
@@ -135,7 +140,7 @@ func getBackupCredentialEnv(backupTarget string, credential map[string]string) (
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinary(args ...string) (string, error) {
-	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential)
+	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential, true)
 	if err != nil {
 		return "", err
 	}
@@ -143,7 +148,7 @@ func (btc *BackupTargetClient) ExecuteEngineBinary(args ...string) (string, erro
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
-	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential)
+	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential, true)
 	if err != nil {
 		return "", err
 	}
@@ -151,7 +156,7 @@ func (btc *BackupTargetClient) ExecuteEngineBinaryWithTimeout(timeout time.Durat
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
-	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential)
+	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential, true)
 	if err != nil {
 		return "", err
 	}
@@ -360,7 +365,7 @@ func (e *EngineBinary) SnapshotBackup(obj DataEngineObject, snapName, backupName
 	args = append(args, snapName)
 
 	// get environment variables if backup for s3
-	envs, err := getBackupCredentialEnv(backupTarget, credential)
+	envs, err := getBackupCredentialEnv(backupTarget, credential, true)
 	if err != nil {
 		return "", "", err
 	}
@@ -431,7 +436,7 @@ func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, back
 	backup := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
-	envs, err := getBackupCredentialEnv(backupTarget, credential)
+	envs, err := getBackupCredentialEnv(backupTarget, credential, true)
 	if err != nil {
 		return err
 	}
