@@ -358,8 +358,6 @@ const (
 
 	VirtualHostedStyle = "VIRTUAL_HOSTED_STYLE"
 
-	AWSSignAcceptEncoding = "AWS_SIGN_ACCEPT_ENCODING"
-
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplicas    = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"
