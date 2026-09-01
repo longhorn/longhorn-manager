@@ -578,7 +578,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            "/var/lib/longhorn/",
+		Default:            "/var/lib/longhorn",
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
