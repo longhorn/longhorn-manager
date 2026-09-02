@@ -14,8 +14,6 @@ import (
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
-	commonnet "github.com/longhorn/go-common-libs/net"
-
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
 )
 
@@ -94,20 +92,20 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //  4. Delegate to Server.EngineReplicaAdd on the Engine node, passing the
 //     EF name and address in the request fields.
 //
-// # Engine-side flow (Server.EngineReplicaAdd → Engine.ReplicaAdd)
+// # Engine-side flow (Server.EngineReplicaAdd -> Engine.ReplicaAdd)
 //
 // Server.EngineReplicaAdd reads the EF fields from the request, then
 // calls buildGRPCReplicaAddFrontendSuspendResumeWrapper to create a replicaAddFrontendSuspendResumeWrapper
-// — a callback that will call back to this EF for suspend/resume during both
+// - a callback that will call back to this EF for suspend/resume during both
 // the snapshot-creation step and the finish step. It then delegates to
 // Engine.ReplicaAdd(frontendSuspendResumeWrapper).
 //
 // Engine.ReplicaAdd runs the synchronous part under the Engine lock:
 //
 //  0. Snapshot + setup (sync, under frontendSuspendResumeWrapper): suspend frontend via
-//     frontendSuspendResumeWrapper → create rebuild snapshot, connect to src/dst replica
+//     frontendSuspendResumeWrapper -> create rebuild snapshot, connect to src/dst replica
 //     SPDK services, add dst replica head bdev to RAID, mark dst as ModeWO
-//     → resume frontend.
+//     -> resume frontend.
 //
 // On return (with lock released), a deferred goroutine runs the remaining
 // phases:
@@ -120,7 +118,7 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //     snapshot controller, stop expose).
 //     b. If shallow copy succeeded, call frontendSuspendResumeWrapper(finish):
 //     - frontendSuspendResumeWrapper (buildGRPCReplicaAddFrontendSuspendResumeWrapper) calls back to
-//     EF via gRPC: Suspend → finish() → Resume
+//     EF via gRPC: Suspend -> finish() -> Resume
 //     - finish() (replicaAddFinish) detaches the external snapshot
 //     NVMe controller on the dst replica, stops the src replica from
 //     exposing, and promotes the dst replica from ModeWO to ModeRW.
@@ -130,22 +128,22 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //
 // This call returns as soon as the synchronous part succeeds; the
 // remaining phases run in the background goroutine. The caller can monitor
-// progress by polling the Engine's ReplicaModeMap — the rebuilding replica
+// progress by polling the Engine's ReplicaModeMap - the rebuilding replica
 // appears as ModeWO until finished (ModeRW) or failed (ModeERR).
 //
 // # Error handling
 //
 // EF is stateless with respect to replica-add. Engine owns all state.
 // If the Engine's async goroutine fails at any phase, it sets the replica
-// to ModeERR and cleans up SPDK resources — without notifying EF.
+// to ModeERR and cleans up SPDK resources - without notifying EF.
 //
 // The frontendSuspendResumeWrapper (buildGRPCReplicaAddFrontendSuspendResumeWrapper) handles EF-unreachable
 // scenarios gracefully:
-//   - EF node down / pod deleted (GetServiceClient fails) → proceed with
+//   - EF node down / pod deleted (GetServiceClient fails) -> proceed with
 //     the operation without suspension (no active I/O = suspension unnecessary).
-//   - Suspend fails → proceed without suspension (data integrity is not
+//   - Suspend fails -> proceed without suspension (data integrity is not
 //     compromised; not proceeding would block the rebuild).
-//   - Resume fails → log error but do not override the operation result;
+//   - Resume fails -> log error but do not override the operation result;
 //     longhorn-manager will detect the stuck-suspended EF and recover.
 func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.EngineFrontendReplicaAddRequest) (ret *emptypb.Empty, err error) {
 	if req.ReplicaName == "" || req.ReplicaAddress == "" {
@@ -188,7 +186,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 
 	// Resolve the local node IP so Engine can call back to this EF
 	// for suspend/resume during the finish step.
-	localIP, err := commonnet.GetIPForPod()
+	localIP, err := engineFrontendGetIPForPod(ef.ipFamily)
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to get local IP for engine frontend %s: %v", ef.Name, err)
 	}
@@ -234,25 +232,24 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	if req.NvmeTcpNrIoQueues < 0 {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid nvme_tcp_nr_io_queues %d", req.NvmeTcpNrIoQueues)
 	}
+	ipFamily, err := parseIPFamily(req.IpFamily)
+	if err != nil {
+		return nil, err
+	}
 
 	// Derive and validate targetAddress BEFORE evicting any Pending recovery
 	// ef, so that a malformed address does not permanently cancel a valid
 	// ongoing recovery.
 	targetAddress := req.TargetAddress
-	// When disableFrontend=True, the manager passes an empty target address
-	// because the engine's NVMe-oF target port is 0 (no listener exposed).
-	// The engine frontend still needs the engine's IP for gRPC service calls
-	// (snapshot, expand). Since the engine and engine frontend are always
-	// co-located on the same instance-manager pod, derive the address from
-	// the pod IP.
 	if targetAddress == "" {
-		if podIP, ipErr := commonnet.GetIPForPod(); ipErr == nil && podIP != "" {
+		podIP, ipErr := engineFrontendGetIPForPod(ipFamily)
+		if ipErr != nil {
+			return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to get local IP for engine frontend %s: %v", req.Name, ipErr)
+		}
+		if podIP != "" {
 			targetAddress = net.JoinHostPort(podIP, strconv.Itoa(types.SPDKServicePort))
 		}
 	}
-	// Validate the address format. ef.Create() would reject this with a hard
-	// error (ErrEngineFrontendCreateInvalidArgument), but at that point we
-	// may have already evicted a Pending recovery ef.
 	if _, _, splitErr := splitHostPort(targetAddress); splitErr != nil {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid target address %v: %v", targetAddress, splitErr)
 	}
@@ -263,16 +260,16 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 
 	if existing, ok := s.engineFrontendMap[req.Name]; ok {
 		// If the conflicting ef is still recovering (Pending state from
-		// async recovery), the new Create takes priority — evict it.
+		// async recovery), the new Create takes priority - evict it.
 		// We only mark state and remove from map here; the recovery
 		// goroutine will detect the state/map change and handle Delete
 		// sequentially after RecoverFromHost returns, avoiding concurrent
 		// access to the initiator.
 		//
 		// Keep metadataDir intact for now. After Create() we decide:
-		// - Create succeeded → clear metadataDir so the old ef's Delete
+		// - Create succeeded -> clear metadataDir so the old ef's Delete
 		//   does not remove the NEW persistence record (same volumeName key).
-		// - Create failed with runtime error → keep metadataDir so Delete
+		// - Create failed with runtime error -> keep metadataDir so Delete
 		//   removes the stale old record that would cause bad recovery.
 		existing.Lock()
 		if existing.State == types.InstanceStatePending {
@@ -301,7 +298,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	}
 
 	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
-		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+		req.UblkQueueDepth, req.UblkNumberOfQueue, ipFamily, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
 	ef.metadataDir = s.metadataDir
 
@@ -334,7 +331,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	if createErr != nil &&
 		(errors.Is(createErr, ErrEngineFrontendCreateInvalidArgument) ||
 			errors.Is(createErr, ErrEngineFrontendCreatePrecondition)) {
-		// Hard error — Create did not mutate anything.  Restore the
+		// Hard error - Create did not mutate anything.  Restore the
 		// evicted efs so valid ongoing recoveries are not permanently lost.
 		if len(evictedEfs) > 0 {
 			s.Lock()
@@ -405,7 +402,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		// resources (bdevs, NVMe controllers, etc.). Clean them up so
 		// they don't leak.
 		// Only clear metadataDir when the loser shares the same
-		// volumeName as the winner — they use the same persistence
+		// volumeName as the winner - they use the same persistence
 		// directory, so the loser's Delete() must not remove it.
 		// When volumeNames differ, each has its own directory and the
 		// loser should clean up its own record.

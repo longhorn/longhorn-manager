@@ -22,6 +22,7 @@ type Replica struct {
 	Head               *Lvol            `json:"head"`
 	Snapshots          map[string]*Lvol `json:"snapshots"`
 	IP                 string           `json:"ip"`
+	IPFamily           string           `json:"ip_family"`
 	PortStart          int32            `json:"port_start"`
 	PortEnd            int32            `json:"port_end"`
 	State              string           `json:"state"`
@@ -101,6 +102,7 @@ func ProtoReplicaToReplica(r *spdkrpc.Replica) *Replica {
 		Head:       ProtoLvolToLvol(r.Head),
 		Snapshots:  map[string]*Lvol{},
 		IP:         r.Ip,
+		IPFamily:   r.IpFamily,
 		PortStart:  r.PortStart,
 		PortEnd:    r.PortEnd,
 		State:      r.State,
@@ -140,6 +142,7 @@ func ReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 		SpecSize:   r.SpecSize,
 		ActualSize: r.ActualSize,
 		Ip:         r.IP,
+		IpFamily:   r.IPFamily,
 		PortStart:  r.PortStart,
 		PortEnd:    r.PortEnd,
 		Head:       LvolToProtoLvol(r.Head),
@@ -169,6 +172,7 @@ type Engine struct {
 	VolumeName            string                `json:"volumeName"`
 	SpecSize              uint64                `json:"spec_size"`
 	ActualSize            uint64                `json:"actual_size"`
+	IPFamily              string                `json:"ip_family"`
 	IP                    string                `json:"ip"`
 	Port                  int32                 `json:"port"`
 	ReplicaAddressMap     map[string]string     `json:"replica_address_map"`
@@ -192,6 +196,7 @@ func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
 		VolumeName:            e.VolumeName,
 		SpecSize:              e.SpecSize,
 		ActualSize:            e.ActualSize,
+		IPFamily:              e.IpFamily,
 		IP:                    e.Ip,
 		Port:                  e.Port,
 		ReplicaAddressMap:     e.ReplicaAddressMap,
@@ -224,6 +229,7 @@ type EngineFrontend struct {
 	EngineName            string                       `json:"engine_name"`
 	SpecSize              uint64                       `json:"spec_size"`
 	ActualSize            uint64                       `json:"actual_size"`
+	IPFamily              string                       `json:"ip_family"`
 	TargetIP              string                       `json:"target_ip"`
 	TargetPort            int32                        `json:"target_port"`
 	ActivePath            string                       `json:"active_path"`
@@ -253,6 +259,7 @@ func ProtoEngineFrontendToEngineFrontend(ef *spdkrpc.EngineFrontend) *EngineFron
 	res := &EngineFrontend{
 		Name:                  ef.Name,
 		VolumeName:            ef.VolumeName,
+		IPFamily:              ef.IpFamily,
 		EngineName:            ef.EngineName,
 		SpecSize:              ef.SpecSize,
 		ActualSize:            ef.ActualSize,

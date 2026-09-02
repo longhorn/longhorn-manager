@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	commonnet "github.com/longhorn/go-common-libs/net"
 
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -1192,6 +1195,343 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, ac
 			VolumeName:       pvName,
 		},
 	}
+}
+
+const dataEngineContainerName = "instance-manager"
+
+func normalizeDataEngineIPFamilyForSelection(family string) string {
+	family = strings.ToLower(family)
+	if family == types.DataEngineIPFamilyDefault {
+		return ""
+	}
+	return family
+}
+
+func commonIPFamilyForDataEngineIPFamily(family string) (commonnet.IPFamily, error) {
+	return commonnet.ParseIPFamily(normalizeDataEngineIPFamilyForSelection(family))
+}
+
+func getDataEngineIPFamilyFromPod(pod *corev1.Pod, containerName string) (family string, specified, valid, found bool) {
+	if pod == nil {
+		return "", false, true, false
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name != containerName {
+			continue
+		}
+		args := make([]string, 0, len(container.Command)+len(container.Args))
+		args = append(args, container.Command...)
+		args = append(args, container.Args...)
+		family, specified, valid = types.ParseDataEngineIPFamilyArgs(args)
+		return family, specified, valid, true
+	}
+	return "", false, true, false
+}
+
+func getDataEngineIPFamilyArgsError(containerName string) error {
+	return &types.ErrorInvalidState{
+		Reason: fmt.Sprintf("invalid data engine IP family arguments for container %s", containerName),
+	}
+}
+
+func getDataEngineIPFamilyPodError(pod *corev1.Pod, family string) error {
+	return &types.ErrorInvalidState{
+		Reason: fmt.Sprintf("pod %s/%s cannot provide an address in family %s",
+			pod.Namespace, pod.Name, family),
+	}
+}
+
+func getDataEngineIPFamilyContainerError(pod *corev1.Pod, containerName string) error {
+	if pod == nil {
+		return &types.ErrorInvalidState{
+			Reason: fmt.Sprintf("pod is nil, cannot find container %s", containerName),
+		}
+	}
+	return &types.ErrorInvalidState{
+		Reason: fmt.Sprintf("pod %s/%s does not contain container %s",
+			pod.Namespace, pod.Name, containerName),
+	}
+}
+
+// GetDataEngineIPFromPodForContainer returns the Pod IP matching the family
+// selected by the named container. An explicitly selected family is strict;
+// pods without that family return an invalid-state error. Without a family
+// selection, the common network-preference resolver validates the primary Pod
+// IP.
+func (s *DataStore) GetDataEngineIPFromPodForContainer(pod *corev1.Pod, containerName string) (string, error) {
+	family, specified, valid, found := getDataEngineIPFamilyFromPod(pod, containerName)
+	if !found {
+		return "", getDataEngineIPFamilyContainerError(pod, containerName)
+	}
+	if !valid {
+		return "", getDataEngineIPFamilyArgsError(containerName)
+	}
+	if !specified {
+		ip, err := commonnet.SelectIPByNetworkPreference(false, nil, getOrderedPodIPsFromPod(pod))
+		if err != nil {
+			return "", getDataEngineIPFamilyPodError(pod, "")
+		}
+		return ip, nil
+	}
+
+	commonFamily, err := commonIPFamilyForDataEngineIPFamily(family)
+	if err != nil || commonFamily == commonnet.IPFamilyUnspecified {
+		return "", getDataEngineIPFamilyArgsError(containerName)
+	}
+
+	podIPs := pod.Status.PodIPs
+	if len(podIPs) == 0 && pod.Status.PodIP != "" {
+		podIPs = []corev1.PodIP{{IP: pod.Status.PodIP}}
+	}
+
+	for _, podIP := range podIPs {
+		if isDataEngineIPFamily(podIP.IP, family) {
+			return podIP.IP, nil
+		}
+	}
+	return "", getDataEngineIPFamilyPodError(pod, family)
+}
+
+// GetDataEngineIPFromPodByCNISettingForContainer returns the CNI or primary
+// Pod IP matching the family selected by the named container. An explicitly
+// selected family is strict; missing CNI or Pod IPs return an invalid-state
+// error. Without a family selection, the common network-preference resolver
+// selects from CNI addresses in their supplied order.
+func (s *DataStore) GetDataEngineIPFromPodByCNISettingForContainer(pod *corev1.Pod, settingName types.SettingName, containerName string) (string, error) {
+	family, specified, valid, found := getDataEngineIPFamilyFromPod(pod, containerName)
+	if !found {
+		return "", getDataEngineIPFamilyContainerError(pod, containerName)
+	}
+	if !valid {
+		return "", getDataEngineIPFamilyArgsError(containerName)
+	}
+	if !specified {
+		ip, err := s.GetIPFromPodByCNISettingOrdered(pod, settingName)
+		if err != nil {
+			return "", s.dataEngineIPFamilyStorageNetworkError(pod, string(settingName), "")
+		}
+		return ip, nil
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return "", err
+	}
+	if setting.Value == types.CniNetworkNone {
+		return s.GetDataEngineIPFromPodForContainer(pod, containerName)
+	}
+
+	commonFamily, err := commonIPFamilyForDataEngineIPFamily(family)
+	if err != nil || commonFamily == commonnet.IPFamilyUnspecified {
+		return "", getDataEngineIPFamilyArgsError(containerName)
+	}
+	ips, err := getOrderedCNIIPsFromPodByNetwork(pod, setting.Value)
+	if err != nil {
+		return "", s.dataEngineIPFamilyStorageNetworkError(pod, setting.Value, family)
+	}
+	for _, ip := range ips {
+		if commonnet.IsUsableIPForFamily(net.ParseIP(ip), commonFamily) {
+			return ip, nil
+		}
+	}
+	return "", s.dataEngineIPFamilyStorageNetworkError(pod, setting.Value, family)
+}
+
+// GetDataEngineIPFromPodForIPFamily returns the Pod IP matching the supplied
+// family. The public default and internal empty value preserve legacy primary-address selection.
+func (s *DataStore) GetDataEngineIPFromPodForIPFamily(pod *corev1.Pod, family string) (string, error) {
+	family = normalizeDataEngineIPFamilyForSelection(family)
+	if pod == nil {
+		return "", getDataEngineIPFamilyContainerError(nil, dataEngineContainerName)
+	}
+	if family == "" {
+		return pod.Status.PodIP, nil
+	}
+
+	commonFamily, err := commonIPFamilyForDataEngineIPFamily(family)
+	if err != nil || commonFamily == commonnet.IPFamilyUnspecified {
+		return "", fmt.Errorf("invalid data engine IP family %q", family)
+	}
+
+	podIPs := pod.Status.PodIPs
+	if len(podIPs) == 0 && pod.Status.PodIP != "" {
+		podIPs = []corev1.PodIP{{IP: pod.Status.PodIP}}
+	}
+	for _, podIP := range podIPs {
+		if commonnet.IsUsableIPForFamily(net.ParseIP(podIP.IP), commonFamily) {
+			return podIP.IP, nil
+		}
+	}
+	return "", getDataEngineIPFamilyPodError(pod, family)
+}
+
+// GetDataEngineIPFromPodByCNISettingForIPFamily returns the CNI or Pod IP
+// matching the supplied family. The public default and internal empty value preserve legacy CNI/primary
+// address selection; an explicit family is strict.
+func (s *DataStore) GetDataEngineIPFromPodByCNISettingForIPFamily(pod *corev1.Pod, settingName types.SettingName, family string) (string, error) {
+	family = normalizeDataEngineIPFamilyForSelection(family)
+	if pod == nil {
+		return "", getDataEngineIPFamilyContainerError(nil, dataEngineContainerName)
+	}
+	if family == "" {
+		return s.GetIPFromPodByCNISetting(pod, settingName), nil
+	}
+
+	commonFamily, err := commonIPFamilyForDataEngineIPFamily(family)
+	if err != nil || commonFamily == commonnet.IPFamilyUnspecified {
+		return "", fmt.Errorf("invalid data engine IP family %q", family)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return "", err
+	}
+	if setting.Value == types.CniNetworkNone {
+		return s.GetDataEngineIPFromPodForIPFamily(pod, family)
+	}
+
+	ips, err := getOrderedCNIIPsFromPodByNetwork(pod, setting.Value)
+	if err != nil {
+		return "", s.dataEngineIPFamilyStorageNetworkError(pod, setting.Value, family)
+	}
+	for _, ip := range ips {
+		if commonnet.IsUsableIPForFamily(net.ParseIP(ip), commonFamily) {
+			return ip, nil
+		}
+	}
+	return "", s.dataEngineIPFamilyStorageNetworkError(pod, setting.Value, family)
+}
+
+// GetIPFromPodByCNISettingOrdered returns the common network-preference
+// selection while preserving the order reported by the CNI.
+func (s *DataStore) GetIPFromPodByCNISettingOrdered(pod *corev1.Pod, settingName types.SettingName) (string, error) {
+	if pod == nil {
+		return "", fmt.Errorf("pod is nil")
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return "", err
+	}
+	if setting.Value == types.CniNetworkNone {
+		return commonnet.SelectIPByNetworkPreference(false, nil, getOrderedPodIPsFromPod(pod))
+	}
+
+	ips, err := getOrderedCNIIPsFromPodByNetwork(pod, setting.Value)
+	if err != nil {
+		return "", err
+	}
+	return commonnet.SelectIPByNetworkPreference(true, ips, getOrderedPodIPsFromPod(pod))
+}
+
+func getOrderedPodIPsFromPod(pod *corev1.Pod) []string {
+	if len(pod.Status.PodIPs) == 0 {
+		return []string{pod.Status.PodIP}
+	}
+
+	podIPs := make([]string, 0, len(pod.Status.PodIPs)+1)
+	if pod.Status.PodIP != "" {
+		podIPs = append(podIPs, pod.Status.PodIP)
+	}
+	for _, podIP := range pod.Status.PodIPs {
+		if podIP.IP != pod.Status.PodIP {
+			podIPs = append(podIPs, podIP.IP)
+		}
+	}
+	return podIPs
+}
+
+func getCNIIPsFromPodByNetwork(pod *corev1.Pod, network string) ([]string, error) {
+	ips, err := getOrderedCNIIPsFromPodByNetwork(pod, network)
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(ips)
+	return ips, nil
+}
+
+func getOrderedCNIIPsFromPodByNetwork(pod *corev1.Pod, network string) ([]string, error) {
+	status, ok := pod.Annotations[string(types.CNIAnnotationNetworkStatus)]
+	if !ok {
+		status, ok = pod.Annotations[string(types.CNIAnnotationNetworksStatus)]
+		if !ok {
+			return nil, fmt.Errorf("missing CNI network status annotation")
+		}
+	}
+
+	var networks []types.CniNetwork
+	if err := json.Unmarshal([]byte(status), &networks); err != nil {
+		return nil, err
+	}
+
+	for _, cniNetwork := range networks {
+		if cniNetwork.Name != network {
+			continue
+		}
+		return append([]string(nil), cniNetwork.IPs...), nil
+	}
+	return nil, fmt.Errorf("network %s not found in CNI network status", network)
+}
+
+func isDataEngineIPFamily(ip, family string) bool {
+	commonFamily, err := commonIPFamilyForDataEngineIPFamily(family)
+	if err != nil || commonFamily == commonnet.IPFamilyUnspecified {
+		return false
+	}
+	return commonnet.IsUsableIPForFamily(net.ParseIP(ip), commonFamily)
+}
+
+func (s *DataStore) dataEngineIPFamilyStorageNetworkError(pod *corev1.Pod, network, family string) error {
+	return &types.ErrorInvalidState{
+		Reason: fmt.Sprintf("storage network %s cannot provide an address in family %s for pod %s/%s",
+			network, family, pod.Namespace, pod.Name),
+	}
+}
+
+func (s *DataStore) GetDataEngineIPFromPod(pod *corev1.Pod) string {
+	_, specified, valid, found := getDataEngineIPFamilyFromPod(pod, dataEngineContainerName)
+	if !found || !specified || !valid {
+		return s.GetIPFromPodByCNISetting(pod, types.SettingNameStorageNetwork)
+	}
+
+	ip, err := s.GetDataEngineIPFromPodForContainer(pod, dataEngineContainerName)
+	if err != nil {
+		return pod.Status.PodIP
+	}
+	return ip
+}
+
+func (s *DataStore) GetDataEngineIPFromPodByCNISetting(pod *corev1.Pod, settingName types.SettingName) (string, error) {
+	_, specified, valid, found := getDataEngineIPFamilyFromPod(pod, dataEngineContainerName)
+	if !found || !specified || !valid {
+		return s.GetIPFromPodByCNISetting(pod, settingName), nil
+	}
+	return s.GetDataEngineIPFromPodByCNISettingForContainer(pod, settingName, dataEngineContainerName)
+}
+
+func (s *DataStore) ValidateDataEngineIPFamilyForStorageNetwork(pod *corev1.Pod, family string) error {
+	family = normalizeDataEngineIPFamilyForSelection(family)
+	if family == "" {
+		return nil
+	}
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return err
+	}
+	if setting.Value == types.CniNetworkNone {
+		return nil
+	}
+	ips, err := getCNIIPsFromPodByNetwork(pod, setting.Value)
+	if err != nil {
+		return s.dataEngineIPFamilyStorageNetworkError(pod, setting.Value, family)
+	}
+	for _, ip := range ips {
+		if isDataEngineIPFamily(ip, family) {
+			return nil
+		}
+	}
+	return s.dataEngineIPFamilyStorageNetworkError(pod, setting.Value, family)
 }
 
 // GetIPFromPodByCNISetting returns the given pod network-status IP of the name matching the setting value.

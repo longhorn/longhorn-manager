@@ -476,12 +476,31 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}
 
 	if podReady {
-		storageIP := c.ds.GetIPFromPodByCNISetting(pod, types.SettingNameStorageNetwork)
+		storageIP, err := c.ds.GetDataEngineIPFromPodByCNISettingForContainer(
+			pod, types.SettingNameStorageNetwork, BackingImageDataSourcePodContainerName)
+		if err != nil {
+			bids.Status.StorageIP = ""
+			bids.Status.IP = ""
+			if _, updateErr := c.ds.UpdateBackingImageDataSourceStatus(bids); updateErr != nil {
+				return updateErr
+			}
+			return err
+		}
 		if bids.Status.StorageIP != storageIP {
 			bids.Status.StorageIP = storageIP
 		}
-		if bids.Status.IP != pod.Status.PodIP {
-			bids.Status.IP = pod.Status.PodIP
+		ip, err := c.ds.GetDataEngineIPFromPodForContainer(
+			pod, BackingImageDataSourcePodContainerName)
+		if err != nil {
+			bids.Status.StorageIP = ""
+			bids.Status.IP = ""
+			if _, updateErr := c.ds.UpdateBackingImageDataSourceStatus(bids); updateErr != nil {
+				return updateErr
+			}
+			return err
+		}
+		if bids.Status.IP != ip {
+			bids.Status.IP = ip
 		}
 		if !c.isMonitoring(bids.Name) {
 			c.startMonitoring(bids)
@@ -689,15 +708,21 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		return nil, fmt.Errorf("failed to start backing image data source pod since the backing image UUID is not set")
 	}
 
+	dataEngineIPFamily, err := getAppliedBackingImageIPFamily(c.ds)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get applied backing image IP family for backing image data source pod")
+	}
+
 	cmd := []string{
 		"backing-image-manager", "--debug",
 		"data-source",
-		"--listen", fmt.Sprintf(":%d", engineapi.BackingImageDataSourceDefaultPort),
-		"--sync-listen", fmt.Sprintf(":%d", engineapi.BackingImageSyncServerDefaultPort),
+		"--listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageDataSourceDefaultPort),
+		"--sync-listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageSyncServerDefaultPort),
 		"--name", bids.Name,
 		"--uuid", bids.Spec.UUID,
 		"--source-type", string(bids.Spec.SourceType),
 	}
+	cmd = appendBackingImageIPFamilyArgs(cmd, dataEngineIPFamily)
 
 	bids.Status.RunningParameters = bids.Spec.Parameters
 	if err := c.prepareRunningParametersForClone(bids); err != nil {

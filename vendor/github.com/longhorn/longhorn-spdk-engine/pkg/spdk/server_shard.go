@@ -12,6 +12,7 @@ import (
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
+	commonnet "github.com/longhorn/go-common-libs/net"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
@@ -222,6 +223,5 @@ func (s *Server) getOrCreateShard(req *spdkrpc.ShardCreateRequest) (*Shard, erro
 	if !exists {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "lvstore %v(%v) does not exist for shard %v creation", req.LvsName, req.LvsUuid, name)
 	}
-
-	return NewShard(req.VolumeName, req.SlotIndex, req.LvsName, req.LvsUuid, req.SizeBytes, s.updateChs[types.InstanceTypeShard]), nil
+	return NewShard(req.VolumeName, req.SlotIndex, req.LvsName, req.LvsUuid, req.SizeBytes, commonnet.IPFamilyUnspecified, s.updateChs[types.InstanceTypeShard]), nil
 }

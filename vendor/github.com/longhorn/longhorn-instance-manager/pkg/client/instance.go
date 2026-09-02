@@ -97,6 +97,7 @@ type EngineCreateRequest struct {
 	UpgradeRequired   bool
 	SalvageRequested  bool
 	SnapshotMaxCount  int
+	IPFamily          string
 }
 
 type EngineFrontendCreateRequest struct {
@@ -106,6 +107,7 @@ type EngineFrontendCreateRequest struct {
 	NvmeTcpNrIoQueues int
 	TargetAddress     string
 	EngineName        string
+	IPFamily          string
 }
 
 type ReplicaCreateRequest struct {
@@ -113,6 +115,7 @@ type ReplicaCreateRequest struct {
 	DiskUUID         string
 	ExposeRequired   bool
 	BackingImageName string
+	IPFamily         string
 }
 
 type ShardCreateRequest struct {
@@ -170,6 +173,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 	var processInstanceSpec *rpc.ProcessInstanceSpec
 	var spdkInstanceSpec *rpc.SpdkInstanceSpec
+	var ipFamily string
 	if rpc.DataEngine(driver) == rpc.DataEngine_DATA_ENGINE_V1 {
 		processInstanceSpec = &rpc.ProcessInstanceSpec{
 			Binary: req.Binary,
@@ -178,6 +182,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 	} else {
 		switch req.InstanceType {
 		case types.InstanceTypeEngine:
+			ipFamily = req.Engine.IPFamily
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
 				Size:              req.Size,
 				ReplicaAddressMap: req.Engine.ReplicaAddressMap,
@@ -188,6 +193,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				UblkNumberOfQueue: int32(req.Engine.UblkNumberOfQueue),
 			}
 		case types.InstanceTypeEngineFrontend:
+			ipFamily = req.EngineFrontend.IPFamily
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
 				Size:              req.Size,
 				Frontend:          req.EngineFrontend.Frontend,
@@ -196,6 +202,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				NvmeTcpNrIoQueues: int32(req.EngineFrontend.NvmeTcpNrIoQueues),
 			}
 		case types.InstanceTypeReplica:
+			ipFamily = req.Replica.IPFamily
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
 				Size:             req.Size,
 				DiskName:         req.Replica.DiskName,
@@ -228,6 +235,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 	p, err := client.InstanceCreate(ctx, &rpc.InstanceCreateRequest{
 		Spec: &rpc.InstanceSpec{
+			IpFamily: ipFamily,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),

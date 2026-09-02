@@ -32,6 +32,7 @@ type InstanceProcessStatusApplyConfiguration struct {
 	Paths           []EngineFrontendNvmeTCPPathApplyConfiguration `json:"paths,omitempty"`
 	ErrorMsg        *string                                       `json:"errorMsg,omitempty"`
 	Conditions      map[string]bool                               `json:"conditions,omitempty"`
+	IPFamily        *string                                       `json:"ipFamily,omitempty"`
 	Listen          *string                                       `json:"listen,omitempty"`
 	PortEnd         *int32                                        `json:"portEnd,omitempty"`
 	PortStart       *int32                                        `json:"portStart,omitempty"`
@@ -114,6 +115,14 @@ func (b *InstanceProcessStatusApplyConfiguration) WithConditions(entries map[str
 	for k, v := range entries {
 		b.Conditions[k] = v
 	}
+	return b
+}
+
+// WithIPFamily sets the IPFamily field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the IPFamily field is set to the value of the last call.
+func (b *InstanceProcessStatusApplyConfiguration) WithIPFamily(value string) *InstanceProcessStatusApplyConfiguration {
+	b.IPFamily = &value
 	return b
 }
 

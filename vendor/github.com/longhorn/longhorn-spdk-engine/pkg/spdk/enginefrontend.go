@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
@@ -32,6 +33,7 @@ import (
 type EngineFrontend struct {
 	sync.RWMutex
 
+	ipFamily    commonnet.IPFamily
 	Name        string
 	EngineName  string
 	VolumeName  string
@@ -138,7 +140,7 @@ const (
 	// recoveryTargetReachabilityTimeout is the timeout for a TCP dial to
 	// verify the NVMe-TCP target is reachable before attempting expensive
 	// reconnect retries during engine frontend recovery. This only applies
-	// to the recovery path — normal creation and switchover paths use the
+	// to the recovery path - normal creation and switchover paths use the
 	// full retry loop in the initiator package.
 	recoveryTargetReachabilityTimeout = 5 * time.Second
 )
@@ -192,7 +194,7 @@ func getUblkNumberOfQueue(ublkNumberOfQueue int32) int32 {
 }
 
 func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend string, specSize uint64, ublkQueueDepth, ublkNumberOfQueue int32,
-	engineFrontendUpdateCh chan interface{}, newServiceClient ServiceClientFactory) *EngineFrontend {
+	ipFamily commonnet.IPFamily, engineFrontendUpdateCh chan interface{}, newServiceClient ServiceClientFactory) *EngineFrontend {
 	if newServiceClient == nil {
 		newServiceClient = GetServiceClient
 	}
@@ -231,6 +233,7 @@ func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend stri
 		VolumeNQN:   getStableVolumeNQN(volumeName),
 		VolumeNGUID: getStableVolumeNGUID(volumeName),
 		SpecSize:    specSize,
+		ipFamily:    ipFamily,
 
 		Frontend: frontend,
 
@@ -473,15 +476,15 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 	// that could cause concurrent writes to the same LBA to be routed to
 	// different engines, risking replica-level inconsistency.
 	//
-	// Phase 1: new → non-optimized (old stays optimized)
+	// Phase 1: new -> non-optimized (old stays optimized)
 	//   Kernel prefers the optimized old path; new path is usable as
 	//   fallback but receives no I/O while old is optimized.
 	//
-	// Phase 2: old → inaccessible (new is non-optimized)
-	//   Kernel falls back to the non-optimized new path — the only
+	// Phase 2: old -> inaccessible (new is non-optimized)
+	//   Kernel falls back to the non-optimized new path - the only
 	//   remaining usable path. No I/O blackout.
 	//
-	// Phase 3: new → optimized
+	// Phase 3: new -> optimized
 	//   Kernel now routes all I/O through the fully-promoted new path.
 	//
 	// At every phase there is exactly ONE engine receiving I/O, and there
@@ -489,7 +492,7 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 
 	// Phase 1: Promote new path to non-optimized (usable fallback).
 	if err := ef.setRemoteEngineTargetANAState(newTargetIP, newEngineName, NvmeTCPANAStateNonOptimized); err != nil {
-		// Phase 1 failed. Do NOT proceed — demoting the old path without
+		// Phase 1 failed. Do NOT proceed - demoting the old path without
 		// a usable new path would leave no routable path at all.
 		return multierr.Append(syncErr, err)
 	}
@@ -499,7 +502,7 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 		if err := ef.setRemoteEngineTargetANAState(oldTargetIP, oldEngineName, NvmeTCPANAStateInaccessible); err != nil {
 			// If the old engine's SPDK subsystem no longer exists (e.g.
 			// it was already cleaned up after a previous switchover), the
-			// old target is effectively gone — treat this as success.
+			// old target is effectively gone - treat this as success.
 			if isSubsystemNotFoundError(err) {
 				ef.log.WithError(err).WithFields(logrus.Fields{
 					"oldEngineName": oldEngineName,
@@ -507,7 +510,7 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 				}).Info("Old engine subsystem already removed, skipping ANA demotion")
 			} else {
 				// Phase 2 failed for a real reason. Do NOT proceed to
-				// Phase 3 — promoting the new path to optimized while
+				// Phase 3 - promoting the new path to optimized while
 				// the old path is still optimized would create a
 				// dual-write window.
 				//
@@ -591,6 +594,10 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStatesWithRetry(oldEngineName
 	return syncErr
 }
 
+func parseIPFamilyFromAddress(address string) (commonnet.IPFamily, error) {
+	return commonnet.ParseIPFamilyFromAddress(address)
+}
+
 func isNVMeTCPPathAlreadyConnectedError(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already connected")
 }
@@ -602,6 +609,7 @@ func (ef *EngineFrontend) Create(spdkClient *spdkclient.Client, targetAddress st
 	ef.log.WithFields(logrus.Fields{
 		"targetAddress": targetAddress,
 		"frontend":      ef.Name,
+		"ipFamily":      string(ef.ipFamily),
 	}).Info("Creating engine frontend")
 
 	targetIP, _, err := splitHostPort(targetAddress)
@@ -895,18 +903,16 @@ func (ef *EngineFrontend) newNvmeTcpInitiator() (i *initiator.Initiator, nqn, ng
 
 	nvmeTCPInfo := &initiator.NVMeTCPInfo{
 		SubsystemNQN: nqn,
-		NrIoQueues:   ef.NvmeTcpFrontend.NrIoQueues,
+	}
+	if ef.NvmeTcpFrontend != nil {
+		nvmeTCPInfo.NrIoQueues = ef.NvmeTcpFrontend.NrIoQueues
 	}
 	i, err = initiator.NewInitiator(ef.VolumeName, initiator.HostProc, nvmeTCPInfo, nil)
-	if err != nil {
-		return i, "", "", errors.Wrapf(err, "failed to create NVMe/TCP initiator for engine %v", ef.Name)
-	}
-
-	return i, nqn, nguid, nil
+	return
 }
 
-// getEngineServiceAddress returns the gRPC service address of the engine node.
-// It uses EngineIP which is set during Create for all frontend types.
+// getEngineServiceAddress returns the engine SPDK gRPC address derived from
+// the persisted or create-time engine IP.
 func (ef *EngineFrontend) getEngineServiceAddress() string {
 	if ef.EngineIP == "" {
 		return ""
@@ -923,6 +929,7 @@ func (ef *EngineFrontend) getWithoutLock() (res *spdkrpc.EngineFrontend) {
 		ActualSize: ef.ActualSize,
 		Frontend:   ef.Frontend,
 		Endpoint:   ef.Endpoint,
+		IpFamily:   string(ef.ipFamily),
 
 		State:                 string(ef.State),
 		ErrorMsg:              ef.ErrorMsg,
@@ -1627,7 +1634,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 			// path may already be disconnected. With no optimized path the
 			// kernel hides the namespace block device, so
 			// loadInitiatorNVMeDeviceInfo would fail. We must run the ANA
-			// sync FIRST (which sets new→optimized) to restore the block
+			// sync FIRST (which sets new->optimized) to restore the block
 			// device, then reload initiator state.
 			ef.log.WithError(switchErr).WithFields(logrus.Fields{
 				"engineName": resolvedEngineName,
@@ -1645,7 +1652,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 					switchErr = errors.Wrapf(ErrSwitchOverTargetInternal,
 						"failed to reload engine frontend %s NVMe device info for already connected multipath target %s: %v",
 						ef.Name, targetAddress, reloadErr)
-					// ANA sync succeeded (new→optimized, old→inaccessible).
+					// ANA sync succeeded (new->optimized, old->inaccessible).
 					// Revert ANA so the old path becomes functional again.
 					if rErr := ef.setRemoteEngineTargetANAState(targetIP, resolvedEngineName, NvmeTCPANAStateInaccessible); rErr != nil {
 						ef.log.WithError(rErr).Warn("Failed to revert new target ANA state during already-connected rollback")
@@ -1738,7 +1745,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 					ef.Name, targetAddress, reloadErr)
 				// Revert ANA states so the old path becomes functional again.
 				// syncRemoteEngineTargetANAStatesWithRetry already set
-				// new→optimized, old→inaccessible. Reverse both.
+				// new->optimized, old->inaccessible. Reverse both.
 				if anaErr := ef.setRemoteEngineTargetANAState(targetIP, resolvedEngineName, NvmeTCPANAStateInaccessible); anaErr != nil {
 					ef.log.WithError(anaErr).Warn("Failed to revert new target ANA state to inaccessible during monolithic switchover rollback")
 				}
@@ -1814,7 +1821,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 
 		// Do NOT explicitly disconnect the old controller path. Removing it
 		// immediately can race with the kernel processing the ANA state
-		// change on the new path — if the kernel hasn't fully switched to
+		// change on the new path - if the kernel hasn't fully switched to
 		// the new optimized path when the old controller is yanked, a brief
 		// "no available path" window causes I/O errors that make ext4 go
 		// read-only. Instead, let the kernel handle the stale controller
@@ -1836,7 +1843,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 }
 
 // switchOverTargetNvmfPhased executes a single phase of the nvmf frontend switchover.
-// The control plane drives progression through preparing → switching → promoting.
+// The control plane drives progression through preparing -> switching -> promoting.
 func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newEngineName string, newTargetIP string, newTargetPort int32, oldEngineName, oldTargetIP string, oldTargetPort int32, newNQN, newNGUID string, updateRequired *bool) error {
 	resolvedNewEngineName, err := ef.resolveRemoteEngineName(newTargetIP, newTargetPort, newEngineName)
 	if err != nil {
@@ -1845,7 +1852,7 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 
 	switch phase {
 	case SwitchoverPhasePreparing:
-		// Phase 1: Set new target → non-optimized. Old stays optimized.
+		// Phase 1: Set new target -> non-optimized. Old stays optimized.
 		// Kernel prefers old; new is usable fallback but receives no I/O.
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
@@ -1860,7 +1867,7 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 		return nil
 
 	case SwitchoverPhaseSwitching:
-		// Phase 2: Set old target → inaccessible. Kernel falls back to new non-optimized path.
+		// Phase 2: Set old target -> inaccessible. Kernel falls back to new non-optimized path.
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"oldEngineName": oldEngineName,
@@ -1884,7 +1891,7 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 		return nil
 
 	case SwitchoverPhasePromoting:
-		// Phase 3: Set new target → optimized, update internal state, persist.
+		// Phase 3: Set new target -> optimized, update internal state, persist.
 
 		// Resolve the old engine name for rollback. The switching phase
 		// resolved it independently, but each phased call is stateless.
@@ -1948,11 +1955,11 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 }
 
 // switchOverTargetBlockdevPhased executes a single phase of the blockdev frontend switchover.
-// The control plane drives progression through preparing → switching → promoting.
+// The control plane drives progression through preparing -> switching -> promoting.
 func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, newEngineName, targetAddress string, newTargetIP string, newTargetPort int32, oldEngineName, oldTargetIP string, oldTargetPort int32, newNQN, newNGUID, oldNQN, oldNGUID, oldEndpoint string, oldDMDeviceIsBusy bool, updateRequired *bool) error {
 	switch phase {
 	case SwitchoverPhasePreparing:
-		// Step 1: Set new target → inaccessible to prevent routing on connect.
+		// Step 1: Set new target -> inaccessible to prevent routing on connect.
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"newEngineName": newEngineName,
@@ -1998,7 +2005,7 @@ func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, 
 			return waitErr
 		}
 
-		// Step 4: Set new target → non-optimized (ANA phase 1).
+		// Step 4: Set new target -> non-optimized (ANA phase 1).
 		ef.log.Info("Switchover blockdev preparing: setting new target ANA to non-optimized")
 		if err := ef.setRemoteEngineTargetANAState(newTargetIP, newEngineName, NvmeTCPANAStateNonOptimized); err != nil {
 			setErr := errors.Wrapf(ErrSwitchOverTargetInternal,
@@ -2015,7 +2022,7 @@ func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, 
 		return nil
 
 	case SwitchoverPhaseSwitching:
-		// Set old target → inaccessible (ANA phase 2).
+		// Set old target -> inaccessible (ANA phase 2).
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"oldEngineName": oldEngineName,
@@ -2053,7 +2060,7 @@ func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, 
 			}
 		}
 
-		// Step 1: Set new target → optimized (ANA phase 3).
+		// Step 1: Set new target -> optimized (ANA phase 3).
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"newEngineName": newEngineName,
@@ -2424,7 +2431,7 @@ func (ef *EngineFrontend) resume() error {
 
 // ValidateAndUpdate validates the engine frontend (initiator-side) state and updates
 // fields (e.g., Endpoint) as needed. Called periodically by the server verify loop.
-// This only validates the local initiator/device state — target-side subsystem
+// This only validates the local initiator/device state - target-side subsystem
 // validation is the responsibility of the Engine.
 func (ef *EngineFrontend) ValidateAndUpdate(spdkClient *spdkclient.Client) (err error) {
 	updateRequired := false
@@ -2596,6 +2603,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 		return fmt.Errorf("invalid state %s for engine frontend %s recovery", ef.State, ef.Name)
 	}
 	ef.Unlock()
+	ef.log.WithField("ipFamily", string(ef.ipFamily)).Info("Recovering engine frontend")
 
 	var recoverErr error
 	var deviceNotFound bool
@@ -2605,7 +2613,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 		defer ef.Unlock()
 
 		if deviceNotFound {
-			// Device not found on host — record already removed, nothing to reconcile.
+			// Device not found on host - record already removed, nothing to reconcile.
 			return
 		}
 
@@ -2655,7 +2663,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 		// Early cancellation check before creating the NVMe-TCP initiator.
 		// If a concurrent EngineFrontendCreate already completed for this
 		// volume (evicted us and connected its own NVMe controller), we must
-		// not proceed — creating an initiator and then calling Delete/Stop
+		// not proceed - creating an initiator and then calling Delete/Stop
 		// would disconnect the NEW ef's controller via DisconnectTarget
 		// (which disconnects ALL controllers for the subsystem NQN).
 		if ef.isRecoveryCancelled() {
@@ -2789,7 +2797,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 }
 
 // BackupRestore initiates a backup restore via this frontend.
-// The EngineFrontend must not have an active endpoint — it is expected to be a
+// The EngineFrontend must not have an active endpoint - it is expected to be a
 // dedicated restore frontend with no pre-existing initiator connection.
 // A temporary NVMe-TCP target is created on the engine for data transfer and torn
 // down (along with the initiator) once the restore goroutine completes.

@@ -44,8 +44,8 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 
 	go func(d *Disk, req *spdkrpc.DiskCreateRequest) {
 		// Serialize SPDK disk creation to avoid race conditions in global SPDK subsystems
-		// The upper-level DiskCreate() flow remains asynchronous — the gRPC call immediately returns and the creation
-		// runs in a background goroutine — but within that goroutine, we serialize the
+		// The upper-level DiskCreate() flow remains asynchronous: the gRPC call immediately returns and the creation
+		// runs in a background goroutine. Within that goroutine, we serialize the
 		// lower-level SPDK operations to ensure controller attach and lvstore operations
 		// are performed safely and deterministically without concurrent access issues.
 

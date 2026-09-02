@@ -524,13 +524,30 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			}
 
 			if bim.Status.CurrentState == longhorn.BackingImageManagerStateRunning {
-				storageIP := c.ds.GetIPFromPodByCNISetting(pod, types.SettingNameStorageNetwork)
+				storageIP, err := c.ds.GetDataEngineIPFromPodByCNISettingForContainer(pod, types.SettingNameStorageNetwork, BackingImageManagerPodContainerName)
+				if err != nil {
+					bim.Status.IP = ""
+					bim.Status.StorageIP = ""
+					if _, updateErr := c.ds.UpdateBackingImageManagerStatus(bim); updateErr != nil {
+						return updateErr
+					}
+					return err
+				}
+				ip, err := c.ds.GetDataEngineIPFromPodForContainer(pod, BackingImageManagerPodContainerName)
+				if err != nil {
+					bim.Status.IP = ""
+					bim.Status.StorageIP = ""
+					if _, updateErr := c.ds.UpdateBackingImageManagerStatus(bim); updateErr != nil {
+						return updateErr
+					}
+					return err
+				}
 				if bim.Status.StorageIP != storageIP {
 					bim.Status.StorageIP = storageIP
 					log.Warnf("Inconsistent storage IP from pod %v, update backing image status storage IP %v", pod.Name, bim.Status.StorageIP)
 				}
 
-				bim.Status.IP = pod.Status.PodIP
+				bim.Status.IP = ip
 			}
 		default:
 			log.Errorf("Unexpected pod phase %v, will update backing image manager to state %v", pod.Status.Phase, longhorn.BackingImageManagerStateError)
@@ -901,6 +918,18 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		return nil, err
 	}
 
+	dataEngineIPFamily, err := getAppliedBackingImageIPFamily(c.ds)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get applied backing image IP family for backing image manager pod")
+	}
+	command := []string{
+		"backing-image-manager", "--debug",
+		"daemon",
+		"--listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageManagerDefaultPort),
+		"--sync-listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageSyncServerDefaultPort),
+	}
+	command = appendBackingImageIPFamilyArgs(command, dataEngineIPFamily)
+
 	privileged := true
 	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -920,12 +949,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 					Name:            BackingImageManagerPodContainerName,
 					Image:           bim.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
-					Command: []string{
-						"backing-image-manager", "--debug",
-						"daemon",
-						"--listen", fmt.Sprintf(":%d", engineapi.BackingImageManagerDefaultPort),
-						"--sync-listen", fmt.Sprintf(":%d", engineapi.BackingImageSyncServerDefaultPort),
-					},
+					Command:         command,
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							TCPSocket: &corev1.TCPSocketAction{
