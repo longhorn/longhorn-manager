@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
 	lhlonghorn "github.com/longhorn/go-common-libs/longhorn"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -25,9 +27,10 @@ import (
 )
 
 const (
-	CurrentInstanceManagerAPIVersion = 6
-	MinInstanceManagerAPIVersion     = 1
-	UnknownInstanceManagerAPIVersion = 0
+	CurrentInstanceManagerAPIVersion                   = 6
+	MinInstanceManagerAPIVersion                       = 1
+	MinInstanceManagerAPIVersionForPerInstanceIPFamily = 8
+	UnknownInstanceManagerAPIVersion                   = 0
 
 	UnknownInstanceManagerProxyAPIVersion = 0
 	// UnsupportedInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
@@ -64,6 +67,67 @@ const (
 	IncompatibleInstanceManagerAPIVersion = -1
 	DeprecatedInstanceManagerBinaryName   = "longhorn-instance-manager"
 )
+
+// GetAppliedIPFamily returns the family applied by an InstanceManager. A nil
+// pointer means that the manager has not initialized its applied family yet.
+func GetAppliedIPFamily(im *longhorn.InstanceManager) (string, bool) {
+	if im == nil || im.Status.IPFamily == nil {
+		return "", false
+	}
+	return deserializeIPFamily(*im.Status.IPFamily), true
+}
+
+// normalizeIPFamilyForWire converts manager-facing family values into the
+// transport values accepted by Instance Manager and SPDK.
+func normalizeIPFamilyForWire(ipFamily string) (string, bool) {
+	if strings.EqualFold(ipFamily, types.DataEngineIPFamilyDefault) {
+		return string(commonnet.IPFamilyUnspecified), true
+	}
+	family, err := commonnet.ParseIPFamily(ipFamily)
+	if err != nil {
+		return "", false
+	}
+	return string(family), true
+}
+
+// serializeIPFamily converts the manager-facing default value to the empty
+// transport value used by Instance Manager and SPDK APIs. Invalid values are
+// converted to the only safe wire default.
+func serializeIPFamily(ipFamily string) string {
+	serialized, valid := normalizeIPFamilyForWire(ipFamily)
+	if !valid {
+		return ""
+	}
+	return serialized
+}
+
+// deserializeIPFamily converts an empty transport response to the
+// manager-facing default value.
+func deserializeIPFamily(ipFamily string) string {
+	if ipFamily == "" {
+		return types.DataEngineIPFamilyDefault
+	}
+	return ipFamily
+}
+
+// IsV2IPFamilySupported reports whether an Instance Manager API can accept the
+// requested explicit family. The manager-facing default value remains
+// backward compatible by being serialized as empty.
+func IsV2IPFamilySupported(apiVersion int, ipFamily string) bool {
+	serialized, valid := normalizeIPFamilyForWire(ipFamily)
+	return valid && (serialized == "" || apiVersion >= MinInstanceManagerAPIVersionForPerInstanceIPFamily)
+}
+
+func getV1PortArgs(ipFamily string) []string {
+	switch serializeIPFamily(ipFamily) {
+	case types.DataEngineIPFamilyIPv4:
+		return []string{"--listen,0.0.0.0:"}
+	case types.DataEngineIPFamilyIPv6:
+		return []string{"--listen,[::]:"}
+	default:
+		return []string{DefaultPortArg}
+	}
+}
 
 type InstanceManagerClient struct {
 	ip            string
@@ -258,6 +322,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
 			UblkID:          p.InstanceStatus.UblkID,
 			UUID:            p.InstanceStatus.UUID,
+			IPFamily:        deserializeIPFamily(p.InstanceStatus.IPFamily),
 			Endpoint:        p.InstanceStatus.Endpoint,
 			Frontend:        p.InstanceStatus.Frontend,
 			// FIXME: These fields are not used, maybe we can deprecate them later.
@@ -284,6 +349,7 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 			PortStart:  p.ProcessStatus.PortStart,
 			PortEnd:    p.ProcessStatus.PortEnd,
 			UUID:       p.ProcessStatus.UUID,
+			IPFamily:   types.DataEngineIPFamilyDefault,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -453,16 +519,22 @@ type EngineInstanceCreateRequest struct {
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
 	TargetAddress                    string
+	IPFamily                         string
 }
 
 // EngineInstanceCreate creates a new engine instance
 func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	ipFamily := serializeIPFamily(req.IPFamily)
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
+	}
+	if types.IsDataEngineV2(req.Engine.Spec.DataEngine) && !IsV2IPFamilySupported(c.GetAPIVersion(), ipFamily) {
+		return nil, fmt.Errorf("explicit IP family %q requires instance manager API version >= 8", req.IPFamily)
 	}
 
 	binary := ""
 	args := []string{}
+	portArgs := []string{DefaultPortArg}
 	replicaAddresses := map[string]string{}
 
 	var err error
@@ -475,6 +547,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	volumeSize := req.Engine.Spec.VolumeSize
 	switch req.Engine.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1:
+		portArgs = getV1PortArgs(ipFamily)
 		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion, req.Encrypted)
 		if err != nil {
 			return nil, err
@@ -492,7 +565,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating engine process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(req.Engine.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Engine.Name, binary, DefaultEnginePortCount, args, portArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -507,7 +580,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		VolumeName:         req.Engine.Spec.VolumeName,
 		Size:               uint64(volumeSize),
 		PortCount:          DefaultEnginePortCount,
-		PortArgs:           []string{DefaultPortArg},
+		PortArgs:           portArgs,
 		DataLayoutType:     req.DataLayoutType,
 
 		Binary:     binary,
@@ -523,6 +596,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			TargetAddress:     req.TargetAddress,
 			SalvageRequested:  req.Engine.Spec.SalvageRequested,
 			SnapshotMaxCount:  req.Engine.Spec.SnapshotMaxCount,
+			IPFamily:          ipFamily,
 		},
 	})
 
@@ -541,6 +615,7 @@ type ReplicaInstanceCreateRequest struct {
 	EngineCLIAPIVersion           int
 	Encrypted                     bool
 	ExtraLUKS2HeaderSpaceRequired bool
+	IPFamily                      string
 }
 
 // EngineFrontendInstanceCreateRequest contains the parameters to create an engine frontend (initiator) instance
@@ -555,6 +630,7 @@ type EngineFrontendInstanceCreateRequest struct {
 	EngineName                    string
 	Encrypted                     bool
 	ExtraLUKS2HeaderSpaceRequired bool
+	IPFamily                      string
 }
 
 func getEngineFrontendInstanceSize(ef *longhorn.EngineFrontend) int64 {
@@ -569,10 +645,13 @@ func getEngineFrontendInstanceSize(ef *longhorn.EngineFrontend) int64 {
 
 // EngineFrontendInstanceCreate creates a new engine frontend (initiator) instance for v2 data engine
 func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontendInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	ipFamily := serializeIPFamily(req.IPFamily)
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-
+	if !IsV2IPFamilySupported(c.GetAPIVersion(), ipFamily) {
+		return nil, fmt.Errorf("explicit IP family %q requires instance manager API version >= 8", req.IPFamily)
+	}
 	frontend, err := GetEngineInstanceFrontend(req.EngineFrontend.Spec.DataEngine, req.VolumeFrontend)
 	if err != nil {
 		return nil, err
@@ -602,7 +681,6 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 		Size:               uint64(volumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
-
 		EngineFrontend: imclient.EngineFrontendCreateRequest{
 			Frontend:          frontend,
 			UblkQueueDepth:    req.UblkQueueDepth,
@@ -610,6 +688,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 			NvmeTcpNrIoQueues: req.NvmeTcpNrIoQueues,
 			TargetAddress:     targetAddress,
 			EngineName:        req.EngineName,
+			IPFamily:          ipFamily,
 		},
 	})
 
@@ -645,14 +724,20 @@ func (c *InstanceManagerClient) EngineFrontendResume(dataEngine longhorn.DataEng
 
 // ReplicaInstanceCreate creates a new replica instance
 func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	ipFamily := serializeIPFamily(req.IPFamily)
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
+	}
+	if types.IsDataEngineV2(req.Replica.Spec.DataEngine) && !IsV2IPFamilySupported(c.GetAPIVersion(), ipFamily) {
+		return nil, fmt.Errorf("explicit IP family %q requires instance manager API version >= 8", req.IPFamily)
 	}
 
 	binary := ""
 	args := []string{}
+	portArgs := []string{DefaultPortArg}
 	var err error
 	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
+		portArgs = getV1PortArgs(ipFamily)
 		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
 		if err != nil {
 			return nil, err
@@ -661,7 +746,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating replica process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCountV1, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCountV1, args, portArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -688,15 +773,15 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		VolumeName:         req.Replica.Spec.VolumeName,
 		Size:               uint64(volumeSize),
 		PortCount:          portCount,
-		PortArgs:           []string{DefaultPortArg},
-
-		Binary:     binary,
-		BinaryArgs: args,
+		PortArgs:           portArgs,
+		Binary:             binary,
+		BinaryArgs:         args,
 
 		Replica: imclient.ReplicaCreateRequest{
 			DiskName:         req.DiskName,
 			DiskUUID:         req.Replica.Spec.DiskID,
 			BackingImageName: req.Replica.Spec.BackingImage,
+			IPFamily:         ipFamily,
 		},
 	})
 	if err != nil {
@@ -930,6 +1015,7 @@ type EngineInstanceUpgradeRequest struct {
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
 	EngineCLIAPIVersion              int
+	IPFamily                         string
 }
 
 // EngineInstanceUpgrade upgrades the engine process
@@ -947,6 +1033,7 @@ func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgrade
 }
 
 func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
+	ipFamily := serializeIPFamily(req.IPFamily)
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -1002,10 +1089,11 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(req.Engine.Spec.Image), types.EngineBinaryName)
+	portArgs := getV1PortArgs(ipFamily)
 
 	if c.GetAPIVersion() < 4 {
 		process, err := c.processManagerGrpcClient.ProcessReplace(
-			req.Engine.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+			req.Engine.Name, binary, DefaultEnginePortCount, args, portArgs, DefaultTerminateSignal)
 		if err != nil {
 			return nil, err
 		}
@@ -1013,7 +1101,7 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(req.Engine.Spec.DataEngine), req.Engine.Name,
-		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, portArgs, DefaultTerminateSignal)
 	if err != nil {
 		return nil, err
 	}

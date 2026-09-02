@@ -411,6 +411,13 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	if r.Status.InstanceManagerName != im.Name {
 		return nil, fmt.Errorf("found instance manager name conflict %s vs %s during replica instance creation", r.Status.InstanceManagerName, im.Name)
 	}
+	ipFamily, initialized := engineapi.GetAppliedIPFamily(im)
+	if !initialized {
+		return nil, nil
+	}
+	if types.IsDataEngineV2(r.Spec.DataEngine) && !engineapi.IsV2IPFamilySupported(im.Status.APIVersion, ipFamily) {
+		return nil, nil
+	}
 
 	c, err := engineapi.NewInstanceManagerClient(im, false)
 	if err != nil {
@@ -425,6 +432,13 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	v, err := rc.ds.GetVolumeRO(r.Spec.VolumeName)
 	if err != nil {
 		return nil, err
+	}
+	familySetting, err := rc.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+	if err != nil {
+		return nil, err
+	}
+	if v.Status.State == longhorn.VolumeStateDetached && !familySetting.Status.Applied {
+		return nil, nil
 	}
 
 	cliAPIVersion, err := rc.ds.GetDataEngineImageCLIAPIVersion(r.Spec.Image, r.Spec.DataEngine)
@@ -451,6 +465,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		BackingImagePath:              backingImagePath,
 		DataLocality:                  v.Spec.DataLocality,
 		EngineCLIAPIVersion:           cliAPIVersion,
+		IPFamily:                      ipFamily,
 		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v),
 	})
 }

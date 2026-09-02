@@ -34,6 +34,8 @@ var retainBackupStateCounts = map[btypes.ProgressState]int{
 }
 
 func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRequest) (ret *spdkrpc.Replica, err error) {
+	s.replicaLifecycleMu.Lock()
+	defer s.replicaLifecycleMu.Unlock()
 	if req.Name == "" {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name is required")
 	}
@@ -43,8 +45,12 @@ func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRe
 	if err := ValidateReplicaOrSnapshotName(req.Name); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid replica name: %v", err)
 	}
+	ipFamily, err := parseIPFamily(req.IpFamily)
+	if err != nil {
+		return nil, err
+	}
 
-	r, err := s.newReplica(req)
+	r, err := s.newReplica(req, ipFamily)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +75,7 @@ func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRe
 		}
 	}
 
-	return r.Create(spdkClient, req.PortCount, s.portAllocator, backingImage)
+	return r.Create(spdkClient, ipFamily, req.PortCount, s.portAllocator, backingImage)
 }
 
 // ReplicaDelete deletes a replica

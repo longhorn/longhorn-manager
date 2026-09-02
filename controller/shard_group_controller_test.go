@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -12,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/fake"
@@ -20,13 +23,16 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -839,4 +845,265 @@ func (s *ShardGroupControllerSuite) TestConcurrentShardRebuildLimit(c *C) {
 	can, err = s.controller.canStartShardRebuild(sgB)
 	c.Assert(err, IsNil)
 	c.Assert(can, Equals, true)
+}
+
+type fakeShardReplaceClient struct {
+	spdkrpc.SPDKServiceClient
+	lastRequest *spdkrpc.ShardGroupShardReplaceRequest
+}
+
+func (f *fakeShardReplaceClient) ShardGroupShardReplace(_ context.Context, in *spdkrpc.ShardGroupShardReplaceRequest, _ ...grpc.CallOption) (*spdkrpc.ShardGroupShardReplaceResponse, error) {
+	f.lastRequest = in
+	return &spdkrpc.ShardGroupShardReplaceResponse{}, nil
+}
+
+type fakeShardInstanceServiceServer struct {
+	imrpc.UnimplementedInstanceServiceServer
+	instance *imrpc.InstanceResponse
+}
+type fakeShardHealthServer struct {
+	healthpb.UnimplementedHealthServer
+}
+
+func (f *fakeShardHealthServer) Check(context.Context, *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+}
+
+func (f *fakeShardInstanceServiceServer) VersionGet(context.Context, *emptypb.Empty) (*imrpc.VersionResponse, error) {
+	return &imrpc.VersionResponse{}, nil
+}
+
+func (f *fakeShardInstanceServiceServer) InstanceGet(context.Context, *imrpc.InstanceGetRequest) (*imrpc.InstanceResponse, error) {
+	return f.instance, nil
+}
+
+func startFakeShardInstanceService(c *C, instance *imrpc.InstanceResponse) func() {
+	listener, err := net.Listen("tcp", "127.0.0.1:8503")
+	c.Assert(err, IsNil)
+
+	grpcServer := grpc.NewServer()
+	healthpb.RegisterHealthServer(grpcServer, &fakeShardHealthServer{})
+	imrpc.RegisterInstanceServiceServer(grpcServer, &fakeShardInstanceServiceServer{instance: instance})
+
+	go func() {
+		_ = grpcServer.Serve(listener)
+	}()
+
+	return func() {
+		grpcServer.Stop()
+		_ = listener.Close()
+	}
+}
+
+func newStrictShardStoragePod(c *C, name, family, network string, ips []string) *corev1.Pod {
+	status, err := json.Marshal([]types.CniNetwork{{Name: network, IPs: ips}})
+	c.Assert(err, IsNil)
+
+	pod := newPod(&corev1.PodStatus{
+		Phase:  corev1.PodRunning,
+		PodIP:  "10.0.0.1",
+		PodIPs: []corev1.PodIP{{IP: "10.0.0.1"}},
+	}, name, TestNamespace, TestNode1)
+	pod.Annotations = map[string]string{
+		string(types.CNIAnnotationNetworkStatus): string(status),
+	}
+	pod.Spec.Containers = []corev1.Container{{
+		Name: "instance-manager",
+		Args: []string{"--ip-family", family},
+	}}
+	return pod
+}
+
+func newShardInstanceResponse(name string, port int32) *imrpc.InstanceResponse {
+	return &imrpc.InstanceResponse{
+		Spec: &imrpc.InstanceSpec{
+			Name:       name,
+			Type:       string(engineapi.InstanceTypeShard),
+			DataEngine: imrpc.DataEngine_DATA_ENGINE_V2,
+		},
+		Status: &imrpc.InstanceStatus{
+			State:     string(longhorn.InstanceStateRunning),
+			PortStart: port,
+		},
+	}
+}
+
+func (s *ShardGroupControllerSuite) addShardStorageSetting(c *C, network string) {
+	settingsIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	c.Assert(settingsIndexer.Add(newSetting(string(types.SettingNameStorageNetwork), network)), IsNil)
+}
+
+func (s *ShardGroupControllerSuite) addShardInstanceManager(c *C, name, ip string) *longhorn.InstanceManager {
+	im := newInstanceManager(
+		name,
+		longhorn.InstanceManagerStateRunning,
+		TestNode1,
+		TestNode1,
+		ip,
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeV2,
+		TestInstanceManagerImage,
+		false,
+	)
+	imIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	c.Assert(imIndexer.Add(im), IsNil)
+	return im
+}
+
+// TestSyncStatusFormatsIPv6ShardAddress verifies that the EC address map uses
+// bracketed host-port formatting for IPv6 shard addresses.
+func (s *ShardGroupControllerSuite) TestSyncStatusFormatsIPv6ShardAddress(c *C) {
+	shardGroup := newTestShardGroup("vol-sync-ipv6", 1, 0, TestNode1)
+	shard := newTestShard(shardGroup, 0, longhorn.ShardStateNormal)
+	shard.Spec.NodeID = TestNode1
+	shard.Status.StorageIP = "2001:db8::10"
+	shard.Status.Port = 20011
+
+	rctx := &sgReconcileCtx{
+		shardGroup: shardGroup,
+		shards:     map[string]*longhorn.Shard{shard.Name: shard},
+	}
+	c.Assert(s.controller.syncStatus(rctx), IsNil)
+	c.Assert(shardGroup.Status.ECShardAddressMap["0"], Equals, "[2001:db8::10]:20011")
+}
+
+// TestTriggerShardReplaceFormatsIPv6Address verifies that a failed shard is
+// replaced using the bracketed address reported by the SPDK RPC request.
+func (s *ShardGroupControllerSuite) TestTriggerShardReplaceFormatsIPv6Address(c *C) {
+	shardGroup := newTestShardGroup("vol-replace-ipv6", 1, 0, TestNode1)
+	shard := newTestShard(shardGroup, 0, longhorn.ShardStateFailed)
+	shard.Spec.NodeID = TestNode1
+	shard.Status.StorageIP = "2001:db8::10"
+
+	createdShard, err := s.lhClient.LonghornV1beta2().Shards(TestNamespace).Create(
+		context.TODO(), shard, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(s.lhShardIndexer.Add(createdShard), IsNil)
+	s.addShardInstanceManager(c, "im-replace-ipv6", "127.0.0.1")
+
+	stopInstanceService := startFakeShardInstanceService(c, newShardInstanceResponse(shard.Name, 20011))
+	defer stopInstanceService()
+
+	fake := &fakeShardReplaceClient{}
+	rctx := &sgReconcileCtx{
+		shardGroup: shardGroup,
+		shards:     map[string]*longhorn.Shard{createdShard.Name: createdShard},
+		spdkClient: fake,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+	c.Assert(s.controller.triggerShardReplace(rctx, createdShard), IsNil)
+	c.Assert(fake.lastRequest, NotNil)
+	c.Assert(fake.lastRequest.ShardAddress, Equals, "[2001:db8::10]:20011")
+	c.Assert(createdShard.Status.ReplaceTriggered, Equals, true)
+}
+
+// TestDialSPDKFormatsIPv6ServiceAddress verifies that the SPDK service target
+// preserves the IPv6 authority while retaining the existing service port.
+func (s *ShardGroupControllerSuite) TestDialSPDKFormatsIPv6ServiceAddress(c *C) {
+	const storageNetwork = TestNamespace + "/dual-stack"
+	s.addShardStorageSetting(c, storageNetwork)
+	im := s.addShardInstanceManager(c, "im-dial-ipv6", "10.0.0.2")
+	pod := newStrictShardStoragePod(c, im.Name, types.DataEngineIPFamilyIPv6, storageNetwork, []string{"2001:db8::20"})
+	podIndexer := s.informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	c.Assert(podIndexer.Add(pod), IsNil)
+
+	_, conn, err := s.controller.dialSPDK(TestNode1)
+	c.Assert(err, IsNil)
+	defer func() {
+		c.Assert(conn.Close(), IsNil)
+	}()
+	c.Assert(conn.Target(), Equals, "[2001:db8::20]:8504")
+}
+
+// TestSyncShardInstanceClearsInvalidStorageIP prevents a strict storage-network
+// family failure from preserving a stale shard address or rebuilding the EC map
+// from the stale in-memory shard snapshot during the same reconcile pass.
+func (s *ShardGroupControllerSuite) TestSyncShardInstanceClearsInvalidStorageIP(c *C) {
+	const storageNetwork = TestNamespace + "/ipv4-only"
+	s.addShardStorageSetting(c, storageNetwork)
+	im := s.addShardInstanceManager(c, "im-invalid-shard-ip", "127.0.0.1")
+	pod := newStrictShardStoragePod(c, im.Name, types.DataEngineIPFamilyIPv6, storageNetwork, []string{"192.0.2.10"})
+	podIndexer := s.informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	c.Assert(podIndexer.Add(pod), IsNil)
+
+	node := &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: TestNode1, Namespace: TestNamespace},
+		Status: longhorn.NodeStatus{
+			DiskStatus: map[string]*longhorn.DiskStatus{
+				"disk-1": {DiskUUID: "disk-1", DiskName: "lvs-1"},
+			},
+		},
+	}
+	nodeIndexer := s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	c.Assert(nodeIndexer.Add(node), IsNil)
+
+	shardGroup := newTestShardGroup("vol-invalid-shard-ip", 1, 0, TestNode1)
+	shard := newTestShard(shardGroup, 0, longhorn.ShardStateNormal)
+	shard.Spec.NodeID = TestNode1
+	shard.Spec.DiskUUID = "disk-1"
+	shard.Status.StorageIP = "2001:db8::10"
+	shard.Status.Port = 20011
+	createdShard, err := s.lhClient.LonghornV1beta2().Shards(TestNamespace).Create(
+		context.TODO(), shard, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(s.lhShardIndexer.Add(createdShard), IsNil)
+
+	stopInstanceService := startFakeShardInstanceService(c, newShardInstanceResponse(createdShard.Name, 20011))
+	defer stopInstanceService()
+
+	rctx := &sgReconcileCtx{
+		shardGroup: shardGroup,
+		shards:     map[string]*longhorn.Shard{createdShard.Name: createdShard},
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+	c.Assert(s.controller.syncShardInstance(rctx, createdShard), IsNil)
+
+	saved, err := s.lhClient.LonghornV1beta2().Shards(TestNamespace).Get(
+		context.TODO(), createdShard.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(saved.Status.StorageIP, Equals, "")
+	c.Assert(rctx.shards[createdShard.Name].Status.StorageIP, Equals, "")
+
+	c.Assert(s.controller.syncStatus(rctx), IsNil)
+	c.Assert(rctx.shardGroup.Status.ECShardAddressMap, HasLen, 0)
+}
+
+// TestRefreshShardGroupProcessStatusClearsInvalidStorageIP verifies that an
+// incompatible configured storage network clears the ShardGroup runtime address
+// before its normal status persistence path runs.
+func (s *ShardGroupControllerSuite) TestRefreshShardGroupProcessStatusClearsInvalidStorageIP(c *C) {
+	const storageNetwork = TestNamespace + "/ipv4-only"
+	s.addShardStorageSetting(c, storageNetwork)
+	im := s.addShardInstanceManager(c, "im-invalid-shard-group-ip", "10.0.0.2")
+	pod := newStrictShardStoragePod(c, im.Name, types.DataEngineIPFamilyIPv6, storageNetwork, []string{"192.0.2.10"})
+	podIndexer := s.informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	c.Assert(podIndexer.Add(pod), IsNil)
+
+	shardGroup := newTestShardGroup("vol-invalid-shard-group-ip", 1, 0, TestNode1)
+	shardGroup.Status.StorageIP = "2001:db8::20"
+	createdShardGroup, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), shardGroup, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	rctx := &sgReconcileCtx{
+		shardGroup: createdShardGroup,
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+	instance := &longhorn.InstanceProcess{
+		Status: longhorn.InstanceProcessStatus{
+			State:     longhorn.InstanceStateRunning,
+			PortStart: 20011,
+		},
+	}
+	c.Assert(s.controller.refreshShardGroupProcessStatus(rctx, im, instance), IsNil)
+	c.Assert(createdShardGroup.Status.StorageIP, Equals, "")
+
+	_, err = s.controller.ds.UpdateShardGroupStatus(createdShardGroup)
+	c.Assert(err, IsNil)
+	saved, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Get(
+		context.TODO(), createdShardGroup.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(saved.Status.StorageIP, Equals, "")
 }

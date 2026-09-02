@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -139,6 +140,30 @@ func newDataEngineHugepageEnabledSetting() *longhorn.Setting {
 
 func newDataEngineMemorySizeSetting() *longhorn.Setting {
 	return newSetting(string(types.SettingNameDataEngineMemorySize), `{"v2":"1024"}`)
+}
+func newDataEngineIPFamilySetting(value string) *longhorn.Setting {
+	return newSetting(string(types.SettingNamePreferredDataEngineIPFamily), value)
+}
+
+func newDataEngineIPFamilyTestController(c *C) (*InstanceManagerController, *lhfake.Clientset, *fake.Clientset, cache.Indexer, cache.Indexer, cache.Indexer, cache.Indexer, cache.Indexer, cache.Indexer) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+	lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+	return imc, lhClient, kubeClient, imIndexer, podIndexer, settingIndexer, volumeIndexer, kubeNodeIndexer, lhNodeIndexer
+}
+func addDataEngineIPFamilyTestSetting(c *C, lhClient *lhfake.Clientset, settingIndexer cache.Indexer, setting *longhorn.Setting) {
+	setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(settingIndexer.Add(setting), IsNil)
 }
 
 func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
@@ -519,6 +544,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			var containers []corev1.Container
 			containers = append(containers, corev1.Container{
 				Name:      "instance-manager",
+				Args:      []string{"daemon", "--ip-family", types.DataEngineIPFamilyIPv4},
 				Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")}}},
 			)
 			pod.Spec.Containers = containers
@@ -545,6 +571,11 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		updatedIM, err := lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
+		if tc.expectedStatus.CurrentState != longhorn.InstanceManagerStateError &&
+			tc.expectedStatus.CurrentState != longhorn.InstanceManagerStateUnknown {
+			appliedFamily := types.DataEngineIPFamilyDefault
+			tc.expectedStatus.IPFamily = &appliedFamily
+		}
 		for i, condition := range updatedIM.Status.Conditions {
 			tc.expectedStatus.Conditions[i].LastTransitionTime = condition.LastTransitionTime
 			tc.expectedStatus.Conditions[i].LastProbeTime = condition.LastProbeTime
@@ -572,10 +603,11 @@ func createDangerZoneSettingsForV2(c *C, lhClient *lhfake.Clientset, sIndexer ca
 
 	// Override settings that need specific values for V2 IM tests.
 	overrides := map[types.SettingName]string{
-		types.SettingNameV2DataEngine:              "true",
-		types.SettingNameDataEngineHugepageEnabled: `{"v2":"true"}`,
-		types.SettingNameDataEngineMemorySize:      `{"v2":"1024"}`,
-		types.SettingNameDataEngineCPUMask:         `{"v2":"0x1"}`,
+		types.SettingNameV2DataEngine:                "true",
+		types.SettingNameDataEngineHugepageEnabled:   `{"v2":"true"}`,
+		types.SettingNameDataEngineMemorySize:        `{"v2":"1024"}`,
+		types.SettingNameDataEngineCPUMask:           `{"v2":"0x1"}`,
+		types.SettingNamePreferredDataEngineIPFamily: types.DataEngineIPFamilyIPv4,
 	}
 	for name, value := range overrides {
 		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Get(context.TODO(), string(name), metav1.GetOptions{})
@@ -841,4 +873,347 @@ func (s *TestSuite) TestNodeHasEnoughHugepageTotalCapacity(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(ok, Equals, tc.expected)
 	}
+}
+
+func (s *TestSuite) TestIsDataEngineIPFamilySynced(c *C) {
+	testCases := []struct {
+		name           string
+		settingValue   string
+		containers     []corev1.Container
+		attached       bool
+		expectedSynced bool
+		expectedError  string
+	}{
+		{
+			name:         "authoritative container matches",
+			settingValue: types.DataEngineIPFamilyIPv6,
+			containers: []corev1.Container{{
+				Name: "instance-manager",
+				Args: []string{"--ip-family", types.DataEngineIPFamilyIPv6},
+			}},
+			expectedSynced: true,
+		},
+		{
+			name:         "sidecar value is ignored",
+			settingValue: types.DataEngineIPFamilyIPv6,
+			containers: []corev1.Container{{
+				Name: "sidecar",
+				Args: []string{"--ip-family", types.DataEngineIPFamilyIPv6},
+			}},
+			expectedSynced: false,
+		},
+		{
+			name:         "mismatched family while detached",
+			settingValue: types.DataEngineIPFamilyIPv6,
+			containers: []corev1.Container{{
+				Name: "instance-manager",
+				Args: []string{"--ip-family", types.DataEngineIPFamilyIPv4},
+			}},
+			expectedSynced: false,
+		},
+		{
+			name:         "mismatched family while attached",
+			settingValue: types.DataEngineIPFamilyIPv6,
+			containers: []corev1.Container{{
+				Name: "instance-manager",
+				Args: []string{"--ip-family", types.DataEngineIPFamilyIPv4},
+			}},
+			attached:      true,
+			expectedError: "failed to apply preferred-data-engine-ip-family setting to Longhorn components when there are attached volumes. It will be eventually applied",
+		},
+		{
+			name: "default setting matches omitted flag",
+			containers: []corev1.Container{{
+				Name: "instance-manager",
+				Args: []string{"daemon"},
+			}},
+			expectedSynced: true,
+		},
+		{
+			name:         "default setting rejects legacy explicit IPv4",
+			settingValue: types.DataEngineIPFamilyDefault,
+			containers: []corev1.Container{{
+				Name: "instance-manager",
+				Args: []string{"--ip-family", types.DataEngineIPFamilyIPv4},
+			}},
+			expectedSynced: false,
+		},
+		{
+			name: "blank setting requires authoritative container",
+			containers: []corev1.Container{{
+				Name: "sidecar",
+				Args: []string{"daemon"},
+			}},
+			expectedSynced: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		imc, lhClient, _, _, _, settingIndexer, volumeIndexer, _, _ := newDataEngineIPFamilyTestController(c)
+		addDataEngineIPFamilyTestSetting(c, lhClient, settingIndexer, newDataEngineIPFamilySetting(tc.settingValue))
+		if tc.attached {
+			volume := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: "attached-volume", Namespace: TestNamespace},
+				Status:     longhorn.VolumeStatus{State: longhorn.VolumeStateAttached},
+			}
+			volume, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(volumeIndexer.Add(volume), IsNil)
+		}
+
+		setting := newDataEngineIPFamilySetting(tc.settingValue)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: tc.containers}}
+		synced, err := imc.isSettingDataEngineIPFamilySynced(setting, pod)
+		if tc.expectedError == "" {
+			c.Assert(err, IsNil, Commentf("test case: %s", tc.name))
+			c.Assert(synced, Equals, tc.expectedSynced, Commentf("test case: %s", tc.name))
+			continue
+		}
+
+		var invalidState *types.ErrorInvalidState
+		c.Assert(errors.As(err, &invalidState), Equals, true, Commentf("test case: %s", tc.name))
+		c.Assert(invalidState.Reason, Equals, tc.expectedError, Commentf("test case: %s", tc.name))
+	}
+}
+
+func (s *TestSuite) TestCreateV2InstanceManagerPodSpecUsesDualStackListener(c *C) {
+	imc, lhClient, kubeClient, imIndexer, _, settingIndexer, _, kubeNodeIndexer, lhNodeIndexer := newDataEngineIPFamilyTestController(c)
+	createDangerZoneSettingsForV2(c, lhClient, settingIndexer)
+	kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	kubeNode.Status.Allocatable = corev1.ResourceList{"cpu": resource.MustParse("4")}
+	kubeNode.Status.Capacity = corev1.ResourceList{"cpu": resource.MustParse("4")}
+	c.Assert(kubeNodeIndexer.Add(kubeNode), IsNil)
+	_, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	c.Assert(lhNodeIndexer.Add(lhNode), IsNil)
+	_, err = lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), lhNode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	var instanceManagers []*longhorn.InstanceManager
+	for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+		im := newInstanceManager(
+			TestInstanceManagerName+"-"+string(dataEngine),
+			longhorn.InstanceManagerStateStopped,
+			TestNode1,
+			TestNode1,
+			"",
+			nil,
+			nil,
+			nil,
+			dataEngine,
+			TestInstanceManagerImage,
+			false,
+		)
+		if types.IsDataEngineV2(dataEngine) {
+			im.Spec.DataEngineSpec.V2.CPUMask = "0x1"
+		}
+		createdIM, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imIndexer.Add(createdIM), IsNil)
+		im = createdIM
+		instanceManagers = append(instanceManagers, im)
+
+		pod, err := imc.createInstanceManagerPodSpec(im, nil, "", nil, dataEngine)
+		if err != nil {
+			c.Fatalf("failed to create pod spec for data engine %s: %v", dataEngine, err)
+		}
+		c.Assert(pod.Spec.Containers, HasLen, 1)
+
+		family, specified, valid := types.ParseDataEngineIPFamilyArgs(pod.Spec.Containers[0].Args)
+		c.Assert(valid, Equals, true, Commentf("data engine: %s", dataEngine))
+		c.Assert(specified, Equals, false, Commentf("data engine: %s", dataEngine))
+		c.Assert(family, Equals, "", Commentf("data engine: %s", dataEngine))
+		for _, env := range pod.Spec.Containers[0].Env {
+			c.Assert(env.Name, Not(Equals), "DATA_ENGINE_IP_FAMILY")
+		}
+
+		if types.IsDataEngineV2(dataEngine) {
+			listen := ""
+			for i := 0; i+1 < len(pod.Spec.Containers[0].Args); i++ {
+				if pod.Spec.Containers[0].Args[i] == "--listen" {
+					listen = pod.Spec.Containers[0].Args[i+1]
+					break
+				}
+			}
+			c.Assert(listen, Equals, ":8500")
+		}
+	}
+
+	familySetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Get(
+		context.TODO(), string(types.SettingNamePreferredDataEngineIPFamily), metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	familySetting.Value = types.DataEngineIPFamilyDefault
+	familySetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Update(
+		context.TODO(), familySetting, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(settingIndexer.Update(familySetting), IsNil)
+
+	for _, im := range instanceManagers {
+		pod, err := imc.createInstanceManagerPodSpec(im, nil, "", nil, im.Spec.DataEngine)
+		c.Assert(err, IsNil)
+		family, specified, valid := types.ParseDataEngineIPFamilyArgs(pod.Spec.Containers[0].Args)
+		c.Assert(valid, Equals, true, Commentf("data engine: %s", im.Spec.DataEngine))
+		c.Assert(specified, Equals, false, Commentf("data engine: %s", im.Spec.DataEngine))
+		c.Assert(family, Equals, "", Commentf("data engine: %s", im.Spec.DataEngine))
+	}
+}
+
+func (s *TestSuite) TestDataEngineIPFamilyStorageNetworkCompatibility(c *C) {
+	const (
+		storageNetwork = "longhorn-system/ipv4-only"
+		oldStorageIP   = "192.0.2.10"
+		clusterIP      = "10.0.0.10"
+	)
+
+	imc, lhClient, kubeClient, _, podIndexer, settingIndexer, _, _, _ := newDataEngineIPFamilyTestController(c)
+	storageSetting := newSetting(string(types.SettingNameStorageNetwork), storageNetwork)
+	addDataEngineIPFamilyTestSetting(c, lhClient, settingIndexer, storageSetting)
+	addDataEngineIPFamilyTestSetting(c, lhClient, settingIndexer, newDataEngineIPFamilySetting(types.DataEngineIPFamilyIPv6))
+
+	im := newInstanceManager(
+		"instance-manager-aio-v1-node1",
+		longhorn.InstanceManagerStateRunning,
+		TestNode1,
+		TestNode1,
+		oldStorageIP,
+		nil,
+		nil,
+		nil,
+		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
+		false,
+	)
+	pod := newPod(&corev1.PodStatus{
+		PodIP:             clusterIP,
+		PodIPs:            []corev1.PodIP{{IP: clusterIP}},
+		Phase:             corev1.PodRunning,
+		ContainerStatuses: []corev1.ContainerStatus{{Name: "instance-manager", Ready: true}},
+	}, im.Name, im.Namespace, im.Spec.NodeID)
+	pod.UID = "original-pod-uid"
+	pod.Spec.Containers = []corev1.Container{{
+		Name: "instance-manager",
+		Args: []string{"daemon"},
+	}}
+	pod.Annotations = map[string]string{
+		string(types.CNIAnnotationNetworks):      types.CreateCniAnnotationFromSetting(storageSetting, types.StorageNetworkInterface),
+		string(types.CNIAnnotationNetworkStatus): fmt.Sprintf(`[{"name":"%s","interface":"lhnet1","ips":["%s"]}]`, storageNetwork, oldStorageIP),
+	}
+	c.Assert(podIndexer.Add(pod), IsNil)
+	_, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	familySetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Get(
+		context.TODO(), string(types.SettingNamePreferredDataEngineIPFamily), metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	familySetting.Value = types.DataEngineIPFamilyDefault
+	familySetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Update(
+		context.TODO(), familySetting, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(settingIndexer.Update(familySetting), IsNil)
+	appliedFamily := types.DataEngineIPFamilyDefault
+	im.Status.IPFamily = &appliedFamily
+	blocked, err := imc.checkDataEngineIPFamilyForStorageNetwork(im, pod)
+	c.Assert(err, IsNil)
+	c.Assert(blocked, Equals, false)
+
+	familySetting.Value = types.DataEngineIPFamilyIPv6
+	familySetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Update(
+		context.TODO(), familySetting, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(settingIndexer.Update(familySetting), IsNil)
+	appliedFamily = types.DataEngineIPFamilyIPv6
+	blocked, err = imc.checkDataEngineIPFamilyForStorageNetwork(im, pod)
+	c.Assert(err, IsNil)
+	c.Assert(blocked, Equals, true)
+	err = imc.handlePod(im)
+	c.Assert(err, IsNil)
+
+	updatedPod, err := kubeClient.CoreV1().Pods(TestNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(fmt.Sprint(updatedPod.UID), Equals, fmt.Sprint(pod.UID))
+	c.Assert(im.Status.IP, Equals, oldStorageIP)
+	condition := types.GetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(condition.Reason, Equals, longhorn.InstanceManagerConditionReasonSettingNotSynced)
+	expectedMessage := fmt.Sprintf("Settings [preferred-data-engine-ip-family] are not synced: storage network longhorn-system/ipv4-only cannot provide an address in family ipv6 for pod %s/instance-manager-aio-v1-node1", TestNamespace)
+	if condition.Message != expectedMessage {
+		c.Fatalf("unexpected setting condition message: got %q, want %q", condition.Message, expectedMessage)
+	}
+
+	err = imc.syncStatusWithPod(im)
+	c.Assert(err, IsNil)
+	c.Assert(im.Status.IP, Equals, "")
+	condition = types.GetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(condition.Reason, Equals, longhorn.InstanceManagerConditionReasonSettingNotSynced)
+	c.Assert(condition.Message, Equals, fmt.Sprintf("Settings [preferred-data-engine-ip-family] are not synced: pod %s/instance-manager-aio-v1-node1 cannot provide an address in family ipv6", TestNamespace))
+
+	appliedFamily = types.DataEngineIPFamilyIPv4
+	c.Assert(podIndexer.Update(pod), IsNil)
+	im.Status.IP = oldStorageIP
+	err = imc.syncStatusWithPod(im)
+	c.Assert(err, IsNil)
+	c.Assert(im.Status.IP, Equals, clusterIP)
+
+	recoveryIMC, recoveryLHClient, recoveryKubeClient, recoveryIMIndexer, recoveryPodIndexer, recoverySettingIndexer, _, kubeNodeIndexer, lhNodeIndexer := newDataEngineIPFamilyTestController(c)
+	createDangerZoneSettingsForV2(c, recoveryLHClient, recoverySettingIndexer)
+	recoveryStorageSetting, err := recoveryLHClient.LonghornV1beta2().Settings(TestNamespace).Get(context.TODO(), string(types.SettingNameStorageNetwork), metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	recoveryStorageSetting.Value = "longhorn-system/dual-stack"
+	recoveryStorageSetting, err = recoveryLHClient.LonghornV1beta2().Settings(TestNamespace).Update(context.TODO(), recoveryStorageSetting, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(recoverySettingIndexer.Update(recoveryStorageSetting), IsNil)
+	recoveryFamilySetting, err := recoveryLHClient.LonghornV1beta2().Settings(TestNamespace).Get(context.TODO(), string(types.SettingNamePreferredDataEngineIPFamily), metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	recoveryFamilySetting.Value = types.DataEngineIPFamilyIPv6
+	recoveryFamilySetting, err = recoveryLHClient.LonghornV1beta2().Settings(TestNamespace).Update(context.TODO(), recoveryFamilySetting, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(recoverySettingIndexer.Update(recoveryFamilySetting), IsNil)
+
+	kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	kubeNode.Status.Allocatable = corev1.ResourceList{"cpu": resource.MustParse("4")}
+	kubeNode.Status.Capacity = corev1.ResourceList{"cpu": resource.MustParse("4")}
+	c.Assert(kubeNodeIndexer.Add(kubeNode), IsNil)
+	_, err = recoveryKubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	c.Assert(lhNodeIndexer.Add(lhNode), IsNil)
+	_, err = recoveryLHClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), lhNode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	recoveryIM := newInstanceManager(
+		"instance-manager-recovery",
+		longhorn.InstanceManagerStateRunning,
+		TestNode1,
+		TestNode1,
+		oldStorageIP,
+		nil,
+		nil,
+		nil,
+		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
+		false,
+	)
+	recoveryIM.Status.Conditions = types.SetCondition(nil, longhorn.InstanceManagerConditionTypeSettingSynced,
+		longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, "old failure")
+	recoveryIM, err = recoveryLHClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), recoveryIM, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(recoveryIMIndexer.Add(recoveryIM), IsNil)
+	recoveryPod, err := recoveryIMC.createInstanceManagerPodSpec(recoveryIM, nil, "", nil, longhorn.DataEngineTypeV1)
+	c.Assert(err, IsNil)
+	recoveryPod.Status = corev1.PodStatus{
+		PodIP:             clusterIP,
+		PodIPs:            []corev1.PodIP{{IP: clusterIP}, {IP: "2001:db8::10"}},
+		Phase:             corev1.PodRunning,
+		ContainerStatuses: []corev1.ContainerStatus{{Name: "instance-manager", Ready: true}},
+	}
+	recoveryPod.Annotations[string(types.CNIAnnotationNetworkStatus)] = `[{"name":"longhorn-system/dual-stack","interface":"lhnet1","ips":["192.0.2.20","2001:db8::10"]}]`
+	c.Assert(recoveryPodIndexer.Add(recoveryPod), IsNil)
+	_, err = recoveryKubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), recoveryPod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = recoveryIMC.handlePod(recoveryIM)
+	c.Assert(err, IsNil)
+	condition = types.GetCondition(recoveryIM.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusTrue)
 }

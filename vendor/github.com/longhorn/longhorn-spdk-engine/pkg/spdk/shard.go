@@ -28,6 +28,7 @@ import (
 
 type Shard struct {
 	sync.RWMutex
+	ipFamily commonnet.IPFamily
 
 	// Name is the external identity used end-to-end across the control plane:
 	// Shard CR name, manager -> IM -> SPDK RPC payloads, shardMap key. Format:
@@ -79,7 +80,7 @@ func GetShardName(volumeName string, slotIndex uint32) string {
 	return fmt.Sprintf("%s-%d", volumeName, slotIndex)
 }
 
-func NewShard(volumeName string, slotIndex uint32, lvsName, lvsUUID string, sizeBytes uint64, updateCh chan interface{}) *Shard {
+func NewShard(volumeName string, slotIndex uint32, lvsName, lvsUUID string, sizeBytes uint64, ipFamily commonnet.IPFamily, updateCh chan interface{}) *Shard {
 	name := GetShardName(volumeName, slotIndex)
 	lvolName := GetShardLvolName(volumeName, slotIndex)
 
@@ -98,6 +99,7 @@ func NewShard(volumeName string, slotIndex uint32, lvsName, lvsUUID string, size
 	log = log.WithField("sizeBytes", roundedSize)
 
 	return &Shard{
+		ipFamily:   ipFamily,
 		Name:       name,
 		LvolName:   lvolName,
 		VolumeName: volumeName,
@@ -467,7 +469,7 @@ func (s *Shard) validateAndSyncLvstore(spdkClient *spdkclient.Client) error {
 // shard serves one target, so it always uses one port and does not use the
 // request's port_count.
 func (s *Shard) prepareIPAndPort(superiorPortAllocator *commonbitmap.Bitmap) error {
-	podIP, err := commonnet.GetIPForPod()
+	podIP, err := commonnet.GetIPForPodByNetworkAndFamily(s.ipFamily)
 	if err != nil {
 		return err
 	}

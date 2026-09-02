@@ -13,13 +13,14 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
+	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
+	"github.com/longhorn/types/pkg/generated/spdkrpc"
+
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
 	commonnet "github.com/longhorn/go-common-libs/net"
-	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
-	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/api"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
@@ -60,7 +61,8 @@ const salvageConnectMaxRetries = 3
 type ShardGroup struct {
 	sync.RWMutex
 
-	ctx context.Context
+	ctx      context.Context
+	ipFamily commonnet.IPFamily
 
 	Name       string // typically equals VolumeName
 	VolumeName string
@@ -143,7 +145,7 @@ func GetShardGroupLvsName(volumeName string) string {
 // torn in-band unmap bitmap on a recreate.
 func NewShardGroup(ctx context.Context, name, volumeName string, specSize uint64,
 	dataChunks, parityChunks, stripSizeKb uint32, shards map[string]*ShardEndpoint,
-	salvageRequested bool, updateCh chan interface{}) *ShardGroup {
+	salvageRequested bool, ipFamily commonnet.IPFamily, updateCh chan interface{}) *ShardGroup {
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"shardGroupName": name,
@@ -163,8 +165,8 @@ func NewShardGroup(ctx context.Context, name, volumeName string, specSize uint64
 	headLvolName := volumeName
 
 	return &ShardGroup{
-		ctx: ctx,
-
+		ctx:        ctx,
+		ipFamily:   ipFamily,
 		Name:       name,
 		VolumeName: volumeName,
 
@@ -1574,7 +1576,7 @@ func (sg *ShardGroup) tryDiscoverExistingLvstore(spdkClient *spdkclient.Client) 
 // (for the head lvol). A ShardGroup serves one target, so it always uses one port
 // and does not use the request's port_count.
 func (sg *ShardGroup) prepareIPAndPort(superiorPortAllocator *commonbitmap.Bitmap) error {
-	podIP, err := commonnet.GetIPForPod()
+	podIP, err := commonnet.GetIPForPodByNetworkAndFamily(sg.ipFamily)
 	if err != nil {
 		return err
 	}

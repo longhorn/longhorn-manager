@@ -1,9 +1,11 @@
 package api
 
 import (
-	rpc "github.com/longhorn/types/pkg/generated/imrpc"
-	"github.com/longhorn/types/pkg/generated/spdkrpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/longhorn/types/pkg/generated/spdkrpc"
+
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
 var (
@@ -75,6 +77,7 @@ type InstanceStatus struct {
 	StandbyTargetPortEnd   int32                       `json:"standbyTargetPortEnd"`
 	UblkID                 int32                       `json:"ublk_id"`
 	UUID                   string                      `json:"uuid"`
+	IPFamily               string                      `json:"ipFamily"`
 	Endpoint               string                      `json:"endpoint"`
 	Frontend               string                      `json:"frontend"`
 	ActivePath             string                      `json:"activePath"`
@@ -119,6 +122,7 @@ func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
 		StandbyTargetPortEnd:   obj.StandbyTargetPortEnd,
 		UblkID:                 obj.UblkId,
 		UUID:                   obj.Uuid,
+		IPFamily:               obj.IpFamily,
 		Endpoint:               obj.Endpoint,
 		Frontend:               obj.Frontend,
 		ActivePath:             obj.ActivePath,

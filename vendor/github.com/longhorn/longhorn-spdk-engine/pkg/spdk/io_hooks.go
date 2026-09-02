@@ -50,14 +50,17 @@ var (
 	backupNewFragmap = func(b *Backup) (*Fragmap, error) {
 		return b.newFragmap()
 	}
+	replicaGetNvmfSubsystemMap   = GetNvmfSubsystemMap
+	replicaStopExposeBdev        = func(cli *spdkclient.Client, nqn string) error { return cli.StopExposeBdev(nqn) }
 	backupExposeSnapshotLvolBdev = exposeSnapshotLvolBdev
 	backupStopExposeBdev         = func(cli *spdkclient.Client, nqn string) error { return cli.StopExposeBdev(nqn) }
 
 	restoreExposeSnapshotLvolBdev = exposeSnapshotLvolBdev
 	restoreStopExposeBdev         = func(cli *spdkclient.Client, nqn string) error { return cli.StopExposeBdev(nqn) }
 
-	backingImageGetIPForPod = commonnet.GetIPForPod
-	backingImageNewExecutor = func(hostProc string) (*commonns.Executor, error) {
+	backingImageGetIPForPod   = commonnet.GetIPForPodByNetworkAndFamily
+	engineFrontendGetIPForPod = commonnet.GetIPForPodByNetworkAndFamily
+	backingImageNewExecutor   = func(hostProc string) (*commonns.Executor, error) {
 		return helperutil.NewExecutor(hostProc)
 	}
 	backingImageGetLvsNameByUUID = GetLvsNameByUUID

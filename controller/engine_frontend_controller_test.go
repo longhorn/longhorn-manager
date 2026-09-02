@@ -88,6 +88,43 @@ func (s *TestSuite) TestIsEngineFrontendTargetInitialized(c *C) {
 	c.Assert(isEngineFrontendTargetInitialized("10.0.0.1", 9502), Equals, true)
 }
 
+func (s *TestSuite) TestGetEngineFrontendTargetFromPathsIPv6(c *C) {
+	paths := []longhorn.EngineFrontendNvmeTCPPath{
+		{
+			TargetIP:   "2001:db8::1",
+			TargetPort: 9501,
+		},
+		{
+			TargetIP:   "2001:db8::2",
+			TargetPort: 9502,
+		},
+	}
+
+	targetIP, targetPort, ok := getEngineFrontendTargetFromPaths("[2001:db8::2]:9502", 9501, paths)
+	c.Assert(ok, Equals, true)
+	c.Assert(targetIP, Equals, "2001:db8::2")
+	c.Assert(targetPort, Equals, 9502)
+
+	targetIP, targetPort, ok = getEngineFrontendTargetFromPaths("unmatched", 9500, []longhorn.EngineFrontendNvmeTCPPath{
+		{
+			TargetIP:   "2001:db8::3",
+			TargetPort: 9503,
+		},
+	})
+	c.Assert(ok, Equals, true)
+	c.Assert(targetIP, Equals, "2001:db8::3")
+	c.Assert(targetPort, Equals, 9503)
+
+	targetIP, targetPort, ok = getEngineFrontendTargetFromPaths("", 9502, []longhorn.EngineFrontendNvmeTCPPath{
+		{
+			TargetPort: 9502,
+		},
+	})
+	c.Assert(ok, Equals, false)
+	c.Assert(targetIP, Equals, "")
+	c.Assert(targetPort, Equals, 0)
+}
+
 func (s *TestSuite) TestShouldExecuteEngineFrontendSwitchover(c *C) {
 	testCases := map[string]struct {
 		ef       *longhorn.EngineFrontend

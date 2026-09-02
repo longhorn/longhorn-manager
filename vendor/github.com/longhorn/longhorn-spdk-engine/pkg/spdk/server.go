@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
@@ -36,7 +37,11 @@ type Server struct {
 	sync.RWMutex
 
 	diskCreateLock sync.Mutex
-	hotplugActive  atomic.Bool // use atomic.Bool to avoid data races across goroutines.
+	// replicaLifecycleMu serializes ReplicaCreate with verifier rebuild/apply.
+	// Recovery must finish physical unexposure before a create can assign a
+	// family or publish a running listener.
+	replicaLifecycleMu sync.Mutex
+	hotplugActive      atomic.Bool // use atomic.Bool to avoid data races across goroutines.
 
 	// replicaMapGen is bumped (under Lock) every time replicaMap is mutated
 	// by ReplicaCreate or ReplicaDelete.  verify() captures it in
@@ -92,6 +97,14 @@ type Server struct {
 	metadataDir string
 
 	newServiceClient ServiceClientFactory
+}
+
+func parseIPFamily(value string) (commonnet.IPFamily, error) {
+	family, err := commonnet.ParseIPFamily(value)
+	if err != nil || string(family) != value {
+		return commonnet.IPFamilyUnspecified, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid IP family %q", value)
+	}
+	return family, nil
 }
 
 func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient ServiceClientFactory) (*Server, error) {
@@ -278,11 +291,13 @@ type verifyState struct {
 }
 
 func (s *Server) verify() (err error) {
+	s.replicaLifecycleMu.Lock()
+	defer s.replicaLifecycleMu.Unlock()
+
 	s.Lock()
 	state := s.newVerifyState()
 	s.trySelfHealHotplug()
 	s.Unlock()
-
 	defer func() {
 		s.handleVerifyError(err, state)
 	}()
@@ -290,7 +305,7 @@ func (s *Server) verify() (err error) {
 	// rebuildCachedLvolObjects makes SPDK JSON-RPC calls that may block
 	// for a long time (e.g. when spdk_tgt is busy with blobstore
 	// recovery during DiskCreate).  Run it WITHOUT the server lock so
-	// that gRPC handlers (EngineGet, EngineFrontendCreate, …) are not
+	// that gRPC handlers (EngineGet, EngineFrontendCreate, ...) are not
 	// starved.
 	if err = s.rebuildCachedLvolObjects(state); err != nil {
 		return err
@@ -517,7 +532,7 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 				continue
 			}
 			backingImage := NewBackingImage(s.ctx, backingImageName, backingImageUUID, lvsUUID, size, expectedChecksum,
-				s.updateChs[types.InstanceTypeBackingImage],
+				commonnet.IPFamilyUnspecified, s.updateChs[types.InstanceTypeBackingImage],
 				func(address string) (backingImageServiceClient, error) {
 					return s.newServiceClient(address)
 				})
@@ -535,7 +550,7 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 		} else if volumeName, slotIndex, err := ParseShardLvolName(lvolName); err == nil {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
-			shard := NewShard(volumeName, slotIndex, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, s.updateChs[types.InstanceTypeShard])
+			shard := NewShard(volumeName, slotIndex, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, commonnet.IPFamilyUnspecified, s.updateChs[types.InstanceTypeShard])
 			shard.UUID = bdevLvol.UUID
 			// Key by the external shard name (matches what clients send via
 			// Name); the on-disk lvolName is preserved on shard.LvolName.
@@ -723,25 +738,31 @@ func (s *Server) isLvsExist(lvsUUID, lvsName string) (bool, error) {
 	return true, nil
 }
 
-func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error) {
+func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest, ipFamily commonnet.IPFamily) (*Replica, error) {
 	s.Lock()
-	defer func() {
-		s.Unlock()
-	}()
+	defer s.Unlock()
 
 	r, ok := s.replicaMap[req.Name]
 	if ok {
 		r.Lock()
-		if req.SpecSize != 0 {
-			r.SpecSize = req.SpecSize
+		defer r.Unlock()
+		if r.State == types.InstanceStateRunning && r.ipFamily != ipFamily {
+			return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "replica %v is running with IP family %q, requested %q", r.Name, r.ipFamily, ipFamily)
 		}
-		if req.LvsName != "" {
-			r.LvsName = req.LvsName
+		if r.State != types.InstanceStatePending && r.State != types.InstanceStateStopped && r.State != types.InstanceStateRunning {
+			return r, nil
 		}
-		if req.LvsUuid != "" {
-			r.LvsUUID = req.LvsUuid
+		if r.State != types.InstanceStateRunning {
+			if req.SpecSize != 0 {
+				r.SpecSize = req.SpecSize
+			}
+			if req.LvsName != "" {
+				r.LvsName = req.LvsName
+			}
+			if req.LvsUuid != "" {
+				r.LvsUUID = req.LvsUuid
+			}
 		}
-		r.Unlock()
 		return r, nil
 	}
 
@@ -808,7 +829,7 @@ func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, l
 	return func(work func() error) error {
 		efClient, err := newServiceClient(efAddress)
 		if err != nil {
-			// Cannot connect to the EF node at all — proceed without suspension.
+			// Cannot connect to the EF node at all - proceed without suspension.
 			log.WithError(err).Warnf("Engine frontend %s at %s is unreachable, proceeding without suspension", efName, efAddress)
 			return work()
 		}
@@ -834,7 +855,7 @@ func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, l
 
 		// Resume the frontend after the work.
 		// If resume fails (EF disappeared during work, or internal error),
-		// log a warning but do not override workErr — the replica-add result
+		// log a warning but do not override workErr - the replica-add result
 		// is determined by work(), not by resume. longhorn-manager will
 		// detect the stuck-suspended EF and handle recovery.
 		if suspended {
@@ -866,7 +887,7 @@ func (s *Server) newBackingImage(req *spdkrpc.BackingImageCreateRequest) (*Backi
 			return nil, err
 		}
 		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum,
-			s.updateChs[types.InstanceTypeBackingImage],
+			commonnet.IPFamilyUnspecified, s.updateChs[types.InstanceTypeBackingImage],
 			func(address string) (backingImageServiceClient, error) {
 				return s.newServiceClient(address)
 			})
@@ -1019,7 +1040,7 @@ func (s *Server) engineFrontendByVolumeName(volumeName string) *EngineFrontend {
 func toEngineFrontendCreateGRPCError(err error, format string, args ...any) error {
 	code := grpccodes.Internal
 
-	// Check sentinel errors first — they are the most specific indicators
+	// Check sentinel errors first - they are the most specific indicators
 	// of what went wrong and should take priority over any embedded gRPC
 	// status that might exist deeper in the error chain.
 	switch {
@@ -1133,7 +1154,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 			continue
 		}
 
-		// Check volume uniqueness — a concurrent frontend lifecycle RPC may
+		// Check volume uniqueness - a concurrent frontend lifecycle RPC may
 		// already have registered an in-memory frontend for this volume while
 		// we were loading records from disk. Skip recovery so we do not race
 		// that in-memory owner on the host. The on-disk record may already
@@ -1145,8 +1166,20 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 			continue
 		}
 
+		ipFamily := commonnet.IPFamilyUnspecified
+		if record.TargetIP != "" {
+			var familyErr error
+			ipFamily, familyErr = parseIPFamilyFromAddress(record.TargetIP)
+			if familyErr != nil {
+				logrus.WithError(familyErr).Warnf("Removing engine frontend %s from recovery: invalid target IP %q", record.Name, record.TargetIP)
+				if removeErr := removeEngineFrontendRecord(s.metadataDir, record.VolumeName); removeErr != nil {
+					logrus.WithError(removeErr).Warnf("Failed to remove invalid engine frontend %s record during recovery", record.Name)
+				}
+				continue
+			}
+		}
 		ef := NewEngineFrontend(record.Name, record.EngineName, record.VolumeName,
-			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+			record.Frontend, record.SpecSize, 0, 0, ipFamily, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 		ef.NvmeTcpFrontend.NrIoQueues = record.NrIoQueues
 		ef.metadataDir = s.metadataDir
 		ef.VolumeNQN = record.VolumeNQN
@@ -1188,7 +1221,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 		s.engineFrontendMap[record.Name] = ef
 		recoveryEfs[record.Name] = ef
 
-		logrus.Infof("Recovered engine frontend %s for volume %s from persisted record", record.Name, record.VolumeName)
+		logrus.WithField("ipFamily", string(ipFamily)).Infof("Recovered engine frontend %s for volume %s from persisted record", record.Name, record.VolumeName)
 	}
 	s.Unlock()
 
@@ -1221,7 +1254,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 		// the same subsystem NQN derived from the volume name).
 		unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
 
-		// Read spdkClient fresh each iteration — clientReconnect() can
+		// Read spdkClient fresh each iteration - clientReconnect() can
 		// replace s.spdkClient and close the old one concurrently.
 		s.RLock()
 		spdkClient := s.spdkClient
@@ -1256,7 +1289,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 			}
 			s.Unlock()
 		} else {
-			// Recovery succeeded — verify the ef was not superseded by a
+			// Recovery succeeded - verify the ef was not superseded by a
 			// concurrent EngineFrontendCreate while RecoverFromHost was running.
 			s.RLock()
 			current := s.engineFrontendMap[record.Name]
@@ -1268,7 +1301,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 				// whether metadataDir should be kept (pre-create eviction,
 				// where no new record exists yet) or cleared (post-create
 				// eviction with successful Create, where a new record was
-				// written). Respect that decision — do not override here.
+				// written). Respect that decision - do not override here.
 				if deleteErr := ef.Delete(spdkClient); deleteErr != nil {
 					logrus.WithError(deleteErr).Warnf("Failed to clean up superseded engine frontend %s", record.Name)
 				}

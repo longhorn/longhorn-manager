@@ -347,7 +347,7 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		// before removing the finalizer. Without this, the CR can be garbage
 		// collected while the NVMe initiator is still active, causing the
 		// volume controller to proceed with engine teardown prematurely.
-		// Accept Error state as well — it means "instance gone but Started
+		// Accept Error state as well - it means "instance gone but Started
 		// was still true", which is safe for finalizer removal.
 		if ef.Status.CurrentState != longhorn.InstanceStateStopped &&
 			ef.Status.CurrentState != longhorn.InstanceStateError {
@@ -411,7 +411,7 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 
 	// Handle switchover if TargetIP changes.
 	// Switchover for the NVMe/TCP multipath frontend is driven by a 3-phase
-	// state machine via Status.SwitchoverPhase: preparing → switching → promoting.
+	// state machine via Status.SwitchoverPhase: preparing -> switching -> promoting.
 	// Each phase is a separate reconcile cycle with its own gRPC call.
 	// The controller only modifies Status (never Spec), which is persisted
 	// by the defer block above.
@@ -658,6 +658,10 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 	if ef.Status.InstanceManagerName != im.Name {
 		return nil, fmt.Errorf("found instance manager name conflict %s vs %s during engine frontend instance creation", ef.Status.InstanceManagerName, im.Name)
 	}
+	ipFamily, initialized := engineapi.GetAppliedIPFamily(im)
+	if !initialized || !engineapi.IsV2IPFamilySupported(im.Status.APIVersion, ipFamily) {
+		return nil, nil
+	}
 
 	c, err := engineapi.NewInstanceManagerClient(im, false)
 	if err != nil {
@@ -707,16 +711,22 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 			nvmeTcpNrIoQueues = int(nvmeTcpNrIoQueuesInt64)
 		}
 	}
+	volume, err := efc.ds.GetVolumeRO(ef.Spec.VolumeName)
+	if err != nil {
+		return nil, err
+	}
+	familySetting, err := efc.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+	if err != nil {
+		return nil, err
+	}
+	if volume.Status.State == longhorn.VolumeStateDetached && !familySetting.Status.Applied {
+		return nil, nil
+	}
 
 	ef.Status.Starting = true
 	efName := ef.Name
 	if ef, err = efc.ds.UpdateEngineFrontendStatus(ef); err != nil {
 		return nil, errors.Wrapf(err, "failed to update engine frontend %v status.starting to true", efName)
-	}
-
-	volume, err := efc.ds.GetVolumeRO(ef.Spec.VolumeName)
-	if err != nil {
-		return nil, err
 	}
 
 	// Create initiator instance via Instance Manager
@@ -728,6 +738,7 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		UblkNumberOfQueue:             ublkNumberOfQueue,
 		NvmeTcpNrIoQueues:             nvmeTcpNrIoQueues,
 		TargetIP:                      ef.Spec.TargetIP,
+		IPFamily:                      ipFamily,
 		TargetPort:                    ef.Spec.TargetPort,
 		EngineName:                    ef.Spec.EngineName,
 		Encrypted:                     volume.Spec.Encrypted,
@@ -1236,7 +1247,7 @@ func copyEngineFrontendNvmeTCPPaths(paths []longhorn.EngineFrontendNvmeTCPPath) 
 
 func getEngineFrontendTargetFromPaths(activePath string, targetPort int32, paths []longhorn.EngineFrontendNvmeTCPPath) (string, int, bool) {
 	for _, path := range paths {
-		if fmt.Sprintf("%s:%d", path.TargetIP, path.TargetPort) == activePath && path.TargetIP != "" && path.TargetPort != 0 {
+		if util.BuildTargetAddress(path.TargetIP, path.TargetPort) == activePath && path.TargetIP != "" && path.TargetPort != 0 {
 			return path.TargetIP, path.TargetPort, true
 		}
 	}
@@ -1269,7 +1280,7 @@ func shouldExecuteEngineFrontendSwitchover(ef *longhorn.EngineFrontend, volume *
 		// An in-progress switchover should only continue if the volume
 		// controller still has an active switchover state. If the volume's
 		// SwitchoverState is Empty (e.g., cleared after auto-salvage or
-		// recovery), this SwitchoverPhase is stale and must not proceed —
+		// recovery), this SwitchoverPhase is stale and must not proceed -
 		// the old engine may already be gone.
 		if volume == nil || volume.Status.SwitchoverState == longhorn.VolumeSwitchoverStateEmpty {
 			return false

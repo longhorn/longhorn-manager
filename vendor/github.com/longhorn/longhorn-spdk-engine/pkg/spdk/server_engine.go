@@ -29,6 +29,10 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	if req.SpecSize == 0 {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "engine spec size is required")
 	}
+	ipFamily, err := parseIPFamily(req.IpFamily)
+	if err != nil {
+		return nil, err
+	}
 
 	s.Lock()
 
@@ -39,7 +43,7 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient)
+		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, ipFamily, s.newServiceClient)
 		e = s.engineMap[req.Name]
 	}
 
@@ -688,6 +692,14 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 		}
 	}
 
+	e.RLock()
+	engineName := e.Name
+	volumeName := e.VolumeName
+	specSize := e.SpecSize
+	ipFamily := e.ipFamily
+	replicaCount := len(e.backends)
+	e.RUnlock()
+
 	spdkClient := s.spdkClient
 	portAllocator := s.portAllocator
 	s.RUnlock()
@@ -702,20 +714,18 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 	// once on the success path (via defer) and the teardown goroutine sends once on
 	// completion. There is no reader, so an unbuffered channel would block both senders
 	// permanently. The buffer absorbs both sends and the channel is GC'd with tempEF.
-	e.RLock()
-	volumeName := e.VolumeName
-	specSize := e.SpecSize
-	e.RUnlock()
+	// Values copied above while holding the Engine read lock.
 
 	throwawayUpdateCh := make(chan interface{}, 2)
 	tempEF := NewEngineFrontend(
-		e.Name+"-restore",
-		e.Name,
+		engineName+"-restore",
+		engineName,
 		volumeName,
 		types.FrontendSPDKTCPBlockdev,
 		specSize,
 		types.DefaultUblkQueueDepth,
 		types.DefaultUblkNumberOfQueue,
+		ipFamily,
 		throwawayUpdateCh,
 		s.newServiceClient,
 	)
@@ -723,10 +733,9 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 	logrus.WithFields(logrus.Fields{
 		"enginefrontend": tempEF.Name,
 		"engine":         tempEF.EngineName,
-		"volume":         tempEF.VolumeName,
 		"frontend":       tempEF.Frontend,
-		"replicas":       len(e.backends),
-		"specSize":       e.SpecSize,
+		"replicas":       replicaCount,
+		"specSize":       specSize,
 	}).Info("Creating temporary engine frontend for backup restore request")
 
 	return tempEF.BackupRestore(e, spdkClient, req.BackupUrl, req.Credential, req.ConcurrentLimit, portAllocator)

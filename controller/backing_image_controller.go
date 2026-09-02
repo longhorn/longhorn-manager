@@ -35,6 +35,112 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+func normalizePreferredDataEngineIPFamilyForLegacy(family string) string {
+	if family == types.DataEngineIPFamilyDefault {
+		return ""
+	}
+	return family
+}
+
+func getBackingImageListenAddress(family string, port int) string {
+	host := ""
+	switch family {
+	case types.DataEngineIPFamilyIPv4:
+		host = "0.0.0.0"
+	case types.DataEngineIPFamilyIPv6:
+		host = "::"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func appendBackingImageIPFamilyArgs(args []string, family string) []string {
+	if family != types.DataEngineIPFamilyIPv4 && family != types.DataEngineIPFamilyIPv6 {
+		return args
+	}
+
+	result := append([]string(nil), args...)
+	return append(result, "--ip-family", family)
+}
+func isBackingImagePodIPFamilySynced(pod *corev1.Pod, containerName, desiredFamily string) bool {
+	if pod == nil {
+		return false
+	}
+	desiredFamily = normalizePreferredDataEngineIPFamilyForLegacy(desiredFamily)
+	if desiredFamily != "" && desiredFamily != types.DataEngineIPFamilyIPv4 && desiredFamily != types.DataEngineIPFamilyIPv6 {
+		return false
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name != containerName {
+			continue
+		}
+
+		args := make([]string, 0, len(container.Command)+len(container.Args))
+		args = append(args, container.Command...)
+		args = append(args, container.Args...)
+		family, specified, valid := types.ParseDataEngineIPFamilyArgs(args)
+		if !valid {
+			return false
+		}
+		if desiredFamily == "" {
+			return !specified
+		}
+		return specified && family == desiredFamily
+	}
+	return false
+}
+
+func getAppliedBackingImageIPFamily(ds *datastore.DataStore) (string, error) {
+	instanceManagers, err := ds.ListInstanceManagersRO()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to list instance managers for backing image IP family")
+	}
+
+	appliedFamily := types.DataEngineIPFamilyDefault
+	initialized := false
+	for _, im := range instanceManagers {
+		if im == nil || im.DeletionTimestamp != nil {
+			continue
+		}
+
+		enabledSetting, ok := getDataEngineEnabledSettingNameForIPFamily(im.Spec.DataEngine)
+		if !ok {
+			continue
+		}
+		enabled, err := ds.GetSettingAsBool(enabledSetting)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to get %v setting for backing image IP family", enabledSetting)
+		}
+		if !enabled {
+			continue
+		}
+
+		family, isInitialized := engineapi.GetAppliedIPFamily(im)
+		if !isInitialized {
+			continue
+		}
+		if family != types.DataEngineIPFamilyDefault &&
+			family != types.DataEngineIPFamilyIPv4 &&
+			family != types.DataEngineIPFamilyIPv6 {
+			return "", &types.ErrorInvalidState{
+				Reason: fmt.Sprintf("instance manager %v has invalid applied backing image IP family %q", im.Name, family),
+			}
+		}
+		if !initialized {
+			appliedFamily = family
+			initialized = true
+			continue
+		}
+		if family != appliedFamily {
+			return "", &types.ErrorInvalidState{
+				Reason: fmt.Sprintf("instance managers have conflicting applied backing image IP families: %v and %v", appliedFamily, family),
+			}
+		}
+	}
+
+	return appliedFamily, nil
+}
+
 type BackingImageController struct {
 	*baseController
 
@@ -1680,7 +1786,10 @@ func (bic *BackingImageController) syncV2Copies(bi *longhorn.BackingImage, sourc
 		return errors.Wrapf(err, "failed to get pod for instance manager %v", srcInstanceManager.Name)
 	}
 
-	instanceManagerStorageIP := bic.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	instanceManagerStorageIP, err := bic.ds.GetDataEngineIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	if err != nil {
+		return err
+	}
 
 	// Create the backing image by syncing the backing image data from the SPDK server inside the instance manager holding the source disk
 	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(instanceManagerStorageIP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, uint64(bi.Status.Size))

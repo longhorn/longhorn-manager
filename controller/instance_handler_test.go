@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/sirupsen/logrus"
 
 	. "gopkg.in/check.v1"
 
@@ -651,6 +652,181 @@ func newTestInstanceHandler(lhClient *lhfake.Clientset, kubeClient *fake.Clients
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	fakeRecorder := record.NewFakeRecorder(100)
 	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
+}
+
+func newDataEngineIPFamilyInstanceHandler(c *C) (*InstanceHandler, *corev1.Pod) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	h := newTestInstanceHandler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+	storageNetworkSetting := newSetting(string(types.SettingNameStorageNetwork), "longhorn-system/ipv4-only")
+	settingsIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	err := settingsIndexer.Add(storageNetworkSetting)
+	c.Assert(err, IsNil)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      TestInstanceManagerName,
+			Namespace: TestNamespace,
+			Annotations: map[string]string{
+				string(types.CNIAnnotationNetworkStatus): `[{"name":"longhorn-system/ipv4-only","interface":"lhnet1","ips":["192.0.2.10"]}]`,
+			},
+		},
+		Spec: corev1.PodSpec{
+			NodeName: TestNode1,
+			Containers: []corev1.Container{
+				{
+					Name: "instance-manager",
+					Args: []string{"--ip-family", types.DataEngineIPFamilyIPv6},
+				},
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase:  corev1.PodRunning,
+			PodIP:  TestIP1,
+			PodIPs: []corev1.PodIP{{IP: TestIP1}},
+		},
+	}
+	podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	err = podIndexer.Add(pod)
+	c.Assert(err, IsNil)
+
+	return h, pod
+}
+
+func (s *TestSuite) TestSyncStatusWithInstanceManagerRunningClearsStorageIPOnDataEngineIPError(c *C) {
+	h, pod := newDataEngineIPFamilyInstanceHandler(c)
+	im := newInstanceManager(
+		TestInstanceManagerName,
+		longhorn.InstanceManagerStateRunning,
+		TestOwnerID1,
+		TestNode1,
+		"198.51.100.2",
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
+		false,
+	)
+	instanceName := ExistingInstance
+	instances := map[string]longhorn.InstanceProcess{
+		instanceName: {
+			Spec: longhorn.InstanceProcessSpec{
+				Name: instanceName,
+			},
+			Status: longhorn.InstanceProcessStatus{
+				State:     longhorn.InstanceStateRunning,
+				PortStart: TestPort1,
+				IPFamily:  types.DataEngineIPFamilyIPv6,
+				UblkID:    42,
+				UUID:      "running-uuid",
+			},
+		},
+	}
+	spec := &longhorn.InstanceSpec{
+		VolumeName: TestVolumeName,
+		NodeID:     TestNode1,
+		Image:      TestEngineImage,
+	}
+	status := &longhorn.InstanceStatus{
+		OwnerID:         TestOwnerID1,
+		CurrentState:    longhorn.InstanceStateStarting,
+		CurrentImage:    "old-engine-image",
+		IP:              "198.51.100.3",
+		StorageIP:       "192.0.2.99",
+		Port:            1234,
+		Started:         true,
+		LogFetched:      true,
+		SalvageExecuted: true,
+		UblkID:          41,
+		UUID:            "old-running-uuid",
+		Conditions: []longhorn.Condition{{
+			Type:    string(longhorn.InstanceConditionTypeInstanceCreation),
+			Status:  longhorn.ConditionStatusTrue,
+			Reason:  "ExistingReason",
+			Message: "existing message",
+		}},
+	}
+	expected := *status
+	expected.CurrentState = longhorn.InstanceStateRunning
+	expected.InstanceManagerName = im.Name
+	expected.StorageIP = ""
+
+	h.syncStatusWithInstanceManager(logrus.New().WithField("test", "running"), im, instanceName, spec, status, instances)
+
+	c.Assert(status.StorageIP, Equals, "")
+	c.Assert(status.StorageIP, Not(Equals), pod.Status.PodIP)
+	c.Assert(*status, DeepEquals, expected)
+}
+
+func (s *TestSuite) TestSyncStatusWithInstanceManagerSuspendedClearsStorageIPOnDataEngineIPError(c *C) {
+	h, pod := newDataEngineIPFamilyInstanceHandler(c)
+	im := newInstanceManager(
+		TestInstanceManagerName,
+		longhorn.InstanceManagerStateRunning,
+		TestOwnerID1,
+		TestNode1,
+		"198.51.100.2",
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
+		false,
+	)
+	instanceName := ExistingInstance
+	instances := map[string]longhorn.InstanceProcess{
+		instanceName: {
+			Spec: longhorn.InstanceProcessSpec{
+				Name: instanceName,
+			},
+			Status: longhorn.InstanceProcessStatus{
+				State:     longhorn.InstanceStateSuspended,
+				PortStart: TestPort1,
+				UblkID:    43,
+				IPFamily:  types.DataEngineIPFamilyIPv6,
+				UUID:      "suspended-uuid",
+			},
+		},
+	}
+	spec := &longhorn.InstanceSpec{
+		VolumeName: TestVolumeName,
+		NodeID:     TestNode1,
+		Image:      TestEngineImage,
+	}
+	status := &longhorn.InstanceStatus{
+		OwnerID:         TestOwnerID1,
+		CurrentState:    longhorn.InstanceStateRunning,
+		CurrentImage:    "old-engine-image",
+		IP:              "198.51.100.3",
+		StorageIP:       "192.0.2.99",
+		Port:            1234,
+		Started:         true,
+		LogFetched:      true,
+		SalvageExecuted: true,
+		UblkID:          41,
+		UUID:            "old-suspended-uuid",
+		Conditions: []longhorn.Condition{{
+			Type:    string(longhorn.InstanceConditionTypeInstanceCreation),
+			Status:  longhorn.ConditionStatusTrue,
+			Reason:  "ExistingReason",
+			Message: "existing message",
+		}},
+	}
+	expected := *status
+	expected.CurrentState = longhorn.InstanceStateSuspended
+	expected.InstanceManagerName = im.Name
+	expected.StorageIP = ""
+
+	h.syncStatusWithInstanceManager(logrus.New().WithField("test", "suspended"), im, instanceName, spec, status, instances)
+
+	c.Assert(status.StorageIP, Equals, "")
+	c.Assert(status.StorageIP, Not(Equals), pod.Status.PodIP)
+	c.Assert(*status, DeepEquals, expected)
 }
 
 func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {

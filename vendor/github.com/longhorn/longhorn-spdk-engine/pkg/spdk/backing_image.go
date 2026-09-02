@@ -21,6 +21,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	commontypes "github.com/longhorn/go-common-libs/types"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
@@ -36,8 +37,8 @@ import (
 type BackingImage struct {
 	sync.RWMutex
 
-	ctx context.Context
-
+	ctx      context.Context
+	ipFamily commonnet.IPFamily
 	// Name of the BackingImage, e.g. "parrot"
 	Name             string
 	BackingImageUUID string
@@ -87,7 +88,7 @@ func ServiceBackingImageToProtoBackingImage(bi *BackingImage) *spdkrpc.BackingIm
 }
 
 func NewBackingImage(ctx context.Context, backingImageName, backingImageUUID, lvsUUID string,
-	size uint64, checksum string, updateCh chan interface{},
+	size uint64, checksum string, ipFamily commonnet.IPFamily, updateCh chan interface{},
 	newServiceClient func(address string) (backingImageServiceClient, error)) *BackingImage {
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
@@ -103,6 +104,7 @@ func NewBackingImage(ctx context.Context, backingImageName, backingImageUUID, lv
 
 	return &BackingImage{
 		ctx:              ctx,
+		ipFamily:         ipFamily,
 		Name:             backingImageName,
 		BackingImageUUID: backingImageUUID,
 		LvsUUID:          lvsUUID,
@@ -321,7 +323,7 @@ func (bi *BackingImage) BackingImageExpose(spdkClient *spdkclient.Client, superi
 	}
 
 	// Expose the bdev using nvmf
-	podIP, err := backingImageGetIPForPod()
+	podIP, err := backingImageGetIPForPod(bi.ipFamily)
 	if err != nil {
 		return "", err
 	}
@@ -524,7 +526,7 @@ func (bi *BackingImage) prepareBackingImageSnapshot(spdkClient *spdkclient.Clien
 	}
 	bi.log.Infof("Created a head lvol %v for the new backing image", backingImageTempHeadName)
 
-	podIP, err := backingImageGetIPForPod()
+	podIP, err := backingImageGetIPForPod(bi.ipFamily)
 	if err != nil {
 		return err
 	}

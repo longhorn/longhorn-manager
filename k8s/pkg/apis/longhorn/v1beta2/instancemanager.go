@@ -154,6 +154,8 @@ type InstanceProcessStatus struct {
 	//+nullable
 	Conditions map[string]bool `json:"conditions"`
 	// +optional
+	IPFamily string `json:"ipFamily,omitempty"`
+	// +optional
 	Listen string `json:"listen"`
 	// +optional
 	PortEnd int32 `json:"portEnd"`
@@ -258,6 +260,9 @@ type InstanceManagerStatus struct {
 	BackingImages map[string]BackingImageV2CopyInfo `json:"backingImages"`
 	// +optional
 	IP string `json:"ip"`
+	// +optional
+	// +nullable
+	IPFamily *string `json:"ipFamily,omitempty"`
 	// +optional
 	APIMinVersion int `json:"apiMinVersion"`
 	// +optional

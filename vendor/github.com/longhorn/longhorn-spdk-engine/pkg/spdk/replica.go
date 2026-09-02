@@ -52,8 +52,8 @@ const (
 type Replica struct {
 	sync.RWMutex
 
-	ctx context.Context
-
+	ctx      context.Context
+	ipFamily commonnet.IPFamily
 	// Head should be the only writable lvol in the regular Replica lvol chain/map.
 	// And it is the last entry of ActiveChain if it is not nil.
 	Head *Lvol
@@ -259,6 +259,7 @@ func ServiceReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 		SpecSize:  r.SpecSize,
 		Snapshots: map[string]*spdkrpc.Lvol{},
 		Ip:        r.IP,
+		IpFamily:  string(r.ipFamily),
 		PortStart: r.PortStart,
 		PortEnd:   r.PortEnd,
 		State:     string(r.State),
@@ -317,13 +318,13 @@ func NewReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specS
 	log = log.WithField("specSize", roundedSpecSize)
 
 	return &Replica{
-		ctx: ctx,
-
-		Name:    replicaName,
-		Alias:   spdktypes.GetLvolAlias(lvsName, replicaName),
-		LvsName: lvsName,
-		LvsUUID: lvsUUID,
-		Nqn:     helpertypes.GetNQN(replicaName),
+		ctx:      ctx,
+		ipFamily: commonnet.IPFamilyUnspecified,
+		Name:     replicaName,
+		Alias:    spdktypes.GetLvolAlias(lvsName, replicaName),
+		LvsName:  lvsName,
+		LvsUUID:  lvsUUID,
+		Nqn:      helpertypes.GetNQN(replicaName),
 
 		SpecSize: roundedSpecSize,
 		State:    types.InstanceStatePending,
@@ -356,14 +357,21 @@ func NewReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specS
 	}
 }
 
-func (r *Replica) GetAddress() string {
+// GetAddressAndIPFamily returns the replica address and IP family from one
+// read-lock-protected snapshot.
+func (r *Replica) GetAddressAndIPFamily() (string, commonnet.IPFamily) {
 	r.RLock()
 	defer r.RUnlock()
-	return net.JoinHostPort(r.IP, strconv.Itoa(int(r.PortStart)))
+	return net.JoinHostPort(r.IP, strconv.Itoa(int(r.PortStart))), r.ipFamily
+}
+
+func (r *Replica) GetAddress() string {
+	address, _ := r.GetAddressAndIPFamily()
+	return address
 }
 
 func (r *Replica) prepareIPAndPorts(portCount int32, superiorPortAllocator *commonbitmap.Bitmap) error {
-	podIP, err := commonnet.GetIPForPod()
+	podIP, err := commonnet.GetIPForPodByNetworkAndFamily(r.ipFamily)
 	if err != nil {
 		return err
 	}
@@ -470,10 +478,25 @@ func (r *Replica) Sync(spdkClient *spdkclient.Client) (err error) {
 
 // syncWithBdevLvolMap is the testable core of Sync(). It dispatches to
 // construct() for Pending replicas, or to the Running-path sync methods
-// otherwise. validateAndUpdate is skipped when spdkClient is nil (unit tests only).
+// validateAndUpdate is skipped when spdkClient is nil (unit tests only).
 func (r *Replica) syncWithBdevLvolMap(spdkClient *spdkclient.Client, bdevLvolMap map[string]*spdktypes.BdevInfo) error {
 	if r.State == types.InstanceStatePending {
-		return r.construct(bdevLvolMap)
+		if err := r.construct(bdevLvolMap); err != nil {
+			return err
+		}
+		if spdkClient == nil {
+			return nil
+		}
+		if err := r.verifyRecoveredUnexposed(spdkClient); err != nil {
+			r.State = types.InstanceStateError
+			r.ErrorMsg = err.Error()
+			return err
+		}
+		r.State = types.InstanceStateStopped
+		r.IsExposed = false
+		r.ipFamily = commonnet.IPFamilyUnspecified
+		r.log.WithField("ipFamily", string(r.ipFamily)).Info("Recovered replica")
+		return nil
 	}
 
 	// SnapshotCloneDstStart sets isSnapshotCloning before BdevLvolSetParent is
@@ -507,6 +530,28 @@ func (r *Replica) syncWithBdevLvolMap(spdkClient *spdkclient.Client, bdevLvolMap
 	}
 
 	return r.validateAndUpdate(bdevLvolMap, subsystemMap)
+}
+func (r *Replica) verifyRecoveredUnexposed(spdkClient *spdkclient.Client) error {
+	subsystemMap, err := replicaGetNvmfSubsystemMap(spdkClient)
+	if err != nil {
+		return errors.Wrap(err, "failed to query NVMf subsystems while recovering replica")
+	}
+	if _, exists := subsystemMap[r.Nqn]; !exists {
+		return nil
+	}
+
+	r.log.Infof("Stopping retained NVMf subsystem for recovered replica %s ipFamily=%q", r.Name, r.ipFamily)
+	if err := replicaStopExposeBdev(spdkClient, r.Nqn); err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+		return errors.Wrapf(err, "failed to stop retained NVMf subsystem for replica %s", r.Name)
+	}
+	subsystemMap, err = replicaGetNvmfSubsystemMap(spdkClient)
+	if err != nil {
+		return errors.Wrap(err, "failed to verify NVMf subsystem removal while recovering replica")
+	}
+	if _, exists := subsystemMap[r.Nqn]; exists {
+		return fmt.Errorf("NVMf subsystem for recovered replica %s remains exposed", r.Name)
+	}
+	return nil
 }
 
 // construct build Replica with the SnapshotLvolMap and SnapshotChain from the bdev lvol list.
@@ -683,14 +728,14 @@ func (r *Replica) syncCloneReplicaInfo(spdkClient *spdkclient.Client, bdevLvolMa
 
 	actualParent := rootBdev.DriverSpecific.Lvol.BaseSnapshot
 
-	// Case 1: The chain root's parent is the expected entrypoint — also verify that
+	// Case 1: The chain root's parent is the expected entrypoint - also verify that
 	// the entrypoint itself is correctly parented to the src snapshot.
 	// The entrypoint may have become an orphaned root (empty base_snapshot) if the
 	// src replica was rebuilt: rebuildingDstShallowCopyPrepare detaches all children
 	// of a corrupted or outdated snapshot, including any clone entrypoints, before
 	// deleting or reusing the snapshot. If the instance manager restarted before
 	// RebuildingDstSnapshotCreate could re-parent the entrypoint, the orphaned
-	// entrypoint persists. The chain-root → entrypoint link uses lvol names (not
+	// entrypoint persists. The chain-root -> entrypoint link uses lvol names (not
 	// UUIDs), so it survives the rebuild even though the entrypoint is broken.
 	if actualParent == r.cloneEntrypointLvolName {
 		expectedSrcSnapshotLvolName := GetReplicaSnapshotLvolName(r.cloneSourceReplicaName, r.cloneSourceSnapshotName)
@@ -1342,7 +1387,7 @@ func constructSnapshotLvolMap(replicaName string, bdevLvolMap map[string]*spdkty
 			continue
 		}
 		for _, childLvolName := range bdevLvolMap[curSvcLvol.Name].DriverSpecific.Lvol.Clones {
-			// Exclude clone entrypoint lvols — they are tracked separately
+			// Exclude clone entrypoint lvols - they are tracked separately
 			if IsCloneEntrypointOfReplica(replicaName, childLvolName) || IsCloneEntrypointTmpHeadLvol(childLvolName) {
 				delete(curSvcLvol.Children, childLvolName)
 				continue
@@ -1413,7 +1458,7 @@ func constructActiveChainFromSnapshotLvolMap(replicaName string, snapshotLvolMap
 			// Keep only this replica's root lvol in Children.
 			baseSvcLvol.Children = map[string]*Lvol{rootLvol.Name: rootLvol}
 		}
-		// If epBdevLvol is nil, the entrypoint was deleted; baseSvcLvol stays nil (ActiveChain[0] = nil).
+		// If epBdevLvol is nil; the entrypoint was deleted; baseSvcLvol stays nil (ActiveChain[0] = nil).
 		// recoverCloneReplicaInfo will detect this via the root lvol's Parent field and still
 		// set isCloneReplica so that syncCloneReplicaInfo can perform the repair.
 	}
@@ -1428,7 +1473,8 @@ func constructActiveChainFromSnapshotLvolMap(replicaName string, snapshotLvolMap
 }
 
 // Create initiates the replica, prepares the head lvol bdev then blindly exposes it for the replica.
-func (r *Replica) Create(spdkClient *spdkclient.Client, portCount int32, superiorPortAllocator *commonbitmap.Bitmap, backingImage *BackingImage) (ret *spdkrpc.Replica, err error) {
+func (r *Replica) Create(spdkClient *spdkclient.Client, ipFamily commonnet.IPFamily, portCount int32, superiorPortAllocator *commonbitmap.Bitmap, backingImage *BackingImage) (ret *spdkrpc.Replica, err error) {
+	r.log.WithField("ipFamily", string(ipFamily)).Info("Creating replica")
 	updateRequired := true
 
 	r.Lock()
@@ -1442,12 +1488,16 @@ func (r *Replica) Create(spdkClient *spdkclient.Client, portCount int32, superio
 
 	if r.State == types.InstanceStateRunning {
 		updateRequired = false
+		if r.ipFamily != ipFamily {
+			return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "replica %v is running with IP family %q, requested %q", r.Name, r.ipFamily, ipFamily)
+		}
 		return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "replica %v already exists and running", r.Name)
 	}
 	if r.State != types.InstanceStatePending && r.State != types.InstanceStateStopped {
 		updateRequired = false
 		return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "invalid state %s for replica %s creation", r.State, r.Name)
 	}
+	r.ipFamily = ipFamily
 
 	defer func() {
 		if err != nil {
@@ -1512,6 +1562,7 @@ func (r *Replica) Create(spdkClient *spdkclient.Client, portCount int32, superio
 		return nil, errors.Wrapf(err, "failed to stop exposing replica %v", r.Name)
 	}
 
+	r.log.WithField("ipFamily", string(r.ipFamily)).Infof("Exposing replica %s", r.Name)
 	if err := spdkClient.StartExposeBdev(r.Nqn, r.Head.UUID, generateNGUID(r.Name), r.IP, strconv.Itoa(int(r.PortStart)),
 		helpertypes.InternalHostNQN); err != nil {
 		return nil, err
@@ -1608,7 +1659,7 @@ func (r *Replica) Delete(spdkClient *spdkclient.Client, cleanupRequired bool, su
 			r.reconstructRequired = true
 		}
 
-		// Rebuild interrupted — SnapshotLvolMap is stale.
+		// Rebuild interrupted - SnapshotLvolMap is stale.
 		if r.State == types.InstanceStateStopped && wasRebuilding && !cleanupRequired {
 			r.reconstructRequired = true
 		}
@@ -1805,6 +1856,7 @@ func (r *Replica) Expand(spdkClient *spdkclient.Client, size uint64) error {
 
 	// If we had previously exposed the bdev, we must re-expose it after the resize.
 	if reExposeBdev {
+		r.log.WithField("ipFamily", string(r.ipFamily)).Infof("Re-exposing replica %s after expansion", r.Name)
 		if err := spdkClient.StartExposeBdev(helpertypes.GetNQN(r.Name), r.Head.UUID, generateNGUID(r.Name), r.IP, strconv.Itoa(int(r.PortStart)),
 			helpertypes.InternalHostNQN); err != nil {
 			return errors.Wrapf(err, "failed to start expose replica %v after expansion", r.Name)
@@ -2166,6 +2218,7 @@ func (r *Replica) SnapshotRevert(spdkClient *spdkclient.Client, snapshotName str
 		}
 		r.IsExposed = false
 
+		r.log.WithField("ipFamily", string(r.ipFamily)).Infof("Re-exposing replica %s after snapshot revert", r.Name)
 		if err := spdkClient.StartExposeBdev(helpertypes.GetNQN(r.Name), headLvolUUID, generateNGUID(r.Name), r.IP, strconv.Itoa(int(r.PortStart)),
 			helpertypes.InternalHostNQN); err != nil {
 			return nil, err
@@ -2479,7 +2532,7 @@ func (r *Replica) SnapshotCloneDstStart(spdkClient *spdkclient.Client, snapshotN
 		}()
 
 		// Always notify the src replica to clear its snapshotCloningSrcCache
-		// entry — on success as completion, on failure as cleanup.
+		// entry - on success as completion, on failure as cleanup.
 		defer func() {
 			if cleanupErr := srcReplicaServiceCli.ReplicaSnapshotCloneSrcFinish(
 				r.snapshotCloningDstCache.srcReplicaName, r.Name); cleanupErr != nil {
@@ -2530,6 +2583,7 @@ func (r *Replica) SnapshotCloneDstStart(spdkClient *spdkclient.Client, snapshotN
 	}
 	r.snapshotCloningDstCache.cloningLvol = BdevLvolInfoToServiceLvol(&cloningBdevLvol)
 
+	r.log.WithField("ipFamily", string(r.ipFamily)).Infof("Exposing cloning lvol for replica %s", r.Name)
 	if err := spdkClient.StartExposeBdev(helpertypes.GetNQN(r.snapshotCloningDstCache.cloningLvol.Name),
 		r.snapshotCloningDstCache.cloningLvol.UUID, generateNGUID(r.snapshotCloningDstCache.cloningLvol.Name), r.IP,
 		strconv.Itoa(int(r.snapshotCloningDstCache.cloningPort)), helpertypes.InternalHostNQN); err != nil {
@@ -2889,7 +2943,7 @@ func (r *Replica) snapshotLinkedCloneSrcStart(spdkClient *spdkclient.Client, sna
 		epAlias := spdktypes.GetLvolAlias(r.LvsName, epLvolName)
 		epBdev, err := spdkClient.BdevLvolGetByName(epAlias, 0)
 		if err != nil {
-			// Entrypoint is in the map but missing from SPDK — stale map entry; recreate.
+			// Entrypoint is in the map but missing from SPDK - stale map entry; recreate.
 			r.log.WithError(err).Warnf("Clone entrypoint %s is in map but not found in SPDK; removing stale entry and recreating", epLvolName)
 			delete(r.cloneEntrypointMap, epLvolName)
 			epInfo = nil
@@ -2975,7 +3029,7 @@ func createCloneEntrypointLvol(spdkClient *spdkclient.Client, log *safelog.SafeL
 	}
 
 	// Step 2: Snapshot the tmp head to create the read-only entrypoint.
-	// After this: srcSnapshot → entrypoint(read-only) → tmpHead(writable, child of entrypoint)
+	// After this: srcSnapshot -> entrypoint(read-only) -> tmpHead(writable, child of entrypoint)
 	epUUID, err := spdkClient.BdevLvolSnapshot(tmpHeadUUID, epLvolName, []spdkclient.Xattr{})
 	if err != nil {
 		if _, delErr := spdkClient.BdevLvolDelete(tmpHeadAlias); delErr != nil {
@@ -3288,6 +3342,7 @@ func (r *Replica) RebuildingSrcStart(spdkClient *spdkclient.Client, dstReplicaNa
 	if err != nil {
 		return "", err
 	}
+	r.log.WithField("ipFamily", string(r.ipFamily)).Infof("Exposing rebuilding snapshot for replica %s", r.Name)
 	if err := spdkClient.StartExposeBdev(helpertypes.GetNQN(snapLvol.Name), snapLvol.UUID, generateNGUID(snapLvol.Name), r.IP, strconv.Itoa(int(port)),
 		helpertypes.InternalHostNQN); err != nil {
 		return "", err
@@ -3868,6 +3923,7 @@ func (r *Replica) RebuildingDstStart(spdkClient *spdkclient.Client, srcReplicaNa
 	r.Head = BdevLvolInfoToServiceLvol(&headBdevLvol)
 	r.ActiveChain = append(r.ActiveChain, r.Head)
 
+	r.log.WithField("ipFamily", string(r.ipFamily)).Infof("Exposing replica %s after restore", r.Name)
 	if err := spdkClient.StartExposeBdev(helpertypes.GetNQN(r.Name), r.Head.UUID, generateNGUID(r.Name), r.IP, strconv.Itoa(int(r.PortStart)),
 		helpertypes.InternalHostNQN); err != nil {
 		return "", err
@@ -3876,7 +3932,7 @@ func (r *Replica) RebuildingDstStart(spdkClient *spdkclient.Client, srcReplicaNa
 	dstHeadLvolAddress := net.JoinHostPort(r.IP, strconv.Itoa(int(r.PortStart)))
 
 	// Snapshots may be deleted below hence this cache will become stale.
-	// On success, RebuildingDstFinish→construct() clears this flag.
+	// On success, RebuildingDstFinish->construct() clears this flag.
 	r.reconstructRequired = true
 
 	// Delete extra snapshots if any
@@ -4400,6 +4456,7 @@ func (r *Replica) rebuildingDstShallowCopyPrepare(spdkClient *spdkclient.Client,
 
 	dstRebuildingLvolAddress = r.rebuildingDstCache.rebuildingLvol.Alias
 	if r.rebuildingDstCache.rebuildingPort != 0 {
+		r.log.WithField("ipFamily", string(r.ipFamily)).Infof("Exposing rebuilding lvol for replica %s", r.Name)
 		if err := spdkClient.StartExposeBdev(helpertypes.GetNQN(r.rebuildingDstCache.rebuildingLvol.Name), r.rebuildingDstCache.rebuildingLvol.UUID,
 			generateNGUID(r.rebuildingDstCache.rebuildingLvol.Name), r.IP, strconv.Itoa(int(r.rebuildingDstCache.rebuildingPort)),
 			helpertypes.InternalHostNQN); err != nil {
@@ -4692,7 +4749,7 @@ func (r *Replica) RebuildingDstSnapshotCreate(spdkClient *spdkclient.Client, sna
 	}
 	// Guarantee the snapshot lvol has the correct parent after rebuilding.
 	// The ancestor snapshot's parent is a clone entrypoint for linked-clone replicas; however the
-	// entrypoint does not exist on DST at this point — it will be set in RebuildingDstFinish.
+	// entrypoint does not exist on DST at this point - it will be set in RebuildingDstFinish.
 	// Treat it the same as an empty parent here so we do not accidentally call BdevLvolDetachParent.
 	dstSnapParentLvolName := ""
 	if srcSnapSvcLvol.Parent == "" || IsCloneEntrypointLvol(srcSnapSvcLvol.Parent) {

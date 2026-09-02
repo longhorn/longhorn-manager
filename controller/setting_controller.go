@@ -43,6 +43,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -146,6 +147,36 @@ func NewSettingController(
 		return nil, err
 	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.NodeInformer.HasSynced)
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.enqueueDataEngineIPFamilySetting,
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueDataEngineIPFamilySetting(cur) },
+		DeleteFunc: sc.enqueueDataEngineIPFamilySetting,
+	}, 0); err != nil {
+		return nil, err
+	}
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			return isBackingImageManagerPod(obj) || isBackingImageDataSourcePod(obj)
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.enqueueDataEngineIPFamilySetting,
+			UpdateFunc: func(old, cur interface{}) { sc.enqueueDataEngineIPFamilySetting(cur) },
+			DeleteFunc: sc.enqueueDataEngineIPFamilySetting,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.PodInformer.HasSynced)
+
+	if _, err = ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.enqueueDataEngineIPFamilySetting,
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueDataEngineIPFamilySetting(cur) },
+		DeleteFunc: sc.enqueueDataEngineIPFamilySetting,
+	}, 0); err != nil {
+		return nil, err
+	}
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
 	return sc, nil
 }
@@ -291,6 +322,7 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		types.SettingNameSystemManagedComponentsNodeSelector,
 		types.SettingNamePriorityClass,
 		types.SettingNameStorageNetwork,
+		types.SettingNamePreferredDataEngineIPFamily,
 	}
 
 	if slices.Contains(dangerSettingsRequiringAllVolumesDetached, settingName) {
@@ -324,6 +356,8 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 			if err := sc.updateCNI(funcPreupdate); err != nil {
 				return err
 			}
+		case types.SettingNamePreferredDataEngineIPFamily:
+			return sc.syncDataEngineIPFamily()
 		}
 
 		return nil
@@ -774,6 +808,303 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 		}
 	}
 
+	return nil
+}
+func normalizePreferredDataEngineIPFamily(family string) string {
+	family = strings.ToLower(family)
+	if family == "" {
+		return types.DataEngineIPFamilyDefault
+	}
+	return family
+}
+
+func (sc *SettingController) syncDataEngineIPFamily() error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNamePreferredDataEngineIPFamily)
+	}
+
+	desired := normalizePreferredDataEngineIPFamily(setting.Value)
+	converged, err := sc.isDataEngineIPFamilyConverged(desired)
+	if err != nil {
+		return err
+	}
+	if converged {
+		return nil
+	}
+
+	detached, err := sc.ds.AreAllVolumesDetachedState()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNamePreferredDataEngineIPFamily)
+	}
+	if !detached {
+		return &types.ErrorInvalidState{
+			Reason: "failed to apply preferred-data-engine-ip-family setting to Longhorn components when there are attached volumes. It will be eventually applied",
+		}
+	}
+	if setting.Status.Applied && !converged {
+		persisted, getErr := sc.ds.GetSettingExact(types.SettingNamePreferredDataEngineIPFamily)
+		if getErr != nil && !apierrors.IsNotFound(getErr) {
+			return getErr
+		}
+		if getErr == nil && persisted.Status.Applied {
+			persisted.Status.Applied = false
+			if _, err := sc.ds.UpdateSettingStatus(persisted); err != nil {
+				return errors.Wrapf(err, "failed to persist %v unapplied before convergence", types.SettingNamePreferredDataEngineIPFamily)
+			}
+		}
+		return &types.ErrorInvalidState{
+			Reason: "preferred-data-engine-ip-family setting is waiting for all Longhorn components to converge",
+		}
+	}
+
+	if err := sc.updateBackingImageIPFamily(); err != nil {
+		return err
+	}
+
+	converged, err = sc.isDataEngineIPFamilyConverged(setting.Value)
+	if err != nil {
+		return err
+	}
+	if !converged {
+		return &types.ErrorInvalidState{
+			Reason: "preferred-data-engine-ip-family setting is waiting for all Longhorn components to converge",
+		}
+	}
+	return nil
+}
+
+func getDataEngineEnabledSettingNameForIPFamily(dataEngine longhorn.DataEngineType) (types.SettingName, bool) {
+	switch dataEngine {
+	case longhorn.DataEngineTypeV1:
+		return types.SettingNameV1DataEngine, true
+	case longhorn.DataEngineTypeV2:
+		return types.SettingNameV2DataEngine, true
+	default:
+		return "", false
+	}
+}
+
+// getAppliedDataEngineIPFamilyConsensus returns an applied family only when
+// every enabled InstanceManager has initialized and durably reported the same
+// synchronized value. Pending setting values are intentionally not consulted.
+func (sc *SettingController) getAppliedDataEngineIPFamilyConsensus() (string, bool, error) {
+	instanceManagers, err := sc.ds.ListInstanceManagersRO()
+	if err != nil {
+		return "", false, errors.Wrap(err, "failed to list instance managers for applied data-engine IP family")
+	}
+
+	var appliedFamily string
+	for _, im := range instanceManagers {
+		if im == nil || im.DeletionTimestamp != nil {
+			continue
+		}
+		enabledSetting, ok := getDataEngineEnabledSettingNameForIPFamily(im.Spec.DataEngine)
+		if !ok {
+			continue
+		}
+		enabled, err := sc.ds.GetSettingAsBool(enabledSetting)
+		if err != nil {
+			return "", false, err
+		}
+		if !enabled {
+			continue
+		}
+
+		family, initialized := engineapi.GetAppliedIPFamily(im)
+		if !initialized {
+			return "", false, nil
+		}
+		if types.GetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced).Status != longhorn.ConditionStatusTrue {
+			return "", false, nil
+		}
+		if family != types.DataEngineIPFamilyDefault &&
+			family != types.DataEngineIPFamilyIPv4 &&
+			family != types.DataEngineIPFamilyIPv6 {
+			return "", false, &types.ErrorInvalidState{
+				Reason: fmt.Sprintf("instance manager %v has invalid applied data-engine IP family %q", im.Name, family),
+			}
+		}
+		if appliedFamily == "" {
+			appliedFamily = family
+			continue
+		}
+		if appliedFamily != family {
+			return "", false, nil
+		}
+	}
+	if appliedFamily == "" {
+		return "", false, nil
+	}
+	return appliedFamily, true, nil
+}
+
+func (sc *SettingController) isDataEngineIPFamilyConverged(desired string) (bool, error) {
+	desired = normalizePreferredDataEngineIPFamily(desired)
+	instanceManagers, err := sc.ds.ListInstanceManagersRO()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list instance managers while checking preferred-data-engine-ip-family convergence")
+	}
+
+	for _, im := range instanceManagers {
+		if im == nil || im.DeletionTimestamp != nil {
+			continue
+		}
+		enabledSetting, ok := getDataEngineEnabledSettingNameForIPFamily(im.Spec.DataEngine)
+		if !ok {
+			continue
+		}
+		enabled, err := sc.ds.GetSettingAsBool(enabledSetting)
+		if err != nil {
+			return false, err
+		}
+		if !enabled {
+			continue
+		}
+		if types.IsDataEngineV2(im.Spec.DataEngine) &&
+			!engineapi.IsV2IPFamilySupported(im.Status.APIVersion, desired) {
+			return false, nil
+		}
+		statusFamily := ""
+		if im.Status.IPFamily != nil {
+			statusFamily = normalizePreferredDataEngineIPFamily(*im.Status.IPFamily)
+		}
+		if im.Status.IPFamily == nil || statusFamily != desired ||
+			types.GetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeSettingSynced).Status != longhorn.ConditionStatusTrue {
+			return false, nil
+		}
+	}
+
+	return sc.isBackingImageIPFamilyConverged(desired)
+}
+
+func (sc *SettingController) isBackingImageIPFamilyConverged(desired string) (bool, error) {
+	bims, err := sc.ds.ListBackingImageManagersRO()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list backing image managers while checking preferred-data-engine-ip-family convergence")
+	}
+	for _, bim := range bims {
+		if bim == nil || bim.DeletionTimestamp != nil {
+			continue
+		}
+		pod, err := sc.ds.GetPod(bim.Name)
+		if err != nil {
+			return false, err
+		}
+		if pod == nil || pod.DeletionTimestamp != nil ||
+			!isBackingImagePodIPFamilySynced(pod, BackingImageManagerPodContainerName, desired) {
+			return false, nil
+		}
+	}
+
+	bidsMap, err := sc.ds.ListBackingImageDataSources()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list backing image data sources while checking preferred-data-engine-ip-family convergence")
+	}
+	for name, bids := range bidsMap {
+		if bids == nil || bids.DeletionTimestamp != nil {
+			continue
+		}
+		if isBackingImageDataSourcePodDeletionSafe(bids) {
+			continue
+		}
+		pod, err := sc.ds.GetPod(types.GetBackingImageDataSourcePodName(name))
+		if err != nil {
+			return false, err
+		}
+		if pod == nil || pod.DeletionTimestamp != nil ||
+			!isBackingImagePodIPFamilySynced(pod, BackingImageDataSourcePodContainerName, desired) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (sc *SettingController) updateBackingImageIPFamily() error {
+	desired, consensus, err := sc.getAppliedDataEngineIPFamilyConsensus()
+	if err != nil {
+		return err
+	}
+	if !consensus {
+		return nil
+	}
+
+	bimPods, err := sc.ds.ListBackingImageManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backing image manager Pods for %v setting update", types.SettingNamePreferredDataEngineIPFamily)
+	}
+
+	bidsMap, err := sc.ds.ListBackingImageDataSources()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backing image data sources for %v setting update", types.SettingNamePreferredDataEngineIPFamily)
+	}
+	if err := sc.preflightBackingImageIPFamilyUpdate(bidsMap, desired); err != nil {
+		return err
+	}
+
+	for _, pod := range bimPods {
+		if pod == nil || pod.DeletionTimestamp != nil ||
+			isBackingImagePodIPFamilySynced(pod, BackingImageManagerPodContainerName, desired) {
+			continue
+		}
+
+		sc.logger.Infof("Deleting backing image manager Pod %v to apply %v setting", pod.Name, types.SettingNamePreferredDataEngineIPFamily)
+		if err := sc.ds.DeletePod(pod.Name); err != nil && !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to delete stale backing image manager Pod %v for %v setting update", pod.Name, types.SettingNamePreferredDataEngineIPFamily)
+		}
+	}
+
+	for name := range bidsMap {
+		pod, err := sc.ds.GetPod(types.GetBackingImageDataSourcePodName(name))
+		if err != nil {
+			return errors.Wrapf(err, "failed to get backing image data source Pod for %v", name)
+		}
+		if pod == nil || pod.DeletionTimestamp != nil ||
+			isBackingImagePodIPFamilySynced(pod, BackingImageDataSourcePodContainerName, desired) {
+			continue
+		}
+
+		sc.logger.Infof("Deleting backing image data source Pod %v to apply %v setting", pod.Name, types.SettingNamePreferredDataEngineIPFamily)
+		if err := sc.ds.DeletePod(pod.Name); err != nil && !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to delete stale backing image data source Pod %v for %v setting update", pod.Name, types.SettingNamePreferredDataEngineIPFamily)
+		}
+	}
+
+	return nil
+}
+
+func isBackingImageDataSourcePodDeletionSafe(bids *longhorn.BackingImageDataSource) bool {
+	return bids.Spec.FileTransferred ||
+		bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp
+}
+
+// preflightBackingImageIPFamilyUpdate validates that replacing mismatched
+// backing image data source pods will not interrupt active file preparation.
+// It intentionally performs no writes so a blocked rollout leaves all pods
+// and backing image data sources untouched.
+func (sc *SettingController) preflightBackingImageIPFamilyUpdate(
+	bidsMap map[string]*longhorn.BackingImageDataSource, desired string) error {
+	for name, bids := range bidsMap {
+		if bids == nil || bids.DeletionTimestamp != nil ||
+			isBackingImageDataSourcePodDeletionSafe(bids) {
+			continue
+		}
+
+		pod, err := sc.ds.GetPod(types.GetBackingImageDataSourcePodName(name))
+		if err != nil {
+			return errors.Wrapf(err, "failed to get backing image data source Pod for %v", name)
+		}
+		if pod != nil && pod.DeletionTimestamp == nil &&
+			isBackingImagePodIPFamilySynced(pod, BackingImageDataSourcePodContainerName, desired) {
+			continue
+		}
+
+		return &types.ErrorInvalidState{
+			Reason: fmt.Sprintf(
+				"cannot apply %v setting while backing image data source %v is active in state %v",
+				types.SettingNamePreferredDataEngineIPFamily, name, bids.Status.CurrentState),
+		}
+	}
 	return nil
 }
 
@@ -1313,6 +1644,9 @@ func (sc *SettingController) syncUpgradeChecker() error {
 	}
 
 	return nil
+}
+func (sc *SettingController) enqueueDataEngineIPFamilySetting(obj interface{}) {
+	sc.queue.Add(sc.namespace + "/" + string(types.SettingNamePreferredDataEngineIPFamily))
 }
 
 func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, string, error) {

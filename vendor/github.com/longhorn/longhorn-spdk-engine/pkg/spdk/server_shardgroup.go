@@ -11,6 +11,7 @@ import (
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
+	commonnet "github.com/longhorn/go-common-libs/net"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
@@ -502,5 +503,5 @@ func (s *Server) getOrCreateShardGroup(req *spdkrpc.ShardGroupCreateRequest) (*S
 
 	return NewShardGroup(s.ctx, req.Name, req.VolumeName, req.SpecSize,
 		req.Spec.DataChunks, req.Spec.ParityChunks, req.Spec.StripSizeKb, shards,
-		req.Spec.SalvageRequested, s.updateChs[types.InstanceTypeShardGroup]), nil
+		req.Spec.SalvageRequested, commonnet.IPFamilyUnspecified, s.updateChs[types.InstanceTypeShardGroup]), nil
 }

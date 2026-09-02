@@ -2235,6 +2235,14 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 	}
 }
 
+func (c *VolumeController) isDataEngineIPFamilySettingApplied() (bool, error) {
+	setting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+	if err != nil {
+		return false, err
+	}
+	return setting.Status.Applied, nil
+}
+
 func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend, isNewVolume bool, log *logrus.Entry) error {
 	// Here is the AD state machine graph
 	// https://github.com/longhorn/longhorn/blob/master/enhancements/assets/images/longhorn-volumeattachment/volume-controller-ad-logic.png
@@ -2296,6 +2304,14 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			case longhorn.VolumeStateDetached:
+				applied, err := c.isDataEngineIPFamilySettingApplied()
+				if err != nil {
+					return err
+				}
+				if !applied {
+					log.Infof("Waiting to attach volume %v while %v is unapplied", v.Name, types.SettingNamePreferredDataEngineIPFamily)
+					return nil
+				}
 				if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 					return err
 				}

@@ -411,7 +411,7 @@ func GetCloneReplicaNameFromEntrypointChildLvol(childLvolName string) string {
 }
 
 func GetNvmfEndpoint(nqn, ip string, port int32) string {
-	return fmt.Sprintf("nvmf://%s:%d/%s", ip, port, nqn)
+	return fmt.Sprintf("nvmf://%s/%s", net.JoinHostPort(ip, strconv.Itoa(int(port))), nqn)
 }
 
 // ServiceClientFactory creates an SPDK gRPC client for the given address.
