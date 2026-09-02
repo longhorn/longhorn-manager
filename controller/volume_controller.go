@@ -5967,22 +5967,14 @@ func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) er
 	}
 
 	if !hasSourceLabel {
-		hasJobLabels, err := pvcHasRecurringJobLabels(pvc)
+		inferred, err := inferRecurringJobSourceIfNeeded(pvc)
 		if err != nil {
 			return errors.Wrapf(err, "failed to check recurring job labels")
 		}
-		if !hasJobLabels {
+		if !inferred {
 			c.logger.Debugf("Ignoring recurring job labels on Volume %v PVC %v due to missing source label", volume.Name, pvc.Name)
 			return nil
 		}
-		// longhorn/longhorn#13928: a PVC that already carries job/group labels
-		// is an explicit assignment. Infer the source label instead of dropping
-		// those labels on the floor. Once source is set, the PVC is the source
-		// of truth and extra Volume-only RecurringJob labels are removed.
-		if pvc.Labels == nil {
-			pvc.Labels = map[string]string{}
-		}
-		pvc.Labels[types.GetRecurringJobSourceLabelKey()] = types.LonghornLabelValueEnabled
 		pvc, err = c.ds.UpdatePersistentVolumeClaim(kubeStatus.Namespace, pvc)
 		if err != nil {
 			return errors.Wrapf(err, "failed to infer recurring-job source label on PVC %v", pvc.Name)

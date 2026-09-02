@@ -609,6 +609,29 @@ func syncRecurringJobLabelsToTargetResource(targetKind string, targetObj, source
 	return nil
 }
 
+// inferRecurringJobSourceIfNeeded sets recurring-job.longhorn.io/source=enabled
+// when the PVC has job/group labels and the source key is absent.
+// If the source key is present with a non-enabled value, that explicit opt-out
+// is left alone.
+func inferRecurringJobSourceIfNeeded(pvc *corev1.PersistentVolumeClaim) (bool, error) {
+	if pvc.Labels == nil {
+		pvc.Labels = map[string]string{}
+	}
+	sourceKey := types.GetRecurringJobSourceLabelKey()
+	if _, present := pvc.Labels[sourceKey]; present {
+		return false, nil
+	}
+	hasJobLabels, err := pvcHasRecurringJobLabels(pvc)
+	if err != nil {
+		return false, err
+	}
+	if !hasJobLabels {
+		return false, nil
+	}
+	pvc.Labels[sourceKey] = types.LonghornLabelValueEnabled
+	return true, nil
+}
+
 func pvcHasRecurringJobLabels(obj runtime.Object) (bool, error) {
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {

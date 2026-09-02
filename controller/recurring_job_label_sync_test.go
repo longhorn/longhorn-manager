@@ -88,3 +88,70 @@ func TestHasRecurringJobSourceLabel(t *testing.T) {
 		t.Fatal("expected source label")
 	}
 }
+
+func TestInferRecurringJobSourceIfNeeded(t *testing.T) {
+	sourceKey := types.GetRecurringJobSourceLabelKey()
+	defaultKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, longhorn.RecurringJobGroupDefault)
+	rebuildableKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, "rebuildable")
+	extraKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, "extra")
+
+	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
+		Name: "app",
+		Labels: map[string]string{
+			defaultKey:     types.LonghornLabelValueEnabled,
+			rebuildableKey: types.LonghornLabelValueEnabled,
+		},
+	}}
+	inferred, err := inferRecurringJobSourceIfNeeded(pvc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inferred {
+		t.Fatal("expected inference when source key is absent")
+	}
+	if pvc.Labels[sourceKey] != types.LonghornLabelValueEnabled {
+		t.Fatalf("source not inferred: %#v", pvc.Labels)
+	}
+
+	vol := &longhorn.Volume{ObjectMeta: metav1.ObjectMeta{
+		Name: "pvc-app",
+		Labels: map[string]string{
+			rebuildableKey: types.LonghornLabelValueEnabled,
+			extraKey:       types.LonghornLabelValueEnabled,
+		},
+	}}
+	if err := syncRecurringJobLabelsToTargetResource(types.LonghornKindVolume, vol, pvc, logrus.StandardLogger()); err != nil {
+		t.Fatal(err)
+	}
+	if vol.Labels[defaultKey] != types.LonghornLabelValueEnabled {
+		t.Fatalf("default group missing: %#v", vol.Labels)
+	}
+	if vol.Labels[rebuildableKey] != types.LonghornLabelValueEnabled {
+		t.Fatalf("rebuildable group missing: %#v", vol.Labels)
+	}
+	if _, ok := vol.Labels[extraKey]; ok {
+		t.Fatalf("volume-only extra group should be removed: %#v", vol.Labels)
+	}
+}
+
+func TestInferRecurringJobSourceSkipsExplicitOptOut(t *testing.T) {
+	sourceKey := types.GetRecurringJobSourceLabelKey()
+	defaultKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, longhorn.RecurringJobGroupDefault)
+
+	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
+		Labels: map[string]string{
+			sourceKey:  "ignored",
+			defaultKey: types.LonghornLabelValueEnabled,
+		},
+	}}
+	inferred, err := inferRecurringJobSourceIfNeeded(pvc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inferred {
+		t.Fatal("must not overwrite an explicit non-enabled source value")
+	}
+	if pvc.Labels[sourceKey] != "ignored" {
+		t.Fatalf("opt-out overwritten: %#v", pvc.Labels)
+	}
+}
