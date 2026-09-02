@@ -1755,13 +1755,21 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 		diskStatus.StorageMaximum = 0
 		diskStatus.StorageAvailable = 0
 		diskStatus.Type = node.Spec.Disks[diskName].Type
+		// Record the configured path before the disk is created. Otherwise a disk
+		// whose creation fails has no path at all, and the cleanup on removal
+		// cannot tell the disk service which device to release. Only fill it in
+		// when unset so the path never desyncs from the recorded UUID and driver.
+		if diskStatus.DiskPath == "" {
+			diskStatus.DiskPath = node.Spec.Disks[diskName].Path
+		}
 		node.Status.DiskStatus[diskName] = diskStatus
 	}
 
 	for diskName := range node.Status.DiskStatus {
 		if _, exists := node.Spec.Disks[diskName]; !exists {
 			diskStatus, ok := node.Status.DiskStatus[diskName]
-			if !ok {
+			if !ok || diskStatus == nil {
+				delete(node.Status.DiskStatus, diskName)
 				continue
 			}
 
@@ -1819,13 +1827,18 @@ func (nc *NodeController) cleanupDisksBeforeNodeDeletion(node *longhorn.Node) er
 
 	errs := multierr.NewMultiError()
 	for diskName, diskStatus := range node.Status.DiskStatus {
+		// Node deletion bypasses alignDiskSpecAndStatus, so a nil status entry is
+		// still possible here.
+		if diskStatus == nil {
+			continue
+		}
 		nc.logger.Infof("Cleaning up disk %s", diskName)
 		// Skip non-SPDK disks
 		if diskStatus.Type != longhorn.DiskTypeBlock {
 			continue
 		}
 
-		if diskStatus.DiskDriver == longhorn.DiskDriverNone {
+		if diskStatus.DiskDriver == longhorn.DiskDriverNone && diskStatus.DiskPath == "" {
 			continue
 		}
 

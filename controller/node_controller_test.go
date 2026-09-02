@@ -2820,3 +2820,76 @@ func (s *NodeControllerSuite) TestLinkedCloneEviction(c *C) {
 		c.Assert(r.Spec.EvictionRequested, Equals, true)
 	}
 }
+
+// TestAlignDiskSpecAndStatusRecordsConfiguredDiskPath covers longhorn/longhorn#13893:
+// without the configured path in the status, a disk whose creation failed leaves
+// nothing behind to identify the device that has to be released.
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusRecordsConfiguredDiskPath(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{
+		TestDiskID1: {
+			Type:            longhorn.DiskTypeBlock,
+			Path:            "0000:05:00.0",
+			DiskDriver:      longhorn.DiskDriverAuto,
+			AllowScheduling: true,
+		},
+	}
+	// A fresh disk starts with no recorded path, so the configured path must be
+	// filled in before creation to identify the device on removal.
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{}
+
+	s.controller.alignDiskSpecAndStatus(node)
+
+	diskStatus, ok := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(ok, Equals, true)
+	c.Assert(diskStatus.DiskPath, Equals, "0000:05:00.0")
+}
+
+// TestAlignDiskSpecAndStatusDropsRemovedDisks covers longhorn/longhorn#13893:
+// a removed disk must not keep a status entry, since the node validator rejects
+// every node update while the spec and the status disks disagree.
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusDropsRemovedDisks(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{}
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		"block-disk": {
+			Type:     longhorn.DiskTypeBlock,
+			DiskPath: "0000:05:00.0",
+		},
+		"filesystem-disk": {
+			Type:     longhorn.DiskTypeFilesystem,
+			DiskPath: TestDefaultDataPath,
+		},
+	}
+
+	// There is no running instance manager, so releasing the block device fails.
+	s.controller.alignDiskSpecAndStatus(node)
+
+	c.Assert(node.Status.DiskStatus, HasLen, 0)
+}
+
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusDropsNilDiskStatus(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{}
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{"stale-disk": nil}
+
+	s.controller.alignDiskSpecAndStatus(node)
+
+	_, ok := node.Status.DiskStatus["stale-disk"]
+	c.Assert(ok, Equals, false)
+}
+
+// TestAlignDiskSpecAndStatusKeepsFilesystemDiskUntouched guards the block-disk
+// path recording from changing how filesystem-type disks are handled.
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusKeepsFilesystemDiskUntouched(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	specDiskPath := node.Spec.Disks[TestDiskID1].Path
+
+	s.controller.alignDiskSpecAndStatus(node)
+
+	diskStatus, ok := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(ok, Equals, true)
+	c.Assert(diskStatus.Type, Equals, longhorn.DiskTypeFilesystem)
+	c.Assert(diskStatus.DiskPath, Equals, specDiskPath)
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusTrue)
+}
