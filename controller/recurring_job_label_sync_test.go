@@ -1,15 +1,21 @@
 package controller
 
 import (
+	"context"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
+	k8scontroller "k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
 
 func TestPvcHasRecurringJobLabels(t *testing.T) {
@@ -153,5 +159,118 @@ func TestInferRecurringJobSourceSkipsExplicitOptOut(t *testing.T) {
 	}
 	if pvc.Labels[sourceKey] != "ignored" {
 		t.Fatalf("opt-out overwritten: %#v", pvc.Labels)
+	}
+}
+
+func TestSyncPVCRecurringJobLabelsInfersSourceWhenAbsent(t *testing.T) {
+	sourceKey := types.GetRecurringJobSourceLabelKey()
+	defaultKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, longhorn.RecurringJobGroupDefault)
+	rebuildableKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, "rebuildable")
+	volumeOnlyKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, "volume-only")
+
+	vc, kubeClient := setupVolumeControllerWithPVC(t, map[string]string{
+		defaultKey:     types.LonghornLabelValueEnabled,
+		rebuildableKey: types.LonghornLabelValueEnabled,
+	})
+	vol := boundVolumeWithRecurringJobLabels(map[string]string{
+		volumeOnlyKey: types.LonghornLabelValueEnabled,
+	})
+
+	if err := vc.syncPVCRecurringJobLabels(vol); err != nil {
+		t.Fatal(err)
+	}
+
+	pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Get(context.TODO(), TestPVCName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pvc.Labels[sourceKey] != types.LonghornLabelValueEnabled {
+		t.Fatalf("expected persisted source=enabled, got %#v", pvc.Labels)
+	}
+	if vol.Labels[defaultKey] != types.LonghornLabelValueEnabled {
+		t.Fatalf("default group missing on volume: %#v", vol.Labels)
+	}
+	if vol.Labels[rebuildableKey] != types.LonghornLabelValueEnabled {
+		t.Fatalf("rebuildable group missing on volume: %#v", vol.Labels)
+	}
+	if _, exists := vol.Labels[volumeOnlyKey]; exists {
+		t.Fatalf("volume-only RecurringJob label should be removed: %#v", vol.Labels)
+	}
+}
+
+func TestSyncPVCRecurringJobLabelsPreservesNonEnabledSource(t *testing.T) {
+	sourceKey := types.GetRecurringJobSourceLabelKey()
+	defaultKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, longhorn.RecurringJobGroupDefault)
+	volumeOnlyKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, "volume-only")
+
+	vc, kubeClient := setupVolumeControllerWithPVC(t, map[string]string{
+		sourceKey:  "ignored",
+		defaultKey: types.LonghornLabelValueEnabled,
+	})
+	vol := boundVolumeWithRecurringJobLabels(map[string]string{
+		volumeOnlyKey: types.LonghornLabelValueEnabled,
+	})
+
+	if err := vc.syncPVCRecurringJobLabels(vol); err != nil {
+		t.Fatal(err)
+	}
+
+	pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Get(context.TODO(), TestPVCName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pvc.Labels[sourceKey] != "ignored" {
+		t.Fatalf("non-enabled source must not be overwritten, got %#v", pvc.Labels)
+	}
+	if vol.Labels[defaultKey] == types.LonghornLabelValueEnabled {
+		t.Fatalf("should not sync PVC groups when source is ignored: %#v", vol.Labels)
+	}
+	if vol.Labels[volumeOnlyKey] != types.LonghornLabelValueEnabled {
+		t.Fatalf("volume-only label must remain when source is ignored: %#v", vol.Labels)
+	}
+}
+
+func setupVolumeControllerWithPVC(t *testing.T, labels map[string]string) (*VolumeController, *fake.Clientset) {
+	t.Helper()
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, k8scontroller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      TestPVCName,
+			Namespace: TestNamespace,
+			Labels:    labels,
+		},
+	}
+	created, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer().Add(created); err != nil {
+		t.Fatal(err)
+	}
+	return vc, kubeClient
+}
+
+func boundVolumeWithRecurringJobLabels(labels map[string]string) *longhorn.Volume {
+	return &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   TestVolumeName,
+			Labels: labels,
+		},
+		Status: longhorn.VolumeStatus{
+			KubernetesStatus: longhorn.KubernetesStatus{
+				Namespace: TestNamespace,
+				PVCName:   TestPVCName,
+			},
+		},
 	}
 }
