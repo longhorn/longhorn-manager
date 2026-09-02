@@ -609,6 +609,19 @@ func syncRecurringJobLabelsToTargetResource(targetKind string, targetObj, source
 	return nil
 }
 
+func pvcHasRecurringJobLabels(obj runtime.Object) (bool, error) {
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get object accessor")
+	}
+	for key := range objMeta.GetLabels() {
+		if types.IsRecurringJobLabel(key) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func hasRecurringJobSourceLabel(obj runtime.Object) (bool, error) {
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
