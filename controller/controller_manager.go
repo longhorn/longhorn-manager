@@ -275,6 +275,12 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	cpuRequestVal := ""
 	switch im.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
+		// A node-level pod resources override owns the pod resource requirements as a
+		// whole, taking precedence over every derived value including dynamic CPU pinning.
+		if types.IsDataEngineV2(im.Spec.DataEngine) &&
+			lhNode.Spec.InstanceManagerResources != nil && lhNode.Spec.InstanceManagerResources.V2 != nil {
+			return withRequestsDefaultedFromLimits(lhNode.Spec.InstanceManagerResources.V2), nil
+		}
 		// TODO: Currently lhNode.Spec.InstanceManagerCPURequest is applied to both v1 and v2 data engines.
 		// In the future, we may want to support different CPU requests for them.
 		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
@@ -289,7 +295,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 			cpuRequestVal = fmt.Sprintf("%dm", cpuRequest)
 		}
 		if types.IsDataEngineV2(im.Spec.DataEngine) {
-			spdkCoreNumber, err := ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine)
+			spdkCoreNumber, err := ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, im.Spec.DataEngine, im.Spec.NodeID)
 			if err != nil {
 				return nil, err
 			}
@@ -333,6 +339,46 @@ func EnhancedDefaultControllerRateLimiter() workqueue.TypedRateLimiter[any] {
 		// 100 qps, 1000 bucket size
 		&workqueue.TypedBucketRateLimiter[any]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
 	)
+}
+
+// withRequestsDefaultedFromLimits mirrors the Pod API defaulting of a missing request to its
+// limit, so the desired requirements compare equal to the pod the API server actually stores.
+func withRequestsDefaultedFromLimits(req *corev1.ResourceRequirements) *corev1.ResourceRequirements {
+	out := req.DeepCopy()
+	for name, limit := range out.Limits {
+		if _, ok := out.Requests[name]; ok {
+			continue
+		}
+		if out.Requests == nil {
+			out.Requests = corev1.ResourceList{}
+		}
+		out.Requests[name] = limit.DeepCopy()
+	}
+	return out
+}
+
+// IsSameInstanceManagerResourceRequirement returns true if a and b agree on CPU and memory
+// requests and limits, ignoring other resource names (e.g. separately managed hugepages limits).
+func IsSameInstanceManagerResourceRequirement(a, b *corev1.ResourceRequirements) bool {
+	for _, name := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+		var aReq, bReq, aLim, bLim resource.Quantity
+		if a != nil && a.Requests != nil {
+			aReq = a.Requests[name]
+		}
+		if b != nil && b.Requests != nil {
+			bReq = b.Requests[name]
+		}
+		if a != nil && a.Limits != nil {
+			aLim = a.Limits[name]
+		}
+		if b != nil && b.Limits != nil {
+			bLim = b.Limits[name]
+		}
+		if (&aReq).Cmp(bReq) != 0 || (&aLim).Cmp(bLim) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // IsSameGuaranteedCPURequirement returns true if the resource requirement a is equal to the resource requirement b

@@ -27,6 +27,13 @@ type V2DataEngineStatusApplyConfiguration struct {
 	// interrupt mode (true) or polling mode (false). Set by Longhorn manager;
 	// read-only to users.
 	InterruptModeEnabled *string `json:"interruptModeEnabled,omitempty"`
+	// Applied node effective values (node spec override or global setting) as of
+	// the last pod creation; nil until this manager version has created the pod.
+	// Set by Longhorn manager; read-only to users.
+	MemorySizeMiB      *int64 `json:"memorySizeMiB,omitempty"`
+	HugepageEnabled    *bool  `json:"hugepageEnabled,omitempty"`
+	IobufSmallPoolSize *int64 `json:"iobufSmallPoolSize,omitempty"`
+	IobufLargePoolSize *int64 `json:"iobufLargePoolSize,omitempty"`
 }
 
 // V2DataEngineStatusApplyConfiguration constructs a declarative configuration of the V2DataEngineStatus type for use with
@@ -56,5 +63,37 @@ func (b *V2DataEngineStatusApplyConfiguration) WithCPUCoreNumber(value int64) *V
 // If called multiple times, the InterruptModeEnabled field is set to the value of the last call.
 func (b *V2DataEngineStatusApplyConfiguration) WithInterruptModeEnabled(value string) *V2DataEngineStatusApplyConfiguration {
 	b.InterruptModeEnabled = &value
+	return b
+}
+
+// WithMemorySizeMiB sets the MemorySizeMiB field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MemorySizeMiB field is set to the value of the last call.
+func (b *V2DataEngineStatusApplyConfiguration) WithMemorySizeMiB(value int64) *V2DataEngineStatusApplyConfiguration {
+	b.MemorySizeMiB = &value
+	return b
+}
+
+// WithHugepageEnabled sets the HugepageEnabled field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HugepageEnabled field is set to the value of the last call.
+func (b *V2DataEngineStatusApplyConfiguration) WithHugepageEnabled(value bool) *V2DataEngineStatusApplyConfiguration {
+	b.HugepageEnabled = &value
+	return b
+}
+
+// WithIobufSmallPoolSize sets the IobufSmallPoolSize field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the IobufSmallPoolSize field is set to the value of the last call.
+func (b *V2DataEngineStatusApplyConfiguration) WithIobufSmallPoolSize(value int64) *V2DataEngineStatusApplyConfiguration {
+	b.IobufSmallPoolSize = &value
+	return b
+}
+
+// WithIobufLargePoolSize sets the IobufLargePoolSize field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the IobufLargePoolSize field is set to the value of the last call.
+func (b *V2DataEngineStatusApplyConfiguration) WithIobufLargePoolSize(value int64) *V2DataEngineStatusApplyConfiguration {
+	b.IobufLargePoolSize = &value
 	return b
 }

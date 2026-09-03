@@ -2030,6 +2030,8 @@ spec:
                         type: integer
                       cpuMask:
                         type: string
+                      hugepageEnabled:
+                        type: boolean
                       interruptModeEnabled:
                         description: |-
                           InterruptModeEnabled indicates whether the V2 data engine is running in
@@ -2040,6 +2042,19 @@ spec:
                         - "true"
                         - "false"
                         type: string
+                      iobufLargePoolSize:
+                        format: int64
+                        type: integer
+                      iobufSmallPoolSize:
+                        format: int64
+                        type: integer
+                      memorySizeMiB:
+                        description: |-
+                          Applied node effective values (node spec override or global setting) as of
+                          the last pod creation; nil until this manager version has created the pod.
+                          Set by Longhorn manager; read-only to users.
+                        format: int64
+                        type: integer
                     type: object
                 type: object
               instanceEngineFrontends:
@@ -2490,6 +2505,43 @@ spec:
             properties:
               allowScheduling:
                 type: boolean
+              dataEngineResources:
+                description: |-
+                  NodeDataEngineResources overrides data engine resource settings on this node.
+                  Each nil field inherits the corresponding global setting.
+                properties:
+                  v2:
+                    properties:
+                      cpuMask:
+                        description: Overrides the data-engine-cpu-mask setting for
+                          this node (static CPU mask path only).
+                        type: string
+                      hugepageEnabled:
+                        description: Overrides the data-engine-hugepage-enabled setting
+                          for this node.
+                        type: boolean
+                      iobufLargePoolSize:
+                        description: Overrides the data-engine-iobuf-large-pool-size
+                          setting for this node.
+                        format: int64
+                        type: integer
+                      iobufSmallPoolSize:
+                        description: Overrides the data-engine-iobuf-small-pool-size
+                          setting for this node.
+                        format: int64
+                        type: integer
+                      memorySizeMiB:
+                        description: Overrides the data-engine-memory-size setting
+                          for this node.
+                        format: int64
+                        type: integer
+                      numberOfCPUCores:
+                        description: Overrides the data-engine-number-of-cpu-cores
+                          setting for this node.
+                        format: int64
+                        type: integer
+                    type: object
+                type: object
               disks:
                 additionalProperties:
                   properties:
@@ -2524,6 +2576,72 @@ spec:
                 type: boolean
               instanceManagerCPURequest:
                 type: integer
+              instanceManagerResources:
+                description: |-
+                  NodeInstanceManagerResources overrides the instance manager pod resource requirements
+                  on this node. A set engine entry replaces the derived pod resource requirements as a whole.
+                properties:
+                  v2:
+                    description: ResourceRequirements describes the compute resource
+                      requirements.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                type: object
               name:
                 type: string
               tags:
