@@ -347,3 +347,86 @@ func TestToRecurringJobResourceIncludesRetentionPolicy(t *testing.T) {
 		t.Fatalf("expected retentionPolicy %v, got %v", longhorn.RecurringJobRetentionPolicyAgeBased, resource.RetentionPolicy)
 	}
 }
+
+// A runtime bound (longhorn/longhorn#13187) is only usable if it is settable
+// through the API the same way retain is. The schema is what the UI and the
+// Python client build requests from, so a field that is not advertised as
+// creatable there is silently dropped from the request and the job is created
+// with no deadline at all.
+func TestRecurringJobSchemaAllowsSettingActiveDeadlineSeconds(t *testing.T) {
+	schemas := NewSchema()
+	job, ok := schemas.CheckSchema("recurringJob")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to be registered")
+	}
+
+	retain, ok := job.CheckField("retain")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to have a retain field")
+	}
+
+	activeDeadlineSeconds, ok := job.CheckField("activeDeadlineSeconds")
+	if !ok {
+		t.Fatalf("expected recurringJob schema to have an activeDeadlineSeconds field")
+	}
+	if activeDeadlineSeconds.Create != retain.Create {
+		t.Fatalf("expected activeDeadlineSeconds to be creatable like retain, got create=%v", activeDeadlineSeconds.Create)
+	}
+	// The deadline is optional: leaving it out keeps the job unbounded, which is
+	// the behavior of every recurring job created before the field existed.
+	if activeDeadlineSeconds.Required {
+		t.Fatalf("expected activeDeadlineSeconds to be optional")
+	}
+}
+
+// A caller asking for a 3600s bound must get that exact bound on the spec.
+// Losing it in decode would leave the job unbounded while the UI shows a
+// deadline the generated Job never carries.
+func TestRecurringJobActiveDeadlineSecondsRoundTripsFromClient(t *testing.T) {
+	body, err := json.Marshal(&lhclient.RecurringJob{
+		Name:                  "test-job",
+		Task:                  string(longhorn.RecurringJobTypeBackup),
+		Cron:                  "*/1 * * * *",
+		Retain:                50,
+		ActiveDeadlineSeconds: 3600,
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal client recurring job: %v", err)
+	}
+
+	var input RecurringJob
+	if err := json.Unmarshal(body, &input); err != nil {
+		t.Fatalf("failed to decode client request into API model: %v", err)
+	}
+	if input.ActiveDeadlineSeconds != 3600 {
+		t.Fatalf("expected activeDeadlineSeconds 3600, got %d", input.ActiveDeadlineSeconds)
+	}
+
+	// An unset deadline must stay zero so the job keeps running unbounded.
+	body, err = json.Marshal(&lhclient.RecurringJob{Name: "test-job", Retain: 50})
+	if err != nil {
+		t.Fatalf("failed to marshal client recurring job: %v", err)
+	}
+	input = RecurringJob{}
+	if err := json.Unmarshal(body, &input); err != nil {
+		t.Fatalf("failed to decode client request into API model: %v", err)
+	}
+	if input.ActiveDeadlineSeconds != 0 {
+		t.Fatalf("expected activeDeadlineSeconds to stay zero when unset, got %d", input.ActiveDeadlineSeconds)
+	}
+}
+
+// toRecurringJobResource is what the UI and the client read back. Dropping the
+// deadline there would make a configured bound invisible after a GET, so a user
+// cannot tell a bounded job from an unbounded one.
+func TestToRecurringJobResourceIncludesActiveDeadlineSeconds(t *testing.T) {
+	recurringJob := &longhorn.RecurringJob{}
+	recurringJob.Name = "test-job"
+	recurringJob.Spec.Retain = 50
+	recurringJob.Spec.ActiveDeadlineSeconds = 3600
+
+	resource := toRecurringJobResource(recurringJob, nil)
+	if resource.ActiveDeadlineSeconds != 3600 {
+		t.Fatalf("expected activeDeadlineSeconds 3600, got %d", resource.ActiveDeadlineSeconds)
+	}
+}

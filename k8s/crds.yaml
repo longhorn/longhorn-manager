@@ -2915,6 +2915,16 @@ spec:
             description: RecurringJobSpec defines the desired state of the Longhorn
               recurring job
             properties:
+              activeDeadlineSeconds:
+                description: |-
+                  The maximum duration in seconds the recurring job may run before Kubernetes
+                  terminates it, propagated to the generated Job's activeDeadlineSeconds.
+                  A job that exceeds it is marked failed, which surfaces in the Job status and
+                  releases the concurrencyPolicy=Forbid slot for the next scheduled run.
+                  When 0 (the default) the job has no deadline and can run indefinitely.
+                format: int64
+                minimum: 0
+                type: integer
               concurrency:
                 description: The concurrency of taking the snapshot/backup.
                 type: integer
