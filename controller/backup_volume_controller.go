@@ -454,6 +454,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageName = backupVolumeInfo.BackingImageName
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
+	backupVolume.Status.LinkedCloneSourceVolume = backupVolumeInfo.LinkedCloneSourceVolume
+	backupVolume.Status.LinkedCloneSourceSnapshot = backupVolumeInfo.LinkedCloneSourceSnapshot
 	backupVolume.Status.LastSyncedAt = syncTime
 	backupVolume.Status.Size, err = getCorrectedEncryptedVolumeSize(backupVolumeInfo.Size, backupVolumeInfo.Labels)
 	if err != nil {
@@ -539,9 +541,39 @@ func (bvc *BackupVolumeController) isResponsibleFor(bv *longhorn.BackupVolume, d
 		return false, err
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && bvc.controllerID == bv.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	currentOwnerAvailable := currentOwnerEngineAvailable
+	currentNodeAvailable := currentNodeEngineAvailable
+
+	// A responsible node must also have a running instance manager, because syncing the backup
+	// volume from the remote backup target goes through an engine client proxy served by an
+	// instance manager. The engine image readiness check alone is not enough: a node drained with
+	// --ignore-daemonsets keeps the engine image DaemonSet (and longhorn-manager) running while its
+	// instance manager pod is evicted. Without accounting for the instance manager, ownership can
+	// stay pinned to such a node, so the BackupVolume status is never synced.
+	// Ref: https://github.com/longhorn/longhorn/issues/13775
+	// Skip this while the BackupVolume is being deleted. During cluster uninstallation or when data
+	// engines are disabled, instance-manager pods might already have been removed.
+	// Ref: https://github.com/longhorn/longhorn/issues/11934
+	if bv.DeletionTimestamp.IsZero() {
+		eligibleNodes, err := bvc.ds.ListNodesEligibleForBackupReconcileRO(defaultEngineImage)
+		if err != nil {
+			return false, err
+		}
+		// Only require a running instance manager when at least one node can actually serve the
+		// reconcile. If no node is eligible (e.g. a full outage), keep the engine-image-only
+		// behavior so the backup volume still gets an owner that surfaces the error and retries,
+		// instead of being left ownerless and silently stalled.
+		if len(eligibleNodes) > 0 {
+			_, ownerEligible := eligibleNodes[bv.Status.OwnerID]
+			_, nodeEligible := eligibleNodes[bvc.controllerID]
+			currentOwnerAvailable = ownerEligible
+			currentNodeAvailable = nodeEligible
+		}
+	}
+
+	isPreferredOwner := currentNodeAvailable && isResponsible
+	continueToBeOwner := currentNodeAvailable && bvc.controllerID == bv.Status.OwnerID
+	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }

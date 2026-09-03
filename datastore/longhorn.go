@@ -3739,6 +3739,88 @@ func (s *DataStore) ListNodesWithReadyInstanceManagerRO(dataEngine longhorn.Data
 	return result, nil
 }
 
+// ListNodesWithRunningInstanceManagerForAllDataEnginesRO returns the set of nodes that have a
+// running instance manager for any enabled data engine. Requests that can be served by any
+// instance manager regardless of data engine (e.g. backup target/volume reconciles) use this
+// union to decide ownership. It mirrors the selection semantics of GetRunningInstanceManagerByNodeRO
+// (used by the backup engine client proxy): any non-terminating running all-in-one instance manager
+// counts, regardless of its image, so a node still serving through an old instance manager image
+// during a rollout is not omitted.
+func (s *DataStore) ListNodesWithRunningInstanceManagerForAllDataEnginesRO() (map[string]*longhorn.Node, error) {
+	enabledDataEngines := s.GetDataEngines()
+
+	ims, err := s.ListInstanceManagersRO()
+	if err != nil {
+		return nil, err
+	}
+
+	nodeList, err := s.ListNodesRO()
+	if err != nil {
+		return nil, err
+	}
+	nodes := make(map[string]*longhorn.Node, len(nodeList))
+	for _, node := range nodeList {
+		nodes[node.Name] = node
+	}
+
+	nodesWithRunningIM := map[string]*longhorn.Node{}
+	for _, im := range ims {
+		if im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+			continue
+		}
+		if _, ok := enabledDataEngines[im.Spec.DataEngine]; !ok {
+			continue
+		}
+		// Skip terminating instance managers, they may still report Running while their pod is being
+		// removed (e.g. during a node drain).
+		if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			continue
+		}
+		node, ok := nodes[im.Spec.NodeID]
+		if !ok {
+			continue
+		}
+		nodesWithRunningIM[im.Spec.NodeID] = node
+	}
+	return nodesWithRunningIM, nil
+}
+
+// ListNodesEligibleForBackupReconcileRO returns the set of nodes that can actually serve a backup
+// target/volume reconcile: they have both a running instance manager (for any enabled data engine)
+// and the given engine image ready. Engine image readiness and instance manager readiness are
+// independent, so callers must intersect them instead of gating on the instance manager alone,
+// otherwise a node with the image but no instance manager could be disqualified while the only node
+// with a running instance manager lacks the image, leaving the resource ownerless.
+func (s *DataStore) ListNodesEligibleForBackupReconcileRO(engineImage string) (map[string]*longhorn.Node, error) {
+	nodesWithRunningIM, err := s.ListNodesWithRunningInstanceManagerForAllDataEnginesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	eligibleNodes := map[string]*longhorn.Node{}
+	if len(nodesWithRunningIM) == 0 {
+		return eligibleNodes, nil
+	}
+
+	// Fetch the engine image once and intersect its NodeDeploymentMap with the running-instance-manager
+	// nodes, instead of calling CheckEngineImageReadiness per node (which relists all nodes each time).
+	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(engineImage))
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get engine image %v", engineImage)
+	}
+	if ei.Status.State != longhorn.EngineImageStateDeployed &&
+		ei.Status.State != longhorn.EngineImageStateDeploying {
+		return eligibleNodes, nil
+	}
+
+	for name, node := range nodesWithRunningIM {
+		if ei.Status.NodeDeploymentMap[name] {
+			eligibleNodes[name] = node
+		}
+	}
+	return eligibleNodes, nil
+}
+
 func (s *DataStore) ListReadyAndSchedulableNodesRO() (map[string]*longhorn.Node, error) {
 	nodes, err := s.ListReadyNodesRO()
 	if err != nil {

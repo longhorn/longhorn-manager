@@ -166,7 +166,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	}
 
 	if spec.DataSource != "" {
-		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size); err != nil {
+		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size, spec.FromBackup); err != nil {
 			return nil, err
 		}
 	}
@@ -1219,7 +1219,7 @@ func (m *VolumeManager) UpdateReplicaDiskSoftAntiAffinity(name string, replicaDi
 	return v, nil
 }
 
-func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64) (err error) {
+func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64, fromBackup string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to verify data source")
 	}()
@@ -1234,7 +1234,12 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 		if err != nil {
 			return err
 		}
-		if requestSize != srcVol.Spec.Size {
+		// A volume restored from a backup takes its size from that backup, which the
+		// volume mutator applies after this point, so there is no size to compare here
+		// yet. The source is only a lower bound for such a volume anyway, since a
+		// linked clone may have been expanded before it was backed up; the size is
+		// checked against the backup in the volume webhook instead.
+		if fromBackup == "" && requestSize != srcVol.Spec.Size {
 			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
 		}
 
