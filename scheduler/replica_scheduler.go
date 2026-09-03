@@ -4,10 +4,15 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+
+	"k8s.io/apimachinery/pkg/labels"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/go-common-libs/multierr"
 
@@ -97,6 +102,68 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	}
 
 	return replica, nil
+}
+
+// getVolumeAntiAffinityMatches counts, per node, the placed replicas of the
+// volumes matched by the volume's anti-affinity selectors. The node the volume
+// is attached to is left out under best-effort data locality: the local replica
+// keeps its priority and anti-affinity only ranks the other nodes.
+func (rcs *ReplicaScheduler) getVolumeAntiAffinityMatches(volume *longhorn.Volume) (map[string]int, error) {
+	antiAffinity := volume.Spec.VolumeAntiAffinity
+	if antiAffinity == nil || len(antiAffinity.Selectors) == 0 {
+		return nil, nil
+	}
+	selectors := make([]labels.Selector, 0, len(antiAffinity.Selectors))
+	for i := range antiAffinity.Selectors {
+		selector, err := metav1.LabelSelectorAsSelector(&antiAffinity.Selectors[i])
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid anti-affinity selector %v", i)
+		}
+		selectors = append(selectors, selector)
+	}
+
+	volumes, err := rcs.ds.ListVolumesRO()
+	if err != nil {
+		return nil, err
+	}
+	// One pass over the replica cache; a per-volume lookup would rescan it for
+	// every matched volume.
+	replicas, err := rcs.ds.ListReplicasRO()
+	if err != nil {
+		return nil, err
+	}
+	placedNodesByVolume := map[string][]string{}
+	for _, r := range replicas {
+		if r.Spec.NodeID != "" && r.Spec.FailedAt == "" {
+			placedNodesByVolume[r.Spec.VolumeName] = append(placedNodesByVolume[r.Spec.VolumeName], r.Spec.NodeID)
+		}
+	}
+	matches := map[string]int{}
+	for _, other := range volumes {
+		if other.Name == volume.Name || !matchesAnySelector(selectors, other.Spec.VolumeAntiAffinity) {
+			continue
+		}
+		for _, nodeID := range placedNodesByVolume[other.Name] {
+			matches[nodeID]++
+		}
+	}
+	if volume.Spec.DataLocality == longhorn.DataLocalityBestEffort && volume.Spec.NodeID != "" {
+		delete(matches, volume.Spec.NodeID)
+	}
+	return matches, nil
+}
+
+func matchesAnySelector(selectors []labels.Selector, antiAffinity *longhorn.VolumeAntiAffinity) bool {
+	var volumeLabels labels.Set
+	if antiAffinity != nil {
+		volumeLabels = labels.Set(antiAffinity.Labels)
+	}
+	for _, selector := range selectors {
+		if selector.Matches(volumeLabels) {
+			return true
+		}
+	}
+	return false
 }
 
 // If no replicas are scheduled on the local node, try to schedule one there.
@@ -404,7 +471,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		creatingNewReplicasForReplenishment = timeToReplacementReplica == 0
 	}
 
-	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError multierr.MultiError) {
+	getDiskCandidatesFromNodesUnranked := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError multierr.MultiError) {
 		diskCandidates = map[string]*Disk{}
 		filterErrs := multierr.NewMultiError()
 
@@ -418,6 +485,47 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		}
 		diskCandidates = filterDisksWithMatchingReplicas(diskCandidates, replicas, diskSoftAntiAffinity, ignoreFailedReplicas)
 		return diskCandidates, filterErrs
+	}
+
+	// Reusing a failed replica keeps the data where it already is, so the
+	// cross-volume preference only applies to new placements.
+	antiAffinityMatches := map[string]int{}
+	if !ignoreFailedReplicas {
+		antiAffinityMatches, err = rcs.getVolumeAntiAffinityMatches(volume)
+		if err != nil {
+			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
+				errors.Wrapf(err, "failed to evaluate the anti-affinity of volume %v", volume.Name))
+			return map[string]*Disk{}, errs
+		}
+	}
+
+	// Within a tier, prefer the nodes holding the fewest replicas of related
+	// volumes. Every node stays a candidate in a later group, so the preference
+	// never blocks scheduling; a set with a single node is unaffected.
+	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (map[string]*Disk, multierr.MultiError) {
+		if len(antiAffinityMatches) == 0 {
+			return getDiskCandidatesFromNodesUnranked(nodes)
+		}
+		groups := map[int]map[string]*longhorn.Node{}
+		for nodeName, node := range nodes {
+			matches := antiAffinityMatches[nodeName]
+			if groups[matches] == nil {
+				groups[matches] = map[string]*longhorn.Node{}
+			}
+			groups[matches][nodeName] = node
+		}
+		groupErrs := multierr.NewMultiError()
+		for _, matches := range slices.Sorted(maps.Keys(groups)) {
+			diskCandidates, filterErrs := getDiskCandidatesFromNodesUnranked(groups[matches])
+			if len(diskCandidates) > 0 {
+				if matches > 0 {
+					logrus.Infof("Replica of volume %v will share a node with %v replica(s) of anti-affine volumes: no other node is available", volume.Name, matches)
+				}
+				return diskCandidates, filterErrs
+			}
+			groupErrs.AppendMultiError(filterErrs)
+		}
+		return map[string]*Disk{}, groupErrs
 	}
 
 	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo,

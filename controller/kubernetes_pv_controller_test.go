@@ -7,9 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
+	. "gopkg.in/check.v1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes/fake"
@@ -21,10 +19,12 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -33,10 +33,11 @@ const (
 )
 
 type KubernetesTestCase struct {
-	volume *longhorn.Volume
-	pv     *corev1.PersistentVolume
-	pvc    *corev1.PersistentVolumeClaim
-	pods   []*corev1.Pod
+	volume   *longhorn.Volume
+	pv       *corev1.PersistentVolume
+	pvc      *corev1.PersistentVolumeClaim
+	pods     []*corev1.Pod
+	settings []*longhorn.Setting
 
 	expectVolume *longhorn.Volume
 }
@@ -472,9 +473,16 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		pvIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
 		pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
 		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
 		kc, err := newTestKubernetesPVController(lhClient, kubeClient, extensionsClient, informerFactories)
 		c.Assert(err, IsNil)
+
+		for _, setting := range tc.settings {
+			created, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(sIndexer.Add(created), IsNil)
+		}
 
 		// Need to create pv, pvc, pod and longhorn volume
 		var v *longhorn.Volume
@@ -532,4 +540,155 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		}
 
 	}
+}
+
+func newSpreadPodWithPVC(podName string) *corev1.Pod {
+	pod := newPodWithPVC(podName)
+	pod.Labels = map[string]string{"app": "kafka"}
+	pod.Spec.Affinity = &corev1.Affinity{PodAntiAffinity: &corev1.PodAntiAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "kafka"}},
+			TopologyKey:   corev1.LabelHostname,
+		}},
+	}}
+	return pod
+}
+
+func boundKubernetesStatus(pods ...*corev1.Pod) longhorn.KubernetesStatus {
+	workloads := []longhorn.WorkloadStatus{}
+	for _, p := range pods {
+		workloads = append(workloads, longhorn.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		})
+	}
+	return longhorn.KubernetesStatus{
+		PVName:          TestPVName,
+		PVStatus:        string(corev1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+	}
+}
+
+func (s *TestSuite) TestSyncVolumeAntiAffinityInheritance(c *C) {
+	testCases := map[string]*KubernetesTestCase{}
+	inheritOn := newSetting(string(types.SettingNameVolumeAntiAffinityFromPod), "true")
+	pending := &longhorn.VolumeAntiAffinity{PendingInheritance: true}
+
+	// The pod spreads itself across nodes: the volume inherits it and the hold is released.
+	tc := generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	tc.pods = []*corev1.Pod{newSpreadPodWithPVC(TestPod1)}
+	tc.volume.Spec.VolumeAntiAffinity = pending.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = types.DeriveVolumeAntiAffinityFromPod(tc.pods[0])
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["inherit from spread pod"] = tc
+
+	// No spread declaration: nothing to inherit, the hold is released.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	tc.volume.Spec.VolumeAntiAffinity = pending.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = nil
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["release hold without spread"] = tc
+
+	// Setting off: the hold is still released, nothing is derived.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.pods = []*corev1.Pod{newSpreadPodWithPVC(TestPod1)}
+	tc.volume.Spec.VolumeAntiAffinity = pending.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = nil
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["release hold with setting off"] = tc
+
+	// Two live pods reference the PVC: existing rules are kept, the hold is released.
+	existing := &longhorn.VolumeAntiAffinity{
+		Labels:             map[string]string{"group": "a"},
+		Selectors:          []metav1.LabelSelector{{MatchLabels: map[string]string{"group": "a"}}},
+		PendingInheritance: true,
+	}
+	tc = generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	tc.pods = []*corev1.Pod{newSpreadPodWithPVC(TestPod1), newSpreadPodWithPVC(TestPod2)}
+	tc.volume.Spec.VolumeAntiAffinity = existing.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = existing.DeepCopy()
+	tc.expectVolume.Spec.VolumeAntiAffinity.PendingInheritance = false
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["skip with several pods"] = tc
+
+	// A terminating pod is ignored, the remaining one is the source.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	terminating := newSpreadPodWithPVC(TestPod2)
+	now := metav1.Now()
+	terminating.DeletionTimestamp = &now
+	terminating.Finalizers = []string{"test"}
+	tc.pods = []*corev1.Pod{newSpreadPodWithPVC(TestPod1), terminating}
+	tc.volume.Spec.VolumeAntiAffinity = pending.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = types.DeriveVolumeAntiAffinityFromPod(tc.pods[0])
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["ignore terminating pod"] = tc
+
+	// The pod no longer declares any spread: the rules derived earlier are removed.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	tc.volume.Spec.VolumeAntiAffinity = existing.DeepCopy()
+	tc.volume.Spec.VolumeAntiAffinity.PendingInheritance = false
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = nil
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["clear rules when the pod declares no spread"] = tc
+
+	// Inheritance disabled on the volume: the existing rule is left untouched.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	tc.volume.Spec.VolumeAntiAffinityFromPod = longhorn.VolumeAntiAffinityFromPodDisabled
+	tc.volume.Spec.VolumeAntiAffinity = existing.DeepCopy()
+	tc.volume.Spec.VolumeAntiAffinity.PendingInheritance = false
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["leave existing rules untouched when disabled"] = tc
+
+	// PV not bound yet: the hold stays.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	tc.pods = []*corev1.Pod{newSpreadPodWithPVC(TestPod1)}
+	tc.pv.Status.Phase = corev1.VolumePending
+	tc.volume.Spec.VolumeAntiAffinity = pending.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{
+		PVName:   TestPVName,
+		PVStatus: string(corev1.VolumePending),
+	}
+	testCases["hold until bound"] = tc
+
+	// The volume opts out explicitly: the global setting is ignored, the hold is released.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.settings = []*longhorn.Setting{inheritOn}
+	tc.pods = []*corev1.Pod{newSpreadPodWithPVC(TestPod1)}
+	tc.volume.Spec.VolumeAntiAffinityFromPod = longhorn.VolumeAntiAffinityFromPodDisabled
+	tc.volume.Spec.VolumeAntiAffinity = pending.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = nil
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["volume disabled overrides setting on"] = tc
+
+	// The volume opts in explicitly while the global setting is off.
+	tc = generateKubernetesTestCaseTemplate()
+	tc.pods = []*corev1.Pod{newSpreadPodWithPVC(TestPod1)}
+	tc.volume.Spec.VolumeAntiAffinityFromPod = longhorn.VolumeAntiAffinityFromPodEnabled
+	tc.volume.Spec.VolumeAntiAffinity = pending.DeepCopy()
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.VolumeAntiAffinity = types.DeriveVolumeAntiAffinityFromPod(tc.pods[0])
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(tc.pods...)
+	testCases["volume enabled overrides setting off"] = tc
+
+	s.runKubernetesTestCases(c, testCases)
 }
