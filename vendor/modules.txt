@@ -330,7 +330,11 @@ github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260809094116-11ca196ed2f8
+=======
+# github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260809.0.20260830145720-5093e4c95410
+>>>>>>> d8074e1 (chore(vendor): update dependencies)
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types

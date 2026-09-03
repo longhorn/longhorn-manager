@@ -651,6 +651,8 @@ type DiskConfig struct {
 	DiskUUID   string              `json:"diskUUID"`
 	DiskDriver longhorn.DiskDriver `json:"diskDriver"`
 	State      string              `json:"state"`
+	// Message is never persisted; it only carries the reason of the current state.
+	Message string `json:"-"`
 }
 
 func MinInt(a, b int) int {
