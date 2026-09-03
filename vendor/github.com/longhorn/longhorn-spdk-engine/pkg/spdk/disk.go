@@ -76,6 +76,12 @@ func (d *Disk) GetState() DiskState {
 	return d.State
 }
 
+func (d *Disk) GetErrorMsg() string {
+	d.RLock()
+	defer d.RUnlock()
+	return d.ErrorMsg
+}
+
 func NewDisk(diskName, diskUUID, diskPath, diskDriver string, blockSize int64) *Disk {
 	// DiskDriver is intentionally left unset: it holds the resolved driver, which
 	// is only known once DiskCreate has translated the requested one.

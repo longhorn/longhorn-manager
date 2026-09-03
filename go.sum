@@ -179,25 +179,14 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4 h1:i4yKSc
 github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4/go.mod h1:tx8IHeQXisTCpcg9gB4S+P8rPifC1D98qpWcDwI19tU=
 github.com/longhorn/go-spdk-helper v0.9.1-0.20260828012436-4ec507083142 h1:UjcSekzUXjujX4N/5GPAnxESwltV4D4Ud9P35OLlvR8=
 github.com/longhorn/go-spdk-helper v0.9.1-0.20260828012436-4ec507083142/go.mod h1:r9Yrw5Pi/tIOPUIU4auCGcKIOfQG3cv7XAzR+4zrnyc=
-<<<<<<< HEAD
-github.com/longhorn/longhorn-engine v1.13.0-rc1.0.20260901083642-db1e9d277ffc h1:mGcQwyISMj1Xezde5d9fOa3kN8KXlP1A7nco7D91iTY=
-github.com/longhorn/longhorn-engine v1.13.0-rc1.0.20260901083642-db1e9d277ffc/go.mod h1:SZByTJ0wAN058xs8RPm0PtwUjMKA1jr8J7/BAmGpxtk=
-github.com/longhorn/longhorn-instance-manager v1.13.0-rc1.0.20260902023438-853849f6643e h1:iSEP1/eOjwb7VuWADmruKi2vuNG30ZosHy4rppJA7cU=
-github.com/longhorn/longhorn-instance-manager v1.13.0-rc1.0.20260902023438-853849f6643e/go.mod h1:M2QmF3JM0EmSE2gH7mqFMRfekTaRjgx8bQP88CqbFOU=
-github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2 h1:fE8sadYwAkWi0euk5igkN8AYj5sCDQ8+jURXRFw8ESM=
-github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260503.0.20260510090948-3e59157e1fb2/go.mod h1:EA3kkZCaW8MvzI2fRpeC1BuSiMN0bEuOlLIl7B0NQkY=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-rc1.0.20260901074345-9d0aefd1e77f h1:HOePsrIlvzYboQqe5HTDw7H1NRFZLsm0okTKJItHY+A=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-rc1.0.20260901074345-9d0aefd1e77f/go.mod h1:R4f7bFUPVfuW+lmkmAyoxvzR1fDd5+BjLsKsc/yWI54=
-=======
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260809.0.20260901065543-e0f8f0952a6e h1:SdlUWjvpNGA237drZEVbnQRDLT/7MgZPd5U4qpU0KVQ=
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260809.0.20260901065543-e0f8f0952a6e/go.mod h1:uAlWrmxnKvGAELDE47gn4Vbg7V+9cIESlyxKFEeQ+EA=
-github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260809.0.20260902015206-8066229072b8 h1:cQ6Mv2p3BYFaq26F3vKMqyWiwnCwGxS6mfb9b7Ru5oo=
-github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260809.0.20260902015206-8066229072b8/go.mod h1:qBAOHKHm2a79EkEpFsvWUbXH9wPkR8tZF6QVjRR/X/M=
-github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260809.0.20260830145720-5093e4c95410 h1:w+mY3UNXln0X6f0FTxR0YxxyuaUT4TUq/987KP06MCI=
-github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260809.0.20260830145720-5093e4c95410/go.mod h1:kGs77fGF+9spg2VJQ1sC6bSKp/OXA4ZYtwr+jAbTXc0=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260809.0.20260901011635-a650e4d8d56f h1:nygp67IVTw5Xdbp+3BK3FA23YjWf3qiAqndzCeKoaK8=
-github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260809.0.20260901011635-a650e4d8d56f/go.mod h1:R4f7bFUPVfuW+lmkmAyoxvzR1fDd5+BjLsKsc/yWI54=
->>>>>>> d8074e1 (chore(vendor): update dependencies)
+github.com/longhorn/longhorn-engine v1.13.0-rc1.0.20260902093145-6f128fa6240b h1:Pb1UizwpHRlN7FCOr7C9gfKoGXt6xW72rLFlbFO3E/I=
+github.com/longhorn/longhorn-engine v1.13.0-rc1.0.20260902093145-6f128fa6240b/go.mod h1:J8psLgIxKGCYmILRZ8QJ+5BLOc+xYRnbodpGqJR2pSA=
+github.com/longhorn/longhorn-instance-manager v1.13.0-rc1.0.20260903055912-6f99fb32f1f2 h1:jI0qx2WB4NLfbMNyWBxFnobpwjFoDcNj5xjofW33ISM=
+github.com/longhorn/longhorn-instance-manager v1.13.0-rc1.0.20260903055912-6f99fb32f1f2/go.mod h1:iW5MfSEWBjXqXTWOUBy5zn6YzpOWUnZ1CnxkLzVMtAE=
+github.com/longhorn/longhorn-share-manager v1.13.0-rc1.0.20260902081105-f6e6992c3228 h1:1RFDsBIICYgB0xgmsWryl7UEZP87WkCgSc7pUHMdv9k=
+github.com/longhorn/longhorn-share-manager v1.13.0-rc1.0.20260902081105-f6e6992c3228/go.mod h1:GOeOVSBU9do6GVxLlDEXPGAqU3MXgT23CUH/gEHMt3w=
+github.com/longhorn/longhorn-spdk-engine v1.13.0-rc1.0.20260903051818-1d9ed82bf531 h1:7nZhhempVV18orzwqnF0NryIZR+Rnz96zn7Cx8N6utg=
+github.com/longhorn/longhorn-spdk-engine v1.13.0-rc1.0.20260903051818-1d9ed82bf531/go.mod h1:IU//FUg+XQ3fOFIuhxydZtlt2c09coXnTrpPf9OsSM0=
 github.com/longhorn/types v0.0.0-20260831072945-0bac432e7872 h1:PzsqquPSCChJa+sPq8yp0pjvw3MR48ieqRcq90+PhYs=
 github.com/longhorn/types v0.0.0-20260831072945-0bac432e7872/go.mod h1:UCRIjvAQyIJWEcacibTptHWvgS/sNUhOX+up1xFSHik=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
