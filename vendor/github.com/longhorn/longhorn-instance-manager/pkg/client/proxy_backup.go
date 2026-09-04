@@ -192,7 +192,7 @@ func (c *ProxyClient) BackupRestore(dataEngine, engineName, volumeName, serviceA
 	return nil
 }
 
-func (c *ProxyClient) BackupRestoreStatus(dataEngine, engineName, volumeName, serviceAddress string) (status map[string]*BackupRestoreStatus, err error) {
+func (c *ProxyClient) BackupRestoreStatus(dataEngine, engineName, volumeName, serviceAddress string) (resp *BackupRestoreStatusResponse, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
@@ -226,9 +226,18 @@ func (c *ProxyClient) BackupRestoreStatus(dataEngine, engineName, volumeName, se
 		return nil, err
 	}
 
-	status = map[string]*BackupRestoreStatus{}
-	for k, v := range recv.Status {
-		status[k] = &BackupRestoreStatus{
+	return convertProxyResponseToBackupRestoreStatus(recv), nil
+}
+
+// convertProxyResponseToBackupRestoreStatus converts the proxy gRPC response
+// into the client-facing BackupRestoreStatusResponse.
+func convertProxyResponseToBackupRestoreStatus(proxyResp *rpc.EngineBackupRestoreStatusProxyResponse) *BackupRestoreStatusResponse {
+	resp := &BackupRestoreStatusResponse{
+		Status:      map[string]*BackupRestoreStatus{},
+		EngineError: proxyResp.EngineError,
+	}
+	for k, v := range proxyResp.Status {
+		resp.Status[k] = &BackupRestoreStatus{
 			IsRestoring:            v.IsRestoring,
 			LastRestored:           v.LastRestored,
 			CurrentRestoringBackup: v.CurrentRestoringBackup,
@@ -239,5 +248,5 @@ func (c *ProxyClient) BackupRestoreStatus(dataEngine, engineName, volumeName, se
 			BackupURL:              v.BackupUrl,
 		}
 	}
-	return status, nil
+	return resp
 }
