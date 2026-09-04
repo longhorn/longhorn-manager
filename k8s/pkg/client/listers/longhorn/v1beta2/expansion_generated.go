@@ -106,6 +106,22 @@ type InstanceManagerListerExpansion interface{}
 // InstanceManagerNamespaceLister.
 type InstanceManagerNamespaceListerExpansion interface{}
 
+// InstanceManagerUpgradeListerExpansion allows custom methods to be added to
+// InstanceManagerUpgradeLister.
+type InstanceManagerUpgradeListerExpansion interface{}
+
+// InstanceManagerUpgradeNamespaceListerExpansion allows custom methods to be added to
+// InstanceManagerUpgradeNamespaceLister.
+type InstanceManagerUpgradeNamespaceListerExpansion interface{}
+
+// InstanceManagerUpgradeControlListerExpansion allows custom methods to be added to
+// InstanceManagerUpgradeControlLister.
+type InstanceManagerUpgradeControlListerExpansion interface{}
+
+// InstanceManagerUpgradeControlNamespaceListerExpansion allows custom methods to be added to
+// InstanceManagerUpgradeControlNamespaceLister.
+type InstanceManagerUpgradeControlNamespaceListerExpansion interface{}
+
 // NodeListerExpansion allows custom methods to be added to
 // NodeLister.
 type NodeListerExpansion interface{}

@@ -683,6 +683,38 @@ func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
 	}
 }
 
+func (s *TestSuite) TestReconcileEngineFrontendKeepsStatusDuringInstanceManagerUpgrade(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	h := newTestInstanceHandler(lhClient, kubeClient, extensionsClient, informerFactories)
+	im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateUpgrading, TestOwnerID1, TestNode1, TestIP1,
+		nil, nil, nil, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
+	c.Assert(imIndexer.Add(im), IsNil)
+
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{Name: ExistingInstance, Namespace: TestNamespace},
+		Spec: longhorn.EngineFrontendSpec{InstanceSpec: longhorn.InstanceSpec{
+			VolumeName:  TestVolumeName,
+			NodeID:      TestNode1,
+			DataEngine:  longhorn.DataEngineTypeV2,
+			DesireState: longhorn.InstanceStateRunning,
+		}},
+		Status: longhorn.EngineFrontendStatus{InstanceStatus: longhorn.InstanceStatus{
+			InstanceManagerName: im.Name,
+			CurrentState:        longhorn.InstanceStateRunning,
+			Started:             true,
+		}},
+	}
+
+	err := h.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus)
+	c.Assert(err, IsNil)
+	c.Assert(ef.Status.CurrentState, Equals, longhorn.InstanceStateRunning)
+}
+
 // stubInstanceManagerHandler is a configurable InstanceManagerHandler stub that records
 // whether CreateInstance and DeleteInstance were invoked.
 type stubInstanceManagerHandler struct {

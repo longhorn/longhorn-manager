@@ -378,6 +378,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	if im != nil {
 		log = log.WithFields(logrus.Fields{"instanceManager": im.Name})
 	}
+	if im != nil && im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
+		if _, ok := obj.(*longhorn.EngineFrontend); ok && spec.DesireState == longhorn.InstanceStateRunning { // A v2 EngineFrontend is kernel-hosted on the source node and remains
+			// active while its instance manager pod is restarted for live upgrade.
+			// Do not reconcile it against transient IM process status.
+			return nil
+		}
+	}
 
 	if spec.LogRequested {
 		if !status.LogFetched {
