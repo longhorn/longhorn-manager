@@ -3,6 +3,7 @@ package client
 import (
 	"net"
 	"path/filepath"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -77,6 +78,52 @@ func DetectAddressFamily(ip string) spdktypes.NvmeAddressFamily {
 	return spdktypes.NvmeAddressFamilyIPv4
 }
 
+// nvmfTransportMu serializes the check-and-create of the NVMe-oF transport.
+// spdk_tgt only rejects a duplicate transport after the first one has been added to every poll group,
+// so concurrent nvmf_create_transport calls can all succeed and leave several transports. Each transport
+// reserves half of the iobuf pools for its per-poll-group caches, so a second one makes the iobuf channel
+// creation of the bdev layer fail, which later crashes spdk_tgt.
+var nvmfTransportMu sync.Mutex
+
+// EnsureNvmfTransport creates the TCP transport if spdk_tgt has no transport yet.
+// It is safe to call concurrently from many goroutines of the same process.
+func (c *Client) EnsureNvmfTransport() error {
+	hasNoTransport := func() (bool, error) {
+		nvmfTransportList, err := c.NvmfGetTransports("", "")
+		if err != nil {
+			return false, err
+		}
+		return len(nvmfTransportList) == 0, nil
+	}
+
+	if noTransport, err := hasNoTransport(); err != nil || !noTransport {
+		return err
+	}
+
+	nvmfTransportMu.Lock()
+	defer nvmfTransportMu.Unlock()
+
+	// Check again: nvmf_create_transport responds only after the transport is visible in
+	// nvmf_get_transports, so a caller that waited for the lock sees the transport created by another one.
+	if noTransport, err := hasNoTransport(); err != nil || !noTransport {
+		return err
+	}
+
+	logrus.Infof("Creating transport with type %v", spdktypes.NvmeTransportTypeTCP)
+	if _, err := c.NvmfCreateTransport(spdktypes.NvmeTransportTypeTCP); err != nil {
+		if jsonrpc.IsJSONRPCRespErrorTransportTypeAlreadyExists(err) {
+			return nil
+		}
+		// A duplicate that spdk_tgt only detects after the transport setup is reported as a generic
+		// "Failed to add transport to tgt.(-17)" error instead, so verify by listing the transports.
+		if noTransport, listErr := hasNoTransport(); listErr == nil && !noTransport {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 // StartExposeBdev exposes the bdev with the given nqn, bdevName, nguid, ip, and port.
 // If allowedHostNQNs is not empty, only those hosts can connect and the subsystem is
 // hidden from other hosts' discovery log pages.
@@ -85,15 +132,8 @@ func (c *Client) StartExposeBdev(nqn, bdevName, nguid, ip, port string, allowedH
 
 	logrus.Infof("Exposing bdev with nqn %v, bdevName %v, nguid %v, ip %v, port %v, allowedHostNQNs %v", nqn, bdevName, nguid, ip, port, allowedHostNQNs)
 
-	nvmfTransportList, err := c.NvmfGetTransports("", "")
-	if err != nil {
+	if err := c.EnsureNvmfTransport(); err != nil {
 		return err
-	}
-	if nvmfTransportList != nil && len(nvmfTransportList) == 0 {
-		logrus.Infof("Creating transport with type %v", spdktypes.NvmeTransportTypeTCP)
-		if _, err := c.NvmfCreateTransport(spdktypes.NvmeTransportTypeTCP); err != nil && !jsonrpc.IsJSONRPCRespErrorTransportTypeAlreadyExists(err) {
-			return err
-		}
 	}
 
 	logrus.Infof("Creating subsystem with nqn %v", nqn)
@@ -135,15 +175,8 @@ func (c *Client) StartExposeBdevWithANAState(nqn, bdevName, nguid, nsUUID, ip, p
 	logrus.Infof("Exposing bdev with nqn %v, bdevName %v, nguid %v, nsUUID %v, ip %v, port %v, anaState %v, minCntlid %v, maxCntlid %v",
 		nqn, bdevName, nguid, nsUUID, ip, port, anaState, minCntlid, maxCntlid)
 
-	nvmfTransportList, err := c.NvmfGetTransports("", "")
-	if err != nil {
+	if err := c.EnsureNvmfTransport(); err != nil {
 		return err
-	}
-	if nvmfTransportList != nil && len(nvmfTransportList) == 0 {
-		logrus.Infof("Creating transport with type %v", spdktypes.NvmeTransportTypeTCP)
-		if _, err := c.NvmfCreateTransport(spdktypes.NvmeTransportTypeTCP); err != nil && !jsonrpc.IsJSONRPCRespErrorTransportTypeAlreadyExists(err) {
-			return err
-		}
 	}
 
 	logrus.Infof("Creating subsystem with nqn %v, minCntlid %v, maxCntlid %v", nqn, minCntlid, maxCntlid)
