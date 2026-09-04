@@ -190,6 +190,18 @@ type EngineStatus struct {
 	// +optional
 	// +nullable
 	RestoreStatus map[string]*RestoreStatus `json:"restoreStatus"`
+	// EngineRestoreError is set when a backup restore fails with an error
+	// that cannot be attributed to a current replica, for example when the
+	// backup target is unreachable or the replica that failed has already
+	// been removed from the engine. It is cleared when the next restore
+	// attempt starts, and set again if that attempt fails. Longhorn retries
+	// the restore within a time budget and then gives up. Only the V2 Data
+	// Engine reports it.
+	//
+	// Errors attributed to a current replica appear in that replica's
+	// RestoreStatus entry instead and fail only that replica.
+	// +optional
+	EngineRestoreError string `json:"engineRestoreError,omitempty"`
 	// +optional
 	// +nullable
 	PurgeStatus map[string]*PurgeStatus `json:"purgeStatus"`
