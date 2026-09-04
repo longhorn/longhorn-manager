@@ -65,15 +65,15 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.13.0
-	github.com/longhorn/backupstore v0.0.0-20261023052728-3d3f7521be06
+	github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085
 	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
 	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
-	github.com/longhorn/go-spdk-helper v0.13.0
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261022032333-9d9ec498d885
-	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20261028141142-f667f1573ab2
+	github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00
+	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20261108063739-9add1bfc8a66
 	github.com/longhorn/longhorn-share-manager v1.13.1-dev-20261018
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20261028090605-69ce68f87f06
-	github.com/longhorn/types v0.0.0-20261023101212-edea52fc05df
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20261106065750-3f0585f27707
+	github.com/longhorn/types v0.0.0-20261030035820-c6ac902022cf
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.9.4
@@ -84,7 +84,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.84.0
@@ -141,7 +141,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/renameio/v2 v2.0.2 // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
@@ -175,8 +175,8 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
-	github.com/gammazero/deque v1.2.1 // indirect
-	github.com/gammazero/workerpool v1.2.1 // indirect
+	github.com/gammazero/deque v1.2.2 // indirect
+	github.com/gammazero/workerpool v1.2.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/go-openapi/jsonreference v1.0.0 // indirect

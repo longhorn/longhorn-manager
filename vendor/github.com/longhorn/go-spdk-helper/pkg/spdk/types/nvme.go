@@ -137,6 +137,60 @@ type BdevNvmeGetControllersRequest struct {
 	Name string `json:"name,omitempty"`
 }
 
+// BdevNvmeQpairState is the qpair_state string in bdev_nvme_get_io_paths
+// output.
+type BdevNvmeQpairState string
+
+const (
+	BdevNvmeQpairStateDisconnected  = BdevNvmeQpairState("DISCONNECTED")
+	BdevNvmeQpairStateDisconnecting = BdevNvmeQpairState("DISCONNECTING")
+	BdevNvmeQpairStateConnecting    = BdevNvmeQpairState("CONNECTING")
+	BdevNvmeQpairStateConnected     = BdevNvmeQpairState("CONNECTED")
+	BdevNvmeQpairStateEnabling      = BdevNvmeQpairState("ENABLING")
+	BdevNvmeQpairStateEnabled       = BdevNvmeQpairState("ENABLED")
+	BdevNvmeQpairStateDestroying    = BdevNvmeQpairState("DESTROYING")
+)
+
+type BdevNvmeGetIoPathsRequest struct {
+	// Name of a namespace bdev (e.g. "Nvme0n1"), not a controller ("Nvme0").
+	Name string `json:"name,omitempty"`
+}
+
+// BdevNvmeGetIoPathsResponse is the wrapper object returned by
+// bdev_nvme_get_io_paths.
+type BdevNvmeGetIoPathsResponse struct {
+	PollGroups []BdevNvmePollGroupIoPaths `json:"poll_groups"`
+}
+
+type BdevNvmePollGroupIoPaths struct {
+	Thread  string           `json:"thread"`
+	IoPaths []BdevNvmeIoPath `json:"io_paths"`
+}
+
+type BdevNvmeIoPath struct {
+	BdevName   string `json:"bdev_name"`
+	Cntlid     uint16 `json:"cntlid"`
+	Current    bool   `json:"current"`
+	Connected  bool   `json:"connected"`
+	Accessible bool   `json:"accessible"`
+
+	// State is the qpair state. Only the Longhorn SPDK fork reports it
+	// (longhorn/spdk#81, longhorn-v26.05); upstream SPDK leaves it empty.
+	State BdevNvmeQpairState `json:"qpair_state,omitempty"`
+
+	Transport BdevNvmeIoPathTransport `json:"transport"`
+}
+
+// BdevNvmeIoPathTransport holds the transport ID of an I/O path. SPDK reports
+// trtype and adrfam in uppercase (e.g. "TCP", "IPv4"), so these fields do not
+// match the lowercase NvmeTransportType and NvmeAddressFamily constants.
+type BdevNvmeIoPathTransport struct {
+	Trtype  string `json:"trtype,omitempty"`
+	Traddr  string `json:"traddr,omitempty"`
+	Trsvcid string `json:"trsvcid,omitempty"`
+	Adrfam  string `json:"adrfam,omitempty"`
+}
+
 // UnknownTemperature represents an unknown/invalid NVMe temperature reading (in Celsius).
 // SPDK may emit an underflowed unsigned value when converting Kelvin to Celsius; map such
 // outliers to this sentinel at the client layer.
