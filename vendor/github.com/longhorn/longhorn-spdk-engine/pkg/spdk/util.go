@@ -258,6 +258,82 @@ func waitForNVMfBdevDetached(spdkClient *spdkclient.Client, bdevName, controller
 	)
 }
 
+// nvmeIOPathsOfBdev keeps only the paths of bdevName in each poll group. The
+// result has the shape of a bdev_nvme_get_io_paths response for that one
+// bdev, so it can be fed to nvmeEveryPollGroupHasUsableIOPath.
+func nvmeIOPathsOfBdev(pollGroups []spdktypes.BdevNvmePollGroupIoPaths, bdevName string) []spdktypes.BdevNvmePollGroupIoPaths {
+	filtered := make([]spdktypes.BdevNvmePollGroupIoPaths, 0, len(pollGroups))
+	for _, pollGroup := range pollGroups {
+		var ioPaths []spdktypes.BdevNvmeIoPath
+		for _, ioPath := range pollGroup.IoPaths {
+			if ioPath.BdevName == bdevName {
+				ioPaths = append(ioPaths, ioPath)
+			}
+		}
+		filtered = append(filtered, spdktypes.BdevNvmePollGroupIoPaths{Thread: pollGroup.Thread, IoPaths: ioPaths})
+	}
+	return filtered
+}
+
+// nvmeEveryPollGroupHasUsableIOPath reports whether every poll group that
+// lists paths for the bdev has a usable I/O path. Each poll group is one
+// reactor thread. SPDK keeps one I/O path list per reactor and searches only
+// the current reactor's list, so a usable path on one reactor does not help
+// I/O issued from a reactor without one. Poll groups without paths for the
+// bdev are skipped: they have no channel for it and issue no I/O to it.
+func nvmeEveryPollGroupHasUsableIOPath(pollGroups []spdktypes.BdevNvmePollGroupIoPaths) (usable bool, detail string) {
+	anyPollGroupHasIOPaths := false
+	unusablePollGroupDetails := []string{}
+	for _, pollGroup := range pollGroups {
+		if len(pollGroup.IoPaths) == 0 {
+			continue
+		}
+		anyPollGroupHasIOPaths = true
+		if pollGroupUsable, pollGroupDetail := nvmePollGroupHasUsableIOPath(pollGroup); !pollGroupUsable {
+			unusablePollGroupDetails = append(unusablePollGroupDetails, pollGroupDetail)
+		}
+	}
+	if !anyPollGroupHasIOPaths {
+		return false, "no I/O paths"
+	}
+	if len(unusablePollGroupDetails) > 0 {
+		return false, strings.Join(unusablePollGroupDetails, "; ")
+	}
+	return true, ""
+}
+
+// nvmePollGroupHasUsableIOPath reports whether one poll group has a usable
+// I/O path. When it has none, the detail names the poll group thread and
+// lists the state of each path.
+func nvmePollGroupHasUsableIOPath(pollGroup spdktypes.BdevNvmePollGroupIoPaths) (usable bool, detail string) {
+	pathDetails := make([]string, 0, len(pollGroup.IoPaths))
+	for _, ioPath := range pollGroup.IoPaths {
+		if nvmeIOPathIsUsable(ioPath) {
+			return true, ""
+		}
+		pathDetails = append(pathDetails, fmt.Sprintf("connected=%v accessible=%v qpair_state=%q", ioPath.Connected, ioPath.Accessible, ioPath.State))
+	}
+	return false, fmt.Sprintf("thread=%s: %s", pollGroup.Thread, strings.Join(pathDetails, ", "))
+}
+
+// nvmeIOPathIsUsable reports whether a single I/O path can serve I/O.
+//
+// A path is usable when bdev_nvme reports it connected, the namespace is
+// accessible, and the qpair is CONNECTED or ENABLED. CONNECTED is the normal
+// state of a qpair that has not carried I/O yet; SPDK enables it on the first
+// submit. Older targets do not report qpair_state, so State is empty; only the
+// connected and accessible flags are checked then.
+func nvmeIOPathIsUsable(ioPath spdktypes.BdevNvmeIoPath) bool {
+	if !ioPath.Connected || !ioPath.Accessible {
+		return false
+	}
+	switch ioPath.State {
+	case "", spdktypes.BdevNvmeQpairStateConnected, spdktypes.BdevNvmeQpairStateEnabled:
+		return true
+	}
+	return false
+}
+
 func GetSnapXattr(spdkClient *spdkclient.Client, alias, key string) (string, error) {
 	value, err := spdkClient.BdevLvolGetXattr(alias, key)
 	if err != nil {
