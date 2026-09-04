@@ -73,9 +73,30 @@ type EngineFrontend struct {
 	// UpdateCh should not be protected by the engine lock
 	UpdateCh chan interface{}
 
-	// stopCh is closed when the engine frontend is deleted to signal
-	// background goroutines to abort early.
-	stopCh chan struct{}
+	// Closing stopCh tells background goroutines to stop early. It is closed
+	// when the engine frontend is deleted. For a restore frontend it is also
+	// closed when its engine is deleted. Close it only through signalStop.
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
+	// unregisterRestoreFrontendFn removes this frontend from the server's
+	// restoreFrontendMap. While the entry exists, the server rejects new
+	// restores for the engine, because this frontend's data path may still
+	// exist and could break a new restore's NVMe connection.
+	//
+	// The server sets this for restore frontends; it is nil otherwise.
+	// Call it through unregisterRestoreFrontend, never directly.
+	unregisterRestoreFrontendFn   func()
+	unregisterRestoreFrontendOnce sync.Once
+
+	// restoreTeardownDone is closed once the restore data path teardown of
+	// this restore frontend can no longer touch the host: either the teardown
+	// goroutine has returned, or BackupRestore failed before an initiator was
+	// attached and there is nothing to tear down. EngineDelete waits on it so
+	// a recreated engine does not race a disconnect that is still running.
+	// Close it only through markRestoreTeardownDone.
+	restoreTeardownDone     chan struct{}
+	restoreTeardownDoneOnce sync.Once
 
 	// Test hook for switchover target engine name resolution.
 	resolveEngineNameByTargetAddressFn func(targetAddress string) (string, error)
@@ -241,9 +262,10 @@ func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend stri
 		State:    types.InstanceStatePending,
 		ErrorMsg: "",
 
-		UpdateCh: engineFrontendUpdateCh,
-		stopCh:   make(chan struct{}),
-		log:      safelog.NewSafeLogger(log),
+		UpdateCh:            engineFrontendUpdateCh,
+		stopCh:              make(chan struct{}),
+		restoreTeardownDone: make(chan struct{}),
+		log:                 safelog.NewSafeLogger(log),
 
 		newServiceClient: newServiceClient,
 	}
@@ -698,6 +720,35 @@ func (ef *EngineFrontend) Create(spdkClient *spdkclient.Client, targetAddress st
 	return
 }
 
+// signalStop closes stopCh so background goroutines stop early. It is safe
+// to call more than once.
+func (ef *EngineFrontend) signalStop() {
+	ef.stopOnce.Do(func() { close(ef.stopCh) })
+}
+
+// markRestoreTeardownDone closes restoreTeardownDone. It is safe to call
+// more than once.
+func (ef *EngineFrontend) markRestoreTeardownDone() {
+	ef.restoreTeardownDoneOnce.Do(func() { close(ef.restoreTeardownDone) })
+}
+
+// restoreSetupAborted reports whether the engine was deleted while the
+// restore setup was running. EngineDelete removes the engine and closes
+// stopCh before it waits for the restore teardown; a setup stage that runs
+// after that would create host resources belonging to no engine.
+// BackupRestore checks before every stage that creates host state and before
+// starting the restore. A deletion that lands between two checks is caught
+// by the next one, and the staged cleanup removes what the earlier stages
+// created.
+func (ef *EngineFrontend) restoreSetupAborted() bool {
+	select {
+	case <-ef.stopCh:
+		return true
+	default:
+		return false
+	}
+}
+
 func (ef *EngineFrontend) Delete(spdkClient *spdkclient.Client) (err error) {
 	requireUpdate := false
 
@@ -741,13 +792,7 @@ func (ef *EngineFrontend) Delete(spdkClient *spdkclient.Client) (err error) {
 		}
 	}()
 
-	// Signal background goroutines to stop.
-	select {
-	case <-ef.stopCh:
-		// Already closed.
-	default:
-		close(ef.stopCh)
-	}
+	ef.signalStop()
 
 	ef.log.WithField("hasInitiator", ef.initiator != nil).Info("Deleting engine frontend")
 
@@ -2796,8 +2841,41 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 // Flow: EngineFrontend.BackupRestore -> Engine.BackupRestore
 func (ef *EngineFrontend) BackupRestore(engine *Engine, spdkClient *spdkclient.Client, backupUrl string, credential map[string]string, concurrentLimit int32, superiorPortAllocator *commonbitmap.Bitmap) (resp *spdkrpc.EngineBackupRestoreResponse, err error) {
 	ef.log.Infof("Starting backup restore for backup %s", backupUrl)
+	// The restore is set up in stages. Each flag below turns true when its
+	// stage completes. If the restore fails, the deferred cleanup checks
+	// these flags and cleans up only the completed stages.
 	targetPrepared := false
 	frontendPrepared := false
+	frontendMarkedRestoring := false
+
+	defer func() {
+		if err != nil {
+			if targetPrepared {
+				engine.cleanupTemporaryNvmeTcpTargetForRestore(spdkClient, superiorPortAllocator, "restore flow failure")
+			}
+			if frontendPrepared {
+				// Do not block the failing RPC on the teardown retries; the
+				// goroutine publishes the final frontend state.
+				go ef.teardownRestoreFrontend()
+			} else {
+				if frontendMarkedRestoring {
+					ef.Lock()
+					ef.IsRestoring = false
+					ef.Frontend = ""
+					ef.Unlock()
+				}
+				// The initiator was never attached to the frontend, so there
+				// is no handle to tear down. A partial NVMe path left by a
+				// failed createNvmeTcpFrontend is removed by the blind stop at
+				// the start of the next StartNvmeTCPInitiator. The engine can
+				// accept a new restore right away.
+				ef.unregisterRestoreFrontend()
+				ef.markRestoreTeardownDone()
+			}
+		} else {
+			ef.UpdateCh <- nil
+		}
+	}()
 
 	ef.Lock()
 	if ef.isCreating {
@@ -2815,29 +2893,21 @@ func (ef *EngineFrontend) BackupRestore(engine *Engine, spdkClient *spdkclient.C
 	ef.IsRestoring = true
 	ef.Frontend = types.FrontendSPDKTCPBlockdev
 	ef.Unlock()
+	frontendMarkedRestoring = true
 
-	defer func() {
-		if err != nil {
-			if targetPrepared {
-				engine.cleanupTemporaryNvmeTcpTargetForRestore(spdkClient, superiorPortAllocator, "restore flow failure")
-			}
-			if frontendPrepared {
-				ef.teardownRestoreInitiator(spdkClient)
-			}
-			ef.Lock()
-			ef.IsRestoring = false
-			ef.Frontend = ""
-			ef.Unlock()
-		} else {
-			ef.UpdateCh <- nil
-		}
-	}()
+	if ef.restoreSetupAborted() {
+		return nil, fmt.Errorf("engine %s is being deleted; aborting the backup restore setup", engine.Name)
+	}
 
 	// Ensure the engine has a NVMe-TCP target to connect to (creates one if absent).
 	if err := engine.ensureNvmeTcpTargetForRestore(spdkClient, superiorPortAllocator); err != nil {
 		return nil, errors.Wrapf(err, "engine %s: failed to ensure NVMe-TCP target for backup restore", engine.Name)
 	}
 	targetPrepared = true
+
+	if ef.restoreSetupAborted() {
+		return nil, fmt.Errorf("engine %s is being deleted; aborting the backup restore setup", engine.Name)
+	}
 
 	engine.RLock()
 	targetAddress := net.JoinHostPort(engine.NvmeTcpTarget.IP, strconv.Itoa(int(engine.NvmeTcpTarget.Port)))
@@ -2857,6 +2927,10 @@ func (ef *EngineFrontend) BackupRestore(engine *Engine, spdkClient *spdkclient.C
 		return nil, fmt.Errorf("engine frontend %s has no endpoint after frontend setup for backup restore", ef.Name)
 	}
 
+	if ef.restoreSetupAborted() {
+		return nil, fmt.Errorf("engine %s is being deleted; aborting the backup restore setup", engine.Name)
+	}
+
 	ef.log.Infof("Using endpoint %s for backup restore", endpoint)
 	resp, doneCh, err := engine.BackupRestore(spdkClient, backupUrl, endpoint, credential, concurrentLimit, superiorPortAllocator)
 	if err != nil {
@@ -2867,27 +2941,213 @@ func (ef *EngineFrontend) BackupRestore(engine *Engine, spdkClient *spdkclient.C
 	go func() {
 		<-doneCh
 		ef.log.Info("Backup restore complete, tearing down NVMe-TCP frontend")
-		ef.teardownRestoreInitiator(spdkClient)
-
-		ef.Lock()
-		ef.IsRestoring = false
-		ef.Unlock()
-		ef.UpdateCh <- nil
+		ef.teardownRestoreFrontend()
 	}()
 
 	return resp, nil
 }
 
-func (ef *EngineFrontend) teardownRestoreInitiator(spdkClient *spdkclient.Client) {
+// unregisterRestoreFrontend removes this frontend from the server's
+// restoreFrontendMap, allowing the engine to accept a new restore. It is
+// safe to call multiple times and on frontends that were never registered.
+func (ef *EngineFrontend) unregisterRestoreFrontend() {
+	if ef.unregisterRestoreFrontendFn == nil {
+		return
+	}
+	ef.unregisterRestoreFrontendOnce.Do(ef.unregisterRestoreFrontendFn)
+}
+
+// restoreInitiatorTeardownRetryInterval and restoreInitiatorTeardownTimeout
+// bound the retries of the restore initiator teardown. They are package-level
+// variables so tests can adjust them.
+var (
+	restoreInitiatorTeardownRetryInterval = 5 * time.Second
+	restoreInitiatorTeardownTimeout       = 2 * time.Minute
+)
+
+// restoreTeardownWaitTimeout bounds how long EngineDelete waits for the
+// deleted engine's restore data path teardown to end. The wait covers the
+// operation that is still running when the stop arrives: the connect in
+// BackupRestore, the disconnect in teardownRestoreInitiator, or the restore
+// unwinding after its cancel. When the stop arrives before the teardown's
+// first attempt, the teardown makes one final disconnect after that
+// operation; after a failed attempt it makes none. So the wait covers at
+// most the running operation followed by one disconnect.
+//
+// 150s covers the go-spdk-helper lock-file wait (120s) with slack and keeps
+// the delete RPC under the manager's 3 minute deadline when the engine
+// deletion itself was quick. It cannot cover the true worst case, the lock
+// wait followed by the 180s nvme command timeout, which is why expiry does
+// not remove the restore frontend entry. See Server.waitForRestoreTeardown.
+//
+// It is a package-level variable so tests can adjust it.
+var restoreTeardownWaitTimeout = 150 * time.Second
+
+// teardownRestoreFrontend tears down the temporary restore data path, retrying
+// failures until the teardown timeout, and then publishes the final frontend
+// state. The outcome decides what happens next:
+//
+//   - Success: the frontend is unregistered from the server's
+//     restoreFrontendMap, so the engine can accept a new restore.
+//   - Retries exhausted: the frontend moves to the error state and stays
+//     registered, because a stale data path must not accept a new restore.
+//     The error message names the NQN whose kernel controller may still be
+//     connected. Nothing reads this frontend's status directly; the error
+//     reaches the caller through restoreTeardownBlockReason, in the
+//     rejection of the next restore or engine frontend create for the same
+//     volume. Deleting the engine unregisters the frontend. Nothing
+//     re-attempts the disconnect, because the restore frontend has no delete
+//     path of its own.
+//   - Engine deleted: the frontend is unregistered so the engine does not
+//     reject restores forever. How many more attempts run depends on where
+//     the stop is seen. At the top of the loop, before an attempt, the loop
+//     makes one final attempt and then unregisters whatever the outcome. The
+//     frontend is still registered during that attempt, so the volume NQN is
+//     still blocked and the disconnect cannot reach a recreated engine's
+//     connection. Without it, a delete during the restore would leave the
+//     kernel controller, the dm device and the endpoint on the host until
+//     the next initiator start for the volume. After a failed attempt, no
+//     further attempt is made and the frontend state is left untouched: a
+//     retry right after a failure rarely helps and would only extend the
+//     delete. An attempt already inside the disconnect runs to its end
+//     first. EngineDelete waits for all of this on restoreTeardownDone,
+//     bounded by restoreTeardownWaitTimeout.
+//
+// It blocks between retries and must run in its own goroutine.
+func (ef *EngineFrontend) teardownRestoreFrontend() {
+	defer ef.markRestoreTeardownDone()
+
+	deadline := time.Now().Add(restoreInitiatorTeardownTimeout)
+	var teardownErr error
+	for {
+		// Check before every attempt, including the first. The engine may
+		// already be deleted by the time this goroutine starts. The target is
+		// gone with the engine, but the kernel controller, the dm device and
+		// the endpoint are still on the host, so make one final attempt and
+		// then unregister whatever the outcome. The frontend is still
+		// registered here, so the attempt cannot reach a recreated engine.
+		select {
+		case <-ef.stopCh:
+			ef.log.Info("Making one final restore initiator teardown attempt because the engine is being deleted")
+			finalErr := ef.teardownRestoreInitiator()
+			ef.Lock()
+			ef.IsRestoring = false
+			endpoint := ef.Endpoint
+			ef.Unlock()
+			if finalErr != nil {
+				ef.log.WithError(finalErr).Warnf("Failed the final restore initiator teardown attempt for the deleted engine; the kernel controller for %v, the dm device and the endpoint %v may remain on the host until the next initiator start for the volume", ef.VolumeNQN, endpoint)
+			}
+			ef.unregisterRestoreFrontend()
+			return
+		default:
+		}
+
+		teardownErr = ef.teardownRestoreInitiator()
+		if teardownErr == nil {
+			break
+		}
+
+		// The engine may have been deleted while the attempt was running.
+		// The attempt has ended, so it can no longer reach a recreated
+		// engine, and the deleted engine no longer needs the restore
+		// frontend entry to block new restores: unregister even though the
+		// attempt failed, so the entry does not outlive the engine. This is
+		// the only exit that runs after a failed attempt without marking the
+		// frontend error.
+		select {
+		case <-ef.stopCh:
+			ef.log.WithError(teardownErr).Info("Stopping the restore initiator teardown after a failed attempt because the engine is being deleted")
+			ef.unregisterRestoreFrontend()
+			return
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			break
+		}
+		ef.log.WithError(teardownErr).Warnf("Failed to tear down the restore initiator, retrying in %v; giving up in %v", restoreInitiatorTeardownRetryInterval, time.Until(deadline).Truncate(time.Second))
+		select {
+		case <-time.After(restoreInitiatorTeardownRetryInterval):
+		case <-ef.stopCh:
+			// The engine is being deleted. Stop retrying without touching
+			// the frontend state: the last attempt just failed, and another
+			// one right away would only extend the delete. Unregister the
+			// restore frontend; otherwise the entry outlives the frontend and
+			// blocks the engine's restores forever.
+			ef.log.Info("Stopping the restore initiator teardown retries because the engine is being deleted")
+			ef.unregisterRestoreFrontend()
+			return
+		}
+	}
+
+	ef.Lock()
+	if teardownErr != nil {
+		ef.State = types.InstanceStateError
+		ef.ErrorMsg = fmt.Sprintf("failed to tear down the restore initiator within %v; the NVMe connection to %v may still be held: %v", restoreInitiatorTeardownTimeout, ef.VolumeNQN, teardownErr)
+		ef.log.Error(ef.ErrorMsg)
+	}
+	ef.IsRestoring = false
+	ef.Unlock()
+	if teardownErr == nil {
+		ef.log.Info("Unregistering the restore frontend after the successful data path teardown; the engine can accept a new restore")
+		ef.unregisterRestoreFrontend()
+	}
+	ef.UpdateCh <- nil
+}
+
+// restoreTeardownBlockReason describes why this registered restore frontend
+// still blocks its volume NQN, for use in the FailedPrecondition errors that
+// reject a new restore or a new engine frontend. While the teardown is
+// running it names the frontend and its state. Once the teardown has given
+// up it also includes the teardown error, which is not reported anywhere
+// else.
+func (ef *EngineFrontend) restoreTeardownBlockReason() string {
+	ef.RLock()
+	defer ef.RUnlock()
+
+	reason := fmt.Sprintf("the restore frontend %v (state %v) has not finished tearing down its data path", ef.Name, ef.State)
+	if ef.ErrorMsg != "" {
+		reason = fmt.Sprintf("%v: %v", reason, ef.ErrorMsg)
+	}
+	return reason
+}
+
+// stopRestoreInitiator tears down a restore initiator's host-side data path.
+// It is a package-level variable so tests can substitute a blocking or
+// failing implementation.
+var stopRestoreInitiator = func(i *initiator.Initiator) error {
+	return i.StopDisconnectFirst()
+}
+
+// teardownRestoreInitiator makes one attempt to tear down the temporary
+// restore data path. On success it clears the connection state and reports
+// the frontend as stopped, so the control plane can recreate a normal attach
+// frontend instead of treating this now-empty process as still ready. On
+// failure it keeps the initiator handle and the connection state untouched,
+// so the next attempt starts from the same state.
+func (ef *EngineFrontend) teardownRestoreInitiator() error {
+	ef.RLock()
+	restoreInitiator := ef.initiator
+	ef.RUnlock()
+
+	// The disconnect runs without the frontend lock. It can block for a long
+	// time on the host lock file and the nvme disconnect, and the server reads
+	// this frontend under its own lock (validateVolumeReadyForFrontendLocked,
+	// restoreTeardownBlockReason); holding the lock here would stall every RPC
+	// queued behind those. Dropping it is safe because this goroutine is the
+	// only user of the initiator once BackupRestore has returned: the restore
+	// frontend is not in engineFrontendMap, so no frontend RPC reaches it, and
+	// engine deletion only closes stopCh.
+	if restoreInitiator != nil {
+		if err := stopRestoreInitiator(restoreInitiator); err != nil {
+			return err
+		}
+	}
+
 	ef.Lock()
 	defer ef.Unlock()
 
-	if ef.initiator != nil {
-		if _, stopErr := ef.initiator.Stop(spdkClient, true, true, true); stopErr != nil {
-			ef.log.WithError(stopErr).Warn("Failed to stop NVMe-TCP initiator after backup restore")
-		}
-		ef.initiator = nil
-	}
+	ef.initiator = nil
 	ef.Endpoint = ""
 	ef.Frontend = ""
 
@@ -2898,11 +3158,18 @@ func (ef *EngineFrontend) teardownRestoreInitiator(spdkClient *spdkclient.Client
 		ef.NvmeTcpFrontend.Nguid = ""
 	}
 
-	// The restore frontend is only a temporary data path. Once it is torn down,
-	// report the frontend as stopped so the control plane can recreate a normal
-	// attach frontend instead of treating this now-empty process as still ready.
-	if ef.State != types.InstanceStateError {
+	// Keep the error and terminating states as they are; only a frontend in
+	// any other state is marked stopped here.
+	//
+	// No current caller reaches this guard in either state. The teardown
+	// goroutine is the only caller, it calls this function only during its
+	// attempts, and the frontend enters the error state only after the
+	// attempts end. The terminating state is set by Delete, which the restore
+	// frontend never goes through. The guard stays so that a future caller in
+	// either state is not marked stopped here.
+	if ef.State != types.InstanceStateError && ef.State != types.InstanceStateTerminating {
 		ef.State = types.InstanceStateStopped
 		ef.ErrorMsg = ""
 	}
+	return nil
 }
