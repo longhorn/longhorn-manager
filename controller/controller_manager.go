@@ -160,6 +160,14 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	instanceManagerUpgradeController, err := NewInstanceManagerUpgradeController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	instanceManagerUpgradeControlController, err := NewInstanceManagerUpgradeControlController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	shardGroupController, err := NewShardGroupController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	if err != nil {
 		return nil, err
@@ -226,6 +234,8 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeEvictionController.Run(Workers, stopCh)
 	go volumeCloneController.Run(Workers, stopCh)
 	go volumeExpansionController.Run(Workers, stopCh)
+	go instanceManagerUpgradeController.Run(Workers, stopCh)
+	go instanceManagerUpgradeControlController.Run(Workers, stopCh)
 	go shardGroupController.Run(Workers, stopCh)
 
 	// Start goroutines for Kubernetes controllers

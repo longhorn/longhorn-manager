@@ -10,6 +10,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -76,11 +77,13 @@ type NodeControllerSuite struct {
 
 	informerFactories *util.InformerFactories
 
-	lhNodeIndexer            cache.Indexer
-	lhReplicaIndexer         cache.Indexer
-	lhSettingsIndexer        cache.Indexer
-	lhInstanceManagerIndexer cache.Indexer
-	lhOrphanIndexer          cache.Indexer
+	lhNodeIndexer                          cache.Indexer
+	lhReplicaIndexer                       cache.Indexer
+	lhSettingsIndexer                      cache.Indexer
+	lhInstanceManagerIndexer               cache.Indexer
+	lhInstanceManagerUpgradeIndexer        cache.Indexer
+	lhInstanceManagerUpgradeControlIndexer cache.Indexer
+	lhOrphanIndexer                        cache.Indexer
 
 	podIndexer  cache.Indexer
 	nodeIndexer cache.Indexer
@@ -93,13 +96,15 @@ type NodeControllerSuite struct {
 // This data type contains resource that exist in the cluster environment, like
 // nodes and pods
 type NodeControllerFixture struct {
-	lhNodes            map[string]*longhorn.Node
-	lhReplicas         []*longhorn.Replica
-	lhSettings         map[string]*longhorn.Setting
-	lhInstanceManagers map[string]*longhorn.InstanceManager
-	lhOrphans          map[string]*longhorn.Orphan
-	pods               map[string]*corev1.Pod
-	nodes              map[string]*corev1.Node
+	lhNodes                          map[string]*longhorn.Node
+	lhReplicas                       []*longhorn.Replica
+	lhSettings                       map[string]*longhorn.Setting
+	lhInstanceManagers               map[string]*longhorn.InstanceManager
+	lhInstanceManagerUpgrades        map[string]*longhorn.InstanceManagerUpgrade
+	lhInstanceManagerUpgradeControls map[string]*longhorn.InstanceManagerUpgradeControl
+	lhOrphans                        map[string]*longhorn.Orphan
+	pods                             map[string]*corev1.Pod
+	nodes                            map[string]*corev1.Node
 }
 
 // This data type contains expected results in the form of resources. Each test
@@ -129,6 +134,8 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 	s.lhReplicaIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 	s.lhSettingsIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 	s.lhInstanceManagerIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	s.lhInstanceManagerUpgradeIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	s.lhInstanceManagerUpgradeControlIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgradeControls().Informer().GetIndexer()
 	s.lhOrphanIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Orphans().Informer().GetIndexer()
 
 	s.podIndexer = s.informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
@@ -2556,6 +2563,22 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 		c.Assert(err, IsNil)
 	}
 
+	for _, instanceManagerUpgrade := range fixture.lhInstanceManagerUpgrades {
+		imu, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), instanceManagerUpgrade, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imu, NotNil)
+		err = s.lhInstanceManagerUpgradeIndexer.Add(imu)
+		c.Assert(err, IsNil)
+	}
+
+	for _, instanceManagerUpgradeControl := range fixture.lhInstanceManagerUpgradeControls {
+		imuc, err := s.lhClient.LonghornV1beta2().InstanceManagerUpgradeControls(TestNamespace).Create(context.TODO(), instanceManagerUpgradeControl, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imuc, NotNil)
+		err = s.lhInstanceManagerUpgradeControlIndexer.Add(imuc)
+		c.Assert(err, IsNil)
+	}
+
 	for _, orphan := range fixture.lhOrphans {
 		o, err := s.lhClient.LonghornV1beta2().Orphans(TestNamespace).Create(context.TODO(), orphan, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -2892,4 +2915,240 @@ func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusKeepsFilesystemDiskUntou
 	c.Assert(diskStatus.Type, Equals, longhorn.DiskTypeFilesystem)
 	c.Assert(diskStatus.DiskPath, Equals, specDiskPath)
 	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusTrue)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersDoesNotCreateDefaultV2IMDuringLiveUpgrade(c *C) {
+	oldSkipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = oldSkipListerCheck
+	}()
+
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	oldIM := newInstanceManager(
+		"old-v2-im",
+		longhorn.InstanceManagerStateRunning,
+		TestOwnerID1,
+		TestNode1,
+		TestIP1,
+		map[string]longhorn.InstanceProcess{
+			TestEngineName: {
+				Status: longhorn.InstanceProcessStatus{
+					State: longhorn.InstanceStateRunning,
+				},
+			},
+		},
+		nil,
+		nil,
+		longhorn.DataEngineTypeV2,
+		TestExtraInstanceManagerImage,
+		false,
+	)
+	imu := newInstanceManagerUpgrade("upgrade-test-node", TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerUpgradeStatePending)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: node,
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameV1DataEngine):                newSetting(string(types.SettingNameV1DataEngine), "false"),
+			string(types.SettingNameV2DataEngine):                newSetting(string(types.SettingNameV2DataEngine), "true"),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			oldIM.Name: oldIM,
+		},
+		lhInstanceManagerUpgrades: map[string]*longhorn.InstanceManagerUpgrade{
+			imu.Name: imu,
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+		},
+	}
+	s.initTest(c, fixture)
+
+	err := s.controller.syncInstanceManagers(node)
+	c.Assert(err, IsNil)
+
+	instanceManagers, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(instanceManagers.Items, HasLen, 1)
+	c.Assert(instanceManagers.Items[0].Name, Equals, oldIM.Name)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersKeepsExistingV2IMWhenAutomaticUpgradeDisabled(c *C) {
+	oldSkipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = oldSkipListerCheck
+	}()
+
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	oldIM := newInstanceManager(
+		"old-v2-im",
+		longhorn.InstanceManagerStateRunning,
+		TestOwnerID1,
+		TestNode1,
+		TestIP1,
+		nil,
+		nil,
+		nil,
+		longhorn.DataEngineTypeV2,
+		TestExtraInstanceManagerImage,
+		false,
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: node,
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage):            newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameAllowV2InstanceManagerAutomaticUpgrade): newSetting(string(types.SettingNameAllowV2InstanceManagerAutomaticUpgrade), "false"),
+			string(types.SettingNameV1DataEngine):                           newSetting(string(types.SettingNameV1DataEngine), "false"),
+			string(types.SettingNameV2DataEngine):                           newSetting(string(types.SettingNameV2DataEngine), "true"),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			oldIM.Name: oldIM,
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+		},
+	}
+	s.initTest(c, fixture)
+
+	err := s.controller.syncInstanceManagers(node)
+	c.Assert(err, IsNil)
+
+	instanceManagers, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(instanceManagers.Items, HasLen, 1)
+	c.Assert(instanceManagers.Items[0].Name, Equals, oldIM.Name)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersCleansUpStoppedRedundantV2IM(c *C) {
+	oldSkipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = oldSkipListerCheck
+	}()
+
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	stoppedIM := newInstanceManager(
+		"stopped-v2-im",
+		longhorn.InstanceManagerStateStopped,
+		TestOwnerID1,
+		TestNode1,
+		"",
+		nil,
+		nil,
+		nil,
+		longhorn.DataEngineTypeV2,
+		TestExtraInstanceManagerImage,
+		false,
+	)
+	kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	kubeNode.Status.Capacity = corev1.ResourceList{
+		corev1.ResourceName("hugepages-2Mi"): resource.MustParse("4096Mi"),
+	}
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: node,
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameV1DataEngine):                newSetting(string(types.SettingNameV1DataEngine), "false"),
+			string(types.SettingNameV2DataEngine):                newSetting(string(types.SettingNameV2DataEngine), "true"),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			stoppedIM.Name: stoppedIM,
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: kubeNode,
+		},
+	}
+	s.initTest(c, fixture)
+
+	err := s.controller.syncInstanceManagers(node)
+	c.Assert(err, IsNil)
+
+	instanceManagers, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(instanceManagers.Items, HasLen, 1)
+	c.Assert(instanceManagers.Items[0].Name, Not(Equals), stoppedIM.Name)
+	c.Assert(instanceManagers.Items[0].Spec.Image, Equals, TestInstanceManagerImage)
+	c.Assert(instanceManagers.Items[0].Spec.DataEngine, Equals, longhorn.DataEngineTypeV2)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersKeepsV2IMOnOtherNodeDuringRollingLiveUpgrade(c *C) {
+	oldSkipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = oldSkipListerCheck
+	}()
+
+	node := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	oldIM := newInstanceManager(
+		"old-v2-im-other-node",
+		longhorn.InstanceManagerStateRunning,
+		TestOwnerID1,
+		TestNode2,
+		TestIP2,
+		nil,
+		nil,
+		nil,
+		longhorn.DataEngineTypeV2,
+		TestExtraInstanceManagerImage,
+		false,
+	)
+	imuc := &longhorn.InstanceManagerUpgradeControl{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      types.InstanceManagerUpgradeControlName,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.InstanceManagerUpgradeControlSpec{
+			TargetImage: TestInstanceManagerImage,
+		},
+		Status: longhorn.InstanceManagerUpgradeControlStatus{
+			CurrentNode: TestNode1,
+			Nodes: map[string]longhorn.NodeUpgradeInfo{
+				TestNode1: {
+					State: longhorn.NodeUpgradeStateInProgress,
+				},
+				TestNode2: {
+					State: longhorn.NodeUpgradeStatePending,
+				},
+			},
+		},
+	}
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode2: node,
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameV1DataEngine):                newSetting(string(types.SettingNameV1DataEngine), "false"),
+			string(types.SettingNameV2DataEngine):                newSetting(string(types.SettingNameV2DataEngine), "true"),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			oldIM.Name: oldIM,
+		},
+		lhInstanceManagerUpgradeControls: map[string]*longhorn.InstanceManagerUpgradeControl{
+			imuc.Name: imuc,
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode2: newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+		},
+	}
+	s.initTest(c, fixture)
+
+	err := s.controller.syncInstanceManagers(node)
+	c.Assert(err, IsNil)
+
+	instanceManagers, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(instanceManagers.Items, HasLen, 1)
+	c.Assert(instanceManagers.Items[0].Name, Equals, oldIM.Name)
 }

@@ -1173,6 +1173,18 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			if err != nil {
 				return err
 			}
+			preservedV2AIOInstanceManagerName := ""
+			if imType == longhorn.InstanceManagerTypeAllInOne && types.IsDataEngineV2(dataEngine) {
+				// V2 AIO image changes are handled by IMU/IMUC. Preserve one usable
+				// source IM and let the regular cleanup logic handle redundant IMs.
+				for _, im := range imMap {
+					if im.DeletionTimestamp == nil && im.Status.CurrentState != longhorn.InstanceManagerStateStopped {
+						preservedV2AIOInstanceManagerName = im.Name
+						defaultInstanceManagerCreated = true
+						break
+					}
+				}
+			}
 			for _, im := range imMap {
 				if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
 					return fmt.Errorf("instance manager %v nodeID %v is not consistent with the label %v=%v",
@@ -1201,6 +1213,15 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						log.Infof("Skipping cleanup of instance manager %v on selector-excluded node %v because it is in unknown state", im.Name, node.Name)
 					} else {
 						log.Infof("Cleaning up instance manager %v because node %v does not match %v", im.Name, node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
+					}
+				} else if im.Name == preservedV2AIOInstanceManagerName {
+					disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
+					if err != nil {
+						return errors.Wrapf(err, "failed to check if v2 data engine is disabled for node %v", node.Name)
+					}
+					cleanupRequired = disabled && !runningOrStartingInstanceFound
+					if cleanupRequired {
+						log.Infof("Cleaning up instance manager %v since v2 data engine is disabled for node %v", im.Name, node.Name)
 					}
 				} else if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
 					// Keep default instance manager or instance manager matching argument image (during rolling update)

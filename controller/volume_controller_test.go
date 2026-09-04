@@ -77,6 +77,76 @@ func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Client
 	return vc, nil
 }
 
+func (s *TestSuite) TestGetPlannedDetachedReplicasForVolume(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	volume := newVolume(TestVolumeName, 3)
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Status.State = longhorn.VolumeStateAttached
+
+	imu := newInstanceManagerUpgrade("imu-test", TestNode1, TestExtraInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+	imu.Status.PlannedDetachedReplicas = map[string][]longhorn.PlannedDetachedReplica{
+		TestVolumeName: {
+			{
+				Name:    "replica-on-upgrading-node",
+				Address: "10.0.0.1:20001",
+			},
+		},
+	}
+	err = imuIndexer.Add(imu)
+	c.Assert(err, IsNil)
+
+	planned, err := vc.getPlannedDetachedReplicasForVolume(volume)
+	c.Assert(err, IsNil)
+	_, ok := planned["replica-on-upgrading-node"]
+	c.Assert(ok, Equals, true)
+
+	imu.Status.State = longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes
+	err = imuIndexer.Update(imu)
+	c.Assert(err, IsNil)
+
+	planned, err = vc.getPlannedDetachedReplicasForVolume(volume)
+	c.Assert(err, IsNil)
+	c.Assert(planned, HasLen, 0)
+
+	imu.Status.State = longhorn.InstanceManagerUpgradeStateRelocatingEngines
+	imu.Status.Engines = map[string]longhorn.EngineRelocation{
+		TestVolumeName: {
+			OriginalNodeID:  TestNode1,
+			TemporaryNodeID: TestNode2,
+		},
+	}
+	volume.Status.CurrentEngineNodeID = TestNode1
+	err = imuIndexer.Update(imu)
+	c.Assert(err, IsNil)
+
+	planned, err = vc.getPlannedDetachedReplicasForVolume(volume)
+	c.Assert(err, IsNil)
+	_, ok = planned["replica-on-upgrading-node"]
+	c.Assert(ok, Equals, true)
+
+	otherVolume := newVolume("other-volume", 3)
+	otherVolume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	otherVolume.Status.State = longhorn.VolumeStateAttached
+	imu.Status.PlannedDetachedReplicas[otherVolume.Name] = []longhorn.PlannedDetachedReplica{{
+		Name: "replica-on-other-volume",
+	}}
+	err = imuIndexer.Update(imu)
+	c.Assert(err, IsNil)
+
+	planned, err = vc.getPlannedDetachedReplicasForVolume(otherVolume)
+	c.Assert(err, IsNil)
+	_, ok = planned["replica-on-other-volume"]
+	c.Assert(ok, Equals, true)
+}
+
 type VolumeTestCase struct {
 	volume        *longhorn.Volume
 	engines       map[string]*longhorn.Engine
@@ -2358,11 +2428,8 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
 }
 
-// TestProcessEngineSwitchoverCleanupUsesActiveEngine verifies that once
-// switchover is already completed, the cleanup branch uses the Active flag to
-// choose the current engine even if multiple engines temporarily share the same
-// node. This covers reverse-switchover recovery where a remount/reattach can
-// leave both engines on the target node.
+// TestProcessEngineSwitchoverCleanupUsesActiveEngine verifies that cleanup
+// uses the Active flag to choose the current engine after switchover.
 func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	vc, lhClient, engineIndexer, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
@@ -2372,8 +2439,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	v.Spec.NodeID = TestNode1
 	v.Status.CurrentNodeID = TestNode1
 
-	// Both engines are temporarily on the target engine node after a reverse
-	// switchover/remount cycle, but only the new current engine is Active.
+	// Only the new current engine is Active.
 	currentEngine.Spec.Active = false
 	currentEngine.Spec.NodeID = TestNode2
 	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
