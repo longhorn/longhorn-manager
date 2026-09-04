@@ -13,14 +13,20 @@ import (
 
 const (
 	dmsetupBinary = "dmsetup"
+
+	// noUdevSyncOption stops dmsetup from waiting for udev to publish the node change.
+	// udev blocks when a backing device stops responding, and the wait would then
+	// outlast a command whose ioctl has already succeeded, reporting a failure for
+	// work that was done. The nodes are reconciled with mknodes instead.
+	noUdevSyncOption = "--noudevsync"
 )
 
 // DmsetupCreate creates a device mapper device with the given name and table
 func DmsetupCreate(dmDeviceName, table string, executor *commonns.Executor) error {
 	opts := []string{
-		"create", dmDeviceName, "--table", table,
+		noUdevSyncOption, "create", dmDeviceName, "--table", table,
 	}
-	_, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	_, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	return err
 }
 
@@ -38,16 +44,16 @@ func DmsetupSuspend(dmDeviceName string, noflush, nolockfs bool, executor *commo
 		opts = append(opts, "--nolockfs")
 	}
 
-	_, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	_, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	return err
 }
 
-// DmsetupResume removes the device mapper device with the given name
+// DmsetupResume resumes the suspended device mapper device with the given name
 func DmsetupResume(dmDeviceName string, executor *commonns.Executor) error {
 	opts := []string{
 		"resume", dmDeviceName,
 	}
-	_, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	_, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	return err
 }
 
@@ -56,14 +62,14 @@ func DmsetupReload(dmDeviceName, table string, executor *commonns.Executor) erro
 	opts := []string{
 		"reload", dmDeviceName, "--table", table,
 	}
-	_, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	_, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	return err
 }
 
 // DmsetupRemove removes the device mapper device with the given name
 func DmsetupRemove(dmDeviceName string, force, deferred bool, executor *commonns.Executor) error {
 	opts := []string{
-		"remove", dmDeviceName,
+		noUdevSyncOption, "remove", dmDeviceName,
 	}
 	if force {
 		opts = append(opts, "--force")
@@ -71,7 +77,21 @@ func DmsetupRemove(dmDeviceName string, force, deferred bool, executor *commonns
 	if deferred {
 		opts = append(opts, "--deferred")
 	}
-	_, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	_, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
+	return err
+}
+
+// DmsetupMknodes reconciles the /dev/mapper nodes with what device-mapper reports.
+// An empty name covers every device, which is how a node left behind by a removal is
+// dropped now that dmsetup does not wait for udev to do it.
+func DmsetupMknodes(dmDeviceName string, executor *commonns.Executor) error {
+	opts := []string{
+		"mknodes",
+	}
+	if dmDeviceName != "" {
+		opts = append(opts, dmDeviceName)
+	}
+	_, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	return err
 }
 
@@ -81,7 +101,7 @@ func DmsetupDeps(dmDeviceName string, executor *commonns.Executor) ([]string, er
 		"deps", dmDeviceName, "-o", "devname",
 	}
 
-	outputStr, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	outputStr, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +184,7 @@ func DmsetupInfo(dmDeviceName string, executor *commonns.Executor) ([]*DeviceInf
 		dmDeviceName,
 	}
 
-	outputStr, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	outputStr, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +243,7 @@ func DmsetupInfoDeferredRemove(dmDeviceName string, executor *commonns.Executor)
 		"info", dmDeviceName,
 	}
 
-	outputStr, err := executor.Execute(nil, dmsetupBinary, opts, types.ExecuteTimeout)
+	outputStr, err := executor.Execute(nil, dmsetupBinary, opts, types.DmsetupTimeout)
 	if err != nil {
 		return false, err
 	}

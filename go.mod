@@ -53,6 +53,14 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.37.0
 )
 
+replace github.com/longhorn/go-spdk-helper => github.com/c3y1huang/go-spdk-helper v0.0.0-20260916000221-c16b14dc5193
+
+replace github.com/longhorn/longhorn-spdk-engine => github.com/c3y1huang/longhorn-spdk-engine v0.0.0-20260917014831-99ffeeb36113
+
+replace github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.13.0-dev-20260712.0.20260917020307-d934aed028ac
+
+replace github.com/longhorn/backupstore => github.com/c3y1huang/backupstore v0.0.0-20260912011211-153dfb3e31b9
+
 require (
 	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.13.0
@@ -68,12 +76,12 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260831070834-77c184cc059a
 	github.com/longhorn/go-common-libs v0.0.0-20260907073218-e53e6775eb8a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.9.1-0.20260907084552-730dfff4eda5
+	github.com/longhorn/go-spdk-helper v0.9.1-0.20260915235134-7ca6b45f840f
 	github.com/longhorn/longhorn-engine v1.13.0-rc1
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260907105642-7fafb1dca838
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc1
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260907102425-963d8500c439
-	github.com/longhorn/types v0.0.0-20260831072945-0bac432e7872
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260916232021-587319d36109
+	github.com/longhorn/types v0.0.0-20260912171147-ce65698c8b35
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.9.1
@@ -104,9 +112,7 @@ require (
 
 require (
 	github.com/go-co-op/gocron v1.37.0
-	github.com/go-co-op/gocron/v2 v2.22.0
 	gopkg.in/yaml.v2 v2.4.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -196,7 +202,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.28 // indirect
+	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
