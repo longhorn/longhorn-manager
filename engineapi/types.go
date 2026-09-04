@@ -128,7 +128,7 @@ type EngineClient interface {
 	SnapshotHashStatus(obj DataEngineObject, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int, needCorrectEncryptedVolumeSize bool) error
-	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
+	BackupRestoreStatus(engine *longhorn.Engine) (*BackupRestoreStatusInfo, error)
 
 	SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error)
 	SPDKBackingImageDelete(name, diskUUID string) error
@@ -244,6 +244,18 @@ type BackupCreateInfo struct {
 	BackupID       string
 	ReplicaAddress string
 	IsIncremental  bool
+}
+
+// BackupRestoreStatusInfo is the restore status reported by the engine.
+type BackupRestoreStatusInfo struct {
+	// ReplicaStatuses holds the restore status of each replica, keyed by the
+	// replica address URL ("tcp://<ip>:<port>").
+	ReplicaStatuses map[string]*longhorn.RestoreStatus
+	// EngineError is a restore error from the engine itself rather than from a
+	// replica, for example when the engine cannot reach a replica while restoring.
+	// Only the v2 data engine reports it. It is empty when there is no
+	// engine-level error.
+	EngineError string
 }
 
 type LauncherVolumeInfo struct {

@@ -1324,10 +1324,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.LastExpansionFailedAt = ""
 	}
 
-	rsMap, err := engineClientProxy.BackupRestoreStatus(engine)
+	restoreStatusInfo, err := engineClientProxy.BackupRestoreStatus(engine)
 	if err != nil {
 		return err
 	}
+	rsMap := restoreStatusInfo.ReplicaStatuses
 
 	defer func() {
 		if err != nil {
