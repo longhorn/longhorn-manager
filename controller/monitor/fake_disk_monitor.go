@@ -79,7 +79,7 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, diskDri
 			Driver:      "",
 			FreeBlocks:  0,
 			TotalBlocks: 0,
-			BlockSize:   0,
+			BlockSize:   defaultBlockSize,
 
 			StorageMaximum:   0,
 			StorageAvailable: 0,
@@ -108,7 +108,7 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, diskDriver
 	}
 }
 
-func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
 		DiskName: name,
 		DiskUUID: TestDiskID1,
