@@ -15,6 +15,7 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -239,4 +240,137 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, ef)
 	require.Contains(t, err.Error(), "cannot find the current engine frontend")
+}
+
+func TestValidateSettingBlocksV2IMUpgradeStartTimeWhenActiveIMUExistsWithoutIMUC(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	testCases := map[string]longhorn.InstanceManagerUpgradeStatus{
+		"active relocating IMU": {
+			State: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		},
+		"pending IMU with startedAt": {
+			State:     longhorn.InstanceManagerUpgradeStatePending,
+			StartedAt: "2026-04-20T15:00:00Z",
+		},
+	}
+
+	for name, status := range testCases {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+			kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+			imu := &longhorn.InstanceManagerUpgrade{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-imu",
+					Namespace: testNamespace,
+				},
+				Spec: longhorn.InstanceManagerUpgradeSpec{
+					NodeID:      "test-node-1",
+					TargetImage: "im:target",
+				},
+				Status: status,
+			}
+			createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(testNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, imuIndexer.Add(createdIMU))
+
+			err = ds.ValidateSetting(string(types.SettingNameV2InstanceManagerUpgradeStartTime), "2026-04-20T15:00:00Z")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "actively in progress")
+			assert.Contains(t, err.Error(), "IMU")
+		})
+	}
+}
+
+func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	baseSetting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      string(types.SettingNameDefaultDataPath),
+			Namespace: testNamespace,
+		},
+		Value: "/var/lib/longhorn",
+	}
+
+	newNode := func(name string) *longhorn.Node {
+		return &longhorn.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: testNamespace,
+			},
+		}
+	}
+
+	tests := map[string]struct {
+		existingObjects []runtime.Object
+		newValue        string
+		expectError     string
+	}{
+		"relative path is rejected": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
+			newValue:        "relative/path",
+			expectError:     "the value of default-data-path is invalid",
+		},
+		"root path is rejected": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
+			newValue:        "/",
+			expectError:     "the value of default-data-path is invalid",
+		},
+		"same path with trailing slash normalization is allowed": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
+			newValue:        "/var/lib/longhorn/",
+		},
+		"same path with whitespace normalization is allowed (even after initialization)": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy(), newNode("node-1")},
+			newValue:        " /var/lib/longhorn/ ",
+		},
+		"changing path before initialization is allowed": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
+			newValue:        "/data/longhorn",
+		},
+		"bare pci identifier is rejected": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
+			newValue:        "0000:00:1e.0",
+			expectError:     "the value of default-data-path is invalid",
+		},
+		"changing path after initialization is rejected": {
+			existingObjects: []runtime.Object{baseSetting.DeepCopy(), newNode("node-1")},
+			newValue:        "/data/longhorn",
+			expectError:     "cannot change default-data-path after Longhorn has been initialized",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset(tc.existingObjects...) // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			informerFactories.Start(stopCh)
+
+			require.True(t, cache.WaitForCacheSync(stopCh,
+				ds.SettingInformer.HasSynced,
+				ds.NodeInformer.HasSynced,
+			))
+
+			err := ds.ValidateSetting(string(types.SettingNameDefaultDataPath), tc.newValue)
+			if tc.expectError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectError)
+			}
+		})
+	}
 }
