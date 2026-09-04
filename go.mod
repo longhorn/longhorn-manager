@@ -63,6 +63,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/henrygd/beszel v0.18.2
 	github.com/jinzhu/copier v0.4.0
+<<<<<<< HEAD
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.13.0
 	github.com/longhorn/backupstore v0.0.0-20261023052728-3d3f7521be06
@@ -75,6 +76,20 @@ require (
 	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20261028090605-69ce68f87f06
 	github.com/longhorn/types v0.0.0-20261023101212-edea52fc05df
 	github.com/prometheus/client_golang v1.24.1
+=======
+	github.com/kubernetes-csi/csi-lib-utils v0.25.0
+	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
+	github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085
+	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
+	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
+	github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00
+	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623
+	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261106064302-40b61a7ef9f8
+	github.com/longhorn/types v0.0.0-20261030035820-c6ac902022cf
+	github.com/prometheus/client_golang v1.25.0
+>>>>>>> 8b80fdb (chore(vendor): update dependencies)
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.9.4
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
@@ -123,7 +138,16 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
+<<<<<<< HEAD
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
+=======
+	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
+	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
+	github.com/felixge/httpsnoop v1.1.0 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
+	github.com/gammazero/deque v1.2.2 // indirect
+	github.com/gammazero/workerpool v1.2.2 // indirect
+>>>>>>> 8b80fdb (chore(vendor): update dependencies)
 	github.com/getsentry/sentry-go v0.46.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
