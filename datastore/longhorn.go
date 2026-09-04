@@ -665,6 +665,23 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
+	case types.SettingNameAllowV2InstanceManagerAutomaticUpgrade:
+		if value != "true" {
+			break
+		}
+
+		currentVersionSetting, err := s.GetSettingExactRO(types.SettingNameCurrentLonghornVersion)
+		if err != nil {
+			if ErrorIsNotFound(err) {
+				break
+			}
+			return errors.Wrap(err, "failed to get current Longhorn version")
+		}
+		if currentVersionSetting.Annotations[types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported)] == "true" {
+			return fmt.Errorf("cannot enable %v: v2 instance manager live upgrade is only supported from %s",
+				name, types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade)
+		}
+
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {

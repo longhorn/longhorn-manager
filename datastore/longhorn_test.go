@@ -363,7 +363,7 @@ func TestValidateSettingBlocksV2IMUpgradeStartTimeWhenActiveIMUExistsWithoutIMUC
 			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
 			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
 
-			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 			imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
 
 			imu := &longhorn.InstanceManagerUpgrade{
@@ -387,6 +387,37 @@ func TestValidateSettingBlocksV2IMUpgradeStartTimeWhenActiveIMUExistsWithoutIMUC
 			assert.Contains(t, err.Error(), "IMU")
 		})
 	}
+}
+
+func TestValidateSettingRejectsUnsupportedV2InstanceManagerLiveUpgrade(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+	currentVersion := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      string(types.SettingNameCurrentLonghornVersion),
+			Namespace: testNamespace,
+			Annotations: map[string]string{
+				types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported): "true",
+			},
+		},
+		Value: "v1.13.0",
+	}
+	created, err := lhClient.LonghornV1beta2().Settings(testNamespace).Create(context.TODO(), currentVersion, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NoError(t, settingIndexer.Add(created))
+
+	err = ds.ValidateSetting(string(types.SettingNameAllowV2InstanceManagerAutomaticUpgrade), "true")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade)
+
+	require.NoError(t, ds.ValidateSetting(string(types.SettingNameAllowV2InstanceManagerAutomaticUpgrade), "false"))
 }
 
 func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
@@ -454,7 +485,7 @@ func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
 			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
 			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
 			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 			stopCh := make(chan struct{})
 			defer close(stopCh)

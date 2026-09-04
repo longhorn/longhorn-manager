@@ -103,6 +103,11 @@ const (
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
 
 	InstanceManagerUpgradeControlName = "longhorn-instance-manager-upgrade-control"
+
+	// MinimumLonghornVersionForV2InstanceManagerLiveUpgrade is the oldest
+	// Longhorn version that supports upgrading into the V2 instance manager
+	// live upgrade feature.
+	MinimumLonghornVersionForV2InstanceManagerLiveUpgrade = "v1.12.2"
 )
 
 // ECMaxBaseBdevs is the maximum number of base bdevs (k+m) an EC array may have.
@@ -187,6 +192,8 @@ const (
 
 	ConfigMapResourceVersionKey = "configmap-resource-version"
 	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
+
+	V2InstanceManagerLiveUpgradeUnsupported = "v2-instance-manager-live-upgrade-unsupported"
 
 	DeleteCustomResourceOnly = "delete-custom-resource-only"
 

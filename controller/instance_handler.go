@@ -352,6 +352,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			if !datastore.ErrorIsNotFound(err) {
 				return err
 			}
+			if types.IsDataEngineV2(spec.DataEngine) &&
+				status.CurrentState == longhorn.InstanceStateStopped && !status.Started {
+				log.Infof("Clearing stale instance manager %v for stopped V2 instance", status.InstanceManagerName)
+				status.InstanceManagerName = ""
+			}
 		}
 	}
 	// There should be an available instance manager for a scheduled instance when its related engine image is compatible
@@ -377,6 +382,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 	if im != nil {
 		log = log.WithFields(logrus.Fields{"instanceManager": im.Name})
+	}
+	if im != nil && im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
+		if _, ok := obj.(*longhorn.EngineFrontend); ok && spec.DesireState == longhorn.InstanceStateRunning { // A v2 EngineFrontend is kernel-hosted on the source node and remains
+			// active while its instance manager pod is restarted for live upgrade.
+			// Do not reconcile it against transient IM process status.
+			return nil
+		}
 	}
 
 	if spec.LogRequested {

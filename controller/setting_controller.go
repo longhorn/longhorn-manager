@@ -1775,6 +1775,7 @@ func (info *ClusterInfo) collectSettings() error {
 	}
 
 	include := map[types.SettingName]bool{
+		types.SettingNameAllowV2InstanceManagerAutomaticUpgrade:                   true,
 		types.SettingNameAllowRecurringJobWhileVolumeDetached:                     true,
 		types.SettingNameAllowVolumeCreationWithDegradedAvailability:              true,
 		types.SettingNameAutoCleanupSystemGeneratedSnapshot:                       true,

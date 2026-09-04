@@ -31,25 +31,27 @@ import (
 )
 
 const (
-	CRDEngineName                 = "engines.longhorn.io"
-	CRDReplicaName                = "replicas.longhorn.io"
-	CRDVolumeName                 = "volumes.longhorn.io"
-	CRDEngineImageName            = "engineimages.longhorn.io"
-	CRDNodeName                   = "nodes.longhorn.io"
-	CRDInstanceManagerName        = "instancemanagers.longhorn.io"
-	CRDShareManagerName           = "sharemanagers.longhorn.io"
-	CRDBackingImageName           = "backingimages.longhorn.io"
-	CRDBackingImageManagerName    = "backingimagemanagers.longhorn.io"
-	CRDBackingImageDataSourceName = "backingimagedatasources.longhorn.io"
-	CRDBackupTargetName           = "backuptargets.longhorn.io"
-	CRDBackupVolumeName           = "backupvolumes.longhorn.io"
-	CRDBackupName                 = "backups.longhorn.io"
-	CRDRecurringJobName           = "recurringjobs.longhorn.io"
-	CRDOrphanName                 = "orphans.longhorn.io"
-	CRDSnapshotName               = "snapshots.longhorn.io"
-	CRDSnapshotGroupName          = "snapshotgroups.longhorn.io"
-	CRDShardGroupName             = "shardgroups.longhorn.io"
-	CRDShardName                  = "shards.longhorn.io"
+	CRDEngineName                        = "engines.longhorn.io"
+	CRDReplicaName                       = "replicas.longhorn.io"
+	CRDVolumeName                        = "volumes.longhorn.io"
+	CRDEngineImageName                   = "engineimages.longhorn.io"
+	CRDNodeName                          = "nodes.longhorn.io"
+	CRDInstanceManagerName               = "instancemanagers.longhorn.io"
+	CRDInstanceManagerUpgradeName        = "instancemanagerupgrades.longhorn.io"
+	CRDInstanceManagerUpgradeControlName = "instancemanagerupgradecontrols.longhorn.io"
+	CRDShareManagerName                  = "sharemanagers.longhorn.io"
+	CRDBackingImageName                  = "backingimages.longhorn.io"
+	CRDBackingImageManagerName           = "backingimagemanagers.longhorn.io"
+	CRDBackingImageDataSourceName        = "backingimagedatasources.longhorn.io"
+	CRDBackupTargetName                  = "backuptargets.longhorn.io"
+	CRDBackupVolumeName                  = "backupvolumes.longhorn.io"
+	CRDBackupName                        = "backups.longhorn.io"
+	CRDRecurringJobName                  = "recurringjobs.longhorn.io"
+	CRDOrphanName                        = "orphans.longhorn.io"
+	CRDSnapshotName                      = "snapshots.longhorn.io"
+	CRDSnapshotGroupName                 = "snapshotgroups.longhorn.io"
+	CRDShardGroupName                    = "shardgroups.longhorn.io"
+	CRDShardName                         = "shards.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -146,6 +148,18 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDInstanceManagerUpgradeName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.InstanceManagerUpgradeInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDInstanceManagerUpgradeControlName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.InstanceManagerUpgradeControlInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.InstanceManagerUpgradeControlInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDShareManagerName, metav1.GetOptions{}); err == nil {
 		if _, err = ds.ShareManagerInformer.AddEventHandler(c.controlleeHandler()); err != nil {
@@ -511,6 +525,7 @@ func (c *UninstallController) deleteRecreatedCRs() (bool, error) {
 		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
 		return true, c.deleteBackupTargets(backupTargets)
 	}
+
 	return false, nil
 }
 
@@ -681,6 +696,47 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 	} else if len(systemRestores) > 0 {
 		c.logger.Infof("Found %d SystemRestores remaining", len(systemRestores))
 		return true, c.deleteSystemRestores(systemRestores)
+	}
+
+	setting, err := c.ds.GetSetting(types.SettingNameAllowV2InstanceManagerAutomaticUpgrade)
+	if err != nil {
+		return true, errors.Wrap(err, "failed to get V2 instance manager automatic upgrade setting")
+	}
+	if setting.Value != "false" {
+		setting.Value = "false"
+		if _, err := c.ds.UpdateSetting(setting); err != nil {
+			return true, errors.Wrap(err, "failed to disable V2 instance manager automatic upgrade")
+		}
+		return true, nil
+	}
+
+	if upgrades, err := c.ds.ListInstanceManagerUpgrades(); err != nil {
+		return true, err
+	} else if len(upgrades) > 0 {
+		c.logger.Infof("Found %d instance manager upgrades remaining", len(upgrades))
+		for _, upgrade := range upgrades {
+			// Uninstall deliberately bypasses the upgrade controller's graceful
+			// engine restoration while the manager admission webhook is available.
+			if err := c.ds.RemoveFinalizerForInstanceManagerUpgrade(upgrade); err != nil {
+				return true, errors.Wrap(err, "failed to remove instance manager upgrade finalizer")
+			}
+			if err := c.ds.DeleteInstanceManagerUpgrade(upgrade.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+				return true, errors.Wrap(err, "failed to delete instance manager upgrade")
+			}
+		}
+		return true, nil
+	}
+
+	if controls, err := c.ds.ListInstanceManagerUpgradeControls(); err != nil {
+		return true, err
+	} else if len(controls) > 0 {
+		c.logger.Infof("Found %d instance manager upgrade controls remaining", len(controls))
+		for _, control := range controls {
+			if err := c.ds.DeleteInstanceManagerUpgradeControl(control.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+				return true, errors.Wrap(err, "failed to delete instance manager upgrade control")
+			}
+		}
+		return true, nil
 	}
 
 	return false, nil
