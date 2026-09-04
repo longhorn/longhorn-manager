@@ -25,6 +25,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
@@ -328,6 +329,43 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 			return err
 		}
 		log.Infof("EngineFrontend got new owner %v", efc.controllerID)
+	}
+
+	// If this node hosts the EngineFrontend initiator but its instance manager is conclusively
+	// gone (its CR was deleted, or its pod was deleted/failed so the IM is in error/stopped
+	// state), the host-side linear DM device and /dev/longhorn endpoint the initiator created
+	// are left behind: the gRPC-based DeleteInstance path cannot reach a dead IM to tear them
+	// down, and no Orphan CR is created for a dead IM either. Remove them directly on the host,
+	// mirroring the old v2 prestop cleanup.
+	//
+	// This must run BEFORE the deletion branch below: if a volume detach/delete races with the
+	// IM going away, the deletion branch would call DeleteInstance (which no-ops on a dead IM)
+	// and remove the finalizer without ever clearing the host device.
+	//
+	// Only act on states that conclusively indicate the local data plane is gone. In particular
+	// exclude InstanceManagerStateUnknown, which is set when the node is down or network
+	// partitioned (see instance_manager_controller.go syncStatusWithNode): the data plane may
+	// still be alive and serving the attached volume, so removing its device would corrupt an
+	// in-use volume. Starting/Running are excluded for the same reason.
+	if efc.controllerID == ef.Spec.NodeID && ef.Status.InstanceManagerName != "" {
+		imGone := false
+		im, imErr := efc.ds.GetInstanceManagerRO(ef.Status.InstanceManagerName)
+		if imErr != nil {
+			if !datastore.ErrorIsNotFound(imErr) {
+				return errors.Wrapf(imErr, "failed to check instance manager %v for stale host device cleanup", ef.Status.InstanceManagerName)
+			}
+			imGone = true // IM CR has been deleted
+		} else if im.Status.CurrentState == longhorn.InstanceManagerStateError ||
+			im.Status.CurrentState == longhorn.InstanceManagerStateStopped {
+			imGone = true
+		}
+		if imGone {
+			log.Warnf("EngineFrontend %v instance manager %v is gone; removing stale host initiator device for volume %v",
+				ef.Name, ef.Status.InstanceManagerName, ef.Spec.VolumeName)
+			if err := efc.cleanupStaleHostInitiatorDevice(ef.Spec.VolumeName); err != nil {
+				return errors.Wrapf(err, "failed to clean up stale host initiator device for volume %v", ef.Spec.VolumeName)
+			}
+		}
 	}
 
 	// Handle deletion
@@ -790,6 +828,42 @@ func (efc *EngineFrontendController) DeleteInstance(obj interface{}) (err error)
 		return err
 	}
 
+	return nil
+}
+
+// cleanupStaleHostInitiatorDevice removes the stale host-side linear device-mapper device and
+// the /dev/longhorn endpoint that this v2 EngineFrontend (initiator) left behind on this node
+// after its instance manager pod was force-deleted. Both are named after the volume. When the
+// instance manager is conclusively gone, the normal DeleteInstance path cannot reach the IM to
+// tear them down, so remove them directly on the host.
+//
+// The error is returned (not swallowed) so the caller can propagate it and let the workqueue
+// retry with rate limiting. The instance-manager informer has no periodic resync, so a swallowed
+// transient failure here would otherwise leave the stale device behind indefinitely.
+func (efc *EngineFrontendController) cleanupStaleHostInitiatorDevice(volumeName string) error {
+	if volumeName == "" {
+		return nil
+	}
+	log := efc.logger.WithField("volume", volumeName)
+
+	// Remove the linear device-mapper device (/dev/mapper/<volume>). RemoveDMDevice already
+	// ignores "not found" so a repeated reconcile is a no-op.
+	if err := util.RemoveDMDevice(volumeName); err != nil {
+		return errors.Wrapf(err, "failed to remove stale v2 dm device %v", volumeName)
+	}
+
+	// Remove the block device endpoint (/dev/longhorn/<volume>). "rm -f" is a no-op if absent.
+	endpoint := "/dev/longhorn/" + volumeName
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create host namespace executor to remove endpoint %v", endpoint)
+	}
+	if _, err := nsexec.Execute(nil, "rm", []string{"-f", endpoint}, lhtypes.ExecuteDefaultTimeout); err != nil {
+		return errors.Wrapf(err, "failed to remove stale v2 endpoint %v", endpoint)
+	}
+
+	log.Info("Removed stale host initiator device and endpoint")
 	return nil
 }
 
