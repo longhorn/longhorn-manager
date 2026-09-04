@@ -89,6 +89,16 @@ func TestNeedStatusUpdate(t *testing.T) {
 	tests["arbitrary field changed"] = tc
 
 	tc = testCase{
+		existingEngine:         newEngine(TestVolumeSize, TestVolumeSize/2),
+		engine:                 newEngine(TestVolumeSize, TestVolumeSize/2),
+		monitor:                newMonitor(),
+		expectNeedStatusUpdate: true,
+		expectRateLimited:      false,
+	}
+	tc.engine.Status.EngineRestoreError = "restore engine: submit read blob: Input/output error"
+	tests["engine restore error changed"] = tc
+
+	tc = testCase{
 		existingEngine:         newEngine(1*util.GiB, 512*util.MiB),
 		engine:                 newEngine(1*util.GiB, 512*util.MiB+1*util.MiB+1),
 		monitor:                newMonitor(),

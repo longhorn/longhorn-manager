@@ -1337,6 +1337,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 
 		engine.Status.RestoreStatus = rsMap
+		engine.Status.EngineRestoreError = restoreStatusInfo.EngineError
 
 		removeInvalidEngineOpStatus(engine)
 
@@ -1682,6 +1683,9 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 	if rsMap == nil {
 		return false, nil
 	}
+	// The v2 data engine reports a CLI API version of 0 (see
+	// GetDataEngineImageCLIAPIVersion), so it takes this compatible-engine
+	// path together with pre-v4 v1 engines.
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		isRestoring, isConsensual := syncWithRestoreStatusForCompatibleEngine(log, engine, rsMap)
 		if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
@@ -2859,6 +2863,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	e.Status.ReplicaModeMap = nil
 	e.Status.ReplicaTransitionTimeMap = nil
 	e.Status.RestoreStatus = nil
+	e.Status.EngineRestoreError = ""
 	e.Status.RebuildStatus = nil
 	return nil
 }
