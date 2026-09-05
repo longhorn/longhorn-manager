@@ -842,3 +842,134 @@ func (s *TestSuite) TestNodeHasEnoughHugepageTotalCapacity(c *C) {
 		c.Assert(ok, Equals, tc.expected)
 	}
 }
+
+// newReplicaOnNodeForVolume returns a healthy replica of the given volume, scheduled
+// on the given node and labeled the way the datastore listers expect.
+func newReplicaOnNodeForVolume(name, volumeName, nodeID string) *longhorn.Replica {
+	labels := types.GetVolumeLabels(volumeName)
+	labels[types.LonghornNodeKey] = nodeID
+
+	return &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels:    labels,
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: volumeName,
+			},
+			HealthyAt: getTestNow(),
+		},
+	}
+}
+
+// TestCanDeleteInstanceManagerPDBWithStrictLocalReplica covers longhorn/longhorn#8753:
+// a replica of a strict-local volume can never be evicted, so it must not keep the
+// instance manager PDB alive under the block-for-eviction policies. Otherwise the
+// instance manager pod can never be evicted and the drain never completes.
+func (s *TestSuite) TestCanDeleteInstanceManagerPDBWithStrictLocalReplica(c *C) {
+	testCases := map[string]struct {
+		drainPolicy  types.NodeDrainPolicy
+		dataLocality longhorn.DataLocality
+		expected     bool
+	}{
+		"block-for-eviction with strict-local replica": {
+			drainPolicy:  types.NodeDrainPolicyBlockForEviction,
+			dataLocality: longhorn.DataLocalityStrictLocal,
+			expected:     true,
+		},
+		"block-for-eviction-if-contains-last-replica with strict-local replica": {
+			drainPolicy:  types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+			dataLocality: longhorn.DataLocalityStrictLocal,
+			expected:     true,
+		},
+		"block-for-eviction with normal replica": {
+			drainPolicy:  types.NodeDrainPolicyBlockForEviction,
+			dataLocality: longhorn.DataLocalityDisabled,
+			expected:     false,
+		},
+		"block-for-eviction-if-contains-last-replica with normal replica": {
+			drainPolicy:  types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+			dataLocality: longhorn.DataLocalityDisabled,
+			expected:     false,
+		},
+		"block-if-contains-last-replica with strict-local replica": {
+			drainPolicy:  types.NodeDrainPolicyBlockIfContainsLastReplica,
+			dataLocality: longhorn.DataLocalityStrictLocal,
+			expected:     false,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		// The node is cordoned, as it would be during a drain.
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+		kubeNode, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = kubeNodeIndexer.Add(kubeNode)
+		c.Assert(err, IsNil)
+
+		drainPolicySetting := newSetting(string(types.SettingNameNodeDrainPolicy), string(tc.drainPolicy))
+		drainPolicySetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), drainPolicySetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(drainPolicySetting)
+		c.Assert(err, IsNil)
+
+		volume := newVolumeWithDataLocality(TestVolumeName, tc.dataLocality)
+		volume, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = vIndexer.Add(volume)
+		c.Assert(err, IsNil)
+
+		replica := newReplicaOnNodeForVolume(TestReplicaName, volume.Name, TestNode1)
+		replica, err = lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = rIndexer.Add(replica)
+		c.Assert(err, IsNil)
+
+		// The instance manager runs no engine instance, so all volumes are already
+		// detached from the node and only the replicas decide whether the PDB stays.
+		// No PDB is registered either, so no replica is PDB protected on another node.
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestNode1,
+			TestNode1,
+			TestIP1,
+			nil,
+			nil,
+			map[string]longhorn.InstanceProcess{TestReplicaName: {}},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
+		im, err = lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+
+		canDelete, _, err := imc.canDeleteInstanceManagerPDB(im)
+		c.Assert(err, IsNil)
+		c.Assert(canDelete, Equals, tc.expected)
+	}
+}

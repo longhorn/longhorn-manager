@@ -2133,6 +2133,15 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 		// Node drain policy only takes effect on cordoned nodes.
 		return false, constant.EventReasonEvictionCanceled, nil
 	}
+	// Replicas of strict-local volumes are pinned to their node by HardNodeAffinity and can
+	// never be evicted elsewhere. Requesting their eviction automatically keeps the volume
+	// attached forever and the drain can never complete. See longhorn/longhorn#8753.
+	if isStrictLocal, err := isStrictLocalReplica(nc.ds, replica); err != nil {
+		return false, "", err
+	} else if isStrictLocal {
+		return false, constant.EventReasonEvictionCanceled, nil
+	}
+
 	if nodeDrainPolicy == string(types.NodeDrainPolicyBlockForEviction) {
 		return true, constant.EventReasonEvictionAutomatic, nil
 	}

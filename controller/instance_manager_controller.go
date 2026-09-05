@@ -1544,6 +1544,24 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return false, "", err
 	}
 
+	// The eviction policies never request eviction for replicas of strict-local volumes,
+	// since those replicas cannot be moved (see NodeController.shouldEvictReplica). Keeping
+	// the PDB for them would block the drain forever. See longhorn/longhorn#8753.
+	if nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEviction) ||
+		nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica) {
+		evictableReplicas := []*longhorn.Replica{}
+		for _, replica := range replicasOnCurrentNode {
+			isStrictLocal, err := isStrictLocalReplica(imc.ds, replica)
+			if err != nil {
+				return false, "", err
+			}
+			if !isStrictLocal {
+				evictableReplicas = append(evictableReplicas, replica)
+			}
+		}
+		replicasOnCurrentNode = evictableReplicas
+	}
+
 	if nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEviction) && len(replicasOnCurrentNode) > 0 {
 		// We must wait for ALL replicas to be evicted before removing the PDB.
 		return false, fmt.Sprintf("some replicas block eviction %v", formatReplicaMessage(replicasOnCurrentNode)), nil
