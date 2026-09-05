@@ -124,7 +124,7 @@ func TestIsBackupTargetSyncRequired(t *testing.T) {
 
 func newTestBackupTargetController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*BackupTargetController, error) {
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	proxyConnCounter := util.NewAtomicCounter()

@@ -56,7 +56,7 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 
 func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*VolumeController, error) {
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	proxyConnCounter := util.NewAtomicCounter()
 
@@ -2716,7 +2716,7 @@ func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensB
 		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
 	}
 
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	vc := &VolumeController{
 		baseController: newBaseController("test-volume", logrus.StandardLogger()),
 		ds:             ds,

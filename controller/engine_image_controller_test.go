@@ -55,7 +55,7 @@ func newTestEngineImageController(lhClient *lhfake.Clientset, kubeClient *fake.C
 	// Skip the Lister check that occurs on creation of an Instance Manager.
 	datastore.SkipListerCheck = true
 
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	ic, err := NewEngineImageController(
