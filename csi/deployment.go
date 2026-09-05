@@ -65,6 +65,11 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
+			// A full-copy clone is provisioned before its data is copied, so
+			// ControllerPublishVolume is rejected with "not ready for workloads"
+			// until the copy finishes. The default retry cap of 5m means the
+			// volume can sit idle for most of that after it becomes ready.
+			"--retry-interval-max=1m",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
