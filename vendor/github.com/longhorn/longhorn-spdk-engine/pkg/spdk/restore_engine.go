@@ -24,10 +24,11 @@ type EngineRestore struct {
 	engine     *Engine
 	endpoint   string
 
-	Progress  int
-	Error     string
-	BackupURL string
-	State     btypes.ProgressState
+	Progress        int
+	Error           string
+	BackupURL       string
+	State           btypes.ProgressState
+	VolumeDevClosed bool
 
 	// The snapshot file that stores the restored data in the end.
 	SnapshotName string
@@ -39,6 +40,8 @@ type EngineRestore struct {
 
 	stopChan chan struct{}
 	stopOnce sync.Once
+
+	volumeDevCloseSucceeded bool
 
 	log logrus.FieldLogger
 }
@@ -72,6 +75,8 @@ func (r *EngineRestore) StartNewRestore(backupURL string, currentRestoringBackup
 	r.Error = ""
 	r.BackupURL = backupURL
 	r.State = btypes.ProgressStateInProgress
+	r.VolumeDevClosed = false
+	r.volumeDevCloseSucceeded = false
 
 	if !validLastRestoredBackup {
 		r.LastRestored = ""
@@ -93,6 +98,7 @@ func (r *EngineRestore) DeepCopy() *EngineRestore {
 		State:                  r.State,
 		Error:                  r.Error,
 		Progress:               r.Progress,
+		VolumeDevClosed:        r.VolumeDevClosed,
 	}
 }
 
@@ -108,14 +114,42 @@ func (r *EngineRestore) OpenVolumeDev(_ string) (*os.File, string, error) {
 }
 
 func (r *EngineRestore) CloseVolumeDev(volDev *os.File) error {
+	return r.closeVolumeDev(volDev, volDev.Close)
+}
+
+func (r *EngineRestore) closeVolumeDev(volDev *os.File, closeVolumeDev func() error) error {
+	var syncErr error
 	if err := volDev.Sync(); err != nil {
 		r.log.WithError(err).Errorf("Failed to sync NVMe device %v before close", volDev.Name())
+		syncErr = errors.Wrapf(err, "failed to sync NVMe device %v before close", volDev.Name())
 	}
 
 	r.log.Infof("Closing NVMe device %v", volDev.Name())
-	closeErr := volDev.Close()
+	closeErr := closeVolumeDev()
+	if closeErr != nil {
+		closeErr = errors.Wrapf(closeErr, "failed to close NVMe device %v", volDev.Name())
+	}
+	if syncErr != nil || closeErr != nil {
+		combinedErr := errors.Join(syncErr, closeErr)
+		r.updateRestoreStatusWithCurrentProgress(volDev.Name(), combinedErr)
+		return combinedErr
+	}
+	r.setVolumeDevCloseSucceeded()
 
-	return closeErr
+	return nil
+}
+
+func (r *EngineRestore) setVolumeDevCloseSucceeded() {
+	r.Lock()
+	defer r.Unlock()
+	r.volumeDevCloseSucceeded = true
+}
+
+func (r *EngineRestore) updateRestoreStatusWithCurrentProgress(snapshot string, err error) {
+	r.RLock()
+	progress := r.Progress
+	r.RUnlock()
+	r.UpdateRestoreStatus(snapshot, progress, err)
 }
 
 func (r *EngineRestore) UpdateRestoreStatus(snapshot string, progress int, err error) {
@@ -136,6 +170,8 @@ func (r *EngineRestore) UpdateRestoreStatus(snapshot string, progress int, err e
 				r.Error = err.Error()
 			}
 		}
+	} else if progress == 100 && r.volumeDevCloseSucceeded {
+		r.VolumeDevClosed = true
 	}
 }
 

@@ -463,6 +463,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 	binary := ""
 	args := []string{}
+	portArgs := []string{DefaultPortArg}
 	replicaAddresses := map[string]string{}
 
 	var err error
@@ -492,7 +493,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating engine process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(req.Engine.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Engine.Name, binary, DefaultEnginePortCount, args, portArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -507,7 +508,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		VolumeName:         req.Engine.Spec.VolumeName,
 		Size:               uint64(volumeSize),
 		PortCount:          DefaultEnginePortCount,
-		PortArgs:           []string{DefaultPortArg},
+		PortArgs:           portArgs,
 		DataLayoutType:     req.DataLayoutType,
 
 		Binary:     binary,
@@ -651,6 +652,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
+	portArgs := []string{DefaultPortArg}
 	var err error
 	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
 		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
@@ -661,7 +663,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating replica process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCountV1, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCountV1, args, portArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -688,7 +690,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		VolumeName:         req.Replica.Spec.VolumeName,
 		Size:               uint64(volumeSize),
 		PortCount:          portCount,
-		PortArgs:           []string{DefaultPortArg},
+		PortArgs:           portArgs,
 
 		Binary:     binary,
 		BinaryArgs: args,
@@ -1002,10 +1004,11 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(req.Engine.Spec.Image), types.EngineBinaryName)
+	portArgs := []string{DefaultPortArg}
 
 	if c.GetAPIVersion() < 4 {
 		process, err := c.processManagerGrpcClient.ProcessReplace(
-			req.Engine.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+			req.Engine.Name, binary, DefaultEnginePortCount, args, portArgs, DefaultTerminateSignal)
 		if err != nil {
 			return nil, err
 		}
@@ -1013,7 +1016,7 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(req.Engine.Spec.DataEngine), req.Engine.Name,
-		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, portArgs, DefaultTerminateSignal)
 	if err != nil {
 		return nil, err
 	}

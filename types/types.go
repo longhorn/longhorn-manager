@@ -413,6 +413,48 @@ const (
 	InstanceManagerSuffixChecksumLength = 32
 )
 
+// NormalizeIPFamily maps an empty or explicit default family to the canonical
+// default value.
+func NormalizeIPFamily(family string) string {
+	if family == "" || family == DataEngineIPFamilyDefault {
+		return DataEngineIPFamilyDefault
+	}
+	return family
+}
+
+// ParseDataEngineIPFamilyArgs returns the data engine IP family selected by
+// the instance-manager arguments. Both split and equals forms are accepted.
+func ParseDataEngineIPFamilyArgs(args []string) (family string, specified, valid bool) {
+	const flag = "--ip-family"
+
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch {
+		case arg == flag:
+			if specified || index+1 >= len(args) {
+				return "", true, false
+			}
+			specified = true
+			family = args[index+1]
+			index++
+		case strings.HasPrefix(arg, flag+"="):
+			if specified {
+				return "", true, false
+			}
+			specified = true
+			family = strings.TrimPrefix(arg, flag+"=")
+		default:
+			continue
+		}
+
+		if family != DataEngineIPFamilyIPv4 && family != DataEngineIPFamilyIPv6 {
+			return "", true, false
+		}
+	}
+
+	return family, specified, true
+}
+
 // SettingsRelatedToVolume should match the items in datastore.GetLabelsForVolumesFollowsGlobalSettings
 //
 //	TODO: May need to add the data locality check

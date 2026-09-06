@@ -39,7 +39,8 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient)
+		s.engineMap[req.Name] = newEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize,
+			s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.ipFamily, s.newServiceClient)
 		e = s.engineMap[req.Name]
 	}
 
@@ -705,17 +706,19 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 	e.RLock()
 	volumeName := e.VolumeName
 	specSize := e.SpecSize
+	engineName := e.Name
 	e.RUnlock()
 
 	throwawayUpdateCh := make(chan interface{}, 2)
-	tempEF := NewEngineFrontend(
-		e.Name+"-restore",
-		e.Name,
+	tempEF := newEngineFrontend(
+		engineName+"-restore",
+		engineName,
 		volumeName,
 		types.FrontendSPDKTCPBlockdev,
 		specSize,
 		types.DefaultUblkQueueDepth,
 		types.DefaultUblkNumberOfQueue,
+		s.ipFamily,
 		throwawayUpdateCh,
 		s.newServiceClient,
 	)

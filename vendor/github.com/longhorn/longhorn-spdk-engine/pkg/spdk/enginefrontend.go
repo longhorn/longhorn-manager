@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
@@ -32,6 +33,7 @@ import (
 type EngineFrontend struct {
 	sync.RWMutex
 
+	ipFamily    commonnet.IPFamily
 	Name        string
 	EngineName  string
 	VolumeName  string
@@ -138,7 +140,7 @@ const (
 	// recoveryTargetReachabilityTimeout is the timeout for a TCP dial to
 	// verify the NVMe-TCP target is reachable before attempting expensive
 	// reconnect retries during engine frontend recovery. This only applies
-	// to the recovery path — normal creation and switchover paths use the
+	// to the recovery path -- normal creation and switchover paths use the
 	// full retry loop in the initiator package.
 	recoveryTargetReachabilityTimeout = 5 * time.Second
 )
@@ -193,6 +195,12 @@ func getUblkNumberOfQueue(ublkNumberOfQueue int32) int32 {
 
 func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend string, specSize uint64, ublkQueueDepth, ublkNumberOfQueue int32,
 	engineFrontendUpdateCh chan interface{}, newServiceClient ServiceClientFactory) *EngineFrontend {
+	return newEngineFrontend(engineFrontendName, engineName, volumeName, frontend, specSize, ublkQueueDepth, ublkNumberOfQueue,
+		commonnet.IPFamilyUnspecified, engineFrontendUpdateCh, newServiceClient)
+}
+
+func newEngineFrontend(engineFrontendName, engineName, volumeName, frontend string, specSize uint64, ublkQueueDepth, ublkNumberOfQueue int32,
+	ipFamily commonnet.IPFamily, engineFrontendUpdateCh chan interface{}, newServiceClient ServiceClientFactory) *EngineFrontend {
 	if newServiceClient == nil {
 		newServiceClient = GetServiceClient
 	}
@@ -225,6 +233,7 @@ func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend stri
 	}
 
 	return &EngineFrontend{
+		ipFamily:    ipFamily,
 		Name:        engineFrontendName,
 		EngineName:  engineName,
 		VolumeName:  volumeName,
@@ -473,15 +482,15 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 	// that could cause concurrent writes to the same LBA to be routed to
 	// different engines, risking replica-level inconsistency.
 	//
-	// Phase 1: new → non-optimized (old stays optimized)
+	// Phase 1: new -> non-optimized (old stays optimized)
 	//   Kernel prefers the optimized old path; new path is usable as
 	//   fallback but receives no I/O while old is optimized.
 	//
-	// Phase 2: old → inaccessible (new is non-optimized)
-	//   Kernel falls back to the non-optimized new path — the only
+	// Phase 2: old -> inaccessible (new is non-optimized)
+	//   Kernel falls back to the non-optimized new path -- the only
 	//   remaining usable path. No I/O blackout.
 	//
-	// Phase 3: new → optimized
+	// Phase 3: new -> optimized
 	//   Kernel now routes all I/O through the fully-promoted new path.
 	//
 	// At every phase there is exactly ONE engine receiving I/O, and there
@@ -489,7 +498,7 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 
 	// Phase 1: Promote new path to non-optimized (usable fallback).
 	if err := ef.setRemoteEngineTargetANAState(newTargetIP, newEngineName, NvmeTCPANAStateNonOptimized); err != nil {
-		// Phase 1 failed. Do NOT proceed — demoting the old path without
+		// Phase 1 failed. Do NOT proceed -- demoting the old path without
 		// a usable new path would leave no routable path at all.
 		return multierr.Append(syncErr, err)
 	}
@@ -499,7 +508,7 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 		if err := ef.setRemoteEngineTargetANAState(oldTargetIP, oldEngineName, NvmeTCPANAStateInaccessible); err != nil {
 			// If the old engine's SPDK subsystem no longer exists (e.g.
 			// it was already cleaned up after a previous switchover), the
-			// old target is effectively gone — treat this as success.
+			// old target is effectively gone -- treat this as success.
 			if isSubsystemNotFoundError(err) {
 				ef.log.WithError(err).WithFields(logrus.Fields{
 					"oldEngineName": oldEngineName,
@@ -507,7 +516,7 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldTargetIP, oldEngine
 				}).Info("Old engine subsystem already removed, skipping ANA demotion")
 			} else {
 				// Phase 2 failed for a real reason. Do NOT proceed to
-				// Phase 3 — promoting the new path to optimized while
+				// Phase 3 -- promoting the new path to optimized while
 				// the old path is still optimized would create a
 				// dual-write window.
 				//
@@ -1102,8 +1111,12 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 	frontend := ef.Frontend
 
 	var targetAddress string
+	var targetIP string
+	var targetPort int32
 	if ef.NvmeTcpFrontend != nil {
-		targetAddress = net.JoinHostPort(ef.NvmeTcpFrontend.TargetIP, strconv.Itoa(int(ef.NvmeTcpFrontend.TargetPort)))
+		targetIP = ef.NvmeTcpFrontend.TargetIP
+		targetPort = ef.NvmeTcpFrontend.TargetPort
+		targetAddress = net.JoinHostPort(targetIP, strconv.Itoa(int(targetPort)))
 	}
 
 	engineSpdkClient, err := ef.newServiceClient(ef.getEngineServiceAddress())
@@ -1127,8 +1140,8 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 
 	// engineErr will be set when the engine failed to do any non-recoverable operations.
 	expanded := false
-	backendExpansionError := ""
-	backendExpansionFailedAt := ""
+	expansionError := ""
+	expansionFailedAt := ""
 	var engineActualSize uint64
 
 	defer func() {
@@ -1141,7 +1154,7 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 
 		// Phase 3: Re-acquire lock to update state.
 		ef.Lock()
-		ef.finishExpansion(originalSize, expanded, size, retErr, backendExpansionError, backendExpansionFailedAt, engineActualSize)
+		ef.finishExpansion(originalSize, expanded, size, retErr, expansionError, expansionFailedAt, engineActualSize)
 		ef.Unlock()
 
 		ef.UpdateCh <- nil
@@ -1158,12 +1171,22 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 	if err != nil {
 		return errors.Wrap(err, "prepare raid for expansion failed")
 	}
+	resumePending := suspended
 	if suspended {
 		defer func() {
-			if ef.initiator != nil {
-				if frontendErr := ef.initiator.Resume(); frontendErr != nil {
-					retErr = multierr.Append(retErr, errors.Wrapf(frontendErr, "original error; resume failed"))
+			if !resumePending {
+				return
+			}
+			if frontendErr := ef.resume(); frontendErr != nil {
+				// The dm table was already reloaded with the new size, and a resume
+				// error is not proof that it did not go live, so the size is left as
+				// it is and only the failure is reported.
+				// finishExpansion reports retErr alone, so carry any earlier failure
+				// with it.
+				if expansionError != "" {
+					retErr = multierr.Append(retErr, errors.New(expansionError))
 				}
+				retErr = multierr.Append(retErr, errors.Wrap(frontendErr, "resume failed"))
 			}
 		}()
 	}
@@ -1178,10 +1201,10 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 	}
 	engineActualSize = engine.ActualSize
 	if engine.LastExpansionError != "" {
-		backendExpansionError = engine.LastExpansionError
-		backendExpansionFailedAt = engine.LastExpansionFailedAt
+		expansionError = engine.LastExpansionError
+		expansionFailedAt = engine.LastExpansionFailedAt
 		ef.log.Warnf("Engine %s partially failed to expand to %v; keeping engine frontend size at %v: %v",
-			engineName, size, originalSize, backendExpansionError)
+			engineName, size, originalSize, expansionError)
 		return nil
 	}
 
@@ -1193,10 +1216,41 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 
 	// It waits for the kernel to recognize the new physical NVMe capacity
 	// and then reloads the dm table to propagate the size change up to the volume.
-	if frontend != types.FrontendEmpty && ef.initiator != nil {
-		if err := ef.initiator.SyncDmDeviceSize(size); err != nil {
-			ef.log.WithError(err).Warnf("failed to sync linear dm device size during engine %s expansion", engineName)
+	if frontend != types.FrontendEmpty {
+		if ef.initiator != nil {
+			if err := ef.initiator.SyncDmDeviceSize(size); err != nil {
+				// The backend already serves the new size, but the device the volume is
+				// exposed through does not, so the expansion is not complete and must
+				// not be reported as such.
+				expansionError = errors.Wrapf(err, "failed to sync the linear dm device size for engine %s", engineName).Error()
+				expansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
+				ef.log.WithError(err).Errorf("Engine %s expanded the backend but failed to resize the frontend device; keeping engine frontend size at %v",
+					engineName, originalSize)
+				return nil
+			}
+
+			// The online RAID expansion tears down and recreates the RAID bdev, forcing
+			// the initiator controller through NVMe error recovery and reconnect. Wait for
+			// the reconnected controller to reach the live state before reporting the
+			// expansion complete, so the new size is not published on a path that is still
+			// reconnecting.
+			if frontend == types.FrontendSPDKTCPBlockdev {
+				if err := ef.waitForNvmeTCPControllerLive(targetIP, targetPort); err != nil {
+					expansionError = errors.Wrapf(err, "NVMe controller did not reach live state after expanding engine %s", engineName).Error()
+					expansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
+					ef.log.WithError(err).Errorf("Engine %s expanded the backend and resized the frontend device but the NVMe controller is not live; keeping engine frontend size at %v",
+						engineName, originalSize)
+					return nil
+				}
+			}
 		}
+	}
+
+	if resumePending {
+		if err := ef.resume(); err != nil {
+			return errors.Wrap(err, "resume failed")
+		}
+		resumePending = false
 	}
 
 	ef.log.Info("Expanding engine completed")
@@ -1254,7 +1308,7 @@ func (ef *EngineFrontend) requireExpansion(ctx context.Context, engineSpdkClient
 	return true, nil
 }
 
-func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size uint64, err error, backendExpansionError, backendExpansionFailedAt string, engineActualSize uint64) {
+func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size uint64, err error, expansionError, expansionFailedAt string, engineActualSize uint64) {
 	// Sync ActualSize from the engine whenever we successfully queried it,
 	// regardless of whether the expansion itself succeeded or failed.
 	if engineActualSize > 0 {
@@ -1287,15 +1341,15 @@ func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size u
 
 	ef.State = types.InstanceStateRunning
 	ef.ErrorMsg = ""
-	if backendExpansionError != "" {
-		ef.lastExpansionError = backendExpansionError
-		if backendExpansionFailedAt != "" {
-			ef.lastExpansionFailedAt = backendExpansionFailedAt
+	if expansionError != "" {
+		ef.lastExpansionError = expansionError
+		if expansionFailedAt != "" {
+			ef.lastExpansionFailedAt = expansionFailedAt
 		} else {
 			ef.lastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		}
 		ef.log.Warnf("Partially failed to expand from size %v to %v; keeping engine frontend size at %v: %v",
-			fromSize, size, fromSize, backendExpansionError)
+			fromSize, size, fromSize, expansionError)
 		ef.isExpanding = false
 		return
 	}
@@ -1311,7 +1365,7 @@ func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size u
 		ef.log.Infof("Failed to expand from size %v to %v", fromSize, size)
 	}
 
-	// Clear stale expansion error on success (err == nil && backendExpansionError == "").
+	// Clear stale expansion error on success (err == nil && expansionError == "").
 	// A previous partial failure may have left lastExpansionError set.
 	ef.lastExpansionError = ""
 	ef.lastExpansionFailedAt = ""
@@ -1326,7 +1380,7 @@ func (ef *EngineFrontend) prepareExpansion() (engineFrontendSuspended bool, err 
 	case types.FrontendSPDKTCPBlockdev:
 		if ef.Endpoint != "" {
 			ef.log.Info("Suspending engine frontend")
-			if err := ef.initiator.Suspend(false, false); err != nil {
+			if err := ef.suspend(false, false); err != nil {
 				return false, errors.Wrapf(err, "failed to suspend engine frontend %s", ef.Name)
 			}
 			return true, nil
@@ -1627,7 +1681,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 			// path may already be disconnected. With no optimized path the
 			// kernel hides the namespace block device, so
 			// loadInitiatorNVMeDeviceInfo would fail. We must run the ANA
-			// sync FIRST (which sets new→optimized) to restore the block
+			// sync FIRST (which sets new->optimized) to restore the block
 			// device, then reload initiator state.
 			ef.log.WithError(switchErr).WithFields(logrus.Fields{
 				"engineName": resolvedEngineName,
@@ -1645,7 +1699,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 					switchErr = errors.Wrapf(ErrSwitchOverTargetInternal,
 						"failed to reload engine frontend %s NVMe device info for already connected multipath target %s: %v",
 						ef.Name, targetAddress, reloadErr)
-					// ANA sync succeeded (new→optimized, old→inaccessible).
+					// ANA sync succeeded (new->optimized, old->inaccessible).
 					// Revert ANA so the old path becomes functional again.
 					if rErr := ef.setRemoteEngineTargetANAState(targetIP, resolvedEngineName, NvmeTCPANAStateInaccessible); rErr != nil {
 						ef.log.WithError(rErr).Warn("Failed to revert new target ANA state during already-connected rollback")
@@ -1738,7 +1792,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 					ef.Name, targetAddress, reloadErr)
 				// Revert ANA states so the old path becomes functional again.
 				// syncRemoteEngineTargetANAStatesWithRetry already set
-				// new→optimized, old→inaccessible. Reverse both.
+				// new->optimized, old->inaccessible. Reverse both.
 				if anaErr := ef.setRemoteEngineTargetANAState(targetIP, resolvedEngineName, NvmeTCPANAStateInaccessible); anaErr != nil {
 					ef.log.WithError(anaErr).Warn("Failed to revert new target ANA state to inaccessible during monolithic switchover rollback")
 				}
@@ -1814,7 +1868,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 
 		// Do NOT explicitly disconnect the old controller path. Removing it
 		// immediately can race with the kernel processing the ANA state
-		// change on the new path — if the kernel hasn't fully switched to
+		// change on the new path -- if the kernel hasn't fully switched to
 		// the new optimized path when the old controller is yanked, a brief
 		// "no available path" window causes I/O errors that make ext4 go
 		// read-only. Instead, let the kernel handle the stale controller
@@ -1836,7 +1890,7 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 }
 
 // switchOverTargetNvmfPhased executes a single phase of the nvmf frontend switchover.
-// The control plane drives progression through preparing → switching → promoting.
+// The control plane drives progression through preparing -> switching -> promoting.
 func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newEngineName string, newTargetIP string, newTargetPort int32, oldEngineName, oldTargetIP string, oldTargetPort int32, newNQN, newNGUID string, updateRequired *bool) error {
 	resolvedNewEngineName, err := ef.resolveRemoteEngineName(newTargetIP, newTargetPort, newEngineName)
 	if err != nil {
@@ -1845,7 +1899,7 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 
 	switch phase {
 	case SwitchoverPhasePreparing:
-		// Phase 1: Set new target → non-optimized. Old stays optimized.
+		// Phase 1: Set new target -> non-optimized. Old stays optimized.
 		// Kernel prefers old; new is usable fallback but receives no I/O.
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
@@ -1860,7 +1914,7 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 		return nil
 
 	case SwitchoverPhaseSwitching:
-		// Phase 2: Set old target → inaccessible. Kernel falls back to new non-optimized path.
+		// Phase 2: Set old target -> inaccessible. Kernel falls back to new non-optimized path.
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"oldEngineName": oldEngineName,
@@ -1884,7 +1938,7 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 		return nil
 
 	case SwitchoverPhasePromoting:
-		// Phase 3: Set new target → optimized, update internal state, persist.
+		// Phase 3: Set new target -> optimized, update internal state, persist.
 
 		// Resolve the old engine name for rollback. The switching phase
 		// resolved it independently, but each phased call is stateless.
@@ -1948,11 +2002,11 @@ func (ef *EngineFrontend) switchOverTargetNvmfPhased(phase SwitchoverPhase, newE
 }
 
 // switchOverTargetBlockdevPhased executes a single phase of the blockdev frontend switchover.
-// The control plane drives progression through preparing → switching → promoting.
+// The control plane drives progression through preparing -> switching -> promoting.
 func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, newEngineName, targetAddress string, newTargetIP string, newTargetPort int32, oldEngineName, oldTargetIP string, oldTargetPort int32, newNQN, newNGUID, oldNQN, oldNGUID, oldEndpoint string, oldDMDeviceIsBusy bool, updateRequired *bool) error {
 	switch phase {
 	case SwitchoverPhasePreparing:
-		// Step 1: Set new target → inaccessible to prevent routing on connect.
+		// Step 1: Set new target -> inaccessible to prevent routing on connect.
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"newEngineName": newEngineName,
@@ -1998,7 +2052,7 @@ func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, 
 			return waitErr
 		}
 
-		// Step 4: Set new target → non-optimized (ANA phase 1).
+		// Step 4: Set new target -> non-optimized (ANA phase 1).
 		ef.log.Info("Switchover blockdev preparing: setting new target ANA to non-optimized")
 		if err := ef.setRemoteEngineTargetANAState(newTargetIP, newEngineName, NvmeTCPANAStateNonOptimized); err != nil {
 			setErr := errors.Wrapf(ErrSwitchOverTargetInternal,
@@ -2015,7 +2069,7 @@ func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, 
 		return nil
 
 	case SwitchoverPhaseSwitching:
-		// Set old target → inaccessible (ANA phase 2).
+		// Set old target -> inaccessible (ANA phase 2).
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"oldEngineName": oldEngineName,
@@ -2053,7 +2107,7 @@ func (ef *EngineFrontend) switchOverTargetBlockdevPhased(phase SwitchoverPhase, 
 			}
 		}
 
-		// Step 1: Set new target → optimized (ANA phase 3).
+		// Step 1: Set new target -> optimized (ANA phase 3).
 		ef.log.WithFields(logrus.Fields{
 			"phase":         phase,
 			"newEngineName": newEngineName,
@@ -2424,7 +2478,7 @@ func (ef *EngineFrontend) resume() error {
 
 // ValidateAndUpdate validates the engine frontend (initiator-side) state and updates
 // fields (e.g., Endpoint) as needed. Called periodically by the server verify loop.
-// This only validates the local initiator/device state — target-side subsystem
+// This only validates the local initiator/device state -- target-side subsystem
 // validation is the responsibility of the Engine.
 func (ef *EngineFrontend) ValidateAndUpdate(spdkClient *spdkclient.Client) (err error) {
 	updateRequired := false
@@ -2605,7 +2659,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 		defer ef.Unlock()
 
 		if deviceNotFound {
-			// Device not found on host — record already removed, nothing to reconcile.
+			// Device not found on host -- record already removed, nothing to reconcile.
 			return
 		}
 
@@ -2655,7 +2709,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 		// Early cancellation check before creating the NVMe-TCP initiator.
 		// If a concurrent EngineFrontendCreate already completed for this
 		// volume (evicted us and connected its own NVMe controller), we must
-		// not proceed — creating an initiator and then calling Delete/Stop
+		// not proceed -- creating an initiator and then calling Delete/Stop
 		// would disconnect the NEW ef's controller via DisconnectTarget
 		// (which disconnects ALL controllers for the subsystem NQN).
 		if ef.isRecoveryCancelled() {
@@ -2789,7 +2843,7 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 }
 
 // BackupRestore initiates a backup restore via this frontend.
-// The EngineFrontend must not have an active endpoint — it is expected to be a
+// The EngineFrontend must not have an active endpoint -- it is expected to be a
 // dedicated restore frontend with no pre-existing initiator connection.
 // A temporary NVMe-TCP target is created on the engine for data transfer and torn
 // down (along with the initiator) once the restore goroutine completes.

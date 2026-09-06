@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
@@ -37,6 +38,11 @@ type Server struct {
 
 	diskCreateLock sync.Mutex
 	hotplugActive  atomic.Bool // use atomic.Bool to avoid data races across goroutines.
+
+	// ipFamily is immutable for the lifetime of the InstanceManager process.
+	// It controls address-family selection for every SPDK instance created by
+	// this server.
+	ipFamily commonnet.IPFamily
 
 	// replicaMapGen is bumped (under Lock) every time replicaMap is mutated
 	// by ReplicaCreate or ReplicaDelete.  verify() captures it in
@@ -94,7 +100,27 @@ type Server struct {
 	newServiceClient ServiceClientFactory
 }
 
-func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient ServiceClientFactory) (*Server, error) {
+func validatePersistedAddressFamily(address string, configured commonnet.IPFamily) error {
+	if address == "" {
+		return nil
+	}
+
+	family, err := commonnet.ParseIPFamilyFromAddress(address)
+	if err != nil {
+		return err
+	}
+	if configured != commonnet.IPFamilyUnspecified && family != configured {
+		return fmt.Errorf("IP family %q does not match configured family %q", family, configured)
+	}
+	return nil
+}
+
+func NewServer(ctx context.Context, portStart, portEnd int32, ipFamily commonnet.IPFamily, newServiceClient ServiceClientFactory) (*Server, error) {
+	var err error
+	ipFamily, err = commonnet.ParseIPFamily(string(ipFamily))
+	if err != nil {
+		return nil, err
+	}
 	if newServiceClient == nil {
 		newServiceClient = GetServiceClient
 	}
@@ -128,7 +154,8 @@ func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient S
 	}
 
 	s := &Server{
-		ctx: ctx,
+		ctx:      ctx,
+		ipFamily: ipFamily,
 
 		hotplugActive: atomic.Bool{},
 
@@ -290,7 +317,7 @@ func (s *Server) verify() (err error) {
 	// rebuildCachedLvolObjects makes SPDK JSON-RPC calls that may block
 	// for a long time (e.g. when spdk_tgt is busy with blobstore
 	// recovery during DiskCreate).  Run it WITHOUT the server lock so
-	// that gRPC handlers (EngineGet, EngineFrontendCreate, …) are not
+	// that gRPC handlers (EngineGet, EngineFrontendCreate, ...) are not
 	// starved.
 	if err = s.rebuildCachedLvolObjects(state); err != nil {
 		return err
@@ -529,13 +556,15 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
 			actualSize := bdevLvol.DriverSpecific.Lvol.NumAllocatedClusters * uint64(defaultClusterSize)
-			state.replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient)
+			state.replicaMap[lvolName] = newReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true,
+				s.ipFamily, s.updateChs[types.InstanceTypeReplica], s.newServiceClient)
 			state.replicaMapForSync[lvolName] = state.replicaMap[lvolName]
 			logrus.Infof("Detected one possible existing replica %s(%s) with disk %s(%s), spec size %d, actual size %d", bdevLvol.Aliases[0], bdevLvol.UUID, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize)
 		} else if volumeName, slotIndex, err := ParseShardLvolName(lvolName); err == nil {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
-			shard := NewShard(volumeName, slotIndex, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, s.updateChs[types.InstanceTypeShard])
+			shard := newShard(volumeName, slotIndex, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, s.ipFamily,
+				s.updateChs[types.InstanceTypeShard])
 			shard.UUID = bdevLvol.UUID
 			// Key by the external shard name (matches what clients send via
 			// Name); the on-disk lvolName is preserved on shard.LvolName.
@@ -725,13 +754,12 @@ func (s *Server) isLvsExist(lvsUUID, lvsName string) (bool, error) {
 
 func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error) {
 	s.Lock()
-	defer func() {
-		s.Unlock()
-	}()
+	defer s.Unlock()
 
 	r, ok := s.replicaMap[req.Name]
 	if ok {
 		r.Lock()
+		defer r.Unlock()
 		if req.SpecSize != 0 {
 			r.SpecSize = req.SpecSize
 		}
@@ -741,7 +769,6 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 		if req.LvsUuid != "" {
 			r.LvsUUID = req.LvsUuid
 		}
-		r.Unlock()
 		return r, nil
 	}
 
@@ -752,7 +779,8 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 	if !exists {
 		return nil, fmt.Errorf("lvstore %v(%v) does not exist for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
 	}
-	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient), nil
+	return newReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.ipFamily,
+		s.updateChs[types.InstanceTypeReplica], s.newServiceClient), nil
 }
 
 func (s *Server) getBackingImage(backingImageName, lvsUUID string) (backingImage *BackingImage, err error) {
@@ -808,7 +836,7 @@ func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, l
 	return func(work func() error) error {
 		efClient, err := newServiceClient(efAddress)
 		if err != nil {
-			// Cannot connect to the EF node at all — proceed without suspension.
+			// Cannot connect to the EF node at all - proceed without suspension.
 			log.WithError(err).Warnf("Engine frontend %s at %s is unreachable, proceeding without suspension", efName, efAddress)
 			return work()
 		}
@@ -834,7 +862,7 @@ func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, l
 
 		// Resume the frontend after the work.
 		// If resume fails (EF disappeared during work, or internal error),
-		// log a warning but do not override workErr — the replica-add result
+		// log a warning but do not override workErr - the replica-add result
 		// is determined by work(), not by resume. longhorn-manager will
 		// detect the stuck-suspended EF and handle recovery.
 		if suspended {
@@ -1019,7 +1047,7 @@ func (s *Server) engineFrontendByVolumeName(volumeName string) *EngineFrontend {
 func toEngineFrontendCreateGRPCError(err error, format string, args ...any) error {
 	code := grpccodes.Internal
 
-	// Check sentinel errors first — they are the most specific indicators
+	// Check sentinel errors first - they are the most specific indicators
 	// of what went wrong and should take priority over any embedded gRPC
 	// status that might exist deeper in the error chain.
 	switch {
@@ -1133,7 +1161,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 			continue
 		}
 
-		// Check volume uniqueness — a concurrent frontend lifecycle RPC may
+		// Check volume uniqueness - a concurrent frontend lifecycle RPC may
 		// already have registered an in-memory frontend for this volume while
 		// we were loading records from disk. Skip recovery so we do not race
 		// that in-memory owner on the host. The on-disk record may already
@@ -1145,8 +1173,9 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 			continue
 		}
 
-		ef := NewEngineFrontend(record.Name, record.EngineName, record.VolumeName,
-			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+		ef := newEngineFrontend(record.Name, record.EngineName, record.VolumeName,
+			record.Frontend, record.SpecSize, 0, 0, s.ipFamily,
+			s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 		ef.NvmeTcpFrontend.NrIoQueues = record.NrIoQueues
 		ef.metadataDir = s.metadataDir
 		ef.VolumeNQN = record.VolumeNQN
@@ -1221,11 +1250,26 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 		// the same subsystem NQN derived from the volume name).
 		unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
 
-		// Read spdkClient fresh each iteration — clientReconnect() can
+		// Read spdkClient fresh each iteration - clientReconnect() can
 		// replace s.spdkClient and close the old one concurrently.
 		s.RLock()
 		spdkClient := s.spdkClient
 		s.RUnlock()
+		if s.ipFamily != commonnet.IPFamilyUnspecified {
+			if err := validatePersistedAddressFamily(record.TargetIP, s.ipFamily); err != nil {
+				logrus.WithError(err).Warnf("Engine frontend %s for volume %s has persisted target address %q incompatible with configured IP family %q; recovery continues",
+					record.Name, record.VolumeName, record.TargetIP, s.ipFamily)
+			}
+			for _, path := range record.Paths {
+				if path == nil || path.TargetIP == record.TargetIP {
+					continue
+				}
+				if err := validatePersistedAddressFamily(path.TargetIP, s.ipFamily); err != nil {
+					logrus.WithError(err).Warnf("Engine frontend %s for volume %s has persisted path address %q incompatible with configured IP family %q; recovery continues",
+						record.Name, record.VolumeName, path.TargetIP, s.ipFamily)
+				}
+			}
+		}
 
 		recoverErr := ef.RecoverFromHost(spdkClient)
 
@@ -1256,7 +1300,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 			}
 			s.Unlock()
 		} else {
-			// Recovery succeeded — verify the ef was not superseded by a
+			// Recovery succeeded - verify the ef was not superseded by a
 			// concurrent EngineFrontendCreate while RecoverFromHost was running.
 			s.RLock()
 			current := s.engineFrontendMap[record.Name]
@@ -1268,7 +1312,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 				// whether metadataDir should be kept (pre-create eviction,
 				// where no new record exists yet) or cleared (post-create
 				// eviction with successful Create, where a new record was
-				// written). Respect that decision — do not override here.
+				// written). Respect that decision - do not override here.
 				if deleteErr := ef.Delete(spdkClient); deleteErr != nil {
 					logrus.WithError(deleteErr).Warnf("Failed to clean up superseded engine frontend %s", record.Name)
 				}
