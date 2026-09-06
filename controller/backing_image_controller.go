@@ -35,6 +35,62 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+func normalizePreferredDataEngineIPFamily(family string) string {
+	if family == "" || family == types.DataEngineIPFamilyDefault {
+		return types.DataEngineIPFamilyDefault
+	}
+	return family
+}
+
+func getBackingImageListenAddress(family string, port int) string {
+	host := ""
+	switch family {
+	case types.DataEngineIPFamilyIPv4:
+		host = "0.0.0.0"
+	case types.DataEngineIPFamilyIPv6:
+		host = "::"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func appendBackingImageIPFamilyArgs(args []string, family string) []string {
+	if family != types.DataEngineIPFamilyIPv4 && family != types.DataEngineIPFamilyIPv6 {
+		return args
+	}
+
+	result := append([]string(nil), args...)
+	return append(result, "--ip-family", family)
+}
+
+func isBackingImagePodIPFamilySynced(pod *corev1.Pod, containerName, desiredFamily string) bool {
+	if pod == nil {
+		return false
+	}
+	desiredFamily = normalizePreferredDataEngineIPFamily(desiredFamily)
+	if desiredFamily != types.DataEngineIPFamilyDefault && desiredFamily != types.DataEngineIPFamilyIPv4 && desiredFamily != types.DataEngineIPFamilyIPv6 {
+		return false
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name != containerName {
+			continue
+		}
+
+		args := make([]string, 0, len(container.Command)+len(container.Args))
+		args = append(args, container.Command...)
+		args = append(args, container.Args...)
+		family, specified, valid := types.ParseDataEngineIPFamilyArgs(args)
+		if !valid {
+			return false
+		}
+		if desiredFamily == types.DataEngineIPFamilyDefault {
+			return !specified
+		}
+		return specified && family == desiredFamily
+	}
+	return false
+}
+
 type BackingImageController struct {
 	*baseController
 
@@ -1680,7 +1736,10 @@ func (bic *BackingImageController) syncV2Copies(bi *longhorn.BackingImage, sourc
 		return errors.Wrapf(err, "failed to get pod for instance manager %v", srcInstanceManager.Name)
 	}
 
-	instanceManagerStorageIP := bic.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	instanceManagerStorageIP, err := bic.ds.GetDataEngineIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	if err != nil {
+		return err
+	}
 
 	// Create the backing image by syncing the backing image data from the SPDK server inside the instance manager holding the source disk
 	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(instanceManagerStorageIP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, uint64(bi.Status.Size))

@@ -545,6 +545,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		updatedIM, err := lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
+		if tc.expectedStatus.CurrentState == longhorn.InstanceManagerStateRunning {
+			appliedFamily := types.DataEngineIPFamilyDefault
+			tc.expectedStatus.IPFamily = &appliedFamily
+		}
 		for i, condition := range updatedIM.Status.Conditions {
 			tc.expectedStatus.Conditions[i].LastTransitionTime = condition.LastTransitionTime
 			tc.expectedStatus.Conditions[i].LastProbeTime = condition.LastProbeTime
@@ -1085,5 +1089,73 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 		for _, isolationArg := range isolationArgs {
 			c.Assert(hasArg(args, isolationArg), Equals, false, Commentf("test case: %v, args: %v", name, args))
 		}
+	}
+}
+
+func (s *TestSuite) TestIPFamilySettingRecreatesInstanceManagerPod(c *C) {
+	for _, desired := range []string{types.DataEngineIPFamilyIPv4, types.DataEngineIPFamilyIPv6, types.DataEngineIPFamilyDefault} {
+		kubeClient := fake.NewSimpleClientset()
+		lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck // Generated SSA schema does not support Setting creation.
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+		defer imc.queue.ShutDown()
+
+		settings := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		createDangerZoneSettingsForV2(c, lhClient, settings)
+		familySetting := newSetting(string(types.SettingNamePreferredDataEngineIPFamily), desired)
+		c.Assert(settings.Add(familySetting), IsNil)
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Status.Allocatable = corev1.ResourceList{
+			"cpu": resource.MustParse("4"), corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		}
+		kubeNode.Status.Capacity = corev1.ResourceList{corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi")}
+		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(kubeNode), IsNil)
+		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(lhNode), IsNil)
+		_, err = lhClient.LonghornV1beta2().Nodes(lhNode.Namespace).Create(context.TODO(), lhNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+			TestNode1, TestNode1, TestIP1, nil, nil, nil, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
+		im.Status.IPFamily = new(types.DataEngineIPFamilyIPv4)
+		im.Status.DataEngineStatus.V2.CPUMask = "0x1"
+		im.Status.DataEngineStatus.V2.InterruptModeEnabled = longhorn.FalseValue
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
+		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
+		pod.UID = "original-ip-family-pod"
+		pod.Spec.Containers = []corev1.Container{{
+			Name: "instance-manager", Command: []string{"instance-manager"},
+			Args: []string{"--spdk-memory-size", "1024", "--enable-irq-affinity", "--enable-workqueue-affinity", "--enable-rps", "--ip-family", types.DataEngineIPFamilyIPv4},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")},
+				Limits:   corev1.ResourceList{corev1.ResourceName("hugepages-2Mi"): resource.MustParse("1024Mi")},
+			},
+		}}
+		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer().Add(pod), IsNil)
+		_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		c.Assert(imc.syncInstanceManager(getKey(im, c)), IsNil, Commentf("desired family: %s", desired))
+		currentPod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		actual, specified, valid, found := getInstanceManagerIPFamilyFromPod(currentPod)
+		c.Assert(found && valid, Equals, true)
+		if desired == types.DataEngineIPFamilyDefault {
+			c.Assert(specified, Equals, false)
+		} else {
+			c.Assert(specified, Equals, true)
+			c.Assert(actual, Equals, desired)
+		}
+		c.Assert(currentPod.UID == pod.UID, Equals, desired == types.DataEngineIPFamilyIPv4,
+			Commentf("only a family change should replace the existing pod"))
 	}
 }

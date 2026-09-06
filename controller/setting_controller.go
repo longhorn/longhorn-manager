@@ -325,7 +325,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 				return err
 			}
 		}
-
 		return nil
 	}
 

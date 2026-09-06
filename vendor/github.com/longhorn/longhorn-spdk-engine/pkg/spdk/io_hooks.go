@@ -56,8 +56,9 @@ var (
 	restoreExposeSnapshotLvolBdev = exposeSnapshotLvolBdev
 	restoreStopExposeBdev         = func(cli *spdkclient.Client, nqn string) error { return cli.StopExposeBdev(nqn) }
 
-	backingImageGetIPForPod = commonnet.GetIPForPod
-	backingImageNewExecutor = func(hostProc string) (*commonns.Executor, error) {
+	backingImageGetIPForPod         = func() (string, error) { return commonnet.GetIPForPodByNetworkAndFamily(commonnet.IPFamilyUnspecified) }
+	backingImageGetIPForPodByFamily = commonnet.GetIPForPodByNetworkAndFamily
+	backingImageNewExecutor         = func(hostProc string) (*commonns.Executor, error) {
 		return helperutil.NewExecutor(hostProc)
 	}
 	backingImageGetLvsNameByUUID = GetLvsNameByUUID

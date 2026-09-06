@@ -286,7 +286,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20260907073218-e53e6775eb8a
+# github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
 ## explicit; go 1.25.10
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -326,7 +326,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260907105642-7fafb1dca838
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20260903111446-fd2532cfae01 => github.com/COLDTURNIP/longhorn-instance-manager v0.0.0-20260903111446-fd2532cfae01
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -337,7 +337,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260907102425-963d8500c439
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20260909083938-f61c0200cd0b => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20260909083938-f61c0200cd0b
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -1404,3 +1404,5 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.36.4
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.36.4
 # k8s.io/sample-controller => k8s.io/sample-controller v0.36.4
+# github.com/longhorn/longhorn-spdk-engine => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20260909083938-f61c0200cd0b
+# github.com/longhorn/longhorn-instance-manager => github.com/COLDTURNIP/longhorn-instance-manager v0.0.0-20260903111446-fd2532cfae01

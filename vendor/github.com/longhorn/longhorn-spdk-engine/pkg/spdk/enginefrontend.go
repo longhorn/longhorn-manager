@@ -15,12 +15,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
-	"github.com/longhorn/go-spdk-helper/pkg/initiator"
-	"github.com/longhorn/types/pkg/generated/spdkrpc"
-
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	commonnet "github.com/longhorn/go-common-libs/net"
+	"github.com/longhorn/go-spdk-helper/pkg/initiator"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
+	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/client"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
@@ -32,6 +32,7 @@ import (
 type EngineFrontend struct {
 	sync.RWMutex
 
+	ipFamily    commonnet.IPFamily
 	Name        string
 	EngineName  string
 	VolumeName  string
@@ -193,6 +194,12 @@ func getUblkNumberOfQueue(ublkNumberOfQueue int32) int32 {
 
 func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend string, specSize uint64, ublkQueueDepth, ublkNumberOfQueue int32,
 	engineFrontendUpdateCh chan interface{}, newServiceClient ServiceClientFactory) *EngineFrontend {
+	return newEngineFrontend(engineFrontendName, engineName, volumeName, frontend, specSize, ublkQueueDepth, ublkNumberOfQueue,
+		commonnet.IPFamilyUnspecified, engineFrontendUpdateCh, newServiceClient)
+}
+
+func newEngineFrontend(engineFrontendName, engineName, volumeName, frontend string, specSize uint64, ublkQueueDepth, ublkNumberOfQueue int32,
+	ipFamily commonnet.IPFamily, engineFrontendUpdateCh chan interface{}, newServiceClient ServiceClientFactory) *EngineFrontend {
 	if newServiceClient == nil {
 		newServiceClient = GetServiceClient
 	}
@@ -225,6 +232,7 @@ func NewEngineFrontend(engineFrontendName, engineName, volumeName, frontend stri
 	}
 
 	return &EngineFrontend{
+		ipFamily:    ipFamily,
 		Name:        engineFrontendName,
 		EngineName:  engineName,
 		VolumeName:  volumeName,

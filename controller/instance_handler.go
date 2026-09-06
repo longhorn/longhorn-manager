@@ -178,7 +178,17 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			return
 		}
 
-		storageIP := h.ds.GetIPFromPodByCNISetting(imPod, types.SettingNameStorageNetwork)
+		storageIP, err := h.getInstanceManagerStorageIP(im, imPod, instance)
+		if err != nil {
+			status.StorageIP = ""
+			var invalidState *types.ErrorInvalidState
+			if errors.As(err, &invalidState) {
+				log.Warnf("Failed to get data engine IP for instance %v: %v", instanceName, invalidState.Reason)
+			} else {
+				log.WithError(err).Errorf("Failed to get data engine IP for instance %v", instanceName)
+			}
+			return
+		}
 		if status.StorageIP != storageIP {
 			if status.StorageIP != "" {
 				log.Warnf("Instance %v is state running in instance manager %s, but its status Storage IP %s does not match the instance manager recorded Storage IP %s", instanceName, im.Name, status.StorageIP, storageIP)
@@ -226,7 +236,17 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			return
 		}
 
-		storageIP := h.ds.GetIPFromPodByCNISetting(imPod, types.SettingNameStorageNetwork)
+		storageIP, err := h.getInstanceManagerStorageIP(im, imPod, instance)
+		if err != nil {
+			status.StorageIP = ""
+			var invalidState *types.ErrorInvalidState
+			if errors.As(err, &invalidState) {
+				log.Warnf("Failed to get data engine IP for instance %v: %v", instanceName, invalidState.Reason)
+			} else {
+				log.WithError(err).Errorf("Failed to get data engine IP for instance %v", instanceName)
+			}
+			return
+		}
 		if status.StorageIP != storageIP {
 			if status.StorageIP != "" {
 				log.Warnf("Instance %v is state suspended in instance manager %s, but its status Storage IP %s does not match the instance manager recorded Storage IP %s", instanceName, im.Name, status.StorageIP, storageIP)
@@ -314,6 +334,13 @@ func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProces
 // resetInstanceErrorCondition resets the error condition to false when the instance is not running
 func (h *InstanceHandler) resetInstanceErrorCondition(status *longhorn.InstanceStatus) {
 	status.Conditions = types.SetCondition(status.Conditions, imtypes.EngineConditionFilesystemReadOnly, longhorn.ConditionStatusFalse, "", "")
+}
+func (h *InstanceHandler) getInstanceManagerStorageIP(im *longhorn.InstanceManager, pod *corev1.Pod, _ longhorn.InstanceProcess) (string, error) {
+	ipFamily := types.DataEngineIPFamilyDefault
+	if appliedFamily, initialized := engineapi.GetAppliedIPFamily(im); initialized {
+		ipFamily = appliedFamily
+	}
+	return h.ds.GetDataEngineIPFromPodByCNISettingForIPFamily(pod, types.SettingNameStorageNetwork, ipFamily)
 }
 
 // getNameFromObj will get the name from the object metadata, which will be used

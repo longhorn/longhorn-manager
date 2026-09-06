@@ -66,13 +66,13 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
 	github.com/longhorn/backupstore v0.0.0-20260831070834-77c184cc059a
-	github.com/longhorn/go-common-libs v0.0.0-20260907073218-e53e6775eb8a
+	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.9.1-0.20260907084552-730dfff4eda5
 	github.com/longhorn/longhorn-engine v1.13.0-dev-20260823
-	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260907105642-7fafb1dca838
+	github.com/longhorn/longhorn-instance-manager v0.0.0-20260903111446-fd2532cfae01
 	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260823
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260907102425-963d8500c439
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260909083938-f61c0200cd0b
 	github.com/longhorn/types v0.0.0-20260831072945-0bac432e7872
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
@@ -226,3 +226,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/longhorn/longhorn-spdk-engine => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20260909083938-f61c0200cd0b
+
+replace github.com/longhorn/longhorn-instance-manager => github.com/COLDTURNIP/longhorn-instance-manager v0.0.0-20260903111446-fd2532cfae01

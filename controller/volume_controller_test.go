@@ -3592,6 +3592,12 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
+		appliedIPFamily := types.DataEngineIPFamilyDefault
+		for _, instanceManager := range []*longhorn.InstanceManager{instanceManager1, instanceManager2} {
+			instanceManager.Status.IPFamily = &appliedIPFamily
+			instanceManager.Status.Conditions = types.SetCondition(instanceManager.Status.Conditions,
+				longhorn.InstanceManagerConditionTypeSettingSynced, longhorn.ConditionStatusTrue, "", "")
+		}
 		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 		err = imIndexer.Add(instanceManager1)
 		c.Assert(err, IsNil)
