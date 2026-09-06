@@ -67,14 +67,14 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.25.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085
-	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
-	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
-	github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00
+	github.com/longhorn/backupstore v0.0.0-20261126014319-1a59e1ebb9d9
+	github.com/longhorn/go-common-libs v0.0.0-20261028232656-6805a1f65080
+	github.com/longhorn/go-iscsi-helper v0.0.0-20261111091915-a9bc4284e8cf
+	github.com/longhorn/go-spdk-helper v0.14.1-0.20261117055102-2128d458b38c
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20261116.0.20261126021152-abb9f588a936
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261106064302-40b61a7ef9f8
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261116.0.20261126025430-6866938be969
 	github.com/longhorn/types v0.0.0-20261030035820-c6ac902022cf
 	github.com/prometheus/client_golang v1.25.0
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
@@ -115,7 +115,7 @@ require (
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/avast/retry-go/v4 v4.7.0 // indirect
-	github.com/avast/retry-go/v5 v5.0.0 // indirect
+	github.com/avast/retry-go/v5 v5.1.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.16.0 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
@@ -135,7 +135,7 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
 	github.com/gammazero/deque v1.2.2 // indirect
-	github.com/gammazero/workerpool v1.2.2 // indirect
+	github.com/gammazero/workerpool v1.3.0 // indirect
 	github.com/getsentry/sentry-go v0.46.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -220,3 +220,7 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/longhorn/longhorn-spdk-engine => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20261126095528-e10ec00d3c06
+
+replace github.com/longhorn/longhorn-instance-manager => github.com/COLDTURNIP/longhorn-instance-manager v0.0.0-20261126100621-55e9fa244a5f

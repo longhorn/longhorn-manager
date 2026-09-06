@@ -420,7 +420,7 @@ func validateAioDiskCreation(spdkClient *spdkclient.Client, diskPath string, dis
 	return nil
 }
 
-func addBlockDevice(spdkClient *spdkclient.Client, diskName, diskUUID, originalDiskPath string, diskDriver commontypes.DiskDriver, blockSize int64) (string, error) {
+func addBlockDevice(spdkClient *spdkclient.Client, diskName, diskUUID, originalDiskPath string, diskDriver commontypes.DiskDriver, blockSize int64) (lvstoreUUID string, err error) {
 	log := logrus.WithFields(logrus.Fields{
 		"diskName":   diskName,
 		"diskUUID":   diskUUID,
@@ -444,6 +444,20 @@ func addBlockDevice(spdkClient *spdkclient.Client, diskName, diskUUID, originalD
 		if !jsonrpc.IsJSONRPCRespErrorFileExists(err) {
 			return "", errors.Wrapf(err, "failed to create disk bdev")
 		}
+	} else {
+		// Any failure after the disk bdev is created must release the device again,
+		// otherwise the retry cannot attach a device left bound to a userspace PCI
+		// driver, especially when the disk driver is specified and the orphaned
+		// device is never released by the disk driver detection. An existing disk
+		// bdev is not created by this call, so it is not rolled back.
+		defer func() {
+			if err == nil {
+				return
+			}
+			if _, errDelete := spdkdisk.DiskDelete(spdkClient, diskName, originalDiskPath, string(diskDriver)); errDelete != nil {
+				log.WithError(errDelete).Warnf("Failed to roll back the disk bdev of disk %v after failing to add the block device", diskName)
+			}
+		}()
 	}
 
 	bdevs, err := spdkdisk.DiskGet(spdkClient, bdevName, diskPath, "", 0)
@@ -462,6 +476,14 @@ func addBlockDevice(spdkClient *spdkclient.Client, diskName, diskUUID, originalD
 	lvstoreName := bdev.Name
 
 	log.Infof("Creating lvstore %v", lvstoreName)
+
+	// Unlike creating an aio or nvme bdev, attaching a virtio controller returns
+	// before the existing lvstore on the bdev is loaded, which can take a while
+	// for a blob recovery. Wait for the examination, otherwise the existing
+	// lvstore cannot be found yet and a new lvstore may even be created over it.
+	if err := spdkClient.BdevWaitForExamine(); err != nil {
+		return "", errors.Wrapf(err, "failed to wait for the examination of disk bdev %v", bdevName)
+	}
 
 	lvstores, err := spdkClient.BdevLvolGetLvstore("", "")
 	if err != nil {

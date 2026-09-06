@@ -25,7 +25,7 @@ github.com/avast/retry-go
 # github.com/avast/retry-go/v4 v4.7.0
 ## explicit; go 1.20
 github.com/avast/retry-go/v4
-# github.com/avast/retry-go/v5 v5.0.0
+# github.com/avast/retry-go/v5 v5.1.1
 ## explicit; go 1.20
 github.com/avast/retry-go/v5
 # github.com/beorn7/perks v1.0.1
@@ -124,7 +124,7 @@ github.com/fxamacker/cbor/v2
 # github.com/gammazero/deque v1.2.2
 ## explicit; go 1.26
 github.com/gammazero/deque
-# github.com/gammazero/workerpool v1.2.2
+# github.com/gammazero/workerpool v1.3.0
 ## explicit; go 1.26
 github.com/gammazero/workerpool
 # github.com/getsentry/sentry-go v0.46.0
@@ -282,7 +282,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085
+# github.com/longhorn/backupstore v0.0.0-20261126014319-1a59e1ebb9d9
 ## explicit; go 1.26.0
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -291,7 +291,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
+# github.com/longhorn/go-common-libs v0.0.0-20261028232656-6805a1f65080
 ## explicit; go 1.26.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -308,14 +308,14 @@ github.com/longhorn/go-common-libs/sync
 github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
+# github.com/longhorn/go-iscsi-helper v0.0.0-20261111091915-a9bc4284e8cf
 ## explicit; go 1.25.10
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71
+# github.com/longhorn/go-spdk-helper v0.14.1-0.20261117055102-2128d458b38c
 ## explicit; go 1.26.0
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -324,14 +324,14 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00
+# github.com/longhorn/longhorn-engine v1.14.0-dev-20261116.0.20261126021152-abb9f588a936
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623
+# github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623 => github.com/COLDTURNIP/longhorn-instance-manager v0.0.0-20261126100621-55e9fa244a5f
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -342,7 +342,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261106064302-40b61a7ef9f8
+# github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261116.0.20261126025430-6866938be969 => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20261126095528-e10ec00d3c06
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -1430,3 +1430,5 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.37.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.37.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.37.2
+# github.com/longhorn/longhorn-spdk-engine => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20261126095528-e10ec00d3c06
+# github.com/longhorn/longhorn-instance-manager => github.com/COLDTURNIP/longhorn-instance-manager v0.0.0-20261126100621-55e9fa244a5f

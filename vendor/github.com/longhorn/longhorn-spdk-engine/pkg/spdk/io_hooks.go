@@ -56,8 +56,7 @@ var (
 	restoreExposeSnapshotLvolBdev = exposeSnapshotLvolBdev
 	restoreStopExposeBdev         = func(cli *spdkclient.Client, nqn string) error { return cli.StopExposeBdev(nqn) }
 
-	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
-	backingImageGetIPForPod = commonnet.GetIPForPod
+	backingImageGetIPForPod = func() (string, error) { return commonnet.GetIPForPodByNetworkAndFamily(commonnet.IPFamilyUnspecified) }
 	backingImageNewExecutor = func(hostProc string) (*commonns.Executor, error) {
 		return helperutil.NewExecutor(hostProc)
 	}
@@ -71,6 +70,25 @@ var (
 	backingImageExposeSnapshotLvolBdev       = exposeSnapshotLvolBdev
 	backingImageStopExposeBdev               = func(cli *spdkclient.Client, nqn string) error { return cli.StopExposeBdev(nqn) }
 	backingImageDiscoverAndConnectNVMeTarget = discoverAndConnectNVMeTarget
+
+	engineBdevRaidCreate = func(cli *spdkclient.Client, name string, baseBdevs []string, uuid string, opts spdktypes.BdevRaidCreateOptions) (bool, error) {
+		return cli.BdevRaidCreateWithOptions(name, spdktypes.BdevRaidLevel1, 0, baseBdevs, uuid, opts)
+	}
+	expansionReplicaExpand = func(cli *lhclient.SPDKClient, name string, size uint64) error {
+		return cli.ReplicaExpand(name, size)
+	}
+	expansionBdevRaidGet = func(cli *spdkclient.Client, name string) ([]spdktypes.BdevInfo, error) {
+		return cli.BdevRaidGet(name, 0)
+	}
+	expansionBdevRaidRemoveBaseBdev = func(cli *spdkclient.Client, name string) (bool, error) {
+		return cli.BdevRaidRemoveBaseBdev(name)
+	}
+	expansionBdevGetBdevs = func(cli *spdkclient.Client, name string) ([]spdktypes.BdevInfo, error) {
+		return cli.BdevGetBdevs(name, 0)
+	}
+	expansionBdevRaidResize = func(cli *spdkclient.Client, name string, expectedSizeInMib uint64) (spdktypes.BdevRaidResizeResponse, error) {
+		return cli.BdevRaidResize(name, expectedSizeInMib)
+	}
 )
 
 var _ backingImageServiceClient = (*lhclient.SPDKClient)(nil)

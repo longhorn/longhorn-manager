@@ -40,7 +40,8 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient)
+		s.engineMap[req.Name] = newEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize,
+			s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.ipFamily, s.newServiceClient)
 		e = s.engineMap[req.Name]
 	}
 
@@ -192,17 +193,18 @@ func (s *Server) EngineExpand(ctx context.Context, req *spdkrpc.EngineExpandRequ
 
 	// EC volumes take the backend-reset path because ShardGroupExpand has
 	// already driven the backend resize against the ShardGroup process;
-	// RAID1 keeps its tear-down/expand-replicas/reconstruct cycle. The
-	// engine itself remains layout-blind - the dispatch is decided here
-	// by inspecting which Backend implementation EngineCreate's factory
-	// populated. EngineExpandRequest does not currently carry
-	// DataLayoutType, so this inference is the substitute for
-	// req.data_layout_type until both topologies converge on
-	// ExpandViaBackendReset and the dispatch is removed.
+	// RAID1 expands its replicas and grows its RAID bdev in place, without
+	// tearing it down. Like the V1 engine controller, RAID1 returns once the
+	// expansion has started, and the caller waits until the engine no longer
+	// reports IsExpanding. The engine itself remains layout-blind - the
+	// dispatch is decided here by inspecting which Backend implementation
+	// EngineCreate's factory populated. EngineExpandRequest does not
+	// currently carry DataLayoutType, so this inference is the substitute
+	// for req.data_layout_type.
 	if isShardedEngine(e) {
 		err = e.ExpandViaBackendReset(spdkClient, req.Size)
 	} else {
-		err = e.Expand(spdkClient, req.Size)
+		err = e.StartExpand(spdkClient, req.Size)
 	}
 	if err != nil {
 		return nil, toExpansionGRPCError(err, "failed to expand engine %v", req.Name)
@@ -854,7 +856,7 @@ func (s *Server) registerRestoreFrontend(e *Engine, volumeName string, specSize 
 	// would block both senders permanently. The buffer absorbs both sends and
 	// the channel is GC'd with tempEF.
 	throwawayUpdateCh := make(chan interface{}, 2)
-	tempEF := NewEngineFrontend(
+	tempEF := newEngineFrontend(
 		e.Name+"-restore",
 		e.Name,
 		volumeName,
@@ -862,6 +864,7 @@ func (s *Server) registerRestoreFrontend(e *Engine, volumeName string, specSize 
 		specSize,
 		types.DefaultUblkQueueDepth,
 		types.DefaultUblkNumberOfQueue,
+		s.ipFamily,
 		throwawayUpdateCh,
 		s.newServiceClient,
 	)
