@@ -683,6 +683,8 @@ func (c *SPDKClient) ReplicaBackupStatus(backupName string) (*spdkrpc.BackupStat
 	})
 }
 
+// Deprecated: unused. The backup restore workflow was moved from the replica to the
+// engine level, so use EngineBackupRestore instead.
 // ReplicaBackupRestore restores backup data into a replica.
 func (c *SPDKClient) ReplicaBackupRestore(req *BackupRestoreRequest) error {
 	client := c.getSPDKServiceClient()

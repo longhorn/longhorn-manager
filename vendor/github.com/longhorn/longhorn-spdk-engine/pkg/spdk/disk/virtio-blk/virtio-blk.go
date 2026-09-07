@@ -23,7 +23,9 @@ func init() {
 	disk.RegisterDiskDriver(string(commontypes.DiskDriverVirtioBlk), driver)
 }
 
-func (d *DiskDriverVirtioBlk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64) (string, error) {
+// DiskCreate uses named return values so that every failure path, including the
+// ones that do not come from a callee, triggers the deferred unbind below.
+func (d *DiskDriverVirtioBlk) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64) (bdevName string, err error) {
 	// TODO: validate the diskPath
 	executor, err := helperutil.NewExecutor(commontypes.ProcDirectory)
 	if err != nil {
@@ -50,7 +52,7 @@ func (d *DiskDriverVirtioBlk) DiskCreate(spdkClient *spdkclient.Client, diskName
 		return "", errors.Wrapf(err, "failed to attach virtio-blk disk %v", diskPath)
 	}
 	if len(bdevs) == 0 {
-		return "", errors.Errorf("failed to attach virtio-blk disk %v", diskPath)
+		return "", errors.Errorf("no bdev is created after attaching virtio-blk disk %v", diskPath)
 	}
 	return bdevs[0], nil
 }
