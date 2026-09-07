@@ -286,7 +286,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20260830093844-bff76489ddfd
+# github.com/longhorn/go-common-libs v0.0.0-20260907073218-e53e6775eb8a
 ## explicit; go 1.25.10
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -310,7 +310,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.9.1-0.20260828012436-4ec507083142
+# github.com/longhorn/go-spdk-helper v0.9.1-0.20260907084552-730dfff4eda5
 ## explicit; go 1.25.10
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -326,7 +326,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.13.0-rc1.0.20260903055912-6f99fb32f1f2
+# github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260907105746-9d8a3cbf22ef
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -337,7 +337,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-rc1.0.20260903051818-1d9ed82bf531
+# github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260907102437-516fafb6c9eb
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
