@@ -802,6 +802,10 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		return nil
 	}
 
+	// Selection is read-only. Persist recovery promotion here on the engine
+	// copy owned by volume reconciliation, never on an informer object.
+	e.Spec.Active = true
+
 	log := getLoggerForVolume(c.logger, v).WithField("currentEngine", e.Name)
 
 	if e.Status.CurrentState == longhorn.InstanceStateUnknown {
@@ -5998,6 +6002,7 @@ func (c *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume, 
 			}
 		}
 	}
+	current.Spec.Active = true
 	return current, nil
 }
 
@@ -6335,7 +6340,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		}
 	}()
 
-	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
+	currentEngine, extras, err := datastore.PickAndPromoteCurrentEngine(v, es)
 	if err != nil {
 		return err
 	}
@@ -6468,19 +6473,17 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		return nil
 	}
 
-	// Always re-sync CurrentEngineNodeID from the active engine's actual
-	// node. The deferred update loop in syncVolume persists engine changes
-	// before volume status changes. If a previous reconcile completed a
-	// switchover (setting migrationEngine.Active=true and
-	// CurrentEngineNodeID in memory), the engine update may trigger a
-	// re-queue before the volume status is persisted. Without this
-	// re-sync the new reconcile would see a stale CurrentEngineNodeID and
-	// incorrectly create a duplicate migration engine.
-	for _, e := range es {
-		if e.Spec.Active && e.Spec.NodeID != "" {
-			v.Status.CurrentEngineNodeID = e.Spec.NodeID
-			break
-		}
+	// Re-sync from the selected current engine, including an inactive target
+	// recovered after the old engine was deleted. The deferred engine update
+	// can conflict after deletion succeeds, leaving both Active and the volume
+	// status stale. Resume finalization of that target instead of treating it
+	// as the source of another switchover.
+	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
+	if err != nil {
+		return err
+	}
+	if currentEngine.Spec.NodeID != "" {
+		v.Status.CurrentEngineNodeID = currentEngine.Spec.NodeID
 	}
 	if v.Status.CurrentEngineNodeID == "" {
 		v.Status.CurrentEngineNodeID = targetNodeID
@@ -6491,16 +6494,9 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	if targetNodeID == v.Status.CurrentEngineNodeID {
 		// No switchover in progress (or switchover already completed).
 		// Only need to cleanup extra engines from a previous engine switchover.
-		if len(es) <= 1 {
-			v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateEmpty
-			return nil
-		}
-
-		currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
-		if err != nil {
-			log.WithError(err).Warn("Failed to finalize the engine switchover")
-			return nil
-		}
+		// Finish promotion even if the old engine has already disappeared.
+		// Replica updates may also need retrying after a partial finalization.
+		hasExtraEngines := len(es) > 1
 		for i := range extras {
 			e := extras[i]
 			if e.DeletionTimestamp == nil {
@@ -6519,7 +6515,11 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 			r.Spec.MigrationEngineName = ""
 			r.Spec.EngineName = currentEngine.Name
 		}
+
 		v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateFinalizing
+		if !hasExtraEngines {
+			v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateEmpty
+		}
 		return nil
 	}
 
@@ -6570,11 +6570,6 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 			r.Spec.EngineName = currentEngine.Name
 		}
 	}()
-
-	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
-	if err != nil {
-		return err
-	}
 
 	if currentEngine.Status.CurrentState != longhorn.InstanceStateRunning {
 		revertRequired = true
@@ -6688,35 +6683,29 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 
 	v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateFinalizing
 
-	// Step 5: Switchover complete. Finalize in-memory state and delete the
-	// old engine immediately to avoid extra reconcile cycles.
+	// Step 5: Switchover complete. Delete the old engine before promoting the
+	// migration engine.
 	log.Info("Volume engine switchover completed. EngineFrontend has switched to migration engine.")
 
-	// Now that the EF has confirmed the new target, stop the old engine.
-	if currentEngine.Spec.DesireState != longhorn.InstanceStateStopped {
-		currentEngine.Spec.DesireState = longhorn.InstanceStateStopped
+	// Do not touch the old engine's spec before the delete request: a failed delete
+	// after a successful update could leave both engines inactive. Unlike the other
+	// v2 engine deletions, DesireState=Stopped is not needed first here because the
+	// engine is still Running and the engine controller serializes syncs per engine,
+	// so no sync can see CurrentState=Stopped without also seeing the DeletionTimestamp.
+	if currentEngine.DeletionTimestamp == nil {
+		log.Infof("Deleting old engine %v after successful switchover", currentEngine.Name)
+		if err := c.ds.DeleteEngine(currentEngine.Name); err != nil {
+			return err
+		}
+		delete(es, currentEngine.Name)
 	}
-	currentEngine.Spec.Active = false
-	migrationEngine.Spec.Active = true
 
+	migrationEngine.Spec.Active = true
 	for _, r := range rs {
 		r.Spec.MigrationEngineName = ""
 		r.Spec.EngineName = migrationEngine.Name
 	}
-
 	v.Status.CurrentEngineNodeID = targetNodeID
-
-	// Delete the old engine immediately. deleteEngine persists the in-memory
-	// spec changes (Active=false, DesireState=Stopped) via UpdateEngine, then
-	// issues DeleteEngine, and removes the entry from the engines map so the
-	// deferred update loop in syncVolume skips it.
-	if currentEngine.DeletionTimestamp == nil {
-		log.Infof("Deleting old engine %v after successful switchover", currentEngine.Name)
-		if err := c.deleteEngine(currentEngine, es); err != nil {
-			// Non-fatal: the cleanup branch will handle it in the next cycle.
-			log.WithError(err).Warn("Failed to delete old engine immediately after switchover, will retry in next cycle")
-		}
-	}
 
 	return nil
 }

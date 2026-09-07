@@ -15,6 +15,7 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -239,4 +240,105 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, ef)
 	require.Contains(t, err.Error(), "cannot find the current engine frontend")
+}
+
+func TestGetCurrentEngineAndExtrasIgnoresDeletingActiveEngine(t *testing.T) {
+	deletionTime := metav1.Now()
+	deletingEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "deleting-engine",
+			DeletionTimestamp: &deletionTime,
+		},
+		Spec: longhorn.EngineSpec{Active: true},
+	}
+	currentEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: "current-engine"},
+		Spec:       longhorn.EngineSpec{Active: true},
+	}
+
+	engine, extras, err := GetCurrentEngineAndExtras(&longhorn.Volume{}, map[string]*longhorn.Engine{
+		deletingEngine.Name: deletingEngine,
+		currentEngine.Name:  currentEngine,
+	})
+	require.NoError(t, err)
+	assert.Same(t, currentEngine, engine)
+	require.Len(t, extras, 1)
+	assert.Same(t, deletingEngine, extras[0])
+}
+
+func TestGetVolumeCurrentEngineDoesNotPromoteCachedEngine(t *testing.T) {
+	const namespace = "longhorn-system"
+	volume := &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{Name: "volume", Namespace: namespace},
+		Spec: longhorn.VolumeSpec{
+			DataEngine:   longhorn.DataEngineTypeV2,
+			NodeID:       "old-node",
+			EngineNodeID: "target-node",
+		},
+		Status: longhorn.VolumeStatus{CurrentNodeID: "old-node", CurrentEngineNodeID: "old-node"},
+	}
+	deletionTime := metav1.Now()
+	oldEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "old-engine", Namespace: namespace,
+			Labels: types.GetVolumeLabels(volume.Name), DeletionTimestamp: &deletionTime,
+		},
+		Spec: longhorn.EngineSpec{Active: true, InstanceSpec: longhorn.InstanceSpec{NodeID: "old-node"}},
+	}
+	targetEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "target-engine", Namespace: namespace, Labels: types.GetVolumeLabels(volume.Name),
+		},
+		Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: "target-node"}},
+	}
+	factory := lhinformerfactory.NewSharedInformerFactory(lhfake.NewSimpleClientset(), 0) // nolint: staticcheck
+	engineInformer := factory.Longhorn().V1beta2().Engines()
+	volumeInformer := factory.Longhorn().V1beta2().Volumes()
+	require.NoError(t, engineInformer.Informer().GetIndexer().Add(oldEngine))
+	require.NoError(t, engineInformer.Informer().GetIndexer().Add(targetEngine))
+	require.NoError(t, volumeInformer.Informer().GetIndexer().Add(volume))
+	ds := &DataStore{namespace: namespace, engineLister: engineInformer.Lister(), volumeLister: volumeInformer.Lister()}
+
+	engine, err := ds.GetVolumeCurrentEngine(volume.Name)
+	require.NoError(t, err)
+	assert.Equal(t, targetEngine.Name, engine.Name)
+	assert.False(t, engine.Spec.Active)
+	assert.False(t, targetEngine.Spec.Active, "selection must not promote the informer object")
+	assert.True(t, oldEngine.Spec.Active)
+	assert.Equal(t, "old-node", volume.Status.CurrentEngineNodeID)
+}
+
+func TestCurrentEngineSelectionWithSingleActiveEngineWithoutNodeID(t *testing.T) {
+	for name, selectEngine := range map[string]func(*longhorn.Volume, map[string]*longhorn.Engine) (*longhorn.Engine, []*longhorn.Engine, error){
+		"GetCurrentEngineAndExtras":    GetCurrentEngineAndExtras,
+		"GetNewCurrentEngineAndExtras": GetNewCurrentEngineAndExtras,
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, deleting := range []bool{false, true} {
+				t.Run(fmt.Sprintf("deleting=%t", deleting), func(t *testing.T) {
+					engine := &longhorn.Engine{
+						ObjectMeta: metav1.ObjectMeta{Name: "engine"},
+						Spec:       longhorn.EngineSpec{Active: true},
+					}
+					if deleting {
+						deletionTime := metav1.Now()
+						engine.DeletionTimestamp = &deletionTime
+					}
+
+					currentEngine, extras, err := selectEngine(&longhorn.Volume{}, map[string]*longhorn.Engine{
+						engine.Name: engine,
+					})
+					if deleting {
+						require.Error(t, err)
+						assert.Contains(t, err.Error(), "cannot find the current engine")
+						assert.Nil(t, currentEngine)
+						return
+					}
+					require.NoError(t, err)
+					assert.Same(t, engine, currentEngine)
+					assert.Empty(t, extras)
+				})
+			}
+		})
+	}
 }
