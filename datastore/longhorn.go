@@ -1693,9 +1693,15 @@ func checkEngine(engine *longhorn.Engine) error {
 	return nil
 }
 
-// GetCurrentEngineAndExtras pick the current Engine and extra Engines from the Engine list of a volume with the given namespace
+// GetCurrentEngineAndExtras picks the current Engine and extra Engines without modifying them.
 func GetCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine *longhorn.Engine, extras []*longhorn.Engine, err error) {
 	for _, e := range es {
+		// A deleting engine may still have Active=true until its finalizer
+		// removes the instance. It cannot be the current engine.
+		if e.DeletionTimestamp != nil {
+			extras = append(extras, e)
+			continue
+		}
 		if e.Spec.Active {
 			if currentEngine != nil {
 				return nil, nil, fmt.Errorf("BUG: found the second active engine %v besides %v", e.Name, currentEngine.Name)
@@ -1712,10 +1718,20 @@ func GetCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engin
 		if err != nil {
 			return nil, nil, err
 		}
-		newCurrentEngine.Spec.Active = true
 		return newCurrentEngine, extras, nil
 	}
 	return
+}
+
+// PickAndPromoteCurrentEngine picks the current engine and marks it active in memory.
+// The caller must own the given engines; never pass informer objects.
+func PickAndPromoteCurrentEngine(v *longhorn.Volume, es map[string]*longhorn.Engine) (*longhorn.Engine, []*longhorn.Engine, error) {
+	currentEngine, extras, err := GetCurrentEngineAndExtras(v, es)
+	if err != nil {
+		return nil, nil, err
+	}
+	currentEngine.Spec.Active = true
+	return currentEngine, extras, nil
 }
 
 // GetNewCurrentEngineAndExtras detects the new current Engine and extra Engines from the Engine list of a volume with the given namespace during engine switching.
@@ -1777,7 +1793,7 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 	if currentEngine == nil {
 		if len(es) == 1 {
 			for _, e := range es {
-				if e.Spec.Active && e.Spec.NodeID == "" {
+				if e.DeletionTimestamp == nil && e.Spec.Active && e.Spec.NodeID == "" {
 					currentEngine = e
 					extras = []*longhorn.Engine{}
 				}
