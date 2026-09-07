@@ -21,7 +21,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/longhorn/backupstore"
 
@@ -2322,16 +2324,20 @@ func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetS
 	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
 }
 
-// TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete verifies
-// that the old engine is stopped only after the EngineFrontend status
-// confirms the migration target is active.
-func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete(c *C) {
-	vc, _, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+// TestProcessEngineSwitchoverRequestsOldEngineDeletionAfterSwitchoverComplete
+// verifies that the old engine deletion is requested only after the
+// EngineFrontend status confirms the migration target is active.
+func (s *TestSuite) TestProcessEngineSwitchoverRequestsOldEngineDeletionAfterSwitchoverComplete(c *C) {
+	vc, lhClient, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
 	// EF switchover is complete: both Spec and Status show the new target.
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
 	ef.Status.TargetIP = migrationEngine.Status.StorageIP
 	ef.Status.TargetPort = migrationEngine.Status.Port
+
+	createdCurrentEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), currentEngine, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	currentEngine = createdCurrentEngine
 
 	es := map[string]*longhorn.Engine{
 		currentEngine.Name:   currentEngine,
@@ -2340,12 +2346,11 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	rs := map[string]*longhorn.Replica{replica.Name: replica}
 	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
 
-	err := vc.processEngineSwitchover(v, es, rs, efs)
+	err = vc.processEngineSwitchover(v, es, rs, efs)
 	c.Assert(err, IsNil)
 
-	// The old engine must be stopped after switchover is confirmed.
-	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateStopped)
-	c.Assert(currentEngine.Spec.Active, Equals, false)
+	// The old engine is removed from the local map after its deletion is requested.
+	c.Assert(es[currentEngine.Name], IsNil)
 
 	// The migration engine is now the active engine.
 	c.Assert(migrationEngine.Spec.Active, Equals, true)
@@ -2356,6 +2361,138 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	// Replica should be reassigned to the migration engine.
 	c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+}
+
+// TestProcessEngineSwitchoverDoesNotPromoteMigrationEngineWhenOldEngineDeleteFails
+// verifies that an old engine delete failure leaves the migration state unchanged.
+// This prevents a persisted state with two active engines from blocking later cleanup.
+func (s *TestSuite) TestProcessEngineSwitchoverDoesNotPromoteMigrationEngineWhenOldEngineDeleteFails(c *C) {
+	vc, lhClient, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+
+	ef.Status.CurrentState = longhorn.InstanceStateRunning
+	ef.Status.TargetIP = migrationEngine.Status.StorageIP
+	ef.Status.TargetPort = migrationEngine.Status.Port
+
+	lhClient.PrependReactor("delete", "engines", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("transient delete failure")
+	})
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+
+	err := vc.processEngineSwitchover(v, es, rs, efs)
+	c.Assert(err, NotNil)
+
+	c.Assert(currentEngine.Spec.Active, Equals, true)
+	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(migrationEngine.Spec.Active, Equals, false)
+	c.Assert(replica.Spec.EngineName, Equals, currentEngine.Name)
+	c.Assert(replica.Spec.MigrationEngineName, Equals, migrationEngine.Name)
+	c.Assert(v.Status.CurrentEngineNodeID, Equals, TestNode1)
+}
+
+func (s *TestSuite) TestProcessEngineSwitchoverRecoversAfterPromotionConflict(c *C) {
+	for _, oldEngineDeleted := range []bool{false, true} {
+		vc, lhClient, engineIndexer, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+		ef.Status.CurrentState = longhorn.InstanceStateRunning
+		ef.Status.TargetIP = migrationEngine.Status.StorageIP
+		ef.Status.TargetPort = migrationEngine.Status.Port
+		persistedVolume := v.DeepCopy()
+		for _, engine := range []*longhorn.Engine{currentEngine, migrationEngine} {
+			_, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), engine, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+		}
+		failPromotion := true
+		lhClient.PrependReactor("update", "engines", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			if !failPromotion {
+				return false, nil, nil
+			}
+			return true, nil, apierrors.NewConflict(longhorn.Resource("engines"), migrationEngine.Name, fmt.Errorf("engine status changed"))
+		})
+		es := map[string]*longhorn.Engine{currentEngine.Name: currentEngine, migrationEngine.Name: migrationEngine}
+		rs := map[string]*longhorn.Replica{replica.Name: replica}
+		efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+		err := vc.processEngineSwitchover(v, es, rs, efs)
+		c.Assert(err, IsNil)
+		c.Assert(es[currentEngine.Name], IsNil)
+
+		// Simulate the deferred engine update conflicting after replica ownership
+		// has changed. The volume status update is then skipped.
+		_, err = vc.ds.UpdateEngine(migrationEngine)
+		c.Assert(apierrors.IsConflict(err), Equals, true)
+		persistedMigrationEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), migrationEngine.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(persistedMigrationEngine.Spec.Active, Equals, false)
+		c.Assert(persistedVolume.Status.CurrentEngineNodeID, Equals, TestNode1)
+		c.Assert(engineIndexer.Add(persistedMigrationEngine), IsNil)
+		if !oldEngineDeleted {
+			// The fake client deletes immediately; model the informer retaining
+			// the old engine while its finalizer runs.
+			deletionTime := metav1.Now()
+			currentEngine.DeletionTimestamp = &deletionTime
+			c.Assert(engineIndexer.Add(currentEngine), IsNil)
+		}
+
+		// A retry works on fresh copies and must reuse the existing target,
+		// whether the old engine is still deleting or has disappeared.
+		es, err = vc.ds.ListVolumeEngines(v.Name)
+		c.Assert(err, IsNil)
+		engineCount := len(es)
+		lhClient.ClearActions()
+		err = vc.processEngineSwitchover(persistedVolume, es, rs, efs)
+		c.Assert(err, IsNil)
+		c.Assert(lhClient.Actions(), HasLen, 0)
+		c.Assert(es, HasLen, engineCount)
+		c.Assert(es[migrationEngine.Name].Spec.Active, Equals, true)
+		c.Assert(persistedVolume.Status.CurrentEngineNodeID, Equals, TestNode2)
+		c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
+		c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+		c.Assert(persistedMigrationEngine.Spec.Active, Equals, false)
+
+		failPromotion = false
+		_, err = vc.ds.UpdateEngine(es[migrationEngine.Name])
+		c.Assert(err, IsNil)
+		promotedEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), migrationEngine.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(promotedEngine.Spec.Active, Equals, true)
+	}
+}
+
+func (s *TestSuite) TestProcessEngineSwitchoverIgnoresDeletingActiveEngine(c *C) {
+	vc, lhClient, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+
+	// The old engine remains visible while its finalizer runs, and the new
+	// engine has been promoted before the volume status update is observed.
+	now := metav1.Now()
+	currentEngine.DeletionTimestamp = &now
+	migrationEngine.Spec.Active = true
+	replica.Spec.EngineName = migrationEngine.Name
+	replica.Spec.MigrationEngineName = ""
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+	lhClient.ClearActions()
+
+	// Repeat to exercise different map iteration orders while deletion is pending.
+	for i := 0; i < 100; i++ {
+		v.Status.CurrentEngineNodeID = TestNode1
+		err := vc.processEngineSwitchover(v, es, rs, efs)
+		c.Assert(err, IsNil)
+		c.Assert(v.Status.CurrentEngineNodeID, Equals, TestNode2)
+		c.Assert(v.Status.SwitchoverState, Equals, longhorn.VolumeSwitchoverStateFinalizing)
+		c.Assert(es, HasLen, 2)
+		c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
+		c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+		c.Assert(lhClient.Actions(), HasLen, 0)
+	}
 }
 
 // TestProcessEngineSwitchoverCleanupUsesActiveEngine verifies that once
