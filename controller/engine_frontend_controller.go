@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -25,10 +27,12 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/constant"
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -36,6 +40,15 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+const staleHostCleanupRetryInterval = 30 * time.Second
+
+var errEngineFrontendCleanupPending = errors.New("engine frontend cleanup pending")
+
+type nodeVolumeLifecycleLockEntry struct {
+	mu       sync.Mutex
+	refCount int32
+}
 
 // EngineFrontendController is responsible for managing the lifecycle of
 // EngineFrontend instances (v2 data engine initiators)
@@ -65,6 +78,9 @@ type EngineFrontendController struct {
 
 	engineFrontendMonitorMutex *sync.RWMutex
 	engineFrontendMonitorMap   map[string]chan struct{}
+
+	nodeVolumeLifecycleLocksMutex *sync.Mutex
+	nodeVolumeLifecycleLocks      map[string]*nodeVolumeLifecycleLockEntry
 }
 
 type engineFrontendSwitchoverClient interface {
@@ -130,6 +146,9 @@ func NewEngineFrontendController(
 
 		engineFrontendMonitorMutex: &sync.RWMutex{},
 		engineFrontendMonitorMap:   map[string]chan struct{}{},
+
+		nodeVolumeLifecycleLocksMutex: &sync.Mutex{},
+		nodeVolumeLifecycleLocks:      map[string]*nodeVolumeLifecycleLockEntry{},
 	}
 	efc.instanceHandler = NewInstanceHandler(ds, efc, efc.eventRecorder)
 
@@ -318,7 +337,49 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		return nil
 	}
 
-	if ef.Status.OwnerID != efc.controllerID {
+	previousInitiatorNodeID := ef.Status.InitiatorNodeID
+
+	// Persist the initiator host independently from controller ownership.
+	// The hosting IM node is authoritative while running; Spec.NodeID is only a
+	// fallback capture before detach clears it.
+	if ef.Status.InstanceManagerName != "" {
+		im, imErr := efc.ds.GetInstanceManagerRO(ef.Status.InstanceManagerName)
+		if imErr != nil {
+			if !datastore.ErrorIsNotFound(imErr) {
+				return imErr
+			}
+		} else if im.Spec.NodeID != "" {
+			ef.Status.InitiatorNodeID = im.Spec.NodeID
+		}
+	}
+	if ef.Status.InitiatorNodeID == "" && ef.Spec.NodeID != "" {
+		ef.Status.InitiatorNodeID = ef.Spec.NodeID
+	}
+	initiatorNodeChanged := ef.Status.InitiatorNodeID != previousInitiatorNodeID
+
+	// Cleanup host must come from durable initiator placement, never from
+	// Status.OwnerID (controller ownership can change for delinquent RWX).
+	initiatorNode := ef.Status.InitiatorNodeID
+
+	isTearingDown := ef.DeletionTimestamp != nil || ef.Spec.DesireState != longhorn.InstanceStateRunning
+
+	// During teardown, route ownership/work to the recorded initiator host so cleanup
+	// executes on the node that actually owns the stale device.
+	if isTearingDown && initiatorNode != "" && ef.Status.OwnerID != initiatorNode {
+		ef.Status.OwnerID = initiatorNode
+		ef, err = efc.ds.UpdateEngineFrontendStatus(ef)
+		if err != nil {
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		log.Infof("EngineFrontend %v routed owner to initiator node %v for teardown cleanup", ef.Name, initiatorNode)
+		return nil
+	}
+
+	statusUpdated := false
+	if !isTearingDown && ef.Status.OwnerID != efc.controllerID {
 		ef.Status.OwnerID = efc.controllerID
 		ef, err = efc.ds.UpdateEngineFrontendStatus(ef)
 		if err != nil {
@@ -327,7 +388,19 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 			}
 			return err
 		}
+		statusUpdated = true
 		log.Infof("EngineFrontend got new owner %v", efc.controllerID)
+	}
+
+	if initiatorNodeChanged && !statusUpdated {
+		ef, err = efc.ds.UpdateEngineFrontendStatus(ef)
+		if err != nil {
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		log.Infof("EngineFrontend %v persisted initiator node %v", ef.Name, ef.Status.InitiatorNodeID)
 	}
 
 	// Handle deletion
@@ -336,12 +409,17 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 			return errors.Wrapf(err, "failed to clean up the related engine frontend instance before deleting %v", ef.Name)
 		}
 		// Reconcile instance state from IM so CurrentState reflects the
-		// actual data-plane status after DeleteInstance was sent.
+		// actual data-plane status after DeleteInstance was sent. Persist
+		// status only when changed, otherwise no-op updates trigger immediate
+		// informer requeues and defeat delayed retries.
+		existingDeletingEF := ef.DeepCopy()
 		if err := efc.instanceHandler.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus); err != nil {
 			return err
 		}
-		if _, err := efc.ds.UpdateEngineFrontendStatus(ef); err != nil {
-			return err
+		if !reflect.DeepEqual(existingDeletingEF.Status, ef.Status) {
+			if _, err := efc.ds.UpdateEngineFrontendStatus(ef); err != nil {
+				return err
+			}
 		}
 		// Wait for the data-plane instance (NVMe initiator) to actually stop
 		// before removing the finalizer. Without this, the CR can be garbage
@@ -354,6 +432,51 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 			log.Infof("Waiting for engine frontend instance to stop before removing finalizer (current state: %v)", ef.Status.CurrentState)
 			return nil
 		}
+
+		if initiatorNode == efc.controllerID {
+			if err := efc.withNodeVolumeLifecycleLock(initiatorNode, ef.Spec.VolumeName, func() error {
+				// Revalidate while holding the lifecycle lock so create/cleanup cannot race.
+				ownPresent, err := efc.ownFrontendProcessPresent(ef)
+				if err != nil {
+					return err
+				}
+				if ownPresent {
+					efc.enqueueEngineFrontendAfter(ef, staleHostCleanupRetryInterval)
+					log.Infof("Waiting for engine frontend %v own initiator process to disappear before host cleanup", ef.Name)
+					return errEngineFrontendCleanupPending
+				}
+
+				hasOtherLive, err := efc.hasOtherLiveFrontendProcessOnNode(ef, initiatorNode)
+				if err != nil {
+					return err
+				}
+				if hasOtherLive {
+					return nil
+				}
+
+				if err := efc.cleanupStaleHostInitiatorDevice(ef.Spec.VolumeName); err != nil {
+					log.WithError(err).Warnf("Failed to clean up stale host initiator device for volume %v before removing finalizer; will retry", ef.Spec.VolumeName)
+					efc.enqueueEngineFrontendAfter(ef, staleHostCleanupRetryInterval)
+					return errEngineFrontendCleanupPending
+				}
+
+				return nil
+			}); err != nil {
+				if errors.Is(err, errEngineFrontendCleanupPending) {
+					return nil
+				}
+				return err
+			}
+		} else if initiatorNode != "" {
+			if _, nodeErr := efc.ds.GetNodeRO(initiatorNode); nodeErr == nil {
+				efc.enqueueEngineFrontendAfter(ef, staleHostCleanupRetryInterval)
+				log.Infof("Deferring finalizer removal for engine frontend %v until initiator node %v cleans up its stale host device", ef.Name, initiatorNode)
+				return nil
+			} else if !datastore.ErrorIsNotFound(nodeErr) {
+				return nodeErr
+			}
+		}
+
 		return efc.ds.RemoveFinalizerForEngineFrontend(ef)
 	}
 
@@ -372,6 +495,45 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 	// Use instance handler to reconcile state
 	if err := efc.instanceHandler.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus); err != nil {
 		return err
+	}
+
+	if ef.Spec.DesireState == longhorn.InstanceStateStopped &&
+		(ef.Status.CurrentState == longhorn.InstanceStateStopped ||
+			ef.Status.CurrentState == longhorn.InstanceStateError) &&
+		initiatorNode == efc.controllerID {
+		if err := efc.withNodeVolumeLifecycleLock(initiatorNode, ef.Spec.VolumeName, func() error {
+			// Revalidate while holding the lifecycle lock so create/cleanup cannot race.
+			ownPresent, err := efc.ownFrontendProcessPresent(ef)
+			if err != nil {
+				return err
+			}
+			if ownPresent {
+				efc.enqueueEngineFrontendAfter(ef, staleHostCleanupRetryInterval)
+				log.Infof("Waiting for engine frontend %v own initiator process to disappear before host cleanup", ef.Name)
+				return errEngineFrontendCleanupPending
+			}
+
+			hasOtherLive, err := efc.hasOtherLiveFrontendProcessOnNode(ef, initiatorNode)
+			if err != nil {
+				return err
+			}
+			if hasOtherLive {
+				return nil
+			}
+
+			if err := efc.cleanupStaleHostInitiatorDevice(ef.Spec.VolumeName); err != nil {
+				log.WithError(err).Warnf("Failed to clean up stale host initiator device for volume %v; will retry", ef.Spec.VolumeName)
+				efc.enqueueEngineFrontendAfter(ef, staleHostCleanupRetryInterval)
+				return errEngineFrontendCleanupPending
+			}
+
+			return nil
+		}); err != nil {
+			if errors.Is(err, errEngineFrontendCleanupPending) {
+				return nil
+			}
+			return err
+		}
 	}
 
 	// Delete stale EF instances recovered with an empty frontend in the IM.
@@ -571,6 +733,47 @@ func (efc *EngineFrontendController) enqueueEngineFrontend(obj interface{}) {
 	efc.queue.Add(key)
 }
 
+func (efc *EngineFrontendController) enqueueEngineFrontendAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueEngineFrontendAfter: failed to get key for object %#v: %v", obj, err))
+		return
+	}
+
+	efc.queue.AddAfter(key, duration)
+}
+
+func (efc *EngineFrontendController) withNodeVolumeLifecycleLock(nodeID, volumeName string, fn func() error) error {
+	if nodeID == "" || volumeName == "" {
+		return fn()
+	}
+
+	key := nodeID + "/" + volumeName
+
+	efc.nodeVolumeLifecycleLocksMutex.Lock()
+	lock, exists := efc.nodeVolumeLifecycleLocks[key]
+	if !exists {
+		lock = &nodeVolumeLifecycleLockEntry{}
+		efc.nodeVolumeLifecycleLocks[key] = lock
+	}
+	atomic.AddInt32(&lock.refCount, 1)
+	efc.nodeVolumeLifecycleLocksMutex.Unlock()
+
+	lock.mu.Lock()
+	defer func() {
+		lock.mu.Unlock()
+		if atomic.AddInt32(&lock.refCount, -1) == 0 {
+			efc.nodeVolumeLifecycleLocksMutex.Lock()
+			if atomic.LoadInt32(&lock.refCount) == 0 {
+				delete(efc.nodeVolumeLifecycleLocks, key)
+			}
+			efc.nodeVolumeLifecycleLocksMutex.Unlock()
+		}
+	}()
+
+	return fn()
+}
+
 func (efc *EngineFrontendController) enqueueInstanceManagerChange(obj interface{}) {
 	im, isInstanceManager := obj.(*longhorn.InstanceManager)
 	if !isInstanceManager {
@@ -719,20 +922,28 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		return nil, err
 	}
 
-	// Create initiator instance via Instance Manager
-	// Note: This requires Instance Manager to have EngineFrontendInstanceCreate method
-	return c.EngineFrontendInstanceCreate(&engineapi.EngineFrontendInstanceCreateRequest{
-		EngineFrontend:                ef,
-		VolumeFrontend:                frontend,
-		UblkQueueDepth:                ublkQueueDepth,
-		UblkNumberOfQueue:             ublkNumberOfQueue,
-		NvmeTcpNrIoQueues:             nvmeTcpNrIoQueues,
-		TargetIP:                      ef.Spec.TargetIP,
-		TargetPort:                    ef.Spec.TargetPort,
-		EngineName:                    ef.Spec.EngineName,
-		Encrypted:                     volume.Spec.Encrypted,
-		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume),
-	})
+	var instance *longhorn.InstanceProcess
+	if err := efc.withNodeVolumeLifecycleLock(ef.Spec.NodeID, ef.Spec.VolumeName, func() error {
+		// Serialize create RPC with stale-host cleanup for the same node+volume.
+		var createErr error
+		instance, createErr = c.EngineFrontendInstanceCreate(&engineapi.EngineFrontendInstanceCreateRequest{
+			EngineFrontend:                ef,
+			VolumeFrontend:                frontend,
+			UblkQueueDepth:                ublkQueueDepth,
+			UblkNumberOfQueue:             ublkNumberOfQueue,
+			NvmeTcpNrIoQueues:             nvmeTcpNrIoQueues,
+			TargetIP:                      ef.Spec.TargetIP,
+			TargetPort:                    ef.Spec.TargetPort,
+			EngineName:                    ef.Spec.EngineName,
+			Encrypted:                     volume.Spec.Encrypted,
+			ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume),
+		})
+		return createErr
+	}); err != nil {
+		return nil, err
+	}
+
+	return instance, nil
 }
 
 // DeleteInstance deletes an EngineFrontend instance via Instance Manager
@@ -790,6 +1001,109 @@ func (efc *EngineFrontendController) DeleteInstance(obj interface{}) (err error)
 		return err
 	}
 
+	return nil
+}
+
+func (efc *EngineFrontendController) hasOtherLiveFrontendProcessOnNode(ef *longhorn.EngineFrontend, node string) (bool, error) {
+	if node == "" {
+		return false, nil
+	}
+	efs, err := efc.ds.ListVolumeEngineFrontendsRO(ef.Spec.VolumeName)
+	if err != nil {
+		return false, err
+	}
+	for _, other := range efs {
+		if other.Name == ef.Name {
+			continue
+		}
+		if other.DeletionTimestamp == nil &&
+			other.Spec.DesireState == longhorn.InstanceStateRunning &&
+			other.Spec.NodeID == node &&
+			isEngineFrontendEndpointRequired(other) {
+			// Block cleanup if another frontend is already targeted to run on this node,
+			// even if IM status has not yet published the process entry.
+			return true, nil
+		}
+		if !isEngineFrontendEndpointRequired(other) {
+			continue
+		}
+		imName := other.Status.InstanceManagerName
+		if imName == "" {
+			continue
+		}
+		im, err := efc.ds.GetInstanceManagerRO(imName)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				continue
+			}
+			return false, err
+		}
+		if im.Spec.NodeID != node || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			continue
+		}
+		if _, ok := im.Status.InstanceEngineFrontends[other.Name]; ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (efc *EngineFrontendController) ownFrontendProcessPresent(ef *longhorn.EngineFrontend) (bool, error) {
+	if ef.Status.InstanceManagerName == "" {
+		return false, nil
+	}
+	im, err := efc.ds.GetInstanceManagerRO(ef.Status.InstanceManagerName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	_, present := im.Status.InstanceEngineFrontends[ef.Name]
+	return present, nil
+}
+
+func (efc *EngineFrontendController) cleanupStaleHostInitiatorDevice(volumeName string) error {
+	if volumeName == "" {
+		return nil
+	}
+	log := efc.logger.WithField("volume", volumeName)
+
+	volume, err := efc.ds.GetVolumeRO(volumeName)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return errors.Wrapf(err, "failed to get volume %v before stale host device cleanup", volumeName)
+	}
+
+	// For encrypted volumes, dm-crypt can block removing the underlying linear DM device.
+	// Remove the crypto mount/device first, then remove the linear device.
+	if volume != nil && volume.Spec.Encrypted {
+		cryptoDevice := crypto.VolumeMapper(volumeName, string(volume.Spec.DataEngine))
+		if err := util.LazyUnmount(cryptoDevice); err != nil {
+			return errors.Wrapf(err, "failed to lazy unmount stale crypto device %v for volume %v", cryptoDevice, volumeName)
+		}
+		if err := util.RemoveDMDevice(cryptoDevice); err != nil {
+			return errors.Wrapf(err, "failed to remove stale dm-crypt device %v for volume %v", cryptoDevice, volumeName)
+		}
+	}
+
+	// Remove the linear device-mapper device (/dev/mapper/<volume>). RemoveDMDevice already
+	// ignores "not found" so a repeated reconcile is a no-op.
+	if err := util.RemoveDMDevice(volumeName); err != nil {
+		return errors.Wrapf(err, "failed to remove stale v2 dm device %v", volumeName)
+	}
+
+	// Remove the block device endpoint (/dev/longhorn/<volume>). "rm -f" is a no-op if absent.
+	endpoint := filepath.Join(util.RegularDeviceDirectory, volumeName)
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create host namespace executor to remove endpoint %v", endpoint)
+	}
+	if _, err := nsexec.Execute(nil, "rm", []string{"-f", endpoint}, lhtypes.ExecuteDefaultTimeout); err != nil {
+		return errors.Wrapf(err, "failed to remove stale v2 endpoint %v", endpoint)
+	}
+
+	log.Info("Removed stale host initiator device and endpoint")
 	return nil
 }
 

@@ -27,6 +27,12 @@ import (
 //
 // EngineFrontendStatus defines the observed state of the Longhorn engine frontend
 type EngineFrontendStatusApplyConfiguration struct {
+	// InitiatorNodeID is the node that actually hosts the initiator (where the
+	// DM device /dev/mapper/<volume> and endpoint /dev/longhorn/<volume> live).
+	// It is recorded while the frontend is running and not cleared during
+	// teardown so stale-device cleanup targets the correct host even if
+	// controller ownership changes or Spec.NodeID is cleared on detach.
+	InitiatorNodeID *string `json:"initiatorNodeID,omitempty"`
 	// CurrentSize is the current size of the frontend device in bytes, as
 	// observed from the data plane. It is 0 while the engine frontend is not
 	// running.
@@ -51,6 +57,14 @@ type EngineFrontendStatusApplyConfiguration struct {
 // apply.
 func EngineFrontendStatus() *EngineFrontendStatusApplyConfiguration {
 	return &EngineFrontendStatusApplyConfiguration{}
+}
+
+// WithInitiatorNodeID sets the InitiatorNodeID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InitiatorNodeID field is set to the value of the last call.
+func (b *EngineFrontendStatusApplyConfiguration) WithInitiatorNodeID(value string) *EngineFrontendStatusApplyConfiguration {
+	b.InitiatorNodeID = &value
+	return b
 }
 
 // WithCurrentSize sets the CurrentSize field in the declarative configuration to the given value
