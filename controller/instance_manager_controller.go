@@ -40,6 +40,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -208,6 +209,8 @@ func NewInstanceManagerController(
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeControlInformer.HasSynced)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.EngineFrontendInformer.HasSynced)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	return imc, nil
 }
@@ -389,6 +392,11 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	if err := imc.syncStatusWithPod(im); err != nil {
 		return err
 	}
+
+	// A v2 instance manager pod that goes away can leave the dm-crypt devices of encrypted
+	// volumes behind. They sit on top of the linear dm device owned by the data plane and
+	// block its removal, so close them here.
+	imc.cleanupStaleEngineFrontendCryptoDevices(im)
 
 	// An instance manager pod for v2 volume need to consume huge pages, and disks managed by the
 	// pod is unable to managed by another pod. Therefore, if an instance manager pod is running on a node,
@@ -1588,6 +1596,138 @@ func (imc *InstanceManagerController) deleteInstanceManagerPDB(im *longhorn.Inst
 		return err
 	}
 	return nil
+}
+
+// isInstanceManagerDataPlaneStopped reports whether the spdk_tgt of the given instance
+// manager is known to have stopped, based on its pod.
+//
+// The aggregate im.Status.CurrentState is not enough: syncStatusWithPod also reports Error
+// for a running pod that merely has a deletion timestamp, and for the Unknown pod phase
+// where the kubelet is out of contact and the container may still be serving IO. Only a
+// missing pod or terminated containers prove that no initiator is left running.
+func isInstanceManagerDataPlaneStopped(pod *corev1.Pod) bool {
+	// The pod is gone, so the spdk_tgt that owned the initiators went with it.
+	if pod == nil {
+		return true
+	}
+
+	switch pod.Status.Phase {
+	case corev1.PodFailed, corev1.PodSucceeded:
+		return true
+	case corev1.PodUnknown:
+		// The kubelet cannot be reached, so the container statuses below are stale.
+		return false
+	}
+
+	if pod.DeletionTimestamp == nil {
+		return false
+	}
+	// The pod is terminating. Wait for the kubelet to report every container as terminated
+	// rather than removing the devices while spdk_tgt is still draining its grace period.
+	if len(pod.Status.ContainerStatuses) == 0 {
+		return false
+	}
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Terminated == nil {
+			return false
+		}
+	}
+	return true
+}
+
+// shouldCleanupStaleEngineFrontendCryptoDevices reports whether the engine frontend crypto
+// devices of the given instance manager are known to be stale.
+//
+// A live upgrade deletes the pod too, but deliberately keeps the kernel initiator and its
+// dm device up across the restart, so it is excluded by state before the pod is consulted.
+func shouldCleanupStaleEngineFrontendCryptoDevices(im *longhorn.InstanceManager, pod *corev1.Pod, controllerID string) bool {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
+		return false
+	}
+	if im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
+		return false
+	}
+	// The devices live on the instance manager's node, so only the manager running there can
+	// remove them. CR ownership can be held by another node while this one is unavailable.
+	if im.Spec.NodeID != controllerID {
+		return false
+	}
+	return isInstanceManagerDataPlaneStopped(pod)
+}
+
+// cleanupStaleEngineFrontendCryptoDevices closes the dm-crypt devices
+// /dev/mapper/<volume>-encrypted of the encrypted volumes whose engine frontend initiators
+// lived in a v2 instance manager that is gone.
+//
+// The linear dm device /dev/mapper/<volume> and the endpoint /dev/longhorn/<volume> are owned
+// by the data plane and are not touched here. They are recovered by the orphan mechanism, or
+// by the initiator on the next attach. The dm-crypt device is created by longhorn-manager
+// (CSI) on top of the linear dm device and would block that removal, so it is closed here.
+//
+// It must run before handlePod recreates the pod, so that the pod it reads is the one that
+// owned the initiators.
+//
+// The cleanup is best effort. Blocking the sync would also block the recreation of the pod,
+// so failures are only logged. Every removal is idempotent.
+func (imc *InstanceManagerController) cleanupStaleEngineFrontendCryptoDevices(im *longhorn.InstanceManager) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
+		return
+	}
+
+	log := getLoggerForInstanceManager(imc.logger, im)
+
+	pod, err := imc.ds.GetPodRO(imc.namespace, im.Name)
+	if err != nil {
+		log.WithError(err).Warn("Failed to get the instance manager pod for stale crypto device cleanup")
+		return
+	}
+	if !shouldCleanupStaleEngineFrontendCryptoDevices(im, pod, imc.controllerID) {
+		return
+	}
+
+	engineFrontends, err := imc.ds.ListEngineFrontendsByNodeRO(im.Spec.NodeID)
+	if err != nil {
+		log.WithError(err).Warn("Failed to list engine frontends for stale crypto device cleanup")
+		return
+	}
+
+	for _, ef := range engineFrontends {
+		if !types.IsDataEngineV2(ef.Spec.DataEngine) {
+			continue
+		}
+
+		if ef.Spec.VolumeName == "" {
+			continue
+		}
+
+		if ef.Status.InstanceManagerName != "" && ef.Status.InstanceManagerName != im.Name {
+			continue
+		}
+
+		imc.removeStaleCryptoDevice(log, ef.Spec.VolumeName)
+	}
+}
+
+func (imc *InstanceManagerController) removeStaleCryptoDevice(log logrus.FieldLogger, volumeName string) {
+	volume, err := imc.ds.GetVolumeRO(volumeName)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			log.WithError(err).Warnf("Failed to get volume %v to resolve its encryption state", volumeName)
+		}
+		return
+	}
+	if !volume.Spec.Encrypted {
+		return
+	}
+
+	cryptoDevice := crypto.VolumeMapper(volumeName, string(longhorn.DataEngineTypeV2))
+	log.Warnf("Removing the stale crypto device %v of volume %v", cryptoDevice, volumeName)
+	if err := util.LazyUnmount(cryptoDevice); err != nil {
+		log.WithError(err).Warnf("Failed to lazy unmount crypto device %v of volume %v", cryptoDevice, volumeName)
+	}
+	if err := util.RemoveDMDevice(cryptoDevice); err != nil {
+		log.WithError(err).Warnf("Failed to remove crypto device %v of volume %v", cryptoDevice, volumeName)
+	}
 }
 
 func (imc *InstanceManagerController) syncOrphans(im *longhorn.InstanceManager) error {
