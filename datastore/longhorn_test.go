@@ -12,6 +12,9 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	k8stesting "k8s.io/client-go/testing"
+
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -341,4 +344,61 @@ func TestCurrentEngineSelectionWithSingleActiveEngineWithoutNodeID(t *testing.T)
 			}
 		})
 	}
+}
+
+func TestCreateOrUpdateSettingRetriesOnConflict(t *testing.T) {
+	const (
+		testNamespace     = "longhorn-system"
+		testSettingName   = types.SettingNameDefaultReplicaCount
+		oldValue          = "3"
+		newValue          = "2"
+		cmResourceVersion = "100"
+	)
+	cmResourceVersionKey := types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)
+	updateFromLonghornKey := types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)
+
+	lhClient := lhfake.NewSimpleClientset(&longhorn.Setting{ // nolint: staticcheck
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        string(testSettingName),
+			Namespace:   testNamespace,
+			Annotations: map[string]string{cmResourceVersionKey: "1"},
+		},
+		Value: oldValue,
+	})
+
+	// Simulate another manager (or the setting controller) modifying the setting
+	// between the cached read and the update: the first update is rejected with a
+	// conflict, subsequent updates go through.
+	conflicts := 0
+	lhClient.PrependReactor("update", "settings", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if conflicts > 0 {
+			return false, nil, nil
+		}
+		conflicts++
+		return true, nil, apierrors.NewConflict(longhorn.Resource("settings"), string(testSettingName), fmt.Errorf("the object has been modified"))
+	})
+
+	informerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, 0)
+	settingInformer := informerFactory.Longhorn().V1beta2().Settings()
+	ds := &DataStore{
+		namespace:       testNamespace,
+		lhClient:        lhClient,
+		settingLister:   settingInformer.Lister(),
+		SettingInformer: settingInformer.Informer(),
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	go ds.SettingInformer.Run(stopCh)
+	require.True(t, cache.WaitForCacheSync(stopCh, ds.SettingInformer.HasSynced))
+
+	err := ds.createOrUpdateSetting(testSettingName, newValue, cmResourceVersion)
+	require.NoError(t, err)
+	assert.Equal(t, 1, conflicts)
+
+	setting, err := lhClient.LonghornV1beta2().Settings(testNamespace).Get(context.TODO(), string(testSettingName), metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, newValue, setting.Value)
+	assert.Equal(t, cmResourceVersion, setting.Annotations[cmResourceVersionKey])
+	assert.NotContains(t, setting.Annotations, updateFromLonghornKey)
 }
