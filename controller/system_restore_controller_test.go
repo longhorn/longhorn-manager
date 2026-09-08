@@ -914,6 +914,7 @@ func fakeSystemRolloutSnapshot(fakeObj *longhorn.Snapshot, c *C, informerFactory
 	}
 
 	snap := newSnapshot(fakeObj.Name)
+	snap.Labels = types.GetVolumeLabels(fakeObj.Spec.Volume)
 	snap.Spec.Volume = fakeObj.Spec.Volume
 	snap.Status = fakeObj.Status
 	exist, err := clientInterface.Create(context.TODO(), snap, metav1.CreateOptions{})
