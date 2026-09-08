@@ -47,6 +47,8 @@ const (
 
 	TestDiffSuffix   = "-diff"
 	TestIgnoreSuffix = "-ignore"
+
+	TestRegistrySecret = "test-registry-secret"
 )
 
 type SystemRolloutCRName string
@@ -59,6 +61,7 @@ type SystemRestoreTestCase struct {
 	state            longhorn.SystemRestoreState
 	notExist         bool
 	isDeleting       bool
+	registrySecret   string
 
 	expectError    bool
 	expectJobExist bool
@@ -97,6 +100,10 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			expectState:      longhorn.SystemRestoreStateError,
 			expectJobExist:   false,
 		},
+		"system restore with private registry": {
+			registrySecret: TestRegistrySecret,
+			expectJobExist: true,
+		},
 	}
 
 	for name, tc := range testCases {
@@ -117,7 +124,13 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
 		fakeSystemRolloutManagerPod(c, informerFactories.KubeInformerFactory, kubeClient)
-		fakeSystemRolloutSettingDefaultEngineImage(c, informerFactories.LhInformerFactory, lhClient)
+		settings := map[SystemRolloutCRName]*longhorn.Setting{
+			SystemRolloutCRName(types.SettingNameDefaultEngineImage): {Value: TestEngineImage},
+		}
+		if tc.registrySecret != "" {
+			settings[SystemRolloutCRName(types.SettingNameRegistrySecret)] = &longhorn.Setting{Value: tc.registrySecret}
+		}
+		fakeSystemRolloutSettings(settings, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, informerFactories.LhInformerFactory, lhClient)
 
@@ -150,6 +163,11 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			c.Assert(job.Spec.Template.Spec.Containers[0].Image, Equals, TestManagerImage)
 			c.Assert(strings.HasPrefix(job.Name, SystemRolloutNamePrefix), Equals, true)
 			c.Assert(strings.HasPrefix(job.Spec.Template.Spec.Containers[0].Name, SystemRolloutNamePrefix), Equals, true)
+			if tc.registrySecret != "" {
+				c.Assert(job.Spec.Template.Spec.ImagePullSecrets, DeepEquals, []corev1.LocalObjectReference{{Name: tc.registrySecret}})
+			} else {
+				c.Assert(job.Spec.Template.Spec.ImagePullSecrets, HasLen, 0)
+			}
 		} else {
 			c.Assert(err, NotNil)
 		}
