@@ -1897,7 +1897,9 @@ var (
 			"This setting is applicable only when the V2 Data Engine is enabled. \n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V2 volumes. \n\n" +
 			"  - `true`: Enables interrupt mode, which may reduce CPU usage. \n\n" +
-			"  - `false`: Uses polling mode for maximum performance. \n\n",
+			"  - `false`: Uses polling mode for maximum performance. \n\n" +
+			"  - When interrupt mode is enabled, **Enable Host CPU Isolation for Data Engine** is always disabled, because the SPDK reactors no longer busy-poll and do not need to be protected from host interrupt handling, deferred kernel work, or network softirq processing. " +
+			"This applies regardless of the **Enable Host CPU Isolation for Data Engine** value and of any per-Instance-Manager override. \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1910,8 +1912,10 @@ var (
 		DisplayName: "Enable Host CPU Isolation for Data Engine",
 		Description: "Applies only to the V2 Data Engine. Steers host hardware IRQs, unbound kernel workqueue workers, *and* network Receive Packet Steering (RPS) away from the CPUs used by the Storage Performance Development Kit (SPDK) target daemon, " +
 			"so that interrupt handling, deferred kernel work, and network softirq processing do not preempt SPDK polling reactors. \n\n" +
+			"  - This setting only takes effect in polling mode. When **Enable Interrupt Mode for Data Engine** is enabled, CPU isolation is always disabled, regardless of this setting and of any per-Instance-Manager override. \n\n" +
+			"  - In polling mode, CPU isolation is enabled whenever this setting is `true`. \n\n" +
 			"  - When applying the setting, Longhorn will try to restart all V2 instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n" +
-			"  - This value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.CPUIsolationEnabled` " +
+			"  - In polling mode, this value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.CPUIsolationEnabled` " +
 			"(set to `\"true\"` or `\"false\"` on a specific instance manager to force the value on that node; leave empty to inherit this setting). \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
