@@ -225,7 +225,9 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufSmallPoolSize ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
-		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize
+		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineInterruptModeEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUIsolationEnabled
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -997,30 +999,40 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 }
 
 // resolveCPUIsolationEnabled returns the effective CPU-isolation-enabled value
-// for a V2 instance manager. The per-IM Spec.DataEngineSpec.V2.CPUIsolationEnabled
-// field takes priority over the cluster-wide data-engine-cpu-isolation-enabled
-// setting:
+// for a V2 instance manager, in the following order of precedence:
 //
-//	"true"  -> enabled
-//	"false" -> disabled
-//	""      -> inherit the global setting value
+//  1. Interrupt mode: CPU isolation only protects busy-polling SPDK reactors from
+//     being preempted, so it is disabled whenever the SPDK target runs in
+//     interrupt mode, regardless of any other input.
+//  2. The per-IM Spec.DataEngineSpec.V2.CPUIsolationEnabled field:
+//     "true" -> enabled, "false" -> disabled, "" -> fall through.
+//  3. The cluster-wide data-engine-cpu-isolation-enabled setting.
 func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.InstanceManager) (bool, error) {
-	switch im.Spec.DataEngineSpec.V2.CPUIsolationEnabled {
-	case "true":
-		return true, nil
-	case "false":
+	interruptMode, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+	if interruptMode == longhorn.TrueValue {
 		return false, nil
 	}
+
+	switch im.Spec.DataEngineSpec.V2.CPUIsolationEnabled {
+	case longhorn.TrueValue:
+		return true, nil
+	case longhorn.FalseValue:
+		return false, nil
+	}
+
 	val, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, im.Spec.DataEngine)
 	if err != nil {
 		return false, err
 	}
-	return val == "true", nil
+	return val == longhorn.TrueValue, nil
 }
 
 // isSettingCPUIsolationEnabledSynced returns true if the effective CPU-isolation
-// value (Spec.DataEngineSpec.V2.CPUIsolationEnabled, falling back to the global
-// setting) matches what the V2 instance-manager pod was started with. The pod
+// value (see resolveCPUIsolationEnabled) matches what the V2 instance-manager
+// pod was started with. The pod
 // always receives --longhorn-control-path (so we can reconcile stale state
 // across restarts even after toggling off); the actual toggle is the presence
 // of --enable-irq-affinity, --enable-workqueue-affinity, AND --enable-rps in the

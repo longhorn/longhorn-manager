@@ -186,6 +186,8 @@ type V2DataEngineSpec struct {
 	//            workqueues away from the SPDK reactor CPUs).
 	// "false" -> do not pass the flags.
 	// ""      -> inherit the global setting value.
+	// This field is ignored when interrupt mode is enabled, since the SPDK
+	// reactors no longer busy-poll and CPU isolation is always disabled.
 	// +optional
 	// +kubebuilder:validation:Enum="";"true";"false"
 	CPUIsolationEnabled string `json:"cpuIsolationEnabled"`
