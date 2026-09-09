@@ -50,9 +50,15 @@ type ReplicaExpansion interface{}
 
 type SettingExpansion interface{}
 
+type ShardExpansion interface{}
+
+type ShardGroupExpansion interface{}
+
 type ShareManagerExpansion interface{}
 
 type SnapshotExpansion interface{}
+
+type SnapshotGroupExpansion interface{}
 
 type SupportBundleExpansion interface{}
 

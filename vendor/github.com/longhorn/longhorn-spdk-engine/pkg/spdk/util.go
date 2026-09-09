@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avast/retry-go/v4"
+	"github.com/avast/retry-go/v5"
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
@@ -29,7 +29,18 @@ func discoverAndConnectNVMeTarget(srcIP string, srcPort int32, maxRetries int, r
 		return "", "", errors.Wrapf(err, "failed to create executor")
 	}
 
-	err = retry.Do(
+	err = retry.New(
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			logrus.WithError(err).Warnf(
+				"Retrying NVMe target connect: addr=%s:%d attempt=%d/%d next_wait=%s",
+				srcIP, srcPort, n+1, maxRetries, retryInterval,
+			)
+		}),
+	).Do(
 		func() error {
 			var e error
 			subsystemNQN, e = initiator.DiscoverTarget(srcIP, strconv.Itoa(int(srcPort)), executor)
@@ -44,16 +55,6 @@ func discoverAndConnectNVMeTarget(srcIP string, srcPort int32, maxRetries int, r
 
 			return nil
 		},
-		retry.Attempts(uint(maxRetries)),
-		retry.Delay(retryInterval),
-		retry.DelayType(retry.FixedDelay),
-		retry.LastErrorOnly(true),
-		retry.OnRetry(func(n uint, err error) {
-			logrus.WithError(err).Warnf(
-				"Retrying NVMe target connect: addr=%s:%d attempt=%d/%d next_wait=%s",
-				srcIP, srcPort, n+1, maxRetries, retryInterval,
-			)
-		}),
 	)
 
 	if err != nil || subsystemNQN == "" || controllerName == "" {
@@ -145,7 +146,18 @@ func connectNVMfBdev(spdkClient *spdkclient.Client, controllerName, address stri
 
 	adrfam := spdkclient.DetectAddressFamily(ip)
 	nvmeBdevNameList := []string{}
-	err = retry.Do(
+	err = retry.New(
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			logrus.WithError(err).Warnf(
+				"Retrying NVMe bdev attach: controller=%s address=%s attempt=%d/%d next_wait=%s",
+				controllerName, address, n+1, maxRetries, retryInterval,
+			)
+		}),
+	).Do(
 		func() error {
 			var err error
 			nvmeBdevNameList, err = spdkClient.BdevNvmeAttachController(
@@ -159,19 +171,10 @@ func connectNVMfBdev(spdkClient *spdkclient.Client, controllerName, address stri
 				replicaReconnectDelaySec,
 				int32(fastIOFailTimeoutSec),
 				replicaMultipath,
+				helpertypes.InternalHostNQN,
 			)
 			return err
 		},
-		retry.Attempts(uint(maxRetries)),
-		retry.Delay(retryInterval),
-		retry.DelayType(retry.FixedDelay),
-		retry.LastErrorOnly(true),
-		retry.OnRetry(func(n uint, err error) {
-			logrus.WithError(err).Warnf(
-				"Retrying NVMe bdev attach: controller=%s address=%s attempt=%d/%d next_wait=%s",
-				controllerName, address, n+1, maxRetries, retryInterval,
-			)
-		}),
 	)
 
 	if err != nil {
@@ -192,17 +195,7 @@ func disconnectNVMfBdev(spdkClient *spdkclient.Client, bdevName string, maxRetri
 
 	controllerName := helperutil.GetNvmeControllerNameFromNamespaceName(bdevName)
 
-	if err := retry.Do(
-		func() error {
-			_, err := spdkClient.BdevNvmeDetachController(controllerName)
-			if err != nil {
-				if jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-					return nil
-				}
-				return err
-			}
-			return nil
-		},
+	if err := retry.New(
 		retry.Attempts(uint(maxRetries)),
 		retry.Delay(retryInterval),
 		retry.DelayType(retry.FixedDelay),
@@ -213,6 +206,17 @@ func disconnectNVMfBdev(spdkClient *spdkclient.Client, bdevName string, maxRetri
 				controllerName, n+1, maxRetries, retryInterval,
 			)
 		}),
+	).Do(
+		func() error {
+			_, err := spdkClient.BdevNvmeDetachController(controllerName)
+			if err != nil {
+				if jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+					return nil
+				}
+				return err
+			}
+			return nil
+		},
 	); err != nil {
 		return err
 	}
@@ -226,7 +230,18 @@ func disconnectNVMfBdev(spdkClient *spdkclient.Client, bdevName string, maxRetri
 }
 
 func waitForNVMfBdevDetached(spdkClient *spdkclient.Client, bdevName, controllerName string, maxRetries int, retryInterval time.Duration) error {
-	return retry.Do(
+	return retry.New(
+		retry.Attempts(uint(maxRetries)),
+		retry.Delay(retryInterval),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.OnRetry(func(n uint, err error) {
+			logrus.WithError(err).Warnf(
+				"Waiting for NVMe bdev removal: bdev=%s controller=%s attempt=%d/%d next_wait=%s",
+				bdevName, controllerName, n+1, maxRetries, retryInterval,
+			)
+		}),
+	).Do(
 		func() error {
 			bdevs, err := spdkClient.BdevGetBdevs(bdevName, 0)
 			if err != nil {
@@ -240,16 +255,6 @@ func waitForNVMfBdevDetached(spdkClient *spdkclient.Client, bdevName, controller
 			}
 			return fmt.Errorf("NVMe bdev %s for controller %s is still present after detach", bdevName, controllerName)
 		},
-		retry.Attempts(uint(maxRetries)),
-		retry.Delay(retryInterval),
-		retry.DelayType(retry.FixedDelay),
-		retry.LastErrorOnly(true),
-		retry.OnRetry(func(n uint, err error) {
-			logrus.WithError(err).Warnf(
-				"Waiting for NVMe bdev removal: bdev=%s controller=%s attempt=%d/%d next_wait=%s",
-				bdevName, controllerName, n+1, maxRetries, retryInterval,
-			)
-		}),
 	)
 }
 

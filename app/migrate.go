@@ -8,7 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/client-go/rest"
 
@@ -27,26 +27,27 @@ const (
 	FlagAll = "all"
 )
 
-func MigrateForPre070VolumesCmd() cli.Command {
-	return cli.Command{
+func MigrateForPre070VolumesCmd() *cli.Command {
+	return &cli.Command{
 		Name: "migrate-for-pre-070-volumes",
 		Flags: []cli.Flag{
-			cli.BoolFlag{
+			&cli.BoolFlag{
 				Name:  FlagAll,
 				Usage: "Check and migrate PVs and PVCs for all pre v0.7.0 volumes",
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := migrateForPre070Volumes(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := migrateForPre070Volumes(cmd); err != nil {
 				logrus.Fatalf("Error migrate PVs and PVCs for the volumes: %v", err)
 			}
+			return nil
 		},
 	}
 }
 
-func migrateForPre070Volumes(c *cli.Context) error {
+func migrateForPre070Volumes(cmd *cli.Command) error {
 	var err error
-	migrateAllVolumes := c.Bool(FlagAll)
+	migrateAllVolumes := cmd.Bool(FlagAll)
 
 	lhNamespace := os.Getenv(types.EnvPodNamespace)
 	if lhNamespace == "" {
@@ -77,10 +78,10 @@ func migrateForPre070Volumes(c *cli.Context) error {
 			}
 		}
 	} else {
-		if c.NArg() == 0 {
+		if cmd.NArg() == 0 {
 			return errors.New("volume name or the flag '--all' is required")
 		}
-		if err = migratePVAndPVCForPre070Volume(kubeClient, lhClient, lhNamespace, c.Args()[0]); err != nil {
+		if err = migratePVAndPVCForPre070Volume(kubeClient, lhClient, lhNamespace, cmd.Args().Get(0)); err != nil {
 			return err
 		}
 	}

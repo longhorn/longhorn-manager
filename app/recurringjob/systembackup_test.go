@@ -60,11 +60,12 @@ func newSystemBackupJobForTest(retain int, objs ...*longhorn.SystemBackup) *Syst
 
 	return &SystemBackupJob{
 		Job: &Job{
-			lhClient:  lhClient,
-			logger:    logger,
-			name:      testSystemBackupJob,
-			namespace: testNamespace,
-			retain:    retain,
+			lhClient:        lhClient,
+			logger:          logger,
+			name:            testSystemBackupJob,
+			namespace:       testNamespace,
+			retainCount:     retain,
+			retentionPolicy: longhorn.RecurringJobRetentionPolicyCountBased,
 		},
 		logger: logrus.NewEntry(logger),
 	}

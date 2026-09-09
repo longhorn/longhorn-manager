@@ -34,7 +34,7 @@ var (
 
 // --- *Engine ---
 
-func (e *Engine) GetDataEngine() string         { return string(e.Spec.DataEngine) }
+func (e *Engine) GetDataEngine() string          { return string(e.Spec.DataEngine) }
 func (e *Engine) GetEngineName() string          { return e.Name }
 func (e *Engine) GetEngineFrontendName() string  { return "" }
 func (e *Engine) GetVolumeName() string          { return e.Spec.VolumeName }
@@ -46,9 +46,10 @@ func (e *Engine) GetPort() int                   { return e.Status.Port }
 // --- *EngineFrontend ---
 
 func (ef *EngineFrontend) GetDataEngine() string         { return string(ef.Spec.DataEngine) }
-func (ef *EngineFrontend) GetEngineName() string          { return ef.Spec.EngineName }
-func (ef *EngineFrontend) GetEngineFrontendName() string  { return ef.Name }
-func (ef *EngineFrontend) GetVolumeName() string          { return ef.Spec.VolumeName }
+func (ef *EngineFrontend) GetEngineName() string         { return ef.Spec.EngineName }
+func (ef *EngineFrontend) GetEngineFrontendName() string { return ef.Name }
+func (ef *EngineFrontend) GetVolumeName() string         { return ef.Spec.VolumeName }
+
 // GetVolumeSize returns the EngineFrontend's own desired size (ef.Spec.Size),
 // which is the size the frontend device should be driven toward. This is
 // distinct from ef.Spec.VolumeSize, which tracks the volume-level size

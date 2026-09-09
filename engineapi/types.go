@@ -9,11 +9,11 @@ import (
 
 	iscsidevtypes "github.com/longhorn/go-iscsi-helper/types"
 	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
-	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
-	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
-
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -104,7 +104,7 @@ type EngineClient interface {
 	VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error
+	ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, linkedCloneSource *imrpc.LinkedCloneSource) error
 	ReplicaRemove(engine *longhorn.Engine, url, replicaName string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimitMbps int64) error
@@ -123,7 +123,7 @@ type EngineClient interface {
 	SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential, parameters map[string]string) (string, string, error)
 	SnapshotBackupStatus(obj DataEngineObject, backupName, replicaAddress, replicaName string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(obj DataEngineObject) (map[string]*longhorn.SnapshotCloneStatus, error)
-	SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error
+	SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) error
 	SnapshotHash(obj DataEngineObject, snapshotName string, rehash bool) error
 	SnapshotHashStatus(obj DataEngineObject, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
@@ -207,6 +207,12 @@ type BackupVolume struct {
 	StorageClassName     string             `json:"storageClassName"`
 	BackupTargetName     string             `json:"backupTargetName"`
 	VolumeName           string             `json:"volumeName"`
+
+	// LinkedCloneSourceVolume and LinkedCloneSourceSnapshot are set when the backed
+	// up volume was a linked clone. Such a backup only holds the data the clone wrote
+	// itself, so restoring it requires re-establishing the link to this source.
+	LinkedCloneSourceVolume   string `json:"linkedCloneSourceVolume"`
+	LinkedCloneSourceSnapshot string `json:"linkedCloneSourceSnapshot"`
 }
 
 type Backup struct {

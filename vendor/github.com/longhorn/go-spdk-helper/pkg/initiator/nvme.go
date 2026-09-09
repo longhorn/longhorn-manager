@@ -3,6 +3,7 @@ package initiator
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -10,6 +11,7 @@ import (
 	commonns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/go-spdk-helper/pkg/types"
+	"github.com/longhorn/go-spdk-helper/pkg/util"
 )
 
 // DiscoverTarget discovers a target
@@ -39,6 +41,12 @@ func DiscoverTarget(ip, port string, executor *commonns.Executor) (subnqn string
 
 // ConnectTarget connects to a target
 func ConnectTarget(ip, port, nqn string, executor *commonns.Executor) (controllerName string, err error) {
+	return ConnectTargetWithNrIoQueues(ip, port, nqn, 0, executor)
+}
+
+// ConnectTargetWithNrIoQueues connects to a target with a limited number of
+// I/O queues (nrIoQueues 0 means unspecified, kernel default)
+func ConnectTargetWithNrIoQueues(ip, port, nqn string, nrIoQueues int32, executor *commonns.Executor) (controllerName string, err error) {
 	// Trying to connect an existing subsystem will error out with exit code 114.
 	// Hence, it's better to check the existence first.
 	if devices, err := GetDevices(ip, port, nqn, executor); err == nil && len(devices) > 0 {
@@ -54,7 +62,7 @@ func ConnectTarget(ip, port, nqn string, executor *commonns.Executor) (controlle
 		return "", err
 	}
 
-	return connect(hostID, hostNQN, nqn, DefaultTransportType, ip, port, executor)
+	return connect(hostID, hostNQN, nqn, DefaultTransportType, ip, port, nrIoQueues, executor)
 }
 
 // DisconnectTarget disconnects from a target
@@ -77,7 +85,7 @@ func DisconnectController(nqn, ip, port string, executor *commonns.Executor) err
 		}
 		for _, path := range sys.Paths {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-			if controllerIP == ip && controllerPort == port {
+			if util.IsSameNvmeAddr(controllerIP, ip) && controllerPort == port {
 				return disconnectController(path.Name, executor)
 			}
 		}
@@ -92,6 +100,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 	}()
 
 	devices = []Device{}
+	skippedDevices := 0
 
 	nvmeDevices, err := listRecognizedNvmeDevices(executor)
 	if err != nil {
@@ -100,11 +109,31 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 	for _, d := range nvmeDevices {
 		subsystems, err := listSubsystems(d.DevicePath, executor)
 		if err != nil {
+			// Backup/snapshot flows may create a temporary NVMe/TCP device and tear
+			// it down shortly after use. To avoid falsely treating the live frontend
+			// as missing, skip this scanned device here and continue the full scan;
+			// the requested target must still be found before GetDevices() succeeds.
+			if isTransientNVMeScanError(err) {
+				skippedDevices++
+				logrus.WithFields(logrus.Fields{
+					"devicePath":       d.DevicePath,
+					"requestedAddress": fmt.Sprintf("%s:%s", ip, port),
+					"requestedNQN":     nqn,
+				}).WithError(err).Warn("Skipping NVMe device during scan because it appears to be in transient cleanup")
+				continue
+			}
 			logrus.WithError(err).Warnf("failed to list subsystems for NVMe device %s", d.DevicePath)
 			continue
 		}
 		if len(subsystems) == 0 {
-			return nil, fmt.Errorf("no subsystem found for NVMe device %s", d.DevicePath)
+			// Similar to the transient error case above, skip this device.
+			skippedDevices++
+			logrus.WithFields(logrus.Fields{
+				"devicePath":       d.DevicePath,
+				"requestedAddress": fmt.Sprintf("%s:%s", ip, port),
+				"requestedNQN":     nqn,
+			}).Warn("Skipping NVMe device during scan because no subsystem was found; device may be in transient cleanup")
+			continue
 		}
 		if len(subsystems) > 1 {
 			return nil, fmt.Errorf("multiple subsystems found for NVMe device %s", d.DevicePath)
@@ -154,7 +183,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 		}
 		for _, c := range d.Controllers {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(c.Address)
-			if ip != "" && ip != controllerIP {
+			if ip != "" && !util.IsSameNvmeAddr(ip, controllerIP) {
 				continue
 			}
 			if port != "" && port != controllerPort {
@@ -194,7 +223,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 			pathMatch := false
 			for _, path := range sys.Paths {
 				controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-				if ip != "" && ip != controllerIP {
+				if ip != "" && !util.IsSameNvmeAddr(ip, controllerIP) {
 					continue
 				}
 				if port != "" && port != controllerPort {
@@ -242,6 +271,15 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 	}
 
 	if len(res) == 0 {
+		if skippedDevices > 0 {
+			logrus.WithFields(logrus.Fields{
+				"requestedAddress": fmt.Sprintf("%s:%s", ip, port),
+				"requestedNQN":     nqn,
+				"recognizedCount":  len(nvmeDevices),
+				"skippedCount":     skippedDevices,
+			}).Warn("Requested NVMe target was not found after skipping transient devices during scan")
+		}
+
 		subsystems, err := listSubsystems("", executor)
 		if err != nil {
 			return nil, err
@@ -264,6 +302,14 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 // GetSubsystems returns all devices
 func GetSubsystems(executor *commonns.Executor) (subsystems []Subsystem, err error) {
 	return listSubsystems("", executor)
+}
+
+func isTransientNVMeScanError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, types.ErrorMessageNoSuchFileOrDirectory)
 }
 
 // Flush commits data and metadata associated with the specified namespace(s) to nonvolatile media.

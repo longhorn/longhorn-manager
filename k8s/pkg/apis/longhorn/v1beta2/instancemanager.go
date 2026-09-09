@@ -178,6 +178,17 @@ type InstanceProcessStatus struct {
 type V2DataEngineSpec struct {
 	// +optional
 	CPUMask string `json:"cpuMask"`
+
+	// CPUIsolationEnabled overrides the cluster-wide
+	// data-engine-cpu-isolation-enabled setting for this instance manager.
+	// "true"  -> pass --enable-irq-affinity and --enable-workqueue-affinity
+	//            to start-spdk-tgt (steer host IRQs and unbound kernel
+	//            workqueues away from the SPDK reactor CPUs).
+	// "false" -> do not pass the flags.
+	// ""      -> inherit the global setting value.
+	// +optional
+	// +kubebuilder:validation:Enum="";"true";"false"
+	CPUIsolationEnabled string `json:"cpuIsolationEnabled"`
 }
 
 type DataEngineSpec struct {
@@ -202,6 +213,8 @@ type InstanceManagerSpec struct {
 type V2DataEngineStatus struct {
 	// +optional
 	CPUMask string `json:"cpuMask"`
+	// +optional
+	CPUCoreNumber int64 `json:"cpuCoreNumber"`
 
 	// InterruptModeEnabled indicates whether the V2 data engine is running in
 	// interrupt mode (true) or polling mode (false). Set by Longhorn manager;
@@ -234,6 +247,12 @@ type InstanceManagerStatus struct {
 	// +optional
 	// +nullable
 	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`
+	// +optional
+	// +nullable
+	InstanceShards map[string]InstanceProcess `json:"instanceShards,omitempty"`
+	// +optional
+	// +nullable
+	InstanceShardGroups map[string]InstanceProcess `json:"instanceShardGroups,omitempty"`
 	// +optional
 	// +nullable
 	BackingImages map[string]BackingImageV2CopyInfo `json:"backingImages"`

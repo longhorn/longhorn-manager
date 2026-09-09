@@ -131,7 +131,7 @@ func NewVolumeController(
 	var err error
 	if _, err = ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolume,
-		UpdateFunc: func(old, cur interface{}) { c.enqueueVolume(cur) },
+		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumeChange(old, cur) },
 		DeleteFunc: c.enqueueVolume,
 	}); err != nil {
 		return nil, err
@@ -222,6 +222,18 @@ func NewVolumeController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SettingInformer.HasSynced)
+
+	// EC attach waits on ShardGroup readiness in openVolumeDependentResourcesEC.
+	// Watch the ShardGroup so the volume re-reconciles the moment its shards come
+	// up, instead of waiting for the periodic resync.
+	if _, err = ds.ShardGroupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueVolumeForShardGroup,
+		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumeForShardGroup(cur) },
+		DeleteFunc: c.enqueueVolumeForShardGroup,
+	}); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.ShardGroupInformer.HasSynced)
 
 	return c, nil
 }
@@ -749,6 +761,10 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}()
 
+	if isECVolume(v) {
+		return c.reconcileECVolumeRobustness(v)
+	}
+
 	// Aggregate replica wait for backing image condition
 	aggregatedReplicaWaitForBackingImageError := multierr.NewMultiError()
 	waitForBackingImage := false
@@ -987,40 +1003,67 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		// replicas will be started by ReconcileVolumeState() later
 	}
 
-	// While volume is in cloning process, there will only 1 replica so e.Status.CloneStatus will have length of 1
-	for _, status := range e.Status.CloneStatus {
-		if status == nil {
-			continue
+	// Aggregate clone statuses across all replicas. For linked-clone volumes
+	// all N replicas perform SnapshotCloneDst in parallel; for deep-copy clone
+	// there is exactly 1 replica at this stage.
+	if isCloneTargetCopyInProgress(v) {
+		total, complete, errored := 0, 0, 0
+		var firstError string
+		for _, status := range e.Status.CloneStatus {
+			if status == nil {
+				continue
+			}
+			total++
+			switch status.State {
+			case engineapi.ProcessStateComplete:
+				complete++
+			case engineapi.ProcessStateError:
+				errored++
+				if firstError == "" {
+					firstError = status.Error
+				}
+			}
 		}
 
-		if !isCloneTargetCopyInProgress(v) {
-			// No longer need to sync up with the engine because the volume has reach reached copy-complete
-			continue
-		}
-
-		switch status.State {
-		case engineapi.ProcessStateComplete:
+		if errored > 0 {
+			if v.Spec.CloneMode != longhorn.CloneModeLinkedClone || complete == 0 {
+				v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
+				c.eventRecorder.Eventf(
+					v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
+					"failed to clone snapshot %v with clone mode %v from source volume %v: %v",
+					v.Status.CloneStatus.Snapshot, v.Spec.CloneMode, v.Status.CloneStatus.SourceVolume, firstError,
+				)
+			} else {
+				// For linked-clone: at least one replica completed the clone; failed replicas
+				// can be rebuilt from the successful ones via normal Longhorn replica rebuild.
+				v.Status.CloneStatus.State = longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
+				c.eventRecorder.Eventf(
+					v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCopyCompleteAwaitingHealthy,
+					"partially cloned snapshot %v with clone mode %v from source volume %v (%v/%v replicas succeeded); failed replicas will be rebuilt",
+					v.Status.CloneStatus.Snapshot, v.Spec.CloneMode, v.Status.CloneStatus.SourceVolume, complete, total)
+			}
+		} else if total > 0 && complete == total {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
 			c.eventRecorder.Eventf(
 				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCopyCompleteAwaitingHealthy,
 				"copied the data from snapshot %v of the source volume %v. Waiting for volume to be fully HA before marking the clone as completed",
 				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
-		case engineapi.ProcessStateError:
-			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
-			c.eventRecorder.Eventf(
-				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
-				"failed to clone snapshot %v from source volume %v: %v",
-				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error,
-			)
 		}
 	}
 
-	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy &&
-		v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
-		v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
-		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
-			"finished cloning snapshot %v from source volume %v",
-			v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy {
+		if v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
+			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
+				"finished cloning snapshot %v from source volume %v",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+		} else if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && c.shouldCompleteLinkedCloneDespiteDegraded(v, rs) {
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
+			c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCompleted,
+				"marking clone of snapshot %v from source volume %v as completed despite degraded state: "+
+					"rebuild retries exhausted or stale timeout reached",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+		}
 	}
 
 	return nil
@@ -1219,6 +1262,18 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
+		// Do not clean up a replica that is still referenced by linked-clone replicas.
+		// The clone replica depends on this replica's data remaining intact until the
+		// clone replica itself is removed or rebuilt.
+		cloneReplicas, err := c.ds.ListLinkedCloneReplicasBySrcReplicaRO(r.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list linked-clone replicas for replica %v", r.Name)
+		}
+		if len(cloneReplicas) > 0 {
+			log.WithField("replica", r.Name).Debug("Skipping cleanup: replica is the source of linked-clone replica(s)")
+			continue
+		}
+
 		if c.shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
 			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 			if err := c.deleteReplica(r, rs); err != nil {
@@ -1271,12 +1326,20 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 
 	c.logger.Info("Cleaning up extra healthy replicas")
 
-	var cleaned bool
-	if cleaned, err = c.cleanupEvictionRequestedReplicas(v, rs); err != nil || cleaned {
+	// Exclude replicas that are referenced as a source by linked-clone replicas.
+	// Deleting such replicas would be rejected by the webhook, causing an
+	// endless retry loop.
+	deletableRs, err := c.filterOutLinkedCloneSrcReplicas(rs)
+	if err != nil {
 		return err
 	}
 
-	if cleaned, err = c.cleanupDataLocalityReplicas(v, e, rs); err != nil || cleaned {
+	var cleaned bool
+	if cleaned, err = c.cleanupEvictionRequestedReplicas(v, rs, deletableRs); err != nil || cleaned {
+		return err
+	}
+
+	if cleaned, err = c.cleanupDataLocalityReplicas(v, e, rs, deletableRs); err != nil || cleaned {
 		return err
 	}
 
@@ -1286,21 +1349,91 @@ func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *lo
 	// existing replicas. And this causes a rebuilding loop if this new
 	// replica is for data locality.
 	// Ref: https://github.com/longhorn/longhorn/issues/4761
-	if cleaned, err = c.cleanupAutoBalancedReplicas(v, e, rs); err != nil || cleaned {
+	if cleaned, err = c.cleanupAutoBalancedReplicas(v, e, rs, deletableRs); err != nil || cleaned {
 		return err
 	}
 
 	return nil
 }
 
-func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+// filterOutLinkedCloneSrcReplicas returns a copy of rs excluding replicas that
+// are currently referenced as a source by linked-clone replicas. This prevents
+// cleanup loops where the controller keeps trying to delete a src replica and
+// the webhook keeps rejecting it.
+func (c *VolumeController) filterOutLinkedCloneSrcReplicas(rs map[string]*longhorn.Replica) (map[string]*longhorn.Replica, error) {
+	filtered := make(map[string]*longhorn.Replica, len(rs))
+	for name, r := range rs {
+		clones, err := c.ds.ListLinkedCloneReplicasBySrcReplicaRO(name)
+		if err != nil {
+			return nil, err
+		}
+		if len(clones) > 0 {
+			continue
+		}
+		filtered[name] = r
+	}
+	return filtered, nil
+}
+
+// isDeletionCandidateNeededForBalance returns true when there is exactly
+// one deletion candidate and removing it would leave the volume in an
+// unbalanced state that auto-balance would immediately try to fix by creating
+// a new replica. Skipping cleanup in this case prevents an infinite
+// create/delete loop where auto-balance creates a replica on a new node and
+// cleanup immediately removes it.
+func (c *VolumeController) isDeletionCandidateNeededForBalance(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, candidateRNames []string) bool {
+	log := getLoggerForVolume(c.logger, v)
+
+	// Only applies when exactly 1 candidate remains. Auto-balance creates
+	// one extra at a time, so 2+ candidates means at least one is on an
+	// over-populated node and safe to remove.
+	if len(candidateRNames) != 1 {
+		return false
+	}
+
+	// Build replica map without the sole candidate to simulate removal.
+	candidateName := candidateRNames[0]
+	rsWithout := make(map[string]*longhorn.Replica, len(rs)-1)
+	for name, r := range rs {
+		if name == candidateName {
+			continue
+		}
+		rsWithout[name] = r
+	}
+
+	// Check node-level balance.
+	nodeAdjust, _, err := c.getReplicaCountForAutoBalanceNode(v, e, rsWithout)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to check node balance for deletion candidate %s protection, avoid the cleanup for now", candidateName)
+		return true
+	}
+	if nodeAdjust > 0 {
+		log.Debugf("Skipping cleanup of sole deletion candidate %v: removing it would require node-level rebalancing", candidateName)
+		return true
+	}
+
+	// Check zone-level balance.
+	zoneAdjust, _, err := c.getReplicaCountForAutoBalanceZone(v, e, rsWithout)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to check zone balance for deletion candidate %s protection, avoid the cleanup for now", candidateName)
+		return true
+	}
+	if zoneAdjust > 0 {
+		log.Debugf("Skipping cleanup of sole deletion candidate %v: removing it would require zone-level rebalancing", candidateName)
+		return true
+	}
+
+	return false
+}
+
+func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, rs, deletableRs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	// If there is no non-evicting healthy replica,
 	// Longhorn should retain one evicting healthy replica.
 	hasNonEvictingHealthyReplica := false
 	evictingHealthyReplica := ""
-	for _, r := range rs {
+	for _, r := range deletableRs {
 		if !datastore.IsAvailableHealthyReplica(r) {
 			continue
 		}
@@ -1311,7 +1444,7 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 		evictingHealthyReplica = r.Name
 	}
 
-	for _, r := range rs {
+	for _, r := range deletableRs {
 		if !r.Spec.EvictionRequested {
 			continue
 		}
@@ -1507,7 +1640,7 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 	return false, nil
 }
 
-func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs, deletableRs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "delete")
 
 	setting := c.ds.GetAutoBalancedReplicasSetting(v, log)
@@ -1518,25 +1651,25 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 	// In case of potential regressions or unexpected behavior changes, these cleanups are available only when
 	// the auto balance setting is enabled.
 	// See https://github.com/longhorn/longhorn/issues/11730 and https://github.com/longhorn/longhorn/issues/12511
-	if cleaned, err := c.cleanupReplicaInNotReadyEnv(v, rs); err != nil || cleaned {
+	if cleaned, err := c.cleanupReplicaInNotReadyEnv(v, deletableRs); err != nil || cleaned {
 		return cleaned, err
 	}
 
-	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, rs); err != nil || cleaned {
+	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, deletableRs); err != nil || cleaned {
 		return cleaned, err
 	}
 
 	var rNames []string
 	if setting == longhorn.ReplicaAutoBalanceBestEffort {
-		_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode)
+		_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, deletableRs, c.getReplicaCountForAutoBalanceNode)
 		if len(rNames) == 0 {
-			_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
+			_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, deletableRs, c.getReplicaCountForAutoBalanceZone)
 		}
 	}
 
 	var err error
 	if len(rNames) == 0 {
-		rNames, err = c.getPreferredReplicaCandidatesForDeletion(rs)
+		rNames, err = c.getPreferredReplicaCandidatesForDeletion(deletableRs)
 		if err != nil {
 			return false, err
 		}
@@ -1546,12 +1679,23 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 		log.Infof("Found replica deletion candidates %v with best-effort", rNames)
 	}
 
-	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, rs)
+	if len(rNames) == 0 {
+		return false, nil
+	}
+
+	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, deletableRs)
 	if err != nil {
 		return false, err
 	}
 
-	r := rs[rNames[0]]
+	// If there's only one deletion candidate and removing it would leave
+	// the volume unbalanced (auto-balance would immediately recreate it),
+	// skip cleanup to avoid an infinite create/delete loop.
+	if c.isDeletionCandidateNeededForBalance(v, e, rs, rNames) {
+		return false, nil
+	}
+
+	r := deletableRs[rNames[0]]
 	log.Infof("Deleting replica %v", r.Name)
 	if err := c.deleteReplica(r, rs); err != nil {
 		return false, err
@@ -1559,7 +1703,7 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 	return true, nil
 }
 
-func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs, deletableRs map[string]*longhorn.Replica) (bool, error) {
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
 		// Skip data locality cleanup when the engine is not running. If the engine crashed or stopped,
 		// we cannot verify replica data integrity through the engine's mode map, and data locality is
@@ -1570,9 +1714,9 @@ func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *lo
 		}
 	}
 	if !isDataLocalityDisabled(v) &&
-		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+		hasLocalReplicaOnSameNodeAsEngine(e, deletableRs) {
 
-		rNames, err := c.getPreferredReplicaCandidatesForDeletion(rs)
+		rNames, err := c.getPreferredReplicaCandidatesForDeletion(deletableRs)
 		if err != nil {
 			return false, err
 		}
@@ -1583,7 +1727,7 @@ func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *lo
 		// we always delete the replica with the smallest name.
 		sort.Strings(rNames)
 		for _, rName := range rNames {
-			r := rs[rName]
+			r := deletableRs[rName]
 			if r.Spec.NodeID != e.Spec.NodeID {
 				if err := c.deleteReplica(r, rs); err != nil {
 					return false, err
@@ -1731,6 +1875,10 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
+	if err := c.syncLinkedCloneReplicaSourceFields(v, rs); err != nil {
+		return err
+	}
+
 	if err := c.updateRequestedDataSourceForVolumeCloning(v, e); err != nil {
 		return err
 	}
@@ -1757,11 +1905,17 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
 
 	// Clear SalvageRequested flag if SalvageExecuted flag has been set.
+	// SalvageRequested is RAID1-only (the engine uses it to filter replicas at
+	// startup); EC volumes do not use this flag.
 	if e.Spec.SalvageRequested && e.Status.SalvageExecuted {
 		e.Spec.SalvageRequested = false
 	}
 
-	if isAutoSalvageNeeded(rs) {
+	if isECVolume(v) {
+		if err := c.handleECAutoSalvage(v); err != nil {
+			return err
+		}
+	} else if isAutoSalvageNeeded(rs) {
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 		// If the volume is faulted, we don't need to have RWX fast failover.
 		// If shareManager is delinquent, clear both delinquent and stale state.
@@ -1796,6 +1950,27 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			failedUsableReplicas := map[string]*longhorn.Replica{}
 			dataExists := false
 
+			// For linked-clone volumes, verify the source volume still exists before
+			// considering any replica as a salvage candidate. SPDK prevents deletion
+			// of a parent lvol while child lvols reference it, so the CoW chain on
+			// disk is intact as long as the source volume has not been removed.
+			// Use the immutable label (stamped at admission) rather than
+			// CloneStatus.SourceVolume which may not be populated yet when salvage runs.
+			srcVolumeGone := false
+			if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+				srcVolName := v.Labels[types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)]
+				if srcVolName != "" {
+					if _, srcVolErr := c.ds.GetVolumeRO(srcVolName); srcVolErr != nil {
+						if apierrors.IsNotFound(srcVolErr) {
+							log.Warnf("Skipping salvage: source volume %v no longer exists", srcVolName)
+							srcVolumeGone = true
+						} else {
+							log.WithError(srcVolErr).Warnf("Failed to get source volume %v for linked-clone salvage check", srcVolName)
+						}
+					}
+				}
+			}
+
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" {
 					continue
@@ -1803,6 +1978,24 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				dataExists = true
 				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
 					continue
+				}
+				// Skip salvage of linked-clone replicas when the source volume is gone.
+				if srcVolumeGone {
+					continue
+				}
+				// For a linked-clone replica, also verify its source replica is healthy.
+				// If it is still rebuilding or failed, the CoW chain may not be accessible
+				// yet - skip this candidate and retry on the next reconcile.
+				if r.Spec.LinkedCloneSrcReplicaName != "" {
+					srcReplica, srcRepErr := c.ds.GetReplicaRO(r.Spec.LinkedCloneSrcReplicaName)
+					if srcRepErr != nil {
+						log.WithField("replica", r.Name).WithError(srcRepErr).Warnf("Failed to get source replica %v for linked-clone salvage check", r.Spec.LinkedCloneSrcReplicaName)
+						continue
+					}
+					if !isHealthyAndActiveReplica(srcReplica, false) {
+						log.WithField("replica", r.Name).Debugf("Skipping salvage: source replica %v is not healthy yet", r.Spec.LinkedCloneSrcReplicaName)
+						continue
+					}
 				}
 				if isDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
 					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to check if node %v is still running for failed replica", r.Spec.NodeID)
@@ -2209,7 +2402,14 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 		efs[ef.Name] = ef
 	}
 
-	if len(rs) == 0 {
+	if isECVolume(v) {
+		// For EC volumes, the ShardGroup CR (and its child Shard CRs) replace the
+		// Replica CRs of a RAID1 volume. The ShardGroup controller drives shard
+		// placement, instance provisioning, and ShardGroup-process lifecycle.
+		if err := c.reconcileShardGroup(v); err != nil {
+			return false, e, err
+		}
+	} else if len(rs) == 0 {
 		// first time creation
 		if err = c.replenishReplicas(v, e, rs, ""); err != nil {
 			return false, e, err
@@ -2217,6 +2417,146 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 	}
 
 	return isNewVolume, e, nil
+}
+
+// isECVolume returns true when the Volume has DataLayout.Type=sharded.
+// EC volumes bypass replica-related reconcile paths and use ShardGroup/Shard
+// CRs instead.
+func isECVolume(v *longhorn.Volume) bool {
+	return v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded
+}
+
+// handleECAutoSalvage handles an EC volume whose ShardGroup is offline: it clears any
+// RWX delinquent/stale state so a faulted RWX volume does not get stuck waiting on the
+// share manager. Volume.Status.Robustness and the offline->recovered remount are owned
+// by reconcileECVolumeRobustness, which runs earlier in the same reconcile pass.
+func (c *VolumeController) handleECAutoSalvage(v *longhorn.Volume) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			// ShardGroup not yet created - nothing to handle.
+			return nil
+		}
+		return err
+	}
+
+	if sg.Status.State != longhorn.ShardGroupStateOffline {
+		return nil
+	}
+
+	return c.handleDelinquentAndStaleStateForFaultedRWXVolume(v)
+}
+
+// reconcileECVolumeRobustness sets Volume.Status.Robustness from the ShardGroup
+// CR's overall State. It is the EC version of what ReconcileEngineReplicaState
+// does for RAID1, which sets robustness from the per-replica states.
+//
+// Mapping:
+//
+//	ShardGroup.Status.State    -> Volume.Status.Robustness
+//	healthy                       Healthy
+//	degraded                      Degraded   (1..m slots failed, still serving)
+//	rebuilding                    Degraded   (slot REPLACING, fault tolerance reduced)
+//	growing                       Healthy    (expansion in progress; no health impact)
+//	offline                       Faulted    (>m slots failed, I/O rejected)
+//	"" (uninitialised)            Unknown
+//
+// It also requests the offline->recovered remount here rather than in
+// handleECAutoSalvage: this runs first in the reconcile pass and overwrites Robustness,
+// so the prior Faulted value is only observable at this point.
+func (c *VolumeController) reconcileECVolumeRobustness(v *longhorn.Volume) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			// ShardGroup not yet created (very early in volume lifecycle).
+			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+			return nil
+		}
+		return err
+	}
+
+	previousRobustness := v.Status.Robustness
+	switch sg.Status.State {
+	case longhorn.ShardGroupStateHealthy, longhorn.ShardGroupStateGrowing:
+		v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+	case longhorn.ShardGroupStateDegraded, longhorn.ShardGroupStateRebuilding:
+		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
+	case longhorn.ShardGroupStateOffline:
+		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+	default:
+		v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+	}
+
+	// The ShardGroup just left offline. If the volume faulted during that offline
+	// window and has since detached, request a remount so KubernetesPodController
+	// restarts the workload pod and it re-attaches to the recovered volume.
+	if previousRobustness == longhorn.VolumeRobustnessFaulted &&
+		v.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
+		v.Status.State == longhorn.VolumeStateDetached {
+		v.Status.RemountRequestedAt = c.nowHandler()
+		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount,
+			"Volume %v requested remount at %v after its EC ShardGroup recovered", v.Name, v.Status.RemountRequestedAt)
+	}
+	return nil
+}
+
+// reconcileShardGroup ensures a ShardGroup CR exists for the volume and that
+// Spec.NodeID tracks Volume.Spec.NodeID. The ShardGroup process must be
+// provisioned BEFORE the engine can start (the engine consumes the ShardGroup
+// endpoint as its single upstream), so we cannot wait for Engine.Spec.NodeID -
+// that field is only set after the engine is being started, which is after
+// openVolumeDependentResources has gated on ShardGroup.Status.ProcessState.
+// Volume.Spec.NodeID is set earlier in the attach flow (by VolumeAttachment
+// processing), giving the ShardGroup process time to come up before the
+// engine reads its endpoint.
+//
+// Spec.NodeID is set on first attach and NOT cleared on detach - the
+// ShardGroup process keeps running across detach to preserve the lvstore +
+// head lvol on the encoded shard blocks for fast re-attach. It only changes
+// on engine-node failover (when v.Spec.NodeID changes to a new node).
+//
+// The Volume controller is the sole writer of Spec.NodeID; the ShardGroup
+// controller reads it but never modifies it.
+func (c *VolumeController) reconcileShardGroup(v *longhorn.Volume) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	if sg == nil {
+		sg = &longhorn.ShardGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: v.Name,
+				Labels: map[string]string{
+					types.LonghornLabelVolume: v.Name,
+				},
+				OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
+			},
+			Spec: longhorn.ShardGroupSpec{
+				VolumeName:   v.Name,
+				DataChunks:   v.Spec.DataLayout.DataChunks,
+				ParityChunks: v.Spec.DataLayout.ParityChunks,
+				StripSizeKB:  v.Spec.DataLayout.StripSizeKB,
+				NodeID:       v.Spec.NodeID,
+				// CreationSize is left zero here; the ShardGroup controller sets
+				// it when the lvstore is first created, since a detached volume
+				// can grow between CR creation and first attach.
+			},
+		}
+		if _, err := c.ds.CreateShardGroup(sg); err != nil && !apierrors.IsAlreadyExists(err) {
+			return errors.Wrapf(err, "failed to create ShardGroup for volume %v", v.Name)
+		}
+		return nil
+	}
+
+	if sg.Spec.NodeID != v.Spec.NodeID && v.Spec.NodeID != "" {
+		fresh := sg.DeepCopy()
+		fresh.Spec.NodeID = v.Spec.NodeID
+		if _, err := c.ds.UpdateShardGroup(fresh); err != nil {
+			return errors.Wrapf(err, "failed to update ShardGroup.Spec.NodeID for volume %v", v.Name)
+		}
+	}
+	return nil
 }
 
 func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string]*longhorn.Replica) {
@@ -2233,40 +2573,59 @@ func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string
 	}
 }
 
-func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
-	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
-	numSnapshots := len(e.Status.Snapshots) - 1 // Counting volume-head here would be confusing.
+// reconcileECScheduledCondition sets the Scheduled condition from shard placement:
+// the volume is Scheduled only once all k+m shards exist and each has a node.
+// Shards are placed asynchronously by the ShardGroup controller, so an incomplete
+// volume is Scheduled=False and requeued.
+func (c *VolumeController) reconcileECScheduledCondition(v *longhorn.Volume, log *logrus.Entry) error {
+	shards, err := c.ds.ListShardsByShardGroup(v.Name)
+	if err != nil {
+		return err
+	}
 
-	snapshotCountThreshold := c.getSnapshotCountThreshold(v, log)
-	countExceededThreshold := numSnapshots >= snapshotCountThreshold
-
-	var snapshotTotalSize int64
-	if v.Spec.SnapshotMaxSize != 0 {
-		var err error
-		snapshotTotalSize, err = c.getSnapshotTotalSize(e, log)
-		if err != nil {
-			return err
+	totalSlots := v.Spec.DataLayout.DataChunks + v.Spec.DataLayout.ParityChunks
+	placedShards := 0
+	for _, shard := range shards {
+		if shard.Spec.NodeID != "" {
+			placedShards++
 		}
 	}
 
-	sizeExceededThreshold := v.Spec.SnapshotMaxSize != 0 && snapshotTotalSize >= v.Spec.SnapshotMaxSize
-
-	if countExceededThreshold || sizeExceededThreshold {
-		warningMessages := []string{}
-		if countExceededThreshold {
-			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots count is %v at or over the warning threshold %v", numSnapshots, snapshotCountThreshold))
-		}
-		if sizeExceededThreshold {
-			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots total size is %v at or over the warning threshold %v", snapshotTotalSize, v.Spec.SnapshotMaxSize))
-		}
+	failureMessage := ""
+	if placedShards < totalSlots {
+		failureMessage = "not all EC shards are scheduled to a node yet"
+		log.Debugf("EC volume has %v/%v shards placed; marking Scheduled=False", placedShards, totalSlots)
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
-			longhorn.VolumeConditionReasonTooManySnapshots,
-			strings.Join(warningMessages, "; "))
+			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+			longhorn.VolumeConditionReasonShardSchedulingFailure, failureMessage)
+		c.enqueueVolumeAfter(v, 30*time.Second)
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
-			"", "")
+			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
+	}
+
+	// Mirror the RAID1 path: reflect the scheduling result onto the PV annotation
+	// (empty clears it), so kubectl describe pv shows the same signal for EC volumes.
+	if err := c.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
+		log.WithError(err).Warnf("Failed to update PV annotation for volume %v", v.Name)
+	}
+
+	return nil
+}
+
+func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
+	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
+	// EC volumes have no Replica CRs, so replica scheduling does not apply. Derive
+	// Scheduled from shard placement instead, then fall through to snapshot conditions.
+	if isECVolume(v) {
+		if err := c.reconcileECScheduledCondition(v, log); err != nil {
+			return err
+		}
+		return c.reconcileTooManySnapshotsCondition(v, e, log)
+	}
+
+	if err := c.reconcileTooManySnapshotsCondition(v, e, log); err != nil {
+		return err
 	}
 
 	scheduled := true
@@ -2376,6 +2735,48 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	return nil
 }
 
+// reconcileTooManySnapshotsCondition evaluates the snapshot count/size thresholds
+// and sets the TooManySnapshots volume condition accordingly. It is shared by the
+// normal reconcileVolumeCondition path and the EC early-return path, which skips
+// the replica-scheduling logic but still needs the snapshot condition.
+func (c *VolumeController) reconcileTooManySnapshotsCondition(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) error {
+	numSnapshots := len(e.Status.Snapshots) - 1
+
+	snapshotCountThreshold := c.getSnapshotCountThreshold(v, log)
+	countExceededThreshold := numSnapshots >= snapshotCountThreshold
+
+	var snapshotTotalSize int64
+	if v.Spec.SnapshotMaxSize != 0 {
+		var err error
+		snapshotTotalSize, err = c.getSnapshotTotalSize(e, log)
+		if err != nil {
+			return err
+		}
+	}
+
+	sizeExceededThreshold := v.Spec.SnapshotMaxSize != 0 && snapshotTotalSize >= v.Spec.SnapshotMaxSize
+
+	if countExceededThreshold || sizeExceededThreshold {
+		warningMessages := []string{}
+		if countExceededThreshold {
+			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots count is %v at or over the warning threshold %v", numSnapshots, snapshotCountThreshold))
+		}
+		if sizeExceededThreshold {
+			warningMessages = append(warningMessages, fmt.Sprintf("Snapshots total size is %v at or over the warning threshold %v", snapshotTotalSize, v.Spec.SnapshotMaxSize))
+		}
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
+			longhorn.VolumeConditionReasonTooManySnapshots,
+			strings.Join(warningMessages, "; "))
+	} else {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
+			"", "")
+	}
+
+	return nil
+}
+
 func (c *VolumeController) getSnapshotCountThreshold(v *longhorn.Volume, log *logrus.Entry) int {
 	threshold, err := c.ds.GetSettingAsInt(types.SettingNameSnapshotCountWarningThreshold)
 	if err != nil {
@@ -2406,10 +2807,22 @@ func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
 	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.Image
 }
 
+func isReplicaNeverStarted(r *longhorn.Replica) bool {
+	return (r.Status.Starting || r.Spec.DesireState == longhorn.InstanceStateRunning) &&
+		!r.Status.Started &&
+		r.Status.CurrentState == longhorn.InstanceStateStopped &&
+		r.Spec.HealthyAt == "" &&
+		r.Spec.LastHealthyAt == ""
+}
+
 func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend, log *logrus.Entry) error {
 	if isVolumeOfflineUpgrade(v) {
 		log.Info("Waiting for offline volume upgrade to finish")
 		return nil
+	}
+
+	if isECVolume(v) {
+		return c.openVolumeDependentResourcesEC(v, e, efs, log)
 	}
 
 	for _, r := range rs {
@@ -2421,6 +2834,10 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if err != nil {
 			return err
 		}
+
+		neverStarted := isReplicaNeverStarted(r)
+
+		failedReason := ""
 		if canIMLaunchReplica {
 			if r.Spec.FailedAt == "" && r.Spec.Image == v.Status.CurrentImage {
 				if r.Status.CurrentState == longhorn.InstanceStateStopped {
@@ -2440,17 +2857,27 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 				return err
 			}
 
-			if v.Status.State != longhorn.VolumeStateAttached || nodeDeleted {
-				msg := fmt.Sprintf("Replica %v is marked as failed because the volume %v is not attached and the instance manager is unable to launch the replica", r.Name, v.Name)
-				if nodeDeleted {
-					msg = fmt.Sprintf("Replica %v is marked as failed since the node %v is deleted.", r.Name, r.Spec.NodeID)
-				}
-				log.WithField("replica", r.Name).Warn(msg)
-				if r.Spec.FailedAt == "" {
-					setReplicaFailedAt(r, c.nowHandler())
-				}
-				r.Spec.DesireState = longhorn.InstanceStateStopped
+			nodeDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+			if err != nil {
+				return err
 			}
+
+			switch {
+			case nodeDeleted:
+				failedReason = fmt.Sprintf("the node %v is deleted", r.Spec.NodeID)
+			case v.Status.State != longhorn.VolumeStateAttached:
+				failedReason = fmt.Sprintf("the volume %v is not attached and the instance manager is unable to launch the replica", v.Name)
+			case neverStarted && nodeDownOrDeleted:
+				failedReason = fmt.Sprintf("the replica never started on node %v that is down or deleted", r.Spec.NodeID)
+			}
+		}
+		if failedReason != "" {
+			msg := fmt.Sprintf("Marked replica %v as failed because %v", r.Name, failedReason)
+			log.WithField("replica", r.Name).Warn(msg)
+			if r.Spec.FailedAt == "" {
+				setReplicaFailedAt(r, c.nowHandler())
+			}
+			r.Spec.DesireState = longhorn.InstanceStateStopped
 		}
 		rs[r.Name] = r
 	}
@@ -2481,6 +2908,9 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		}
 		// wait for all potentially healthy replicas become running
 		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+			if v.Status.State == longhorn.VolumeStateAttached && IsRebuildingReplica(r) && isReplicaNeverStarted(r) {
+				continue
+			}
 			return nil
 		}
 		if r.Status.IP == "" {
@@ -2550,7 +2980,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			ef.Spec.VolumeSize = v.Spec.Size
 			// Always propagate the target size to the EF so the EF
 			// monitor can detect that expansion is needed and trigger
-			// EngineFrontendExpand (which expands replicas → engine →
+			// EngineFrontendExpand (which expands replicas -> engine ->
 			// frontend).  The createEngineFrontend function already
 			// creates the SPDK EF at the pre-expansion size, so
 			// ef.Status.CurrentSize will correctly reflect the actual
@@ -2560,12 +2990,18 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			// so we have the TargetIP available.
 			// For DR volumes (frontend disabled or empty), bypass the Port check
 			// because the engine may not expose a port when the frontend is off.
+			// For UBLK, also bypass the Port check: UBLK is a local block device
+			// exposed via ublk_drv, so the engine never reports a TCP port and
+			// e.Status.Port stays 0 even when the engine is healthy. Without this
+			// the UBLK EngineFrontend would never start and the volume would hang
+			// in attaching.
 			if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" &&
-				(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty) {
+				(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty || v.Spec.Frontend == longhorn.VolumeFrontendUblk) {
 				ef.Spec.NodeID = v.Spec.NodeID
 				ef.Spec.Frontend = v.Spec.Frontend
 				ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
 				ef.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+				ef.Spec.NvmeTcpNrIoQueues = v.Spec.NvmeTcpNrIoQueues
 				ef.Spec.DisableFrontend = v.Status.FrontendDisabled
 				ef.Spec.DesireState = longhorn.InstanceStateRunning
 				// During an engine switchover, processEngineSwitchover drives
@@ -2578,6 +3014,128 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 					ef.Spec.TargetPort = e.Status.Port
 					ef.Spec.EngineName = e.Name
 				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// openVolumeDependentResourcesEC is the EC-volume variant of openVolumeDependentResources.
+// EC volumes do not have Replica CRs - the ShardGroup CR (and the long-lived
+// ShardGroup process it owns) provides the single upstream NVMe-oF endpoint
+// that the engine consumes. From the engine's perspective this is structurally
+// identical to a single-replica RAID1 setup: one entry in ReplicaAddressMap,
+// keyed by a stable name, pointing at "ip:port".
+//
+// Readiness gating: defers engine start until ShardGroup.Status.ProcessState ==
+// Running and the full NVMe-oF endpoint (StorageIP, Port, NQN) is populated. The
+// ShardGroup controller's syncProcess drives the process up; this function silently
+// waits otherwise.
+func (c *VolumeController) openVolumeDependentResourcesEC(v *longhorn.Volume, e *longhorn.Engine, efs map[string]*longhorn.EngineFrontend, log *logrus.Entry) error {
+	sg, err := c.ds.GetShardGroupRO(v.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			log.Debugf("ShardGroup for volume %v not yet created; waiting", v.Name)
+			return nil
+		}
+		return err
+	}
+
+	// Readiness gate: ProcessState=Running plus a complete NVMe-oF endpoint
+	// (IP, Port, NQN). The endpoint fields are populated together by
+	// refreshShardGroupProcessStatus once the SPDK service exposes the head
+	// lvol; checking all three defends against partial-state races where
+	// ProcessState advances ahead of the endpoint.
+	if sg.Status.ProcessState != longhorn.InstanceStateRunning ||
+		sg.Status.StorageIP == "" || sg.Status.Port == 0 || sg.Status.NQN == "" {
+		log.Debugf("ShardGroup process for volume %v not yet ready (state=%v ip=%v port=%v nqn=%v); waiting",
+			v.Name, sg.Status.ProcessState, sg.Status.StorageIP, sg.Status.Port, sg.Status.NQN)
+		return nil
+	}
+
+	// Freshness gate: Status must reflect the current Spec.NodeID. On engine-
+	// node re-bind, reconcileShardGroup writes the new Spec.NodeID in the
+	// same volume reconcile pass that gets here, but Status (IP/Port/NQN/
+	// InstanceManagerName) still references the old node until ShardGroup-
+	// Controller.syncProcess runs clearShardGroupProcessStatus and re-
+	// provisions. Consuming stale Status here would commit the old endpoint
+	// to e.Spec.ReplicaAddressMap and point the engine at the about-to-be-
+	// torn-down ShardGroup process. Resolve Status.InstanceManagerName ->
+	// IM -> IM.Spec.NodeID and require a match. An empty InstanceManagerName
+	// is already covered by the earlier gate (all endpoint fields would be
+	// clear too), so the check is conditioned on it being set.
+	if sg.Status.InstanceManagerName != "" {
+		im, err := c.ds.GetInstanceManagerRO(sg.Status.InstanceManagerName)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		// im == nil: old IM already gone (drained / deleted). Status is
+		// definitively stale; ShardGroupController will clear it on its
+		// next reconcile (oldIM == nil branch in syncProcess).
+		// im != nil but NodeID mismatch: re-bind in progress; wait for
+		// ShardGroupController to tear down the old binding and re-
+		// provision on Spec.NodeID.
+		if im == nil || im.Spec.NodeID != sg.Spec.NodeID {
+			boundNode := ""
+			if im != nil {
+				boundNode = im.Spec.NodeID
+			}
+			log.Debugf("ShardGroup for volume %v Status still bound to IM %v (node %v) while Spec.NodeID is %v; waiting for re-bind",
+				v.Name, sg.Status.InstanceManagerName, boundNode, sg.Spec.NodeID)
+			return nil
+		}
+	}
+
+	targetEngineNodeID := v.Spec.NodeID
+	if v.Spec.EngineNodeID != "" {
+		targetEngineNodeID = v.Spec.EngineNodeID
+	}
+
+	switchoverInProgress := isV2EngineSwitchoverInProgress(v, e, targetEngineNodeID)
+	if shouldRejectEngineNodeMismatch(v, e, switchoverInProgress) {
+		return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
+			e.Spec.NodeID, v.Status.CurrentNodeID)
+	}
+
+	if e.Spec.NodeID == "" || e.Spec.NodeID == targetEngineNodeID {
+		e.Spec.NodeID = targetEngineNodeID
+	}
+
+	// Single-entry address map keyed by the ShardGroup name. The engine's
+	// raid1 layer aggregates one base bdev for EC, exactly the same code path
+	// it uses for a single-replica RAID1 volume.
+	e.Spec.ReplicaAddressMap = map[string]string{
+		sg.Name: imutil.GetURL(sg.Status.StorageIP, int(sg.Status.Port)),
+	}
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Spec.DisableFrontend = v.Status.FrontendDisabled
+	e.Spec.Frontend = v.Spec.Frontend
+	e.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+	e.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+
+	ef, err := pickCurrentEngineFrontend(v, efs)
+	if err != nil {
+		return err
+	}
+	if ef != nil {
+		ef.Spec.VolumeSize = v.Spec.Size
+		ef.Spec.Size = v.Spec.Size
+		if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" &&
+			(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty || v.Spec.Frontend == longhorn.VolumeFrontendUblk) {
+			ef.Spec.NodeID = v.Spec.NodeID
+			ef.Spec.Frontend = v.Spec.Frontend
+			ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+			ef.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+			ef.Spec.NvmeTcpNrIoQueues = v.Spec.NvmeTcpNrIoQueues
+			ef.Spec.DisableFrontend = v.Status.FrontendDisabled
+			ef.Spec.DesireState = longhorn.InstanceStateRunning
+			// The v2 engine exposes its NVMe-TCP target on StorageIP, so the initiator
+			// must dial StorageIP, not the pod IP.
+			if !switchoverInProgress && e.Status.StorageIP != "" {
+				ef.Spec.TargetIP = e.Status.StorageIP
+				ef.Spec.TargetPort = e.Status.Port
+				ef.Spec.EngineName = e.Name
 			}
 		}
 	}
@@ -2627,6 +3185,26 @@ func shouldRejectEngineNodeMismatch(v *longhorn.Volume, e *longhorn.Engine, swit
 }
 
 func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) bool {
+	// EC volumes have no Replica CRs - only require engine (and EF for v2) running.
+	if isECVolume(v) {
+		if e.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false
+		}
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil || ef == nil {
+			return false
+		}
+		if ef.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false
+		}
+		if !ef.Spec.DisableFrontend &&
+			ef.Spec.Frontend != longhorn.VolumeFrontendEmpty &&
+			ef.Status.Endpoint == "" {
+			return false
+		}
+		return true
+	}
+
 	// At least 1 replica should be running
 	hasRunningReplica := false
 	for _, r := range rs {
@@ -2748,7 +3326,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 			}
 		}
 		if len(healthyReplicas) > v.Spec.NumberOfReplicas {
-			// Sort by HealthyAt ascending — oldest (most trusted) first.
+			// Sort by HealthyAt ascending - oldest (most trusted) first.
 			sort.Slice(healthyReplicas, func(i, j int) bool {
 				ti, _ := time.Parse(time.RFC3339, healthyReplicas[i].Spec.HealthyAt)
 				tj, _ := time.Parse(time.RFC3339, healthyReplicas[j].Spec.HealthyAt)
@@ -2825,10 +3403,48 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		v.Status.ActualSize = actualSize
 	}
 
-	if e == nil || rs == nil {
+	if e == nil {
+		return nil
+	}
+
+	// EC volumes have no Replica CRs - expansion is driven through engine
+	// and EngineFrontend only.
+	if isECVolume(v) {
+		if e.Spec.VolumeSize == v.Spec.Size {
+			return nil
+		}
+		log.Infof("Expanding EC volume from size %v to size %v", e.Spec.VolumeSize, v.Spec.Size)
+		v.Status.ExpansionRequired = true
+		e.Spec.VolumeSize = v.Spec.Size
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil {
+			return err
+		}
+		if ef != nil {
+			ef.Spec.VolumeSize = v.Spec.Size
+			ef.Spec.Size = v.Spec.Size
+		}
+		return nil
+	}
+
+	if rs == nil {
 		return nil
 	}
 	if e.Spec.VolumeSize == v.Spec.Size {
+		// Reassert ExpansionRequired if the backend engine never reached the
+		// requested size even though the target size already propagated to the
+		// Engine spec. For V1, this does not change the existing behavior
+		// because V1 only checks the engine size for expansion progress.
+		// For V2, intentionally do not use EngineFrontend.CurrentSize here:
+		// detached or reattaching frontends can legitimately report 0 or
+		// temporarily lag the backend size, and treating that as
+		// expansion-incomplete can spuriously trigger volume-expansion
+		// attachment loops for otherwise idle volumes.
+		if e.Status.CurrentSize > 0 {
+			if e.Status.CurrentSize != v.Spec.Size {
+				v.Status.ExpansionRequired = true
+			}
+		}
 		return nil
 	}
 
@@ -3064,6 +3680,20 @@ func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longho
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) error {
+	// EC volumes use ShardGroup/Shard CRs for fault tolerance - the ShardGroup
+	// controller manages shard placement and rebuild internally. There is no
+	// per-replica replenishment for EC; m parity chunks already absorb up to m
+	// shard failures before any rebuild is even needed.
+	if isECVolume(v) {
+		return nil
+	}
+
+	// Legacy linked-clone volumes (pre-entrypoint architecture) cannot be rebuilt
+	// because the new rebuild path expects entrypoint lvols that don't exist.
+	if types.IsLegacyLinkedCloneVolume(v) {
+		return nil
+	}
+
 	concurrentRebuildingLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
 	if err != nil {
 		return err
@@ -3126,9 +3756,9 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				setReplicaFailedAt(reusableFailedReplica, "")
 				reusableFailedReplica.Spec.HealthyAt = ""
 
-				if datastore.IsReplicaRebuildingFailed(reusableFailedReplica) {
-					reusableFailedReplica.Spec.RebuildRetryCount++
-				}
+				// Connectivity failures are counted as well, otherwise a replica whose data path keeps breaking
+				// on a node that stays ready would be reused forever instead of being replaced.
+				reusableFailedReplica.Spec.RebuildRetryCount++
 				c.backoff.Next(reusableFailedReplica.Name, time.Now())
 
 				rs[reusableFailedReplica.Name] = reusableFailedReplica
@@ -3138,6 +3768,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				reusableFailedReplica.Name, c.backoff.Get(reusableFailedReplica.Name).Seconds())
 			// Couldn't reuse the replica. Add the volume back to the workqueue to check it later
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
+			continue
 		}
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
 			newReplica := newReplicaCR(v, e, hardNodeAffinity)
@@ -3581,6 +4212,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		}
 	}
 
+	// For linked-clone volumes, only nodes with a healthy src replica are valid
+	// candidates. Clone replicas can only be scheduled where a src replica exists.
+	linkedCloneSrcNodes := c.getLinkedCloneSrcNodes(v)
+
 	unusedZone := make(map[string][]string)
 	for nodeName, node := range readyNodes {
 		if util.Contains(usedZones, node.Status.Zone) {
@@ -3601,6 +4236,13 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		if isReady, _ := c.ds.CheckDataEngineImageReadiness(ei.Spec.Image, v.Spec.DataEngine, nodeName); !isReady {
 			log.Warnf("Failed to use node %v, image %v is not ready", nodeName, ei.Spec.Image)
 			continue
+		}
+
+		if linkedCloneSrcNodes != nil {
+			if _, hasSrc := linkedCloneSrcNodes[nodeName]; !hasSrc {
+				log.Debugf("Failed to use node %v for linked-clone auto-balance: no healthy src replica exists there yet", nodeName)
+				continue
+			}
 		}
 
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
@@ -3640,6 +4282,18 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 	if len(volume.Spec.NodeSelector) != 0 {
 		for nodeName, node := range readyNodes {
 			if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
+				delete(filteredReadyNodes, nodeName)
+			}
+		}
+	}
+
+	// Auto-balance must stay inside the failure domains of a volume that
+	// resolved a topology requirement. A candidate outside them is replenished
+	// with a hard node affinity the replica scheduler then rejects, and the
+	// unschedulable replica is cleaned up and proposed again on the next sync.
+	if len(volume.Spec.TopologyRequirement) != 0 {
+		for nodeName, node := range readyNodes {
+			if !types.NodeMatchesTopologyRequirement(node, volume.Spec.TopologyRequirement) {
 				delete(filteredReadyNodes, nodeName)
 			}
 		}
@@ -3732,6 +4386,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 		}
 	}
 
+	// For linked-clone volumes, only nodes with a healthy src replica are valid
+	// candidates. Clone replicas can only be scheduled where a src replica exists.
+	linkedCloneSrcNodes := c.getLinkedCloneSrcNodes(v)
+
 	for nodeName, node := range readyNodes {
 		_, exist := nodeExtraRs[nodeName]
 		if exist {
@@ -3748,6 +4406,14 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			log.Warnf("Failed to use node %v, image %v is not ready", nodeName, ei.Spec.Image)
 			delete(readyNodes, nodeName)
 			continue
+		}
+
+		if linkedCloneSrcNodes != nil {
+			if _, hasSrc := linkedCloneSrcNodes[nodeName]; !hasSrc {
+				log.Debugf("Failed to use node %v for linked-clone auto-balance: no healthy src replica exists there yet", nodeName)
+				delete(readyNodes, nodeName)
+				continue
+			}
 		}
 	}
 
@@ -3772,6 +4438,34 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	return adjustCount, nodeExtraRs, err
 }
 
+// getLinkedCloneSrcNodes returns a set of node IDs that have a healthy src
+// replica for the given linked-clone volume. Returns nil if the volume is not
+// a linked-clone, indicating no filtering is needed.
+func (c *VolumeController) getLinkedCloneSrcNodes(v *longhorn.Volume) map[string]struct{} {
+	if v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+
+	srcVolName := types.GetVolumeName(v.Spec.DataSource)
+	if srcVolName == "" {
+		return nil
+	}
+
+	srcReplicas, err := c.ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		getLoggerForVolume(c.logger, v).WithError(err).Warn("Failed to list src volume replicas for linked-clone auto-balance")
+		return map[string]struct{}{} // empty set blocks all nodes, safe fallback
+	}
+
+	srcNodes := map[string]struct{}{}
+	for _, r := range srcReplicas {
+		if r.Spec.NodeID != "" && r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" && !r.Spec.EvictionRequested && r.DeletionTimestamp == nil {
+			srcNodes[r.Spec.NodeID] = struct{}{}
+		}
+	}
+	return srcNodes
+}
+
 func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica, e *longhorn.Engine) (int, string) {
 	usableCount := 0
 	for _, r := range rs {
@@ -3786,19 +4480,15 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 		}
 	}
 
-	// Only create 1 replica while volume is in cloning process
-	if isCloneTargetNotCompletedAndNotCopyCompleted(v) {
+	// Only create 1 replica during deep-copy clone to prevent data inconsistency.
+	// Linked-clone creates all N replicas upfront since the webhook guarantees that
+	// all running instance managers support the N-replica simultaneous clone API.
+	if isCloneTargetNotCompletedAndNotCopyCompleted(v) && v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
 		if usableCount == 0 {
 			return 1, ""
 		}
 		return 0, ""
 	}
-	newVolume := len(rs) == 0
-	// For linked-cloned volume, never create new replica after the first time
-	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && !newVolume {
-		return 0, ""
-	}
-
 	switch {
 	case v.Spec.NumberOfReplicas < usableCount:
 		return 0, ""
@@ -4433,6 +5123,187 @@ func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 	return false
 }
 
+func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+	if v.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+	if types.IsLegacyLinkedCloneVolume(v) {
+		return nil
+	}
+	// Snapshot must be resolved before we can assign src replica fields.
+	if v.Status.CloneStatus.Snapshot == "" {
+		return nil
+	}
+
+	srcVolName := types.GetVolumeName(v.Spec.DataSource)
+	srcReplicas, err := c.ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list replicas for source volume %v", srcVolName)
+	}
+
+	// Count how many clone replicas already reference each src replica (for load balancing)
+	srcReplicaCloneCount := map[string]int{}
+	for _, r := range rs {
+		if r.Spec.LinkedCloneSrcReplicaName != "" {
+			srcReplicaCloneCount[r.Spec.LinkedCloneSrcReplicaName]++
+		}
+	}
+
+	for _, r := range rs {
+		if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+			continue // not scheduled yet
+		}
+		if r.Spec.LinkedCloneSrcReplicaName != "" {
+			continue // already set, immutable
+		}
+		if r.Spec.FailedAt != "" {
+			continue // already failed, skip to avoid redundant updates and duplicate events
+		}
+
+		// Find healthy src replicas on the same node+disk
+		var candidates []*longhorn.Replica
+		for _, sr := range srcReplicas {
+			if sr.DeletionTimestamp == nil &&
+				sr.Spec.NodeID == r.Spec.NodeID &&
+				sr.Spec.DiskID == r.Spec.DiskID &&
+				sr.Spec.FailedAt == "" &&
+				sr.Spec.HealthyAt != "" &&
+				!sr.Spec.EvictionRequested {
+				candidates = append(candidates, sr)
+			}
+		}
+		if len(candidates) == 0 {
+			// Check if any non-deleted src replica exists on this disk (even unhealthy ones).
+			hasSrcOnDisk := false
+			for _, sr := range srcReplicas {
+				if sr.DeletionTimestamp == nil &&
+					sr.Spec.NodeID == r.Spec.NodeID && sr.Spec.DiskID == r.Spec.DiskID {
+					hasSrcOnDisk = true
+					break
+				}
+			}
+			if !hasSrcOnDisk {
+				// The src replica was deleted during the scheduling window.
+				// Delete (not fail) the clone replica so replenishment creates
+				// a replacement on a disk that actually has a src replica.
+				// Failing it would leave a replica with no healthyAt, making
+				// salvage impossible if the volume faults.
+				if err := c.deleteReplica(r, rs); err != nil {
+					return errors.Wrapf(err, "failed to delete stranded clone replica %v", r.Name)
+				}
+				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailed,
+					"clone replica %v deleted: source replica on disk %v node %v was removed during scheduling window",
+					r.Name, r.Spec.DiskID, r.Spec.NodeID)
+			}
+			// else: src exists but is temporarily unhealthy; will retry on next reconcile
+			continue
+		}
+
+		// Pick the src replica with the fewest existing clone replicas (load balancing).
+		// Sort by clone count ascending, then by name for determinism when counts are equal.
+		sort.Slice(candidates, func(i, j int) bool {
+			ci, cj := srcReplicaCloneCount[candidates[i].Name], srcReplicaCloneCount[candidates[j].Name]
+			if ci != cj {
+				return ci < cj
+			}
+			return candidates[i].Name < candidates[j].Name
+		})
+		best := candidates[0]
+
+		// Set fields and label
+		existingReplica := r.DeepCopy()
+		r.Spec.LinkedCloneSrcReplicaName = best.Name
+
+		// Update the linked-clone-src-replica label
+		if r.Labels == nil {
+			r.Labels = map[string]string{}
+		}
+		r.Labels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica)] = best.Name
+
+		if !reflect.DeepEqual(existingReplica.Spec, r.Spec) || !reflect.DeepEqual(existingReplica.Labels, r.Labels) {
+			if _, err := c.ds.UpdateReplica(r); err != nil {
+				return errors.Wrapf(err, "failed to update replica %v with linked-clone source fields", r.Name)
+			}
+			// Update local count so subsequent loop iterations use updated counts
+			srcReplicaCloneCount[best.Name]++
+		}
+	}
+	return nil
+}
+
+// shouldCompleteLinkedCloneDespiteDegraded decides whether a linked-clone
+// volume stuck in CopyCompletedAwaitingHealthy should be marked Completed
+// even though it is degraded. For each non-healthy replica it checks whether
+// at least one of the following conditions is met (mirroring shouldCleanUpFailedReplica):
+//  1. Rebuild retry count exhausted (RebuildRetryCount >= FailedReplicaMaxRetryCount)
+//  2. Stale timeout exceeded (FailedAt older than StaleReplicaTimeout)
+//  3. The replica was created more than StaleReplicaTimeout after the earliest
+//     healthy replica's HealthyAt - indicating the system has been stuck in the
+//     replenish-and-fail loop for too long.
+//
+// If ALL non-healthy replicas satisfy at least one condition, the clone should
+// complete so the volume becomes usable.
+func (c *VolumeController) shouldCompleteLinkedCloneDespiteDegraded(v *longhorn.Volume, rs map[string]*longhorn.Replica) bool {
+	staleTimeout := time.Duration(v.Spec.StaleReplicaTimeout) * time.Minute
+
+	// Find the earliest HealthyAt among healthy replicas as the reference point.
+	var earliestHealthyAt time.Time
+	for _, r := range rs {
+		if r.Spec.VolumeName != v.Name {
+			continue
+		}
+		if r.Spec.HealthyAt == "" || r.Spec.FailedAt != "" {
+			continue
+		}
+		t, err := util.ParseTime(r.Spec.HealthyAt)
+		if err != nil {
+			continue
+		}
+		if earliestHealthyAt.IsZero() || t.Before(earliestHealthyAt) {
+			earliestHealthyAt = t
+		}
+	}
+
+	hasNonHealthyReplica := false
+	for _, r := range rs {
+		if r.Spec.VolumeName != v.Name {
+			continue
+		}
+		if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
+			// Healthy replica - skip.
+			continue
+		}
+		hasNonHealthyReplica = true
+
+		// Condition 1: rebuild retries exhausted.
+		// This also covers newly created replicas that start with
+		// RebuildRetryCount == FailedReplicaMaxRetryCount (to prevent
+		// reuse). By that point the system has already exhausted retries
+		// on the original failed replica, so completing despite degraded
+		// state is correct.
+		if r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount {
+			continue
+		}
+
+		// Condition 2: failed longer than stale timeout.
+		if v.Spec.StaleReplicaTimeout > 0 && r.Spec.FailedAt != "" &&
+			util.TimestampAfterTimeout(r.Spec.FailedAt, staleTimeout) {
+			continue
+		}
+
+		// Condition 3: created much later than the healthy replicas became healthy,
+		// indicating the system has been stuck in the replenish-and-fail loop.
+		if v.Spec.StaleReplicaTimeout > 0 && !earliestHealthyAt.IsZero() &&
+			r.CreationTimestamp.After(earliestHealthyAt.Add(staleTimeout)) {
+			continue
+		}
+
+		// This replica does not meet any condition - not ready to give up.
+		return false
+	}
+	return hasNonHealthyReplica
+}
+
 func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to checkAndInitVolumeClone for volume %v", v.Name)
@@ -4505,6 +5376,29 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 			return errors.Wrapf(err, "failed to create snapshot of source volume %v", sourceVol.Name)
 		}
 		snapshotName = snapshot.Name
+	}
+
+	// TODO: There is a race between webhook size validation and snapshot creation:
+	// the source volume may be expanded after the clone volume passes webhook
+	// validation but before the clone snapshot is actually created. In that case
+	// the snapshot data would be larger than the clone volume's spec.size.
+	// Further handling is required to avoid triggering unexpected expansion side effects:
+	//   - A safe auto-expand mechanism for the clone volume,
+	//   - Or blocking the expansion of the src volume
+
+	// Persist the entrypoint snapshot label to enable webhook protection (linked-clone only).
+	// UpdateVolume is required because syncVolume only saves status.
+	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		labelKey := types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)
+		if v.Labels == nil {
+			v.Labels = map[string]string{}
+		}
+		if v.Labels[labelKey] == "" {
+			v.Labels[labelKey] = snapshotName
+			if _, err := c.ds.UpdateVolume(v); err != nil {
+				return errors.Wrapf(err, "failed to persist linked-clone source snapshot label on volume %v", v.Name)
+			}
+		}
 	}
 
 	// Store data into the volume clone status. Make sure that the created snapshot
@@ -4677,6 +5571,7 @@ func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, e *longhorn.
 			Frontend:          v.Spec.Frontend,
 			UblkQueueDepth:    v.Spec.UblkQueueDepth,
 			UblkNumberOfQueue: v.Spec.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues: v.Spec.NvmeTcpNrIoQueues,
 			EngineName:        engineName,
 			DisableFrontend:   v.Status.FrontendDisabled,
 		},
@@ -4772,6 +5667,33 @@ func (c *VolumeController) enqueueVolume(obj interface{}) {
 	c.queue.Add(key)
 }
 
+func (c *VolumeController) enqueueVolumeChange(old, cur interface{}) {
+	curV, ok := cur.(*longhorn.Volume)
+	if !ok {
+		return
+	}
+	c.enqueueVolume(cur)
+
+	oldV, ok := old.(*longhorn.Volume)
+	if !ok {
+		return
+	}
+
+	// When a source volume becomes attached, enqueue its clone target volumes
+	// so they can immediately start the clone operation without waiting for
+	// their own periodic reconcile.
+	if oldV.Status.State != longhorn.VolumeStateAttached && curV.Status.State == longhorn.VolumeStateAttached {
+		cloneVolumes, err := c.ds.ListCloneVolumesBySourceVolumeRO(curV.Name)
+		if err == nil {
+			for _, v := range cloneVolumes {
+				if isCloneTargetCopyInProgress(v) {
+					c.enqueueVolume(v)
+				}
+			}
+		}
+	}
+}
+
 func (c *VolumeController) enqueueVolumeAfter(obj interface{}, duration time.Duration) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
@@ -4780,6 +5702,28 @@ func (c *VolumeController) enqueueVolumeAfter(obj interface{}, duration time.Dur
 	}
 
 	c.queue.AddAfter(key, duration)
+}
+
+// enqueueVolumeForShardGroup enqueues the volume that owns the given ShardGroup.
+// A ShardGroup maps to exactly one volume, so there is no fan-out.
+func (c *VolumeController) enqueueVolumeForShardGroup(obj interface{}) {
+	sg, ok := obj.(*longhorn.ShardGroup)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		sg, ok = deletedState.Obj.(*longhorn.ShardGroup)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShardGroup object: %#v", deletedState.Obj))
+			return
+		}
+	}
+	if sg.Spec.VolumeName == "" {
+		return
+	}
+	c.queue.Add(sg.Namespace + "/" + sg.Spec.VolumeName)
 }
 
 func (c *VolumeController) enqueueControlleeChange(obj interface{}) {
@@ -4978,11 +5922,6 @@ func (c *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to update recurring jobs for %v", v.Name)
 	}()
-
-	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-		// Do not add recurring job for linked-clone volume as these volumes do not support snapshot/backup operations
-		return nil
-	}
 
 	existingVolume := v.DeepCopy()
 

@@ -10,6 +10,7 @@ import (
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 
@@ -51,7 +52,7 @@ func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineSimulat
 		mutex:          &sync.RWMutex{},
 	}
 	for _, addr := range request.ReplicaAddrs {
-		if err := s.ReplicaAdd(&longhorn.Engine{}, "", addr, false, false, nil, 30, 0); err != nil {
+		if err := s.ReplicaAdd(&longhorn.Engine{}, "", addr, false, false, nil, 30, 0, nil); err != nil {
 			return err
 		}
 	}
@@ -127,7 +128,7 @@ func (e *EngineSimulator) ReplicaList(*longhorn.Engine) (map[string]*Replica, er
 	return ret, nil
 }
 
-func (e *EngineSimulator) ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout int64, grpcTimeoutSeconds int64) error {
+func (e *EngineSimulator) ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout int64, grpcTimeoutSeconds int64, linkedCloneSource *imrpc.LinkedCloneSource) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
@@ -229,7 +230,7 @@ func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, b
 }
 
 func (e *EngineSimulator) SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName,
-	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error {
+	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) error {
 	return errors.New(ErrNotImplement)
 }
 

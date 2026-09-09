@@ -63,6 +63,15 @@ const (
 
 	ValueFloatRangeMinimum = "minimum"
 	ValueFloatRangeMaximum = "maximum"
+
+	// SpdkDefaultIobufLargePoolSize is SPDK's built-in default large_pool_count. A
+	// data-engine-iobuf-large-pool-size value not greater than this is a no-op (SPDK
+	// keeps its default), so only a larger value is passed through to override it.
+	SpdkDefaultIobufLargePoolSize = 1024
+
+	// SpdkDefaultIobufSmallPoolSize is SPDK's built-in default small_pool_count. A
+	// data-engine-iobuf-small-pool-size value not greater than this is a no-op.
+	SpdkDefaultIobufSmallPoolSize = 8192
 )
 
 type SettingName string
@@ -158,10 +167,14 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameDataEngineHugepageEnabled                                = SettingName("data-engine-hugepage-enabled")
 	SettingNameDataEngineMemorySize                                     = SettingName("data-engine-memory-size")
+	SettingNameDataEngineIobufLargePoolSize                             = SettingName("data-engine-iobuf-large-pool-size")
+	SettingNameDataEngineIobufSmallPoolSize                             = SettingName("data-engine-iobuf-small-pool-size")
 	SettingNameDataEngineCPUMask                                        = SettingName("data-engine-cpu-mask")
+	SettingNameDataEngineNumberOfCPUCores                               = SettingName("data-engine-number-of-cpu-cores")
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
 	SettingNameDataEngineInterruptModeEnabled                           = SettingName("data-engine-interrupt-mode-enabled")
+	SettingNameDataEngineCPUIsolationEnabled                            = SettingName("data-engine-cpu-isolation-enabled")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -171,6 +184,7 @@ const (
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
 	SettingNameDefaultUblkQueueDepth                                    = SettingName("default-ublk-queue-depth")
+	SettingNameDefaultNvmeTcpNrIoQueues                                 = SettingName("default-nvme-tcp-nr-io-queues")
 	SettingNameDefaultUblkNumberOfQueue                                 = SettingName("default-ublk-number-of-queue")
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	SettingNameEngineImagePodLivenessProbePeriod                        = SettingName("engine-image-pod-liveness-probe-period")
@@ -283,11 +297,15 @@ var (
 		SettingNameV2DataEngine,
 		SettingNameDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize,
+		SettingNameDataEngineIobufLargePoolSize,
+		SettingNameDataEngineIobufSmallPoolSize,
 		SettingNameDataEngineCPUMask,
+		SettingNameDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel,
 		SettingNameDataEngineLogFlags,
 		SettingNameSnapshotDataIntegrity,
 		SettingNameDataEngineInterruptModeEnabled,
+		SettingNameDataEngineCPUIsolationEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -301,6 +319,7 @@ var (
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
 		SettingNameDefaultUblkQueueDepth,
+		SettingNameDefaultNvmeTcpNrIoQueues,
 		SettingNameDefaultUblkNumberOfQueue,
 		SettingNameDefaultBackupBlockSize,
 		SettingNameEngineImagePodLivenessProbePeriod,
@@ -448,10 +467,14 @@ var (
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameDataEngineHugepageEnabled:                                SettingDefinitionDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize:                                     SettingDefinitionDataEngineMemorySize,
+		SettingNameDataEngineIobufLargePoolSize:                             SettingDefinitionDataEngineIobufLargePoolSize,
+		SettingNameDataEngineIobufSmallPoolSize:                             SettingDefinitionDataEngineIobufSmallPoolSize,
 		SettingNameDataEngineCPUMask:                                        SettingDefinitionDataEngineCPUMask,
+		SettingNameDataEngineNumberOfCPUCores:                               SettingDefinitionDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
 		SettingNameDataEngineInterruptModeEnabled:                           SettingDefinitionDataEngineInterruptModeEnabled,
+		SettingNameDataEngineCPUIsolationEnabled:                            SettingDefinitionDataEngineCPUIsolationEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -465,6 +488,7 @@ var (
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
 		SettingNameDefaultUblkQueueDepth:                                    SettingDefinitionDefaultUblkQueueDepth,
+		SettingNameDefaultNvmeTcpNrIoQueues:                                 SettingDefinitionDefaultNvmeTcpNrIoQueues,
 		SettingNameDefaultUblkNumberOfQueue:                                 SettingDefinitionDefaultUblkNumberOfQueue,
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameEngineImagePodLivenessProbePeriod:                        SettingDefinitionEngineImagePodLivenessProbePeriod,
@@ -1317,7 +1341,11 @@ var (
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, the instance manager pod using this global setting will be automatically restarted without instances running on the instance manager. \n\n" +
-			"  - For the V2 Data Engine, the Storage Performance Development Kit (SPDK) target daemon inside each instance manager pod uses one or more dedicated CPU cores. Setting a minimum CPU usage is critical to maintaining stability during periods of high node load.",
+			"  - For the V2 Data Engine, the Storage Performance Development Kit (SPDK) target daemon inside each instance manager pod uses one or more dedicated CPU cores. " +
+			"It is necessary that the effective instance manager pod CPU request reserve at least as many CPU cores as configured by the V2 Data Engine CPU Mask based on the node's allocatable CPU capacity. " +
+			"For example, reserving 2 CPU cores on a node with 8 allocatable CPUs requires an effective CPU request of at least 25% or 2 CPU cores. " +
+			"If the V2 Data Engine Number of CPU Cores setting is specified, Longhorn automatically raises the pod CPU request to at least that many CPU cores. " +
+			"Setting a minimum CPU usage is critical to maintaining stability during periods of high node load.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeFloat,
 		Required:           true,
@@ -1832,15 +1860,75 @@ var (
 		},
 	}
 
+	SettingDefinitionDataEngineIobufLargePoolSize = SettingDefinition{
+		DisplayName: "Data Engine iobuf Large Pool Size",
+		Description: "Applies only to the V2 Data Engine. Sets the SPDK iobuf large buffer pool size (`large_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
+			"  - `1024` (default): SPDK's built-in default `large_pool_count`; behavior is unchanged. \n\n" +
+			"  - A larger value relieves NVMe-oF TCP large-buffer exhaustion (the `large_pool` `retry` / `NEED_BUFFER` stalls) under heavy mixed read/write workloads whose I/O size exceeds the iobuf small buffer size (8 KiB), e.g. 16 KiB database pages. Values not greater than 1024 keep the SPDK default. \n\n" +
+			"  - Larger values consume more hugepage memory: each large buffer is 132 KiB, so the large pool uses `large_pool_count x 132 KiB` (1024 -> 132 MiB, 4096 -> 528 MiB, 16384 -> ~2 GiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
+			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool size takes effect.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufLargePoolSize),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: SpdkDefaultIobufLargePoolSize,
+		},
+	}
+
+	SettingDefinitionDataEngineIobufSmallPoolSize = SettingDefinition{
+		DisplayName: "Data Engine iobuf Small Pool Size",
+		Description: "Applies only to the V2 Data Engine. Sets the SPDK iobuf small buffer pool size (`small_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
+			"  - `8192` (default): SPDK's built-in default `small_pool_count`; behavior is unchanged. \n\n" +
+			"  - A larger value relieves NVMe-oF TCP small-buffer exhaustion (the `small_pool` `retry` / `NEED_BUFFER` stalls) under workloads whose I/O size fits within the iobuf small buffer size (8 KiB), e.g. 4 KiB random reads at high queue depth across many volumes. Values not greater than 8192 keep the SPDK default. \n\n" +
+			"  - Larger values consume more hugepage memory: each small buffer is 8 KiB, so the small pool uses `small_pool_count x 8 KiB` (8192 -> 64 MiB, 16384 -> 128 MiB, 65536 -> 512 MiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
+			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool size takes effect.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufSmallPoolSize),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: SpdkDefaultIobufSmallPoolSize,
+		},
+	}
+
 	SettingDefinitionDataEngineCPUMask = SettingDefinition{
-		DisplayName:        "Data Engine CPU Mask",
-		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the assigned CPU cores do not exceed the guaranteed CPUs allocated to the V2 Data Engine Instance Manager. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. When only a single core is assigned, heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and operational stability. Accepts either hexadecimal CPU masks (for example, 0x3 or 0xff) or CPU list format (for example, 0-1,2,5). CPU lists are automatically converted to hexadecimal masks. The default value is 0x3.",
+		DisplayName: "Data Engine CPU Mask",
+		Description: "Applies only to the V2 Data Engine. If the Data Engine CPU Core Number setting is specified, this setting is ignored. " +
+			"It specifies the CPU cores used by the Storage Performance Development Kit (SPDK) target daemon, which runs in each Instance Manager pod. \n\n" +
+			"It is necessary that the effective V2 Instance Manager pod CPU request reserves at least the same number of CPU cores configured here, based on the node's allocatable CPU capacity. " +
+			"If the InstanceManagerCPURequest field is set on the node, it overrides the global Guaranteed Instance Manager CPU setting. " +
+			"If the effective CPU request is lower than the assigned CPU cores, the V2 Instance Manager may experience CPU contention and become unstable under heavy workloads. \n\n" +
+			"A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. " +
+			"With only a single core, heavy I/O workloads can delay RPC processing, causing increased latency, timeout events, and operational instability. " +
+			"Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and storage stability. \n\n" +
+			"Accepts either hexadecimal CPU masks (for example, 0x3 or 0xff) or CPU list format (for example, 0-1,2,5). " +
+			"CPU lists are automatically converted to hexadecimal masks. The default value is 0x3.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"0x3\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDataEngineNumberOfCPUCores = SettingDefinition{
+		DisplayName: "Data Engine Number of CPU Cores",
+		Description: "Applies only to the V2 Data Engine. It can be applied only when the kubelet CPU policy is set to static. It has higher priority than the Data Engine CPU Mask setting. Therefore, when specified, the CPU Mask setting will be ignored. " +
+			"Specifies the number of CPU cores allocated to the Storage Performance Development Kit (SPDK) target daemon. The daemon is deployed in each Instance Manager pod. When this setting is specified, Longhorn automatically raises the V2 instance manager pod CPU request to at least the configured number of CPU cores. If the field `InstanceManagerCPURequest` on the node or the Guaranteed Instance Manager CPU setting already results in a higher CPU request, the higher value is used. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. When only a single core is assigned, heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and operational stability.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionDataEngineInterruptModeEnabled = SettingDefinition{
@@ -1856,6 +1944,21 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDataEngineCPUIsolationEnabled = SettingDefinition{
+		DisplayName: "Enable Host CPU Isolation for Data Engine",
+		Description: "Applies only to the V2 Data Engine. Steers host hardware IRQs, unbound kernel workqueue workers, *and* network Receive Packet Steering (RPS) away from the CPUs used by the Storage Performance Development Kit (SPDK) target daemon, " +
+			"so that interrupt handling, deferred kernel work, and network softirq processing do not preempt SPDK polling reactors. \n\n" +
+			"  - When applying the setting, Longhorn will try to restart all V2 instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n" +
+			"  - This value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.CPUIsolationEnabled` " +
+			"(set to `\"true\"` or `\"false\"` on a specific instance manager to force the value on that node; leave empty to inherit this setting). \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
@@ -1936,6 +2039,21 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDefaultNvmeTcpNrIoQueues = SettingDefinition{
+		DisplayName:        "Default NVMe-TCP Number Of IO Queues",
+		Description:        "The default number of I/O queues the kernel initiator creates when connecting a volume frontend over NVMe-TCP. This caps the per-volume in-flight commands to the number of I/O queues multiplied by the negotiated queue size (128). This setting applies to volumes using the V2 Data Engine with the block device front end, takes effect on (re)attach, and can be overridden per volume. 0 means unspecified (kernel default, one queue per online core).",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+			ValueIntRangeMaximum: 128,
+		},
 	}
 
 	SettingDefinitionDefaultUblkQueueDepth = SettingDefinition{

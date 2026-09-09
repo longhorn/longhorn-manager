@@ -10,6 +10,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/api"
+	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/util"
 )
 
@@ -235,7 +236,6 @@ func (c *SPDKClient) ReplicaSnapshotCloneDstStart(name, snapshotName, srcReplica
 		util.Param{Name: "name", Value: name},
 		util.Param{Name: "snapshotName", Value: snapshotName},
 		util.Param{Name: "srcReplicaName", Value: srcReplicaName},
-		util.Param{Name: "srcReplicaAddress", Value: srcReplicaAddress},
 	); err != nil {
 		return err
 	}
@@ -505,7 +505,7 @@ func (c *SPDKClient) ReplicaRebuildingSrcShallowCopyCheck(srcReplicaName, dstRep
 // It creates a new head lvol, exposes it as needed, and returns the destination head lvol address.
 // The external snapshot address is a local alias when source and destination share the same host,
 // otherwise it is the exported NVMf address of the source snapshot lvol.
-func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcReplicaAddress, externalSnapshotName, externalSnapshotAddress string, rebuildingSnapshotList []*api.Lvol) (dstHeadLvolAddress string, err error) {
+func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcReplicaAddress, externalSnapshotName, externalSnapshotAddress string, rebuildingSnapshotList []*api.Lvol, linkedCloneSource *spdkrpc.LinkedCloneSource) (dstHeadLvolAddress string, err error) {
 	if replicaName == "" {
 		return "", fmt.Errorf("failed to start replica rebuilding dst: missing required parameter replica name")
 	}
@@ -514,6 +514,11 @@ func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcR
 	}
 	if externalSnapshotName == "" || externalSnapshotAddress == "" {
 		return "", fmt.Errorf("failed to start replica rebuilding dst: missing required parameter external snapshot name or address")
+	}
+	if linkedCloneSource != nil {
+		if linkedCloneSource.ReplicaName == "" || linkedCloneSource.EngineName == "" || linkedCloneSource.EngineAddress == "" || linkedCloneSource.SnapshotName == "" {
+			return "", fmt.Errorf("failed to start replica rebuilding dst: linked clone source info is incomplete")
+		}
 	}
 
 	client := c.getSPDKServiceClient()
@@ -531,6 +536,7 @@ func (c *SPDKClient) ReplicaRebuildingDstStart(replicaName, srcReplicaName, srcR
 		ExternalSnapshotName:    externalSnapshotName,
 		ExternalSnapshotAddress: externalSnapshotAddress,
 		RebuildingSnapshotList:  protoRebuildingSnapshotList,
+		LinkedCloneSource:       linkedCloneSource,
 	})
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to start replica rebuilding dst %s", replicaName)
@@ -656,7 +662,7 @@ func (c *SPDKClient) ReplicaBackupCreate(req *BackupCreateRequest) (*spdkrpc.Bac
 		VolumeName:           req.VolumeName,
 		ReplicaName:          req.ReplicaName,
 		Size:                 int64(req.Size),
-		Labels:               req.Labels,
+		Labels:               types.EncodeBackupParametersIntoLabels(req.Labels, req.Parameters),
 		Credential:           req.Credential,
 		BackingImageName:     req.BackingImageName,
 		BackingImageChecksum: req.BackingImageChecksum,
@@ -677,6 +683,8 @@ func (c *SPDKClient) ReplicaBackupStatus(backupName string) (*spdkrpc.BackupStat
 	})
 }
 
+// Deprecated: unused. The backup restore workflow was moved from the replica to the
+// engine level, so use EngineBackupRestore instead.
 // ReplicaBackupRestore restores backup data into a replica.
 func (c *SPDKClient) ReplicaBackupRestore(req *BackupRestoreRequest) error {
 	client := c.getSPDKServiceClient()

@@ -36,9 +36,9 @@ func (p *Proxy) SnapshotGet(obj DataEngineObject, name string) (snapshot *longho
 }
 
 func (p *Proxy) SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string,
-	fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) (err error) {
+	fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) (err error) {
 	return p.grpcClient.SnapshotClone(obj.GetDataEngine(), obj.GetEngineName(), obj.GetVolumeName(), p.DirectToURL(obj),
-		snapshotName, fromEngineAddress, fromVolumeName, fromEngineName, int(fileSyncHTTPClientTimeout), grpcTimeoutSeconds, cloneMode)
+		snapshotName, fromEngineAddress, fromVolumeName, fromEngineName, int(fileSyncHTTPClientTimeout), grpcTimeoutSeconds, cloneMode, dstReplicaSrcReplicaPairMap)
 }
 
 func (p *Proxy) SnapshotCloneStatus(obj DataEngineObject) (status map[string]*longhorn.SnapshotCloneStatus, err error) {

@@ -308,7 +308,7 @@ func discovery(hostID, hostNQN, ip, port string, executor *commonns.Executor) ([
 	return output.Entries, nil
 }
 
-func connect(hostID, hostNQN, nqn, transpotType, ip, port string, executor *commonns.Executor) (string, error) {
+func connect(hostID, hostNQN, nqn, transpotType, ip, port string, nrIoQueues int32, executor *commonns.Executor) (string, error) {
 	ip = spdkutil.NormalizeNvmeAddr(ip)
 
 	var err error
@@ -321,6 +321,10 @@ func connect(hostID, hostNQN, nqn, transpotType, ip, port string, executor *comm
 		"--keep-alive-tmo", strconv.Itoa(defaultKeepAliveTmo),
 		"--reconnect-delay", strconv.Itoa(defaultReconnectDelay),
 		"-o", "json",
+	}
+
+	if nrIoQueues > 0 {
+		opts = append(opts, "--nr-io-queues", strconv.Itoa(int(nrIoQueues)))
 	}
 
 	if hostID != "" {

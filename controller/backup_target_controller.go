@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -243,6 +244,14 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
+// getBackupTarget returns an engine client proxy and a backup target client for the given
+// nodeID. The proxy is established through a running instance manager on nodeID, so the caller
+// must pass a node that actually has a running instance manager. For backups, the backup
+// controller guarantees this in isResponsibleFor by only owning a Backup CR on a node with a
+// running instance manager for the volume's data engine. This avoids selecting a node that
+// passes the engine image readiness check but has no running instance manager, for example a
+// node drained with --ignore-daemonsets, which keeps the engine image DaemonSet running while
+// its instance manager pod is evicted. Ref: https://github.com/longhorn/longhorn/issues/12562
 func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter, dataEngine longhorn.DataEngineType) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
 	var instanceManager *longhorn.InstanceManager
 	errs := multierr.NewMultiError()
@@ -317,6 +326,55 @@ func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backup
 	}
 
 	return newBackupTargetClient(ds, backupTarget, defaultEngineImage)
+}
+
+// requestIDPattern matches the volatile, per-attempt identifiers that
+// AWS/S3-compatible SDKs embed in error messages, e.g.
+// "403 1eed0c50c2cb9133" (HTTP status + hex request ID) as produced by
+// backupstore's parseAwsError, or an explicit "RequestId: ..." field.
+// The explicit "RequestId:" field matches the complete opaque token
+// ([0-9A-Za-z-]+), not just a hex prefix: S3-compatible backends issue
+// alphanumeric request IDs, and matching only the hex prefix would leave
+// the volatile alphanumeric suffix in the message, so repeated failures
+// would still differ and preserve the reconcile storm.
+// Note: no leading \b before the status code - error messages captured from
+// exec'd subprocess stderr often contain a literal two-character "\n"
+// escape sequence (backslash + n) rather than a real newline byte
+// immediately before the status code, which defeats a \b word-boundary
+// check (both 'n' and the following digit are word characters, so no
+// boundary exists between them). A trailing \b after the ID is safe
+// since it's normally followed by a quote, space, or real newline.
+var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-z-]+|[0-9]{3}\s+[0-9a-z-]{16,}\b)`)
+
+// timestampPattern matches RFC3339(-nano) timestamps that the exec'd
+// `longhorn` engine binary's own logrus output embeds in every log line
+// (e.g. `time="2026-07-24T16:31:27.852675962Z" level=error ...`). Since
+// that subprocess is invoked fresh on every reconcile attempt, its log
+// timestamps change every time even when the underlying error is
+// identical, so they must be normalized too.
+var timestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z`)
+
+// sanitizeBackupStoreErrorMessage strips volatile, per-attempt content
+// (S3 request IDs, HTTP status/request-ID pairs, subprocess log
+// timestamps) from a backup store error message before it is persisted to
+// BackupTarget.Status.Conditions.
+//
+// Without this, every failed poll produces a Status.Conditions[].Message
+// that differs from the last (by request ID and/or embedded subprocess
+// log timestamp), which fails the reflect.DeepEqual check in
+// reconcile()'s deferred status update. Each failure then triggers
+// UpdateBackupTargetStatus, which fires the BackupTargetInformer's
+// UpdateFunc handler and immediately re-enqueues reconcile - completely
+// bypassing BackupTarget.Spec.PollInterval and hammering the remote
+// backup target (observed live: a sustained ~6 reconciles/second with
+// invalid credentials, instead of one attempt per 5-minute poll
+// interval).
+//
+// See https://github.com/longhorn/longhorn/issues/13831
+func sanitizeBackupStoreErrorMessage(message string) string {
+	message = requestIDPattern.ReplaceAllString(message, "<redacted>")
+	message = timestampPattern.ReplaceAllString(message, "<timestamp>")
+	return message
 }
 
 func (btc *BackupTargetController) reconcile(name string) (err error) {
@@ -478,7 +536,8 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
-			longhorn.BackupTargetConditionReasonUnavailable, errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error())
+			longhorn.BackupTargetConditionReasonUnavailable,
+			sanitizeBackupStoreErrorMessage(errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error()))
 		log.WithError(err).Error("Failed to get info from backup store")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
@@ -900,23 +959,39 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 		return false, err
 	}
 
-	// Skip instance manager readiness check when the BackupTarget is being deleted.
-	// During cluster uninstallation or when data engines are disabled,
-	// instance-manager pods on this node might already have been removed.
+	currentOwnerAvailable := currentOwnerEngineAvailable
+	currentNodeAvailable := currentNodeEngineAvailable
+
+	// A responsible node must also have a running instance manager, because reaching the remote
+	// backup target goes through an engine client proxy served by an instance manager. The engine
+	// image readiness check alone is not enough: a node drained with --ignore-daemonsets keeps the
+	// engine image DaemonSet (and longhorn-manager) running while its instance manager pod is
+	// evicted. Without accounting for the instance manager, ownership can stay pinned to such a
+	// node, so the BackupTarget is never synced and BackupVolume CRs are never created.
+	// Ref: https://github.com/longhorn/longhorn/issues/13775
+	// Skip this while the BackupTarget is being deleted. During cluster uninstallation or when data
+	// engines are disabled, instance-manager pods might already have been removed.
 	// Ref: https://github.com/longhorn/longhorn/issues/11934
 	if bt.DeletionTimestamp.IsZero() {
-		instanceManager, err := btc.ds.GetRunningInstanceManagerByNodeRO(btc.controllerID, "")
+		eligibleNodes, err := btc.ds.ListNodesEligibleForBackupReconcileRO(defaultEngineImage)
 		if err != nil {
 			return false, err
 		}
-		if instanceManager == nil {
-			return false, errors.New("failed to get running instance manager")
+		// Only require a running instance manager when at least one node can actually serve the
+		// reconcile. If no node is eligible (e.g. a full outage), keep the engine-image-only
+		// behavior so the backup target still gets an owner that surfaces the error and retries,
+		// instead of being left ownerless and silently stalled.
+		if len(eligibleNodes) > 0 {
+			_, ownerEligible := eligibleNodes[bt.Status.OwnerID]
+			_, nodeEligible := eligibleNodes[btc.controllerID]
+			currentOwnerAvailable = ownerEligible
+			currentNodeAvailable = nodeEligible
 		}
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && btc.controllerID == bt.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	isPreferredOwner := currentNodeAvailable && isResponsible
+	continueToBeOwner := currentNodeAvailable && btc.controllerID == bt.Status.OwnerID
+	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }

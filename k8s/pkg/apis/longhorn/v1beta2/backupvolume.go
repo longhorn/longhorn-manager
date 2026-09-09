@@ -58,6 +58,12 @@ type BackupVolumeStatus struct {
 	// the storage class name of pv/pvc binding with the volume.
 	// +optional
 	StorageClassName string `json:"storageClassName"`
+	// The source volume of the backed up volume, set only when it was a linked clone.
+	// +optional
+	LinkedCloneSourceVolume string `json:"linkedCloneSourceVolume"`
+	// The source snapshot of the backed up volume, set only when it was a linked clone.
+	// +optional
+	LinkedCloneSourceSnapshot string `json:"linkedCloneSourceSnapshot"`
 	// The last time that the backup volume was synced into the cluster.
 	// +optional
 	// +nullable

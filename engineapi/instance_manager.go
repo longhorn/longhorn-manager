@@ -16,6 +16,7 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -32,6 +33,16 @@ const (
 	// UnsupportedInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
 	UnsupportedInstanceManagerProxyAPIVersion = 0
 
+	// MinProxyAPIVersionForNReplicaLinkedClone is the minimum proxy API version that supports
+	// N-replica simultaneous linked-clone via DstReplicaSrcReplicaPairMap.
+	MinProxyAPIVersionForNReplicaLinkedClone = 7
+
+	// MinProxyAPIVersionForBackupSignAcceptEncoding is the minimum proxy API version whose backup
+	// env allowlist contains AWS_SIGN_ACCEPT_ENCODING. Older proxies reject the whole backup
+	// request when the key is present, which happens on every live upgrade until the engines move
+	// to the new instance manager.
+	MinProxyAPIVersionForBackupSignAcceptEncoding = 8
+
 	DefaultEnginePortCount = 1
 
 	DefaultReplicaPortCountV1 = 10
@@ -39,6 +50,15 @@ const (
 
 	DefaultPortArg         = "--listen,:"
 	DefaultTerminateSignal = "SIGHUP"
+
+	// InstanceTypeShard is the instance type string for EC shard instances.
+	// Mirrors longhorn-instance-manager/pkg/types.InstanceTypeShard.
+	InstanceTypeShard = "shard"
+
+	// InstanceTypeShardGroup is the instance type string for the long-lived
+	// ShardGroup process that owns the EC volume's bdev_ec, lvol store, head lvol,
+	// and NVMe-oF export. Mirrors longhorn-instance-manager/pkg/types.InstanceTypeShardGroup.
+	InstanceTypeShardGroup = "shardgroup"
 
 	// IncompatibleInstanceManagerAPIVersion means the instance manager version in v0.7.0
 	IncompatibleInstanceManagerAPIVersion = -1
@@ -421,12 +441,14 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 type EngineInstanceCreateRequest struct {
 	Engine                           *longhorn.Engine
 	Encrypted                        bool
+	ExtraLUKS2HeaderSpaceRequired    bool
 	VolumeFrontend                   longhorn.VolumeFrontend
 	UblkQueueDepth                   int
 	UblkNumberOfQueue                int
 	EngineReplicaTimeout             int64
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
+	DataLayoutType                   imrpc.DataLayoutType
 	EngineCLIAPIVersion              int
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
@@ -450,6 +472,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		return nil, err
 	}
 
+	volumeSize := req.Engine.Spec.VolumeSize
 	switch req.Engine.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1:
 		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion, req.Encrypted)
@@ -459,6 +482,12 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	case longhorn.DataEngineTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 		// v2 target doesn't need frontend - it will be set by initiator (EngineFrontend)
+		if req.ExtraLUKS2HeaderSpaceRequired {
+			volumeSize, err = util.GetActualBackendSize(req.Engine.Spec.VolumeSize, req.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -476,9 +505,10 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Name:               req.Engine.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
 		VolumeName:         req.Engine.Spec.VolumeName,
-		Size:               uint64(req.Engine.Spec.VolumeSize),
+		Size:               uint64(volumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
+		DataLayoutType:     req.DataLayoutType,
 
 		Binary:     binary,
 		BinaryArgs: args,
@@ -503,24 +533,28 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 }
 
 type ReplicaInstanceCreateRequest struct {
-	Replica             *longhorn.Replica
-	DiskName            string
-	DataPath            string
-	BackingImagePath    string
-	DataLocality        longhorn.DataLocality
-	EngineCLIAPIVersion int
-	Encrypted           bool
+	Replica                       *longhorn.Replica
+	DiskName                      string
+	DataPath                      string
+	BackingImagePath              string
+	DataLocality                  longhorn.DataLocality
+	EngineCLIAPIVersion           int
+	Encrypted                     bool
+	ExtraLUKS2HeaderSpaceRequired bool
 }
 
 // EngineFrontendInstanceCreateRequest contains the parameters to create an engine frontend (initiator) instance
 type EngineFrontendInstanceCreateRequest struct {
-	EngineFrontend    *longhorn.EngineFrontend
-	VolumeFrontend    longhorn.VolumeFrontend
-	UblkQueueDepth    int
-	UblkNumberOfQueue int
-	TargetIP          string
-	TargetPort        int
-	EngineName        string
+	EngineFrontend                *longhorn.EngineFrontend
+	VolumeFrontend                longhorn.VolumeFrontend
+	UblkQueueDepth                int
+	UblkNumberOfQueue             int
+	NvmeTcpNrIoQueues             int
+	TargetIP                      string
+	TargetPort                    int
+	EngineName                    string
+	Encrypted                     bool
+	ExtraLUKS2HeaderSpaceRequired bool
 }
 
 func getEngineFrontendInstanceSize(ef *longhorn.EngineFrontend) int64 {
@@ -549,6 +583,14 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 		return nil, fmt.Errorf("engine frontend (initiator) requires instance manager API version >= 4")
 	}
 
+	volumeSize := getEngineFrontendInstanceSize(req.EngineFrontend)
+	if req.ExtraLUKS2HeaderSpaceRequired {
+		volumeSize, err = util.GetActualBackendSize(getEngineFrontendInstanceSize(req.EngineFrontend), req.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	targetAddress := util.BuildTargetAddress(req.TargetIP, req.TargetPort)
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
@@ -557,7 +599,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 		Name:               req.EngineFrontend.Name,
 		InstanceType:       string(longhorn.InstanceTypeEngineFrontend), // v2 initiator
 		VolumeName:         req.EngineFrontend.Spec.VolumeName,
-		Size:               uint64(getEngineFrontendInstanceSize(req.EngineFrontend)),
+		Size:               uint64(volumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
 
@@ -565,6 +607,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 			Frontend:          frontend,
 			UblkQueueDepth:    req.UblkQueueDepth,
 			UblkNumberOfQueue: req.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues: req.NvmeTcpNrIoQueues,
 			TargetAddress:     targetAddress,
 			EngineName:        req.EngineName,
 		},
@@ -626,8 +669,15 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	portCount := DefaultReplicaPortCountV1
+	volumeSize := req.Replica.Spec.VolumeSize
 	if types.IsDataEngineV2(req.Replica.Spec.DataEngine) {
 		portCount = DefaultReplicaPortCountV2
+		if req.ExtraLUKS2HeaderSpaceRequired {
+			volumeSize, err = util.GetActualBackendSize(req.Replica.Spec.VolumeSize, req.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
@@ -636,7 +686,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		Name:               req.Replica.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
 		VolumeName:         req.Replica.Spec.VolumeName,
-		Size:               uint64(req.Replica.Spec.VolumeSize),
+		Size:               uint64(volumeSize),
 		PortCount:          portCount,
 		PortArgs:           []string{DefaultPortArg},
 
@@ -647,6 +697,103 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 			DiskName:         req.DiskName,
 			DiskUUID:         req.Replica.Spec.DiskID,
 			BackingImageName: req.Replica.Spec.BackingImage,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// ShardInstanceCreateRequest carries the parameters for creating a shard instance.
+type ShardInstanceCreateRequest struct {
+	Shard   *longhorn.Shard
+	LvsName string
+	LvsUUID string
+}
+
+// ShardInstanceCreate creates a new shard instance on the InstanceManager running on the shard's node.
+func (c *InstanceManagerClient) ShardInstanceCreate(req *ShardInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(longhorn.DataEngineTypeV2),
+		DataEngine:         string(longhorn.DataEngineTypeV2),
+		Name:               req.Shard.Name,
+		InstanceType:       InstanceTypeShard,
+		VolumeName:         req.Shard.Spec.ShardGroupName,
+		Size:               uint64(req.Shard.Spec.Size),
+		PortCount:          DefaultReplicaPortCountV2,
+		PortArgs:           []string{DefaultPortArg},
+		Shard: imclient.ShardCreateRequest{
+			LvsName:   req.LvsName,
+			LvsUUID:   req.LvsUUID,
+			SlotIndex: uint32(req.Shard.Spec.SlotIndex),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// ShardGroupInstanceCreateRequest carries the parameters for provisioning a ShardGroup
+// process, which owns an EC volume's storage (its lvstore) the way a Replica process owns
+// a RAID1 volume's data.
+type ShardGroupInstanceCreateRequest struct {
+	ShardGroup *longhorn.ShardGroup
+	Size       uint64
+
+	// ShardAddressMap maps each shard slot index to its NVMe-oF address `ip:port`, matching
+	// the ECShardAddressMap on the ShardGroup status.
+	ShardAddressMap map[string]string
+
+	// SalvageRequested is set on re-bind after engine-node failover, so the SPDK service
+	// reuses the existing lvstore instead of creating a new one.
+	SalvageRequested bool
+}
+
+// ShardGroupInstanceCreate creates a ShardGroup process instance on the InstanceManager
+// running on ShardGroup.Spec.NodeID. Internally the SPDK service connects to all k+m
+// shard NVMe-oF endpoints, builds bdev_ec, creates the lvol store and head lvol, and
+// exports the head lvol via NVMe-oF for the engine to consume.
+func (c *InstanceManagerClient) ShardGroupInstanceCreate(req *ShardGroupInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	shards := make(map[string]*imrpc.ShardEndpoint, len(req.ShardAddressMap))
+	for slotStr, addr := range req.ShardAddressMap {
+		slot, err := strconv.ParseUint(slotStr, 10, 32)
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid slot index %q for shardgroup %v", slotStr, req.ShardGroup.Name)
+		}
+		// shards is keyed by the Shard CR name `<shardGroupName>-<slotIndex>`, the same key the
+		// controller uses for shard replace and force-fail lookups.
+		shardName := fmt.Sprintf("%s-%d", req.ShardGroup.Name, slot)
+		shards[shardName] = &imrpc.ShardEndpoint{
+			Address:   addr,
+			SlotIndex: uint32(slot),
+		}
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(longhorn.DataEngineTypeV2),
+		DataEngine:         string(longhorn.DataEngineTypeV2),
+		Name:               req.ShardGroup.Name,
+		InstanceType:       InstanceTypeShardGroup,
+		VolumeName:         req.ShardGroup.Spec.VolumeName,
+		Size:               req.Size,
+		PortCount:          DefaultEnginePortCount,
+		PortArgs:           []string{DefaultPortArg},
+		ShardGroup: imclient.ShardGroupCreateRequest{
+			DataChunks:       uint32(req.ShardGroup.Spec.DataChunks),
+			ParityChunks:     uint32(req.ShardGroup.Spec.ParityChunks),
+			StripSizeKb:      uint32(req.ShardGroup.Spec.StripSizeKB),
+			Shards:           shards,
+			SalvageRequested: req.SalvageRequested,
 		},
 	})
 	if err != nil {

@@ -348,6 +348,10 @@ func (oc *OrphanController) cleanupOrphanedResource(orphan *longhorn.Orphan) (is
 		isCleanupComplete, err = oc.cleanupOrphanedEngineInstance(orphan)
 	case longhorn.OrphanTypeReplicaInstance:
 		isCleanupComplete, err = oc.cleanupOrphanedReplicaInstance(orphan)
+	case longhorn.OrphanTypeShardInstance:
+		isCleanupComplete, err = oc.forceCleanupOrphanedInstance(orphan, engineapi.InstanceTypeShard, "shard instance")
+	case longhorn.OrphanTypeShardGroupInstance:
+		isCleanupComplete, err = oc.forceCleanupOrphanedInstance(orphan, engineapi.InstanceTypeShardGroup, "shardgroup instance")
 	case longhorn.OrphanTypeReplicaData:
 		if types.GetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeDataCleanable).Status !=
 			longhorn.ConditionStatusTrue {
@@ -407,6 +411,34 @@ func (oc *OrphanController) cleanupOrphanedReplicaInstance(orphan *longhorn.Orph
 		status = &replica.Status.InstanceStatus
 	}
 	oc.cleanupOrphanedInstance(orphan, instanceParameters.name, instanceParameters.uuid, instanceParameters.instanceManager, longhorn.InstanceManagerTypeReplica, status)
+	return true, nil
+}
+
+// forceCleanupOrphanedInstance tears down a shard or ShardGroup process whose owning CR is gone
+// (the manager crashed during deletion, or the CR was deleted manually). With the CR gone the
+// data is already unreachable, so it passes cleanupRequired=true to have the SPDK service fully
+// destroy the backing resources.
+func (oc *OrphanController) forceCleanupOrphanedInstance(orphan *longhorn.Orphan, instanceType, displayName string) (bool, error) {
+	instanceParameters := getOrphanedInstanceParameters(orphan)
+
+	imc, err := oc.getRunningInstanceManagerClient(instanceParameters.instanceManager)
+	if err != nil {
+		oc.logger.WithError(err).Warnf("Failed to delete orphan %v %v due to instance manager client initialization failure. Continue to finalize orphan %v", displayName, instanceParameters.name, orphan.Name)
+		return true, nil
+	} else if imc == nil {
+		oc.logger.WithField("instanceManager", instanceParameters.instanceManager).Warnf("No running instance manager for deleting orphan %v %v", displayName, orphan.Name)
+		return true, nil
+	}
+	defer func() {
+		if closeErr := imc.Close(); closeErr != nil {
+			oc.logger.WithError(closeErr).Error("Failed to close instance manager client")
+		}
+	}()
+
+	err = imc.InstanceDelete(orphan.Spec.DataEngine, instanceParameters.name, instanceParameters.uuid, instanceType, "", true)
+	if err != nil && !types.ErrorIsNotFound(err) {
+		oc.logger.WithError(err).Warnf("Failed to delete orphan %v %v. Continue to finalize orphan %v", displayName, instanceParameters.name, orphan.Name)
+	}
 	return true, nil
 }
 
@@ -506,6 +538,14 @@ func (oc *OrphanController) updateConditions(orphan *longhorn.Orphan) error {
 		}
 	case longhorn.OrphanTypeReplicaInstance:
 		if err := oc.updateInstanceStateCondition(orphan, longhorn.InstanceTypeReplica); err != nil {
+			return err
+		}
+	case longhorn.OrphanTypeShardInstance:
+		if err := oc.updateInstanceStateCondition(orphan, longhorn.InstanceType(engineapi.InstanceTypeShard)); err != nil {
+			return err
+		}
+	case longhorn.OrphanTypeShardGroupInstance:
+		if err := oc.updateInstanceStateCondition(orphan, longhorn.InstanceType(engineapi.InstanceTypeShardGroup)); err != nil {
 			return err
 		}
 	case longhorn.OrphanTypeReplicaData:

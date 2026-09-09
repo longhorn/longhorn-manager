@@ -351,6 +351,22 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, fmt.Errorf("invalid object for replica instance creation: %v", obj)
 	}
 
+	// For linked-clone replicas, instance creation must wait until
+	// LinkedCloneSrcReplicaName is set by the volume controller.
+	// This gate is in CreateInstance (not syncReplica) so that
+	// ReconcileInstanceState always runs and keeps Status.CurrentState
+	// up to date with the instance manager.
+	if r.Spec.LinkedCloneSrcReplicaName == "" {
+		vol, err := rc.ds.GetVolumeRO(r.Spec.VolumeName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return nil, err
+			}
+		} else if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone && !types.IsLegacyLinkedCloneVolume(vol) {
+			return nil, nil // gate: wait for volume controller to set the field
+		}
+	}
+
 	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 	if r.Spec.NodeID == "" || dataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
 		return nil, fmt.Errorf("missing parameters for replica instance creation: %v", r)
@@ -428,13 +444,14 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	}
 
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
-		Replica:             r,
-		Encrypted:           v.Spec.Encrypted,
-		DiskName:            diskName,
-		DataPath:            dataPath,
-		BackingImagePath:    backingImagePath,
-		DataLocality:        v.Spec.DataLocality,
-		EngineCLIAPIVersion: cliAPIVersion,
+		Replica:                       r,
+		Encrypted:                     v.Spec.Encrypted,
+		DiskName:                      diskName,
+		DataPath:                      dataPath,
+		BackingImagePath:              backingImagePath,
+		DataLocality:                  v.Spec.DataLocality,
+		EngineCLIAPIVersion:           cliAPIVersion,
+		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v),
 	})
 }
 

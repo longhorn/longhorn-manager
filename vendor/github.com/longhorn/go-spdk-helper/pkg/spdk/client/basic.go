@@ -8,6 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 )
 
@@ -106,10 +107,18 @@ func (c *Client) BdevAioGet(name string, timeout uint64) (bdevAioInfoList []spdk
 
 // BdevLvolCreateLvstore constructs a logical volume store.
 func (c *Client) BdevLvolCreateLvstore(bdevName, lvsName string, clusterSize uint32) (uuid string, err error) {
+	return c.BdevLvolCreateLvstoreWithMdRatio(bdevName, lvsName, clusterSize, 0)
+}
+
+// BdevLvolCreateLvstoreWithMdRatio constructs a logical volume store and also sets
+// num_md_pages_per_cluster_ratio, which fixes the blobstore metadata budget at
+// creation. 0 leaves it to the SPDK default.
+func (c *Client) BdevLvolCreateLvstoreWithMdRatio(bdevName, lvsName string, clusterSize, mdPagesPerClusterRatio uint32) (uuid string, err error) {
 	req := spdktypes.BdevLvolCreateLvstoreRequest{
-		BdevName:  bdevName,
-		LvsName:   lvsName,
-		ClusterSz: clusterSize,
+		BdevName:                  bdevName,
+		LvsName:                   lvsName,
+		ClusterSz:                 clusterSize,
+		NumMdPagesPerClusterRatio: mdPagesPerClusterRatio,
 	}
 
 	cmdOutput, err := c.jsonCli.SendCommandWithLongTimeout("bdev_lvol_create_lvstore", req)
@@ -180,9 +189,25 @@ func (c *Client) BdevLvolRenameLvstore(oldName, newName string) (renamed bool, e
 	return renamed, json.Unmarshal(cmdOutput, &renamed)
 }
 
+// BdevLvolGrowLvstore grows a logical volume store to fill the underlying bdev after it has been expanded.
+// Either lvsName or uuid must be provided.
+func (c *Client) BdevLvolGrowLvstore(lvsName, uuid string) (grown bool, err error) {
+	req := spdktypes.BdevLvolGrowLvstoreRequest{
+		LvsName: lvsName,
+		UUID:    uuid,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_lvol_grow_lvstore", req)
+	if err != nil {
+		return false, err
+	}
+
+	return grown, json.Unmarshal(cmdOutput, &grown)
+}
+
 // BdevLvolCreate create a logical volume on a logical volume store.
 //
-//	"lvol_name": Required. Name of logical volume to create. The bdev name/alias will be <LVSTORE NAME>/<LVOL NAME>.
+//	"lvolName": Required. Name of logical volume to create. The bdev name/alias will be <LVSTORE NAME>/<LVOL NAME>.
 //
 //	"lvstoreName": Either this or "lvstoreUUID" is required. Name of logical volume store to create logical volume on.
 //
@@ -322,19 +347,28 @@ func (c *Client) BdevLvolGetWithFilter(name string, timeout uint64, filter func(
 			continue
 		}
 		b.DriverSpecific.Lvol.Xattrs = make(map[string]string)
-		user_created, err := c.BdevLvolGetXattr(b.Name, UserCreated)
-		if err == nil {
-			b.DriverSpecific.Lvol.Xattrs[UserCreated] = user_created
-		} else {
-			b.DriverSpecific.Lvol.Xattrs[UserCreated] = strconv.FormatBool(true)
+		userCreated, err := c.BdevLvolGetXattr(b.Name, UserCreated)
+		if err != nil {
+			if !jsonrpc.IsJSONRPCRespErrorNoSuchFileOrDirectory(err) {
+				return nil, err
+			}
+			userCreated = strconv.FormatBool(true)
 		}
-		snapshot_timestamp, err := c.BdevLvolGetXattr(b.Name, SnapshotTimestamp)
-		if err == nil {
-			b.DriverSpecific.Lvol.Xattrs[SnapshotTimestamp] = snapshot_timestamp
+		b.DriverSpecific.Lvol.Xattrs[UserCreated] = userCreated
+
+		snapshotTimestamp, err := c.BdevLvolGetXattr(b.Name, SnapshotTimestamp)
+		if err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchFileOrDirectory(err) {
+			return nil, err
 		}
+		b.DriverSpecific.Lvol.Xattrs[SnapshotTimestamp] = snapshotTimestamp
+
 		if b.DriverSpecific.Lvol.Snapshot {
 			checksum, err := c.BdevLvolGetSnapshotChecksum(b.Name)
-			if err == nil {
+			if err != nil {
+				if !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+					return nil, err
+				}
+			} else {
 				b.DriverSpecific.Lvol.Xattrs[SnapshotChecksum] = checksum
 			}
 		}
@@ -957,8 +991,10 @@ func (c *Client) BdevRaidGrowBaseBdev(raidName, baseBdevName string) (growed boo
 // "fastIOFailTimeoutSec": Fast I/O failure timeout in seconds
 //
 // "multipath": Multipathing behavior: disable, failover, multipath. Default is failover
+//
+// "hostNQN": Optional. NQN this initiator presents to the target. SPDK generates one if it is empty.
 func (c *Client) BdevNvmeAttachController(name, subnqn, traddr, trsvcid string, trtype spdktypes.NvmeTransportType, adrfam spdktypes.NvmeAddressFamily,
-	ctrlrLossTimeoutSec, reconnectDelaySec, fastIOFailTimeoutSec int32, multipath string) (bdevNameList []string, err error) {
+	ctrlrLossTimeoutSec, reconnectDelaySec, fastIOFailTimeoutSec int32, multipath, hostNQN string) (bdevNameList []string, err error) {
 	req := spdktypes.BdevNvmeAttachControllerRequest{
 		Name: name,
 		NvmeTransportID: spdktypes.NvmeTransportID{
@@ -968,6 +1004,7 @@ func (c *Client) BdevNvmeAttachController(name, subnqn, traddr, trsvcid string, 
 			Trsvcid: trsvcid,
 			Adrfam:  adrfam,
 		},
+		Hostnqn:              hostNQN,
 		CtrlrLossTimeoutSec:  ctrlrLossTimeoutSec,
 		ReconnectDelaySec:    reconnectDelaySec,
 		FastIOFailTimeoutSec: fastIOFailTimeoutSec,
@@ -997,6 +1034,23 @@ func (c *Client) BdevNvmeDetachController(name string) (detached bool, err error
 	}
 
 	return detached, json.Unmarshal(cmdOutput, &detached)
+}
+
+// BdevNvmeResetController resets an NVMe controller. The associated bdevs
+// remain registered; qpairs are destroyed and recreated.
+//
+//	"name": Name of the NVMe controller. e.g., "Nvme0"
+func (c *Client) BdevNvmeResetController(name string) (success bool, err error) {
+	req := spdktypes.BdevNvmeResetControllerRequest{
+		Name: name,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_nvme_reset_controller", req)
+	if err != nil {
+		return false, err
+	}
+
+	return success, json.Unmarshal(cmdOutput, &success)
 }
 
 // BdevNvmeGetControllers gets information about bdev NVMe controllers.
@@ -1150,10 +1204,13 @@ func (c *Client) NvmfGetTransports(trtype spdktypes.NvmeTransportType, tgtName s
 // NvmfCreateSubsystem constructs an NVMe over Fabrics target subsystem..
 //
 //	"nqn": Required. Subsystem NQN.
-func (c *Client) NvmfCreateSubsystem(nqn string) (created bool, err error) {
+//
+//	"allowAnyHost": Required. If false, only host NQNs added via NvmfSubsystemAddHost can
+//	                connect, and the subsystem is hidden from the discovery log page of other hosts.
+func (c *Client) NvmfCreateSubsystem(nqn string, allowAnyHost bool) (created bool, err error) {
 	req := spdktypes.NvmfCreateSubsystemRequest{
 		Nqn:          nqn,
-		AllowAnyHost: true,
+		AllowAnyHost: allowAnyHost,
 	}
 
 	cmdOutput, err := c.jsonCli.SendCommand("nvmf_create_subsystem", req)
@@ -1185,6 +1242,26 @@ func (c *Client) NvmfCreateSubsystemWithCntlid(nqn string, minCntlid, maxCntlid 
 	}
 
 	return created, json.Unmarshal(cmdOutput, &created)
+}
+
+// NvmfSubsystemAddHost adds a host NQN to the allowed list of an NVMe-oF target subsystem.
+// It takes effect only if the subsystem is created with allowAnyHost being false.
+//
+//	"nqn": Required. Subsystem NQN.
+//
+//	"hostNQN": Required. The host NQN allowed to connect to the subsystem.
+func (c *Client) NvmfSubsystemAddHost(nqn, hostNQN string) (added bool, err error) {
+	req := spdktypes.NvmfSubsystemAddHostRequest{
+		Nqn:  nqn,
+		Host: hostNQN,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("nvmf_subsystem_add_host", req)
+	if err != nil {
+		return false, err
+	}
+
+	return added, json.Unmarshal(cmdOutput, &added)
 }
 
 // NvmfDeleteSubsystem constructs an NVMe over Fabrics target subsystem..

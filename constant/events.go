@@ -30,6 +30,8 @@ const (
 	EventReasonRestoredFmt   = "Restored %v"
 	EventReasonFailedRestore = "FailedRestore"
 
+	EventReasonFailedFilesystemTrim = "FailedFilesystemTrim"
+
 	EventReasonFailedExpansion    = "FailedExpansion"
 	EventReasonSucceededExpansion = "SucceededExpansion"
 	EventReasonCanceledExpansion  = "CanceledExpansion"
@@ -77,4 +79,11 @@ const (
 	EventReasonOrphanCleanupCompleted = "OrphanCleanupCompleted"
 
 	EventReasonStaleInstance = "StaleInstance"
+
+	EventReasonShardFailed = "ShardFailed"
+
+	// EventReasonDegradedReadEIO means a read was failed with EIO because the
+	// data could not be safely rebuilt from parity: a crash left some stripes
+	// unscrubbed and a disk failed before the startup scrub could repair them.
+	EventReasonDegradedReadEIO = "DegradedReadEIO"
 )

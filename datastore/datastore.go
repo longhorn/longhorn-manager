@@ -86,6 +86,8 @@ type DataStore struct {
 	OrphanInformer                 cache.SharedInformer
 	snapshotLister                 lhlisters.SnapshotLister
 	SnapshotInformer               cache.SharedInformer
+	snapshotGroupLister            lhlisters.SnapshotGroupLister
+	SnapshotGroupInformer          cache.SharedInformer
 	supportBundleLister            lhlisters.SupportBundleLister
 	SupportBundleInformer          cache.SharedInformer
 	systemBackupLister             lhlisters.SystemBackupLister
@@ -94,6 +96,10 @@ type DataStore struct {
 	SystemRestoreInformer          cache.SharedInformer
 	lhVolumeAttachmentLister       lhlisters.VolumeAttachmentLister
 	LHVolumeAttachmentInformer     cache.SharedInformer
+	shardGroupLister               lhlisters.ShardGroupLister
+	ShardGroupInformer             cache.SharedInformer
+	shardLister                    lhlisters.ShardLister
+	ShardInformer                  cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	podLister                     corelisters.PodLister
@@ -134,8 +140,37 @@ type DataStore struct {
 	extensionsClient apiextensionsclientset.Interface
 }
 
-// NewDataStore creates new DataStore object
-func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+// NewDataStoreForGlobal creates a DataStore whose Pod informer watches
+// cluster-wide. It is used by the longhorn-global-manager process and by the
+// uninstall and system-rollout entry points.
+func NewDataStoreForGlobal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	pi := informerFactories.KubeInformerFactory.Core().V1().Pods()
+	attachPodInformer(ds, pi.Lister(), pi.Informer())
+	return ds
+}
+
+// NewDataStoreForNodeLocal creates a DataStore whose Pod informer is
+// namespace-filtered (longhorn-system), which suffices for every Pod consumer
+// in the longhorn-manager DaemonSet.
+func NewDataStoreForNodeLocal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	pi := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Pods()
+	attachPodInformer(ds, pi.Lister(), pi.Informer())
+	return ds
+}
+
+// attachPodInformer wires the chosen Pod informer into a DataStore built by
+// newDataStoreCommon (which leaves Pod fields unset).
+func attachPodInformer(ds *DataStore, podLister corelisters.PodLister, podSharedInformer cache.SharedInformer) {
+	ds.podLister = podLister
+	ds.PodInformer = podSharedInformer
+	ds.cacheSyncs = append(ds.cacheSyncs, podSharedInformer.HasSynced)
+}
+
+// newDataStoreCommon builds the DataStore with every informer except
+// PodInformer, which the public wrappers attach afterward.
+func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
 	cacheSyncs := []cache.InformerSynced{}
 
 	// Longhorn Informers
@@ -177,6 +212,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, orphanInformer.Informer().HasSynced)
 	snapshotInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots()
 	cacheSyncs = append(cacheSyncs, snapshotInformer.Informer().HasSynced)
+	snapshotGroupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SnapshotGroups()
+	cacheSyncs = append(cacheSyncs, snapshotGroupInformer.Informer().HasSynced)
 	supportBundleInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SupportBundles()
 	cacheSyncs = append(cacheSyncs, supportBundleInformer.Informer().HasSynced)
 	systemBackupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SystemBackups()
@@ -185,10 +222,12 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
 	lhVolumeAttachmentInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
+	shardGroupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().ShardGroups()
+	cacheSyncs = append(cacheSyncs, shardGroupInformer.Informer().HasSynced)
+	shardInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Shards()
+	cacheSyncs = append(cacheSyncs, shardInformer.Informer().HasSynced)
 
 	// Kube Informers
-	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
-	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
 	kubeNodeInformer := informerFactories.KubeInformerFactory.Core().V1().Nodes()
 	cacheSyncs = append(cacheSyncs, kubeNodeInformer.Informer().HasSynced)
 	persistentVolumeInformer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes()
@@ -203,8 +242,6 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
 	priorityClassInformer := informerFactories.KubeInformerFactory.Scheduling().V1().PriorityClasses()
 	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
-	leaseInformer := informerFactories.KubeInformerFactory.Coordination().V1().Leases()
-	cacheSyncs = append(cacheSyncs, leaseInformer.Informer().HasSynced)
 
 	// Filtered kube Informers by longhorn-system namespace
 	cronJobInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Batch().V1().CronJobs()
@@ -223,6 +260,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
 	deploymentInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().Deployments()
 	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
+	leaseInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Coordination().V1().Leases()
+	cacheSyncs = append(cacheSyncs, leaseInformer.Informer().HasSynced)
 
 	return &DataStore{
 		namespace: namespace,
@@ -268,6 +307,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		OrphanInformer:                 orphanInformer.Informer(),
 		snapshotLister:                 snapshotInformer.Lister(),
 		SnapshotInformer:               snapshotInformer.Informer(),
+		snapshotGroupLister:            snapshotGroupInformer.Lister(),
+		SnapshotGroupInformer:          snapshotGroupInformer.Informer(),
 		supportBundleLister:            supportBundleInformer.Lister(),
 		SupportBundleInformer:          supportBundleInformer.Informer(),
 		systemBackupLister:             systemBackupInformer.Lister(),
@@ -276,10 +317,13 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		SystemRestoreInformer:          systemRestoreInformer.Informer(),
 		lhVolumeAttachmentLister:       lhVolumeAttachmentInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVolumeAttachmentInformer.Informer(),
+		shardGroupLister:               shardGroupInformer.Lister(),
+		ShardGroupInformer:             shardGroupInformer.Informer(),
+		shardLister:                    shardInformer.Lister(),
+		ShardInformer:                  shardInformer.Informer(),
 
-		kubeClient:                    kubeClient,
-		podLister:                     podInformer.Lister(),
-		PodInformer:                   podInformer.Informer(),
+		kubeClient: kubeClient,
+
 		persistentVolumeLister:        persistentVolumeInformer.Lister(),
 		PersistentVolumeInformer:      persistentVolumeInformer.Informer(),
 		persistentVolumeClaimLister:   persistentVolumeClaimInformer.Lister(),

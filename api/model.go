@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -65,11 +66,14 @@ type Volume struct {
 	ReplicaRebuildingBandwidthLimit int64                                  `json:"replicaRebuildingBandwidthLimit"`
 	UblkQueueDepth                  int                                    `json:"ublkQueueDepth"`
 	UblkNumberOfQueue               int                                    `json:"ublkNumberOfQueue"`
+	NvmeTcpNrIoQueues               int                                    `json:"nvmeTcpNrIoQueues"`
 	FreezeFilesystemForSnapshot     longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
 	BackupTargetName                string                                 `json:"backupTargetName"`
+	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
+	TopologyRequirement  []longhorn.VolumeTopologyTerm `json:"topologyRequirement"`
 	RecurringJobSelector []longhorn.VolumeRecurringJob `json:"recurringJobSelector"`
 
 	NumberOfReplicas           int                         `json:"numberOfReplicas"`
@@ -80,6 +84,7 @@ type Volume struct {
 	KubernetesStatus longhorn.KubernetesStatus     `json:"kubernetesStatus"`
 	CloneStatus      longhorn.VolumeCloneStatus    `json:"cloneStatus"`
 	Ready            bool                          `json:"ready"`
+	NotReadyMessage  string                        `json:"notReadyMessage"`
 
 	AccessMode        longhorn.AccessMode              `json:"accessMode"`
 	ShareEndpoint     string                           `json:"shareEndpoint"`
@@ -104,6 +109,9 @@ type Snapshot struct {
 	client.Resource
 	longhorn.SnapshotInfo
 	Checksum string `json:"checksum"`
+	// SnapshotGroup is the owning snapshot group name, empty for standalone
+	// snapshots.
+	SnapshotGroup string `json:"snapshotGroup"`
 }
 
 // SnapshotCR struct is used for the snapshotCR* actions
@@ -126,6 +134,9 @@ type SnapshotCR struct {
 	RestoreSize  int64             `json:"restoreSize"`
 	ReadyToUse   bool              `json:"readyToUse"`
 	Checksum     string            `json:"checksum"`
+	// SnapshotGroup is the owning snapshot group name, empty for standalone
+	// snapshots.
+	SnapshotGroup string `json:"snapshotGroup"`
 }
 
 type BackupTarget struct {
@@ -149,6 +160,13 @@ type BackupVolume struct {
 	StorageClassName     string            `json:"storageClassName"`
 	BackupTargetName     string            `json:"backupTargetName"`
 	VolumeName           string            `json:"volumeName"`
+
+	// LinkedCloneSourceVolume and LinkedCloneSourceSnapshot are set when the backed
+	// up volume was a linked clone. Such a backup only holds the data the clone wrote
+	// itself, so restoring it requires the source below to still exist; a restore is
+	// rejected otherwise. Both are empty for an ordinary, self-contained backup.
+	LinkedCloneSourceVolume   string `json:"linkedCloneSourceVolume"`
+	LinkedCloneSourceSnapshot string `json:"linkedCloneSourceSnapshot"`
 }
 
 // SyncBackupResource is used for the Backup*Sync* actions
@@ -638,6 +656,89 @@ type Orphan struct {
 	longhorn.OrphanSpec
 }
 
+type SnapshotGroup struct {
+	client.Resource
+	Name            string                               `json:"name"`
+	Created         string                               `json:"created"`
+	Volumes         []string                             `json:"volumes"`
+	VolumeSelector  *metav1.LabelSelector                `json:"volumeSelector"`
+	Labels          map[string]string                    `json:"labels"`
+	DeadlineSeconds int64                                `json:"deadlineSeconds"`
+	Phase           longhorn.SnapshotGroupPhase          `json:"phase"`
+	Members         []longhorn.SnapshotGroupMemberStatus `json:"members"`
+	ReadyToUse      bool                                 `json:"readyToUse"`
+	CreationTime    string                               `json:"creationTime"`
+	Error           string                               `json:"error,omitempty"`
+	Degraded        bool                                 `json:"degraded"`
+	Conditions      []longhorn.Condition                 `json:"conditions"`
+}
+
+// SnapshotGroupPreviewInput is the payload of the preview collection action.
+// Member snapshot names are generated at creation, so the preview neither
+// takes a group name nor returns names.
+type SnapshotGroupPreviewInput struct {
+	Volumes        []string              `json:"volumes"`
+	VolumeSelector *metav1.LabelSelector `json:"volumeSelector"`
+}
+
+type SnapshotGroupPreviewMember struct {
+	VolumeName        string `json:"volumeName"`
+	ValidationFailure string `json:"validationFailure,omitempty"`
+}
+
+// SnapshotGroupPreviewOutput previews which volumes a snapshot group spec
+// would select, without creating the group. Structural selection failures are
+// reported in Error; per-volume failures in the member's ValidationFailure.
+type SnapshotGroupPreviewOutput struct {
+	client.Resource
+	Members []SnapshotGroupPreviewMember `json:"members"`
+	Error   string                       `json:"error,omitempty"`
+}
+
+type ShardGroup struct {
+	client.Resource
+	Name                string                   `json:"name"`
+	VolumeName          string                   `json:"volumeName"`
+	DataChunks          int                      `json:"dataChunks"`
+	ParityChunks        int                      `json:"parityChunks"`
+	StripSizeKB         int                      `json:"stripSizeKB"`
+	NodeID              string                   `json:"nodeID"`
+	InstanceManagerName string                   `json:"instanceManagerName"`
+	OwnerID             string                   `json:"ownerID"`
+	State               longhorn.ShardGroupState `json:"state"`
+	FailedCount         int                      `json:"failedCount"`
+	ShardRefs           []string                 `json:"shardRefs"`
+	ECShardAddressMap   map[string]string        `json:"ecShardAddressMap"`
+	ScrubInProgress     bool                     `json:"scrubInProgress"`
+	RebuildInProgress   bool                     `json:"rebuildInProgress"`
+	GrowInProgress      bool                     `json:"growInProgress"`
+	ProcessState        longhorn.InstanceState   `json:"processState"`
+	StorageIP           string                   `json:"storageIP"`
+	Port                int32                    `json:"port"`
+	NQN                 string                   `json:"nqn"`
+	LvstoreUUID         string                   `json:"lvstoreUUID"`
+	HeadLvolUUID        string                   `json:"headLvolUUID"`
+}
+
+type Shard struct {
+	client.Resource
+	Name                 string              `json:"name"`
+	ShardGroupName       string              `json:"shardGroupName"`
+	SlotIndex            int                 `json:"slotIndex"`
+	Size                 string              `json:"size"`
+	NodeID               string              `json:"nodeID"`
+	DiskPath             string              `json:"diskPath"`
+	DiskUUID             string              `json:"diskUUID"`
+	EvictionRequested    bool                `json:"evictionRequested"`
+	OwnerID              string              `json:"ownerID"`
+	State                longhorn.ShardState `json:"state"`
+	Role                 longhorn.ShardRole  `json:"role"`
+	StorageIP            string              `json:"storageIP"`
+	Port                 int32               `json:"port"`
+	RebuildProgress      int                 `json:"rebuildProgress"`
+	LastFailureTimestamp string              `json:"lastFailureTimestamp"`
+}
+
 type VolumeRecurringJob struct {
 	client.Resource
 	longhorn.VolumeRecurringJob
@@ -719,6 +820,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateOfflineRebuildingInput", UpdateOfflineRebuildingInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
+	schemas.AddType("volumeDataLayout", longhorn.VolumeDataLayout{})
 	schemas.AddType("empty", Empty{})
 
 	schemas.AddType("volumeRecurringJob", VolumeRecurringJob{})
@@ -758,6 +860,13 @@ func NewSchema() *client.Schemas {
 	backupBackingImageSchema(schemas.AddType("backupBackingImage", BackupBackingImage{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
+	schemas.AddType("labelSelectorRequirement", metav1.LabelSelectorRequirement{})
+	labelSelectorSchema(schemas.AddType("labelSelector", metav1.LabelSelector{}))
+	snapshotGroupPreviewInputSchema(schemas.AddType("snapshotGroupPreviewInput", SnapshotGroupPreviewInput{}))
+	schemas.AddType("snapshotGroupPreviewMember", SnapshotGroupPreviewMember{})
+	snapshotGroupPreviewOutputSchema(schemas.AddType("snapshotGroupPreviewOutput", SnapshotGroupPreviewOutput{}))
+	schemas.AddType("snapshotGroupMemberStatus", longhorn.SnapshotGroupMemberStatus{})
+	snapshotGroupSchema(schemas.AddType("snapshotGroup", SnapshotGroup{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 	backingImageSchema(schemas.AddType("backingImage", BackingImage{}))
 	nodeSchema(schemas.AddType("node", Node{}))
@@ -771,6 +880,9 @@ func NewSchema() *client.Schemas {
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
 	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
 	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
+
+	schemas.AddType("shardGroup", ShardGroup{})
+	schemas.AddType("shard", Shard{})
 
 	return schemas
 }
@@ -914,6 +1026,22 @@ func recurringJobSchema(job *client.Schema) {
 	retain.Create = true
 	job.ResourceFields["retain"] = retain
 
+	retainAge := job.ResourceFields["retainAge"]
+	// metav1.Duration reflects to the "v1.Duration" struct type, but it is a Go
+	// duration string on the wire. Describe it as such so the schema stays
+	// resolvable.
+	retainAge.Type = "string"
+	retainAge.Required = false
+	retainAge.Unique = false
+	retainAge.Create = true
+	job.ResourceFields["retainAge"] = retainAge
+
+	retentionPolicy := job.ResourceFields["retentionPolicy"]
+	retentionPolicy.Required = false
+	retentionPolicy.Unique = false
+	retentionPolicy.Create = true
+	job.ResourceFields["retentionPolicy"] = retentionPolicy
+
 	concurrency := job.ResourceFields["concurrency"]
 	concurrency.Required = true
 	concurrency.Unique = false
@@ -929,6 +1057,78 @@ func recurringJobSchema(job *client.Schema) {
 	parameters.Type = "map[string]"
 	parameters.Nullable = true
 	job.ResourceFields["parameters"] = parameters
+}
+
+func snapshotGroupSchema(snapshotGroup *client.Schema) {
+	snapshotGroup.CollectionMethods = []string{"GET", "POST"}
+	// The spec is immutable after creation, so there is no PUT.
+	snapshotGroup.ResourceMethods = []string{"GET", "DELETE"}
+
+	snapshotGroup.CollectionActions = map[string]client.Action{
+		"preview": {
+			Input:  "snapshotGroupPreviewInput",
+			Output: "snapshotGroupPreviewOutput",
+		},
+	}
+
+	name := snapshotGroup.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	snapshotGroup.ResourceFields["name"] = name
+
+	volumes := snapshotGroup.ResourceFields["volumes"]
+	volumes.Type = "array[string]"
+	volumes.Nullable = true
+	volumes.Create = true
+	snapshotGroup.ResourceFields["volumes"] = volumes
+
+	volumeSelector := snapshotGroup.ResourceFields["volumeSelector"]
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	volumeSelector.Type = "labelSelector"
+	volumeSelector.Nullable = true
+	volumeSelector.Create = true
+	snapshotGroup.ResourceFields["volumeSelector"] = volumeSelector
+
+	labels := snapshotGroup.ResourceFields["labels"]
+	labels.Type = "map[string]"
+	labels.Nullable = true
+	labels.Create = true
+	snapshotGroup.ResourceFields["labels"] = labels
+
+	deadlineSeconds := snapshotGroup.ResourceFields["deadlineSeconds"]
+	deadlineSeconds.Create = true
+	snapshotGroup.ResourceFields["deadlineSeconds"] = deadlineSeconds
+
+	members := snapshotGroup.ResourceFields["members"]
+	members.Type = "array[snapshotGroupMemberStatus]"
+	snapshotGroup.ResourceFields["members"] = members
+
+	conditions := snapshotGroup.ResourceFields["conditions"]
+	conditions.Type = "array[longhornCondition]"
+	snapshotGroup.ResourceFields["conditions"] = conditions
+}
+
+func snapshotGroupPreviewInputSchema(input *client.Schema) {
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	volumeSelector := input.ResourceFields["volumeSelector"]
+	volumeSelector.Type = "labelSelector"
+	volumeSelector.Nullable = true
+	input.ResourceFields["volumeSelector"] = volumeSelector
+}
+
+func snapshotGroupPreviewOutputSchema(output *client.Schema) {
+	members := output.ResourceFields["members"]
+	members.Type = "array[snapshotGroupPreviewMember]"
+	output.ResourceFields["members"] = members
+}
+
+func labelSelectorSchema(labelSelector *client.Schema) {
+	matchExpressions := labelSelector.ResourceFields["matchExpressions"]
+	matchExpressions.Type = "array[labelSelectorRequirement]"
+	labelSelector.ResourceFields["matchExpressions"] = matchExpressions
 }
 
 func kubernetesStatusSchema(status *client.Schema) {
@@ -1328,6 +1528,10 @@ func volumeSchema(volume *client.Schema) {
 	dataEngine.Default = longhorn.DataEngineTypeV1
 	volume.ResourceFields["dataEngine"] = dataEngine
 
+	dataLayout := volume.ResourceFields["dataLayout"]
+	dataLayout.Create = true
+	volume.ResourceFields["dataLayout"] = dataLayout
+
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
@@ -1516,15 +1720,21 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		endpoint := e.Status.Endpoint
 		controllerNodeID := e.Spec.NodeID
 		controllerSize := e.Status.CurrentSize
-		// For v2, the engine has no endpoint; use the matching EF's endpoint
-		// and size. The EF's CurrentSize reflects the frontend device size,
-		// which may lag behind the RAID (engine) size during expansion.
+		// For v2, the engine has no endpoint; use the matching EF's endpoint.
+		// Keep engine size as the source of truth, but for an attached volume
+		// do not expose a newer size until the frontend is also serving it.
 		if ef, ok := efByEngine[e.Name]; ok {
 			controllerNodeID = ef.Spec.NodeID
 			if ef.Status.Endpoint != "" {
 				endpoint = ef.Status.Endpoint
 			}
-			if ef.Status.CurrentSize > 0 {
+			// For an attached volume, also use the frontend size as a source
+			// of truth. If the frontend lags the backend engine, keep
+			// returning the older size until the frontend catches up.
+			if v.Status.State == longhorn.VolumeStateAttached &&
+				ef.Status.Endpoint != "" &&
+				ef.Status.CurrentSize > 0 &&
+				ef.Status.CurrentSize < controllerSize {
 				controllerSize = ef.Status.CurrentSize
 			}
 		}
@@ -1677,7 +1887,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 	//   3. It's faulted.
 	//   4. It's restore pending.
 	//   5. It's failed to clone
-	ready, _ := types.IsVolumeReady(v, vrs, types.VolumeOperationGeneric)
+	ready, notReadyMessage := types.IsVolumeReady(v, vrs, types.VolumeOperationGeneric)
 
 	r := &Volume{
 		Resource: client.Resource{
@@ -1704,6 +1914,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		ReplicaRebuildingBandwidthLimit: v.Spec.ReplicaRebuildingBandwidthLimit,
 		UblkQueueDepth:                  v.Spec.UblkQueueDepth,
 		UblkNumberOfQueue:               v.Spec.UblkNumberOfQueue,
+		NvmeTcpNrIoQueues:               v.Spec.NvmeTcpNrIoQueues,
 		BackupCompressionMethod:         v.Spec.BackupCompressionMethod,
 		BackupBlockSize:                 strconv.FormatInt(v.Spec.BackupBlockSize, 10),
 		StaleReplicaTimeout:             v.Spec.StaleReplicaTimeout,
@@ -1713,9 +1924,11 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		Standby:                         v.Spec.Standby,
 		DiskSelector:                    v.Spec.DiskSelector,
 		NodeSelector:                    v.Spec.NodeSelector,
+		TopologyRequirement:             v.Spec.TopologyRequirement,
 		RestoreVolumeRecurringJob:       v.Spec.RestoreVolumeRecurringJob,
 		FreezeFilesystemForSnapshot:     v.Spec.FreezeFilesystemForSnapshot,
 		BackupTargetName:                v.Spec.BackupTargetName,
+		DataLayout:                      v.Spec.DataLayout,
 
 		State:                       v.Status.State,
 		Robustness:                  v.Status.Robustness,
@@ -1731,6 +1944,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		ReplicaDiskSoftAntiAffinity: v.Spec.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                  v.Spec.DataEngine,
 		Ready:                       ready,
+		NotReadyMessage:             notReadyMessage,
 
 		AccessMode:        v.Spec.AccessMode,
 		ShareEndpoint:     v.Status.ShareEndpoint,
@@ -1885,6 +2099,7 @@ func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {
 		RestoreSize:    s.Status.RestoreSize,
 		ReadyToUse:     s.Status.ReadyToUse,
 		Checksum:       s.Status.Checksum,
+		SnapshotGroup:  s.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)],
 	}
 }
 
@@ -1897,7 +2112,7 @@ func toSnapshotCRCollection(snapCRs map[string]*longhorn.Snapshot) *client.Gener
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshotCR"}}
 }
 
-func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {
+func toSnapshotResource(s *longhorn.SnapshotInfo, checksum, snapshotGroup string) *Snapshot {
 	if s == nil {
 		return nil
 	}
@@ -1906,8 +2121,9 @@ func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {
 			Id:   s.Name,
 			Type: "snapshot",
 		},
-		SnapshotInfo: *s,
-		Checksum:     checksum,
+		SnapshotInfo:  *s,
+		Checksum:      checksum,
+		SnapshotGroup: snapshotGroup,
 	}
 }
 
@@ -1916,12 +2132,14 @@ func toSnapshotCollection(ssList map[string]*longhorn.SnapshotInfo, ssListRO map
 
 	for name, v := range ssList {
 		checksum := ""
+		snapshotGroup := ""
 		if ssListRO != nil {
 			if ssRO, ok := ssListRO[name]; ok {
 				checksum = ssRO.Status.Checksum
+				snapshotGroup = ssRO.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)]
 			}
 		}
-		data = append(data, toSnapshotResource(v, checksum))
+		data = append(data, toSnapshotResource(v, checksum, snapshotGroup))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
@@ -1998,6 +2216,9 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		StorageClassName:     bv.Status.StorageClassName,
 		BackupTargetName:     bv.Spec.BackupTargetName,
 		VolumeName:           bv.Spec.VolumeName,
+
+		LinkedCloneSourceVolume:   bv.Status.LinkedCloneSourceVolume,
+		LinkedCloneSourceSnapshot: bv.Status.LinkedCloneSourceSnapshot,
 	}
 	b.Actions = map[string]string{
 		"backupList":         apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -2467,14 +2688,16 @@ func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api
 			Type: "recurringJob",
 		},
 		RecurringJobSpec: longhorn.RecurringJobSpec{
-			Name:        recurringJob.Name,
-			Groups:      recurringJob.Spec.Groups,
-			Task:        recurringJob.Spec.Task,
-			Cron:        recurringJob.Spec.Cron,
-			Retain:      recurringJob.Spec.Retain,
-			Concurrency: recurringJob.Spec.Concurrency,
-			Labels:      recurringJob.Spec.Labels,
-			Parameters:  recurringJob.Spec.Parameters,
+			Name:            recurringJob.Name,
+			Groups:          recurringJob.Spec.Groups,
+			Task:            recurringJob.Spec.Task,
+			Cron:            recurringJob.Spec.Cron,
+			Retain:          recurringJob.Spec.Retain,
+			RetainAge:       recurringJob.Spec.RetainAge,
+			RetentionPolicy: recurringJob.Spec.RetentionPolicy,
+			Concurrency:     recurringJob.Spec.Concurrency,
+			Labels:          recurringJob.Spec.Labels,
+			Parameters:      recurringJob.Spec.Parameters,
 		},
 		RecurringJobStatus: longhorn.RecurringJobStatus{
 			ExecutionCount: recurringJob.Status.ExecutionCount,
@@ -2488,6 +2711,37 @@ func toRecurringJobCollection(jobs []*longhorn.RecurringJob, apiContext *api.Api
 		data = append(data, toRecurringJobResource(job, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "recurringJob"}}
+}
+
+func toSnapshotGroupResource(snapshotGroup *longhorn.SnapshotGroup, apiContext *api.ApiContext) *SnapshotGroup {
+	return &SnapshotGroup{
+		Resource: client.Resource{
+			Id:   snapshotGroup.Name,
+			Type: "snapshotGroup",
+		},
+		Name:            snapshotGroup.Name,
+		Created:         snapshotGroup.CreationTimestamp.Format(time.RFC3339),
+		Volumes:         snapshotGroup.Spec.Volumes,
+		VolumeSelector:  snapshotGroup.Spec.VolumeSelector,
+		Labels:          snapshotGroup.Spec.Labels,
+		DeadlineSeconds: snapshotGroup.Spec.DeadlineSeconds,
+		Phase:           snapshotGroup.Status.Phase,
+		Members:         snapshotGroup.Status.Members,
+		ReadyToUse:      snapshotGroup.Status.ReadyToUse,
+		CreationTime:    snapshotGroup.Status.CreationTime,
+		Error:           snapshotGroup.Status.Error,
+		Degraded: types.GetCondition(snapshotGroup.Status.Conditions,
+			longhorn.SnapshotGroupConditionTypeDegraded).Status == longhorn.ConditionStatusTrue,
+		Conditions: snapshotGroup.Status.Conditions,
+	}
+}
+
+func toSnapshotGroupCollection(snapshotGroups []*longhorn.SnapshotGroup, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, snapshotGroup := range snapshotGroups {
+		data = append(data, toSnapshotGroupResource(snapshotGroup, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshotGroup"}}
 }
 
 func toOrphanResource(orphan *longhorn.Orphan) *Orphan {
@@ -2512,6 +2766,76 @@ func toOrphanCollection(orphans map[string]*longhorn.Orphan) *client.GenericColl
 		data = append(data, toOrphanResource(orphan))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "orphan"}}
+}
+
+func toShardGroupResource(sg *longhorn.ShardGroup) *ShardGroup {
+	return &ShardGroup{
+		Resource: client.Resource{
+			Id:   sg.Name,
+			Type: "shardGroup",
+		},
+		Name:                sg.Name,
+		VolumeName:          sg.Spec.VolumeName,
+		DataChunks:          sg.Spec.DataChunks,
+		ParityChunks:        sg.Spec.ParityChunks,
+		StripSizeKB:         sg.Spec.StripSizeKB,
+		NodeID:              sg.Spec.NodeID,
+		InstanceManagerName: sg.Status.InstanceManagerName,
+		OwnerID:             sg.Status.OwnerID,
+		State:               sg.Status.State,
+		FailedCount:         sg.Status.FailedCount,
+		ShardRefs:           sg.Status.ShardRefs,
+		ECShardAddressMap:   sg.Status.ECShardAddressMap,
+		ScrubInProgress:     sg.Status.ScrubInProgress,
+		RebuildInProgress:   sg.Status.RebuildInProgress,
+		GrowInProgress:      sg.Status.GrowInProgress,
+		ProcessState:        sg.Status.ProcessState,
+		StorageIP:           sg.Status.StorageIP,
+		Port:                sg.Status.Port,
+		NQN:                 sg.Status.NQN,
+		LvstoreUUID:         sg.Status.LvstoreUUID,
+		HeadLvolUUID:        sg.Status.HeadLvolUUID,
+	}
+}
+
+func toShardGroupCollection(sgs map[string]*longhorn.ShardGroup) *client.GenericCollection {
+	var data []interface{}
+	for _, sg := range sgs {
+		data = append(data, toShardGroupResource(sg))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "shardGroup"}}
+}
+
+func toShardResource(s *longhorn.Shard) *Shard {
+	return &Shard{
+		Resource: client.Resource{
+			Id:   s.Name,
+			Type: "shard",
+		},
+		Name:                 s.Name,
+		ShardGroupName:       s.Spec.ShardGroupName,
+		SlotIndex:            s.Spec.SlotIndex,
+		Size:                 strconv.FormatInt(s.Spec.Size, 10),
+		NodeID:               s.Spec.NodeID,
+		DiskPath:             s.Spec.DiskPath,
+		DiskUUID:             s.Spec.DiskUUID,
+		EvictionRequested:    s.Spec.EvictionRequested,
+		OwnerID:              s.Status.OwnerID,
+		State:                s.Status.State,
+		Role:                 s.Status.Role,
+		StorageIP:            s.Status.StorageIP,
+		Port:                 s.Status.Port,
+		RebuildProgress:      s.Status.RebuildProgress,
+		LastFailureTimestamp: s.Status.LastFailureTimestamp,
+	}
+}
+
+func toShardCollection(shards map[string]*longhorn.Shard) *client.GenericCollection {
+	var data []interface{}
+	for _, s := range shards {
+		data = append(data, toShardResource(s))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "shard"}}
 }
 
 func toVolumeAttachmentResource(volumeAttachment *longhorn.VolumeAttachment) *VolumeAttachment {

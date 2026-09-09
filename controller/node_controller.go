@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -60,6 +61,7 @@ type NodeController struct {
 
 	diskMonitor             monitor.Monitor
 	environmentCheckMonitor monitor.Monitor
+	cpuPolicyCheckMonitor   monitor.Monitor
 
 	snapshotMonitor              monitor.Monitor
 	snapshotChangeEventQueue     workqueue.TypedInterface[any]
@@ -210,7 +212,8 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage ||
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
-		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy
+		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy ||
+		types.SettingName(setting.Name) == types.SettingNameSystemManagedComponentsNodeSelector
 }
 
 func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
@@ -486,6 +489,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	// Create a monitor for collecting CPU policy check information
+	if _, err := nc.createCPUPolicyCheckMonitor(); err != nil {
+		return err
+	}
+
 	collectedDiskInfo, err := nc.syncWithDiskMonitor(node)
 	if err != nil {
 		if strings.Contains(err.Error(), "mismatching disks") {
@@ -504,6 +512,13 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err == nil {
 		// Best effort to update the environment check conditions
 		nc.syncEnvironmentCheckConditions(node, collectedEnvironmentCheckConditions)
+	}
+
+	node.Status.CPUPolicy = longhorn.CPUManagerPolicyUnknown
+	collectedCPUPolicyName, err := nc.syncWithCPUPolicyCheckMonitor()
+	if err == nil {
+		// Best effort to update the CPU policy name
+		node.Status.CPUPolicy = collectedCPUPolicyName
 	}
 
 	_, err = nc.createSnapshotMonitor()
@@ -543,6 +558,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if err = nc.syncReplicaEvictionRequested(node, kubeNode); err != nil {
+		return err
+	}
+
+	if err = nc.syncShardEvictionRequested(node, kubeNode); err != nil {
 		return err
 	}
 
@@ -978,6 +997,18 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				}
 			}
 
+			// Shards add to StorageScheduled but have no per-shard breakdown map like
+			// ScheduledReplica/ScheduledBackingImage, so on a disk holding shards
+			// StorageScheduled will exceed those two maps by the shard bytes - that gap
+			// is expected, not a miscount.
+			shards, err := nc.ds.ListShardsByDiskUUID(diskStatus.DiskUUID)
+			if err != nil {
+				return err
+			}
+			for _, shard := range shards {
+				storageScheduled += shard.Spec.Size
+			}
+
 			diskStatus.StorageScheduled = storageScheduled
 			diskStatus.ScheduledReplica = scheduledReplica
 			diskStatus.ScheduledBackingImage = scheduledBackingImage
@@ -1098,6 +1129,21 @@ func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
 	return nil
 }
 
+func (nc *NodeController) isSystemManagedComponentsNodeSelectorMatching(nodeName string) (bool, error) {
+	nodeSelector, err := nc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameSystemManagedComponentsNodeSelector)
+	}
+	if len(nodeSelector) == 0 {
+		return true, nil
+	}
+	kubeNode, err := nc.ds.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		return false, err
+	}
+	return labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
+}
+
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
@@ -1105,6 +1151,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	}
 
 	log := getLoggerForNode(nc.logger, node)
+
+	isNodeSelectorMatching, err := nc.isSystemManagedComponentsNodeSelectorMatching(node.Name)
+	if err != nil {
+		return err
+	}
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
@@ -1140,7 +1191,18 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				cleanupRequired := true
 
-				if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
+				if !isNodeSelectorMatching {
+					if runningOrStartingInstanceFound {
+						cleanupRequired = false
+						log.Infof("Keeping instance manager %v on selector-excluded node %v because it still has running/starting instances", im.Name, node.Name)
+					} else if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
+						// The node is unreachable, so the real instance state is unknown. Defer cleanup until the node is observable again.
+						cleanupRequired = false
+						log.Infof("Skipping cleanup of instance manager %v on selector-excluded node %v because it is in unknown state", im.Name, node.Name)
+					} else {
+						log.Infof("Cleaning up instance manager %v because node %v does not match %v", im.Name, node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
+					}
+				} else if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
 					// Keep default instance manager or instance manager matching argument image (during rolling update)
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
@@ -1174,6 +1236,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 			if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
+				if !isNodeSelectorMatching {
+					log.Debugf("Skipping default instance manager creation for node %v because it does not match %v", node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
+					continue
+				}
+
 				// Only create instance manager when argument image matches setting image
 				if nc.instanceManagerImage != defaultInstanceManagerImage {
 					log.Debugf("Skipping instance manager creation for node %v: argument image (%v) != setting image (%v)",
@@ -1381,6 +1448,21 @@ func (nc *NodeController) createEnvironmentCheckMonitor() (monitor.Monitor, erro
 	}
 
 	nc.environmentCheckMonitor = monitor
+
+	return monitor, nil
+}
+
+func (nc *NodeController) createCPUPolicyCheckMonitor() (monitor.Monitor, error) {
+	if nc.cpuPolicyCheckMonitor != nil {
+		return nc.cpuPolicyCheckMonitor, nil
+	}
+
+	monitor, err := monitor.NewCPUPolicyCheckMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+
+	nc.cpuPolicyCheckMonitor = monitor
 
 	return monitor, nil
 }
@@ -1621,6 +1703,20 @@ func (nc *NodeController) syncWithEnvironmentCheckMonitor() ([]longhorn.Conditio
 	return conditions, nil
 }
 
+func (nc *NodeController) syncWithCPUPolicyCheckMonitor() (longhorn.CPUManagerPolicy, error) {
+	v, err := nc.cpuPolicyCheckMonitor.GetCollectedData()
+	if err != nil {
+		return longhorn.CPUManagerPolicyUnknown, err
+	}
+
+	cpuPolicy, ok := v.(longhorn.CPUManagerPolicy)
+	if !ok {
+		return longhorn.CPUManagerPolicyUnknown, errors.New("failed to convert the collected data to CPU policy name")
+	}
+
+	return cpuPolicy, nil
+}
+
 // Check all disks in the same filesystem ID are in ready status
 func (nc *NodeController) isDiskIDDuplicatedWithExistingReadyDisk(diskName string, diskInfo map[string]*monitor.CollectedDiskInfo, diskStatusMap map[string]*longhorn.DiskStatus) bool {
 	if len(diskInfo) > 1 {
@@ -1659,13 +1755,21 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 		diskStatus.StorageMaximum = 0
 		diskStatus.StorageAvailable = 0
 		diskStatus.Type = node.Spec.Disks[diskName].Type
+		// Record the configured path before the disk is created. Otherwise a disk
+		// whose creation fails has no path at all, and the cleanup on removal
+		// cannot tell the disk service which device to release. Only fill it in
+		// when unset so the path never desyncs from the recorded UUID and driver.
+		if diskStatus.DiskPath == "" {
+			diskStatus.DiskPath = node.Spec.Disks[diskName].Path
+		}
 		node.Status.DiskStatus[diskName] = diskStatus
 	}
 
 	for diskName := range node.Status.DiskStatus {
 		if _, exists := node.Spec.Disks[diskName]; !exists {
 			diskStatus, ok := node.Status.DiskStatus[diskName]
-			if !ok {
+			if !ok || diskStatus == nil {
+				delete(node.Status.DiskStatus, diskName)
 				continue
 			}
 
@@ -1723,13 +1827,18 @@ func (nc *NodeController) cleanupDisksBeforeNodeDeletion(node *longhorn.Node) er
 
 	errs := multierr.NewMultiError()
 	for diskName, diskStatus := range node.Status.DiskStatus {
+		// Node deletion bypasses alignDiskSpecAndStatus, so a nil status entry is
+		// still possible here.
+		if diskStatus == nil {
+			continue
+		}
 		nc.logger.Infof("Cleaning up disk %s", diskName)
 		// Skip non-SPDK disks
 		if diskStatus.Type != longhorn.DiskTypeBlock {
 			continue
 		}
 
-		if diskStatus.DiskDriver == longhorn.DiskDriverNone {
+		if diskStatus.DiskDriver == longhorn.DiskDriverNone && diskStatus.DiskPath == "" {
 			continue
 		}
 
@@ -1890,16 +1999,8 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 				return err
 			}
 			if replica.Spec.EvictionRequested != shouldEvictReplica {
-				isLinkedClone, err := nc.ds.IsVolumeLinkedCloneVolume(replica.Spec.VolumeName)
-				if err != nil {
-					log.WithError(err).Warnf("Cannot evict replica %v", replica.Name)
-				} else if isLinkedClone {
-					log.Warnf("Cannot evict replica %v because the volume %v is a linked-clone volume. "+
-						"Please delete this volume to unblock the eviction", replica.Name, replica.Spec.VolumeName)
-				} else {
-					replica.Spec.EvictionRequested = shouldEvictReplica
-					replicasToSync = append(replicasToSync, replicaToSync{replica, reason})
-				}
+				replica.Spec.EvictionRequested = shouldEvictReplica
+				replicasToSync = append(replicasToSync, replicaToSync{replica, reason})
 			}
 
 			if replica.Spec.EvictionRequested && !node.Spec.EvictionRequested && !diskSpec.EvictionRequested {
@@ -1931,6 +2032,85 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 	}
 
 	return nil
+}
+
+func (nc *NodeController) syncShardEvictionRequested(node *longhorn.Node, kubeNode *corev1.Node) error {
+	log := getLoggerForNode(nc.logger, node)
+	nodeDrainPolicy, err := nc.ds.GetSettingValueExisted(types.SettingNameNodeDrainPolicy)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameNodeDrainPolicy)
+	}
+
+	shards, err := nc.ds.ListShardsByNode(node.Spec.Name)
+	if err != nil {
+		return err
+	}
+
+	for _, shard := range shards {
+		// Resolve the disk spec for this shard by matching DiskUUID.
+		var diskSpec *longhorn.DiskSpec
+		for diskName, candidate := range node.Spec.Disks {
+			if node.Status.DiskStatus[diskName].DiskUUID == shard.Spec.DiskUUID {
+				diskSpecCopy := candidate
+				diskSpec = &diskSpecCopy
+				break
+			}
+		}
+
+		shouldEvict, reason, err := nc.shouldEvictShard(node, kubeNode, diskSpec, nodeDrainPolicy)
+		if err != nil {
+			return err
+		}
+		if shard.Spec.EvictionRequested != shouldEvict {
+			shard.Spec.EvictionRequested = shouldEvict
+			if _, err := nc.ds.UpdateShard(shard); err != nil {
+				log.WithError(err).WithField("shard", shard.Name).Warn("Failed to update shard eviction request, will enqueue then resync node")
+				nc.enqueueNodeRateLimited(node)
+				continue
+			}
+			if shouldEvict {
+				nc.eventRecorder.Eventf(shard, corev1.EventTypeNormal, reason,
+					"Requesting shard %v eviction from node %v", shard.Name, node.Spec.Name)
+			} else {
+				nc.eventRecorder.Eventf(shard, corev1.EventTypeNormal, reason,
+					"Cancelling shard %v eviction from node %v", shard.Name, node.Spec.Name)
+			}
+		}
+
+		// Only the REST API reads node.Status.AutoEvicting; no manager logic does. Set it true
+		// but never false here: syncReplicaEvictionRequested runs first, sets it to false, and
+		// may have already set it true for a replica on this node.
+		if shard.Spec.EvictionRequested && !node.Spec.EvictionRequested && (diskSpec == nil || !diskSpec.EvictionRequested) {
+			node.Status.AutoEvicting = true
+		}
+	}
+
+	return nil
+}
+
+func (nc *NodeController) shouldEvictShard(node *longhorn.Node, kubeNode *corev1.Node, diskSpec *longhorn.DiskSpec, nodeDrainPolicy string) (bool, string, error) {
+	if isDownOrDeleted, err := nc.ds.IsNodeDownOrDeleted(node.Spec.Name); err != nil {
+		return false, "", err
+	} else if isDownOrDeleted {
+		return false, constant.EventReasonEvictionCanceled, nil
+	}
+	if kubeNode == nil {
+		return false, constant.EventReasonEvictionCanceled, nil
+	}
+	if node.Spec.EvictionRequested || (diskSpec != nil && diskSpec.EvictionRequested) {
+		return true, constant.EventReasonEvictionUserRequested, nil
+	}
+	if !kubeNode.Spec.Unschedulable {
+		// Node drain policy only takes effect on cordoned nodes.
+		return false, constant.EventReasonEvictionCanceled, nil
+	}
+	if nodeDrainPolicy == string(types.NodeDrainPolicyBlockForEviction) {
+		return true, constant.EventReasonEvictionAutomatic, nil
+	}
+	// Unlike replicas, shards have no per-shard PodDisruptionBudget, so the
+	// BlockForEvictionIfContainsLastReplica policy has no last shard to protect
+	// and falls through to no eviction here.
+	return false, constant.EventReasonEvictionCanceled, nil
 }
 
 func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *corev1.Node, diskSpec *longhorn.DiskSpec,
@@ -2253,7 +2433,7 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse SnapshotHashingRequestedAt")
 	}
 
-	// Case 1: First-ever request → allow immediately
+	// Case 1: Allow the first-ever request immediately.
 	if v.Status.LastOnDemandSnapshotHashingCompleteAt == "" {
 		return true, nil
 	}
@@ -2263,11 +2443,11 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse LastOnDemandSnapshotHashingCompleteAt")
 	}
 
-	// Case 2: Not a new request → reject
+	// Case 2: Reject requests that are not newer than the last completion.
 	if !requestTime.After(lastCompleted) {
 		return false, nil
 	}
 
-	// Case 3: New request → allow
+	// Case 3: Allow a new request.
 	return true, nil
 }

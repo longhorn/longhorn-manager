@@ -44,8 +44,11 @@ type LonghornV1beta2Interface interface {
 	RecurringJobsGetter
 	ReplicasGetter
 	SettingsGetter
+	ShardsGetter
+	ShardGroupsGetter
 	ShareManagersGetter
 	SnapshotsGetter
+	SnapshotGroupsGetter
 	SupportBundlesGetter
 	SystemBackupsGetter
 	SystemRestoresGetter
@@ -122,12 +125,24 @@ func (c *LonghornV1beta2Client) Settings(namespace string) SettingInterface {
 	return newSettings(c, namespace)
 }
 
+func (c *LonghornV1beta2Client) Shards(namespace string) ShardInterface {
+	return newShards(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) ShardGroups(namespace string) ShardGroupInterface {
+	return newShardGroups(c, namespace)
+}
+
 func (c *LonghornV1beta2Client) ShareManagers(namespace string) ShareManagerInterface {
 	return newShareManagers(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) Snapshots(namespace string) SnapshotInterface {
 	return newSnapshots(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) SnapshotGroups(namespace string) SnapshotGroupInterface {
+	return newSnapshotGroups(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) SupportBundles(namespace string) SupportBundleInterface {

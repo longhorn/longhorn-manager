@@ -95,10 +95,6 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 	if err != nil {
 		return nil, err
 	}
-	if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-		return nil, fmt.Errorf("cannot create snapshot for linked-clone volume %v", volumeName)
-	}
-
 	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
 		return nil, err
 	}

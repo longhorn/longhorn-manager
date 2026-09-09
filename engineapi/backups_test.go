@@ -132,7 +132,7 @@ func TestGetBackupCredentialEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)
 
-			envs, err := getBackupCredentialEnv(tt.backupTarget, tt.credential)
+			envs, err := getBackupCredentialEnv(tt.backupTarget, tt.credential, true)
 			if tt.expectError {
 				assert.NotNil(err)
 			} else {
@@ -142,6 +142,71 @@ func TestGetBackupCredentialEnv(t *testing.T) {
 					ss := strings.SplitN(env, "=", 2)
 					assert.Equal(tt.credential[ss[0]], ss[1])
 				}
+			}
+		})
+	}
+}
+
+// TestGetBackupCredentialEnvSignAcceptEncoding pins that the S3 branch forwards
+// AWS_SIGN_ACCEPT_ENCODING only when the consumer supports it. TestGetBackupCredentialEnv
+// above only checks the value of whatever is returned, so it stays green if the
+// entry is dropped entirely, which is the silent drop this guards against.
+func TestGetBackupCredentialEnvSignAcceptEncoding(t *testing.T) {
+	tests := []struct {
+		name                       string
+		credential                 map[string]string
+		supportsSignAcceptEncoding bool
+		env                        string
+		expectEnv                  bool
+	}{
+		{
+			name: "forwards the value set in the secret",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":        "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY":    "my-aws-secret-access-key",
+				"AWS_SIGN_ACCEPT_ENCODING": "false",
+			},
+			supportsSignAcceptEncoding: true,
+			env:                        "AWS_SIGN_ACCEPT_ENCODING=false",
+			expectEnv:                  true,
+		},
+		{
+			// The entry is sent whether or not the secret sets it, so that a value left
+			// behind in the long-lived instance manager process is cleared.
+			name: "forwards an empty value when the secret omits the key",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":     "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY": "my-aws-secret-access-key",
+			},
+			supportsSignAcceptEncoding: true,
+			env:                        "AWS_SIGN_ACCEPT_ENCODING=",
+			expectEnv:                  true,
+		},
+		{
+			// An instance manager proxy older than MinProxyAPIVersionForBackupSignAcceptEncoding
+			// rejects the whole request when the key is present.
+			name: "omits the entry when the consumer does not support it",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":        "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY":    "my-aws-secret-access-key",
+				"AWS_SIGN_ACCEPT_ENCODING": "false",
+			},
+			supportsSignAcceptEncoding: false,
+			env:                        "AWS_SIGN_ACCEPT_ENCODING=false",
+			expectEnv:                  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert := require.New(t)
+
+			envs, err := getBackupCredentialEnv("s3://backupbucket@us-east-1/", tt.credential, tt.supportsSignAcceptEncoding)
+			assert.Nil(err)
+			if tt.expectEnv {
+				assert.Contains(envs, tt.env)
+			} else {
+				assert.NotContains(envs, tt.env)
 			}
 		})
 	}

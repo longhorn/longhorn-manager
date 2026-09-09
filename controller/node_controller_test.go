@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+
 	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -211,6 +212,8 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -296,6 +299,8 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -383,6 +388,8 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -468,6 +475,8 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -623,6 +632,8 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -769,6 +780,8 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -927,6 +940,8 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1049,6 +1064,8 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1198,6 +1215,8 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1292,6 +1311,8 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1397,6 +1418,8 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1495,6 +1518,8 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1595,6 +1620,8 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1693,6 +1720,8 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1793,6 +1822,8 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1887,6 +1918,8 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
 			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1991,6 +2024,86 @@ func (s *NodeControllerSuite) TestSyncInstanceManagers(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(len(instanceManagers.Items), Equals, len(testCase.existingInstanceManagers))
 	}
+}
+
+func (s *NodeControllerSuite) TestNodeControllerIsResponsibleForSystemManagedComponentsNodeSelectorSetting(c *C) {
+	setting := newSetting(string(types.SettingNameSystemManagedComponentsNodeSelector), "lh-12834-node-selector:selected")
+	c.Assert(s.controller.isResponsibleForSetting(setting), Equals, true)
+}
+
+func (s *NodeControllerSuite) syncInstanceManagersNodeSelectorCase(c *C, selectorValue string, kubeNodeLabels map[string]string, existingIMs map[string]*longhorn.InstanceManager) map[string]bool {
+	datastore.SkipListerCheck = true
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	kubeNode.Labels = kubeNodeLabels
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{TestNode1: node},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage):         newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameSystemManagedComponentsNodeSelector): newSetting(string(types.SettingNameSystemManagedComponentsNodeSelector), selectorValue),
+		},
+		lhInstanceManagers: existingIMs,
+		nodes:              map[string]*corev1.Node{TestNode1: kubeNode},
+	}
+	s.initTest(c, fixture)
+	c.Assert(s.controller.syncInstanceManagers(node), IsNil)
+	ims, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.Background(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	names := map[string]bool{}
+	for _, im := range ims.Items {
+		names[im.Name] = true
+	}
+	return names
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersCreatesDefaultWhenSystemManagedSelectorMatches(c *C) {
+	defaultInstanceManagerName, err := types.GetInstanceManagerName(longhorn.InstanceManagerTypeAllInOne, TestNode1, TestInstanceManagerImage, string(longhorn.DataEngineTypeV1))
+	c.Assert(err, IsNil)
+
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "selected"}, map[string]*longhorn.InstanceManager{})
+
+	c.Assert(names, DeepEquals, map[string]bool{defaultInstanceManagerName: true})
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersSkipsCreateWhenSystemManagedSelectorDoesNotMatch(c *C) {
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "excluded"}, map[string]*longhorn.InstanceManager{})
+
+	c.Assert(names, HasLen, 0)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersDeletesIdleWhenSystemManagedSelectorDoesNotMatch(c *C) {
+	defaultInstanceManagerName, err := types.GetInstanceManagerName(longhorn.InstanceManagerTypeAllInOne, TestNode1, TestInstanceManagerImage, string(longhorn.DataEngineTypeV1))
+	c.Assert(err, IsNil)
+	existingIM := DefaultInstanceManagerTestNode1.DeepCopy()
+	existingIM.Name = defaultInstanceManagerName
+	existingIM.Status.CurrentState = longhorn.InstanceManagerStateRunning
+	existingIM.Status.InstanceEngines = map[string]longhorn.InstanceProcess{}
+	existingIM.Status.InstanceEngineFrontends = map[string]longhorn.InstanceProcess{}
+	existingIM.Status.InstanceReplicas = map[string]longhorn.InstanceProcess{}
+
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "excluded"}, map[string]*longhorn.InstanceManager{defaultInstanceManagerName: existingIM})
+
+	c.Assert(names, HasLen, 0)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagersKeepsRunningInstanceWhenSystemManagedSelectorDoesNotMatch(c *C) {
+	defaultInstanceManagerName, err := types.GetInstanceManagerName(longhorn.InstanceManagerTypeAllInOne, TestNode1, TestInstanceManagerImage, string(longhorn.DataEngineTypeV1))
+	c.Assert(err, IsNil)
+	existingIM := DefaultInstanceManagerTestNode1.DeepCopy()
+	existingIM.Name = defaultInstanceManagerName
+	existingIM.Status.CurrentState = longhorn.InstanceManagerStateRunning
+	existingIM.Status.InstanceReplicas = map[string]longhorn.InstanceProcess{
+		ExistingInstance: {
+			Spec: longhorn.InstanceProcessSpec{Name: ExistingInstance},
+			Status: longhorn.InstanceProcessStatus{
+				State: longhorn.InstanceStateRunning,
+			},
+		},
+	}
+
+	names := s.syncInstanceManagersNodeSelectorCase(c, "lh-12834-node-selector:selected", map[string]string{"lh-12834-node-selector": "excluded"}, map[string]*longhorn.InstanceManager{defaultInstanceManagerName: existingIM})
+
+	c.Assert(names, DeepEquals, map[string]bool{defaultInstanceManagerName: true})
 }
 
 func (s *NodeControllerSuite) TestKubeNodeNFSCapabilityCondition(c *C) {
@@ -2196,6 +2309,8 @@ CONFIG_NFS_V4_2=y`
 					err = s.controller.diskMonitor.RunOnce()
 					c.Assert(err, IsNil)
 					err = s.controller.environmentCheckMonitor.RunOnce()
+					c.Assert(err, IsNil)
+					err = s.controller.cpuPolicyCheckMonitor.RunOnce()
 					c.Assert(err, IsNil)
 				}
 
@@ -2468,7 +2583,7 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 
 func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, eventRecorder *record.FakeRecorder, controllerID string) (*NodeController, error) {
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	nc, err := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestInstanceManagerImage)
@@ -2493,6 +2608,12 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 	}
 	nc.environmentCheckMonitor = environmentCheckMonitor
 
+	cpuPolicyCheckMonitor, err := monitor.NewFakeCPUPolicyCheckMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+	nc.cpuPolicyCheckMonitor = cpuPolicyCheckMonitor
+
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
 	}
@@ -2501,4 +2622,274 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {
 	return false, nil
+}
+
+// ---------------------------------------------------------------------------
+// Linked-clone eviction tests
+// ---------------------------------------------------------------------------
+
+// newSrcReplica returns a non-clone replica on the given node/disk.
+func newSrcReplica(name, volumeName, nodeID, diskID string) *longhorn.Replica {
+	return &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels: map[string]string{
+				types.LonghornNodeKey:     nodeID,
+				types.LonghornDiskUUIDKey: diskID,
+			},
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: volumeName,
+			},
+			DiskID: diskID,
+		},
+	}
+}
+
+// newCloneReplica returns a linked-clone replica whose source replica is srcName.
+func newCloneReplica(name, volumeName, nodeID, diskID, srcName string) *longhorn.Replica {
+	return &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels: map[string]string{
+				types.LonghornNodeKey:     nodeID,
+				types.LonghornDiskUUIDKey: diskID,
+				types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSrcReplica): srcName,
+			},
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: volumeName,
+			},
+			DiskID:                    diskID,
+			LinkedCloneSrcReplicaName: srcName,
+		},
+	}
+}
+
+func (s *NodeControllerSuite) TestLinkedCloneEviction(c *C) {
+	// ----------------------------------------------------------------
+	// Test 1 — Manual disk eviction: both evicted
+	//
+	// Disk EvictionRequested=true triggers shouldEvictReplica for every
+	// replica on that disk regardless of drain policy or node cordoning.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		disk := lhNode.Spec.Disks[TestDiskID1]
+		disk.EvictionRequested = true
+		lhNode.Spec.Disks[TestDiskID1] = disk
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"src-replica": 0, "clone-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes: map[string]*longhorn.Node{TestNode1: lhNode},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("src-replica", "src-volume", TestNode1, TestDiskID1),
+				newCloneReplica("clone-replica", "clone-volume", TestNode1, TestDiskID1, "src-replica"),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy),
+					string(types.NodeDrainPolicyBlockIfContainsLastReplica)),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		err := s.controller.syncReplicaEvictionRequested(lhNode, kubeNode)
+		c.Assert(err, IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "src-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+
+		r, err = s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "clone-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+	}
+
+	// ----------------------------------------------------------------
+	// Test 2 — block-for-eviction + cordoned: both evicted
+	//
+	// NodeDrainPolicy=block-for-eviction and node is cordoned: every replica
+	// including src and clone on the node is unconditionally evicted.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"src-replica": 0, "clone-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes: map[string]*longhorn.Node{TestNode1: lhNode},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("src-replica", "src-volume", TestNode1, TestDiskID1),
+				newCloneReplica("clone-replica", "clone-volume", TestNode1, TestDiskID1, "src-replica"),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy),
+					string(types.NodeDrainPolicyBlockForEviction)),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		err := s.controller.syncReplicaEvictionRequested(lhNode, kubeNode)
+		c.Assert(err, IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "src-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+
+		r, err = s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "clone-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+	}
+
+	// ----------------------------------------------------------------
+	// Test 3 — block-for-eviction-if-contains-last-replica + cordoned
+	//          (both last): both evicted
+	//
+	// No IM/PDB objects are registered in the fixture, so
+	// ListVolumePDBProtectedHealthyReplicasRO returns empty for every
+	// volume → hasPDBOnAnotherNode=false → shouldEvictReplica=true.
+	// Both src and clone are in ScheduledReplica and are treated as
+	// "last healthy replica", so both are evicted by the main loop.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"src-replica": 0, "clone-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes: map[string]*longhorn.Node{TestNode1: lhNode},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("src-replica", "src-volume", TestNode1, TestDiskID1),
+				newCloneReplica("clone-replica", "clone-volume", TestNode1, TestDiskID1, "src-replica"),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy),
+					string(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica)),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		err := s.controller.syncReplicaEvictionRequested(lhNode, kubeNode)
+		c.Assert(err, IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "src-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+
+		r, err = s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "clone-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true)
+	}
+}
+
+// TestAlignDiskSpecAndStatusRecordsConfiguredDiskPath covers longhorn/longhorn#13893:
+// without the configured path in the status, a disk whose creation failed leaves
+// nothing behind to identify the device that has to be released.
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusRecordsConfiguredDiskPath(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{
+		TestDiskID1: {
+			Type:            longhorn.DiskTypeBlock,
+			Path:            "0000:05:00.0",
+			DiskDriver:      longhorn.DiskDriverAuto,
+			AllowScheduling: true,
+		},
+	}
+	// A fresh disk starts with no recorded path, so the configured path must be
+	// filled in before creation to identify the device on removal.
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{}
+
+	s.controller.alignDiskSpecAndStatus(node)
+
+	diskStatus, ok := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(ok, Equals, true)
+	c.Assert(diskStatus.DiskPath, Equals, "0000:05:00.0")
+}
+
+// TestAlignDiskSpecAndStatusDropsRemovedDisks covers longhorn/longhorn#13893:
+// a removed disk must not keep a status entry, since the node validator rejects
+// every node update while the spec and the status disks disagree.
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusDropsRemovedDisks(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{}
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		"block-disk": {
+			Type:     longhorn.DiskTypeBlock,
+			DiskPath: "0000:05:00.0",
+		},
+		"filesystem-disk": {
+			Type:     longhorn.DiskTypeFilesystem,
+			DiskPath: TestDefaultDataPath,
+		},
+	}
+
+	// There is no running instance manager, so releasing the block device fails.
+	s.controller.alignDiskSpecAndStatus(node)
+
+	c.Assert(node.Status.DiskStatus, HasLen, 0)
+}
+
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusDropsNilDiskStatus(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{}
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{"stale-disk": nil}
+
+	s.controller.alignDiskSpecAndStatus(node)
+
+	_, ok := node.Status.DiskStatus["stale-disk"]
+	c.Assert(ok, Equals, false)
+}
+
+// TestAlignDiskSpecAndStatusKeepsFilesystemDiskUntouched guards the block-disk
+// path recording from changing how filesystem-type disks are handled.
+func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusKeepsFilesystemDiskUntouched(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	specDiskPath := node.Spec.Disks[TestDiskID1].Path
+
+	s.controller.alignDiskSpecAndStatus(node)
+
+	diskStatus, ok := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(ok, Equals, true)
+	c.Assert(diskStatus.Type, Equals, longhorn.DiskTypeFilesystem)
+	c.Assert(diskStatus.DiskPath, Equals, specDiskPath)
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusTrue)
 }

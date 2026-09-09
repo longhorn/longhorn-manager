@@ -174,6 +174,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.SettingApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("SettingStatus"):
 		return &longhornv1beta2.SettingStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("Shard"):
+		return &longhornv1beta2.ShardApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardGroup"):
+		return &longhornv1beta2.ShardGroupApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardGroupSpec"):
+		return &longhornv1beta2.ShardGroupSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardGroupStatus"):
+		return &longhornv1beta2.ShardGroupStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardSpec"):
+		return &longhornv1beta2.ShardSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("ShardStatus"):
+		return &longhornv1beta2.ShardStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ShareManager"):
 		return &longhornv1beta2.ShareManagerApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ShareManagerSpec"):
@@ -186,6 +198,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.SnapshotCheckStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("SnapshotCloneStatus"):
 		return &longhornv1beta2.SnapshotCloneStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("SnapshotGroup"):
+		return &longhornv1beta2.SnapshotGroupApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("SnapshotGroupMember"):
+		return &longhornv1beta2.SnapshotGroupMemberApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("SnapshotGroupMemberStatus"):
+		return &longhornv1beta2.SnapshotGroupMemberStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("SnapshotGroupSpec"):
+		return &longhornv1beta2.SnapshotGroupSpecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("SnapshotGroupStatus"):
+		return &longhornv1beta2.SnapshotGroupStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("SnapshotInfo"):
 		return &longhornv1beta2.SnapshotInfoApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("SnapshotSpec"):
@@ -224,10 +246,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.VolumeAttachmentStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeCloneStatus"):
 		return &longhornv1beta2.VolumeCloneStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeDataLayout"):
+		return &longhornv1beta2.VolumeDataLayoutApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeSpec"):
 		return &longhornv1beta2.VolumeSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeStatus"):
 		return &longhornv1beta2.VolumeStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeTopologyTerm"):
+		return &longhornv1beta2.VolumeTopologyTermApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("WorkloadStatus"):
 		return &longhornv1beta2.WorkloadStatusApplyConfiguration{}
 

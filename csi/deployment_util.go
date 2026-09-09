@@ -201,7 +201,9 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 			annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil &&
 			!needToUpdateImage(existing, obj) &&
-			!needToUpdatePodAntiAffinity(existing, obj) {
+			!needToUpdateArgs(existing, obj) &&
+			!needToUpdatePodAntiAffinity(existing, obj) &&
+			!needToUpdateReplicas(existing, obj) {
 			// deployment of correct version already deployed
 			logrus.Infof("Detected %v %v CSI Git commit %v version %v has already been deployed",
 				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion])
@@ -209,8 +211,13 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		}
 		// For Deployments, update in-place to let Kubernetes perform a rolling update,
 		// which respects maxUnavailable and avoids a 0-replica window.
-		// For other resource types (DaemonSet, CSIDriver), fall back to delete+recreate.
-		if updateFunc != nil && existingMeta.GetDeletionTimestamp() == nil {
+		// A pod anti-affinity preset change (e.g. soft -> hard) cannot converge via a
+		// rolling update on a constrained cluster: the old pods must stay Available
+		// (maxUnavailable) while the new hard-anti-affinity pods can't be scheduled,
+		// causing a deadlock. Fall back to delete+recreate for that case.
+		// For other resource types (DaemonSet, CSIDriver), also fall back to delete+recreate.
+		if updateFunc != nil && existingMeta.GetDeletionTimestamp() == nil &&
+			!needToUpdatePodAntiAffinity(existing, obj) {
 			logrus.Infof("Updating %s %s", resource, name)
 			return updateFunc(kubeClient, obj)
 		}
@@ -289,6 +296,31 @@ func needToUpdateDaemonSetImage(existingObj, newObj runtime.Object) bool {
 	return !reflect.DeepEqual(existingImages, newImages)
 }
 
+func podTemplateContainers(obj runtime.Object) []corev1.Container {
+	switch workload := obj.(type) {
+	case *appsv1.Deployment:
+		return workload.Spec.Template.Spec.Containers
+	case *appsv1.DaemonSet:
+		return workload.Spec.Template.Spec.Containers
+	}
+	return nil
+}
+
+// needToUpdateArgs reports whether any container's arguments differ between
+// the existing and the desired workload. Arguments can change at the same
+// Longhorn version, such as when the volume group snapshot toggle flips.
+func needToUpdateArgs(existingObj, newObj runtime.Object) bool {
+	existingArgs := make(map[string][]string)
+	for _, container := range podTemplateContainers(existingObj) {
+		existingArgs[container.Name] = container.Args
+	}
+	newArgs := make(map[string][]string)
+	for _, container := range podTemplateContainers(newObj) {
+		newArgs[container.Name] = container.Args
+	}
+	return !reflect.DeepEqual(existingArgs, newArgs)
+}
+
 func needToUpdatePodAntiAffinity(existingObj, newObj runtime.Object) bool {
 	existingDeployment, ok := existingObj.(*appsv1.Deployment)
 	if !ok {
@@ -322,6 +354,26 @@ func needToUpdatePodAntiAffinity(existingObj, newObj runtime.Object) bool {
 	}
 
 	return existingPreset != newPreset
+}
+
+func needToUpdateReplicas(existingObj, newObj runtime.Object) bool {
+	existingDeployment, ok := existingObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+	newDeployment, ok := newObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+
+	if newDeployment.Spec.Replicas == nil {
+		return false
+	}
+	if existingDeployment.Spec.Replicas == nil {
+		return true
+	}
+
+	return *existingDeployment.Spec.Replicas != *newDeployment.Spec.Replicas
 }
 
 func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,

@@ -33,6 +33,7 @@ type NodeStatusApplyConfiguration struct {
 	Zone                *string                                `json:"zone,omitempty"`
 	SnapshotCheckStatus *SnapshotCheckStatusApplyConfiguration `json:"snapshotCheckStatus,omitempty"`
 	AutoEvicting        *bool                                  `json:"autoEvicting,omitempty"`
+	CPUPolicy           *longhornv1beta2.CPUManagerPolicy      `json:"cpuPolicy,omitempty"`
 }
 
 // NodeStatusApplyConfiguration constructs a declarative configuration of the NodeStatus type for use with
@@ -97,5 +98,13 @@ func (b *NodeStatusApplyConfiguration) WithSnapshotCheckStatus(value *SnapshotCh
 // If called multiple times, the AutoEvicting field is set to the value of the last call.
 func (b *NodeStatusApplyConfiguration) WithAutoEvicting(value bool) *NodeStatusApplyConfiguration {
 	b.AutoEvicting = &value
+	return b
+}
+
+// WithCPUPolicy sets the CPUPolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CPUPolicy field is set to the value of the last call.
+func (b *NodeStatusApplyConfiguration) WithCPUPolicy(value longhornv1beta2.CPUManagerPolicy) *NodeStatusApplyConfiguration {
+	b.CPUPolicy = &value
 	return b
 }

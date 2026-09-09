@@ -25,6 +25,10 @@ type RecurringJob struct {
 
 	Retain int64 `json:"retain,omitempty" yaml:"retain,omitempty"`
 
+	RetainAge string `json:"retainAge,omitempty" yaml:"retain_age,omitempty"`
+
+	RetentionPolicy string `json:"retentionPolicy,omitempty" yaml:"retention_policy,omitempty"`
+
 	Task string `json:"task,omitempty" yaml:"task,omitempty"`
 }
 

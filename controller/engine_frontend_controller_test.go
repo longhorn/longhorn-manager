@@ -372,7 +372,7 @@ func newTestEngineFrontendController(
 	informerFactories *util.InformerFactories,
 	controllerID string,
 ) (*EngineFrontendController, error) {
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	efc, err := NewEngineFrontendController(
 		logrus.StandardLogger(),

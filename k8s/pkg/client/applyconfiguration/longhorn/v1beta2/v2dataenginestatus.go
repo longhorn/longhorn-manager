@@ -21,7 +21,8 @@ package v1beta2
 // V2DataEngineStatusApplyConfiguration represents a declarative configuration of the V2DataEngineStatus type for use
 // with apply.
 type V2DataEngineStatusApplyConfiguration struct {
-	CPUMask *string `json:"cpuMask,omitempty"`
+	CPUMask       *string `json:"cpuMask,omitempty"`
+	CPUCoreNumber *int64  `json:"cpuCoreNumber,omitempty"`
 	// InterruptModeEnabled indicates whether the V2 data engine is running in
 	// interrupt mode (true) or polling mode (false). Set by Longhorn manager;
 	// read-only to users.
@@ -39,6 +40,14 @@ func V2DataEngineStatus() *V2DataEngineStatusApplyConfiguration {
 // If called multiple times, the CPUMask field is set to the value of the last call.
 func (b *V2DataEngineStatusApplyConfiguration) WithCPUMask(value string) *V2DataEngineStatusApplyConfiguration {
 	b.CPUMask = &value
+	return b
+}
+
+// WithCPUCoreNumber sets the CPUCoreNumber field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CPUCoreNumber field is set to the value of the last call.
+func (b *V2DataEngineStatusApplyConfiguration) WithCPUCoreNumber(value int64) *V2DataEngineStatusApplyConfiguration {
+	b.CPUCoreNumber = &value
 	return b
 }
 

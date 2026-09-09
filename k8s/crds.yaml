@@ -1056,6 +1056,14 @@ spec:
                 format: date-time
                 nullable: true
                 type: string
+              linkedCloneSourceSnapshot:
+                description: The source snapshot of the backed up volume, set only
+                  when it was a linked clone.
+                type: string
+              linkedCloneSourceVolume:
+                description: The source volume of the backed up volume, set only when
+                  it was a linked clone.
+                type: string
               messages:
                 additionalProperties:
                   type: string
@@ -1175,6 +1183,13 @@ spec:
                 type: boolean
               nodeID:
                 type: string
+              nvmeTcpNrIoQueues:
+                description: |-
+                  nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+                  creates when connecting the blockdev frontend over NVMe-TCP.
+                  0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+                  Takes effect on (re)attach.
+                type: integer
               salvageRequested:
                 type: boolean
               size:
@@ -1915,6 +1930,20 @@ spec:
                 properties:
                   v2:
                     properties:
+                      cpuIsolationEnabled:
+                        description: |-
+                          CPUIsolationEnabled overrides the cluster-wide
+                          data-engine-cpu-isolation-enabled setting for this instance manager.
+                          "true"  -> pass --enable-irq-affinity and --enable-workqueue-affinity
+                                     to start-spdk-tgt (steer host IRQs and unbound kernel
+                                     workqueues away from the SPDK reactor CPUs).
+                          "false" -> do not pass the flags.
+                          ""      -> inherit the global setting value.
+                        enum:
+                        - ""
+                        - "true"
+                        - "false"
+                        type: string
                       cpuMask:
                         type: string
                     type: object
@@ -1996,6 +2025,9 @@ spec:
                 properties:
                   v2:
                     properties:
+                      cpuCoreNumber:
+                        format: int64
+                        type: integer
                       cpuMask:
                         type: string
                       interruptModeEnabled:
@@ -2232,6 +2264,154 @@ spec:
                   type: object
                 nullable: true
                 type: object
+              instanceShardGroups:
+                additionalProperties:
+                  properties:
+                    spec:
+                      properties:
+                        dataEngine:
+                          type: string
+                        name:
+                          type: string
+                      type: object
+                    status:
+                      properties:
+                        activePath:
+                          type: string
+                        conditions:
+                          additionalProperties:
+                            type: boolean
+                          nullable: true
+                          type: object
+                        endpoint:
+                          type: string
+                        errorMsg:
+                          type: string
+                        frontend:
+                          type: string
+                        listen:
+                          type: string
+                        paths:
+                          items:
+                            properties:
+                              anaState:
+                                type: string
+                              engineName:
+                                type: string
+                              nguid:
+                                type: string
+                              nqn:
+                                type: string
+                              targetIP:
+                                type: string
+                              targetPort:
+                                type: integer
+                            type: object
+                          type: array
+                        portEnd:
+                          format: int32
+                          type: integer
+                        portStart:
+                          format: int32
+                          type: integer
+                        preferredPath:
+                          type: string
+                        resourceVersion:
+                          format: int64
+                          type: integer
+                        state:
+                          type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
+                        type:
+                          type: string
+                        ublkID:
+                          format: int32
+                          type: integer
+                        uuid:
+                          type: string
+                      type: object
+                  type: object
+                nullable: true
+                type: object
+              instanceShards:
+                additionalProperties:
+                  properties:
+                    spec:
+                      properties:
+                        dataEngine:
+                          type: string
+                        name:
+                          type: string
+                      type: object
+                    status:
+                      properties:
+                        activePath:
+                          type: string
+                        conditions:
+                          additionalProperties:
+                            type: boolean
+                          nullable: true
+                          type: object
+                        endpoint:
+                          type: string
+                        errorMsg:
+                          type: string
+                        frontend:
+                          type: string
+                        listen:
+                          type: string
+                        paths:
+                          items:
+                            properties:
+                              anaState:
+                                type: string
+                              engineName:
+                                type: string
+                              nguid:
+                                type: string
+                              nqn:
+                                type: string
+                              targetIP:
+                                type: string
+                              targetPort:
+                                type: integer
+                            type: object
+                          type: array
+                        portEnd:
+                          format: int32
+                          type: integer
+                        portStart:
+                          format: int32
+                          type: integer
+                        preferredPath:
+                          type: string
+                        resourceVersion:
+                          format: int64
+                          type: integer
+                        state:
+                          type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
+                        type:
+                          type: string
+                        ublkID:
+                          format: int32
+                          type: integer
+                        uuid:
+                          type: string
+                      type: object
+                  type: object
+                nullable: true
+                type: object
               ip:
                 type: string
               ownerID:
@@ -2385,6 +2565,8 @@ spec:
                   type: object
                 nullable: true
                 type: array
+              cpuPolicy:
+                type: string
               diskStatus:
                 additionalProperties:
                   properties:
@@ -2682,10 +2864,20 @@ spec:
       jsonPath: .spec.cron
       name: Cron
       type: string
+    - description: Whether snapshots/backups are retained based on count ("count-based")
+        or age ("age-based")
+      jsonPath: .spec.retentionPolicy
+      name: RetentionPolicy
+      type: string
     - description: The number of snapshots/backups to keep for the volume
       jsonPath: .spec.retain
-      name: Retain
+      name: RetainCount
       type: integer
+    - description: Snapshots/backups older than this duration are cleaned up when
+        the retention policy is "age-based"
+      jsonPath: .spec.retainAge
+      name: RetainAge
+      type: string
     - description: The concurrent job to run by each cron job
       jsonPath: .spec.concurrency
       name: Concurrency
@@ -2750,8 +2942,34 @@ spec:
                   Support parameters: "full-backup-interval", "volume-backup-policy".
                 type: object
               retain:
-                description: The retain count of the snapshot/backup.
+                description: |-
+                  The retain count of the snapshot/backup.
+                  Retain represents the number of snapshots/backups to retain and only when the retention policy is "count-based".
                 type: integer
+              retainAge:
+                description: |-
+                  The retention age of the snapshot/backup, specified as a Go duration string,
+                  such as "10m", "24h", or "8760h". Note that Go durations have no day or year unit,
+                  so a day is "24h". Snapshots/backups older than this are cleaned up by the recurring job.
+                  Only takes effect when the retention policy is "age-based".
+                  If the retention policy is "age-based", this value is 0s, the recurring job will not start.
+                type: string
+                x-kubernetes-validations:
+                - message: retainAge must be a positive duration
+                  rule: '!self.startsWith(''-'')'
+              retentionPolicy:
+                default: count-based
+                description: |-
+                  The retention policy that determines whether the recurring job cleans up
+                  snapshots/backups based on their count or age. Can be "count-based" or
+                  "age-based". The two policies work independently: "count-based" (the default)
+                  retains the configured number of newest snapshots/backups and ignores
+                  RetainAge, while "age-based" retains snapshots/backups no older than RetainAge
+                  and ignores Retain.
+                enum:
+                - count-based
+                - age-based
+                type: string
               task:
                 description: |-
                   The recurring job task.
@@ -2916,6 +3134,11 @@ spec:
                   compared to LastFailedAt to help prevent dangerous replica deletion in some corner cases. LastHealthyAt may be
                   later than the corresponding entry in an engine's replicaTransitionTimeMap because it is set when the volume
                   controller acknowledges the change.
+                type: string
+              linkedCloneSrcReplicaName:
+                description: |-
+                  LinkedCloneSrcReplicaName is the name of the src replica this clone replica is parented to.
+                  Immutable once set. Non-empty only for linked-clone replicas.
                 type: string
               logRequested:
                 type: boolean
@@ -3095,6 +3318,429 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels: {{- include "longhorn.labels" . | nindent 4 }}
     longhorn-manager: ""
+  name: shardgroups.longhorn.io
+spec:
+  group: longhorn.io
+  names:
+    kind: ShardGroup
+    listKind: ShardGroupList
+    plural: shardgroups
+    shortNames:
+    - lhsg
+    singular: shardgroup
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The volume that owns this ShardGroup
+      jsonPath: .spec.volumeName
+      name: Volume
+      type: string
+    - description: The aggregate health state of the EC array
+      jsonPath: .status.state
+      name: State
+      type: string
+    - description: The node hosting the ShardGroup process (typically co-located with
+        the engine)
+      jsonPath: .spec.nodeID
+      name: Node
+      type: string
+    - description: The number of failed slots
+      jsonPath: .status.failedCount
+      name: Failed
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: ShardGroup is where Longhorn stores ShardGroup object.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ShardGroupSpec defines the desired state of the Longhorn
+              ShardGroup
+            properties:
+              creationSize:
+                description: |-
+                  CreationSize is the volume size in bytes when the lvstore is first
+                  created. The lvstore metadata region is sized from it and never grows,
+                  so in-place expansion is limited to EcLvstoreMaxGrowthFactor (10x) of
+                  this size. Zero means the lvstore does not exist yet; the creation cap
+                  applies instead. Immutable once set.
+                format: int64
+                type: integer
+                x-kubernetes-validations:
+                - message: CreationSize is immutable once set
+                  rule: oldSelf == 0 || self == oldSelf
+              dataChunks:
+                description: DataChunks is the k parameter of the EC array. Immutable
+                  after creation.
+                minimum: 1
+                type: integer
+              nodeID:
+                description: |-
+                  NodeID identifies the node hosting the long-lived ShardGroup process that owns the
+                  EC volume's bdev_ec, lvol store, head lvol, and NVMe-oF export. It is typically equal
+                  to Engine.Spec.NodeID for engine-process co-location. The Volume controller is the
+                  sole writer and sets this field at first attach. NodeID is NOT cleared on volume
+                  detach (the ShardGroup process keeps running across detach to preserve the lvstore
+                  and head lvol on the encoded shard blocks for fast re-attach); it only changes on
+                  engine-node failover or volume deletion.
+                type: string
+              parityChunks:
+                description: |-
+                  ParityChunks is the m parameter of the EC array. The ShardGroup tolerates up to m
+                  simultaneous shard failures. Immutable after creation.
+                minimum: 1
+                type: integer
+              stripSizeKB:
+                description: |-
+                  StripSizeKB is the EC chunk size in KiB. Must be a power of two in the range [4, 1024].
+                  Immutable after creation.
+                maximum: 1024
+                minimum: 4
+                type: integer
+              volumeName:
+                description: VolumeName is the name of the owning Volume CR. Immutable
+                  after creation.
+                type: string
+            type: object
+          status:
+            description: ShardGroupStatus defines the observed state of the Longhorn
+              ShardGroup
+            properties:
+              conditions:
+                description: |-
+                  Conditions holds the latest observations of the ShardGroup's state, such as a
+                  degraded read that returned EIO.
+                items:
+                  properties:
+                    lastProbeTime:
+                      description: Last time we probed the condition.
+                      type: string
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another.
+                      type: string
+                    message:
+                      description: Human-readable message indicating details about
+                        last transition.
+                      type: string
+                    reason:
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
+                      type: string
+                    status:
+                      description: |-
+                        Status is the status of the condition.
+                        Can be True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type is the type of the condition.
+                      type: string
+                  type: object
+                nullable: true
+                type: array
+              ecShardAddressMap:
+                additionalProperties:
+                  type: string
+                description: |-
+                  ECShardAddressMap maps shard slot index (as string) to the NVMe-oF address ("ip:port")
+                  of each healthy shard instance (ShardStateNormal with a non-empty StorageIP and Port).
+                  It is the base-bdev list for the ShardGroup process's EC array, and acts as the readiness
+                  gate (together with every Shard CR being in ShardStateNormal) before the ShardGroup
+                  process is provisioned.
+                nullable: true
+                type: object
+              evictingSlots:
+                description: |-
+                  EvictingSlots is the ordered list of slot indices currently in the eviction
+                  pipeline (old Shard CR deleted, replacement not yet rebuilt). Tracked in
+                  status so VolumeEvictionController can observe progress without annotation parsing.
+                items:
+                  type: integer
+                nullable: true
+                type: array
+              failedCount:
+                description: |-
+                  FailedCount is the number of slots currently in the failed state. Slots being replaced
+                  (ShardStateReplacing) are not counted; an active rebuild is tracked separately via
+                  RebuildInProgress.
+                type: integer
+              growInProgress:
+                description: GrowInProgress indicates whether a capacity expansion
+                  is currently running.
+                type: boolean
+              headLvolUUID:
+                description: |-
+                  HeadLvolUUID is the UUID of the head lvol on the ShardGroup-process-owned lvol
+                  store. Surfaced for observability and debugging only.
+                type: string
+              instanceManagerName:
+                description: |-
+                  InstanceManagerName is the InstanceManager currently hosting the ShardGroup process,
+                  set during provisioning and cleared on teardown. During a re-bind to a new node it may
+                  still reference the previous InstanceManager until teardown completes, so consumers must
+                  validate it against Spec.NodeID before trusting the endpoint above.
+                type: string
+              intentionalDeleteSlots:
+                description: |-
+                  IntentionalDeleteSlots is the list of slot indices whose old Shard CR was
+                  deleted intentionally (admin kubectl delete, eviction, drain). The replacement
+                  Shard CR's failure-recovery debounce is bypassed for these slots so the
+                  replace+rebuild sequence runs immediately rather than after the full
+                  replica-replenishment-wait-interval. Cleared once the replacement reaches
+                  ShardStateNormal with StorageIP set, and defensively cleared on ShardGroup
+                  process re-bind.
+                items:
+                  type: integer
+                nullable: true
+                type: array
+              lvstoreUUID:
+                description: |-
+                  LvstoreUUID is reserved for the UUID of the lvol store created on bdev_ec inside the
+                  ShardGroup process. It is currently unpopulated: the ShardGroup instance does not surface
+                  the lvstore UUID over the instance-manager proto yet. Kept for forward-compatible
+                  observability; not on the engine data path.
+                type: string
+              nqn:
+                description: NQN is the NVMe-oF subsystem NQN of the ShardGroup process's
+                  exposed head lvol.
+                type: string
+              ownerID:
+                description: OwnerID is the ID of the node that owns this ShardGroup.
+                type: string
+              port:
+                description: Port is the NVMe-oF port allocated for the ShardGroup
+                  process's exposed head lvol.
+                format: int32
+                type: integer
+              processState:
+                description: ProcessState is the runtime state of the ShardGroup process
+                  owned by this CR.
+                type: string
+              rebuildInProgress:
+                description: RebuildInProgress indicates whether a background shard
+                  rebuild is currently running.
+                type: boolean
+              scrubInProgress:
+                description: ScrubInProgress indicates whether a background scrub
+                  is currently running.
+                type: boolean
+              shardRefs:
+                description: ShardRefs is an ordered list of Shard CR names, where
+                  the list index equals the EC slot index.
+                items:
+                  type: string
+                nullable: true
+                type: array
+              state:
+                description: State is the aggregate health state of the EC array.
+                enum:
+                - healthy
+                - degraded
+                - offline
+                - rebuilding
+                - growing
+                - ""
+                type: string
+              storageIP:
+                description: |-
+                  StorageIP is the storage-network IP of the InstanceManager pod hosting the ShardGroup
+                  process. Combined with Port and NQN, it forms the NVMe-oF endpoint that an EC volume's
+                  engine attaches to.
+                type: string
+              wibDirtyRegion:
+                description: WIBDirtyRegion is the number of dirty WIB regions reported
+                  by the EC bdev.
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  labels: {{- include "longhorn.labels" . | nindent 4 }}
+    longhorn-manager: ""
+  name: shards.longhorn.io
+spec:
+  group: longhorn.io
+  names:
+    kind: Shard
+    listKind: ShardList
+    plural: shards
+    shortNames:
+    - lhsd
+    singular: shard
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The ShardGroup that owns this Shard
+      jsonPath: .spec.shardGroupName
+      name: ShardGroup
+      type: string
+    - description: The EC slot index of this Shard
+      jsonPath: .spec.slotIndex
+      name: Slot
+      type: integer
+    - description: The node that the shard instance runs on
+      jsonPath: .spec.nodeID
+      name: Node
+      type: string
+    - description: The health state of this shard slot
+      jsonPath: .status.state
+      name: State
+      type: string
+    - description: The EC role of this shard slot (data or parity)
+      jsonPath: .status.role
+      name: Role
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: Shard is where Longhorn stores Shard object.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ShardSpec defines the desired state of the Longhorn Shard
+            properties:
+              diskPath:
+                description: DiskPath is the path of the disk that hosts the shard
+                  lvol.
+                type: string
+              diskUUID:
+                description: DiskUUID is the UUID of the disk that hosts the shard
+                  lvol.
+                type: string
+              evictionRequested:
+                description: |-
+                  EvictionRequested indicates this shard should be relocated to a different node or disk.
+                  Set by the node controller when the shard's node is being drained or its disk is evicted.
+                type: boolean
+              nodeID:
+                description: NodeID is the node where this shard's lvol resides and
+                  its NVMe-oF target runs.
+                type: string
+              shardGroupName:
+                description: ShardGroupName is the name of the owning ShardGroup CR.
+                  Immutable after creation.
+                type: string
+              size:
+                description: |-
+                  Size is the shard lvol size in bytes. Set by the ShardGroup controller at creation time
+                  and used for idempotent reconciliation.
+                format: int64
+                type: string
+              slotIndex:
+                description: |-
+                  SlotIndex is the zero-based position of this shard in the EC base-bdev array.
+                  Determines the shard's role: indices 0..k-1 are DATA, k..k+m-1 are PARITY.
+                  Immutable after creation.
+                minimum: 0
+                type: integer
+            type: object
+          status:
+            description: ShardStatus defines the observed state of the Longhorn Shard
+            properties:
+              lastFailureTimestamp:
+                description: LastFailureTimestamp is the RFC3339 timestamp of the
+                  most recent shard failure.
+                type: string
+              ownerID:
+                description: OwnerID is the ID of the node that owns this Shard.
+                type: string
+              port:
+                description: Port is the NVMe-oF port of the shard's target export.
+                format: int32
+                type: integer
+              rebuildProgress:
+                description: RebuildProgress is the rebuild completion percentage
+                  (0-100).
+                type: integer
+              replaceTriggered:
+                description: |-
+                  ReplaceTriggered is set to true after shard replacement has been initiated, to prevent
+                  re-issuing the replace command on subsequent cycles while SPDK advances the slot state.
+                  Cleared when the slot state transitions away from Failed.
+                type: boolean
+              role:
+                description: |-
+                  Role is the EC role of this slot (data or parity). Derived from SlotIndex and the parent
+                  ShardGroup's DataChunks; stored here for informational purposes only.
+                enum:
+                - data
+                - parity
+                - ""
+                type: string
+              state:
+                description: State is the health state of this EC shard slot.
+                enum:
+                - normal
+                - failed
+                - replacing
+                - ""
+                type: string
+              storageIP:
+                description: |-
+                  StorageIP is the IP address of the NVMe-oF target exported by the shard's InstanceManager.
+                  Populated after the shard instance is running.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  labels: {{- include "longhorn.labels" . | nindent 4 }}
+    longhorn-manager: ""
   name: sharemanagers.longhorn.io
 spec:
   group: longhorn.io
@@ -3172,6 +3818,280 @@ spec:
               state:
                 description: The state of the share manager resource
                 type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  labels: {{- include "longhorn.labels" . | nindent 4 }}
+    longhorn-manager: ""
+  name: snapshotgroups.longhorn.io
+spec:
+  group: longhorn.io
+  names:
+    kind: SnapshotGroup
+    listKind: SnapshotGroupList
+    plural: snapshotgroups
+    shortNames:
+    - lhsnapg
+    singular: snapshotgroup
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The lifecycle phase of the group
+      jsonPath: .status.phase
+      name: Phase
+      type: string
+    - description: True when the group is Ready and every member is still usable
+      jsonPath: .status.readyToUse
+      name: ReadyToUse
+      type: boolean
+    - description: The latest member creation time, set when the group becomes Ready
+      jsonPath: .status.creationTime
+      name: CreationTime
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: SnapshotGroup is the Schema for the snapshotgroups API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              SnapshotGroupSpec defines the desired state of the Longhorn SnapshotGroup.
+              The whole spec is immutable after creation: a group is a point-in-time
+              request, so changing members later has no meaning.
+            properties:
+              deadlineSeconds:
+                default: 300
+                description: |-
+                  DeadlineSeconds is the deadline for taking every member snapshot,
+                  measured from the group's metadata.creationTimestamp. When the field is
+                  omitted, the CRD default applies. Go clients cannot omit the field: an
+                  unset field arrives as 0, and the mutating webhook replaces the 0 with
+                  the default.
+                format: int64
+                maximum: 3600
+                minimum: 10
+                type: integer
+              labels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Labels are engine snapshot labels applied to every member (Snapshot
+                  spec.labels). They are not visible to Kubernetes label selectors.
+                  Reserved recurring-job label keys are rejected at admission.
+                nullable: true
+                type: object
+              members:
+                description: |-
+                  Members is the fixed member set, resolved from Volumes or VolumeSelector
+                  and stamped by the mutating webhook at admission. It may not be set by
+                  the user.
+                items:
+                  description: |-
+                    SnapshotGroupMember identifies one member of the group: the volume and the
+                    name of its member Snapshot CR, generated at admission.
+                  properties:
+                    snapshotName:
+                      type: string
+                    volumeName:
+                      type: string
+                  required:
+                  - snapshotName
+                  - volumeName
+                  type: object
+                nullable: true
+                type: array
+              volumeSelector:
+                description: |-
+                  VolumeSelector selects the member volumes by their labels. Exactly one of
+                  Volumes or VolumeSelector may be set at creation.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              volumes:
+                description: |-
+                  Volumes explicitly lists the member volumes. Exactly one of Volumes or
+                  VolumeSelector may be set at creation; the mutating webhook resolves the
+                  selection into Members at admission.
+                items:
+                  type: string
+                nullable: true
+                type: array
+            type: object
+          status:
+            description: SnapshotGroupStatus defines the observed state of the Longhorn
+              SnapshotGroup
+            properties:
+              conditions:
+                description: |-
+                  Conditions holds the latest observations of the SnapshotGroup's state,
+                  such as Degraded.
+                items:
+                  properties:
+                    lastProbeTime:
+                      description: Last time we probed the condition.
+                      type: string
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another.
+                      type: string
+                    message:
+                      description: Human-readable message indicating details about
+                        last transition.
+                      type: string
+                    reason:
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
+                      type: string
+                    status:
+                      description: |-
+                        Status is the status of the condition.
+                        Can be True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type is the type of the condition.
+                      type: string
+                  type: object
+                nullable: true
+                type: array
+              creationTime:
+                description: |-
+                  CreationTime is the latest member creation time, set when the group
+                  becomes Ready.
+                type: string
+              error:
+                description: Error is set when the group fails (deadline, name collision).
+                type: string
+              members:
+                description: |-
+                  Members is the observed state of every member, one entry per spec
+                  member. It is the primary debugging signal: each entry carries the
+                  member's last error and creation time.
+                items:
+                  description: |-
+                    SnapshotGroupMemberStatus is the observed state of one member, mirrored from
+                    its Snapshot CR.
+                  properties:
+                    creationTime:
+                      description: |-
+                        CreationTime is the engine snapshot creation time, mirrored from the
+                        member Snapshot. It is kept when the member is later lost.
+                      type: string
+                    error:
+                      description: |-
+                        Error is the last member error. A member Snapshot CR that disappeared
+                        after the group became Ready is recorded with the synthetic error
+                        "member snapshot deleted"; an unusable member keeps its own mirrored
+                        error.
+                      type: string
+                    readyToUse:
+                      description: |-
+                        ReadyToUse mirrors the member Snapshot while the group is InProgress.
+                        After the group is Ready, a member later deleted or unusable is recorded
+                        here as false: member entries always tell the per-member truth.
+                      type: boolean
+                    snapshotName:
+                      type: string
+                    volumeName:
+                      type: string
+                  required:
+                  - snapshotName
+                  - volumeName
+                  type: object
+                nullable: true
+                type: array
+              ownerID:
+                description: OwnerID is the ID of the node that owns this SnapshotGroup.
+                type: string
+              phase:
+                description: |-
+                  Phase is the lifecycle phase: empty until the first reconcile, then
+                  InProgress -> Ready | Failed.
+                enum:
+                - InProgress
+                - Ready
+                - Failed
+                - ""
+                type: string
+              readyToUse:
+                description: |-
+                  ReadyToUse is true when the group is Ready and every member snapshot
+                  is still individually ready: group readiness is the AND of member
+                  readiness, following the Kubernetes VolumeGroupSnapshot convention. It
+                  drops to false when a member is lost or unusable after Ready and
+                  recovers once every member is whole again; the Degraded condition
+                  carries the per-member detail. A failed, partial, or empty group is
+                  never reported ready.
+                type: boolean
             type: object
         type: object
     served: true
@@ -3955,6 +4875,52 @@ spec:
                 - v1
                 - v2
                 type: string
+              dataLayout:
+                description: |-
+                  DataLayout declares the user's intended data layout (topology type, protection mode, and EC parameters).
+                  The entire struct is immutable after creation.
+                properties:
+                  dataChunks:
+                    description: |-
+                      DataChunks is the number of data chunks (k) in the EC array.
+                      Required when Type is sharded; must be 0 for replicated volumes.
+                    minimum: 0
+                    type: integer
+                  mode:
+                    description: |-
+                      Mode describes the specific data protection mechanism in use.
+                      Empty for V1 volumes where no SPDK-level mode applies.
+                    enum:
+                    - raid1
+                    - erasureCoding
+                    - ""
+                    type: string
+                  parityChunks:
+                    description: |-
+                      ParityChunks is the number of parity chunks (m) in the EC array.
+                      The volume tolerates up to m simultaneous disk failures.
+                      Required when Type is sharded; must be 0 for replicated volumes.
+                    minimum: 0
+                    type: integer
+                  stripSizeKB:
+                    description: |-
+                      StripSizeKB is the chunk size in KiB used by the EC bdev.
+                      Must be a power of two in the range [4, 1024].
+                      Required when Type is sharded; must be 0 for replicated volumes.
+                    minimum: 0
+                    type: integer
+                  type:
+                    description: Type describes how volume data is distributed across
+                      nodes.
+                    enum:
+                    - replicated
+                    - sharded
+                    - ""
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: DataLayout is immutable
+                  rule: self == oldSelf
               dataLocality:
                 enum:
                 - disabled
@@ -4014,6 +4980,13 @@ spec:
                   type: string
                 type: array
               numberOfReplicas:
+                type: integer
+              nvmeTcpNrIoQueues:
+                description: |-
+                  nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+                  creates when connecting the blockdev frontend over NVMe-TCP.
+                  0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+                  Takes effect on (re)attach.
                 type: integer
               offlineRebuilding:
                 description: |-
@@ -4107,6 +5080,27 @@ spec:
                 type: string
               staleReplicaTimeout:
                 type: integer
+              topologyRequirement:
+                description: |-
+                  TopologyRequirement lists the failure domains the volume's replicas must
+                  be scheduled in, derived from the CSI accessible topology at creation —
+                  the same failure domains as the PV nodeAffinity terms (a node must match
+                  at least one term). Empty means unconstrained.
+                items:
+                  description: |-
+                    VolumeTopologyTerm is one failure domain a volume's replicas may be
+                    scheduled in. A node satisfies the term when its zone and region match the
+                    non-empty fields.
+                  properties:
+                    region:
+                      type: string
+                    zone:
+                      type: string
+                  type: object
+                type: array
+                x-kubernetes-validations:
+                - message: TopologyRequirement is immutable
+                  rule: self == oldSelf
               ublkNumberOfQueue:
                 description: ublkNumberOfQueue controls the number of queues for ublk
                   frontend.

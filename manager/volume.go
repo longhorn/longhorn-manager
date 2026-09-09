@@ -166,7 +166,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	}
 
 	if spec.DataSource != "" {
-		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size); err != nil {
+		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size, spec.FromBackup); err != nil {
 			return nil, err
 		}
 	}
@@ -207,6 +207,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			Standby:                         spec.Standby,
 			DiskSelector:                    spec.DiskSelector,
 			NodeSelector:                    spec.NodeSelector,
+			TopologyRequirement:             spec.TopologyRequirement,
 			RevisionCounterDisabled:         spec.RevisionCounterDisabled,
 			SnapshotDataIntegrity:           spec.SnapshotDataIntegrity,
 			SnapshotMaxCount:                spec.SnapshotMaxCount,
@@ -218,6 +219,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaZoneSoftAntiAffinity:     spec.ReplicaZoneSoftAntiAffinity,
 			ReplicaDiskSoftAntiAffinity:     spec.ReplicaDiskSoftAntiAffinity,
 			DataEngine:                      spec.DataEngine,
+			DataLayout:                      spec.DataLayout,
 			FreezeFilesystemForSnapshot:     spec.FreezeFilesystemForSnapshot,
 			BackupTargetName:                backupTargetName,
 			OfflineRebuilding:               spec.OfflineRebuilding,
@@ -225,6 +227,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			RebuildConcurrentSyncLimit:      spec.RebuildConcurrentSyncLimit,
 			UblkQueueDepth:                  spec.UblkQueueDepth,
 			UblkNumberOfQueue:               spec.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues:               spec.NvmeTcpNrIoQueues,
 		},
 	}
 
@@ -244,6 +247,30 @@ func (m *VolumeManager) Delete(name string) error {
 	return nil
 }
 
+// validateVolumeHasScheduledReplica rejects attaching a volume that has no
+// scheduled replicas, since such a volume can never start.
+func (m *VolumeManager) validateVolumeHasScheduledReplica(v *longhorn.Volume) error {
+	// Sharded volumes place shards instead of replicas.
+	if v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded {
+		return nil
+	}
+	// Strict-local and best-effort data locality want a replica on the node the
+	// volume attaches to, so replicas stay unscheduled until the volume is attached.
+	if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal ||
+		v.Spec.DataLocality == longhorn.DataLocalityBestEffort {
+		return nil
+	}
+	// One scheduled replica is enough to keep a degraded volume attachable.
+	hasScheduledReplica, err := m.ds.HasVolumeScheduledReplica(v.Name)
+	if err != nil {
+		return err
+	}
+	if !hasScheduledReplica {
+		return fmt.Errorf("volume %v has no scheduled replicas", v.Name)
+	}
+	return nil
+}
+
 func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attachedBy, attacherType, attachmentID string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", name, nodeID)
@@ -260,6 +287,10 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 
 	v, err = m.ds.GetVolume(name)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := m.validateVolumeHasScheduledReplica(v); err != nil {
 		return nil, err
 	}
 
@@ -960,6 +991,11 @@ func (m *VolumeManager) UpdateBackupCompressionMethod(name string, value string)
 		return nil, err
 	}
 
+	if v.Spec.BackupCompressionMethod == longhorn.BackupCompressionMethod(value) {
+		logrus.Debugf("Volume %v already has backup compression method set to %v", v.Name, value)
+		return v, nil
+	}
+
 	oldValue := v.Spec.BackupCompressionMethod
 	v.Spec.BackupCompressionMethod = longhorn.BackupCompressionMethod(value)
 
@@ -1183,7 +1219,7 @@ func (m *VolumeManager) UpdateReplicaDiskSoftAntiAffinity(name string, replicaDi
 	return v, nil
 }
 
-func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64) (err error) {
+func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64, fromBackup string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to verify data source")
 	}()
@@ -1198,7 +1234,12 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 		if err != nil {
 			return err
 		}
-		if requestSize != srcVol.Spec.Size {
+		// A volume restored from a backup takes its size from that backup, which the
+		// volume mutator applies after this point, so there is no size to compare here
+		// yet. The source is only a lower bound for such a volume anyway, since a
+		// linked clone may have been expanded before it was backed up; the size is
+		// checked against the backup in the volume webhook instead.
+		if fromBackup == "" && requestSize != srcVol.Spec.Size {
 			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
 		}
 

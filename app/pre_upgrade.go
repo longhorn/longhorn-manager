@@ -1,11 +1,12 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
@@ -26,36 +27,37 @@ const (
 	PreUpgradeEventer = "longhorn-pre-upgrade"
 )
 
-func PreUpgradeCmd() cli.Command {
-	return cli.Command{
+func PreUpgradeCmd() *cli.Command {
+	return &cli.Command{
 		Name: "pre-upgrade",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:     FlagNamespace,
-				EnvVar:   types.EnvPodNamespace,
+				Sources:  cli.EnvVars(types.EnvPodNamespace),
 				Required: true,
 				Usage:    "Specify Longhorn namespace",
 			},
 		},
-		Action: func(c *cli.Context) {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			logrus.Info("Running pre-upgrade...")
 			defer logrus.Info("Completed pre-upgrade.")
 
-			if err := preUpgrade(c); err != nil {
+			if err := preUpgrade(cmd); err != nil {
 				logrus.WithError(err).Fatalf("Failed to run pre-upgrade")
 			}
+			return nil
 		},
 	}
 }
 
-func preUpgrade(c *cli.Context) error {
-	namespace := c.String(FlagNamespace)
+func preUpgrade(cmd *cli.Command) error {
+	namespace := cmd.String(FlagNamespace)
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
+	config, err := clientcmd.BuildConfigFromFlags("", cmd.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}

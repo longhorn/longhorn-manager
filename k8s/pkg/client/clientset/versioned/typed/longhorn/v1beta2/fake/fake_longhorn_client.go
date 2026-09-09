@@ -92,12 +92,24 @@ func (c *FakeLonghornV1beta2) Settings(namespace string) v1beta2.SettingInterfac
 	return newFakeSettings(c, namespace)
 }
 
+func (c *FakeLonghornV1beta2) Shards(namespace string) v1beta2.ShardInterface {
+	return newFakeShards(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) ShardGroups(namespace string) v1beta2.ShardGroupInterface {
+	return newFakeShardGroups(c, namespace)
+}
+
 func (c *FakeLonghornV1beta2) ShareManagers(namespace string) v1beta2.ShareManagerInterface {
 	return newFakeShareManagers(c, namespace)
 }
 
 func (c *FakeLonghornV1beta2) Snapshots(namespace string) v1beta2.SnapshotInterface {
 	return newFakeSnapshots(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) SnapshotGroups(namespace string) v1beta2.SnapshotGroupInterface {
+	return newFakeSnapshotGroups(c, namespace)
 }
 
 func (c *FakeLonghornV1beta2) SupportBundles(namespace string) v1beta2.SupportBundleInterface {

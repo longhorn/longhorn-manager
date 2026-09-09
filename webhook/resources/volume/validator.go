@@ -2,13 +2,13 @@ package volume
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -16,13 +16,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	wcommon "github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -48,6 +50,7 @@ func (v *volumeValidator) Resource() admission.Resource {
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
 			admissionregv1.Update,
+			admissionregv1.Delete,
 		},
 	}
 }
@@ -78,6 +81,9 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
 	}
 
+	if err := validateNvmeTcpNrIoQueues(volume.Spec.NvmeTcpNrIoQueues, volume.Spec.DataEngine); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 	if err := validateUblkNumberOfQueue(volume.Spec.UblkNumberOfQueue); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
@@ -103,6 +109,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if err := types.ValidateReplicaZoneSoftAntiAffinity(volume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
+	}
+
+	if err := validateTopologyZonePin(volume); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
@@ -150,11 +160,16 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	if types.IsDataEngineV1(volume.Spec.DataEngine) && volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
 		return werror.NewInvalidError(fmt.Sprintf("BUG: v1 data engine does not support clone mode %v", longhorn.CloneModeLinkedClone), ".spec.cloneMode")
 	}
+	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		if err := v.validateLinkedCloneInstanceManagerVersion(volume); err != nil {
+			return err
+		}
+		if err := v.validateLinkedCloneSize(volume); err != nil {
+			return err
+		}
+	}
 
 	if err := verifyVolumeDataSource(v.ds, volume); err != nil {
-		return err
-	}
-	if err := validateRecurringJobLabels(volume); err != nil {
 		return err
 	}
 
@@ -182,6 +197,18 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 			err := errors.Wrapf(err, "can not create volume with current engine image that doesn't support disable revision counter")
 			return werror.NewInvalidError(err.Error(), "")
 		}
+	}
+
+	if err := validateDataLayout(volume.Spec.DataEngine, volume.Spec.DataLayout); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.dataLayout")
+	}
+
+	if err := validateShardedConstraints(volume); err != nil {
+		return err
+	}
+
+	if err := checkECCreationSizeCap(volume, volume.Spec.Size); err != nil {
+		return err
 	}
 
 	if err := datastore.CheckVolume(volume); err != nil {
@@ -234,10 +261,20 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
 	}
 
+	// spec.numberOfReplicas and spec.dataLocality stay mutable after create, so
+	// re-check the EC (sharded) constraints here to keep an update from breaking
+	// the invariants Create established.
+	if err := validateShardedConstraints(newVolume); err != nil {
+		return err
+	}
+
 	if err := validateUblkQueueDepth(newVolume.Spec.UblkQueueDepth); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
 	}
 
+	if err := validateNvmeTcpNrIoQueues(newVolume.Spec.NvmeTcpNrIoQueues, newVolume.Spec.DataEngine); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 	if err := validateUblkNumberOfQueue(newVolume.Spec.UblkNumberOfQueue); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
@@ -262,6 +299,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
+	if err := validateTopologyZonePin(newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
+	}
+
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(newVolume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
 	}
@@ -274,9 +315,30 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
 	}
 
+	if err := validateImmutable(".spec.topologyRequirement", oldVolume.Spec.TopologyRequirement, newVolume.Spec.TopologyRequirement); err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.topologyRequirement")
+	}
+
 	if oldVolume.Spec.CloneMode != longhorn.CloneModeNone {
 		if err := validateImmutable(".spec.cloneMode", oldVolume.Spec.CloneMode, newVolume.Spec.CloneMode); err != nil {
 			return werror.NewInvalidError(err.Error(), ".spec.cloneMode")
+		}
+	}
+
+	// Legacy linked-clone volumes only support attach, detach, and deletion.
+	// Block spec changes that would trigger incompatible operations.
+	if types.IsLegacyLinkedCloneVolume(oldVolume) {
+		if newVolume.Spec.NumberOfReplicas != oldVolume.Spec.NumberOfReplicas {
+			return werror.NewInvalidError("cannot change replica count for legacy linked-clone volumes", "spec.numberOfReplicas")
+		}
+		if newVolume.Spec.Size > oldVolume.Spec.Size {
+			return werror.NewInvalidError("cannot expand legacy linked-clone volumes", "spec.size")
+		}
+		if newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID {
+			return werror.NewInvalidError("cannot migrate legacy linked-clone volumes", "spec.migrationNodeID")
+		}
+		if err := validateNoNewRecurringJobLabels(oldVolume, newVolume); err != nil {
+			return err
 		}
 	}
 
@@ -338,6 +400,71 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
+
+		// Label LonghornLabelV2EncryptedVolumeWithLuksHeader is only supported for v2 encrypted volumes and immutable after creation.
+		// It is used to indicate that the LUKS2 header size is extended.
+		if oldVolume.Spec.Encrypted {
+			oldV2EncryptedVolumeWithLuksHeaderLabel := ""
+			newV2EncryptedVolumeWithLuksHeaderLabel := ""
+			if oldVolume.Labels != nil {
+				oldV2EncryptedVolumeWithLuksHeaderLabel = oldVolume.Labels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader]
+			}
+			if newVolume.Labels != nil {
+				newV2EncryptedVolumeWithLuksHeaderLabel = newVolume.Labels[types.LonghornLabelV2EncryptedVolumeWithLuksHeader]
+			}
+			if oldV2EncryptedVolumeWithLuksHeaderLabel != newV2EncryptedVolumeWithLuksHeaderLabel {
+				err := fmt.Errorf("changing %v label for volume %v is not supported", types.LonghornLabelV2EncryptedVolumeWithLuksHeader, oldVolume.Name)
+				return werror.NewInvalidError(err.Error(), "")
+			}
+		}
+	}
+
+	// Clone-related labels must be immutable once set, and must match spec.dataSource.
+	// Without this, removing or changing these labels would break the source-volume
+	// deletion guard (which relies on label-based lookups to find dependents).
+	if oldVolume.Spec.DataSource != "" {
+		cloneSrcVolLabelKey := types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)
+		cloneSrcSnapLabelKey := types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)
+
+		oldCloneSrcVol := ""
+		newCloneSrcVol := ""
+		if oldVolume.Labels != nil {
+			oldCloneSrcVol = oldVolume.Labels[cloneSrcVolLabelKey]
+		}
+		if newVolume.Labels != nil {
+			newCloneSrcVol = newVolume.Labels[cloneSrcVolLabelKey]
+		}
+		if oldCloneSrcVol != "" && newCloneSrcVol != oldCloneSrcVol {
+			return werror.NewInvalidError(
+				fmt.Sprintf("cannot change or remove label %v for volume %v: it must match spec.dataSource", cloneSrcVolLabelKey, oldVolume.Name), "")
+		}
+
+		oldCloneSrcSnap := ""
+		newCloneSrcSnap := ""
+		if oldVolume.Labels != nil {
+			oldCloneSrcSnap = oldVolume.Labels[cloneSrcSnapLabelKey]
+		}
+		if newVolume.Labels != nil {
+			newCloneSrcSnap = newVolume.Labels[cloneSrcSnapLabelKey]
+		}
+		if oldCloneSrcSnap != "" && newCloneSrcSnap != oldCloneSrcSnap {
+			return werror.NewInvalidError(
+				fmt.Sprintf("cannot change or remove label %v for volume %v: it must match spec.dataSource", cloneSrcSnapLabelKey, oldVolume.Name), "")
+		}
+	}
+
+	// The legacy-linked-clone label is immutable once set. Removing it would
+	// bypass the recurring-job and expansion guards for pre-entrypoint volumes.
+	legacyLabelKey := types.GetLonghornLabelKey(types.LonghornLabelLegacyLinkedClone)
+	if oldVolume.Labels != nil && oldVolume.Labels[legacyLabelKey] != "" {
+		newVal := ""
+		if newVolume.Labels != nil {
+			newVal = newVolume.Labels[legacyLabelKey]
+		}
+		if newVal != oldVolume.Labels[legacyLabelKey] {
+			return werror.NewInvalidError(
+				fmt.Sprintf("cannot change or remove label %v once set", legacyLabelKey), "metadata.labels")
+		}
 	}
 
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
@@ -368,16 +495,57 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if err := validateRecurringJobLabels(newVolume); err != nil {
-		return err
-	}
-
 	if err := validateSnapshotHashingRequestTime(oldVolume, newVolume); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.snapshotHashingRequestedAt")
 	}
 
 	if err := v.validateEncryptedVolMigrationEngineImage(oldVolume, newVolume); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.migrationNodeID")
+	}
+
+	if newVolume.Spec.NumberOfReplicas != oldVolume.Spec.NumberOfReplicas {
+		if err := v.validateLinkedCloneReplicaCountIncrease(newVolume); err != nil {
+			return err
+		}
+		if err := v.validateSourceVolumeReplicaCountDecrease(oldVolume, newVolume); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateShardedConstraints enforces the invariants that must hold for an EC
+// (sharded) volume for its whole lifetime. Both Create and Update call it so a
+// later update to a mutable field cannot slip past the create-time guards.
+func validateShardedConstraints(volume *longhorn.Volume) error {
+	if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+		return nil
+	}
+
+	if volume.Spec.NumberOfReplicas != 1 {
+		return werror.NewInvalidError("spec.numberOfReplicas must be 1 for EC (sharded) volumes; fault tolerance is provided by spec.dataLayout.parityChunks", "spec.numberOfReplicas")
+	}
+	if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
+		return werror.NewInvalidError("spec.dataLocality must be \"disabled\" for EC (sharded) volumes; data chunks are distributed across k+m nodes by design", "spec.dataLocality")
+	}
+	// The following features have no EC implementation in the initial release.
+	// Each is undefined behavior at runtime if allowed through, so reject at
+	// admission to turn silent breakage into a clear error.
+	if volume.Spec.Standby {
+		return werror.NewInvalidError("spec.standby is not supported for EC (sharded) volumes", "spec.standby")
+	}
+	if volume.Spec.DataSource != "" {
+		return werror.NewInvalidError("spec.dataSource is not supported for EC (sharded) volumes", "spec.dataSource")
+	}
+	if volume.Spec.FromBackup != "" {
+		return werror.NewInvalidError("spec.fromBackup is not supported for EC (sharded) volumes", "spec.fromBackup")
+	}
+	if volume.Spec.BackingImage != "" {
+		return werror.NewInvalidError("spec.backingImage is not supported for EC (sharded) volumes", "spec.backingImage")
+	}
+	if volume.Spec.Migratable {
+		return werror.NewInvalidError("spec.migratable is not supported for EC (sharded) volumes", "spec.migratable")
 	}
 
 	return nil
@@ -391,6 +559,12 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 	}
 	if newSize < oldSize && !newVolume.Status.ExpansionRequired {
 		return fmt.Errorf("shrinking volume %v size from %v to %v is not supported", newVolume.Name, oldSize, newSize)
+	}
+
+	if newVolume.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded && newSize > oldSize {
+		if err := v.validateECExpansionCeiling(newVolume, newSize); err != nil {
+			return err
+		}
 	}
 
 	replicaMap, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
@@ -408,6 +582,13 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 	}
 
 	for _, replica := range replicaMap {
+		// An empty DiskID means the replica has not been scheduled to a disk yet.
+		// This can happen for newly created volumes that have never been attached.
+		// Since there is no underlying disk filesystem to check for size compatibility,
+		// it is safe to skip the validation for these unscheduled replicas.
+		if replica.Spec.DiskID == "" {
+			continue
+		}
 		diskUUID := replica.Spec.DiskID
 		node, diskName, err := v.ds.GetReadyDiskNode(diskUUID)
 		if err != nil {
@@ -451,6 +632,69 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		return fmt.Errorf("PVC %v size should be expanded from %v to %v first", pvcName, pvcSpecValue.Value(), requestedSize.Value())
 	}
 
+	return nil
+}
+
+// validateECExpansionCeiling limits EC volume expansion to
+// EcLvstoreMaxGrowthFactor (10x) of ShardGroup.Spec.CreationSize, because the
+// lvstore metadata region is sized at creation and never grows. A zero
+// CreationSize (or missing CR) with no lvstore means the new size becomes the
+// creation size, so the creation cap applies instead. A zero CreationSize
+// with an existing lvstore is rejected: the ceiling cannot be checked.
+func (v *volumeValidator) validateECExpansionCeiling(volume *longhorn.Volume, newSize int64) error {
+	sg, err := v.ds.GetShardGroupRO(volume.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return checkECCreationSizeCap(volume, newSize)
+		}
+		return err
+	}
+	if sg.Spec.CreationSize == 0 {
+		// HeadLvolUUID set means the lvstore exists but its creation size was
+		// never recorded, so the growth ceiling cannot be checked. Fail
+		// closed rather than admit an expansion the metadata region may not
+		// support.
+		if sg.Status.HeadLvolUUID != "" {
+			return werror.NewInvalidError(fmt.Sprintf(
+				"volume %v cannot be expanded: its lvstore exists but the creation size is unknown; recreate the volume",
+				volume.Name), "spec.size")
+		}
+		return checkECCreationSizeCap(volume, newSize)
+	}
+	return checkECExpansionCeiling(volume.Name, sg.Spec.CreationSize, newSize)
+}
+
+// checkECCreationSizeCap rejects an EC (sharded) volume size larger than the
+// maximum size SPDK can create an lvstore for. Applies at creation and to
+// expansion before the ShardGroup exists; growth after that reuses the
+// metadata region sized at creation.
+func checkECCreationSizeCap(volume *longhorn.Volume, size int64) error {
+	if volume.Spec.DataLayout.Type != longhorn.VolumeDataLayoutTypeSharded {
+		return nil
+	}
+	if err := spdktypes.ValidateECCreationSize(size, volume.Spec.DataLayout.DataChunks, volume.Spec.DataLayout.StripSizeKB); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.size")
+	}
+	return nil
+}
+
+// checkECExpansionCeiling rejects newSize beyond
+// EcLvstoreMaxGrowthFactor * creationSize. Exactly the ceiling is allowed;
+// creationSize <= 0 means unknown and passes.
+func checkECExpansionCeiling(volumeName string, creationSize, newSize int64) error {
+	if creationSize <= 0 {
+		return nil
+	}
+	// Guard the multiply below; unreachable in practice since creation is
+	// capped at EcLvstoreMaxCreationSize.
+	if creationSize > math.MaxInt64/spdktypes.EcLvstoreMaxGrowthFactor {
+		return fmt.Errorf("volume %v ShardGroup creation size %v is invalid", volumeName, creationSize)
+	}
+	maxSize := creationSize * spdktypes.EcLvstoreMaxGrowthFactor
+	if newSize > maxSize {
+		return fmt.Errorf("volume %v expansion to %v exceeds the %vx in-place growth ceiling (creation size %v, max expandable size %v); recreate the volume with a larger size, as shard-group rebuild is not yet supported",
+			volumeName, newSize, spdktypes.EcLvstoreMaxGrowthFactor, creationSize, maxSize)
+	}
 	return nil
 }
 
@@ -508,10 +752,18 @@ func validateReplicaCount(cloneMode longhorn.CloneMode, dataLocality longhorn.Da
 			return werror.NewInvalidError(fmt.Sprintf("number of replica count should be 1 when data locality is %v", longhorn.DataLocalityStrictLocal), "")
 		}
 	}
-	if cloneMode == longhorn.CloneModeLinkedClone {
-		if replicaCount != 1 {
-			return werror.NewInvalidError(fmt.Sprintf("number of replica count must be 1 when clone mode %v", longhorn.CloneModeLinkedClone), "")
-		}
+	return nil
+}
+
+func validateNvmeTcpNrIoQueues(n int, dataEngine longhorn.DataEngineType) error {
+	if n == 0 {
+		return nil
+	}
+	if n < 1 || n > 128 {
+		return fmt.Errorf("NVMe-TCP number of I/O queues must be either 0 (meaning unspecified) or between 1 and 128. Got %d", n)
+	}
+	if !types.IsDataEngineV2(dataEngine) {
+		return fmt.Errorf("NVMe-TCP number of I/O queues is only supported by data engine v2. Got data engine %v", dataEngine)
 	}
 	return nil
 }
@@ -623,9 +875,193 @@ func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(oldVolume, new
 	return nil
 }
 
+// validateTopologyZonePin enforces the invariant that a volume pinned to a
+// single zone by its topology requirement has replicaZoneSoftAntiAffinity
+// enabled. Zone anti-affinity can never be satisfied within one zone, so any
+// other value would leave every replica beyond the first unschedulable
+// forever. The volume mutator fills enabled when the field is empty or
+// ignored, so this only rejects an explicit disabled.
+func validateTopologyZonePin(volume *longhorn.Volume) error {
+	if !types.IsTopologyZonePinned(volume.Spec.TopologyRequirement) {
+		return nil
+	}
+	if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityEnabled {
+		return fmt.Errorf("spec.replicaZoneSoftAntiAffinity must be %v for a volume pinned to a single zone by spec.topologyRequirement: zone anti-affinity cannot be satisfied within one zone (got %v)",
+			longhorn.ReplicaZoneSoftAntiAffinityEnabled, volume.Spec.ReplicaZoneSoftAntiAffinity)
+	}
+	return nil
+}
+
 func validateImmutable(field string, oldVal, newVal any) error {
 	if !apiequality.Semantic.DeepEqual(oldVal, newVal) {
 		return fmt.Errorf("%s is immutable (old=%+v, new=%+v)", field, oldVal, newVal)
+	}
+	return nil
+}
+
+// validateLinkedCloneInstanceManagerVersion rejects linked-clone volume creation
+// when any running V2 instance manager has a proxy API version below the
+// required minimum. This rejects creation during mixed-version rollouts.
+func (v *volumeValidator) validateLinkedCloneInstanceManagerVersion(vol *longhorn.Volume) error {
+	ims, err := v.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance managers while validating linked-clone volume %v", vol.Name)
+	}
+	hasRunning := false
+	for _, im := range ims {
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			continue
+		}
+		hasRunning = true
+		if im.Status.ProxyAPIVersion < engineapi.MinProxyAPIVersionForNReplicaLinkedClone {
+			return werror.NewForbiddenError(fmt.Sprintf(
+				"cannot create linked-clone volume %v: instance manager %v has proxy API version %d (need >= %d); upgrade all instance managers first",
+				vol.Name, im.Name, im.Status.ProxyAPIVersion, engineapi.MinProxyAPIVersionForNReplicaLinkedClone))
+		}
+	}
+	if !hasRunning {
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot create linked-clone volume %v: no running instance manager found", vol.Name))
+	}
+	return nil
+}
+
+// linkedCloneSourceSize returns the size a linked clone inherits from its source:
+// the source snapshot's RestoreSize, or the source volume's spec.size when no
+// snapshot is named. It fails when the size is not known yet, since the source
+// volume's current size is not a stand-in for an unsynced RestoreSize: the source
+// may have been expanded after the snapshot was taken.
+func linkedCloneSourceSize(ds *datastore.DataStore, dataSource longhorn.VolumeDataSource) (int64, error) {
+	srcVolName := types.GetVolumeName(dataSource)
+	if srcVolName == "" {
+		return 0, werror.NewInvalidError(fmt.Sprintf("cannot parse source volume name from dataSource %v", dataSource), ".spec.dataSource")
+	}
+
+	snapName := types.GetSnapshotName(dataSource)
+	if snapName == "" {
+		// The entrypoint snapshot is taken from the source volume as it stands now.
+		srcVol, err := ds.GetVolumeRO(srcVolName)
+		if err != nil {
+			return 0, werror.NewInvalidError(errors.Wrapf(err, "failed to get source volume %v", srcVolName).Error(), ".spec.dataSource")
+		}
+		return srcVol.Spec.Size, nil
+	}
+
+	snap, err := ds.GetSnapshotRO(snapName)
+	if err != nil {
+		return 0, werror.NewInvalidError(errors.Wrapf(err, "failed to get source snapshot %v", snapName).Error(), ".spec.dataSource")
+	}
+	if snap.Status.RestoreSize == 0 {
+		return 0, werror.NewInvalidError(fmt.Sprintf(
+			"source snapshot %v of volume %v has no restore size yet, please retry once it is synced",
+			snapName, srcVolName), ".spec.dataSource")
+	}
+	return snap.Status.RestoreSize, nil
+}
+
+// validateLinkedCloneSize rejects a linked-clone volume whose spec.size does not
+// match the size it will inherit from its source.
+func (v *volumeValidator) validateLinkedCloneSize(vol *longhorn.Volume) error {
+	// A restored volume's size is set from the backup by the mutator, so there is no
+	// user input left to check here.
+	if vol.Spec.FromBackup != "" {
+		return nil
+	}
+
+	expectedSize, err := linkedCloneSourceSize(v.ds, vol.Spec.DataSource)
+	if err != nil {
+		return err
+	}
+	if expectedSize > 0 && vol.Spec.Size != expectedSize {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"spec.size %d does not match source size %d; leave spec.size unset to inherit the correct size automatically",
+			vol.Spec.Size, expectedSize), ".spec.size")
+	}
+	return nil
+}
+
+// validateLinkedCloneReplicaCountIncrease rejects an attempt to raise the
+// replica count of a linked-clone volume above its source volume's replica count.
+func (v *volumeValidator) validateLinkedCloneReplicaCountIncrease(newVolume *longhorn.Volume) error {
+	if newVolume.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return nil
+	}
+	srcVolName := types.GetVolumeName(newVolume.Spec.DataSource)
+	if srcVolName == "" {
+		return nil
+	}
+	srcVolume, err := v.ds.GetVolumeRO(srcVolName)
+	if err != nil {
+		return werror.NewInternalError(errors.Wrapf(err, "failed to get source volume %v", srcVolName).Error())
+	}
+	if newVolume.Spec.NumberOfReplicas > srcVolume.Spec.NumberOfReplicas {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"cannot increase replica count of linked-clone volume %v to %v: exceeds source volume %v replica count %v",
+			newVolume.Name, newVolume.Spec.NumberOfReplicas, srcVolName, srcVolume.Spec.NumberOfReplicas,
+		), "spec.numberOfReplicas")
+	}
+	return nil
+}
+
+// validateSourceVolumeReplicaCountDecrease rejects an attempt to reduce the
+// replica count of a source volume when there are not enough free source
+// replicas to satisfy the requested decrease.
+func (v *volumeValidator) validateSourceVolumeReplicaCountDecrease(oldVolume, newVolume *longhorn.Volume) error {
+	decreaseBy := oldVolume.Spec.NumberOfReplicas - newVolume.Spec.NumberOfReplicas
+	if decreaseBy <= 0 {
+		return nil
+	}
+
+	cloneVolumes, err := v.ds.ListLinkedCloneVolumesBySourceVolumeRO(newVolume.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list linked-clone volumes for volume %v: %v", newVolume.Name, err))
+	}
+	if len(cloneVolumes) == 0 {
+		return nil
+	}
+
+	srcReplicas, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list replicas for volume %v: %v", newVolume.Name, err))
+	}
+
+	freeCount := 0
+	for _, srcReplica := range srcReplicas {
+		cloneReplicas, err := v.ds.ListLinkedCloneReplicasBySrcReplicaRO(srcReplica.Name)
+		if err != nil {
+			return werror.NewInternalError(fmt.Sprintf("failed to list linked-clone replicas for replica %v: %v", srcReplica.Name, err))
+		}
+		if len(cloneReplicas) == 0 {
+			freeCount++
+		}
+	}
+
+	if freeCount < decreaseBy {
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot decrease replica count of linked-clone source volume %v by %d: only %d of %d linked-clone source replicas are not backing linked-clone replicas",
+			newVolume.Name, decreaseBy, freeCount, len(srcReplicas),
+		))
+	}
+
+	for _, cloneVolume := range cloneVolumes {
+		if cloneVolume.Spec.NumberOfReplicas > newVolume.Spec.NumberOfReplicas {
+			return werror.NewInvalidError(fmt.Sprintf(
+				"cannot decrease linked-clone source volume %v to %d replicas: linked-clone volume %v requires %d replicas",
+				newVolume.Name, newVolume.Spec.NumberOfReplicas, cloneVolume.Name, cloneVolume.Spec.NumberOfReplicas),
+				"spec.numberOfReplicas")
+		}
+	}
+
+	return nil
+}
+
+func validateNoNewRecurringJobLabels(oldVolume, newVolume *longhorn.Volume) error {
+	for key := range newVolume.Labels {
+		if types.IsRecurringJobLabel(key) {
+			if oldVolume.Labels == nil || oldVolume.Labels[key] == "" {
+				return werror.NewInvalidError("cannot add recurring jobs to legacy linked-clone volumes (pre-entrypoint architecture)", "metadata.labels")
+			}
+		}
 	}
 	return nil
 }
@@ -645,53 +1081,48 @@ func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error
 	if vol.Spec.DataEngine != srcVol.Spec.DataEngine {
 		return werror.NewInvalidError(fmt.Sprintf("cannot clone volume with data engine %v into a volume with data engine %v", srcVol.Spec.DataEngine, vol.Spec.DataEngine), ".spec.dataSource")
 	}
-	if srcVol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-		return werror.NewInvalidError(fmt.Sprintf("cannot create a new volume from a linked-clone volume %v", srcVolName), ".spec.dataSource")
+	// If the source volume is itself a linked-clone, it must have completed cloning
+	// before it can serve as the source for another linked-clone volume.
+	if srcVol.Spec.CloneMode == longhorn.CloneModeLinkedClone &&
+		srcVol.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
+		return werror.NewInvalidError(
+			fmt.Sprintf("cannot use volume %v as linked-clone source: its own cloning is not yet completed (state: %v)",
+				srcVol.Name, srcVol.Status.CloneStatus.State), "spec.dataSource")
 	}
 	if vol.Spec.CloneMode != longhorn.CloneModeLinkedClone {
 		return nil
 	}
-	volumesRO, err := ds.ListVolumesRO()
-	if err != nil {
-		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
-	}
-	for _, v := range volumesRO {
-		if types.GetVolumeName(v.Spec.DataSource) == srcVolName && v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
-			return werror.NewInvalidError(fmt.Sprintf("BUG: there already exist a linked-cloned volume %v from the source volume %v", v.Name, srcVolName), ".spec.dataSource")
-		}
+	if vol.Spec.NumberOfReplicas > srcVol.Spec.NumberOfReplicas {
+		return werror.NewInvalidError(
+			fmt.Sprintf("linked-clone volume cannot have more replicas (%d) than its source volume (%d)",
+				vol.Spec.NumberOfReplicas, srcVol.Spec.NumberOfReplicas), "spec.numberOfReplicas")
 	}
 
 	return nil
 }
 
-func validateRecurringJobLabels(vol *longhorn.Volume) error {
-	if vol.Spec.CloneMode != longhorn.CloneModeLinkedClone {
-		return nil
-	}
-
-	metadata, err := meta.Accessor(vol)
-	if err != nil {
-		return err
-	}
-
-	labels := metadata.GetLabels()
-
-	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob)
-	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup)
-
-	jobLabels := []string{}
-	for label := range labels {
-		if !strings.HasPrefix(label, jobPrefix) &&
-			!strings.HasPrefix(label, groupPrefix) {
-			continue
+func validateDataLayout(dataEngine longhorn.DataEngineType, layout longhorn.VolumeDataLayout) error {
+	switch layout.Type {
+	case "", longhorn.VolumeDataLayoutTypeReplicated:
+		if layout.DataChunks != 0 || layout.ParityChunks != 0 || layout.StripSizeKB != 0 {
+			return fmt.Errorf("EC params (dataChunks, parityChunks, stripSizeKB) must be 0 for non-sharded volumes")
 		}
-		jobLabels = append(jobLabels, label)
+		if layout.Mode != "" && layout.Mode != longhorn.VolumeDataLayoutModeRaid1 {
+			return fmt.Errorf("spec.dataLayout.mode %v is not valid for non-sharded volumes", layout.Mode)
+		}
+	case longhorn.VolumeDataLayoutTypeSharded:
+		if !types.IsDataEngineV2(dataEngine) {
+			return fmt.Errorf("sharded data layout requires V2 data engine")
+		}
+		if layout.Mode != longhorn.VolumeDataLayoutModeErasureCoding {
+			return fmt.Errorf("spec.dataLayout.mode must be %v when type is %v", longhorn.VolumeDataLayoutModeErasureCoding, longhorn.VolumeDataLayoutTypeSharded)
+		}
+		if err := types.ValidateECParameters(layout.DataChunks, layout.ParityChunks, layout.StripSizeKB); err != nil {
+			return fmt.Errorf("spec.dataLayout: %v", err)
+		}
+	default:
+		return fmt.Errorf("invalid spec.dataLayout.type %v", layout.Type)
 	}
-
-	if len(jobLabels) > 0 {
-		return werror.NewInvalidError(fmt.Sprintf("cannot add recurring jobs to linked-clone volume: %+v ", jobLabels), ".metadata.label")
-	}
-
 	return nil
 }
 
@@ -741,5 +1172,33 @@ func (v *volumeValidator) validateEncryptedVolMigrationEngineImage(oldVolume *lo
 		return fmt.Errorf("cannot migratable volume %v with engine image %v that has CLI API version %v less than %v for encrypted volumes", newVolume.Name, engineImage, cliAPIVersion, lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize)
 	}
 
+	return nil
+}
+
+func (v *volumeValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
+	oldVolume, ok := oldObj.(*longhorn.Volume)
+	if !ok {
+		return werror.NewInvalidError("unexpected object type", "")
+	}
+
+	clones, err := v.ds.ListLinkedCloneVolumesBySourceVolumeRO(oldVolume.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list linked-clone volumes for volume %v: %v",
+			oldVolume.Name, err))
+	}
+	// Block deletion regardless of clone status: linked-clone replicas
+	// always co-locate with source replicas on the same disk and share
+	// parent snapshot data, so the source volume cannot be deleted
+	// independently even after cloning has completed.
+	if len(clones) > 0 {
+		cloneNames := make([]string, 0, len(clones))
+		for _, clone := range clones {
+			cloneNames = append(cloneNames, clone.Name)
+		}
+		sort.Strings(cloneNames)
+		return werror.NewForbiddenError(
+			fmt.Sprintf("cannot delete volume %v: it is the source of linked-clone volume(s) %v",
+				oldVolume.Name, cloneNames))
+	}
 	return nil
 }

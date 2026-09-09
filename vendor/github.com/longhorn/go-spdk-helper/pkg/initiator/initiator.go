@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/avast/retry-go/v4"
@@ -59,6 +60,13 @@ const (
 
 var (
 	idGenerator IDGenerator
+
+	// isUblkTargetCreated is a process-wide fast path so that once the singleton
+	// ublk target has been created we skip the extra UblkCreateTarget RPC on
+	// subsequent StartUblkInitiator calls. Correctness never depends on it: the
+	// create is idempotent (SPDK reports an existing target as JSON-RPC -32603
+	// "Device or resource busy"), so a stale flag only costs one extra RPC.
+	isUblkTargetCreated atomic.Bool
 )
 
 var errDeviceNotReady = errors.New("device is not a block device yet")
@@ -92,6 +100,9 @@ type NVMeTCPInfo struct {
 	TransportServiceID string
 	ControllerName     string
 	NamespaceName      string
+	// NrIoQueues limits the number of I/O queues the kernel initiator
+	// creates on connect (0 means unspecified, kernel default).
+	NrIoQueues int32
 }
 
 type UblkInfo struct {
@@ -205,7 +216,14 @@ func (i *Initiator) ConnectNVMeTCPTarget(ip, port, nqn string) (string, error) {
 		defer lock.Unlock()
 	}
 
-	return ConnectTarget(ip, port, nqn, i.executor)
+	return ConnectTargetWithNrIoQueues(ip, port, nqn, i.nrIoQueues(), i.executor)
+}
+
+func (i *Initiator) nrIoQueues() int32 {
+	if i.NVMeTCPInfo == nil {
+		return 0
+	}
+	return i.NVMeTCPInfo.NrIoQueues
 }
 
 // executeNVMeTCPPathOp validates initiator state, acquires the file lock, and
@@ -433,6 +451,14 @@ func (i *Initiator) resumeLinearDmDevice() error {
 }
 
 func (i *Initiator) replaceDmDeviceTarget() error {
+	deferredRemove, err := i.IsDeferredRemoveSet()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check if linear dm device has deferred-remove flag set for initiator %s", i.Name)
+	}
+	if deferredRemove {
+		i.logger.Warn("Trying to reuse the linear dm device that has deferred-remove flag set, the device will be removed after not busy")
+	}
+
 	suspended, err := i.IsSuspended()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check if linear dm device is suspended for initiator %s", i.Name)
@@ -497,7 +523,7 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 		i.logger.WithError(err).Warn("Failed to load existing NVMe/TCP path state before starting initiator")
 	}
 	if i.NVMeTCPInfo.TransportAddress != "" && i.NVMeTCPInfo.TransportServiceID != "" &&
-		(i.NVMeTCPInfo.TransportAddress != transportAddress || i.NVMeTCPInfo.TransportServiceID != transportServiceID) {
+		(!util.IsSameNvmeAddr(i.NVMeTCPInfo.TransportAddress, transportAddress) || i.NVMeTCPInfo.TransportServiceID != transportServiceID) {
 		i.logger.Warnf("NVMe/TCP initiator is launched but with incorrect address, the required one is %s:%s, will try to stop then relaunch it", transportAddress, transportServiceID)
 	}
 
@@ -667,6 +693,19 @@ func (i *Initiator) StartUblkInitiator(spdkClient *client.Client, dmDeviceAndEnd
 
 	i.logger.Infof("Starting ublk initiator with bdev %s, available UBLK ID %d, queue depth %d, number of queues %d",
 		i.UblkInfo.BdevName, availableUblkID, i.UblkInfo.UblkQueueDepth, i.UblkInfo.UblkNumberOfQueue)
+
+	// Ensure the ublk target exists before starting the disk. This creation was
+	// dropped in the v0.6.x initiator rewrite (regression: Longhorn v1.11.3),
+	// causing ublk_start_disk/START_DEV to fail. The isUblkTargetCreated fast
+	// path mirrors the pre-0.6.0 behavior; UblkCreateTarget is still idempotent,
+	// so concurrent first-time callers and a stale flag remain safe.
+	if !isUblkTargetCreated.Load() {
+		if err := spdkClient.UblkCreateTarget("", true); err != nil {
+			return false, errors.Wrap(err, "failed to create ublk target")
+		}
+		isUblkTargetCreated.Store(true)
+	}
+
 	if err := spdkClient.UblkStartDisk(i.UblkInfo.BdevName, availableUblkID, i.UblkInfo.UblkQueueDepth, i.UblkInfo.UblkNumberOfQueue); err != nil {
 		return false, err
 	}
@@ -764,7 +803,7 @@ func (i *Initiator) reuseExistingNVMeTCPPathWithoutLock(transportAddress, transp
 	if err := i.loadNVMeDeviceInfoWithoutLock(i.NVMeTCPInfo.TransportAddress, i.NVMeTCPInfo.TransportServiceID, i.NVMeTCPInfo.SubsystemNQN); err != nil {
 		return false, err
 	}
-	if i.NVMeTCPInfo.TransportAddress != transportAddress || i.NVMeTCPInfo.TransportServiceID != transportServiceID {
+	if !util.IsSameNvmeAddr(i.NVMeTCPInfo.TransportAddress, transportAddress) || i.NVMeTCPInfo.TransportServiceID != transportServiceID {
 		return false, nil
 	}
 
@@ -861,7 +900,7 @@ func (i *Initiator) discoverAndConnectNVMeTCPTarget(transportAddress, transportS
 			}
 
 			i.logger.Infof("Connecting to NVMe/TCP target %s:%s with subsystemNQN %s", transportAddress, transportServiceID, subsystemNQN)
-			controllerName, e = ConnectTarget(transportAddress, transportServiceID, subsystemNQN, i.executor)
+			controllerName, e = ConnectTargetWithNrIoQueues(transportAddress, transportServiceID, subsystemNQN, i.nrIoQueues(), i.executor)
 			if e != nil {
 				// "already connected" means the path is present in the kernel
 				// but GetDevices() couldn't find a namespace device yet (e.g.
@@ -916,7 +955,7 @@ func (i *Initiator) findControllerBySubsystem(nqn, transportAddress, transportSe
 		}
 		for _, path := range sys.Paths {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-			if controllerIP == transportAddress && controllerPort == transportServiceID {
+			if util.IsSameNvmeAddr(controllerIP, transportAddress) && controllerPort == transportServiceID {
 				return path.Name, nil
 			}
 		}
@@ -1063,7 +1102,7 @@ func (i *Initiator) WaitForControllerLive(transportAddress, transportServiceID s
 				}
 				for _, path := range sys.Paths {
 					controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-					if controllerIP == transportAddress && controllerPort == transportServiceID {
+					if util.IsSameNvmeAddr(controllerIP, transportAddress) && controllerPort == transportServiceID {
 						if path.State == "live" {
 							i.logger.Infof("NVMe controller %s for %s:%s reached live state",
 								path.Name, transportAddress, transportServiceID)
@@ -1157,7 +1196,7 @@ func selectControllerForNVMeDevice(device Device, transportAddress, transportSer
 	if transportAddress != "" && transportServiceID != "" {
 		for _, controller := range device.Controllers {
 			controllerAddress, controllerServiceID := GetIPAndPortFromControllerAddress(controller.Address)
-			if controllerAddress == transportAddress && controllerServiceID == transportServiceID {
+			if util.IsSameNvmeAddr(controllerAddress, transportAddress) && controllerServiceID == transportServiceID {
 				return controller, nil
 			}
 		}
@@ -1429,6 +1468,21 @@ func (i *Initiator) IsSuspended() (bool, error) {
 	for _, device := range devices {
 		if device.Name == i.Name {
 			return device.Suspended, nil
+		}
+	}
+	return false, fmt.Errorf("failed to find linear dm device %s", i.Name)
+}
+
+// IsDeferredRemoveSet checks if the linear dm device has the deferred-remove flag set
+func (i *Initiator) IsDeferredRemoveSet() (bool, error) {
+	devices, err := util.DmsetupInfo(i.Name, i.executor)
+	if err != nil {
+		return false, err
+	}
+
+	for _, device := range devices {
+		if device.Name == i.Name {
+			return device.DeferredRemove, nil
 		}
 	}
 	return false, fmt.Errorf("failed to find linear dm device %s", i.Name)

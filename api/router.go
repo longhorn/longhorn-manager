@@ -212,9 +212,20 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("POST").Path("/v1/recurringjobs").Handler(f(schemas, s.RecurringJobCreate))
 	r.Methods("PUT").Path("/v1/recurringjobs/{name}").Handler(f(schemas, s.RecurringJobUpdate))
 
+	r.Methods("GET").Path("/v1/snapshotgroups").Handler(f(schemas, s.SnapshotGroupList))
+	r.Methods("GET").Path("/v1/snapshotgroups/{name}").Handler(f(schemas, s.SnapshotGroupGet))
+	r.Methods("DELETE").Path("/v1/snapshotgroups/{name}").Handler(f(schemas, s.SnapshotGroupDelete))
+	r.Methods("POST").Path("/v1/snapshotgroups").Handler(f(schemas, s.SnapshotGroupAction))
+
 	r.Methods("GET").Path("/v1/orphans").Handler(f(schemas, s.OrphanList))
 	r.Methods("GET").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanGet))
 	r.Methods("DELETE").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanDelete))
+
+	r.Methods("GET").Path("/v1/shardgroups").Handler(f(schemas, s.ShardGroupList))
+	r.Methods("GET").Path("/v1/shardgroups/{name}").Handler(f(schemas, s.ShardGroupGet))
+
+	r.Methods("GET").Path("/v1/shards").Handler(f(schemas, s.ShardList))
+	r.Methods("GET").Path("/v1/shards/{name}").Handler(f(schemas, s.ShardGet))
 
 	r.Methods("POST").Path("/v1/supportbundles").Handler(f(schemas, s.SupportBundleCreate))
 	r.Methods("GET").Path("/v1/supportbundles").Handler(f(schemas, s.SupportBundleList))
@@ -247,9 +258,21 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/recurringjobs").Handler(f(schemas, recurringJobListStream))
 	r.Path("/v1/ws/{period}/recurringjobs").Handler(f(schemas, recurringJobListStream))
 
+	snapshotGroupListStream := NewStreamHandlerFunc("snapshotgroups", s.wsc.NewWatcher("snapshotGroup"), s.snapshotGroupList)
+	r.Path("/v1/ws/snapshotgroups").Handler(f(schemas, snapshotGroupListStream))
+	r.Path("/v1/ws/{period}/snapshotgroups").Handler(f(schemas, snapshotGroupListStream))
+
 	orphanListStream := NewStreamHandlerFunc("orphans", s.wsc.NewWatcher("orphan"), s.orphanList)
 	r.Path("/v1/ws/orphans").Handler(f(schemas, orphanListStream))
 	r.Path("/v1/ws/{period}/orphans").Handler(f(schemas, orphanListStream))
+
+	shardGroupListStream := NewStreamHandlerFunc("shardgroups", s.wsc.NewWatcher("shardGroup"), s.shardGroupList)
+	r.Path("/v1/ws/shardgroups").Handler(f(schemas, shardGroupListStream))
+	r.Path("/v1/ws/{period}/shardgroups").Handler(f(schemas, shardGroupListStream))
+
+	shardListStream := NewStreamHandlerFunc("shards", s.wsc.NewWatcher("shard"), s.shardList)
+	r.Path("/v1/ws/shards").Handler(f(schemas, shardListStream))
+	r.Path("/v1/ws/{period}/shards").Handler(f(schemas, shardListStream))
 
 	nodeListStream := NewStreamHandlerFunc("nodes", s.wsc.NewWatcher("node"), s.nodeList)
 	r.Path("/v1/ws/nodes").Handler(f(schemas, nodeListStream))

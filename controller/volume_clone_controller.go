@@ -21,6 +21,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -38,6 +39,7 @@ type VolumeCloneController struct {
 	eventRecorder record.EventRecorder
 
 	ds         *datastore.DataStore
+	scheduler  *scheduler.ReplicaScheduler
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -58,7 +60,8 @@ func NewVolumeCloneController(
 		namespace:    namespace,
 		controllerID: controllerID,
 
-		ds: ds,
+		ds:        ds,
+		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-clone-controller"}),
@@ -73,6 +76,22 @@ func NewVolumeCloneController(
 		return nil, err
 	}
 	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.VolumeInformer.HasSynced)
+
+	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    vcc.enqueueSourceVolumeForReplica,
+		UpdateFunc: func(old, cur interface{}) { vcc.enqueueSourceVolumeForReplica(cur) },
+	}, 0); err != nil {
+		return nil, err
+	}
+	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.ReplicaInformer.HasSynced)
+
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { vcc.enqueueVolumesForInstanceManager(old, cur) },
+		DeleteFunc: func(obj interface{}) { vcc.enqueueVolumesForInstanceManager(obj, nil) },
+	}, 0); err != nil {
+		return nil, err
+	}
+	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
 	return vcc, nil
 }
@@ -117,6 +136,91 @@ func (vcc *VolumeCloneController) enqueueVolumeAfter(obj interface{}, duration t
 	}
 
 	vcc.queue.AddAfter(key, duration)
+}
+
+// enqueueSourceVolumeForReplica enqueues the linked-clone source volume when a
+// replica with LinkedCloneSrcReplicaName is created or updated. This ensures the
+// controller re-evaluates whether a source attachment ticket is needed.
+func (vcc *VolumeCloneController) enqueueSourceVolumeForReplica(obj interface{}) {
+	r, ok := obj.(*longhorn.Replica)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return
+		}
+		r, ok = deletedState.Obj.(*longhorn.Replica)
+		if !ok {
+			return
+		}
+	}
+
+	if r.Spec.LinkedCloneSrcReplicaName == "" {
+		return
+	}
+
+	vol, err := vcc.ds.GetVolumeRO(r.Spec.VolumeName)
+	if err != nil {
+		return
+	}
+
+	if srcVolName := types.GetVolumeName(vol.Spec.DataSource); srcVolName != "" {
+		vcc.queue.Add(vcc.namespace + "/" + srcVolName)
+	}
+}
+
+// enqueueVolumesForInstanceManager re-enqueues volumes that have a clone-controller
+// VA ticket targeting the IM's node when the IM state changes or gets deleted.
+// This ensures that if an IM goes down after a ticket was created but before it was
+// satisfied, the clone controller can re-evaluate and pick a different node.
+func (vcc *VolumeCloneController) enqueueVolumesForInstanceManager(oldObj, curObj interface{}) {
+	var oldIM *longhorn.InstanceManager
+	if oldObj != nil {
+		oldIM, _ = oldObj.(*longhorn.InstanceManager)
+		if oldIM == nil {
+			if deletedState, ok := oldObj.(cache.DeletedFinalStateUnknown); ok {
+				oldIM, _ = deletedState.Obj.(*longhorn.InstanceManager)
+			}
+		}
+	}
+
+	var curIM *longhorn.InstanceManager
+	if curObj != nil {
+		curIM, _ = curObj.(*longhorn.InstanceManager)
+	}
+
+	// Only react to state/deletion changes
+	if oldIM != nil && curIM != nil {
+		if oldIM.Status.CurrentState == curIM.Status.CurrentState &&
+			oldIM.DeletionTimestamp == curIM.DeletionTimestamp {
+			return
+		}
+	}
+
+	// Determine the affected node
+	var nodeID string
+	if curIM != nil {
+		nodeID = curIM.Spec.NodeID
+	} else if oldIM != nil {
+		nodeID = oldIM.Spec.NodeID
+	}
+	if nodeID == "" {
+		return
+	}
+
+	// Find volumes with clone-controller tickets targeting this node
+	vaList, err := vcc.ds.ListLHVolumeAttachmentsRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list volume attachments for IM change on node %v: %v", nodeID, err))
+		return
+	}
+	for _, va := range vaList {
+		for _, ticket := range va.Spec.AttachmentTickets {
+			if ticket.Type == longhorn.AttacherTypeVolumeCloneController && ticket.NodeID == nodeID {
+				vcc.queue.Add(vcc.namespace + "/" + va.Spec.Volume)
+				break
+			}
+		}
+	}
 }
 
 func (vcc *VolumeCloneController) Run(workers int, stopCh <-chan struct{}) {
@@ -180,7 +284,7 @@ func (vcc *VolumeCloneController) syncHandler(key string) (err error) {
 }
 
 func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
-	vol, err := vcc.ds.GetVolume(volName)
+	vol, err := vcc.ds.GetVolumeRO(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -216,23 +320,114 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 
 	expectedAttachmentTickets := make(map[string]bool)
 
+	log := getLoggerForVolume(vcc.logger, vol)
+
+	// Clone target (case 1): derive the preferred node with the shared, controller-wide
+	// picker so the ticket-priority logic is not duplicated, then let the scheduler enforce
+	// node/disk selector candidacy for the clone target (longhorn/longhorn#12792).
+	pickCloneTargetNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
+		preferredNodeID, err := pickAttachmentTicketNodeID(vcc.ds, log, v, va)
+		if err != nil {
+			return "", err
+		}
+
+		chosenNodeID, err := vcc.scheduler.GetReadyNodeForVolumeAttach(v, preferredNodeID)
+		if err != nil {
+			return "", err
+		}
+		if chosenNodeID == "" {
+			log.Warnf("Cannot find a schedulable node for volume %v clone attachment", v.Name)
+			vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+			return "", nil
+		}
+		log.Debugf("Picked node %v for volume %v clone target attachment via scheduler (preferred %v)", chosenNodeID, v.Name, preferredNodeID)
+		return chosenNodeID, nil
+	}
+
+	// Clone source (cases 2 and 3): use the shared picker directly. Scheduler candidacy is
+	// intentionally not applied here; CSI tickets outrank clone tickets, so requesting a
+	// different node can leave the clone ticket unsatisfied indefinitely.
+	pickCloneSourceNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
+		chosenNodeID, err := pickAttachmentTicketNodeID(vcc.ds, log, v, va)
+		if err != nil {
+			return "", err
+		}
+		if chosenNodeID == "" {
+			vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+		}
+		return chosenNodeID, nil
+	}
+
 	// case 1: this volume is target of a clone and the cloning hasn't completed
 	if isCloneTargetActive(vol) {
 		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, volName)
-		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, vol.Status.OwnerID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
-		expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
+			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		} else {
+			chosenNodeID, err := pickCloneTargetNodeID(vol, va)
+			if err != nil {
+				return err
+			}
+			if chosenNodeID != "" {
+				createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
+				expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			}
+		}
 	}
 
-	// case 2: this volume is source of a clone
-	vols, err := vcc.ds.ListVolumes()
+	// case 2: this volume is source of a clone (initial clone in progress)
+	vols, err := vcc.ds.ListVolumesRO()
 	if err != nil {
 		return err
 	}
+	var srcNodeID string
 	for _, v := range vols {
-		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
 		if isCloneTargetCopyInProgress(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
-			createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
-			expectedAttachmentTickets[attachmentTicketID] = true
+			cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+			if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
+				expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			} else {
+				if srcNodeID == "" {
+					srcNodeID, err = pickCloneSourceNodeID(vol, va)
+					if err != nil {
+						return err
+					}
+				}
+				if srcNodeID != "" {
+					createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+					expectedAttachmentTickets[cloningAttachmentTicketID] = true
+				}
+			}
+		}
+	}
+
+	// case 3: this volume is source of a linked-clone target that needs rebuild
+	// (post-initial-clone: clone completed or awaiting healthy, and has replicas pending rebuild)
+	// Use a single node for all clone tickets to avoid attaching the source to multiple nodes.
+	srcNodeID = ""
+	for _, v := range vols {
+		if !isLinkedClonePotentiallyNeedingSource(v, vol.Name) {
+			continue
+		}
+		// Check if this clone volume actually has replicas pending linked-clone rebuild
+		if !vcc.hasReplicasPendingLinkedCloneRebuild(v.Name) {
+			continue
+		}
+
+		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+		if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
+			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		} else {
+			if srcNodeID == "" {
+				srcNodeID, err = pickCloneSourceNodeID(vol, va)
+				if err != nil {
+					return err
+				}
+			}
+			if srcNodeID != "" {
+				createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+				expectedAttachmentTickets[cloningAttachmentTicketID] = true
+			}
 		}
 	}
 
@@ -246,6 +441,22 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	}
 
 	return nil
+}
+
+// hasReplicasPendingLinkedCloneRebuild returns true if the volume has at least one
+// replica that needs a linked-clone rebuild (has LinkedCloneSrcReplicaName set but
+// is not yet healthy).
+func (vcc *VolumeCloneController) hasReplicasPendingLinkedCloneRebuild(volumeName string) bool {
+	replicas, err := vcc.ds.ListVolumeReplicasRO(volumeName)
+	if err != nil {
+		return false
+	}
+	for _, r := range replicas {
+		if r.Spec.LinkedCloneSrcReplicaName != "" && r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (vcc *VolumeCloneController) isResponsibleFor(vol *longhorn.Volume) bool {

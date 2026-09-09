@@ -24,6 +24,67 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
+// VolumeDataLayoutType describes how volume data is distributed across nodes.
+// +kubebuilder:validation:Enum=replicated;sharded;""
+type VolumeDataLayoutType string
+
+const (
+	// VolumeDataLayoutTypeReplicated means each node holds a full copy of the data (RAID1).
+	VolumeDataLayoutTypeReplicated = VolumeDataLayoutType("replicated")
+	// VolumeDataLayoutTypeSharded means data chunks are distributed across k+m nodes via erasure
+	// coding, breaking the physical node boundary. No single node holds a complete copy.
+	VolumeDataLayoutTypeSharded = VolumeDataLayoutType("sharded")
+)
+
+// VolumeDataLayoutMode describes the specific data protection mechanism in use.
+// +kubebuilder:validation:Enum=raid1;erasureCoding;""
+type VolumeDataLayoutMode string
+
+const (
+	// VolumeDataLayoutModeRaid1 means V2 RAID1 replication via SPDK bdev_raid_create.
+	VolumeDataLayoutModeRaid1 = VolumeDataLayoutMode("raid1")
+	// VolumeDataLayoutModeErasureCoding means Reed-Solomon erasure coding via SPDK bdev_ec_create.
+	VolumeDataLayoutModeErasureCoding = VolumeDataLayoutMode("erasureCoding")
+)
+
+// VolumeDataLayout declares the user's intended data layout for the volume. The entire struct is
+// immutable after creation. EC sub-fields are only meaningful when Type is VolumeDataLayoutTypeSharded.
+type VolumeDataLayout struct {
+	// Type describes how volume data is distributed across nodes.
+	// +optional
+	Type VolumeDataLayoutType `json:"type"`
+	// Mode describes the specific data protection mechanism in use.
+	// Empty for V1 volumes where no SPDK-level mode applies.
+	// +optional
+	Mode VolumeDataLayoutMode `json:"mode"`
+	// DataChunks is the number of data chunks (k) in the EC array.
+	// Required when Type is sharded; must be 0 for replicated volumes.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	DataChunks int `json:"dataChunks,omitempty"`
+	// ParityChunks is the number of parity chunks (m) in the EC array.
+	// The volume tolerates up to m simultaneous disk failures.
+	// Required when Type is sharded; must be 0 for replicated volumes.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	ParityChunks int `json:"parityChunks,omitempty"`
+	// StripSizeKB is the chunk size in KiB used by the EC bdev.
+	// Must be a power of two in the range [4, 1024].
+	// Required when Type is sharded; must be 0 for replicated volumes.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	StripSizeKB int `json:"stripSizeKB,omitempty"`
+}
+
+const (
+	DataLayoutParameterPrefix       = "dataLayout"
+	DataLayoutParameterType         = DataLayoutParameterPrefix + ".type"
+	DataLayoutParameterMode         = DataLayoutParameterPrefix + ".mode"
+	DataLayoutParameterDataChunks   = DataLayoutParameterPrefix + ".dataChunks"
+	DataLayoutParameterParityChunks = DataLayoutParameterPrefix + ".parityChunks"
+	DataLayoutParameterStripSizeKB  = DataLayoutParameterPrefix + ".stripSizeKB"
+)
+
 // +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;ublk;""
 type VolumeFrontend string
 
@@ -145,6 +206,7 @@ const (
 const (
 	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
 	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonShardSchedulingFailure          = "ShardSchedulingFailure"
 	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
 	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
@@ -247,6 +309,16 @@ type WorkloadStatus struct {
 	WorkloadType string `json:"workloadType"`
 }
 
+// VolumeTopologyTerm is one failure domain a volume's replicas may be
+// scheduled in. A node satisfies the term when its zone and region match the
+// non-empty fields.
+type VolumeTopologyTerm struct {
+	// +optional
+	Zone string `json:"zone"`
+	// +optional
+	Region string `json:"region"`
+}
+
 // VolumeSpec defines the desired state of the Longhorn volume
 type VolumeSpec struct {
 	// +kubebuilder:validation:Type=string
@@ -260,6 +332,12 @@ type VolumeSpec struct {
 	// ublkNumberOfQueue controls the number of queues for ublk frontend.
 	// +optional
 	UblkNumberOfQueue int `json:"ublkNumberOfQueue,omitempty"`
+	// nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+	// creates when connecting the blockdev frontend over NVMe-TCP.
+	// 0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+	// Takes effect on (re)attach.
+	// +optional
+	NvmeTcpNrIoQueues int `json:"nvmeTcpNrIoQueues,omitempty"`
 	// +optional
 	FromBackup string `json:"fromBackup"`
 	// +optional
@@ -292,6 +370,13 @@ type VolumeSpec struct {
 	DiskSelector []string `json:"diskSelector"`
 	// +optional
 	NodeSelector []string `json:"nodeSelector"`
+	// TopologyRequirement lists the failure domains the volume's replicas must
+	// be scheduled in, derived from the CSI accessible topology at creation —
+	// the same failure domains as the PV nodeAffinity terms (a node must match
+	// at least one term). Empty means unconstrained.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="TopologyRequirement is immutable"
+	TopologyRequirement []VolumeTopologyTerm `json:"topologyRequirement"`
 	// +optional
 	DisableFrontend bool `json:"disableFrontend"`
 	// +optional
@@ -372,6 +457,12 @@ type VolumeSpec struct {
 	// If SnapshotHashingRequestedAt differs from LastOnDemandSnapshotHashingCompleteAt, it indicates that a hashing request
 	// is still in progress, and a new request will be rejected.
 	SnapshotHashingRequestedAt string `json:"snapshotHashingRequestedAt,omitempty"` // +optional
+
+	// DataLayout declares the user's intended data layout (topology type, protection mode, and EC parameters).
+	// The entire struct is immutable after creation.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="DataLayout is immutable"
+	// +optional
+	DataLayout VolumeDataLayout `json:"dataLayout,omitempty"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

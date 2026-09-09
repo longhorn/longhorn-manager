@@ -23,6 +23,10 @@ type BackupVolume struct {
 
 	LastBackupName string `json:"lastBackupName,omitempty" yaml:"last_backup_name,omitempty"`
 
+	LinkedCloneSourceSnapshot string `json:"linkedCloneSourceSnapshot,omitempty" yaml:"linked_clone_source_snapshot,omitempty"`
+
+	LinkedCloneSourceVolume string `json:"linkedCloneSourceVolume,omitempty" yaml:"linked_clone_source_volume,omitempty"`
+
 	Messages map[string]string `json:"messages,omitempty" yaml:"messages,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`

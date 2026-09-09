@@ -56,10 +56,16 @@ type Interface interface {
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
 	Settings() SettingInformer
+	// Shards returns a ShardInformer.
+	Shards() ShardInformer
+	// ShardGroups returns a ShardGroupInformer.
+	ShardGroups() ShardGroupInformer
 	// ShareManagers returns a ShareManagerInformer.
 	ShareManagers() ShareManagerInformer
 	// Snapshots returns a SnapshotInformer.
 	Snapshots() SnapshotInformer
+	// SnapshotGroups returns a SnapshotGroupInformer.
+	SnapshotGroups() SnapshotGroupInformer
 	// SupportBundles returns a SupportBundleInformer.
 	SupportBundles() SupportBundleInformer
 	// SystemBackups returns a SystemBackupInformer.
@@ -163,6 +169,16 @@ func (v *version) Settings() SettingInformer {
 	return &settingInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
+// Shards returns a ShardInformer.
+func (v *version) Shards() ShardInformer {
+	return &shardInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// ShardGroups returns a ShardGroupInformer.
+func (v *version) ShardGroups() ShardGroupInformer {
+	return &shardGroupInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
 // ShareManagers returns a ShareManagerInformer.
 func (v *version) ShareManagers() ShareManagerInformer {
 	return &shareManagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
@@ -171,6 +187,11 @@ func (v *version) ShareManagers() ShareManagerInformer {
 // Snapshots returns a SnapshotInformer.
 func (v *version) Snapshots() SnapshotInformer {
 	return &snapshotInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// SnapshotGroups returns a SnapshotGroupInformer.
+func (v *version) SnapshotGroups() SnapshotGroupInformer {
+	return &snapshotGroupInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // SupportBundles returns a SupportBundleInformer.

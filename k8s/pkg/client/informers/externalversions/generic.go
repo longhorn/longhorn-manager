@@ -85,10 +85,16 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().Replicas().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("settings"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().Settings().Informer()}, nil
+	case v1beta2.SchemeGroupVersion.WithResource("shards"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().Shards().Informer()}, nil
+	case v1beta2.SchemeGroupVersion.WithResource("shardgroups"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().ShardGroups().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("sharemanagers"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().ShareManagers().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("snapshots"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().Snapshots().Informer()}, nil
+	case v1beta2.SchemeGroupVersion.WithResource("snapshotgroups"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().SnapshotGroups().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("supportbundles"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().SupportBundles().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("systembackups"):

@@ -25,6 +25,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -693,22 +694,44 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		}
 	}
 
+	// Check ef.Spec.Frontend instead of the computed frontend so that
+	// maintenance-mode attach (DisableFrontend) still resolves the setting
+	// fallback; the stored value is used when the frontend is enabled later.
+	nvmeTcpNrIoQueues := ef.Spec.NvmeTcpNrIoQueues
+	if types.IsDataEngineV2(ef.Spec.DataEngine) && ef.Spec.Frontend == longhorn.VolumeFrontendBlockDev && nvmeTcpNrIoQueues == 0 {
+		nvmeTcpNrIoQueuesInt64, err := efc.ds.GetSettingAsIntByDataEngine(types.SettingNameDefaultNvmeTcpNrIoQueues, ef.Spec.DataEngine)
+		if err != nil {
+			efc.logger.WithError(err).Warnf("Failed to get %v setting, connecting with the kernel default number of I/O queues",
+				types.SettingNameDefaultNvmeTcpNrIoQueues)
+		} else {
+			nvmeTcpNrIoQueues = int(nvmeTcpNrIoQueuesInt64)
+		}
+	}
+
 	ef.Status.Starting = true
 	efName := ef.Name
 	if ef, err = efc.ds.UpdateEngineFrontendStatus(ef); err != nil {
 		return nil, errors.Wrapf(err, "failed to update engine frontend %v status.starting to true", efName)
 	}
 
+	volume, err := efc.ds.GetVolumeRO(ef.Spec.VolumeName)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create initiator instance via Instance Manager
 	// Note: This requires Instance Manager to have EngineFrontendInstanceCreate method
 	return c.EngineFrontendInstanceCreate(&engineapi.EngineFrontendInstanceCreateRequest{
-		EngineFrontend:    ef,
-		VolumeFrontend:    frontend,
-		UblkQueueDepth:    ublkQueueDepth,
-		UblkNumberOfQueue: ublkNumberOfQueue,
-		TargetIP:          ef.Spec.TargetIP,
-		TargetPort:        ef.Spec.TargetPort,
-		EngineName:        ef.Spec.EngineName,
+		EngineFrontend:                ef,
+		VolumeFrontend:                frontend,
+		UblkQueueDepth:                ublkQueueDepth,
+		UblkNumberOfQueue:             ublkNumberOfQueue,
+		NvmeTcpNrIoQueues:             nvmeTcpNrIoQueues,
+		TargetIP:                      ef.Spec.TargetIP,
+		TargetPort:                    ef.Spec.TargetPort,
+		EngineName:                    ef.Spec.EngineName,
+		Encrypted:                     volume.Spec.Encrypted,
+		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume),
 	})
 }
 
@@ -1071,13 +1094,13 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 				return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
 			}
 			defer engineClientProxy.Close()
-			cliAPIVersion, err := m.ds.GetDataEngineImageCLIAPIVersion(ef.Status.CurrentImage, ef.Spec.DataEngine)
-			if err != nil {
-				return err
-			}
-			expectedExpansionSize, err := util.GetActualBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
-			if err != nil {
-				return err
+
+			expectedExpansionSize := ef.Spec.VolumeSize
+			if types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
+				expectedExpansionSize, err = util.GetActualBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+				if err != nil {
+					return errors.Wrapf(err, "failed to get actual backend size for engine frontend %v", ef.Name)
+				}
 			}
 			if err := engineClientProxy.VolumeExpand(ef, expectedExpansionSize); err != nil {
 				if isV2ExpansionInProgressError(err) {
@@ -1100,6 +1123,13 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 			"requestedSize":     ef.Spec.Size,
 			"expansionRequired": volume.Status.ExpansionRequired,
 		}).Trace("Skip engine frontend expansion because volume expansion is not required")
+
+		// An encrypted volume's frontend carries a LUKS header, so the size it reports is
+		// larger than the volume's logical size. Report the logical size once the header
+		// is there.
+		if volume.Spec.Encrypted && volumeInfo.Size > ef.Spec.VolumeSize {
+			ef.Status.CurrentSize = ef.Spec.VolumeSize
+		}
 	}
 
 	return nil

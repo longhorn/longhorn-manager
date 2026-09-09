@@ -58,12 +58,21 @@ const (
 	ErrorReplicaScheduleNodeUnavailable                   = "nodes are unavailable"
 	ErrorReplicaScheduleEngineImageNotReady               = "none of the node candidates contains a ready engine image"
 	ErrorReplicaScheduleHardNodeAffinityNotSatisfied      = "hard affinity cannot be satisfied"
+	ErrorReplicaScheduleTopologyNotSatisfied              = "topology requirement cannot be satisfied"
 	ErrorReplicaScheduleLinkedCloneNotSatisfied           = "linked clone replica cannot be satisfied"
 	ErrorReplicaScheduleSchedulingFailed                  = "replica scheduling failed"
 	ErrorReplicaScheduleUnusedFailedReplicaIsNotSupported = "unused failed replica is not supported"
 	ErrorReplicaScheduleReplicaAlreadyScheduled           = "replica already scheduled"
 	ErrorReplicaScheduleLonghornClientOperationFailed     = "longhorn client operation failed"
 	ErrorReplicaScheduleIncompatibleVolumeSize            = "incompatible volume size"
+)
+
+type CPUManagerPolicy string
+
+const (
+	CPUManagerPolicyStatic  CPUManagerPolicy = "static"
+	CPUManagerPolicyNone    CPUManagerPolicy = "none"
+	CPUManagerPolicyUnknown CPUManagerPolicy = "unknown"
 )
 
 type DiskType string
@@ -236,6 +245,8 @@ type NodeStatus struct {
 	SnapshotCheckStatus SnapshotCheckStatus `json:"snapshotCheckStatus"`
 	// +optional
 	AutoEvicting bool `json:"autoEvicting"`
+	// +optional
+	CPUPolicy CPUManagerPolicy `json:"cpuPolicy"`
 }
 
 // +genclient

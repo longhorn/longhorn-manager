@@ -48,7 +48,7 @@ func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Obje
 	switch orphan.Spec.Type {
 	case longhorn.OrphanTypeReplicaData:
 		err = checkOrphanForReplicaData(orphan)
-	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance, longhorn.OrphanTypeShardInstance, longhorn.OrphanTypeShardGroupInstance:
 		err = checkOrphanForInstance(orphan)
 	default:
 		return werror.NewInvalidError(fmt.Sprintf("unknown orphan type %v for orphan %v", orphan.Spec.Type, orphan.Name), "")

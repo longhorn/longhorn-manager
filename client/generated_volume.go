@@ -7,6 +7,8 @@ const (
 type Volume struct {
 	Resource `yaml:"-"`
 
+	DataLayout *VolumeDataLayout `json:"dataLayout,omitempty" yaml:"data_layout,omitempty"`
+
 	AccessMode string `json:"accessMode,omitempty" yaml:"access_mode,omitempty"`
 
 	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
@@ -65,6 +67,8 @@ type Volume struct {
 
 	NodeSelector []string `json:"nodeSelector,omitempty" yaml:"node_selector,omitempty"`
 
+	TopologyRequirement []VolumeTopologyTerm `json:"topologyRequirement,omitempty" yaml:"topology_requirement,omitempty"`
+
 	NumberOfReplicas int64 `json:"numberOfReplicas,omitempty" yaml:"number_of_replicas,omitempty"`
 
 	OfflineRebuilding string `json:"offlineRebuilding,omitempty" yaml:"offline_rebuilding,omitempty"`
@@ -72,6 +76,8 @@ type Volume struct {
 	PurgeStatus []PurgeStatus `json:"purgeStatus,omitempty" yaml:"purge_status,omitempty"`
 
 	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
+
+	NotReadyMessage string `json:"notReadyMessage,omitempty" yaml:"not_ready_message,omitempty"`
 
 	RebuildConcurrentSyncLimit int64 `json:"rebuildConcurrentSyncLimit,omitempty" yaml:"rebuild_concurrent_sync_limit,omitempty"`
 
@@ -121,6 +127,8 @@ type Volume struct {
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
+	NvmeTcpNrIoQueues int64 `json:"nvmeTcpNrIoQueues,omitempty" yaml:"nvme_tcp_nr_io_queues,omitempty"`
+
 	UblkNumberOfQueue int64 `json:"ublkNumberOfQueue,omitempty" yaml:"ublk_number_of_queue,omitempty"`
 
 	UblkQueueDepth int64 `json:"ublkQueueDepth,omitempty" yaml:"ublk_queue_depth,omitempty"`
@@ -128,6 +136,18 @@ type Volume struct {
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved,omitempty" yaml:"unmap_mark_snap_chain_removed,omitempty"`
 
 	VolumeAttachment VolumeAttachment `json:"volumeAttachment,omitempty" yaml:"volume_attachment,omitempty"`
+}
+
+type VolumeDataLayout struct {
+	Type string `json:"type,omitempty" yaml:"type,omitempty"`
+
+	Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
+
+	DataChunks int64 `json:"dataChunks,omitempty" yaml:"data_chunks,omitempty"`
+
+	ParityChunks int64 `json:"parityChunks,omitempty" yaml:"parity_chunks,omitempty"`
+
+	StripSizeKB int64 `json:"stripSizeKB,omitempty" yaml:"strip_size_kb,omitempty"`
 }
 
 type VolumeCollection struct {

@@ -101,6 +101,7 @@ type BdevNvmeAttachControllerRequest struct {
 
 	NvmeTransportID
 
+	Hostnqn   string `json:"hostnqn,omitempty"`
 	Hostaddr  string `json:"hostaddr,omitempty"`
 	Hostsvcid string `json:"hostsvcid,omitempty"`
 
@@ -118,6 +119,10 @@ type BdevNvmeDetachControllerRequest struct {
 
 	Hostaddr  string `json:"hostaddr,omitempty"`
 	Hostsvcid string `json:"hostsvcid,omitempty"`
+}
+
+type BdevNvmeResetControllerRequest struct {
+	Name string `json:"name"`
 }
 
 type BdevNvmeSetOptionsRequest struct {

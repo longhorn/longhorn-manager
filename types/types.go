@@ -12,11 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
@@ -48,6 +46,9 @@ const (
 	LonghornKindSystemBackup        = "SystemBackup"
 	LonghornKindSystemRestore       = "SystemRestore"
 	LonghornKindOrphan              = "Orphan"
+	LonghornKindShardGroup          = "ShardGroup"
+	LonghornKindShard               = "Shard"
+	LonghornKindSnapshotGroup       = "SnapshotGroup"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -100,6 +101,36 @@ const (
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
 )
 
+// ECMaxBaseBdevs is the maximum number of base bdevs (k+m) an EC array may have.
+// Matches the SPDK bdev_ec compile-time constant EC_MAX_BASE_BDEVS (ISA-L Reed-Solomon
+// requires n = k+m <= 255; Longhorn caps it at 32 for operational sanity).
+const ECMaxBaseBdevs = 32
+
+// ValidateECParameters validates the erasure-coding parameters shared by sharded
+// Volumes (spec.dataLayout) and ShardGroups (spec): k=dataChunks, m=parityChunks,
+// and the EC chunk size. Kept in one place so the bounds cannot drift between the
+// Volume and ShardGroup admission webhooks.
+func ValidateECParameters(dataChunks, parityChunks, stripSizeKB int) error {
+	if dataChunks < 1 {
+		return fmt.Errorf("dataChunks must be >= 1, got %v", dataChunks)
+	}
+	if parityChunks < 1 {
+		return fmt.Errorf("parityChunks must be >= 1, got %v", parityChunks)
+	}
+	if dataChunks+parityChunks > ECMaxBaseBdevs {
+		return fmt.Errorf("dataChunks (%v) + parityChunks (%v) must be <= %v (Longhorn EC base bdev cap)", dataChunks, parityChunks, ECMaxBaseBdevs)
+	}
+	if stripSizeKB < 4 || stripSizeKB > 1024 || !isPowerOfTwo(stripSizeKB) {
+		return fmt.Errorf("stripSizeKB must be a power of two in [4, 1024], got %v", stripSizeKB)
+	}
+	return nil
+}
+
+// isPowerOfTwo reports whether n is a positive power of two.
+func isPowerOfTwo(n int) bool {
+	return n > 0 && n&(n-1) == 0
+}
+
 const (
 	DefaultAPIPort                   = 9500
 	DefaultConversionWebhookPort     = 9501
@@ -118,6 +149,8 @@ const (
 
 	DefaultLogDirectoryOnHost = "/var/lib/longhorn/logs/"
 
+	DefaultControlPath = "/var/lib/longhorn"
+
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
 
@@ -134,6 +167,8 @@ const (
 	LonghornInstanceManagerKey = "longhorninstancemanager"
 	LonghornEngineKey          = "longhornengine"
 	LonghornReplicaKey         = "longhornreplica"
+	LonghornShardKey           = "longhornshard"
+	LonghornShardGroupKey      = "longhornshardgroup"
 	LonghornDiskUUIDKey        = "longhorndiskuuid"
 
 	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
@@ -168,43 +203,48 @@ const (
 	LonghornLabelRecurringJobKeyPrefixFmt = "recurring-%s.longhorn.io"
 	LonghornLabelVolumeSettingKeyPrefix   = "setting.longhorn.io"
 
-	LonghornLabelEngineImage                = "engine-image"
-	LonghornLabelInstanceManager            = "instance-manager"
-	LonghornLabelNode                       = "node"
-	LonghornLabelDiskUUID                   = "disk-uuid"
-	LonghornLabelInstanceManagerType        = "instance-manager-type"
-	LonghornLabelInstanceManagerImage       = "instance-manager-image"
-	LonghornLabelVolume                     = "longhornvolume"
-	LonghornLabelVolumeEncrypted            = "volume-encrypted"
-	LonghornLabelShareManager               = "share-manager"
-	LonghornLabelShareManagerImage          = "share-manager-image"
-	LonghornLabelShareManagerConfigMap      = "share-manager-configmap"
-	LonghornLabelBackingImage               = "backing-image"
-	LonghornLabelBackingImageManager        = "backing-image-manager"
-	LonghornLabelManagedBy                  = "managed-by"
-	LonghornLabelSnapshotForCloningVolume   = "for-cloning-volume"
-	LonghornLabelBackingImageDataSource     = "backing-image-data-source"
-	LonghornLabelBackupTarget               = "backup-target"
-	LonghornLabelBackupVolume               = "backup-volume"
-	LonghornLabelRecurringJob               = "job"
-	LonghornLabelRecurringJobGroup          = "job-group"
-	LonghornLabelRecurringJobSource         = "source"
-	LonghornLabelOrphan                     = "orphan"
-	LonghornLabelOrphanType                 = "orphan-type"
-	LonghornLabelRecoveryBackend            = "recovery-backend"
-	LonghornLabelCRDAPIVersion              = "crd-api-version"
-	LonghornLabelVolumeAccessMode           = "volume-access-mode"
-	LonghornLabelFollowGlobalSetting        = "follow-global-setting"
-	LonghornLabelSystemRestore              = "system-restore"
-	LonghornLabelLastSkippedSystemRestore   = "last-skipped-system-restored"
-	LonghornLabelLastSkippedSystemRestoreAt = "last-skipped-system-restored-at"
-	LonghornLabelLastSystemRestore          = "last-system-restored"
-	LonghornLabelLastSystemRestoreAt        = "last-system-restored-at"
-	LonghornLabelLastSystemRestoreBackup    = "last-system-restored-backup"
-	LonghornLabelDataEngine                 = "data-engine"
-	LonghornLabelVersion                    = "version"
-	LonghornLabelAdmissionWebhook           = "admission-webhook"
-	LonghornLabelConversionWebhook          = "conversion-webhook"
+	LonghornLabelEngineImage                     = "engine-image"
+	LonghornLabelInstanceManager                 = "instance-manager"
+	LonghornLabelNode                            = "node"
+	LonghornLabelDiskUUID                        = "disk-uuid"
+	LonghornLabelInstanceManagerType             = "instance-manager-type"
+	LonghornLabelInstanceManagerImage            = "instance-manager-image"
+	LonghornLabelVolume                          = "longhornvolume"
+	LonghornLabelVolumeEncrypted                 = "volume-encrypted"
+	LonghornLabelV2EncryptedVolumeWithLuksHeader = "v2-encrypted-volume-with-luks-header"
+	LonghornLabelShardGroup                      = "shardgroup"
+	LonghornLabelShareManager                    = "share-manager"
+	LonghornLabelShareManagerImage               = "share-manager-image"
+	LonghornLabelShareManagerConfigMap           = "share-manager-configmap"
+	LonghornLabelBackingImage                    = "backing-image"
+	LonghornLabelBackingImageManager             = "backing-image-manager"
+	LonghornLabelManagedBy                       = "managed-by"
+	LonghornLabelSnapshotForCloningVolume        = "for-cloning-volume"
+	LonghornLabelSnapshotGroup                   = "snapshot-group"
+	LonghornLabelSnapshotGroupCSIType            = "snapshot-group-csi-type"
+	LonghornLabelSnapshotGroupUID                = "snapshot-group-uid"
+	LonghornLabelBackingImageDataSource          = "backing-image-data-source"
+	LonghornLabelBackupTarget                    = "backup-target"
+	LonghornLabelBackupVolume                    = "backup-volume"
+	LonghornLabelRecurringJob                    = "job"
+	LonghornLabelRecurringJobGroup               = "job-group"
+	LonghornLabelRecurringJobSource              = "source"
+	LonghornLabelOrphan                          = "orphan"
+	LonghornLabelOrphanType                      = "orphan-type"
+	LonghornLabelRecoveryBackend                 = "recovery-backend"
+	LonghornLabelCRDAPIVersion                   = "crd-api-version"
+	LonghornLabelVolumeAccessMode                = "volume-access-mode"
+	LonghornLabelFollowGlobalSetting             = "follow-global-setting"
+	LonghornLabelSystemRestore                   = "system-restore"
+	LonghornLabelLastSkippedSystemRestore        = "last-skipped-system-restored"
+	LonghornLabelLastSkippedSystemRestoreAt      = "last-skipped-system-restored-at"
+	LonghornLabelLastSystemRestore               = "last-system-restored"
+	LonghornLabelLastSystemRestoreAt             = "last-system-restored-at"
+	LonghornLabelLastSystemRestoreBackup         = "last-system-restored-backup"
+	LonghornLabelDataEngine                      = "data-engine"
+	LonghornLabelVersion                         = "version"
+	LonghornLabelAdmissionWebhook                = "admission-webhook"
+	LonghornLabelConversionWebhook               = "conversion-webhook"
 
 	LonghornRecoveryBackendServiceName = "longhorn-recovery-backend"
 
@@ -213,6 +253,21 @@ const (
 
 	LonghornLabelExportFromVolume                 = "export-from-volume"
 	LonghornLabelSnapshotForExportingBackingImage = "for-exporting-backing-image"
+
+	// LonghornLabelCloneSourceVolume is stamped on all clone target volumes
+	// (both full-copy and linked-clone) to enable efficient lookups by source volume name.
+	LonghornLabelCloneSourceVolume = "clone-source-volume"
+
+	// LonghornLabelLinkedCloneSourceSnapshot is stamped on linked-clone volumes to
+	// enable efficient index-based lookups by source snapshot name.
+	LonghornLabelLinkedCloneSourceSnapshot = "linked-clone-source-snapshot"
+	// LonghornLabelLinkedCloneSrcReplica is stamped on linked-clone replicas to
+	// enable efficient index-based lookups by source replica name.
+	LonghornLabelLinkedCloneSrcReplica = "linked-clone-src-replica"
+	// LonghornLabelLegacyLinkedClone marks linked-clone volumes created with
+	// the old (pre-entrypoint) architecture. These volumes only support
+	// attach, detach, deletion, and backup creation.
+	LonghornLabelLegacyLinkedClone = "legacy-linked-clone"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -239,6 +294,47 @@ const (
 	DefaultRecurringJobConcurrency = 10
 
 	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
+
+	// ShardAnnotationIntentionalDelete marks a Shard CR whose deletion is admin-driven
+	// (kubectl delete, eviction, drain) rather than caused by a real failure. The
+	// ShardGroup controller force-fails the slot via ShardGroupShardForceFail and
+	// records the slot in ShardGroup.Status.IntentionalDeleteSlots so the replacement
+	// Shard CR bypasses the failure-recovery debounce.
+	ShardAnnotationIntentionalDelete = "longhorn.io/intentional-delete"
+
+	// SnapshotGroupAnnotationTerminalPhase records the outcome (Ready or
+	// Failed) when a SnapshotGroup reaches a terminal phase. It is the restore
+	// guard: restores that strip status still preserve annotations, so when
+	// the annotation records an outcome the phase does not show, the
+	// controller restores the annotated phase instead of taking new snapshots.
+	SnapshotGroupAnnotationTerminalPhase = "longhorn.io/snapshot-group-terminal-phase"
+
+	// SnapshotGroupAnnotationBackupsCompleted freezes the outcome of a
+	// bak-type CSI volume group snapshot. The CSI handler stamps it the first
+	// time it observes every member backup Completed; from then on the group
+	// is reported ready without reading live backup state. The value is a
+	// JSON map of member snapshot name to backup name; member snapshot
+	// handles fall back to it, so a backup deleted after completion does not
+	// change them.
+	SnapshotGroupAnnotationBackupsCompleted = "longhorn.io/snapshot-group-backups-completed"
+
+	// SnapshotGroupAnnotationCSIParameters records the class parameters a
+	// CSI-created group was created with. A create retry for the existing
+	// name compares against it and rejects different parameters, as the CSI
+	// spec requires.
+	SnapshotGroupAnnotationCSIParameters = "longhorn.io/snapshot-group-csi-parameters"
+
+	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
+	// also keeps the auto-attach of detached member volumes bounded.
+	SnapshotGroupMaxMemberCount = 64
+
+	// SnapshotGroupDefaultDeadlineSeconds is stamped by the mutating webhook
+	// when spec.deadlineSeconds is unset.
+	SnapshotGroupDefaultDeadlineSeconds = 300
+	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds
+	// mirror the CRD schema bounds on spec.deadlineSeconds.
+	SnapshotGroupMinDeadlineSeconds = 10
+	SnapshotGroupMaxDeadlineSeconds = 3600
 
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
@@ -284,6 +380,7 @@ const (
 	EnvDataEngine     = "DATA_ENGINE"
 	EnvTZ             = "TZ"
 	EnvDistro         = "LONGHORN_DISTRO"
+	EnvKubeletRootDir = "KUBELET_ROOT_DIR"
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
@@ -310,6 +407,8 @@ const (
 	NOProxy    = "NO_PROXY"
 
 	VirtualHostedStyle = "VIRTUAL_HOSTED_STYLE"
+
+	AWSSignAcceptEncoding = "AWS_SIGN_ACCEPT_ENCODING"
 
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplicas    = "numberOfReplicas"
@@ -654,6 +753,49 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	}
 }
 
+func GetShardGroupLabels(shardGroupName string) map[string]string {
+	return map[string]string{
+		LonghornLabelShardGroup: shardGroupName,
+	}
+}
+
+// GetCloneSourceVolumeLabel returns the label map used to stamp any clone target
+// volume (both full-copy and linked-clone) with its source volume name.
+func GetCloneSourceVolumeLabel(srcVolumeName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelCloneSourceVolume): srcVolumeName,
+	}
+}
+
+// GetLinkedCloneSourceSnapshotLabel returns the label map used to stamp a linked-clone
+// volume with its source snapshot name, enabling efficient index-based lookups.
+func GetLinkedCloneSourceSnapshotLabel(srcSnapshotName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLinkedCloneSourceSnapshot): srcSnapshotName,
+	}
+}
+
+// GetLinkedCloneSrcReplicaLabel returns the label map used to stamp a linked-clone
+// replica with its source replica name, enabling efficient index-based lookups.
+func GetLinkedCloneSrcReplicaLabel(srcReplicaName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLinkedCloneSrcReplica): srcReplicaName,
+	}
+}
+
+// GetLegacyLinkedCloneLabel returns the label map marking a volume as a legacy
+// linked-clone (pre-entrypoint architecture).
+func GetLegacyLinkedCloneLabel() map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLegacyLinkedClone): "true",
+	}
+}
+
+// IsLegacyLinkedCloneVolume returns true if the volume is marked as a legacy linked-clone.
+func IsLegacyLinkedCloneVolume(vol *longhorn.Volume) bool {
+	return vol.Labels[GetLonghornLabelKey(LonghornLabelLegacyLinkedClone)] == "true"
+}
+
 func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {
 	if isGroup {
 		return GetRecurringJobLabelKey(LonghornLabelRecurringJobGroup, name)
@@ -722,6 +864,26 @@ func GetOrphanLabelsForOrphanedReplicaInstance(nodeID, instanceManager, replicaN
 	return labels
 }
 
+func GetOrphanLabelsForOrphanedShardInstance(nodeID, instanceManager, shardName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
+	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
+	labels[LonghornShardKey] = shardName
+	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeShardInstance)
+	return labels
+}
+
+func GetOrphanLabelsForOrphanedShardGroupInstance(nodeID, instanceManager, shardGroupName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
+	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
+	labels[LonghornShardGroupKey] = shardGroupName
+	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeShardGroupInstance)
+	return labels
+}
+
 func GetRecoveryBackendConfigMapLabels() map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelRecoveryBackend
@@ -784,6 +946,44 @@ func GetInstanceManagerImageChecksumName(image string) string {
 
 func GetShareManagerImageChecksumName(image string) string {
 	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+const (
+	// SnapshotGroupMemberSnapshotNameSuffixLength is the number of random
+	// characters after the group name in a member snapshot name.
+	SnapshotGroupMemberSnapshotNameSuffixLength = 8
+
+	// SnapshotGroupNameMaxLength bounds the group name at admission so every
+	// member name fits 63 characters by construction - the label-value
+	// bound (the group name is stamped verbatim as the value of the
+	// longhorn.io/snapshot-group label on every member), minus the 1-character
+	// separator and the random suffix. No truncation happens anywhere.
+	SnapshotGroupNameMaxLength = 63 - 1 - SnapshotGroupMemberSnapshotNameSuffixLength
+)
+
+// GenerateSnapshotGroupMemberSnapshotName generates a member Snapshot name:
+// the group name plus a random suffix, stamped into spec.members once at
+// admission. The name must not repeat when a group name is reused, or a new
+// group could adopt a leftover member of an earlier deleted group with the
+// same name; a random name per group prevents that in practice, the same
+// way member backups are named, and the Ready transition also rejects
+// members created before the group.
+func GenerateSnapshotGroupMemberSnapshotName(groupName string) string {
+	return groupName + "-" + util.UUID()[:SnapshotGroupMemberSnapshotNameSuffixLength]
+}
+
+// GetSnapshotGroupTerminalPhase returns the phase the terminal-phase
+// annotation records, if it carries a valid outcome. The controller and the
+// admission webhook share this: a group the webhook admits as a restore must
+// be one the controller will not take snapshots for.
+func GetSnapshotGroupTerminalPhase(snapshotGroup *longhorn.SnapshotGroup) (longhorn.SnapshotGroupPhase, bool) {
+	switch snapshotGroup.Annotations[SnapshotGroupAnnotationTerminalPhase] {
+	case string(longhorn.SnapshotGroupPhaseReady):
+		return longhorn.SnapshotGroupPhaseReady, true
+	case string(longhorn.SnapshotGroupPhaseFailed):
+		return longhorn.SnapshotGroupPhaseFailed, true
+	}
+	return "", false
 }
 
 func GetOrphanChecksumNameForOrphanedDataStore(nodeID, diskName, diskPath, diskUUID, dataStore string) string {
@@ -1065,6 +1265,55 @@ func ValidateReplicaZoneSoftAntiAffinity(value longhorn.ReplicaZoneSoftAntiAffin
 	return nil
 }
 
+// The values of the volumeTopology volume parameter, which pins a volume to a
+// single failure domain resolved at provisioning time.
+const (
+	VolumeTopologyAny      = "any"
+	VolumeTopologyZonal    = "zonal"
+	VolumeTopologyRegional = "regional"
+)
+
+// NodeMatchesTopologyRequirement reports whether a node is in one of the
+// failure domains a volume's replicas may be scheduled in. A node satisfies a
+// term when it matches the non-empty fields of that term, and it only has to
+// satisfy one of them, like the PV node affinity terms the requirement is
+// derived from. An empty requirement leaves the volume unconstrained, so every
+// node matches.
+func NodeMatchesTopologyRequirement(node *longhorn.Node, terms []longhorn.VolumeTopologyTerm) bool {
+	if len(terms) == 0 {
+		return true
+	}
+	for _, term := range terms {
+		if (term.Zone == "" || node.Status.Zone == term.Zone) &&
+			(term.Region == "" || node.Status.Region == term.Region) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTopologyZonePinned reports whether a volume topology requirement confines
+// replica candidates to exactly one zone. A term without a zone (region-only)
+// allows any zone in the region, so it does not pin; terms naming different
+// zones allow spreading across those zones.
+func IsTopologyZonePinned(terms []longhorn.VolumeTopologyTerm) bool {
+	if len(terms) == 0 {
+		return false
+	}
+	zone := ""
+	for _, term := range terms {
+		if term.Zone == "" {
+			return false
+		}
+		if zone == "" {
+			zone = term.Zone
+		} else if term.Zone != zone {
+			return false
+		}
+	}
+	return true
+}
+
 func ValidateReplicaDiskSoftAntiAffinity(value longhorn.ReplicaDiskSoftAntiAffinity) error {
 	if value != longhorn.ReplicaDiskSoftAntiAffinityDefault &&
 		value != longhorn.ReplicaDiskSoftAntiAffinityEnabled &&
@@ -1148,45 +1397,53 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 		if disk.Path == "" {
 			return nil, fmt.Errorf("invalid disk %+v", disk)
 		}
-		diskStat, err := lhns.GetDiskStat(disk.Path)
-		if err != nil {
-			return nil, err
-		}
+
 		for _, vDisk := range validDisks {
 			if vDisk.Path == disk.Path {
 				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
 			}
 		}
 
-		// Set to default disk name
-		if disk.Name == "" {
-			disk.Name = DefaultDiskPrefix + diskStat.DiskID
-		}
-
-		if _, exist := existDiskID[diskStat.DiskID]; exist {
-			return nil, fmt.Errorf(
-				"the disk %v is the same"+
-					"file system with %v, diskID %v",
-				disk.Path, existDiskID[diskStat.DiskID],
-				diskStat.DiskID)
-		}
-
-		existDiskID[diskStat.DiskID] = disk.Path
-
-		if disk.StorageReserved < 0 || disk.StorageReserved > diskStat.StorageMaximum {
+		if disk.StorageReserved < 0 {
 			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
 		}
-		if disk.StorageReserved == 0 {
-			if disk.Type == longhorn.DiskTypeBlock {
-				size, err := getBlockDeviceSize(ReplicaHostPrefix + disk.Path)
-				if err != nil {
-					return nil, err
-				}
-				disk.StorageReserved = int64(size) * storageReservedPercentage / 100
-			} else {
+
+		if disk.Type == longhorn.DiskTypeBlock {
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + util.RandomID()
+			}
+			if disk.DiskDriver == "" {
+				disk.DiskDriver = longhorn.DiskDriverAuto
+			}
+		} else {
+			diskStat, err := lhns.GetDiskStat(disk.Path)
+			if err != nil {
+				return nil, err
+			}
+
+			// Set to default disk name
+			if disk.Name == "" {
+				disk.Name = DefaultDiskPrefix + diskStat.DiskID
+			}
+
+			if _, exist := existDiskID[diskStat.DiskID]; exist {
+				return nil, fmt.Errorf(
+					"the disk %v is the same"+
+						"file system with %v, diskID %v",
+					disk.Path, existDiskID[diskStat.DiskID],
+					diskStat.DiskID)
+			}
+
+			existDiskID[diskStat.DiskID] = disk.Path
+
+			if disk.StorageReserved > diskStat.StorageMaximum {
+				return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
+			}
+			if disk.StorageReserved == 0 {
 				disk.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
 			}
 		}
+
 		tags, err := util.ValidateTags(disk.Tags)
 		if err != nil {
 			return nil, err
@@ -1200,25 +1457,6 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 	}
 
 	return validDisks, nil
-}
-
-func getBlockDeviceSize(devicePath string) (uint64, error) {
-	file, err := os.Open(devicePath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open block device at %s: %w", devicePath, err)
-	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			logrus.WithError(closeErr).Warnf("Failed to close block device %s", devicePath)
-		}
-	}()
-	var size uint64
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
-	if errno != 0 {
-		return 0, fmt.Errorf("failed to get block device size for %s: errno=%v", devicePath, errno)
-	}
-
-	return size, nil
 }
 
 func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
@@ -1261,7 +1499,7 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 }
 
 func IsBDF(addr string) bool {
-	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfFormat := "^[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}$"
 	bdfPattern := regexp.MustCompile(bdfFormat)
 	return bdfPattern.MatchString(addr)
 }
@@ -1286,10 +1524,6 @@ func IsPotentialBlockDisk(path string) bool {
 
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	if IsPotentialBlockDisk(dataPath) {
-		size, err := getBlockDeviceSize(dataPath)
-		if err != nil {
-			return nil, err
-		}
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
@@ -1297,7 +1531,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 				DiskDriver:        longhorn.DiskDriverAuto,
 				AllowScheduling:   true,
 				EvictionRequested: false,
-				StorageReserved:   int64(size) * storageReservedPercentage / 100,
+				StorageReserved:   0,
 				Tags:              []string{},
 			},
 		}, nil

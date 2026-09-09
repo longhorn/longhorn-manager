@@ -51,6 +51,10 @@ type BackupVolumeStatusApplyConfiguration struct {
 	BackingImageChecksum *string `json:"backingImageChecksum,omitempty"`
 	// the storage class name of pv/pvc binding with the volume.
 	StorageClassName *string `json:"storageClassName,omitempty"`
+	// The source volume of the backed up volume, set only when it was a linked clone.
+	LinkedCloneSourceVolume *string `json:"linkedCloneSourceVolume,omitempty"`
+	// The source snapshot of the backed up volume, set only when it was a linked clone.
+	LinkedCloneSourceSnapshot *string `json:"linkedCloneSourceSnapshot,omitempty"`
 	// The last time that the backup volume was synced into the cluster.
 	LastSyncedAt *v1.Time `json:"lastSyncedAt,omitempty"`
 }
@@ -166,6 +170,22 @@ func (b *BackupVolumeStatusApplyConfiguration) WithBackingImageChecksum(value st
 // If called multiple times, the StorageClassName field is set to the value of the last call.
 func (b *BackupVolumeStatusApplyConfiguration) WithStorageClassName(value string) *BackupVolumeStatusApplyConfiguration {
 	b.StorageClassName = &value
+	return b
+}
+
+// WithLinkedCloneSourceVolume sets the LinkedCloneSourceVolume field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LinkedCloneSourceVolume field is set to the value of the last call.
+func (b *BackupVolumeStatusApplyConfiguration) WithLinkedCloneSourceVolume(value string) *BackupVolumeStatusApplyConfiguration {
+	b.LinkedCloneSourceVolume = &value
+	return b
+}
+
+// WithLinkedCloneSourceSnapshot sets the LinkedCloneSourceSnapshot field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LinkedCloneSourceSnapshot field is set to the value of the last call.
+func (b *BackupVolumeStatusApplyConfiguration) WithLinkedCloneSourceSnapshot(value string) *BackupVolumeStatusApplyConfiguration {
+	b.LinkedCloneSourceSnapshot = &value
 	return b
 }
 

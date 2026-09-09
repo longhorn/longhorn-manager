@@ -44,6 +44,8 @@ const (
 	InstanceTypeEngine         = InstanceType("engine")
 	InstanceTypeEngineFrontend = InstanceType("engine-frontend")
 	InstanceTypeBackingImage   = InstanceType("backingImage")
+	InstanceTypeShard          = InstanceType("shard")
+	InstanceTypeShardGroup     = InstanceType("shardgroup")
 )
 
 type BackingImageState string

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"reflect"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -114,8 +115,32 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			oldNode.Name), "")
 	}
 
-	// Ensure the node controller already syncs the disk spec and status.
-	if !isNodeDiskSpecAndStatusSynced(oldNode) {
+	// If the Kubernetes Node is deleted without properly evicting the Longhorn
+	// Node, the disk status may never be synced. Prevent disk configuration
+	// changes in this state, while allowing a limited spec update to disable
+	// node scheduling. Ref: https://github.com/longhorn/longhorn/issues/13494
+	if _, err := n.ds.GetKubernetesNodeRO(oldNode.Name); err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		disksSpecChanged := !reflect.DeepEqual(oldNode.Spec.Disks, newNode.Spec.Disks)
+		if disksSpecChanged {
+			return werror.NewForbiddenError(fmt.Sprintf(
+				"cannot modify disks on node %v after the Kubernetes node is deleted",
+				oldNode.Name))
+		}
+
+		allowedSpec := oldNode.Spec
+		allowedSpec.AllowScheduling = false
+		if !oldNode.Spec.AllowScheduling || !reflect.DeepEqual(allowedSpec, newNode.Spec) {
+			return werror.NewForbiddenError(fmt.Sprintf(
+				"only disabling scheduling on node %v is allowed after the Kubernetes node is deleted",
+				oldNode.Name))
+		}
+		return nil
+	}
+	disksSynced := isNodeDiskSpecAndStatusSynced(oldNode)
+	if !disksSynced {
 		return werror.NewForbiddenError(fmt.Sprintf("spec and status of disks on node %v are being syncing and please retry later.", oldNode.Name))
 	}
 
@@ -179,8 +204,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		if err != nil {
 			return werror.NewInvalidError(err.Error(), "")
 		}
-		if !v2DataEngineEnabled {
-			if disk.Type == longhorn.DiskTypeBlock {
+
+		// Reject updating only block disks when the v2 Data Engine (SPDK) is disabled.
+		if !v2DataEngineEnabled && disk.Type == longhorn.DiskTypeBlock {
+			oldDisk, existed := oldNode.Spec.Disks[name]
+			if !existed || !reflect.DeepEqual(oldDisk, disk) {
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) is a block device, but the SPDK feature is not enabled",
 					newNode.Name, name, disk.Path), "")
 			}

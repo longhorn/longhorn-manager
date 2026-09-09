@@ -8,14 +8,16 @@ import (
 
 type IdentityServer struct {
 	csi.UnimplementedIdentityServer
-	driverName string
-	version    string
+	driverName                 string
+	version                    string
+	volumeGroupSnapshotEnabled bool
 }
 
-func NewIdentityServer(driverName, version string) *IdentityServer {
+func NewIdentityServer(driverName, version string, volumeGroupSnapshotEnabled bool) *IdentityServer {
 	return &IdentityServer{
-		driverName: driverName,
-		version:    version,
+		driverName:                 driverName,
+		version:                    version,
+		volumeGroupSnapshotEnabled: volumeGroupSnapshotEnabled,
 	}
 }
 
@@ -32,29 +34,39 @@ func (ids *IdentityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*c
 }
 
 func (ids *IdentityServer) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
-	return &csi.GetPluginCapabilitiesResponse{
-		Capabilities: []*csi.PluginCapability{
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-					},
-				},
-			},
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
-					},
-				},
-			},
-			{
-				Type: &csi.PluginCapability_VolumeExpansion_{
-					VolumeExpansion: &csi.PluginCapability_VolumeExpansion{
-						Type: csi.PluginCapability_VolumeExpansion_ONLINE,
-					},
+	capabilities := []*csi.PluginCapability{
+		{
+			Type: &csi.PluginCapability_Service_{
+				Service: &csi.PluginCapability_Service{
+					Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
 				},
 			},
 		},
+		{
+			Type: &csi.PluginCapability_Service_{
+				Service: &csi.PluginCapability_Service{
+					Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
+				},
+			},
+		},
+		{
+			Type: &csi.PluginCapability_VolumeExpansion_{
+				VolumeExpansion: &csi.PluginCapability_VolumeExpansion{
+					Type: csi.PluginCapability_VolumeExpansion_ONLINE,
+				},
+			},
+		},
+	}
+	if ids.volumeGroupSnapshotEnabled {
+		capabilities = append(capabilities, &csi.PluginCapability{
+			Type: &csi.PluginCapability_Service_{
+				Service: &csi.PluginCapability_Service{
+					Type: csi.PluginCapability_Service_GROUP_CONTROLLER_SERVICE,
+				},
+			},
+		})
+	}
+	return &csi.GetPluginCapabilitiesResponse{
+		Capabilities: capabilities,
 	}, nil
 }

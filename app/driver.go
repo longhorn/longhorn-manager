@@ -9,12 +9,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/tools/clientcmd"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
@@ -56,103 +57,121 @@ const (
 	EnvCSIProvisionerReplicaCount  = "CSI_PROVISIONER_REPLICA_COUNT"
 	EnvCSIResizerReplicaCount      = "CSI_RESIZER_REPLICA_COUNT"
 	EnvCSISnapshotterReplicaCount  = "CSI_SNAPSHOTTER_REPLICA_COUNT"
+
+	FlagCSIVolumeGroupSnapshotEnabled = "csi-volume-group-snapshot-enabled"
+	EnvCSIVolumeGroupSnapshotEnabled  = "CSI_VOLUME_GROUP_SNAPSHOT_ENABLED"
+
+	// volumeGroupSnapshotAPIGroup is the API group of the upstream
+	// VolumeGroupSnapshot CRDs shipped with external-snapshotter.
+	volumeGroupSnapshotAPIGroup = "groupsnapshot.storage.k8s.io"
+	// volumeGroupSnapshotAPIVersion is the API version the deployed
+	// csi-snapshotter consumes (v1 since csi-snapshotter v8.6.0); the CRD
+	// preflight requires this exact version.
+	volumeGroupSnapshotAPIVersion = "v1"
 )
 
-func DeployDriverCmd() cli.Command {
-	return cli.Command{
+func DeployDriverCmd() *cli.Command {
+	return &cli.Command{
 		Name: "deploy-driver",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagManagerImage,
 				Usage: "Specify Longhorn manager image",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagManagerURL,
 				Usage: "Longhorn manager API URL",
 			},
-			cli.StringFlag{
-				Name:   FlagKubeletRootDir,
-				Usage:  "Specify the root directory of kubelet for csi components (optional)",
-				EnvVar: EnvKubeletRootDir,
+			&cli.StringFlag{
+				Name:    FlagKubeletRootDir,
+				Usage:   "Specify the root directory of kubelet for csi components (optional)",
+				Sources: cli.EnvVars(EnvKubeletRootDir),
 			},
-			cli.StringFlag{
-				Name:   FlagCSIAttacherImage,
-				Usage:  "Specify CSI attacher image",
-				EnvVar: EnvCSIAttacherImage,
+			&cli.StringFlag{
+				Name:    FlagCSIAttacherImage,
+				Usage:   "Specify CSI attacher image",
+				Sources: cli.EnvVars(EnvCSIAttacherImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSIAttacherReplicaCount,
-				Usage:  "Specify number of CSI attacher replicas",
-				EnvVar: EnvCSIAttacherReplicaCount,
-				Value:  csi.DefaultCSIAttacherReplicaCount,
+			&cli.IntFlag{
+				Name:    FlagCSIAttacherReplicaCount,
+				Usage:   "Specify number of CSI attacher replicas",
+				Sources: cli.EnvVars(EnvCSIAttacherReplicaCount),
+				Value:   csi.DefaultCSIAttacherReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSIProvisionerImage,
-				Usage:  "Specify CSI provisioner image",
-				EnvVar: EnvCSIProvisionerImage,
+			&cli.StringFlag{
+				Name:    FlagCSIProvisionerImage,
+				Usage:   "Specify CSI provisioner image",
+				Sources: cli.EnvVars(EnvCSIProvisionerImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSIProvisionerReplicaCount,
-				Usage:  "Specify number of CSI provisioner replicas",
-				EnvVar: EnvCSIProvisionerReplicaCount,
-				Value:  csi.DefaultCSIProvisionerReplicaCount,
+			&cli.IntFlag{
+				Name:    FlagCSIProvisionerReplicaCount,
+				Usage:   "Specify number of CSI provisioner replicas",
+				Sources: cli.EnvVars(EnvCSIProvisionerReplicaCount),
+				Value:   csi.DefaultCSIProvisionerReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSIResizerImage,
-				Usage:  "Specify CSI resizer image",
-				EnvVar: EnvCSIResizerImage,
+			&cli.StringFlag{
+				Name:    FlagCSIResizerImage,
+				Usage:   "Specify CSI resizer image",
+				Sources: cli.EnvVars(EnvCSIResizerImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSIResizerReplicaCount,
-				Usage:  "Specify number of CSI resizer replicas",
-				EnvVar: EnvCSIResizerReplicaCount,
-				Value:  csi.DefaultCSIResizerReplicaCount,
+			&cli.IntFlag{
+				Name:    FlagCSIResizerReplicaCount,
+				Usage:   "Specify number of CSI resizer replicas",
+				Sources: cli.EnvVars(EnvCSIResizerReplicaCount),
+				Value:   csi.DefaultCSIResizerReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSISnapshotterImage,
-				Usage:  "Specify CSI snapshotter image",
-				EnvVar: EnvCSISnapshotterImage,
+			&cli.StringFlag{
+				Name:    FlagCSISnapshotterImage,
+				Usage:   "Specify CSI snapshotter image",
+				Sources: cli.EnvVars(EnvCSISnapshotterImage),
 			},
-			cli.IntFlag{
-				Name:   FlagCSISnapshotterReplicaCount,
-				Usage:  "Specify number of CSI snapshotter replicas",
-				EnvVar: EnvCSISnapshotterReplicaCount,
-				Value:  csi.DefaultCSISnapshotterReplicaCount,
+			&cli.BoolFlag{
+				Name:    FlagCSIVolumeGroupSnapshotEnabled,
+				Usage:   "Enable the CSIVolumeGroupSnapshot feature gate on the CSI snapshotter. Requires the VolumeGroupSnapshot CRDs (groupsnapshot.storage.k8s.io) to be installed; enabling the gate without the CRDs would stop the CSI snapshotter from serving regular volume snapshots",
+				Sources: cli.EnvVars(EnvCSIVolumeGroupSnapshotEnabled),
+				Value:   false,
 			},
-			cli.StringFlag{
-				Name:   FlagCSIPodAntiAffinityPreset,
-				Usage:  "Specify CSI deployment podAntiAffinity",
-				EnvVar: EnvCSIPodAntiAffinityPreset,
-				Value:  csi.DefaultCSIPodAntiAffinityPreset,
+			&cli.IntFlag{
+				Name:    FlagCSISnapshotterReplicaCount,
+				Usage:   "Specify number of CSI snapshotter replicas",
+				Sources: cli.EnvVars(EnvCSISnapshotterReplicaCount),
+				Value:   csi.DefaultCSISnapshotterReplicaCount,
 			},
-			cli.StringFlag{
-				Name:   FlagCSINodeDriverRegistrarImage,
-				Usage:  "Specify CSI node-driver-registrar image",
-				EnvVar: EnvCSINodeDriverRegistrarImage,
+			&cli.StringFlag{
+				Name:    FlagCSIPodAntiAffinityPreset,
+				Usage:   "Specify CSI deployment podAntiAffinity",
+				Sources: cli.EnvVars(EnvCSIPodAntiAffinityPreset),
+				Value:   csi.DefaultCSIPodAntiAffinityPreset,
 			},
-			cli.StringFlag{
-				Name:   FlagCSILivenessProbeImage,
-				Usage:  "Specify CSI liveness probe image",
-				EnvVar: EnvCSILivenessProbeImage,
+			&cli.StringFlag{
+				Name:    FlagCSINodeDriverRegistrarImage,
+				Usage:   "Specify CSI node-driver-registrar image",
+				Sources: cli.EnvVars(EnvCSINodeDriverRegistrarImage),
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
+				Name:    FlagCSILivenessProbeImage,
+				Usage:   "Specify CSI liveness probe image",
+				Sources: cli.EnvVars(EnvCSILivenessProbeImage),
+			},
+			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
 		},
-		Action: func(c *cli.Context) {
-			if err := validateFlags(c); err != nil {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := validateFlags(cmd); err != nil {
 				logrus.Fatalf("Error validating flags: %v", err)
 			}
 
-			if err := deployDriver(c); err != nil {
+			if err := deployDriver(cmd); err != nil {
 				logrus.Fatalf("Error deploying driver: %v", err)
 			}
+			return nil
 		},
 	}
 }
 
-func validateFlags(c *cli.Context) error {
+func validateFlags(cmd *cli.Command) error {
 	for _, flag := range []string{
 		FlagManagerImage,
 		FlagManagerURL,
@@ -163,7 +182,7 @@ func validateFlags(c *cli.Context) error {
 		FlagCSINodeDriverRegistrarImage,
 		FlagCSILivenessProbeImage,
 	} {
-		if c.String(flag) == "" {
+		if cmd.String(flag) == "" {
 			return fmt.Errorf("%q cannot be empty", flag)
 		}
 	}
@@ -171,11 +190,11 @@ func validateFlags(c *cli.Context) error {
 	return nil
 }
 
-func deployDriver(c *cli.Context) error {
-	managerImage := c.String(FlagManagerImage)
-	managerURL := c.String(FlagManagerURL)
+func deployDriver(cmd *cli.Command) error {
+	managerImage := cmd.String(FlagManagerImage)
+	managerURL := cmd.String(FlagManagerURL)
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
+	config, err := clientcmd.BuildConfigFromFlags("", cmd.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}
@@ -200,7 +219,36 @@ func deployDriver(c *cli.Context) error {
 	}
 
 	logrus.Info("Deploying CSI driver")
-	return deployCSIDriver(kubeClient, lhClient, c, managerImage, managerURL)
+	return deployCSIDriver(kubeClient, lhClient, cmd, managerImage, managerURL)
+}
+
+// missingVolumeGroupSnapshotKinds returns the VolumeGroupSnapshot CRD kinds
+// that are not served at the API version used by the csi-snapshotter. A kind
+// that exists only in a different API version is considered missing.
+func missingVolumeGroupSnapshotKinds(kubeClient *clientset.Clientset) ([]string, error) {
+	requiredKinds := []string{"VolumeGroupSnapshot", "VolumeGroupSnapshotContent", "VolumeGroupSnapshotClass"}
+
+	groupVersion := volumeGroupSnapshotAPIGroup + "/" + volumeGroupSnapshotAPIVersion
+	resources, err := kubeClient.Discovery().ServerResourcesForGroupVersion(groupVersion)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return requiredKinds, nil
+		}
+		return nil, err
+	}
+
+	servedKinds := map[string]bool{}
+	for _, resource := range resources.APIResources {
+		servedKinds[resource.Kind] = true
+	}
+
+	var missingKinds []string
+	for _, kind := range requiredKinds {
+		if !servedKinds[kind] {
+			missingKinds = append(missingKinds, kind)
+		}
+	}
+	return missingKinds, nil
 }
 
 func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
@@ -216,24 +264,24 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 	return nil
 }
 
-func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) (err error) {
+func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, cmd *cli.Command, managerImage, managerURL string) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to start CSI driver")
 	}()
-	csiAttacherImage := c.String(FlagCSIAttacherImage)
-	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
-	csiResizerImage := c.String(FlagCSIResizerImage)
-	csiSnapshotterImage := c.String(FlagCSISnapshotterImage)
-	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
-	csiLivenessProbeImage := c.String(FlagCSILivenessProbeImage)
-	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
-	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
-	csiSnapshotterReplicaCount := c.Int(FlagCSISnapshotterReplicaCount)
-	csiResizerReplicaCount := c.Int(FlagCSIResizerReplicaCount)
-	csiPodAntiAffinityPreset := c.String(FlagCSIPodAntiAffinityPreset)
+	csiAttacherImage := cmd.String(FlagCSIAttacherImage)
+	csiProvisionerImage := cmd.String(FlagCSIProvisionerImage)
+	csiResizerImage := cmd.String(FlagCSIResizerImage)
+	csiSnapshotterImage := cmd.String(FlagCSISnapshotterImage)
+	csiNodeDriverRegistrarImage := cmd.String(FlagCSINodeDriverRegistrarImage)
+	csiLivenessProbeImage := cmd.String(FlagCSILivenessProbeImage)
+	csiAttacherReplicaCount := cmd.Int(FlagCSIAttacherReplicaCount)
+	csiProvisionerReplicaCount := cmd.Int(FlagCSIProvisionerReplicaCount)
+	csiSnapshotterReplicaCount := cmd.Int(FlagCSISnapshotterReplicaCount)
+	csiResizerReplicaCount := cmd.Int(FlagCSIResizerReplicaCount)
+	csiPodAntiAffinityPreset := cmd.String(FlagCSIPodAntiAffinityPreset)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
-	rootDir := c.String(FlagKubeletRootDir)
+	rootDir := cmd.String(FlagKubeletRootDir)
 
 	tolerationSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
@@ -316,6 +364,24 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	volumeGroupSnapshotEnabled := cmd.Bool(FlagCSIVolumeGroupSnapshotEnabled)
+	if volumeGroupSnapshotEnabled {
+		// Safety check: the CSI snapshotter includes the VolumeGroupSnapshot
+		// informers in its cache sync when the feature gate is enabled. Without
+		// the CRDs installed the informers never sync and the sidecar silently
+		// stops serving regular volume snapshots. Fail the deployment fast with
+		// an actionable error instead of deploying a sidecar that would break
+		// existing snapshot functionality.
+		missingKinds, err := missingVolumeGroupSnapshotKinds(kubeClient)
+		if err != nil {
+			return errors.Wrap(err, "failed to check VolumeGroupSnapshot CRDs")
+		}
+		if len(missingKinds) > 0 {
+			return errors.Errorf("volume group snapshot is enabled but the cluster does not serve the %v/%v kinds %v; "+
+				"install the CRDs or disable %v", volumeGroupSnapshotAPIGroup, volumeGroupSnapshotAPIVersion, missingKinds, FlagCSIVolumeGroupSnapshotEnabled)
+		}
+	}
+
 	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {
 	case string(types.SystemManagedPodsImagePullPolicyNever):
@@ -368,12 +434,12 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI, resourceLimits.CSISnapshotter)
+	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI, resourceLimits.CSISnapshotter, volumeGroupSnapshotEnabled)
 	if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, endpointNetworkForRWXVolumeSetting, resourceLimits)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, endpointNetworkForRWXVolumeSetting, resourceLimits, volumeGroupSnapshotEnabled)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
