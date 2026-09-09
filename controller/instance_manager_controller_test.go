@@ -842,3 +842,248 @@ func (s *TestSuite) TestNodeHasEnoughHugepageTotalCapacity(c *C) {
 		c.Assert(ok, Equals, tc.expected)
 	}
 }
+
+func (s *TestSuite) TestResolveCPUIsolationEnabled(c *C) {
+	type testCase struct {
+		imOverride       string
+		interruptMode    string
+		isolationSetting string
+		expected         bool
+	}
+
+	testCases := map[string]testCase{
+		"polling mode inherits the enabled isolation setting": {
+			interruptMode:    longhorn.FalseValue,
+			isolationSetting: longhorn.TrueValue,
+			expected:         true,
+		},
+		"polling mode inherits the disabled isolation setting": {
+			interruptMode:    longhorn.FalseValue,
+			isolationSetting: longhorn.FalseValue,
+			expected:         false,
+		},
+		"interrupt mode disables isolation regardless of the setting": {
+			interruptMode:    longhorn.TrueValue,
+			isolationSetting: longhorn.TrueValue,
+			expected:         false,
+		},
+		"interrupt mode wins over the instance manager override": {
+			imOverride:       longhorn.TrueValue,
+			interruptMode:    longhorn.TrueValue,
+			isolationSetting: longhorn.TrueValue,
+			expected:         false,
+		},
+		"instance manager override wins over the isolation setting in polling mode": {
+			imOverride:       longhorn.FalseValue,
+			interruptMode:    longhorn.FalseValue,
+			isolationSetting: longhorn.TrueValue,
+			expected:         false,
+		},
+		"instance manager override enables isolation in polling mode": {
+			imOverride:       longhorn.TrueValue,
+			interruptMode:    longhorn.FalseValue,
+			isolationSetting: longhorn.FalseValue,
+			expected:         true,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		for _, setting := range []*longhorn.Setting{
+			newSetting(string(types.SettingNameDataEngineInterruptModeEnabled), fmt.Sprintf(`{"v2":%q}`, tc.interruptMode)),
+			newSetting(string(types.SettingNameDataEngineCPUIsolationEnabled), fmt.Sprintf(`{"v2":%q}`, tc.isolationSetting)),
+		} {
+			setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
+
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestNode1,
+			TestNode1,
+			TestIP1,
+			nil,
+			nil,
+			nil,
+			longhorn.DataEngineTypeV2,
+			TestInstanceManagerImage,
+			false,
+		)
+		im.Spec.DataEngineSpec.V2.CPUIsolationEnabled = tc.imOverride
+
+		enabled, err := imc.resolveCPUIsolationEnabled(im)
+		c.Assert(err, IsNil)
+		c.Assert(enabled, Equals, tc.expected, Commentf("test case: %v", name))
+	}
+}
+
+func (s *TestSuite) TestIsResponsibleForSetting(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	responsible := map[types.SettingName]bool{
+		types.SettingNameDataEngineInterruptModeEnabled: true,
+		types.SettingNameDataEngineCPUIsolationEnabled:  true,
+		types.SettingNameDataEngineCPUMask:              true,
+		types.SettingNameDataEngineHugepageEnabled:      true,
+		types.SettingNameBackupTarget:                   false,
+	}
+
+	for settingName, expected := range responsible {
+		setting := newSetting(string(settingName), "")
+		c.Assert(imc.isResponsibleForSetting(setting), Equals, expected, Commentf("setting: %v", settingName))
+	}
+}
+
+// TestInterruptModeSettingRecreatesPodWithoutCPUIsolation covers the whole
+// setting-update-to-pod-recreation path: enabling interrupt mode must make the
+// CPU isolation flags unsynced so the idle V2 instance-manager pod is replaced
+// by one running in interrupt mode without host CPU isolation.
+func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C) {
+	type testCase struct {
+		interruptModeEnabled bool
+		expectRecreated      bool
+	}
+
+	testCases := map[string]testCase{
+		"polling mode keeps the pod with CPU isolation flags": {
+			interruptModeEnabled: false,
+			expectRecreated:      false,
+		},
+		"interrupt mode recreates the pod without CPU isolation flags": {
+			interruptModeEnabled: true,
+			expectRecreated:      true,
+		},
+	}
+
+	isolationArgs := []string{"--enable-irq-affinity", "--enable-workqueue-affinity", "--enable-rps"}
+	hasArg := func(args []string, target string) bool {
+		for _, arg := range args {
+			if arg == target {
+				return true
+			}
+		}
+		return false
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		createDangerZoneSettingsForV2(c, lhClient, sIndexer)
+
+		if tc.interruptModeEnabled {
+			imSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Get(context.TODO(), string(types.SettingNameDataEngineInterruptModeEnabled), metav1.GetOptions{})
+			c.Assert(err, IsNil)
+			imSetting.Value = `{"v2":"true"}`
+			imSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Update(context.TODO(), imSetting, metav1.UpdateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Update(imSetting)
+			c.Assert(err, IsNil)
+		}
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Status.Allocatable = corev1.ResourceList{
+			"cpu":                                resource.MustParse("4"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		}
+		kubeNode.Status.Capacity = corev1.ResourceList{
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		}
+		err = kubeNodeIndexer.Add(kubeNode)
+		c.Assert(err, IsNil)
+		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		err = lhNodeIndexer.Add(lhNode)
+		c.Assert(err, IsNil)
+		_, err = lhClient.LonghornV1beta2().Nodes(lhNode.Namespace).Create(context.TODO(), lhNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		// A running V2 IM with no instances, started in polling mode with CPU isolation.
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestNode1, TestNode1, TestIP1,
+			nil, nil, nil,
+			longhorn.DataEngineTypeV2,
+			TestInstanceManagerImage,
+			false,
+		)
+		im.Status.DataEngineStatus.V2.CPUMask = "0x1"
+		im.Status.DataEngineStatus.V2.InterruptModeEnabled = longhorn.FalseValue
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		podArgs := append([]string{"--spdk-memory-size", "1024"}, isolationArgs...)
+		pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
+		pod.Spec.Containers = []corev1.Container{{
+			Name:    "instance-manager",
+			Command: []string{"instance-manager"},
+			Args:    podArgs,
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")},
+				Limits: corev1.ResourceList{
+					corev1.ResourceName("hugepages-2Mi"): resource.MustParse("1024Mi"),
+				},
+			},
+		}}
+		err = pIndexer.Add(pod)
+		c.Assert(err, IsNil)
+		_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		err = imc.syncInstanceManager(getKey(im, c))
+		c.Assert(err, IsNil)
+
+		podList, err := kubeClient.CoreV1().Pods(im.Namespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(podList.Items, HasLen, 1, Commentf("test case: %v", name))
+
+		args := podList.Items[0].Spec.Containers[0].Args
+		if !tc.expectRecreated {
+			c.Assert(args, DeepEquals, podArgs, Commentf("test case: %v", name))
+			continue
+		}
+
+		c.Assert(hasArg(args, "--spdk-interrupt-mode"), Equals, true, Commentf("test case: %v, args: %v", name, args))
+		for _, isolationArg := range isolationArgs {
+			c.Assert(hasArg(args, isolationArg), Equals, false, Commentf("test case: %v, args: %v", name, args))
+		}
+	}
+}
