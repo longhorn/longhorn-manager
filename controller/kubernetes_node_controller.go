@@ -27,6 +27,8 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+const kubernetesNodeCleanupRetryInterval = 30 * time.Second
+
 type KubernetesNodeController struct {
 	*baseController
 
@@ -214,6 +216,10 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 			if datastore.ErrorIsNotFound(err) {
 				return nil
 			}
+			// Replicas or engines can block deletion beyond the normal error
+			// retry budget, and their cleanup may not generate a node event.
+			// Keep a delayed retry even after handleErr forgets the key.
+			knc.queue.AddAfter(key, kubernetesNodeCleanupRetryInterval)
 			return err
 		}
 		return nil
