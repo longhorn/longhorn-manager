@@ -14,6 +14,8 @@ type DiskInfo struct {
 	BlockSize   int64
 	ClusterSize int64
 	State       string
+	// Message carries the reason of the current state, e.g. an asynchronous creation failure.
+	Message string
 }
 
 // ReplicaStorageInstance is utilized to represent a replica directory of a legacy volume and

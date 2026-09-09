@@ -67,37 +67,28 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.1
 	github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0
-	github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c
+	github.com/longhorn/go-common-libs v0.0.0-20260907073218-e53e6775eb8a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-<<<<<<< HEAD
-	github.com/longhorn/go-spdk-helper v0.9.1-0.20260814082531-318b4a23bb34
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20260821031756-28866d9a7f79
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260821070937-60c3dac12384
-	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260809094116-11ca196ed2f8
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260821024438-641f387e74d2
-	github.com/longhorn/types v0.0.0-20260814104707-529643438923
-=======
-	github.com/longhorn/go-spdk-helper v0.9.1-0.20260828012436-4ec507083142
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260809.0.20260901065543-e0f8f0952a6e
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260809.0.20260902015206-8066229072b8
-	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260809.0.20260830145720-5093e4c95410
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260809.0.20260901011635-a650e4d8d56f
-	github.com/longhorn/types v0.0.0-20260831072945-0bac432e7872
->>>>>>> d8074e1 (chore(vendor): update dependencies)
+	github.com/longhorn/go-spdk-helper v0.9.1-0.20260907084552-730dfff4eda5
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20260909015656-facebbbbaabd
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260909005100-6bcae6bf7407
+	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260906102010-f611adc51225
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260909081303-a8855eeeda66
+	github.com/longhorn/types v0.0.0-20260907075641-298b8746fcde
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.6.0
 	github.com/robfig/cron v1.2.0
-	github.com/sirupsen/logrus v1.9.4
-	github.com/stretchr/testify v1.11.1
+	github.com/sirupsen/logrus v1.10.1
+	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.37.0
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/mod v0.38.0
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.36.4
@@ -160,11 +151,10 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 )
@@ -215,11 +205,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.36.4 // indirect
