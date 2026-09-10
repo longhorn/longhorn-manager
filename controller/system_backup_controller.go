@@ -793,6 +793,17 @@ func (c *SystemBackupController) backupVolumesAlways(systemBackup *longhorn.Syst
 	return volumeBackups, nil
 }
 
+// deleteProbeSnapshot deletes a snapshot that was only created to detect new
+// data. It is called on every path that does not hand the snapshot over to a
+// Backup CR, so idle or failing volumes do not accumulate one system-backup
+// snapshot per backup cycle.
+// Ref: https://github.com/longhorn/longhorn/issues/12915
+func (c *SystemBackupController) deleteProbeSnapshot(snapshot *longhorn.Snapshot, volume *longhorn.Volume) {
+	if err := c.ds.DeleteSnapshot(snapshot.Name); err != nil {
+		c.logger.WithError(err).Warnf("Failed to delete the probe snapshot %v of volume %v", snapshot.Name, volume.Name)
+	}
+}
+
 func (c *SystemBackupController) backupVolumesIfNotPresent(systemBackup *longhorn.SystemBackup) (map[string]*longhorn.Backup, error) {
 	volumes, err := c.ds.ListVolumesRO()
 	if err != nil {
@@ -825,15 +836,19 @@ func (c *SystemBackupController) backupVolumesIfNotPresent(systemBackup *longhor
 
 		isUpToDate, err := c.isVolumeBackupUpToDate(volume, systemBackup)
 		if err != nil {
+			c.deleteProbeSnapshot(snapshot, volume)
 			return nil, err
 		}
 
 		if isUpToDate {
+			c.deleteProbeSnapshot(snapshot, volume)
 			continue
 		}
 
 		backup, err := c.createVolumeBackupFromSnapshot(volume, snapshot)
 		if err != nil {
+			// The snapshot is not referenced by any Backup CR, clean it up.
+			c.deleteProbeSnapshot(snapshot, volume)
 			return nil, err
 		}
 
