@@ -2560,7 +2560,15 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 	}
 
 	if replicaAddErr != nil {
-		ec.handleRebuildFailure(rc.log, rc.currentEngine, rc.currentEF, rc.replicaName, rc.addr, rc.replicaURL, rc.replica, rc.cleanupProxy, replicaAddErr)
+		if isReplicaNotInWORWMode(replicaAddErr) {
+			// If operations before calling `rc.rebuildProxy.ReplicaAdd` take a long time (over 30 seconds),
+			// the second rebuild goroutine for the same replica might be created.
+			// If the replica is not in WO mode and in RW mode, the replica should have been rebuilt already by previous rebuild goroutine.
+			// Therefore, skip the operations below.
+			rc.log.WithError(replicaAddErr).Warn("Replica rebuild failed because replica is rebuilt")
+		} else {
+			ec.handleRebuildFailure(rc.log, rc.currentEngine, rc.currentEF, rc.replicaName, rc.addr, rc.replicaURL, rc.replica, rc.cleanupProxy, replicaAddErr)
+		}
 		return
 	}
 
@@ -3295,6 +3303,12 @@ func isV2ReplicaAddAlreadyInProgressError(err error) bool {
 
 func isV2ReplicaAddRestoreInProgressError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "restore is in progress")
+}
+
+func isReplicaNotInWORWMode(err error) bool {
+	// If replica is not in WO mode and in RW mode (rebuilt) when adding a replia to rebuild,
+	// it will return an error as "replica tcp://10.1.1.10:12345 not in WO mode: RW".
+	return err != nil && strings.Contains(err.Error(), etypes.ErrorStringNotInModeWO+" "+string(etypes.RW))
 }
 
 func isV2ExpansionIncomplete(engine *longhorn.Engine) bool {

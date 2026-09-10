@@ -287,3 +287,37 @@ func TestVerifyCompletedRebuild(t *testing.T) {
 		})
 	}
 }
+
+func TestIsReplicaAddAIsNotInModeWORWError(t *testing.T) {
+	tests := map[string]struct {
+		err      error
+		expected bool
+	}{
+		"nil error": {
+			err:      nil,
+			expected: false,
+		},
+		"unrelated error": {
+			err:      errors.New("connection refused"),
+			expected: false,
+		},
+		"exact error message": {
+			err:      errors.New("replica tcp://10.0.0.1:10000 is not in mode WO: RW"),
+			expected: true,
+		},
+		"wrapped error matching pattern": {
+			err:      errors.Wrap(errors.New("failed to add replica: replica 10.42.0.15:10000 is not in mode WO: RW"), "ReplicaAdd failed"),
+			expected: true,
+		},
+		"different mode mismatch error": {
+			err:      errors.New("replica tcp://10.0.0.1:10000 is not in mode WO: ERR"),
+			expected: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.expected, isReplicaNotInWORWMode(tc.err))
+		})
+	}
+}

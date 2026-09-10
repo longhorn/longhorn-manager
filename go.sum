@@ -179,8 +179,6 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4 h1:i4yKSc
 github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4/go.mod h1:tx8IHeQXisTCpcg9gB4S+P8rPifC1D98qpWcDwI19tU=
 github.com/longhorn/go-spdk-helper v0.9.1-0.20260907084552-730dfff4eda5 h1:v8eFKq9vxDinYD4a6Im/6WioM+9yYBONHS8GQuIcMBQ=
 github.com/longhorn/go-spdk-helper v0.9.1-0.20260907084552-730dfff4eda5/go.mod h1:+Rv4u2k9uiDJGBT4IqtOSQ2XSOHsKIgQUz4dFqXmiCQ=
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260823 h1:Hxw/hdBUJCel52E+k3PuLI1/U+g4Q5DTXIjgE1/1HtY=
-github.com/longhorn/longhorn-engine v1.13.0-dev-20260823/go.mod h1:+uV/m9MQZo5fFVlQksxReHlbgN0di3k0FqoeRhT8jbE=
 github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260907105642-7fafb1dca838 h1:9yAZJXuSNh1FP/lvhxsE5clGt3yOGggZS1+o7e5dGzU=
 github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260907105642-7fafb1dca838/go.mod h1:7QtCDg4o2G7AUpwiKvnTNlPjFopp3LbigGGbJnElitc=
 github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260823 h1:55lyYo2aN+zIjviaXn3tqxPAHTxJOBFK0CD0sBqud08=
@@ -193,6 +191,8 @@ github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIi
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=
 github.com/lxzan/gws v1.8.9/go.mod h1:d9yHaR1eDTBHagQC6KY7ycUOaz5KWeqQtP3xu7aMK8Y=
+github.com/mantissahz/longhorn-engine v1.3.0-preview1.0.20260910092805-69a35b2d9e28 h1:aySuYyQy7R0iFYVgpjrnK06W3sb+BvMtPDlq9WMT+uE=
+github.com/mantissahz/longhorn-engine v1.3.0-preview1.0.20260910092805-69a35b2d9e28/go.mod h1:du1JK4IDcIrYTQ7/S2bX7ZsNELqTRrJf7AgbKaZiIt0=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/mitchellh/copystructure v1.2.0 h1:vpKXTN4ewci03Vljg/q9QvCGUDttBOGBIa15WveJJGw=
 github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HKCj9FbZEVFJRxO9s=
