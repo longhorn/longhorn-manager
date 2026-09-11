@@ -9,6 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -31,6 +33,104 @@ func (m *mockEngineClientProxy) Close() {}
 func (m *mockEngineClientProxy) ReplicaRebuildVerify(_ *longhorn.Engine, replicaName, _ string) error {
 	m.verifyCalled = append(m.verifyCalled, replicaName)
 	return m.verifyErr
+}
+
+func TestCurrentEngineFrontendForEngine(t *testing.T) {
+	volume := &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{Name: "vol"},
+	}
+	engine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: "vol-e-0"},
+	}
+	newEngineFrontends := func(engineName string, state longhorn.InstanceState) map[string]*longhorn.EngineFrontend {
+		return map[string]*longhorn.EngineFrontend{
+			"vol-ef-0": {
+				ObjectMeta: metav1.ObjectMeta{Name: "vol-ef-0"},
+				Spec: longhorn.EngineFrontendSpec{
+					EngineName: engineName,
+					Active:     true,
+				},
+				Status: longhorn.EngineFrontendStatus{InstanceStatus: longhorn.InstanceStatus{
+					CurrentState: state,
+					StorageIP:    "10.0.0.1",
+					// A frontend is an initiator and listens on no port.
+					Port: 0,
+				}},
+			},
+		}
+	}
+
+	engineFrontend, err := currentEngineFrontendForEngine(volume, engine, newEngineFrontends("vol-e-0", longhorn.InstanceStateRunning))
+	require.NoError(t, err)
+	require.NotNil(t, engineFrontend)
+	require.Equal(t, "vol-ef-0", engineFrontend.Name)
+
+	// A frontend of another engine must not be used for this engine.
+	engineFrontend, err = currentEngineFrontendForEngine(volume, engine, newEngineFrontends("vol-e-1", longhorn.InstanceStateRunning))
+	require.NoError(t, err)
+	require.Nil(t, engineFrontend)
+
+	// A frontend that is not running cannot report the frontend size.
+	engineFrontend, err = currentEngineFrontendForEngine(volume, engine, newEngineFrontends("vol-e-0", longhorn.InstanceStateStopped))
+	require.NoError(t, err)
+	require.Nil(t, engineFrontend)
+
+	// A rebuild suspends the frontend, but it still serves the current size.
+	engineFrontend, err = currentEngineFrontendForEngine(volume, engine, newEngineFrontends("vol-e-0", longhorn.InstanceStateSuspended))
+	require.NoError(t, err)
+	require.NotNil(t, engineFrontend)
+	require.Equal(t, "vol-ef-0", engineFrontend.Name)
+
+	// An errored frontend still holds the size it reached and the expansion error.
+	engineFrontend, err = currentEngineFrontendForEngine(volume, engine, newEngineFrontends("vol-e-0", longhorn.InstanceStateError))
+	require.NoError(t, err)
+	require.NotNil(t, engineFrontend)
+	require.Equal(t, "vol-ef-0", engineFrontend.Name)
+
+	engineFrontend, err = currentEngineFrontendForEngine(volume, engine, map[string]*longhorn.EngineFrontend{})
+	require.NoError(t, err)
+	require.Nil(t, engineFrontend)
+
+	// The instance handler drops the service address of a failed frontend, and
+	// without it the proxy would answer from the engine instead.
+	engineFrontends := newEngineFrontends("vol-e-0", longhorn.InstanceStateError)
+	engineFrontends["vol-ef-0"].Status.StorageIP = ""
+	engineFrontend, err = currentEngineFrontendForEngine(volume, engine, engineFrontends)
+	require.NoError(t, err)
+	require.Nil(t, engineFrontend)
+}
+
+func TestEngineFrontendReportedVolumeInfo(t *testing.T) {
+	engineFrontend := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{Name: "vol-ef-0"},
+	}
+
+	// The proxy overlays the frontend endpoint only when it reached the frontend.
+	require.True(t, engineFrontendReportedVolumeInfo(engineFrontend,
+		&engineapi.Volume{Endpoint: "/dev/longhorn/vol", Size: 4 * util.GiB}))
+
+	// A frontend was asked for, but the proxy answered from the engine, which
+	// carries no endpoint and is already at the new size mid-expansion.
+	require.False(t, engineFrontendReportedVolumeInfo(engineFrontend,
+		&engineapi.Volume{Endpoint: "", Size: 4 * util.GiB}))
+
+	require.False(t, engineFrontendReportedVolumeInfo(nil,
+		&engineapi.Volume{Endpoint: "/dev/longhorn/vol"}))
+	require.False(t, engineFrontendReportedVolumeInfo(engineFrontend, nil))
+}
+
+func TestEngineServesFrontend(t *testing.T) {
+	engine := &longhorn.Engine{
+		Spec: longhorn.EngineSpec{Frontend: longhorn.VolumeFrontendBlockDev},
+	}
+	require.True(t, engineServesFrontend(engine))
+
+	engine.Spec.DisableFrontend = true
+	require.False(t, engineServesFrontend(engine))
+
+	engine.Spec.DisableFrontend = false
+	engine.Spec.Frontend = longhorn.VolumeFrontendEmpty
+	require.False(t, engineServesFrontend(engine))
 }
 
 func TestNeedStatusUpdate(t *testing.T) {

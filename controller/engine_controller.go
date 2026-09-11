@@ -1120,7 +1120,28 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	if (types.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade) ||
 		types.IsDataEngineV2(engine.Spec.DataEngine) {
-		volumeInfo, err := engineClientProxy.VolumeGet(engine)
+		// For v2 the frontend device lags the backend expansion, so the size and
+		// the expansion state have to be read from the EngineFrontend serving it.
+		var engineFrontend *longhorn.EngineFrontend
+		if types.IsDataEngineV2(engine.Spec.DataEngine) {
+			engineFrontends, err := m.ds.ListVolumeEngineFrontendsRO(engine.Spec.VolumeName)
+			if err != nil {
+				return err
+			}
+			engineFrontend, err = currentEngineFrontendForEngine(volume, engine, engineFrontends)
+			if err != nil {
+				// Keep monitoring with the engine-only view instead of stalling
+				// the whole refresh while the current frontend is ambiguous.
+				m.logger.WithError(err).Warn("Failed to pick the current engine frontend, falling back to engine-only volume info")
+			}
+		}
+
+		var volumeInfo *engineapi.Volume
+		if engineFrontend != nil {
+			volumeInfo, err = engineClientProxy.VolumeFrontendGet(engine, engineFrontend)
+		} else {
+			volumeInfo, err = engineClientProxy.VolumeGet(engine)
+		}
 		if err != nil {
 			return err
 		}
@@ -1154,6 +1175,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if err != nil {
 			return err
 		}
+		// The proxy falls back to the engine alone when it cannot reach the frontend
+		// and notes that only in its own log, so the answer has to be checked here.
+		sizeFollowsFrontend := types.IsDataEngineV2(engine.Spec.DataEngine) && engineServesFrontend(engine)
+		frontendReported := engineFrontendReportedVolumeInfo(engineFrontend, volumeInfo)
+
 		expansionSucceeded := engine.Status.CurrentSize != 0 && expectedBackendCurrentSize != volumeInfo.Size
 		if types.IsDataEngineV2(engine.Spec.DataEngine) {
 			// For v2, a size change alone is not enough to declare success.
@@ -1162,13 +1188,23 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			expansionSucceeded = expansionSucceeded &&
 				volumeInfo.LastExpansionError == "" && !volumeInfo.IsExpanding
 		}
+		if sizeFollowsFrontend && !frontendReported {
+			// The backend reaches the new size before the frontend device does, so
+			// an answer the frontend did not give cannot complete an expansion.
+			expansionSucceeded = false
+		}
 		if expansionSucceeded {
 			m.eventRecorder.Eventf(engine, corev1.EventTypeNormal, constant.EventReasonSucceededExpansion,
 				"Engine successfully expand size from %v to %v", engine.Status.CurrentSize, volumeInfo.Size)
 			m.expansionUpdateTime = time.Now()
 		}
-		engine.Status.CurrentSize = volumeInfo.Size
-		engine.Status.IsExpanding = volumeInfo.IsExpanding
+		// Keep the last known size rather than publish one the frontend has not
+		// confirmed. The two agree in steady state, so this only holds mid-expansion,
+		// and a size is always published while there is none to keep.
+		if !sizeFollowsFrontend || frontendReported || engine.Status.CurrentSize == 0 {
+			engine.Status.CurrentSize = volumeInfo.Size
+			engine.Status.IsExpanding = volumeInfo.IsExpanding
+		}
 
 		if types.IsDataEngineV1(engine.Spec.DataEngine) {
 			// For v1, the engine owns and starts its frontend directly.
@@ -2241,6 +2277,59 @@ func (ec *EngineController) getRunningEngineFrontendForEngine(e *longhorn.Engine
 		}
 	}
 	return nil, nil
+}
+
+// currentEngineFrontendForEngine returns the volume's current EngineFrontend
+// only when it is live and belongs to the given engine.
+func currentEngineFrontendForEngine(v *longhorn.Volume, e *longhorn.Engine, efs map[string]*longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	// pickCurrentEngineFrontend marks the frontend it elects as active, so it must
+	// never see the shared informer cache objects.
+	efCopies := make(map[string]*longhorn.EngineFrontend, len(efs))
+	for name, ef := range efs {
+		efCopies[name] = ef.DeepCopy()
+	}
+
+	ef, err := pickCurrentEngineFrontend(v, efCopies)
+	if err != nil {
+		return nil, err
+	}
+	if ef == nil || ef.Spec.EngineName != e.Name || !isEngineFrontendSizeReportable(ef) {
+		return nil, nil
+	}
+	return ef, nil
+}
+
+// isEngineFrontendSizeReportable reports whether the frontend can answer for the
+// size it serves. A rebuild suspends the frontend, and an expansion can complete
+// in that window. An errored one still holds the size it reached and the
+// expansion error, which is what a failed expansion has to report. Only the
+// address host is required: the frontend is an initiator and listens on no port,
+// and the proxy derives the service port itself. The instance handler drops the
+// address once an instance stops or fails, and without it the proxy quietly
+// answers from the engine instead of the frontend.
+func isEngineFrontendSizeReportable(ef *longhorn.EngineFrontend) bool {
+	if ef.Status.StorageIP == "" {
+		return false
+	}
+
+	return ef.Status.CurrentState == longhorn.InstanceStateRunning ||
+		ef.Status.CurrentState == longhorn.InstanceStateSuspended ||
+		ef.Status.CurrentState == longhorn.InstanceStateError
+}
+
+// engineServesFrontend reports whether the engine is expected to expose a frontend
+// device, which an expansion has to resize before it can be called complete.
+func engineServesFrontend(e *longhorn.Engine) bool {
+	return !e.Spec.DisableFrontend && e.Spec.Frontend != longhorn.VolumeFrontendEmpty
+}
+
+// engineFrontendReportedVolumeInfo reports whether the volume info came from the
+// frontend rather than from the engine behind it. Asking for a frontend does not
+// guarantee an answer from one: the proxy quietly serves the engine view when it
+// cannot reach the frontend. A v2 engine carries no endpoint of its own, so an
+// empty endpoint is what that fallback looks like from here.
+func engineFrontendReportedVolumeInfo(ef *longhorn.EngineFrontend, volumeInfo *engineapi.Volume) bool {
+	return ef != nil && volumeInfo != nil && volumeInfo.Endpoint != ""
 }
 
 // rebuildContext holds all state needed by the rebuild goroutine.
