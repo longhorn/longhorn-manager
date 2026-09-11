@@ -36,6 +36,29 @@ func (o *volumeOperationsWithGetError) ById(string) (*longhornclient.Volume, err
 	return nil, o.err
 }
 
+// volumeOperationsRebuilding is a VolumeOperations whose ById succeeds and
+// returns a volume with an in-progress replica rebuild. ActionSnapshotPurge
+// fails the test if called, since a purge must not be attempted while
+// rebuilding.
+type volumeOperationsRebuilding struct {
+	longhornclient.VolumeOperations
+	t      *testing.T
+	volume *longhornclient.Volume
+}
+
+func (o *volumeOperationsRebuilding) ById(string) (*longhornclient.Volume, error) {
+	return o.volume, nil
+}
+
+func (o *volumeOperationsRebuilding) ActionSnapshotCRList(*longhornclient.Volume) (*longhornclient.SnapshotCRListOutput, error) {
+	return &longhornclient.SnapshotCRListOutput{}, nil
+}
+
+func (o *volumeOperationsRebuilding) ActionSnapshotPurge(*longhornclient.Volume) (*longhornclient.Volume, error) {
+	o.t.Fatal("ActionSnapshotPurge must not be called while a replica is rebuilding")
+	return nil, nil
+}
+
 // newAttachedRecurringVolume builds a healthy, attached volume carrying the
 // recurring-job label so getVolumesBySelector/filterVolumesForJob select it.
 func newAttachedRecurringVolume(name, jobName string) *longhorn.Volume {
@@ -159,6 +182,7 @@ func TestStartVolumeJobs(t *testing.T) {
 			eventRecorder: record.NewFakeRecorder(10),
 			name:          jobName,
 			namespace:     namespace,
+			task:          longhorn.RecurringJobTypeSnapshotCleanup,
 		}
 	}
 	recurringJob := &longhorn.RecurringJob{
@@ -192,5 +216,37 @@ func TestStartVolumeJobs(t *testing.T) {
 		err := StartVolumeJobs(job, recurringJob)
 
 		assert.NoError(t, err)
+	})
+
+	t.Run("skips a volume with a rebuilding replica without failing the sweep", func(t *testing.T) {
+		// a rebuild-in-progress error must be treated as a skip, not a per-volume failure,
+		// so it must not cause StartVolumeJobs to return a non-nil error.
+		volume := &longhorn.Volume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      volumeName,
+				Namespace: namespace,
+				Labels:    types.GetRecurringJobLabelValueMap(types.LonghornLabelRecurringJob, jobName),
+			},
+			Status: longhorn.VolumeStatus{
+				State:      longhorn.VolumeStateAttached,
+				Robustness: longhorn.VolumeRobustnessDegraded,
+			},
+		}
+
+		clientVolume := &longhornclient.Volume{
+			Name:  volumeName,
+			State: string(longhorn.VolumeStateAttached),
+			RebuildStatus: []longhornclient.RebuildStatus{
+				{IsRebuilding: true},
+			},
+		}
+
+		job := newJob(&longhornclient.RancherClient{
+			Volume: &volumeOperationsRebuilding{t: t, volume: clientVolume},
+		}, newSetting(), volume)
+
+		err := StartVolumeJobs(job, recurringJob)
+
+		assert.NoError(t, err, "a rebuild-related skip must not fail the sweep")
 	})
 }
