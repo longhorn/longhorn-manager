@@ -2159,8 +2159,15 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		v.Status.State == longhorn.VolumeStateAttached &&
 		e.Status.CurrentState == longhorn.InstanceStateRunning {
 		if e.Spec.RequestedBackupRestore != "" {
+			// The engine monitor keeps retrying after an engine-level restore
+			// error. Show the error here so the retry loop stays visible on the
+			// volume after the events and manager logs have rotated away.
+			restoreMessage := ""
+			if e.Status.EngineRestoreError != "" {
+				restoreMessage = fmt.Sprintf("Restore is being retried after an engine-level error: %s", e.Status.EngineRestoreError)
+			}
 			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
+				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, restoreMessage)
 		}
 
 		// TODO: reconcileVolumeSize

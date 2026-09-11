@@ -441,6 +441,58 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	testCases["newly restored volume is waiting for restoration completed"] = tc
 
+	// Newly restored volume keeps retrying after an engine-level restore error
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Spec.FromBackup = testBackupURL
+	tc.volume.Spec.Standby = false
+	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.OwnerID = TestNode1
+	tc.volume.Status.State = longhorn.VolumeStateAttached
+	tc.volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+	tc.volume.Status.CurrentImage = TestEngineImage
+	tc.volume.Status.FrontendDisabled = true
+	tc.volume.Status.RestoreRequired = true
+	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.LastBackup = TestBackupName
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = longhorn.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Spec.DisableFrontend = true
+		e.Status.OwnerID = TestNode1
+		e.Status.CurrentState = longhorn.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.StorageIP = e.Status.IP
+		e.Status.Port = randomPort()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+		e.Status.LastRestoredBackup = ""
+		e.Status.EngineRestoreError = "failed to sync the volume device"
+	}
+	for name, r := range tc.replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.LastHealthyAt = r.Spec.HealthyAt
+		r.Status.IP = randomIP()
+		r.Status.StorageIP = r.Status.IP
+		r.Status.Port = randomPort()
+		r.Spec.DesireState = longhorn.InstanceStateRunning
+		r.Status.CurrentState = longhorn.InstanceStateRunning
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+			e.Status.ReplicaModeMap[name] = longhorn.ReplicaModeRW
+		}
+	}
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress,
+		"Restore is being retried after an engine-level error: failed to sync the volume device")
+	testCases["newly restored volume keeps retrying after an engine-level restore error"] = tc
+
 	// try to detach newly restored volume after restoration completed
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
