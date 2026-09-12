@@ -116,7 +116,8 @@ type Engine struct {
 	ctx       context.Context
 	cancelCtx context.CancelFunc
 
-	restore *EngineRestore
+	ipFamily commonnet.IPFamily
+	restore  *EngineRestore
 
 	Name       string
 	VolumeName string
@@ -181,6 +182,12 @@ type Engine struct {
 }
 
 func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, snapshotMaxCount int32, newServiceClient ServiceClientFactory) *Engine {
+	return newEngine(engineName, volumeName, frontend, specSize, engineUpdateCh, snapshotMaxCount,
+		commonnet.IPFamilyUnspecified, newServiceClient)
+}
+
+func newEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, snapshotMaxCount int32,
+	ipFamily commonnet.IPFamily, newServiceClient ServiceClientFactory) *Engine {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"engineName": engineName,
 		"volumeName": volumeName,
@@ -199,9 +206,9 @@ func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineU
 	ctx, cancelCtx := context.WithCancel(context.Background())
 
 	e := &Engine{
-		ctx:       ctx,
-		cancelCtx: cancelCtx,
-
+		ctx:        ctx,
+		cancelCtx:  cancelCtx,
+		ipFamily:   ipFamily,
 		Name:       engineName,
 		VolumeName: volumeName,
 		Frontend:   frontend,
@@ -333,7 +340,7 @@ func (e *Engine) Create(spdkClient *spdkclient.Client, replicaAddressMap map[str
 // kernel multipath layer does not route I/O to the new path until explicitly
 // promoted.
 func (e *Engine) createNVMeTCPTarget(spdkClient *spdkclient.Client, superiorPortAllocator *commonbitmap.Bitmap, portCount int32, initialANAState NvmeTCPANAState) error {
-	podIP, err := commonnet.GetIPForPod()
+	podIP, err := commonnet.GetIPForPodByNetworkAndFamily(e.ipFamily)
 	if err != nil {
 		return err
 	}

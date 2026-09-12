@@ -35,7 +35,8 @@ const (
 	InstanceManagerConditionReasonPodRunning  = "Running"
 	InstanceManagerConditionReasonPodStarting = "Starting"
 
-	InstanceManagerConditionReasonSettingNotSynced = "SettingNotSynced"
+	InstanceManagerConditionReasonSettingNotSynced                 = "SettingNotSynced"
+	InstanceManagerConditionReasonSettingBlockedByAttachedVolumes = "SettingBlockedByAttachedVolumes"
 )
 
 // +kubebuilder:validation:Enum=aio;engine;replica
@@ -260,6 +261,9 @@ type InstanceManagerStatus struct {
 	BackingImages map[string]BackingImageV2CopyInfo `json:"backingImages"`
 	// +optional
 	IP string `json:"ip"`
+	// +optional
+	// +nullable
+	IPFamily *string `json:"ipFamily,omitempty"`
 	// +optional
 	APIMinVersion int `json:"apiMinVersion"`
 	// +optional

@@ -156,6 +156,20 @@ func NewBackingImageDataSourceController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			setting, ok := obj.(*longhorn.Setting)
+			return ok && setting.Name == string(types.SettingNamePreferredDataEngineIPFamily)
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.enqueueForPreferredDataEngineIPFamilySetting,
+			UpdateFunc: func(old, cur interface{}) { c.enqueueForPreferredDataEngineIPFamilySetting(cur) },
+			DeleteFunc: c.enqueueForPreferredDataEngineIPFamilySetting,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.SettingInformer.HasSynced)
 
 	return c, nil
 }
@@ -438,6 +452,22 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	if err != nil {
 		return errors.Wrapf(err, "failed to get pod for backing image data source %v", bids.Name)
 	}
+	if pod != nil && pod.DeletionTimestamp == nil {
+		setting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+		if err != nil {
+			return err
+		}
+		if !isBackingImagePodIPFamilySynced(pod, BackingImageDataSourcePodContainerName, setting.Value) {
+			if c.isMonitoring(bids.Name) {
+				c.stopMonitoring(bids.Name)
+			}
+			if err := c.ds.DeletePod(pod.Name); err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+			return nil
+		}
+	}
+
 	podReady := false
 	podFailed := false
 	podNotReadyMessage := ""
@@ -476,12 +506,31 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}
 
 	if podReady {
-		storageIP := c.ds.GetIPFromPodByCNISetting(pod, types.SettingNameStorageNetwork)
+		storageIP, err := c.ds.GetDataEngineIPFromPodByCNISettingForContainer(
+			pod, types.SettingNameStorageNetwork, BackingImageDataSourcePodContainerName)
+		if err != nil {
+			bids.Status.StorageIP = ""
+			bids.Status.IP = ""
+			if _, updateErr := c.ds.UpdateBackingImageDataSourceStatus(bids); updateErr != nil {
+				return updateErr
+			}
+			return err
+		}
 		if bids.Status.StorageIP != storageIP {
 			bids.Status.StorageIP = storageIP
 		}
-		if bids.Status.IP != pod.Status.PodIP {
-			bids.Status.IP = pod.Status.PodIP
+		ip, err := c.ds.GetDataEngineIPFromPodForContainer(
+			pod, BackingImageDataSourcePodContainerName)
+		if err != nil {
+			bids.Status.StorageIP = ""
+			bids.Status.IP = ""
+			if _, updateErr := c.ds.UpdateBackingImageDataSourceStatus(bids); updateErr != nil {
+				return updateErr
+			}
+			return err
+		}
+		if bids.Status.IP != ip {
+			bids.Status.IP = ip
 		}
 		if !c.isMonitoring(bids.Name) {
 			c.startMonitoring(bids)
@@ -689,15 +738,22 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		return nil, fmt.Errorf("failed to start backing image data source pod since the backing image UUID is not set")
 	}
 
+	dataEngineIPFamilySetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting for backing image data source pod", types.SettingNamePreferredDataEngineIPFamily)
+	}
+	dataEngineIPFamily := normalizePreferredDataEngineIPFamily(dataEngineIPFamilySetting.Value)
+
 	cmd := []string{
 		"backing-image-manager", "--debug",
 		"data-source",
-		"--listen", fmt.Sprintf(":%d", engineapi.BackingImageDataSourceDefaultPort),
-		"--sync-listen", fmt.Sprintf(":%d", engineapi.BackingImageSyncServerDefaultPort),
+		"--listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageDataSourceDefaultPort),
+		"--sync-listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageSyncServerDefaultPort),
 		"--name", bids.Name,
 		"--uuid", bids.Spec.UUID,
 		"--source-type", string(bids.Spec.SourceType),
 	}
+	cmd = appendBackingImageIPFamilyArgs(cmd, dataEngineIPFamily)
 
 	bids.Status.RunningParameters = bids.Spec.Parameters
 	if err := c.prepareRunningParametersForClone(bids); err != nil {
@@ -988,6 +1044,16 @@ func (c *BackingImageDataSourceController) enqueueBackingImageDataSource(backing
 	}
 
 	c.queue.Add(key)
+}
+func (c *BackingImageDataSourceController) enqueueForPreferredDataEngineIPFamilySetting(interface{}) {
+	bidss, err := c.ds.ListBackingImageDataSources()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list backing image data sources for preferred-data-engine-ip-family update: %v", err))
+		return
+	}
+	for _, bids := range bidss {
+		c.enqueueBackingImageDataSource(bids)
+	}
 }
 
 func isBackingImageDataSourcePod(obj interface{}) bool {

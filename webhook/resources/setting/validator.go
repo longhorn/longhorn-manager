@@ -60,7 +60,20 @@ func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Obj
 		return werror.NewInvalidError(fmt.Sprintf("setting %s is read-only", setting.Name), "metadata.name")
 	}
 
-	return v.validateSetting(newObj)
+	if err := v.validateSetting(newObj); err != nil {
+		return err
+	}
+	if types.SettingName(setting.Name) == types.SettingNamePreferredDataEngineIPFamily &&
+		existingSetting.Value != setting.Value {
+		allDetached, err := v.ds.AreAllVolumesDetachedState()
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("failed to verify that all volumes are detached: %v", err), "value")
+		}
+		if !allDetached {
+			return werror.NewInvalidError("cannot change preferred data engine IP family while volumes are attached", "value")
+		}
+	}
+	return nil
 }
 
 func (v *settingValidator) Delete(request *admission.Request, oldObj runtime.Object) error {

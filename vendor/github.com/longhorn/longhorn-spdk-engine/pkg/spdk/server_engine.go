@@ -11,6 +11,7 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
+	commonnet "github.com/longhorn/go-common-libs/net"
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/api"
@@ -39,7 +40,8 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient)
+		s.engineMap[req.Name] = newEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize,
+			s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.ipFamily, s.newServiceClient)
 		e = s.engineMap[req.Name]
 	}
 
@@ -214,6 +216,11 @@ func (s *Server) EngineFrontendSwitchOver(ctx context.Context, req *spdkrpc.Engi
 	}
 	if targetIP, targetPort, splitErr := splitHostPort(req.TargetAddress); splitErr != nil || targetIP == "" || targetPort == 0 {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid target address %q", req.TargetAddress)
+	}
+	if s.ipFamily != commonnet.IPFamilyUnspecified {
+		if familyErr := validatePersistedAddressFamily(req.TargetAddress, s.ipFamily); familyErr != nil {
+			return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid target address %q: %v", req.TargetAddress, familyErr)
+		}
 	}
 
 	s.RLock()
@@ -705,17 +712,19 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 	e.RLock()
 	volumeName := e.VolumeName
 	specSize := e.SpecSize
+	engineName := e.Name
 	e.RUnlock()
 
 	throwawayUpdateCh := make(chan interface{}, 2)
-	tempEF := NewEngineFrontend(
-		e.Name+"-restore",
-		e.Name,
+	tempEF := newEngineFrontend(
+		engineName+"-restore",
+		engineName,
 		volumeName,
 		types.FrontendSPDKTCPBlockdev,
 		specSize,
 		types.DefaultUblkQueueDepth,
 		types.DefaultUblkNumberOfQueue,
+		s.ipFamily,
 		throwawayUpdateCh,
 		s.newServiceClient,
 	)

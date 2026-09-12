@@ -88,11 +88,12 @@ func NewBackup(spdkClient *spdkclient.Client, backupName, volumeName, snapshotNa
 	log.Info("Initializing backup")
 
 	replicaAddress := ""
+	ipFamily := commonnet.IPFamilyUnspecified
 	if replica != nil {
-		replicaAddress = replica.GetAddress()
+		replicaAddress, ipFamily = replica.GetAddressAndIPFamily()
 	}
 
-	podIP, err := commonnet.GetIPForPod()
+	podIP, err := commonnet.GetIPForPodByNetworkAndFamily(ipFamily)
 	if err != nil {
 		return nil, err
 	}

@@ -223,5 +223,6 @@ func (s *Server) getOrCreateShard(req *spdkrpc.ShardCreateRequest) (*Shard, erro
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "lvstore %v(%v) does not exist for shard %v creation", req.LvsName, req.LvsUuid, name)
 	}
 
-	return NewShard(req.VolumeName, req.SlotIndex, req.LvsName, req.LvsUuid, req.SizeBytes, s.updateChs[types.InstanceTypeShard]), nil
+	return newShard(req.VolumeName, req.SlotIndex, req.LvsName, req.LvsUuid, req.SizeBytes, s.ipFamily,
+		s.updateChs[types.InstanceTypeShard]), nil
 }

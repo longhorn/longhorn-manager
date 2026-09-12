@@ -1720,6 +1720,11 @@ func (in *InstanceManagerStatus) DeepCopyInto(out *InstanceManagerStatus) {
 			(*out)[key] = val
 		}
 	}
+	if in.IPFamily != nil {
+		in, out := &in.IPFamily, &out.IPFamily
+		*out = new(string)
+		**out = **in
+	}
 	out.DataEngineStatus = in.DataEngineStatus
 	return
 }

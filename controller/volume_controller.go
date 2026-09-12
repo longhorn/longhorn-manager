@@ -7230,7 +7230,7 @@ func (c *VolumeController) enqueueSettingChange(obj interface{}) {
 
 	vs, err := c.ds.ListVolumesFollowsGlobalSettingsRO(map[string]bool{setting.Name: true})
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to list volumes when enqueuing setting %v: %v", types.SettingNameRemoveSnapshotsDuringFilesystemTrim, err))
+		utilruntime.HandleError(fmt.Errorf("failed to list volumes when enqueuing setting %v: %v", setting.Name, err))
 		return
 	}
 	for _, v := range vs {

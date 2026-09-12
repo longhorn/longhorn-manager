@@ -180,6 +180,20 @@ func NewBackingImageManagerController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			setting, ok := obj.(*longhorn.Setting)
+			return ok && setting.Name == string(types.SettingNamePreferredDataEngineIPFamily)
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.enqueueForPreferredDataEngineIPFamilySetting,
+			UpdateFunc: func(old, cur interface{}) { c.enqueueForPreferredDataEngineIPFamilySetting(cur) },
+			DeleteFunc: c.enqueueForPreferredDataEngineIPFamilySetting,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.SettingInformer.HasSynced)
 
 	return c, nil
 }
@@ -471,6 +485,21 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 	if err != nil {
 		return errors.Wrapf(err, "failed to get pod for backing image manager %v", bim.Name)
 	}
+	if pod != nil && pod.DeletionTimestamp == nil {
+		setting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+		if err != nil {
+			return err
+		}
+		if !isBackingImagePodIPFamilySynced(pod, BackingImageManagerPodContainerName, setting.Value) {
+			if c.isMonitoring(bim.Name) {
+				c.stopMonitoring(bim.Name)
+			}
+			if err := c.ds.DeletePod(pod.Name); err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+			return nil
+		}
+	}
 
 	// Sync backing image manager status with related pod
 	if pod == nil {
@@ -488,6 +517,7 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			c.eventRecorder.Eventf(bim, corev1.EventTypeWarning, constant.EventReasonUpdate, "Pod node name %v doesn't match backing image manager node ID %v, will update to state %v", pod.Spec.NodeName, bim.Spec.NodeID, longhorn.BackingImageManagerStateError)
 			bim.Status.CurrentState = longhorn.BackingImageManagerStateError
 		}
+
 	} else if pod.DeletionTimestamp != nil {
 		if bim.Status.CurrentState != longhorn.BackingImageManagerStateError {
 			log.Errorf("Pod deletion timestamp is set for backing image manager with state %v, will update to state %v", bim.Status.CurrentState, longhorn.BackingImageManagerStateError)
@@ -524,13 +554,30 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			}
 
 			if bim.Status.CurrentState == longhorn.BackingImageManagerStateRunning {
-				storageIP := c.ds.GetIPFromPodByCNISetting(pod, types.SettingNameStorageNetwork)
+				storageIP, err := c.ds.GetDataEngineIPFromPodByCNISettingForContainer(pod, types.SettingNameStorageNetwork, BackingImageManagerPodContainerName)
+				if err != nil {
+					bim.Status.IP = ""
+					bim.Status.StorageIP = ""
+					if _, updateErr := c.ds.UpdateBackingImageManagerStatus(bim); updateErr != nil {
+						return updateErr
+					}
+					return err
+				}
+				ip, err := c.ds.GetDataEngineIPFromPodForContainer(pod, BackingImageManagerPodContainerName)
+				if err != nil {
+					bim.Status.IP = ""
+					bim.Status.StorageIP = ""
+					if _, updateErr := c.ds.UpdateBackingImageManagerStatus(bim); updateErr != nil {
+						return updateErr
+					}
+					return err
+				}
 				if bim.Status.StorageIP != storageIP {
 					bim.Status.StorageIP = storageIP
 					log.Warnf("Inconsistent storage IP from pod %v, update backing image status storage IP %v", pod.Name, bim.Status.StorageIP)
 				}
 
-				bim.Status.IP = pod.Status.PodIP
+				bim.Status.IP = ip
 			}
 		default:
 			log.Errorf("Unexpected pod phase %v, will update backing image manager to state %v", pod.Status.Phase, longhorn.BackingImageManagerStateError)
@@ -901,6 +948,19 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		return nil, err
 	}
 
+	dataEngineIPFamilySetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting for backing image manager pod", types.SettingNamePreferredDataEngineIPFamily)
+	}
+	dataEngineIPFamily := normalizePreferredDataEngineIPFamily(dataEngineIPFamilySetting.Value)
+	command := []string{
+		"backing-image-manager", "--debug",
+		"daemon",
+		"--listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageManagerDefaultPort),
+		"--sync-listen", getBackingImageListenAddress(dataEngineIPFamily, engineapi.BackingImageSyncServerDefaultPort),
+	}
+	command = appendBackingImageIPFamilyArgs(command, dataEngineIPFamily)
+
 	privileged := true
 	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -920,12 +980,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 					Name:            BackingImageManagerPodContainerName,
 					Image:           bim.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
-					Command: []string{
-						"backing-image-manager", "--debug",
-						"daemon",
-						"--listen", fmt.Sprintf(":%d", engineapi.BackingImageManagerDefaultPort),
-						"--sync-listen", fmt.Sprintf(":%d", engineapi.BackingImageSyncServerDefaultPort),
-					},
+					Command:         command,
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							TCPSocket: &corev1.TCPSocketAction{
@@ -993,6 +1048,17 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 
 	types.AddGoCoverDirToPod(podSpec)
 	return podSpec, nil
+}
+
+func (c *BackingImageManagerController) enqueueForPreferredDataEngineIPFamilySetting(interface{}) {
+	bims, err := c.ds.ListBackingImageManagersRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list backing image managers for preferred-data-engine-ip-family update: %v", err))
+		return
+	}
+	for _, bim := range bims {
+		c.enqueueBackingImageManager(bim)
+	}
 }
 
 func (c *BackingImageManagerController) enqueueBackingImageManager(backingImageManager interface{}) {
