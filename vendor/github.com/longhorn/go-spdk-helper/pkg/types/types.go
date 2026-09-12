@@ -30,12 +30,25 @@ const (
 	ShallowCopyStateError      = "error"
 
 	ExecuteTimeout = 180 * time.Second
+
+	// DmsetupTimeout covers every dmsetup call and NvmeDisconnectTimeout the NVMe
+	// disconnects. Those run while the initiator holds its per-volume file lock and
+	// are the ones that can block on a device the kernel is stuck on, so both stay
+	// below that lock timeout: otherwise one wedged device starves every other
+	// operation on the same volume until its lock waiters give up.
+	DmsetupTimeout        = 30 * time.Second
+	NvmeDisconnectTimeout = 30 * time.Second
 )
 
 const (
 	ErrorMessageCannotFindValidNvmeDevice = "cannot find a valid NVMe device"
 	ErrorMessageDeviceOrResourceBusy      = "device or resource busy"
 	ErrorMessageNoSuchFileOrDirectory     = "no such file or directory"
+	ErrorMessageFailedToGetInitiatorLock  = "failed to get file lock for initiator"
+	// ErrorMessageTimeoutExecuting is what go-common-libs reports when a command
+	// outlives its timeout; the executor sends SIGKILL to the command's process group,
+	// but a process blocked in the kernel may not terminate promptly.
+	ErrorMessageTimeoutExecuting = "timeout executing:"
 )
 
 const (
@@ -89,4 +102,8 @@ func ErrorIsDeviceOrResourceBusy(err error) bool {
 
 func ErrorIsValidNvmeDeviceNotFound(err error) bool {
 	return strings.Contains(err.Error(), ErrorMessageCannotFindValidNvmeDevice)
+}
+
+func ErrorIsTimeoutExecuting(err error) bool {
+	return err != nil && strings.Contains(err.Error(), ErrorMessageTimeoutExecuting)
 }

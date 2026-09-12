@@ -213,6 +213,35 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 	return &emptypb.Empty{}, nil
 }
 
+// validateVolumeReadyForFrontendLocked returns an error wrapping
+// ErrEngineFrontendCreatePrecondition when volumeName still has a registered
+// restore frontend.
+//
+// A restore connects a temporary NVMe-TCP initiator to the volume NQN. When
+// the restore finishes, that initiator is disconnected by NQN, which drops
+// every host connection to the same NQN. A frontend created before the
+// teardown is done would lose its connection without any error being
+// reported. Rejecting the create here makes the conflict visible to the
+// caller instead.
+//
+// The caller must hold the server lock (read or write) and the volume host
+// lock of volumeName. The host lock is what makes the check reliable:
+// EngineBackupRestore registers its restore frontend under the same lock,
+// so a registration cannot slip in between this check and the create.
+func (s *Server) validateVolumeReadyForFrontendLocked(volumeName string) error {
+	for _, restoreEF := range s.restoreFrontendMap {
+		restoreEF.RLock()
+		restoreVolumeName := restoreEF.VolumeName
+		restoreEF.RUnlock()
+
+		if restoreVolumeName == volumeName {
+			return errors.Wrapf(ErrEngineFrontendCreatePrecondition, "cannot create engine frontend for volume %v: %s", volumeName, restoreEF.restoreTeardownBlockReason())
+		}
+	}
+
+	return nil
+}
+
 // EngineFrontendCreate creates a new engine frontend.
 func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFrontendCreateRequest) (ret *spdkrpc.EngineFrontend, err error) {
 	if req.Name == "" {
@@ -315,11 +344,20 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	unlockVolumeHost := s.acquireVolumeHostLock(req.VolumeName)
 	defer unlockVolumeHost()
 
+	// The restore frontend check runs here, under the host lock, and not in
+	// the write-lock section above: EngineBackupRestore registers its
+	// restore frontend under the same host lock, so a check made before we
+	// held it could be stale by the time Create connects to the volume NQN.
+	// A rejection is a create precondition failure, so it takes the same
+	// hard-error path as the preconditions checked inside Create.
 	s.RLock()
 	spdkClient := s.spdkClient
+	createErr := s.validateVolumeReadyForFrontendLocked(req.VolumeName)
 	s.RUnlock()
 
-	ret, createErr := ef.Create(spdkClient, targetAddress)
+	if createErr == nil {
+		ret, createErr = ef.Create(spdkClient, targetAddress)
+	}
 	for _, evicted := range evictedEfs {
 		if createErr == nil && evicted.VolumeName == req.VolumeName {
 			evicted.setMetadataDir("")

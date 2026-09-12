@@ -33,11 +33,22 @@ type EngineStatusApplyConfiguration struct {
 	// ReplicaTransitionTimeMap records the time a replica in ReplicaModeMap transitions from one mode to another (or
 	// from not being in the ReplicaModeMap to being in it). This information is sometimes required by other controllers
 	// (e.g. the volume controller uses it to determine the correct value for replica.Spec.lastHealthyAt).
-	ReplicaTransitionTimeMap         map[string]string                               `json:"replicaTransitionTimeMap,omitempty"`
-	Endpoint                         *string                                         `json:"endpoint,omitempty"`
-	LastRestoredBackup               *string                                         `json:"lastRestoredBackup,omitempty"`
-	BackupStatus                     map[string]*longhornv1beta2.EngineBackupStatus  `json:"backupStatus,omitempty"`
-	RestoreStatus                    map[string]*longhornv1beta2.RestoreStatus       `json:"restoreStatus,omitempty"`
+	ReplicaTransitionTimeMap map[string]string                              `json:"replicaTransitionTimeMap,omitempty"`
+	Endpoint                 *string                                        `json:"endpoint,omitempty"`
+	LastRestoredBackup       *string                                        `json:"lastRestoredBackup,omitempty"`
+	BackupStatus             map[string]*longhornv1beta2.EngineBackupStatus `json:"backupStatus,omitempty"`
+	RestoreStatus            map[string]*longhornv1beta2.RestoreStatus      `json:"restoreStatus,omitempty"`
+	// EngineRestoreError is set when a backup restore fails in the engine
+	// rather than in a replica, for example when the engine cannot reach a
+	// replica while restoring. It is cleared when the next restore attempt
+	// starts, and set again if that attempt fails. Longhorn retries the
+	// restore within a time budget and then gives up. Only the V2 Data
+	// Engine reports it.
+	//
+	// Errors caused by a single replica appear in that replica's
+	// RestoreStatus entry instead and fail that replica, unless the replica
+	// has already been removed from the engine.
+	EngineRestoreError               *string                                         `json:"engineRestoreError,omitempty"`
 	PurgeStatus                      map[string]*longhornv1beta2.PurgeStatus         `json:"purgeStatus,omitempty"`
 	RebuildStatus                    map[string]*longhornv1beta2.RebuildStatus       `json:"rebuildStatus,omitempty"`
 	CloneStatus                      map[string]*longhornv1beta2.SnapshotCloneStatus `json:"cloneStatus,omitempty"`
@@ -152,6 +163,14 @@ func (b *EngineStatusApplyConfiguration) WithRestoreStatus(entries map[string]*l
 	for k, v := range entries {
 		b.RestoreStatus[k] = v
 	}
+	return b
+}
+
+// WithEngineRestoreError sets the EngineRestoreError field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the EngineRestoreError field is set to the value of the last call.
+func (b *EngineStatusApplyConfiguration) WithEngineRestoreError(value string) *EngineStatusApplyConfiguration {
+	b.EngineRestoreError = &value
 	return b
 }
 

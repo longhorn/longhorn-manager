@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2368,6 +2369,18 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 		return resp, nil, err
 	}
 
+	// Fail fast on a persistently broken replica I/O path before the restore
+	// starts, instead of waiting for the idle timeout. This runs without the
+	// engine lock, so the re-checks do not block other engine RPCs.
+	if replicaName, preflightErr := e.preflightReplicaIOPathsForRestore(spdkClient); preflightErr != nil {
+		e.Lock()
+		if e.recordBackupRestoreStartErrorLocked(spdkClient, backupUrl, "", superiorPortAllocator, preflightErr) {
+			e.restore.RecordErrorSource(replicaName)
+		}
+		e.Unlock()
+		return resp, nil, preflightErr
+	}
+
 	e.Lock()
 	defer e.Unlock()
 
@@ -2444,9 +2457,13 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	return resp, ch, nil
 }
 
-func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Client, backupURL, backupName string, superiorPortAllocator *commonbitmap.Bitmap, restoreErr error) {
+// recordBackupRestoreStartErrorLocked publishes a restore start error in
+// e.restore so the control plane can observe it. It reports whether the error
+// was recorded; it declines when another restore is already in progress,
+// because e.restore then belongs to that restore.
+func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Client, backupURL, backupName string, superiorPortAllocator *commonbitmap.Bitmap, restoreErr error) (recorded bool) {
 	if restoreErr == nil {
-		return
+		return false
 	}
 
 	// If another restore is already in progress, don't overwrite its state.
@@ -2455,7 +2472,7 @@ func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Clie
 	// recording (which re-acquired it).
 	if e.IsRestoring {
 		e.log.Warnf("Skipping restore error recording for %v: another restore is already in progress", backupURL)
-		return
+		return false
 	}
 
 	if backupName == "" {
@@ -2473,6 +2490,7 @@ func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Clie
 		e.restore.StartNewRestore(backupURL, backupName, true)
 	}
 	e.restore.UpdateRestoreStatus("", 0, restoreErr)
+	return true
 }
 
 func (e *Engine) precheckBackupRestore(backupURL string) error {
@@ -2558,7 +2576,10 @@ func (e *Engine) backupRestore(backupURL string, concurrentLimit int32) error {
 		"concurrentLimit": concurrentLimit,
 	}).Info("Starting full backup restore")
 
-	return backupstore.RestoreDeltaBlockBackup(e.ctx, &backupstore.DeltaRestoreConfig{
+	// The restore cycle's own context, not the engine's: FinalizeRestore and
+	// signalStop cancel it, so an aborted restore also ends the backupstore
+	// block producers, not just the workers.
+	return backupstore.RestoreDeltaBlockBackup(e.restore.Context(), &backupstore.DeltaRestoreConfig{
 		BackupURL:       backupURL,
 		DeltaOps:        e.restore,
 		Filename:        "",
@@ -2575,7 +2596,8 @@ func (e *Engine) backupRestoreIncrementally(backupURL, lastRestored string, conc
 		"concurrentLimit": concurrentLimit,
 	}).Info("Starting incremental backup restore")
 
-	return backupstore.RestoreDeltaBlockBackupIncrementally(e.ctx, &backupstore.DeltaRestoreConfig{
+	// See backupRestore for why this passes the restore cycle's context.
+	return backupstore.RestoreDeltaBlockBackupIncrementally(e.restore.Context(), &backupstore.DeltaRestoreConfig{
 		BackupURL:       backupURL,
 		DeltaOps:        e.restore,
 		LastBackupName:  lastRestored,
@@ -2587,7 +2609,7 @@ func (e *Engine) backupRestoreIncrementally(backupURL, lastRestored string, conc
 func (e *Engine) completeBackupRestore(spdkClient *spdkclient.Client, backupSnapshotName string) (err error) {
 	// waitForRestoreComplete only reads e.restore fields under e.restore.RLock;
 	// no engine lock is needed (and must not be held — SnapshotCreate/Delete acquire it).
-	waitErr := e.waitForRestoreComplete()
+	waitErr := e.waitForRestoreComplete(spdkClient)
 
 	// Acquire the engine lock to mutate shared fields and tear down the temporary
 	// NVMe-TCP target. This runs regardless of success or failure so that the target
@@ -2621,7 +2643,11 @@ func (e *Engine) completeBackupRestore(spdkClient *spdkclient.Client, backupSnap
 		e.Lock()
 		e.IsRestoring = false
 		if e.restore != nil {
-			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, waitErr)
+			// The watcher gave up before the backupstore workers finished.
+			// Stop the workers that are between blocks and record the outcome
+			// before any late worker report can change it.
+			e.restore.signalStop()
+			e.restore.FinalizeRestore(waitErr)
 		}
 		e.Unlock()
 		return errors.Wrapf(waitErr, "failed to wait for engine restore complete")
@@ -2632,11 +2658,7 @@ func (e *Engine) completeBackupRestore(spdkClient *spdkclient.Client, backupSnap
 		e.Lock()
 		e.IsRestoring = false
 		if e.restore != nil {
-			if err != nil {
-				e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
-			} else {
-				e.restore.FinishRestore()
-			}
+			e.restore.FinalizeRestore(err)
 		}
 		e.Unlock()
 	}()
@@ -2699,6 +2721,12 @@ func (e *Engine) cleanupTemporaryNvmeTcpTargetForRestore(spdkClient *spdkclient.
 	e.cleanupTemporaryNvmeTcpTargetForRestoreLocked(spdkClient, superiorPortAllocator, reason)
 }
 
+// cleanupTemporaryNvmeTcpTargetForRestoreLocked removes the temporary
+// NVMe-TCP target and releases its port. A StopExposeBdev failure is not
+// returned. Both the next restore and the engine deletion call StopExposeBdev
+// on the volume NQN before anything else, so a subsystem left behind here is
+// removed then. Reusing the port is safe because SPDK shares a TCP listener
+// across subsystems and hosts connect by NQN.
 func (e *Engine) cleanupTemporaryNvmeTcpTargetForRestoreLocked(spdkClient *spdkclient.Client, superiorPortAllocator *commonbitmap.Bitmap, reason string) {
 	if e.Frontend != types.FrontendEmpty || e.NvmeTcpTarget == nil {
 		return
@@ -2719,17 +2747,187 @@ func (e *Engine) cleanupTemporaryNvmeTcpTargetForRestoreLocked(spdkClient *spdkc
 	}
 }
 
-func (e *Engine) waitForRestoreComplete() error {
+// restoreIdleTimeoutFloor and restoreIdleTimeoutPerGiB are the inputs to
+// restoreIdleTimeout. They are variables so tests can shorten them.
+var (
+	restoreIdleTimeoutFloor  = 10 * time.Minute
+	restoreIdleTimeoutPerGiB = time.Second
+)
+
+// restoreIdleTimeout returns how long a restore may stay idle before it is
+// aborted. Idle means the progress percentage has not changed. Progress
+// advances in whole percentage points, so one step covers specSize/100 bytes.
+// One second per GiB tolerates throughput down to about 10 MiB/s. The floor
+// covers small volumes, where the per-GiB slope alone would demand an
+// unrealistically fast download.
+func restoreIdleTimeout(specSize uint64) time.Duration {
+	const bytesPerGiB = uint64(1 << 30)
+	sizeGiB := (specSize + bytesPerGiB - 1) / bytesPerGiB
+	timeout := time.Duration(sizeGiB) * restoreIdleTimeoutPerGiB
+	if timeout < restoreIdleTimeoutFloor {
+		timeout = restoreIdleTimeoutFloor
+	}
+	return timeout
+}
+
+// idleTimer detects a restore that stops making progress. It expires when the
+// progress value stays unchanged longer than the timeout. Callers pass the
+// current time so tests are deterministic.
+type idleTimer struct {
+	timeout        time.Duration
+	lastProgress   int
+	lastProgressAt time.Time
+}
+
+func newIdleTimer(timeout time.Duration, now time.Time) *idleTimer {
+	return &idleTimer{
+		timeout: timeout,
+		// Impossible progress value, so the first check always counts as a
+		// progress change and starts the timer.
+		lastProgress:   -1,
+		lastProgressAt: now,
+	}
+}
+
+// check records the progress value seen at now. A changed value restarts the
+// timer. It returns how long the value has been unchanged and whether that
+// exceeds the timeout.
+func (t *idleTimer) check(progress int, now time.Time) (idleFor time.Duration, expired bool) {
+	if progress != t.lastProgress {
+		t.lastProgress = progress
+		t.lastProgressAt = now
+		return 0, false
+	}
+	idleFor = now.Sub(t.lastProgressAt)
+	return idleFor, idleFor > t.timeout
+}
+
+// bdevHasUsableIOPathFn reports whether a bdev has a usable NVMe I/O path on
+// every reactor. It is a variable so tests can replace it.
+var bdevHasUsableIOPathFn = nvmeNamespaceHasUsableIOPath
+
+// findReplicaWithoutUsableIOPath returns the first replica, in name order,
+// that has no usable I/O path on some reactor, and a description of the
+// unusable paths. It returns empty strings when every replica is healthy.
+//
+// If the SPDK query fails for a replica, the check continues with the next
+// one. When no broken replica is found, the last query error is returned.
+func (e *Engine) findReplicaWithoutUsableIOPath(spdkClient *spdkclient.Client) (string, string, error) {
+	type replicaBdev struct {
+		replicaName string
+		bdevName    string
+	}
+
+	e.RLock()
+	candidates := make([]replicaBdev, 0, len(e.backends))
+	for replicaName, backend := range e.backends {
+		if backend.Mode() == types.ModeERR || backend.BdevName() == "" {
+			continue
+		}
+		candidates = append(candidates, replicaBdev{replicaName: replicaName, bdevName: backend.BdevName()})
+	}
+	e.RUnlock()
+
+	// Name order makes the result stable when more than one replica is broken.
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].replicaName < candidates[j].replicaName })
+
+	var queryErr error
+	for _, candidate := range candidates {
+		usable, detail, err := bdevHasUsableIOPathFn(spdkClient, candidate.bdevName)
+		if err != nil {
+			queryErr = errors.Wrapf(err, "failed to query I/O paths of bdev %s for replica %s", candidate.bdevName, candidate.replicaName)
+			continue
+		}
+		if !usable {
+			e.log.Warnf("Replica %s bdev %s has a reactor without a usable I/O path: %s", candidate.replicaName, candidate.bdevName, detail)
+			return candidate.replicaName, detail, nil
+		}
+	}
+	return "", "", queryErr
+}
+
+// recordBrokenReplicaAsRestoreErrorSource records the first replica without a
+// usable I/O path as the restore error source, so the manager fails only that
+// replica. This is best effort: the broken path may not be the cause of the
+// failure. When no broken replica is found, or the I/O path query fails, the
+// error stays at the engine level.
+func (e *Engine) recordBrokenReplicaAsRestoreErrorSource(spdkClient *spdkclient.Client) {
+	replicaName, _, queryErr := e.findReplicaWithoutUsableIOPath(spdkClient)
+	if queryErr != nil {
+		e.log.WithError(queryErr).Warn("Cannot check replica I/O paths, so no replica is recorded as the restore error source")
+	}
+	e.restore.RecordErrorSource(replicaName)
+}
+
+// restorePreflightRetryInterval and restorePreflightTimeout control how often
+// and for how long the restore preflight re-checks a broken replica I/O path
+// before giving up. The timeout must exceed replicaCtrlrLossTimeoutSec,
+// because SPDK can still reconnect the controller within that time. They are
+// package-level variables so tests can adjust them.
+var (
+	restorePreflightRetryInterval = 5 * time.Second
+	restorePreflightTimeout       = 2 * replicaCtrlrLossTimeoutSec * time.Second
+)
+
+// preflightReplicaIOPathsForRestore verifies that every replica has a usable
+// NVMe I/O path before a restore starts. A broken path is re-checked until
+// the preflight timeout, so a transient reconnect does not fail the restore.
+// On failure it returns the name of the broken replica so the caller can
+// record it as the restore error source.
+//
+// If the SPDK query keeps failing until the timeout, the restore does not
+// start and the returned name is empty.
+//
+// It sleeps between re-checks. Do not call it with the engine lock held.
+func (e *Engine) preflightReplicaIOPathsForRestore(spdkClient *spdkclient.Client) (string, error) {
+	deadline := time.Now().Add(restorePreflightTimeout)
+	for {
+		replicaName, detail, queryErr := e.findReplicaWithoutUsableIOPath(spdkClient)
+		if replicaName == "" && queryErr == nil {
+			return "", nil
+		}
+
+		var reason error
+		if replicaName != "" {
+			reason = fmt.Errorf("replica %s has no usable NVMe I/O path (%s)", replicaName, detail)
+		} else {
+			reason = errors.Wrap(queryErr, "cannot verify the replica NVMe I/O paths")
+		}
+		if time.Now().After(deadline) {
+			return replicaName, errors.Wrapf(reason, "restore preflight failed after re-checking for %v", restorePreflightTimeout)
+		}
+		e.log.WithError(reason).Warnf("Restore preflight check did not pass, re-checking in %v; giving up in %v", restorePreflightRetryInterval, time.Until(deadline).Truncate(time.Second))
+		time.Sleep(restorePreflightRetryInterval)
+	}
+}
+
+// waitForRestoreComplete polls the restore status until it finishes.
+// It returns nil when progress reaches 100% without an error. It returns an
+// error when the restore reports an error, is canceled, or stays idle. Idle
+// means the progress percentage is unchanged for longer than the idle
+// timeout. On a restore error or an idle abort, the engine tries to find the
+// replica whose broken I/O path caused it and reports the error on that
+// replica; if none is found, the error stays at the engine level.
+//
+// The error is checked before the progress because backupstore reports a
+// failure to sync or close the volume device together with progress 100.
+// Such a restore has not finished, even though all blocks were written.
+func (e *Engine) waitForRestoreComplete(spdkClient *spdkclient.Client) error {
+	idleTimeout := restoreIdleTimeout(e.SpecSize)
+
 	e.log.WithFields(logrus.Fields{
 		"interval":     restorePeriodicRefreshInterval.String(),
+		"idleTimeout":  idleTimeout.String(),
 		"snapshotName": e.RestoringSnapshotName,
 	}).Info("Waiting for restore to complete")
 
-	err := retrygo.New(
+	timer := newIdleTimer(idleTimeout, time.Now())
+
+	return retrygo.New(
 		retrygo.Delay(restorePeriodicRefreshInterval),
 		retrygo.MaxDelay(restorePeriodicRefreshInterval),
 		retrygo.DelayType(retrygo.FixedDelay),
-		retrygo.Attempts(0), // retry forever until success or unrecoverable error
+		retrygo.Attempts(0), // retry until success, error, cancellation, or the idle timeout expires
 	).Do(
 		func() error {
 			e.restore.RLock()
@@ -2740,6 +2938,14 @@ func (e *Engine) waitForRestoreComplete() error {
 
 			if restoreState == btypes.ProgressStateCanceled {
 				return retrygo.Unrecoverable(fmt.Errorf("%v", btypes.ErrorMsgRestoreCancelled))
+			}
+			if restoreError != "" {
+				err := fmt.Errorf("%v", restoreError)
+				e.log.WithError(err).Error("Found backup restoration error")
+				// A replica I/O path that breaks mid-restore surfaces as a
+				// write error from backupstore, not as an idle restore.
+				e.recordBrokenReplicaAsRestoreErrorSource(spdkClient)
+				return retrygo.Unrecoverable(err)
 			}
 			if restoreProgress == 100 {
 				e.log.Infof("Backup restore is done: %v%%", restoreProgress)
@@ -2752,21 +2958,16 @@ func (e *Engine) waitForRestoreComplete() error {
 				"snapshotName": e.RestoringSnapshotName,
 			}).Debug("Restore is still in progress")
 
-			if restoreError != "" {
-				err := fmt.Errorf("%v", restoreError)
-				e.log.WithError(err).Error("Found backup restoration error")
+			if idleFor, expired := timer.check(restoreProgress, time.Now()); expired {
+				err := fmt.Errorf("restore idle at %v%% for %v, timeout %v", restoreProgress, idleFor.Truncate(time.Second), idleTimeout)
+				e.log.WithError(err).Error("Aborting idle restore")
+				e.recordBrokenReplicaAsRestoreErrorSource(spdkClient)
 				return retrygo.Unrecoverable(err)
 			}
 
 			return fmt.Errorf("restore is still in progress")
 		},
 	)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (e *Engine) RestoreStatus() (*spdkrpc.RestoreStatusResponse, error) {
@@ -2795,16 +2996,42 @@ func (e *Engine) RestoreStatus() (*spdkrpc.RestoreStatusResponse, error) {
 	lastRestored := e.restore.LastRestored
 	currentRestoringBackup := e.restore.CurrentRestoringBackup
 	backupURL := e.restore.BackupURL
+	errorSourceReplicaName := e.restore.ErrorSourceReplicaName
 	e.restore.RUnlock()
 
+	// The restore error is reported in exactly one place. If the replica that
+	// caused the error is still a member of this engine, the error appears
+	// only on that replica's entry, and the control plane fails only that
+	// replica. In every other case the error is engine-level and is reported
+	// through EngineError. Copying the error to every replica's entry would
+	// fail healthy replicas for a problem they did not cause.
+	if _, sourceIsMember := e.backends[errorSourceReplicaName]; !sourceIsMember {
+		errorSourceReplicaName = ""
+	}
+	// An error without a source replica is not final while the restore is
+	// still running: a backupstore worker publishes its error first, and the
+	// restore watcher needs up to one poll interval to inspect the replica
+	// I/O paths and record the source. Reporting the error in that window
+	// would make the control plane treat a replica failure as an engine
+	// failure. Hold the error back until the restore has ended; the next
+	// status poll then reports it, attributed or not.
+	engineErrorIsFinal := !e.IsRestoring
+	if restoreError != "" && errorSourceReplicaName == "" && engineErrorIsFinal {
+		resp.EngineError = restoreError
+	}
+
 	for replicaName, replicaStatus := range e.backends {
+		replicaError := ""
+		if replicaName == errorSourceReplicaName {
+			replicaError = restoreError
+		}
 		resp.Status[replicaStatus.Address()] = &spdkrpc.ReplicaRestoreStatusResponse{
 			ReplicaName:            replicaName,
 			ReplicaAddress:         GetBackendReplicaURL(replicaStatus.Address()),
 			IsRestoring:            e.IsRestoring,
 			LastRestored:           lastRestored,
 			Progress:               int32(restoreProgress),
-			Error:                  restoreError,
+			Error:                  replicaError,
 			State:                  string(restoreState),
 			BackupUrl:              backupURL,
 			CurrentRestoringBackup: currentRestoringBackup,
