@@ -319,7 +319,7 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.13.0-dev-20260823
+# github.com/longhorn/longhorn-engine v1.13.0-dev-20260823 => github.com/mantissahz/longhorn-engine v1.3.0-preview1.0.20260910092805-69a35b2d9e28
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
@@ -1404,3 +1404,4 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.36.4
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.36.4
 # k8s.io/sample-controller => k8s.io/sample-controller v0.36.4
+# github.com/longhorn/longhorn-engine => github.com/mantissahz/longhorn-engine v1.3.0-preview1.0.20260910092805-69a35b2d9e28
