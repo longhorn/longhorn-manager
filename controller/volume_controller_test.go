@@ -2591,6 +2591,108 @@ func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForV2StrictLocalVolume(c 
 	c.Assert(rs[replica.Name], Equals, replica)
 }
 
+func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForV1StrictLocalVolume(c *C) {
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(10),
+		backoff:        flowcontrol.NewBackOff(time.Minute, time.Minute*3),
+		nowHandler:     getTestNow,
+	}
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV1
+	v.Spec.DataLocality = longhorn.DataLocalityStrictLocal
+
+	e := newEngineForVolume(v)
+	replica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	replica.Spec.EvictionRequested = true
+	replica.Spec.HealthyAt = TestTimeNow
+	e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		replica.Name: longhorn.ReplicaModeRW,
+	}
+
+	rs := map[string]*longhorn.Replica{
+		replica.Name: replica,
+	}
+
+	err := vc.EvictReplicas(v, e, rs, 1)
+	c.Assert(err, IsNil)
+	c.Assert(len(rs), Equals, 1)
+	c.Assert(rs[replica.Name], Equals, replica)
+}
+
+// TestCleanupFailedToScheduleReplicasRemovesStrictLocalStray covers a strict-local volume that got a second,
+// unscheduled replica (e.g. from auto-balance while its node was cordoned). The stray replica is pinned to the
+// volume's current node, so the generic cleanup would keep it forever. It must be removed as long as the
+// single healthy replica exists, and kept otherwise.
+func (s *TestSuite) TestCleanupFailedToScheduleReplicasRemovesStrictLocalStray(c *C) {
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	testCases := map[string]struct {
+		hasHealthyReplica bool
+		expectStrayKept   bool
+	}{
+		"healthy replica exists": {
+			hasHealthyReplica: true,
+			expectStrayKept:   false,
+		},
+		"no healthy replica": {
+			hasHealthyReplica: false,
+			expectStrayKept:   true,
+		},
+	}
+
+	for name, tc := range testCases {
+		v := newVolume(TestVolumeName, 1)
+		v.Spec.DataEngine = longhorn.DataEngineTypeV1
+		v.Spec.DataLocality = longhorn.DataLocalityStrictLocal
+		v.Spec.NodeID = TestNode1
+		v.Status.CurrentNodeID = TestNode1
+
+		e := newEngineForVolume(v)
+
+		localReplica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+		localReplica.Namespace = TestNamespace
+		localReplica.Spec.HardNodeAffinity = TestNode1
+		if tc.hasHealthyReplica {
+			localReplica.Spec.HealthyAt = TestTimeNow
+		} else {
+			setReplicaFailedAt(localReplica, TestTimeNow)
+		}
+
+		strayReplica := newReplicaForVolume(v, e, "", "")
+		strayReplica.Namespace = TestNamespace
+		strayReplica.Spec.HardNodeAffinity = TestNode1
+
+		lhClient := lhfake.NewSimpleClientset(localReplica, strayReplica) // nolint: staticcheck
+		kubeClient := fake.NewSimpleClientset()                            // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset()         // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		vc := &VolumeController{
+			baseController: newBaseController("test-volume", logrus.StandardLogger()),
+			ds:             datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+			eventRecorder:  record.NewFakeRecorder(10),
+			nowHandler:     getTestNow,
+		}
+
+		rs := map[string]*longhorn.Replica{
+			localReplica.Name: localReplica,
+			strayReplica.Name: strayReplica,
+		}
+
+		err := vc.cleanupFailedToScheduleReplicas(v, rs)
+		c.Assert(err, IsNil, Commentf(name))
+
+		_, strayKept := rs[strayReplica.Name]
+		c.Assert(strayKept, Equals, tc.expectStrayKept, Commentf(name))
+		c.Assert(rs[localReplica.Name], NotNil, Commentf(name))
+	}
+}
+
 // setupReplenishReplicasTestInfra builds a degraded 2-replica volume whose replica on TestNode1 has
 // failed with the given rebuild failure reason and is still within the volume controller reuse backoff.
 func setupReplenishReplicasTestInfra(c *C, rebuildFailedReason string) (

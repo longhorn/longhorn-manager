@@ -696,8 +696,9 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 
 	// strict-local volumes must keep exactly one local replica. Trying to
 	// replenish a second replica during eviction creates an invalid
-	// intermediate state that later blocks VolumeAttachment updates.
-	if types.IsDataEngineV2(v.Spec.DataEngine) && v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+	// intermediate state: the new replica is pinned to the same node, never
+	// gets scheduled, and on v2 later blocks VolumeAttachment updates.
+	if isDataLocalityStrictLocal(v) {
 		return nil
 	}
 
@@ -973,8 +974,11 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				}
 			}
 
+			// Strict-local volumes have a single replica pinned to the attached node, so there is
+			// nothing to balance. When that node is cordoned, auto-balance no longer counts the
+			// replica and would create a second one that can never be scheduled.
 			setting := c.ds.GetAutoBalancedReplicasSetting(v, log)
-			if setting != longhorn.ReplicaAutoBalanceDisabled {
+			if setting != longhorn.ReplicaAutoBalanceDisabled && !isDataLocalityStrictLocal(v) {
 				if err := c.replenishReplicas(v, e, rs, ""); err != nil {
 					return err
 				}
@@ -1299,6 +1303,14 @@ func (c *VolumeController) cleanupFailedToScheduleReplicas(v *longhorn.Volume, r
 
 	for _, r := range rs {
 		if r.Spec.HealthyAt == "" && r.Spec.NodeID == "" {
+			// A strict-local volume never needs more than its single pinned replica.
+			// This is the strict-local counterpart of the disabled data locality case (longhorn/longhorn#8522).
+			if isDataLocalityStrictLocal(v) {
+				if healthyCount >= v.Spec.NumberOfReplicas {
+					replicasToCleanUp = append(replicasToCleanUp, r)
+				}
+				continue
+			}
 			// If this unscheduled replica has HardNodeAffinity when DataLocality is disabled, we can delete it
 			// immediately. It is better to replenish a new replica without HardNodeAffinity so we can avoid corner
 			// cases like https://github.com/longhorn/longhorn/issues/8522.
@@ -3666,6 +3678,10 @@ func isDataLocalityBestEffort(v *longhorn.Volume) bool {
 
 func isDataLocalityDisabled(v *longhorn.Volume) bool {
 	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == longhorn.DataLocalityDisabled
+}
+
+func isDataLocalityStrictLocal(v *longhorn.Volume) bool {
+	return v.Spec.DataLocality == longhorn.DataLocalityStrictLocal
 }
 
 // hasLocalReplicaOnSameNodeAsEngine returns true if one of the following condition is satisfied:
