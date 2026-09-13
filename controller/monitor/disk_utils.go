@@ -20,6 +20,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -340,20 +341,48 @@ func getBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskPath string
 		DiskUUID:   info.UUID,
 		DiskDriver: longhorn.DiskDriver(info.Driver),
 		State:      info.State,
+		BlockSize:  info.BlockSize,
 		Message:    info.Message,
 	}, nil
 }
 
 // GenerateDiskConfig generates a disk config for the given directory
-func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return generateFilesystemTypeDiskConfig(diskName, diskPath, ds)
 	case longhorn.DiskTypeBlock:
-		return generateBlockTypeDiskConfig(client, diskName, diskUUID, diskPath, diskDriver, defaultBlockSize)
+		resolvedBlockSize, err := resolveDiskBlockSize(blockSize, actualBlockSize, diskUUID != "")
+		if err != nil {
+			return nil, err
+		}
+		return generateBlockTypeDiskConfig(client, diskName, diskUUID, diskPath, diskDriver, resolvedBlockSize)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
+}
+
+func resolveDiskBlockSize(blockSize, actualBlockSize int64, initialized bool) (int64, error) {
+	if blockSize != 0 && !types.IsSupportedV2BlockSize(blockSize) {
+		return 0, fmt.Errorf("configured block size %v is not supported", blockSize)
+	}
+	if actualBlockSize != 0 && !types.IsSupportedV2BlockSize(actualBlockSize) {
+		return 0, fmt.Errorf("actual block size %v is not supported", actualBlockSize)
+	}
+	if actualBlockSize != 0 {
+		if blockSize != 0 && blockSize != actualBlockSize {
+			return 0, fmt.Errorf("configured block size %v does not match actual block size %v", blockSize, actualBlockSize)
+		}
+		return actualBlockSize, nil
+	}
+	if blockSize != 0 {
+		return blockSize, nil
+	}
+	if initialized {
+		return 0, fmt.Errorf("cannot determine the block size of initialized disk")
+	}
+
+	return defaultBlockSize, nil
 }
 
 func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.DataStore) (*util.DiskConfig, error) {
@@ -432,6 +461,7 @@ func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, 
 		DiskUUID:   info.UUID,
 		DiskDriver: longhorn.DiskDriver(info.Driver),
 		State:      info.State,
+		BlockSize:  info.BlockSize,
 		Message:    info.Message,
 	}, nil
 }

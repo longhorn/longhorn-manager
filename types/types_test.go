@@ -31,6 +31,13 @@ func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
+func (s *TestSuite) TestUnmarshalToDisksPreservesBlockSize(c *C) {
+	disks, err := UnmarshalToDisks(`[{"name":"disk-1","path":"/dev/nvme0n1","diskType":"block","diskDriver":"aio","blockSize":4096}]`)
+	c.Assert(err, IsNil)
+	c.Assert(disks, HasLen, 1)
+	c.Assert(disks[0].BlockSize, Equals, int64(4096))
+}
+
 func (s *TestSuite) TestParseToleration(c *C) {
 	type testCase struct {
 		input string

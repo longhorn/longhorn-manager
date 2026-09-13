@@ -25,13 +25,17 @@ import (
 // DiskSpecApplyConfiguration represents a declarative configuration of the DiskSpec type for use
 // with apply.
 type DiskSpecApplyConfiguration struct {
-	Type              *longhornv1beta2.DiskType   `json:"diskType,omitempty"`
-	Path              *string                     `json:"path,omitempty"`
-	DiskDriver        *longhornv1beta2.DiskDriver `json:"diskDriver,omitempty"`
-	AllowScheduling   *bool                       `json:"allowScheduling,omitempty"`
-	EvictionRequested *bool                       `json:"evictionRequested,omitempty"`
-	StorageReserved   *int64                      `json:"storageReserved,omitempty"`
-	Tags              []string                    `json:"tags,omitempty"`
+	Type       *longhornv1beta2.DiskType   `json:"diskType,omitempty"`
+	Path       *string                     `json:"path,omitempty"`
+	DiskDriver *longhornv1beta2.DiskDriver `json:"diskDriver,omitempty"`
+	// BlockSize is the block size in bytes for an AIO-backed block disk. Supported values are 512 and 4096.
+	// A value of 0 uses the default block size of 512 bytes.
+	// The effective block size is immutable after the disk is initialized.
+	BlockSize         *int64   `json:"blockSize,omitempty"`
+	AllowScheduling   *bool    `json:"allowScheduling,omitempty"`
+	EvictionRequested *bool    `json:"evictionRequested,omitempty"`
+	StorageReserved   *int64   `json:"storageReserved,omitempty"`
+	Tags              []string `json:"tags,omitempty"`
 }
 
 // DiskSpecApplyConfiguration constructs a declarative configuration of the DiskSpec type for use with
@@ -61,6 +65,14 @@ func (b *DiskSpecApplyConfiguration) WithPath(value string) *DiskSpecApplyConfig
 // If called multiple times, the DiskDriver field is set to the value of the last call.
 func (b *DiskSpecApplyConfiguration) WithDiskDriver(value longhornv1beta2.DiskDriver) *DiskSpecApplyConfiguration {
 	b.DiskDriver = &value
+	return b
+}
+
+// WithBlockSize sets the BlockSize field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BlockSize field is set to the value of the last call.
+func (b *DiskSpecApplyConfiguration) WithBlockSize(value int64) *DiskSpecApplyConfiguration {
+	b.BlockSize = &value
 	return b
 }
 
