@@ -1941,18 +1941,8 @@ func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
 		// For v2, also verify:
 		// 1. spdk_tgt process exists.
 		// 2. spdk_tgt is not stuck in a stopped/traced state (for example, after SIGSTOP).
-		processProbe := `
-pids=$(pgrep -f '^spdk_tgt') &&
-[ -n "$pids" ] &&
-status=0 &&
-for pid in $pids; do
-  state=$(awk '/^State:/ {print $2}' /proc/$pid/status 2>/dev/null)
-  [ -n "$state" ] || status=1
-  [ "$state" != "T" ] && [ "$state" != "t" ] || status=1
-done
-test $status -eq 0
-`
-		livenessProbes = append(livenessProbes, processProbe)
+		// The script on the instance manager pod needs to be executable.
+		livenessProbes = append(livenessProbes, "/usr/local/bin/instance-manager-v2-liveness-probe")
 	}
 	return strings.Join(livenessProbes, " && ")
 }
