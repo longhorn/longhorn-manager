@@ -238,6 +238,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.V2DataEngineStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("Volume"):
 		return &longhornv1beta2.VolumeApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeAntiAffinity"):
+		return &longhornv1beta2.VolumeAntiAffinityApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeAttachment"):
 		return &longhornv1beta2.VolumeAttachmentApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeAttachmentSpec"):

@@ -85,6 +85,7 @@ const (
 	SettingNameDefaultBackingImageManagerImage                          = SettingName("default-backing-image-manager-image")
 	SettingNameSupportBundleManagerImage                                = SettingName("support-bundle-manager-image")
 	SettingNameReplicaSoftAntiAffinity                                  = SettingName("replica-soft-anti-affinity")
+	SettingNameVolumeAntiAffinityFromPod                                = SettingName("volume-anti-affinity-from-pod")
 	SettingNameReplicaAutoBalance                                       = SettingName("replica-auto-balance")
 	SettingNameReplicaAutoBalanceDiskPressurePercentage                 = SettingName("replica-auto-balance-disk-pressure-percentage")
 	SettingNameStorageOverProvisioningPercentage                        = SettingName("storage-over-provisioning-percentage")
@@ -218,6 +219,7 @@ var (
 		SettingNameDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
+		SettingNameVolumeAntiAffinityFromPod,
 		SettingNameReplicaAutoBalance,
 		SettingNameReplicaAutoBalanceDiskPressurePercentage,
 		SettingNameStorageOverProvisioningPercentage,
@@ -386,6 +388,7 @@ var (
 		SettingNameDefaultBackingImageManagerImage:                          SettingDefinitionDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage:                                SettingDefinitionSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity:                                  SettingDefinitionReplicaSoftAntiAffinity,
+		SettingNameVolumeAntiAffinityFromPod:                                SettingDefinitionVolumeAntiAffinityFromPod,
 		SettingNameReplicaAutoBalance:                                       SettingDefinitionReplicaAutoBalance,
 		SettingNameReplicaAutoBalanceDiskPressurePercentage:                 SettingDefinitionReplicaAutoBalanceDiskPressurePercentage,
 		SettingNameStorageOverProvisioningPercentage:                        SettingDefinitionStorageOverProvisioningPercentage,
@@ -625,6 +628,17 @@ var (
 	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{
 		DisplayName:        "Replica Node Level Soft Anti-Affinity",
 		Description:        "Allow scheduling on nodes with existing healthy replicas of the same volume",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
+	}
+
+	SettingDefinitionVolumeAntiAffinityFromPod = SettingDefinition{
+		DisplayName:        "Volume Anti-Affinity From Pod",
+		Description:        "Derive a volume's anti-affinity from the pod using it: every self-matching inter-pod anti-affinity term or topology spread constraint on kubernetes.io/hostname makes the replicas of the related volumes prefer different storage nodes. Applies to volumes provisioned through the CSI driver; the preference is soft and never blocks scheduling. A StorageClass can override this per volume with the volumeAntiAffinityFromPod parameter.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,

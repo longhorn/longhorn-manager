@@ -2770,3 +2770,185 @@ func (s *TestSuite) TestLinkedCloneScheduler(c *C) {
 			Commentf("expected no scheduling error — strict anti-affinity silently skips used nodes"))
 	}
 }
+
+func newAntiAffinityFixture(c *C) *antiAffinityFixture {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+	f := &antiAffinityFixture{
+		c:        c,
+		lhClient: lhClient,
+		rcs:      newReplicaScheduler(lhClient, kubeClient, extensionsClient, informerFactories),
+		vIndexer: informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer(),
+		rIndexer: informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer(),
+	}
+
+	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+	for i, nodeName := range []string{TestNode1, TestNode2, TestNode3} {
+		daemon := newDaemonPod(corev1.PodRunning, fmt.Sprintf("longhorn-manager-%d", i), TestNamespace, nodeName, fmt.Sprintf("10.0.0.%d", i))
+		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(pIndexer.Add(p), IsNil)
+
+		node := newNode(nodeName, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		diskID := getDiskID(nodeName, "1")
+		node.Spec.Disks = map[string]longhorn.DiskSpec{diskID: newDisk(TestDefaultDataPath, true, 0)}
+		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{diskID: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions:       []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)},
+			DiskUUID:         diskID,
+			Type:             longhorn.DiskTypeFilesystem,
+		}}
+		n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(nIndexer.Add(n), IsNil)
+		engineImage.Status.NodeDeploymentMap[nodeName] = true
+
+		im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), newInstanceManager(nodeName), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(imIndexer.Add(im), IsNil)
+	}
+	ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), engineImage, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(eiIndexer.Add(ei), IsNil)
+	setSettings(generateSchedulerTestCase(), lhClient, sIndexer, c)
+	return f
+}
+
+// addVolume registers a volume; each node name in placedOn gets one placed
+// replica of it. The returned volume and its replica map can be scheduled.
+func (f *antiAffinityFixture) addVolume(name string, antiAffinity *longhorn.VolumeAntiAffinity, placedOn ...string) (*longhorn.Volume, map[string]*longhorn.Replica) {
+	v := newVolume(name, 1)
+	v.Spec.VolumeAntiAffinity = antiAffinity
+	v, err := f.lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), v, metav1.CreateOptions{})
+	f.c.Assert(err, IsNil)
+	f.c.Assert(f.vIndexer.Add(v), IsNil)
+
+	replicas := map[string]*longhorn.Replica{}
+	for _, nodeName := range placedOn {
+		r := newReplicaForVolume(v)
+		r.Spec.NodeID = nodeName
+		r.Spec.DiskID = getDiskID(nodeName, "1")
+		r.Spec.HealthyAt = getTestNow().String()
+		replicas[r.Name] = f.addReplica(r)
+	}
+	return v, replicas
+}
+
+func (f *antiAffinityFixture) addReplica(r *longhorn.Replica) *longhorn.Replica {
+	r, err := f.lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
+	f.c.Assert(err, IsNil)
+	f.c.Assert(f.rIndexer.Add(r), IsNil)
+	return r
+}
+
+func (f *antiAffinityFixture) schedule(v *longhorn.Volume) *longhorn.Replica {
+	r := f.addReplica(newReplicaForVolume(v))
+	scheduled, errs := f.rcs.ScheduleReplica(r, map[string]*longhorn.Replica{r.Name: r}, v)
+	f.c.Assert(len(errs), Equals, 0)
+	f.c.Assert(scheduled, NotNil)
+	f.c.Assert(scheduled.Spec.NodeID, Not(Equals), "")
+	return scheduled
+}
+
+func kafkaIdentity(instance string) map[string]string {
+	return map[string]string{"pod.longhorn.io/namespace": "prod", "pod.longhorn.io/instance": instance, "app": "kafka"}
+}
+
+func kafkaAntiAffinity(instance string) *longhorn.VolumeAntiAffinity {
+	return &longhorn.VolumeAntiAffinity{
+		Labels: kafkaIdentity(instance),
+		Selectors: []metav1.LabelSelector{{
+			MatchLabels: map[string]string{"pod.longhorn.io/namespace": "prod", "app": "kafka"},
+			MatchExpressions: []metav1.LabelSelectorRequirement{{
+				Key: "pod.longhorn.io/instance", Operator: metav1.LabelSelectorOpNotIn, Values: []string{instance},
+			}},
+		}},
+	}
+}
+
+func (s *TestSuite) TestVolumeAntiAffinityScheduling(c *C) {
+	// A sibling occupies node1: the new replica goes elsewhere.
+	f := newAntiAffinityFixture(c)
+	f.addVolume("kafka-0-data", kafkaAntiAffinity("kafka-0"), TestNode1)
+	v, _ := f.addVolume("kafka-1-data", kafkaAntiAffinity("kafka-1"))
+	c.Assert(f.schedule(v).Spec.NodeID, Not(Equals), TestNode1)
+
+	// Every node holds a sibling: the least loaded one is preferred, never a failure.
+	f = newAntiAffinityFixture(c)
+	f.addVolume("kafka-0-data", kafkaAntiAffinity("kafka-0"), TestNode1, TestNode2)
+	f.addVolume("kafka-1-data", kafkaAntiAffinity("kafka-1"), TestNode1, TestNode3)
+	v, _ = f.addVolume("kafka-2-data", kafkaAntiAffinity("kafka-2"))
+	c.Assert(f.schedule(v).Spec.NodeID, Not(Equals), TestNode1)
+
+	// Volumes of the same pod do not repel each other.
+	f = newAntiAffinityFixture(c)
+	f.addVolume("kafka-0-data", kafkaAntiAffinity("kafka-0"), TestNode1)
+	f.addVolume("zk-0-data", &longhorn.VolumeAntiAffinity{Labels: map[string]string{"pod.longhorn.io/namespace": "prod", "pod.longhorn.io/instance": "zk-0", "app": "zk"}}, TestNode2)
+	f.addVolume("unrelated", nil, TestNode3)
+	v, _ = f.addVolume("kafka-0-logs", kafkaAntiAffinity("kafka-0"))
+	matches, err := f.rcs.getVolumeAntiAffinityMatches(v)
+	c.Assert(err, IsNil)
+	c.Assert(matches, DeepEquals, map[string]int{})
+
+	// Best-effort data locality keeps the attached node even when a sibling is there.
+	f = newAntiAffinityFixture(c)
+	f.addVolume("kafka-0-data", kafkaAntiAffinity("kafka-0"), TestNode1)
+	v, _ = f.addVolume("kafka-1-data", kafkaAntiAffinity("kafka-1"))
+	v.Spec.DataLocality = longhorn.DataLocalityBestEffort
+	v.Spec.NodeID = TestNode1
+	c.Assert(f.schedule(v).Spec.NodeID, Equals, TestNode1)
+
+	// A failed sibling replica and the volume itself do not count as occupancy.
+	f = newAntiAffinityFixture(c)
+	_, siblingReplicas := f.addVolume("kafka-0-data", kafkaAntiAffinity("kafka-0"), TestNode1, TestNode2)
+	for _, r := range siblingReplicas {
+		if r.Spec.NodeID == TestNode2 {
+			r.Spec.FailedAt = getTestNow().String()
+			_, err := f.lhClient.LonghornV1beta2().Replicas(TestNamespace).Update(context.TODO(), r, metav1.UpdateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(f.rIndexer.Update(r), IsNil)
+		}
+	}
+	v, _ = f.addVolume("kafka-1-data", kafkaAntiAffinity("kafka-1"), TestNode3)
+	matches, err = f.rcs.getVolumeAntiAffinityMatches(v)
+	c.Assert(err, IsNil)
+	c.Assert(matches, DeepEquals, map[string]int{TestNode1: 1})
+
+	// The failed-replica reuse path ignores the preference.
+	f = newAntiAffinityFixture(c)
+	f.addVolume("kafka-0-data", kafkaAntiAffinity("kafka-0"), TestNode1)
+	v, _ = f.addVolume("kafka-1-data", kafkaAntiAffinity("kafka-1"))
+	nodes, err := f.rcs.ListSchedulableNodes(v.Spec.DataEngine)
+	c.Assert(err, IsNil)
+	disks := map[string]map[string]struct{}{}
+	for nodeName := range nodes {
+		disks[nodeName] = map[string]struct{}{getDiskID(nodeName, "1"): {}}
+	}
+	reuseCandidates, _ := f.rcs.getDiskCandidates(nodes, disks, map[string]*longhorn.Replica{}, v, false, true)
+	c.Assert(len(reuseCandidates), Equals, 3)
+	newCandidates, _ := f.rcs.getDiskCandidates(nodes, disks, map[string]*longhorn.Replica{}, v, false, false)
+	c.Assert(len(newCandidates), Equals, 2)
+	_, hasNode1 := newCandidates[getDiskID(TestNode1, "1")]
+	c.Assert(hasNode1, Equals, false)
+}
+
+// antiAffinityFixture is a three-node cluster with one schedulable disk per
+// node, into which volumes and placed replicas can be registered.
+type antiAffinityFixture struct {
+	c        *C
+	lhClient *lhfake.Clientset
+	rcs      *ReplicaScheduler
+	vIndexer cache.Indexer
+	rIndexer cache.Indexer
+}
