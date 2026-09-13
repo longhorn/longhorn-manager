@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1169,9 +1170,67 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	for imType, dataEngines := range imTypeDataEngines {
 		for _, dataEngine := range dataEngines {
 			defaultInstanceManagerCreated := false
+			automaticUpgradeEnabled := false
 			imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType, dataEngine)
 			if err != nil {
 				return err
+			}
+			preservedV2AIOInstanceManagerName := ""
+			if imType == longhorn.InstanceManagerTypeAllInOne && types.IsDataEngineV2(dataEngine) {
+				automaticUpgradeEnabled, err = nc.ds.GetSettingAsBool(types.SettingNameAllowV2InstanceManagerAutomaticUpgrade)
+				if err != nil {
+					return err
+				}
+				// Preserve the source IM for live upgrade. When automatic upgrade is
+				// disabled, retain only a sole Running IM whose Pod is temporarily
+				// unavailable so it can self-heal; pod-backed IMs use offline cleanup.
+				activeIM, err := nc.ds.GetNodeV2InstanceManagerRO(node.Name)
+				if err == nil {
+					if automaticUpgradeEnabled {
+						preservedV2AIOInstanceManagerName = activeIM.Name
+						defaultInstanceManagerCreated = true
+					}
+				} else if !datastore.ErrorIsNotFound(err) && !types.ErrorIsNotFound(err) {
+					return err
+				} else {
+					imNames := make([]string, 0, len(imMap))
+					for name := range imMap {
+						imNames = append(imNames, name)
+					}
+					sort.Strings(imNames)
+
+					if !automaticUpgradeEnabled {
+						var sourceIM *longhorn.InstanceManager
+						for _, name := range imNames {
+							im := imMap[name]
+							if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Spec.Image == defaultInstanceManagerImage {
+								continue
+							}
+							if sourceIM != nil {
+								sourceIM = nil
+								break
+							}
+							sourceIM = im
+						}
+						if sourceIM != nil {
+							// Keep the sole old-image IM so its controller can recreate a
+							// temporarily missing Pod with the same image.
+							preservedV2AIOInstanceManagerName = sourceIM.Name
+							defaultInstanceManagerCreated = true
+						}
+					}
+
+					if automaticUpgradeEnabled && preservedV2AIOInstanceManagerName == "" {
+						for _, name := range imNames {
+							im := imMap[name]
+							if im.DeletionTimestamp == nil && im.Status.CurrentState == longhorn.InstanceManagerStateUnknown {
+								preservedV2AIOInstanceManagerName = im.Name
+								defaultInstanceManagerCreated = true
+								break
+							}
+						}
+					}
+				}
 			}
 			for _, im := range imMap {
 				if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
@@ -1202,6 +1261,15 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					} else {
 						log.Infof("Cleaning up instance manager %v because node %v does not match %v", im.Name, node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
 					}
+				} else if im.Name == preservedV2AIOInstanceManagerName {
+					disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
+					if err != nil {
+						return errors.Wrapf(err, "failed to check if v2 data engine is disabled for node %v", node.Name)
+					}
+					cleanupRequired = disabled && !runningOrStartingInstanceFound
+					if cleanupRequired {
+						log.Infof("Cleaning up instance manager %v since v2 data engine is disabled for node %v", im.Name, node.Name)
+					}
 				} else if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
 					// Keep default instance manager or instance manager matching argument image (during rolling update)
 					defaultInstanceManagerCreated = true
@@ -1226,6 +1294,14 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
 						cleanupRequired = false
 						log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
+					}
+
+					if shouldPreserveV2InstanceManagerDuringOfflineUpgrade(im, automaticUpgradeEnabled, runningOrStartingInstanceFound) {
+						// V2 supports only one active IM per node. Preserve an IM that
+						// still hosts an active workload or whose state is unknown.
+						cleanupRequired = false
+						defaultInstanceManagerCreated = true
+						log.Infof("Keeping V2 instance manager %v during offline upgrade because it still has running/starting instances or its state is unknown", im.Name)
 					}
 				}
 				if cleanupRequired {
@@ -1280,6 +1356,22 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		}
 	}
 	return nil
+}
+
+// shouldPreserveV2InstanceManagerDuringOfflineUpgrade keeps an old V2 IM when
+// its actual state cannot safely be replaced. When the IM image differs from
+// the default image, V2 instance manager reconciliation behaves as follows:
+//
+//   - allow-v2-instance-manager-automatic-upgrade=true: upgrade the IM in place, with or without an attached volume
+//   - allow-v2-instance-manager-automatic-upgrade=false and old IM has running/starting instances: retain the old IM
+//   - allow-v2-instance-manager-automatic-upgrade=false and old IM is idle: replace it with the default image
+func shouldPreserveV2InstanceManagerDuringOfflineUpgrade(im *longhorn.InstanceManager, automaticUpgradeEnabled, runningOrStartingInstanceFound bool) bool {
+	if automaticUpgradeEnabled || !types.IsDataEngineV2(im.Spec.DataEngine) {
+		return false
+	}
+
+	return runningOrStartingInstanceFound ||
+		(im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil)
 }
 
 func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {

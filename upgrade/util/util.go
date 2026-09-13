@@ -183,6 +183,18 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 	}
 
 	if s.Value != meta.Version {
+		if semver.Compare(meta.Version, types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade) >= 0 {
+			// Reaching a supported release through an offline upgrade makes subsequent
+			// live upgrades safe again.
+			delete(s.Annotations, types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported))
+		} else if s.Value != "" && semver.Compare(s.Value, types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade) < 0 {
+			// Preserve the unsupported source marker until the cluster reaches a
+			// release that supports v2 instance manager live upgrade.
+			if s.Annotations == nil {
+				s.Annotations = make(map[string]string)
+			}
+			s.Annotations[types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported)] = "true"
+		}
 		s.Value = meta.Version
 		if s.Annotations == nil {
 			s.Annotations = make(map[string]string)
