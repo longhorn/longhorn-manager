@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
@@ -354,6 +356,31 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 			log.Infof("Waiting for engine frontend instance to stop before removing finalizer (current state: %v)", ef.Status.CurrentState)
 			return nil
 		}
+
+		// The EngineFrontend is being torn down and the data-plane instance has stopped,
+		// so the volume is no longer supposed to be attached on this node. This is the
+		// durable signal for cleanup: if the instance manager (initiator) died without
+		// removing them, a stale DM device (/dev/mapper/<volume>) and endpoint
+		// (/dev/longhorn/<volume>) can be left behind and block reattachment.
+		//
+		// Cleanup is intentionally NOT driven by observing a transient IM Error/Stopped
+		// state, which could race with an IM pod restart/recreate while DesireState is
+		// still Running and wrongly delete an active device.
+		//
+		// Best-effort: the initiator device lives on the last-known initiator node
+		// (Status.OwnerID), falling back to Spec.NodeID. We are the owner in this
+		// reconcile, so only clean up when this node is that node.
+		cleanupNode := ef.Status.OwnerID
+		if cleanupNode == "" {
+			cleanupNode = ef.Spec.NodeID
+		}
+		if cleanupNode == efc.controllerID {
+			if err := efc.cleanupStaleHostInitiatorDevice(ef.Spec.VolumeName); err != nil {
+				// Best-effort: log and continue so a cleanup failure can't loop deletion forever.
+				log.WithError(err).Warnf("Failed to clean up stale host initiator device for volume %v; continuing with deletion", ef.Spec.VolumeName)
+			}
+		}
+
 		return efc.ds.RemoveFinalizerForEngineFrontend(ef)
 	}
 
@@ -372,6 +399,15 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 	// Use instance handler to reconcile state
 	if err := efc.instanceHandler.ReconcileInstanceState(ef, &ef.Spec.InstanceSpec, &ef.Status.InstanceStatus); err != nil {
 		return err
+	}
+
+	if ef.Spec.DesireState == longhorn.InstanceStateStopped &&
+		(ef.Status.CurrentState == longhorn.InstanceStateStopped ||
+			ef.Status.CurrentState == longhorn.InstanceStateError) {
+		if err := efc.cleanupStaleHostInitiatorDevice(ef.Spec.VolumeName); err != nil {
+			// Best-effort: don't block the reconcile; the next pass retries.
+			log.WithError(err).Warnf("Failed to clean up stale host initiator device for volume %v", ef.Spec.VolumeName)
+		}
 	}
 
 	// Delete stale EF instances recovered with an empty frontend in the IM.
@@ -790,6 +826,33 @@ func (efc *EngineFrontendController) DeleteInstance(obj interface{}) (err error)
 		return err
 	}
 
+	return nil
+}
+
+func (efc *EngineFrontendController) cleanupStaleHostInitiatorDevice(volumeName string) error {
+	if volumeName == "" {
+		return nil
+	}
+	log := efc.logger.WithField("volume", volumeName)
+
+	// Remove the linear device-mapper device (/dev/mapper/<volume>). RemoveDMDevice already
+	// ignores "not found" so a repeated reconcile is a no-op.
+	if err := util.RemoveDMDevice(volumeName); err != nil {
+		return errors.Wrapf(err, "failed to remove stale v2 dm device %v", volumeName)
+	}
+
+	// Remove the block device endpoint (/dev/longhorn/<volume>). "rm -f" is a no-op if absent.
+	endpoint := filepath.Join(util.RegularDeviceDirectory, volumeName)
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create host namespace executor to remove endpoint %v", endpoint)
+	}
+	if _, err := nsexec.Execute(nil, "rm", []string{"-f", endpoint}, lhtypes.ExecuteDefaultTimeout); err != nil {
+		return errors.Wrapf(err, "failed to remove stale v2 endpoint %v", endpoint)
+	}
+
+	log.Info("Removed stale host initiator device and endpoint")
 	return nil
 }
 
