@@ -201,8 +201,8 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	podsStatus := ns.collectWorkloadPodsStatus(volume, log)
-	if len(podsStatus[corev1.PodPending]) == 0 && len(podsStatus[corev1.PodRunning]) != len(volume.KubernetesStatus.WorkloadsStatus) {
-		return nil, status.Errorf(codes.Aborted, "no %v workload pods for volume %v to be mounted: %+v", corev1.PodPending, volumeID, podsStatus)
+	if !isWorkloadMountReady(podsStatus) {
+		return nil, status.Errorf(codes.Aborted, "volume %v workload pods are not ready to be mounted: %+v", volumeID, podsStatus)
 	}
 
 	// It may be necessary to restage the volume before we can publish it. For example, sometimes kubelet calls
@@ -291,6 +291,34 @@ func (ns *NodeServer) collectWorkloadPodsStatus(volume *longhornclient.Volume, l
 	}
 
 	return podsStatus
+}
+
+// isWorkloadMountReady reports whether NodePublishVolume may proceed based on workload pod states.
+// A volume is considered mount-ready if any of the following is true:
+//   - No workload pod status is recorded; an empty status alone is not sufficient
+//     to reject the mount.
+//   - At least one workload pod is Pending.
+//   - At least one non-terminal workload pod exists and all non-terminal workload pods are Running.
+//
+// Failed and Succeeded workload pods are treated as terminal and excluded from
+// the non-terminal readiness check.
+func isWorkloadMountReady(podsStatus map[corev1.PodPhase][]string) bool {
+	if len(podsStatus[corev1.PodPending]) > 0 {
+		return true
+	}
+	workloadCount := 0
+	for _, pods := range podsStatus {
+		workloadCount += len(pods)
+	}
+	if workloadCount == 0 {
+		return true
+	}
+	terminalWorkloadCount := len(podsStatus[corev1.PodFailed]) + len(podsStatus[corev1.PodSucceeded])
+	nonTerminalWorkloadCount := workloadCount - terminalWorkloadCount
+	if nonTerminalWorkloadCount == 0 {
+		return false
+	}
+	return len(podsStatus[corev1.PodRunning]) == nonTerminalWorkloadCount
 }
 
 func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, customMountOptions []string) error {
