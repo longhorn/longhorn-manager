@@ -144,10 +144,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.KubernetesStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("Node"):
 		return &longhornv1beta2.NodeApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("NodeDataEngineResources"):
+		return &longhornv1beta2.NodeDataEngineResourcesApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("NodeInstanceManagerResources"):
+		return &longhornv1beta2.NodeInstanceManagerResourcesApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("NodeSpec"):
 		return &longhornv1beta2.NodeSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("NodeStatus"):
 		return &longhornv1beta2.NodeStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("NodeV2DataEngineResources"):
+		return &longhornv1beta2.NodeV2DataEngineResourcesApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("Orphan"):
 		return &longhornv1beta2.OrphanApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("OrphanSpec"):

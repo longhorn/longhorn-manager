@@ -1419,7 +1419,8 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 	notUpdatedPods := []*corev1.Pod{}
 
 	for _, imPod := range imPodList {
-		if _, exists := imMap[imPod.Name]; !exists {
+		im, exists := imMap[imPod.Name]
+		if !exists {
 			continue
 		}
 		lhNode, err := sc.ds.GetNode(imPod.Spec.NodeName)
@@ -1435,7 +1436,15 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 			return err
 		}
 		podResourceReq := imPod.Spec.Containers[0].Resources
-		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
+		nodeIMResources, err := sc.ds.GetNodeInstanceManagerResources(im.Spec.DataEngine, imPod.Spec.NodeName)
+		if err != nil {
+			return err
+		}
+		if nodeIMResources != nil {
+			if IsSameInstanceManagerResourceRequirement(resourceReq, &podResourceReq) {
+				continue
+			}
+		} else if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
 			continue
 		}
 
@@ -1446,22 +1455,37 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		return nil
 	}
 
-	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
-	if err != nil {
-		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
-	}
-	if !stopped {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
-	}
-
+	// Gate the deletion per instance manager instead of cluster-wide: delete a pod only
+	// while its own instance manager has no running instances (same per-IM condition the
+	// instance manager controller uses before recreating pods for unsynced danger zone settings).
+	pendingPods := []string{}
 	for _, pod := range notUpdatedPods {
+		if instanceManagerHasRunningInstances(imMap[pod.Name]) {
+			pendingPods = append(pendingPods, pod.Name)
+			continue
+		}
 		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
 	}
+	if len(pendingPods) > 0 {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to instance manager pods %v while they have running instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine, pendingPods)}
+	}
 
 	return nil
+}
+
+func instanceManagerHasRunningInstances(im *longhorn.InstanceManager) bool {
+	if im == nil {
+		return true
+	}
+	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceEngineFrontends, im.Status.InstanceReplicas) {
+		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
+			return true
+		}
+	}
+	return false
 }
 
 func (sc *SettingController) cleanupFailedSupportBundles() error {
