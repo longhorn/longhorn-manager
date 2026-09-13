@@ -724,6 +724,18 @@ func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.
 func (bc *BackupController) getBackupTargetName(backup *longhorn.Backup) (string, error) {
 	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
 	if !ok {
+		// The backup target name in the status is synced from the backup store and
+		// cannot be modified from the client side. Once the label is unexpectedly
+		// lost (e.g. kubectl apply drift on a pulled Backup CR), it is a more
+		// reliable fallback than the snapshot lookup below, and it also works for
+		// backups pulled from the backup target, whose spec.snapshotName is empty
+		// by design.
+		if backup.Status.BackupTargetName != "" {
+			return backup.Status.BackupTargetName, nil
+		}
+		if backup.Spec.SnapshotName == "" {
+			return "", fmt.Errorf("cannot resolve the backup target for backup %v: no %v label, no synced status backup target, and no snapshot name to look up", backup.Name, types.LonghornLabelBackupTarget)
+		}
 		snapshot, err := bc.ds.GetSnapshot(backup.Spec.SnapshotName)
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to get the snapshot %v of the backup %v", backup.Spec.SnapshotName, backup.Name)
