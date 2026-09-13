@@ -374,6 +374,25 @@ func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, default
 		return nil
 	}
 
+	err = s.updateSettingValueAndConfigMapResourceVersion(setting, value, defaultSettingCMResourceVersion)
+	if !apierrors.IsConflict(err) {
+		return err
+	}
+
+	// The setting was read from the informer cache and may have been modified
+	// in the meantime, e.g. by other managers starting up at the same time or
+	// by the setting controller. Retry with the latest object from the API
+	// server instead of failing the manager startup.
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, err := s.lhClient.LonghornV1beta2().Settings(s.namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		return s.updateSettingValueAndConfigMapResourceVersion(latest, value, defaultSettingCMResourceVersion)
+	})
+}
+
+func (s *DataStore) updateSettingValueAndConfigMapResourceVersion(setting *longhorn.Setting, value, defaultSettingCMResourceVersion string) error {
 	if setting.Annotations == nil {
 		setting.Annotations = map[string]string{}
 	}
@@ -386,7 +405,7 @@ func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, default
 	setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)] = defaultSettingCMResourceVersion
 	setting.Value = value
 
-	_, err = s.UpdateSetting(setting)
+	_, err := s.UpdateSetting(setting)
 	return err
 }
 
