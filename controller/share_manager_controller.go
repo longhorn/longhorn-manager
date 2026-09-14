@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/ptr"
 
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -30,13 +31,14 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -457,6 +459,10 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 		log.Warn("Unsetting endpoint due to missing service for share-manager")
 		sm.Status.Endpoint = ""
 		return nil
+	}
+	service, err = c.reconcileShareManagerServiceIPFamilyPolicy(service)
+	if err != nil {
+		return errors.Wrapf(err, "failed to reconcile IP family policy for share manager service %v", sm.Name)
 	}
 
 	isEndpointNetworkForRWXVolumeInSetting, err := c.ds.IsEndpointNetworkForRWXVolumeInSetting()
@@ -1167,9 +1173,19 @@ func (c *ShareManagerController) cleanupService(shareManager *longhorn.ShareMana
 	return nil
 }
 
+func (c *ShareManagerController) reconcileShareManagerServiceIPFamilyPolicy(service *corev1.Service) (*corev1.Service, error) {
+	if service.Spec.IPFamilyPolicy != nil &&
+		*service.Spec.IPFamilyPolicy == corev1.IPFamilyPolicyPreferDualStack {
+		return service, nil
+	}
+	service = service.DeepCopy()
+	service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyPreferDualStack)
+	return c.ds.UpdateService(service.Namespace, service)
+}
+
 func (c *ShareManagerController) createServiceAndEndpoint(shareManager *longhorn.ShareManager) error {
 	// check if we need to create the service
-	_, err := c.ds.GetService(c.namespace, shareManager.Name)
+	service, err := c.ds.GetService(c.namespace, shareManager.Name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get service for share manager %v", shareManager.Name)
@@ -1180,6 +1196,8 @@ func (c *ShareManagerController) createServiceAndEndpoint(shareManager *longhorn
 		if err != nil {
 			return errors.Wrapf(err, "failed to create service for share manager %v", shareManager.Name)
 		}
+	} else if _, err = c.reconcileShareManagerServiceIPFamilyPolicy(service); err != nil {
+		return errors.Wrapf(err, "failed to reconcile IP family policy for share manager service %v", shareManager.Name)
 	}
 
 	// Only create the Endpoint if it doesn't exist. For service using the selector, the Endpoint will be created by the service controller.
@@ -1422,7 +1440,8 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 			Labels:          types.GetShareManagerInstanceLabel(sm.Name),
 		},
 		Spec: corev1.ServiceSpec{
-			Type: corev1.ServiceTypeClusterIP,
+			Type:           corev1.ServiceTypeClusterIP,
+			IPFamilyPolicy: ptr.To(corev1.IPFamilyPolicyPreferDualStack),
 			Ports: []corev1.ServicePort{
 				{
 					Name:     "nfs",

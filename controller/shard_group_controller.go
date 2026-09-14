@@ -790,7 +790,25 @@ func (c *ShardGroupController) syncShardInstance(rctx *sgReconcileCtx, shard *lo
 	if err != nil {
 		return errors.Wrapf(err, "failed to get pod for instance manager %v", instanceManager.Name)
 	}
-	storageIP := c.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	storageIP, err := c.ds.GetDataEngineIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	if err != nil {
+		var invalidState *types.ErrorInvalidState
+		if !errors.As(err, &invalidState) {
+			return err
+		}
+
+		fresh, getErr := c.ds.GetShard(shard.Name)
+		if getErr != nil {
+			return getErr
+		}
+		fresh.Status.StorageIP = ""
+		updated, updateErr := c.ds.UpdateShardStatus(fresh)
+		if updateErr != nil {
+			return errors.Wrapf(updateErr, "failed to clear shard %v storage IP after data engine IP selection failure", shard.Name)
+		}
+		rctx.shards[shard.Name] = updated
+		return nil
+	}
 	livePort := int32(instance.Status.PortStart)
 
 	fresh, err := c.ds.GetShard(shard.Name)
@@ -952,7 +970,7 @@ func (c *ShardGroupController) triggerShardReplace(rctx *sgReconcileCtx, shard *
 		return nil
 	}
 
-	shardAddress := fmt.Sprintf("%s:%d", shard.Status.StorageIP, livePort)
+	shardAddress := util.BuildTargetAddress(shard.Status.StorageIP, int(livePort))
 	log.Infof("Replacing failed shard slot %v with instance at %v", shard.Spec.SlotIndex, shardAddress)
 
 	ctx, cancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
@@ -1170,7 +1188,7 @@ func (c *ShardGroupController) syncStatus(rctx *sgReconcileCtx) error {
 		if shard.Status.StorageIP == "" || shard.Status.Port == 0 {
 			continue
 		}
-		addrMap[strconv.Itoa(slotIndex)] = fmt.Sprintf("%s:%d", shard.Status.StorageIP, shard.Status.Port)
+		addrMap[strconv.Itoa(slotIndex)] = util.BuildTargetAddress(shard.Status.StorageIP, int(shard.Status.Port))
 	}
 
 	shardGroup.Status.ShardRefs = shardRefs
@@ -1245,8 +1263,11 @@ func (c *ShardGroupController) dialSPDK(nodeID string) (spdkrpc.SPDKServiceClien
 		return nil, nil, errors.Wrapf(err, "failed to get pod for instance manager %v", instanceManager.Name)
 	}
 
-	storageIP := c.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
-	serviceURL := fmt.Sprintf("%s:%d", storageIP, engineapi.InstanceManagerSpdkServiceDefaultPort)
+	storageIP, err := c.ds.GetDataEngineIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
+	if err != nil {
+		return nil, nil, err
+	}
+	serviceURL := util.BuildTargetAddress(storageIP, engineapi.InstanceManagerSpdkServiceDefaultPort)
 
 	conn, err := grpc.NewClient(serviceURL,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -1443,7 +1464,15 @@ func (c *ShardGroupController) refreshShardGroupProcessStatus(rctx *sgReconcileC
 	if err != nil {
 		return errors.Wrapf(err, "failed to get pod for instance manager %v", im.Name)
 	}
-	storageIP := c.ds.GetIPFromPodByCNISetting(imPod, types.SettingNameStorageNetwork)
+	storageIP, err := c.ds.GetDataEngineIPFromPodByCNISetting(imPod, types.SettingNameStorageNetwork)
+	if err != nil {
+		var invalidState *types.ErrorInvalidState
+		if !errors.As(err, &invalidState) {
+			return err
+		}
+		shardGroup.Status.StorageIP = ""
+		return nil
+	}
 
 	shardGroup.Status.InstanceManagerName = im.Name
 	shardGroup.Status.StorageIP = storageIP

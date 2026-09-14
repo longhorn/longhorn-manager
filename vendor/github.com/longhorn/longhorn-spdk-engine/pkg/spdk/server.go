@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
@@ -37,6 +38,11 @@ type Server struct {
 
 	diskCreateLock sync.Mutex
 	hotplugActive  atomic.Bool // use atomic.Bool to avoid data races across goroutines.
+
+	// ipFamily is immutable for the lifetime of the InstanceManager process.
+	// It controls address-family selection for every SPDK instance created by
+	// this server.
+	ipFamily commonnet.IPFamily
 
 	// replicaMapGen is bumped (under Lock) every time replicaMap is mutated
 	// by ReplicaCreate or ReplicaDelete.  verify() captures it in
@@ -94,7 +100,50 @@ type Server struct {
 	newServiceClient ServiceClientFactory
 }
 
-func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient ServiceClientFactory) (*Server, error) {
+func validateIPFamily(family commonnet.IPFamily) error {
+	switch family {
+	case commonnet.IPFamilyUnspecified, commonnet.IPFamilyIPv4, commonnet.IPFamilyIPv6:
+		return nil
+	default:
+		return fmt.Errorf("invalid IP family %q", family)
+	}
+}
+
+func validatePersistedAddressFamily(address string, configured commonnet.IPFamily) error {
+	if address == "" {
+		return nil
+	}
+
+	family, err := commonnet.ParseIPFamilyFromAddress(address)
+	if err != nil {
+		return err
+	}
+	if configured != commonnet.IPFamilyUnspecified && family != configured {
+		return fmt.Errorf("IP family %q does not match configured family %q", family, configured)
+	}
+	return nil
+}
+
+func (s *Server) validateEngineFrontendRecord(record *EngineFrontendRecord) error {
+	if err := validatePersistedAddressFamily(record.TargetIP, s.ipFamily); err != nil {
+		return fmt.Errorf("invalid target IP %q: %w", record.TargetIP, err)
+	}
+	for _, path := range record.Paths {
+		if path == nil {
+			continue
+		}
+		if err := validatePersistedAddressFamily(path.TargetIP, s.ipFamily); err != nil {
+			return fmt.Errorf("invalid path target IP %q: %w", path.TargetIP, err)
+		}
+	}
+	return nil
+}
+
+func NewServer(ctx context.Context, portStart, portEnd int32, ipFamily commonnet.IPFamily, newServiceClient ServiceClientFactory) (*Server, error) {
+
+	if err := validateIPFamily(ipFamily); err != nil {
+		return nil, err
+	}
 	if newServiceClient == nil {
 		newServiceClient = GetServiceClient
 	}
@@ -128,7 +177,8 @@ func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient S
 	}
 
 	s := &Server{
-		ctx: ctx,
+		ctx:      ctx,
+		ipFamily: ipFamily,
 
 		hotplugActive: atomic.Bool{},
 
@@ -516,8 +566,8 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 				logrus.WithError(err).Warnf("failed to retrieve backing image UUID attribute for snapshot %v", alias)
 				continue
 			}
-			backingImage := NewBackingImage(s.ctx, backingImageName, backingImageUUID, lvsUUID, size, expectedChecksum,
-				s.updateChs[types.InstanceTypeBackingImage],
+			backingImage := newBackingImage(s.ctx, backingImageName, backingImageUUID, lvsUUID, size, expectedChecksum,
+				s.ipFamily, s.updateChs[types.InstanceTypeBackingImage],
 				func(address string) (backingImageServiceClient, error) {
 					return s.newServiceClient(address)
 				})
@@ -529,13 +579,15 @@ func (s *Server) rebuildCachedLvolObjects(state *verifyState) error {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
 			actualSize := bdevLvol.DriverSpecific.Lvol.NumAllocatedClusters * uint64(defaultClusterSize)
-			state.replicaMap[lvolName] = NewReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient)
+			state.replicaMap[lvolName] = newReplica(s.ctx, lvolName, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, true,
+				s.ipFamily, s.updateChs[types.InstanceTypeReplica], s.newServiceClient)
 			state.replicaMapForSync[lvolName] = state.replicaMap[lvolName]
 			logrus.Infof("Detected one possible existing replica %s(%s) with disk %s(%s), spec size %d, actual size %d", bdevLvol.Aliases[0], bdevLvol.UUID, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, actualSize)
 		} else if volumeName, slotIndex, err := ParseShardLvolName(lvolName); err == nil {
 			lvsUUID := bdevLvol.DriverSpecific.Lvol.LvolStoreUUID
 			specSize := bdevLvol.NumBlocks * uint64(bdevLvol.BlockSize)
-			shard := NewShard(volumeName, slotIndex, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, s.updateChs[types.InstanceTypeShard])
+			shard := newShard(volumeName, slotIndex, lvsUUIDNameMap[lvsUUID], lvsUUID, specSize, s.ipFamily,
+				s.updateChs[types.InstanceTypeShard])
 			shard.UUID = bdevLvol.UUID
 			// Key by the external shard name (matches what clients send via
 			// Name); the on-disk lvolName is preserved on shard.LvolName.
@@ -725,13 +777,12 @@ func (s *Server) isLvsExist(lvsUUID, lvsName string) (bool, error) {
 
 func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error) {
 	s.Lock()
-	defer func() {
-		s.Unlock()
-	}()
+	defer s.Unlock()
 
 	r, ok := s.replicaMap[req.Name]
 	if ok {
 		r.Lock()
+		defer r.Unlock()
 		if req.SpecSize != 0 {
 			r.SpecSize = req.SpecSize
 		}
@@ -741,7 +792,6 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 		if req.LvsUuid != "" {
 			r.LvsUUID = req.LvsUuid
 		}
-		r.Unlock()
 		return r, nil
 	}
 
@@ -752,7 +802,8 @@ func (s *Server) newReplica(req *spdkrpc.ReplicaCreateRequest) (*Replica, error)
 	if !exists {
 		return nil, fmt.Errorf("lvstore %v(%v) does not exist for replica %v creation", req.LvsName, req.LvsUuid, req.Name)
 	}
-	return NewReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.updateChs[types.InstanceTypeReplica], s.newServiceClient), nil
+	return newReplica(s.ctx, req.Name, req.LvsName, req.LvsUuid, req.SpecSize, true, s.ipFamily,
+		s.updateChs[types.InstanceTypeReplica], s.newServiceClient), nil
 }
 
 func (s *Server) getBackingImage(backingImageName, lvsUUID string) (backingImage *BackingImage, err error) {
@@ -865,8 +916,8 @@ func (s *Server) newBackingImage(req *spdkrpc.BackingImageCreateRequest) (*Backi
 		if err != nil || !exists {
 			return nil, err
 		}
-		s.backingImageMap[backingImageSnapLvolName] = NewBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum,
-			s.updateChs[types.InstanceTypeBackingImage],
+		s.backingImageMap[backingImageSnapLvolName] = newBackingImage(s.ctx, req.Name, req.BackingImageUuid, req.LvsUuid, req.Size, req.Checksum,
+			s.ipFamily, s.updateChs[types.InstanceTypeBackingImage],
 			func(address string) (backingImageServiceClient, error) {
 				return s.newServiceClient(address)
 			})
@@ -1118,6 +1169,22 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 		return
 	}
 
+	validRecords := make([]*EngineFrontendRecord, 0, len(records))
+	for _, record := range records {
+		if err := s.validateEngineFrontendRecord(record); err != nil {
+			logrus.WithError(err).Warnf("Removing engine frontend %s from recovery", record.Name)
+			if removeErr := removeEngineFrontendRecord(s.metadataDir, record.VolumeName); removeErr != nil {
+				logrus.WithError(removeErr).Warnf("Failed to remove invalid engine frontend %s record during recovery", record.Name)
+			}
+			continue
+		}
+		validRecords = append(validRecords, record)
+	}
+	records = validRecords
+	if len(records) == 0 {
+		return
+	}
+
 	logrus.Infof("Recovering %d engine frontend(s) from persisted records", len(records))
 
 	// recoveryEfs keeps our own references to efs inserted during the
@@ -1145,8 +1212,9 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 			continue
 		}
 
-		ef := NewEngineFrontend(record.Name, record.EngineName, record.VolumeName,
-			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+		ef := newEngineFrontend(record.Name, record.EngineName, record.VolumeName,
+			record.Frontend, record.SpecSize, 0, 0, s.ipFamily,
+			s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 		ef.NvmeTcpFrontend.NrIoQueues = record.NrIoQueues
 		ef.metadataDir = s.metadataDir
 		ef.VolumeNQN = record.VolumeNQN

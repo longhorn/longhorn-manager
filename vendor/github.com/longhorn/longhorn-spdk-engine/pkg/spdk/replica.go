@@ -52,8 +52,8 @@ const (
 type Replica struct {
 	sync.RWMutex
 
-	ctx context.Context
-
+	ctx      context.Context
+	ipFamily commonnet.IPFamily
 	// Head should be the only writable lvol in the regular Replica lvol chain/map.
 	// And it is the last entry of ActiveChain if it is not nil.
 	Head *Lvol
@@ -300,6 +300,12 @@ func ServiceReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 }
 
 func NewReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specSize uint64, snapshotChecksumEnabled bool, updateCh chan interface{}, newServiceClient ServiceClientFactory) *Replica {
+	return newReplica(ctx, replicaName, lvsName, lvsUUID, specSize, snapshotChecksumEnabled,
+		commonnet.IPFamilyUnspecified, updateCh, newServiceClient)
+}
+
+func newReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specSize uint64, snapshotChecksumEnabled bool,
+	ipFamily commonnet.IPFamily, updateCh chan interface{}, newServiceClient ServiceClientFactory) *Replica {
 	if newServiceClient == nil {
 		newServiceClient = GetServiceClient
 	}
@@ -317,13 +323,13 @@ func NewReplica(ctx context.Context, replicaName, lvsName, lvsUUID string, specS
 	log = log.WithField("specSize", roundedSpecSize)
 
 	return &Replica{
-		ctx: ctx,
-
-		Name:    replicaName,
-		Alias:   spdktypes.GetLvolAlias(lvsName, replicaName),
-		LvsName: lvsName,
-		LvsUUID: lvsUUID,
-		Nqn:     helpertypes.GetNQN(replicaName),
+		ctx:      ctx,
+		ipFamily: ipFamily,
+		Name:     replicaName,
+		Alias:    spdktypes.GetLvolAlias(lvsName, replicaName),
+		LvsName:  lvsName,
+		LvsUUID:  lvsUUID,
+		Nqn:      helpertypes.GetNQN(replicaName),
 
 		SpecSize: roundedSpecSize,
 		State:    types.InstanceStatePending,
@@ -362,8 +368,16 @@ func (r *Replica) GetAddress() string {
 	return net.JoinHostPort(r.IP, strconv.Itoa(int(r.PortStart)))
 }
 
+// GetAddressAndIPFamily returns a consistent snapshot of the replica endpoint
+// and the family used to bind it.
+func (r *Replica) GetAddressAndIPFamily() (string, commonnet.IPFamily) {
+	r.RLock()
+	defer r.RUnlock()
+	return net.JoinHostPort(r.IP, strconv.Itoa(int(r.PortStart))), r.ipFamily
+}
+
 func (r *Replica) prepareIPAndPorts(portCount int32, superiorPortAllocator *commonbitmap.Bitmap) error {
-	podIP, err := commonnet.GetIPForPod()
+	podIP, err := commonnet.GetIPForPodByNetworkAndFamily(r.ipFamily)
 	if err != nil {
 		return err
 	}

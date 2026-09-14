@@ -188,7 +188,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 
 	// Resolve the local node IP so Engine can call back to this EF
 	// for suspend/resume during the finish step.
-	localIP, err := commonnet.GetIPForPod()
+	localIP, err := commonnet.GetIPForPodByNetworkAndFamily(s.ipFamily)
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to get local IP for engine frontend %s: %v", ef.Name, err)
 	}
@@ -246,8 +246,17 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	// co-located on the same instance-manager pod, derive the address from
 	// the pod IP.
 	if targetAddress == "" {
-		if podIP, ipErr := commonnet.GetIPForPod(); ipErr == nil && podIP != "" {
+		podIP, ipErr := commonnet.GetIPForPodByNetworkAndFamily(s.ipFamily)
+		if ipErr != nil && s.ipFamily != commonnet.IPFamilyUnspecified {
+			return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to resolve local IP for engine frontend %s: %v", req.Name, ipErr)
+		}
+		if podIP != "" {
 			targetAddress = net.JoinHostPort(podIP, strconv.Itoa(types.SPDKServicePort))
+		}
+	}
+	if s.ipFamily != commonnet.IPFamilyUnspecified {
+		if familyErr := validatePersistedAddressFamily(targetAddress, s.ipFamily); familyErr != nil {
+			return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid target address %v: %v", targetAddress, familyErr)
 		}
 	}
 	// Validate the address format. ef.Create() would reject this with a hard
@@ -300,10 +309,11 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		}
 	}
 
-	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
-		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
-	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
+	ef := newEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
+		req.UblkQueueDepth, req.UblkNumberOfQueue, s.ipFamily,
+		s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 	ef.metadataDir = s.metadataDir
+	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
 
 	s.Unlock()
 
