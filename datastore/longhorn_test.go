@@ -342,3 +342,106 @@ func TestCurrentEngineSelectionWithSingleActiveEngineWithoutNodeID(t *testing.T)
 		})
 	}
 }
+
+func TestValidateSettingBlocksV2IMUpgradeStartTimeWhenActiveIMUExistsWithoutIMUC(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	testCases := map[string]longhorn.InstanceManagerUpgradeStatus{
+		"active relocating IMU": {
+			State: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		},
+		"pending IMU with startedAt": {
+			State:     longhorn.InstanceManagerUpgradeStatePending,
+			StartedAt: "2026-04-20T15:00:00Z",
+		},
+	}
+
+	for name, status := range testCases {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+			kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+
+			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+			imu := &longhorn.InstanceManagerUpgrade{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-imu",
+					Namespace: testNamespace,
+				},
+				Spec: longhorn.InstanceManagerUpgradeSpec{
+					NodeID:      "test-node-1",
+					TargetImage: "im:target",
+				},
+				Status: status,
+			}
+			createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(testNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, imuIndexer.Add(createdIMU))
+
+			err = ds.ValidateSetting(string(types.SettingNameInstanceManagerUpgradeStartTime), "2026-04-20T15:00:00Z")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "actively in progress")
+			assert.Contains(t, err.Error(), "IMU")
+		})
+	}
+}
+
+func TestValidateSettingRejectsUnsupportedV2InstanceManagerLiveUpgrade(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+	currentVersion := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      string(types.SettingNameCurrentLonghornVersion),
+			Namespace: testNamespace,
+			Annotations: map[string]string{
+				types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported): "true",
+			},
+		},
+		Value: "v1.13.0",
+	}
+	created, err := lhClient.LonghornV1beta2().Settings(testNamespace).Create(context.TODO(), currentVersion, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NoError(t, settingIndexer.Add(created))
+
+	err = ds.ValidateSetting(string(types.SettingNameAllowInstanceManagerAutomaticUpgrade), `{"v2":"true"}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade)
+
+	require.NoError(t, ds.ValidateSetting(string(types.SettingNameAllowInstanceManagerAutomaticUpgrade), `{"v2":"false"}`))
+}
+
+func TestGetSettingValueExistedByDataEngineAllowsEmptyValue(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+	setting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      string(types.SettingNameDataEngineLogFlags),
+			Namespace: testNamespace,
+		},
+		Value: `{"v2":""}`,
+	}
+	created, err := lhClient.LonghornV1beta2().Settings(testNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NoError(t, settingIndexer.Add(created))
+
+	value, err := ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineLogFlags, longhorn.DataEngineTypeV2)
+	require.NoError(t, err)
+	assert.Empty(t, value)
+}
