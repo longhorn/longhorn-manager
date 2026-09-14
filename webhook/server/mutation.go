@@ -18,6 +18,8 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/enginefrontend"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
+	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanagerupgrade"
+	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanagerupgradecontrol"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
@@ -60,6 +62,8 @@ func Mutation(ds *datastore.DataStore) (http.Handler, []admission.Resource, erro
 		systembackup.NewMutator(ds),
 		volumeattachment.NewMutator(ds),
 		instancemanager.NewMutator(ds),
+		instancemanagerupgrade.NewMutator(ds),
+		instancemanagerupgradecontrol.NewMutator(ds),
 		backupbackingimage.NewMutator(ds),
 		setting.NewMutator(ds),
 	}
