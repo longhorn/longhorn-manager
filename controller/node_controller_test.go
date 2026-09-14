@@ -77,6 +77,7 @@ type NodeControllerSuite struct {
 	informerFactories *util.InformerFactories
 
 	lhNodeIndexer            cache.Indexer
+	lhVolumeIndexer          cache.Indexer
 	lhReplicaIndexer         cache.Indexer
 	lhSettingsIndexer        cache.Indexer
 	lhInstanceManagerIndexer cache.Indexer
@@ -94,6 +95,7 @@ type NodeControllerSuite struct {
 // nodes and pods
 type NodeControllerFixture struct {
 	lhNodes            map[string]*longhorn.Node
+	lhVolumes          []*longhorn.Volume
 	lhReplicas         []*longhorn.Replica
 	lhSettings         map[string]*longhorn.Setting
 	lhInstanceManagers map[string]*longhorn.InstanceManager
@@ -126,6 +128,7 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 	s.informerFactories = util.NewInformerFactories(TestNamespace, s.kubeClient, s.lhClient, controller.NoResyncPeriodFunc())
 
 	s.lhNodeIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	s.lhVolumeIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 	s.lhReplicaIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 	s.lhSettingsIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 	s.lhInstanceManagerIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
@@ -2532,6 +2535,14 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 		c.Assert(err, IsNil)
 	}
 
+	for _, volume := range fixture.lhVolumes {
+		v, err := s.lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(v, NotNil)
+		err = s.lhVolumeIndexer.Add(v)
+		c.Assert(err, IsNil)
+	}
+
 	for _, replica := range fixture.lhReplicas {
 		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -2892,4 +2903,119 @@ func (s *NodeControllerSuite) TestAlignDiskSpecAndStatusKeepsFilesystemDiskUntou
 	c.Assert(diskStatus.Type, Equals, longhorn.DiskTypeFilesystem)
 	c.Assert(diskStatus.DiskPath, Equals, specDiskPath)
 	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusTrue)
+}
+
+// ---------------------------------------------------------------------------
+// Strict-local eviction tests
+// ---------------------------------------------------------------------------
+
+// newVolumeWithDataLocality returns a volume with the given data locality and a
+// single replica, which is the only replica count strict-local volumes allow.
+func newVolumeWithDataLocality(name string, dataLocality longhorn.DataLocality) *longhorn.Volume {
+	return &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.VolumeSpec{
+			NumberOfReplicas: 1,
+			DataLocality:     dataLocality,
+			DataEngine:       longhorn.DataEngineTypeV1,
+		},
+	}
+}
+
+// TestStrictLocalReplicaEviction covers longhorn/longhorn#8753: replicas of
+// strict-local volumes are pinned by HardNodeAffinity and can never be evicted, so
+// the block-for-eviction policies must not request their eviction. Otherwise the
+// volume is kept attached for an eviction that never completes and the drain hangs.
+func (s *NodeControllerSuite) TestStrictLocalReplicaEviction(c *C) {
+	strictLocalVolume := newVolumeWithDataLocality("strict-local-volume", longhorn.DataLocalityStrictLocal)
+	normalVolume := newVolumeWithDataLocality("normal-volume", longhorn.DataLocalityDisabled)
+
+	newFixture := func(drainPolicy types.NodeDrainPolicy, cordoned, nodeEvictionRequested bool) (*NodeControllerFixture, *longhorn.Node, *corev1.Node) {
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Spec.EvictionRequested = nodeEvictionRequested
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"strict-local-replica": 0, "normal-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = cordoned
+
+		return &NodeControllerFixture{
+			lhNodes:   map[string]*longhorn.Node{TestNode1: lhNode},
+			lhVolumes: []*longhorn.Volume{strictLocalVolume, normalVolume},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("strict-local-replica", strictLocalVolume.Name, TestNode1, TestDiskID1),
+				newSrcReplica("normal-replica", normalVolume.Name, TestNode1, TestDiskID1),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy), string(drainPolicy)),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		}, lhNode, kubeNode
+	}
+
+	assertEvictionRequested := func(replicaName string, expected bool) {
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), replicaName, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, expected)
+	}
+
+	// ----------------------------------------------------------------
+	// Test 1 - block-for-eviction-if-contains-last-replica + cordoned
+	//
+	// No IM/PDB objects are registered, so ListVolumePDBProtectedHealthyReplicasRO
+	// returns empty for both volumes and both replicas are "last replicas". Only
+	// the replica of the non strict-local volume may be evicted.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+		fixture, lhNode, kubeNode := newFixture(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica, true, false)
+		s.initTest(c, fixture)
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		assertEvictionRequested("strict-local-replica", false)
+		assertEvictionRequested("normal-replica", true)
+	}
+
+	// ----------------------------------------------------------------
+	// Test 2 - block-for-eviction + cordoned
+	//
+	// This policy evicts every replica on the node unconditionally, but the
+	// strict-local one must still be left alone.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+		fixture, lhNode, kubeNode := newFixture(types.NodeDrainPolicyBlockForEviction, true, false)
+		s.initTest(c, fixture)
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		assertEvictionRequested("strict-local-replica", false)
+		assertEvictionRequested("normal-replica", true)
+	}
+
+	// ----------------------------------------------------------------
+	// Test 3 - manual node eviction is unaffected
+	//
+	// Node.Spec.EvictionRequested is an explicit user request and takes
+	// precedence over the drain policy, for strict-local volumes as well.
+	// ----------------------------------------------------------------
+	{
+		s.SetUpTest(c)
+		fixture, lhNode, kubeNode := newFixture(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica, false, true)
+		s.initTest(c, fixture)
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		assertEvictionRequested("strict-local-replica", true)
+		assertEvictionRequested("normal-replica", true)
+	}
 }
