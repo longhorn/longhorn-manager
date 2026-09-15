@@ -278,6 +278,23 @@ func (oc *OrphanController) reconcile(orphanName string) (err error) {
 			}
 		}()
 
+		// Before touching the underlying resource, ensure the condition is updated to reflect the current state, to prevent the resource from being deleted by mistake.
+		if err := oc.updateConditions(orphan); err != nil {
+			return errors.Wrapf(err, "failed to update conditions before cleaning orphan %v", orphan.Name)
+		}
+
+		// Persist the refreshed status now, before any further Update or finalizer
+		// removal. RemoveFinalizerForOrphan issues a metadata Update that bumps
+		// resourceVersion, so the deferred UpdateOrphanStatus would conflict if it
+		// still held the old resourceVersion. Persisting first and refreshing both
+		// orphan and existingOrphan makes the deferred diff a no-op on the
+		// happy path and ensures RemoveFinalizerForOrphan uses a fresh object.
+		updatedOrphan, err := oc.ds.UpdateOrphanStatus(orphan)
+		if err != nil {
+			return errors.Wrapf(err, "failed to persist status before cleaning orphan %v", orphan.Name)
+		}
+		orphan, existingOrphan = updatedOrphan, updatedOrphan.DeepCopy()
+
 		isCleanupComplete, err := oc.cleanupOrphanedResource(orphan)
 		if isCleanupComplete {
 			oc.eventRecorder.Eventf(orphan, corev1.EventTypeNormal, constant.EventReasonOrphanCleanupCompleted, "Orphan %v cleanup completed", orphan.Name)
