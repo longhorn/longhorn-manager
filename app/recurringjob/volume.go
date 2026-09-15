@@ -397,6 +397,18 @@ func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error 
 }
 
 func (job *VolumeJob) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
+	// Snapshot purge cannot proceed while a replica is rebuilding. Skip this
+	// volume for this run rather than failing the recurring job.
+	//
+	// TODO(longhorn/longhorn#13976): Record this as a RecurringJob condition
+	// (e.g. RebuildInProgress) instead of a log line only.
+	for _, status := range volume.RebuildStatus {
+		if status.IsRebuilding {
+			job.logger.Infof("Snapshot purge skipped for volume %v: replica is rebuilding", volume.Name)
+			return nil
+		}
+	}
+
 	// Trigger snapshot purge of the volume
 	if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
 		return err
@@ -414,7 +426,7 @@ func (job *VolumeJob) purgeSnapshots(volume *longhornclient.Volume, volumeAPI lo
 			return err
 		}
 		if volume == nil {
-			job.logger.Infof("Volume %v not found during snapshbot purge, skipping", volumeName)
+			job.logger.Infof("Volume %v not found during snapshot purge, skipping", volumeName)
 			return nil
 		}
 
