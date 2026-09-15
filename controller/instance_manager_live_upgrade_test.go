@@ -728,6 +728,61 @@ func (s *TestSuite) TestBuildPlannedDetachedReplicaPlan(c *C) {
 	c.Assert(applied, Equals, true)
 }
 
+func (s *TestSuite) TestPendingWaitsForAffectedV2VolumeExpansion(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imuc, err := newTestInstanceManagerUpgradeController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	efIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+	volume := newVolume(TestVolumeName, 2)
+	volume.Namespace = TestNamespace
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Status.ExpansionRequired = true
+	volume.Status.CurrentNodeID = TestNode2
+	volume.Status.CurrentEngineNodeID = TestNode2
+	c.Assert(volumeIndexer.Add(volume), IsNil)
+
+	// The volume status still points to the source node, but its migration EF
+	// runs on the node about to be upgraded.
+	frontend := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "migration-frontend",
+			Namespace: TestNamespace,
+			Labels:    map[string]string{types.LonghornLabelVolume: volume.Name},
+		},
+		Spec: longhorn.EngineFrontendSpec{InstanceSpec: longhorn.InstanceSpec{
+			VolumeName: volume.Name,
+			NodeID:     TestNode1,
+			DataEngine: longhorn.DataEngineTypeV2,
+		}},
+	}
+	c.Assert(efIndexer.Add(frontend), IsNil)
+
+	imu := newInstanceManagerUpgrade("imu-test", TestNode1, TestExtraInstanceManagerImage, longhorn.InstanceManagerUpgradeStatePending)
+	expanding, err := imuc.hasPendingV2VolumeExpansion(imu)
+	c.Assert(err, IsNil)
+	c.Assert(expanding, Equals, true)
+
+	frontend = frontend.DeepCopy()
+	now := metav1.Now()
+	frontend.DeletionTimestamp = &now
+	c.Assert(efIndexer.Update(frontend), IsNil)
+	expanding, err = imuc.hasPendingV2VolumeExpansion(imu)
+	c.Assert(err, IsNil)
+	c.Assert(expanding, Equals, false)
+
+	volume = volume.DeepCopy()
+	volume.Status.ExpansionRequired = false
+	c.Assert(volumeIndexer.Update(volume), IsNil)
+	expanding, err = imuc.hasPendingV2VolumeExpansion(imu)
+	c.Assert(err, IsNil)
+	c.Assert(expanding, Equals, false)
+}
+
 func (s *TestSuite) TestPendingPersistsPlannedDetachedReplicasBeforeDetach(c *C) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
