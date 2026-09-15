@@ -1070,8 +1070,8 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 
 	// Observe the current frontend size via the engine frontend proxy. The proxy's
 	// VolumeFrontendGet overlays the EngineFrontend's own size on top of the
-	// engine view when it reaches the frontend. If it falls back to the engine,
-	// keep the last frontend-reported size.
+	// engine view, so ef.Status.CurrentSize reflects what the frontend device
+	// is actually serving, independently of engine.Status.CurrentSize.
 	engineClientProxy, err := engineapi.GetCompatibleClient(engineForFrontend, nil, m.ds, m.logger, m.proxyConnCounter)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get engine client proxy for volume %v during engine frontend monitoring", ef.Spec.VolumeName)
@@ -1082,7 +1082,7 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get volume info for volume %v during engine frontend monitoring", ef.Spec.VolumeName)
 	}
-	syncEngineFrontendCurrentSizeFromVolumeInfo(ef, volume, volumeInfo)
+	ef.Status.CurrentSize = volumeInfo.Size
 
 	if shouldExpandEngineFrontend(ef, volume, engineForFrontend) {
 		// Expand only when the volume is actually in expansion flow.
@@ -1124,23 +1124,15 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 			"expansionRequired": volume.Status.ExpansionRequired,
 		}).Trace("Skip engine frontend expansion because volume expansion is not required")
 
+		// An encrypted volume's frontend carries a LUKS header, so the size it reports is
+		// larger than the volume's logical size. Report the logical size once the header
+		// is there.
+		if volume.Spec.Encrypted && volumeInfo.Size > ef.Spec.VolumeSize {
+			ef.Status.CurrentSize = ef.Spec.VolumeSize
+		}
 	}
 
 	return nil
-}
-
-func syncEngineFrontendCurrentSizeFromVolumeInfo(ef *longhorn.EngineFrontend, volume *longhorn.Volume, volumeInfo *engineapi.Volume) {
-	if !engineFrontendReportedVolumeInfo(ef, volumeInfo) {
-		return
-	}
-
-	ef.Status.CurrentSize = volumeInfo.Size
-	// An encrypted volume's frontend carries a LUKS header, so the size it reports is
-	// larger than the volume's logical size. Report the logical size once the header
-	// is there.
-	if volume != nil && volume.Spec.Encrypted && volumeInfo.Size > ef.Spec.VolumeSize {
-		ef.Status.CurrentSize = ef.Spec.VolumeSize
-	}
 }
 
 func shouldExpandEngineFrontend(ef *longhorn.EngineFrontend, v *longhorn.Volume, e *longhorn.Engine) bool {
