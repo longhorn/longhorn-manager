@@ -31,6 +31,27 @@ func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
+func (s *TestSuite) TestResolveSystemManagedComponentPriorityClass(c *C) {
+	priorityClass, err := ResolveSystemManagedComponentPriorityClass("longhorn-critical", "", SystemManagedComponentInstanceManager)
+	c.Assert(err, IsNil)
+	c.Assert(priorityClass, Equals, "longhorn-critical")
+
+	setting := `{"instance-manager":"system-node-critical","csi-attacher":"system-cluster-critical"}`
+	priorityClass, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", setting, SystemManagedComponentInstanceManager)
+	c.Assert(err, IsNil)
+	c.Assert(priorityClass, Equals, "system-node-critical")
+
+	priorityClass, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", setting, CSIProvisionerName)
+	c.Assert(err, IsNil)
+	c.Assert(priorityClass, Equals, "longhorn-critical")
+
+	_, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", `{"unsupported":"system-node-critical"}`, SystemManagedComponentInstanceManager)
+	c.Assert(err, NotNil)
+
+	_, err = ResolveSystemManagedComponentPriorityClass("longhorn-critical", `null`, SystemManagedComponentInstanceManager)
+	c.Assert(err, NotNil)
+}
+
 func (s *TestSuite) TestParseToleration(c *C) {
 	type testCase struct {
 		input string
