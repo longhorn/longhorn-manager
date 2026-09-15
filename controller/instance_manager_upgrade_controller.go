@@ -133,6 +133,15 @@ func NewInstanceManagerUpgradeController(
 	}
 	imuc.cacheSyncs = append(imuc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
+	if _, err = ds.EngineFrontendInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    imuc.enqueueEngineFrontendChange,
+		UpdateFunc: func(oldObj, newObj interface{}) { imuc.enqueueEngineFrontendChange(newObj) },
+		DeleteFunc: imuc.enqueueEngineFrontendChange,
+	}); err != nil {
+		return nil, err
+	}
+	imuc.cacheSyncs = append(imuc.cacheSyncs, ds.EngineFrontendInformer.HasSynced)
+
 	if _, err = ds.EngineInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    imuc.enqueueEngineChange,
 		UpdateFunc: func(oldObj, newObj interface{}) { imuc.enqueueEngineChange(newObj) },
@@ -218,9 +227,7 @@ func (imuc *InstanceManagerUpgradeController) isAuthorizedByUpgradeControl(imu *
 		return false, err
 	}
 
-	nodeInfo, ok := control.Status.Nodes[imu.Spec.NodeID]
-	return ok && control.Status.CurrentNode == imu.Spec.NodeID &&
-		nodeInfo.State == longhorn.NodeUpgradeStateInProgress && nodeInfo.IMUName == imu.Name, nil
+	return types.IsInstanceManagerUpgradeAuthorizedByControl(imu, control), nil
 }
 
 func (imuc *InstanceManagerUpgradeController) enqueueInstanceManagerUpgrade(obj interface{}) {
@@ -302,6 +309,34 @@ func (imuc *InstanceManagerUpgradeController) enqueueVolumeChange(obj interface{
 			continue
 		}
 		if _, ok := imu.Status.PlannedDetachedReplicas[volume.Name]; ok {
+			imuc.enqueueInstanceManagerUpgrade(imu)
+		}
+	}
+}
+
+func (imuc *InstanceManagerUpgradeController) enqueueEngineFrontendChange(obj interface{}) {
+	frontend, ok := obj.(*longhorn.EngineFrontend)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return
+		}
+		frontend, ok = deletedState.Obj.(*longhorn.EngineFrontend)
+		if !ok {
+			return
+		}
+	}
+
+	imus, err := imuc.ds.ListInstanceManagerUpgradesRO()
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	for _, imu := range imus {
+		if imu.Spec.NodeID != frontend.Spec.NodeID {
+			continue
+		}
+		if imu.Status.State == "" || imu.Status.State == longhorn.InstanceManagerUpgradeStatePending {
 			imuc.enqueueInstanceManagerUpgrade(imu)
 		}
 	}
@@ -697,6 +732,20 @@ func (imuc *InstanceManagerUpgradeController) reconcilePending(imu *longhorn.Ins
 		}
 		log.Infof("No engines to relocate on node %v, waiting for source IM in-place upgrade to recover", imu.Spec.NodeID)
 		imu.Status.State = longhorn.InstanceManagerUpgradeStateWaitingForSourceIM
+		return nil
+	}
+
+	// ExpansionRequired is persisted before the EngineFrontend monitor issues
+	// VolumeExpand. Wait for an already admitted expansion before recording the
+	// relocation or replica-detach plan, so expansion and live upgrade do not
+	// start concurrently.
+	expanding, err := imuc.hasPendingV2VolumeExpansion(imu)
+	if err != nil {
+		return err
+	}
+	if expanding {
+		log.Debugf("Waiting for V2 volume expansion before planning live upgrade on node %v", imu.Spec.NodeID)
+		imuc.markStartedAt(imu)
 		return nil
 	}
 
@@ -1584,6 +1633,36 @@ func isLiveUpgradeRelocatableVolume(volume *longhorn.Volume) bool {
 	}
 
 	return true
+}
+
+// hasPendingV2VolumeExpansion reports whether an already admitted expansion
+// would be affected by this Pending IMU. It includes a migration frontend on
+// this node even when the volume status still points to the source node.
+func (imuc *InstanceManagerUpgradeController) hasPendingV2VolumeExpansion(imu *longhorn.InstanceManagerUpgrade) (bool, error) {
+	volumes, err := imuc.ds.ListVolumesRO()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list volumes")
+	}
+
+	for _, volume := range volumes {
+		if !types.IsPendingV2VolumeExpansion(volume) {
+			continue
+		}
+		replicas, err := imuc.ds.ListVolumeReplicasRO(volume.Name)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list replicas for volume %v", volume.Name)
+		}
+
+		frontends, err := imuc.ds.ListVolumeEngineFrontendsRO(volume.Name)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list engine frontends for volume %v", volume.Name)
+		}
+		if types.IsVolumeAffectedByInstanceManagerUpgrade(volume, replicas, frontends, imu) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (imuc *InstanceManagerUpgradeController) validateNodeSupportsLiveUpgrade(nodeID string) error {
