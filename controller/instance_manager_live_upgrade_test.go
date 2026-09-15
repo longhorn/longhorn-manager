@@ -464,6 +464,64 @@ func (s *TestSuite) TestRetryFailedNodeResumesPersistedRelocationPlan(c *C) {
 	c.Assert(updated.Status.Engines, DeepEquals, imu.Status.Engines)
 }
 
+func (s *TestSuite) TestRetryFailedNodeWaitsForAffectedV2VolumeExpansion(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	control, err := newTestInstanceManagerUpgradeControlController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	volume := newVolume(TestVolumeName, 2)
+	volume.Namespace = TestNamespace
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Status.State = longhorn.VolumeStateAttached
+	volume.Status.ExpansionRequired = true
+	c.Assert(volumeIndexer.Add(volume), IsNil)
+
+	imu := newInstanceManagerUpgrade("imu-failed", TestNode1, TestExtraInstanceManagerImage, longhorn.InstanceManagerUpgradeStateFailed)
+	imu.Status.Engines = map[string]longhorn.EngineRelocation{
+		TestVolumeName: {OriginalNodeID: TestNode1, TemporaryNodeID: TestNode2},
+	}
+	_, err = lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(imuIndexer.Add(imu), IsNil)
+
+	imuc := &longhorn.InstanceManagerUpgradeControl{
+		Spec: longhorn.InstanceManagerUpgradeControlSpec{TargetImage: TestExtraInstanceManagerImage},
+		Status: longhorn.InstanceManagerUpgradeControlStatus{
+			Nodes: map[string]longhorn.NodeUpgradeInfo{
+				TestNode1: {State: longhorn.NodeUpgradeStateFailed, IMUName: imu.Name},
+			},
+		},
+	}
+
+	active, err := control.retryFailedNode(imuc)
+	c.Assert(err, IsNil)
+	c.Assert(active, Equals, false)
+	c.Assert(imuc.Status.CurrentNode, Equals, "")
+	c.Assert(imuc.Status.Nodes[TestNode1].State, Equals, longhorn.NodeUpgradeStateFailed)
+	c.Assert(imuc.Status.Nodes[TestNode1].RetryCount, Equals, 0)
+
+	updated, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Get(context.TODO(), imu.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(updated.Status.State, Equals, longhorn.InstanceManagerUpgradeStateFailed)
+
+	completedExpansion := volume.DeepCopy()
+	completedExpansion.Status.ExpansionRequired = false
+	c.Assert(volumeIndexer.Update(completedExpansion), IsNil)
+	control.enqueueIMUCForVolumeExpansionChange(volume, completedExpansion)
+	c.Assert(control.queue.Len(), Equals, 1)
+
+	active, err = control.retryFailedNode(imuc)
+	c.Assert(err, IsNil)
+	c.Assert(active, Equals, true)
+	c.Assert(imuc.Status.Nodes[TestNode1].State, Equals, longhorn.NodeUpgradeStateInProgress)
+}
+
 func (s *TestSuite) TestPickNextPendingNodePreservesFailedNodeForRetry(c *C) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
@@ -726,6 +784,98 @@ func (s *TestSuite) TestBuildPlannedDetachedReplicaPlan(c *C) {
 	applied, err = imuc.arePlannedDetachedReplicasApplied(imu)
 	c.Assert(err, IsNil)
 	c.Assert(applied, Equals, true)
+}
+
+func (s *TestSuite) TestPendingWaitsForAffectedV2VolumeExpansion(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imuc, err := newTestInstanceManagerUpgradeController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	efIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+	volume := newVolume(TestVolumeName, 2)
+	volume.Namespace = TestNamespace
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Status.ExpansionRequired = true
+	volume.Status.State = longhorn.VolumeStateAttached
+	volume.Status.CurrentNodeID = TestNode2
+	volume.Status.CurrentEngineNodeID = TestNode2
+	c.Assert(volumeIndexer.Add(volume), IsNil)
+
+	// The volume status still points to the source node, but its migration EF
+	// runs on the node about to be upgraded.
+	frontend := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "migration-frontend",
+			Namespace: TestNamespace,
+			Labels:    map[string]string{types.LonghornLabelVolume: volume.Name},
+		},
+		Spec: longhorn.EngineFrontendSpec{InstanceSpec: longhorn.InstanceSpec{
+			VolumeName: volume.Name,
+			NodeID:     TestNode1,
+			DataEngine: longhorn.DataEngineTypeV2,
+		}},
+	}
+	c.Assert(efIndexer.Add(frontend), IsNil)
+
+	imu := newInstanceManagerUpgrade("imu-test", TestNode1, TestExtraInstanceManagerImage, longhorn.InstanceManagerUpgradeStatePending)
+	expanding, err := imuc.hasPendingV2VolumeExpansion(imu)
+	c.Assert(err, IsNil)
+	c.Assert(expanding, Equals, true)
+
+	frontend = frontend.DeepCopy()
+	now := metav1.Now()
+	frontend.DeletionTimestamp = &now
+	c.Assert(efIndexer.Update(frontend), IsNil)
+	expanding, err = imuc.hasPendingV2VolumeExpansion(imu)
+	c.Assert(err, IsNil)
+	c.Assert(expanding, Equals, false)
+
+	volume = volume.DeepCopy()
+	volume.Status.ExpansionRequired = false
+	c.Assert(volumeIndexer.Update(volume), IsNil)
+	expanding, err = imuc.hasPendingV2VolumeExpansion(imu)
+	c.Assert(err, IsNil)
+	c.Assert(expanding, Equals, false)
+
+	volume.Status.ExpansionRequired = true
+	volume.Status.State = longhorn.VolumeStateDetached
+	volume.Spec.NodeID = TestNode1
+	c.Assert(volumeIndexer.Update(volume), IsNil)
+	expanding, err = imuc.hasPendingV2VolumeExpansion(imu)
+	c.Assert(err, IsNil)
+	c.Assert(expanding, Equals, true)
+}
+
+func (s *TestSuite) TestEngineFrontendChangeEnqueuesUninitializedOrPendingIMU(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imuc, err := newTestInstanceManagerUpgradeController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	frontend := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{Name: "frontend", Namespace: TestNamespace},
+		Spec:       longhorn.EngineFrontendSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+	}
+
+	for _, state := range []longhorn.InstanceManagerUpgradeState{"", longhorn.InstanceManagerUpgradeStatePending} {
+		imu := newInstanceManagerUpgrade("imu-"+string(state), TestNode1, TestExtraInstanceManagerImage, state)
+		c.Assert(imuIndexer.Add(imu), IsNil)
+
+		imuc.enqueueEngineFrontendChange(frontend)
+		c.Assert(imuc.queue.Len(), Equals, 1)
+		item, shutdown := imuc.queue.Get()
+		c.Assert(shutdown, Equals, false)
+		imuc.queue.Done(item)
+
+		c.Assert(imuIndexer.Delete(imu), IsNil)
+	}
 }
 
 func (s *TestSuite) TestPendingPersistsPlannedDetachedReplicasBeforeDetach(c *C) {
