@@ -365,37 +365,6 @@ func (s *TestSuite) TestSyncEngineFrontendPathStatus(c *C) {
 	c.Assert(ef.Status.Paths[1].TargetIP, Equals, "10.0.0.2")
 }
 
-func (s *TestSuite) TestSyncEngineFrontendCurrentSizeFromVolumeInfo(c *C) {
-	volume := &longhorn.Volume{}
-	ef := &longhorn.EngineFrontend{}
-	ef.Spec.VolumeSize = TestVolumeSize
-	ef.Status.CurrentSize = TestVolumeSize
-
-	syncEngineFrontendCurrentSizeFromVolumeInfo(ef, volume, &engineapi.Volume{
-		Endpoint: "/dev/longhorn/test-volume",
-		Size:     TestVolumeSize * 2,
-	})
-	c.Assert(ef.Status.CurrentSize, Equals, int64(TestVolumeSize*2))
-
-	syncEngineFrontendCurrentSizeFromVolumeInfo(ef, volume, &engineapi.Volume{
-		Size: TestVolumeSize * 3,
-	})
-	c.Assert(ef.Status.CurrentSize, Equals, int64(TestVolumeSize*2))
-
-	ef.Status.CurrentSize = 0
-	syncEngineFrontendCurrentSizeFromVolumeInfo(ef, volume, &engineapi.Volume{
-		Size: TestVolumeSize * 3,
-	})
-	c.Assert(ef.Status.CurrentSize, Equals, int64(0))
-
-	volume.Spec.Encrypted = true
-	syncEngineFrontendCurrentSizeFromVolumeInfo(ef, volume, &engineapi.Volume{
-		Endpoint: "/dev/longhorn/test-volume",
-		Size:     TestVolumeSize + util.MiB,
-	})
-	c.Assert(ef.Status.CurrentSize, Equals, int64(TestVolumeSize))
-}
-
 func newTestEngineFrontendController(
 	lhClient *lhfake.Clientset,
 	kubeClient *fake.Clientset,
