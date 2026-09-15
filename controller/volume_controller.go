@@ -882,18 +882,6 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	// 1. remove ERR replicas
 	// 2. count RW replicas
 	healthyCount := 0
-	// A v2 restore runs in the engine, not per replica, so the engine reports the same
-	// restore error for every replica address. Failing the replicas on it would wipe out
-	// every replica of a DR/restore volume, which cannot be auto-salvaged.
-	restoreErrorFailsReplica := !types.IsDataEngineV2(v.Spec.DataEngine)
-	if !restoreErrorFailsReplica {
-		for _, restoreStatus := range restoreStatusMap {
-			if restoreStatus != nil && restoreStatus.Error != "" {
-				log.Warnf("Engine %v has a restore error: %s", e.Name, restoreStatus.Error)
-				break
-			}
-		}
-	}
 	for rName, mode := range e.Status.ReplicaModeMap {
 		r := rs[rName]
 		if r == nil {
@@ -901,14 +889,13 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 		restoreStatus := restoreStatusMap[rName]
 		purgeStatus := purgeStatusMap[rName]
-		hasRestoreError := restoreStatus != nil && restoreStatus.Error != ""
 		if mode == longhorn.ReplicaModeERR ||
-			(hasRestoreError && restoreErrorFailsReplica) ||
+			(restoreStatus != nil && restoreStatus.Error != "") ||
 			(purgeStatus != nil && purgeStatus.Error != "") {
 			if _, ok := plannedDetachedReplicas[rName]; ok {
 				continue
 			}
-			if hasRestoreError {
+			if restoreStatus != nil && restoreStatus.Error != "" {
 				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailedRestore, "replica %v failed the restore: %s", r.Name, restoreStatus.Error)
 			}
 			if purgeStatus != nil && purgeStatus.Error != "" {
