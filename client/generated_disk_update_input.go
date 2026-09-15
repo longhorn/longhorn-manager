@@ -7,7 +7,7 @@ const (
 type DiskUpdateInput struct {
 	Resource `yaml:"-"`
 
-	Disks []DiskUpdate `json:"disks,omitempty" yaml:"disks,omitempty"`
+	Disks map[string]DiskUpdate `json:"disks,omitempty" yaml:"disks,omitempty"`
 }
 
 type DiskUpdateInputCollection struct {
