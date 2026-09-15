@@ -43,6 +43,39 @@ type InstanceManagerTestCase struct {
 	expectedStatus   longhorn.InstanceManagerStatus
 }
 
+func (s *TestSuite) TestGetLivenessProbeCommand(c *C) {
+	testCases := map[string]struct {
+		dataEngine longhorn.DataEngineType
+		timeout    int64
+		expected   string
+	}{
+		"v1 uses the default instance-manager liveness probe script with timeout": {
+			dataEngine: longhorn.DataEngineTypeV1,
+			timeout:    1,
+			expected:   livenessProbeScript + " --timeout 1",
+		},
+		"v1 with non-zero timeout": {
+			dataEngine: longhorn.DataEngineTypeV1,
+			timeout:    10,
+			expected:   livenessProbeScript + " --timeout 10",
+		},
+		"v2 appends the data-engine flag for the shared liveness probe script with timeout": {
+			dataEngine: longhorn.DataEngineTypeV2,
+			timeout:    1,
+			expected:   livenessProbeScript + " --timeout 1 --data-engine v2",
+		},
+		"v2 with non-zero timeout": {
+			dataEngine: longhorn.DataEngineTypeV2,
+			timeout:    15,
+			expected:   livenessProbeScript + " --timeout 15 --data-engine v2",
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Assert(getLivenessProbeCommand(tc.dataEngine, tc.timeout), Equals, tc.expected, Commentf("test case: %s", name))
+	}
+}
+
 func newTolerationSetting() *longhorn.Setting {
 	return &longhorn.Setting{
 		ObjectMeta: metav1.ObjectMeta{
