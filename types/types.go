@@ -1739,3 +1739,61 @@ func IsActiveInstanceManagerUpgradeState(state longhorn.InstanceManagerUpgradeSt
 		return false
 	}
 }
+
+// IsPendingV2VolumeExpansion reports whether a V2 volume has an admitted
+// expansion that has not completed yet.
+func IsPendingV2VolumeExpansion(volume *longhorn.Volume) bool {
+	return volume != nil && volume.DeletionTimestamp == nil &&
+		IsDataEngineV2(volume.Spec.DataEngine) &&
+		volume.Status.ExpansionRequired
+}
+
+// IsVolumeAffectedByInstanceManagerUpgrade reports whether an IMU can move a
+// volume's engine frontend or restart one of its replicas.
+func IsVolumeAffectedByInstanceManagerUpgrade(volume *longhorn.Volume, replicas map[string]*longhorn.Replica, frontends map[string]*longhorn.EngineFrontend, imu *longhorn.InstanceManagerUpgrade) bool {
+	if volume == nil || imu == nil {
+		return false
+	}
+	if _, ok := imu.Status.Engines[volume.Name]; ok {
+		return true
+	}
+	if _, ok := imu.Status.PlannedDetachedReplicas[volume.Name]; ok {
+		return true
+	}
+
+	nodeID := imu.Spec.NodeID
+	if nodeID == "" {
+		return false
+	}
+	if volume.Status.CurrentNodeID == nodeID ||
+		volume.Status.CurrentEngineNodeID == nodeID ||
+		volume.Status.CurrentMigrationNodeID == nodeID ||
+		volume.Spec.NodeID == nodeID ||
+		volume.Spec.EngineNodeID == nodeID ||
+		volume.Spec.MigrationNodeID == nodeID {
+		return true
+	}
+
+	for _, replica := range replicas {
+		if replica.DeletionTimestamp == nil && replica.Spec.NodeID == nodeID {
+			return true
+		}
+	}
+	for _, frontend := range frontends {
+		if frontend.DeletionTimestamp == nil && frontend.Spec.NodeID == nodeID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsInstanceManagerUpgradeAuthorizedByControl(imu *longhorn.InstanceManagerUpgrade, control *longhorn.InstanceManagerUpgradeControl) bool {
+	if imu == nil || control == nil {
+		return false
+	}
+
+	nodeInfo, ok := control.Status.Nodes[imu.Spec.NodeID]
+	return ok && control.Status.CurrentNode == imu.Spec.NodeID &&
+		nodeInfo.State == longhorn.NodeUpgradeStateInProgress && nodeInfo.IMUName == imu.Name
+}

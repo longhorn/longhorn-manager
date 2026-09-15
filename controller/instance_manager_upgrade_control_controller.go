@@ -113,6 +113,17 @@ func NewInstanceManagerUpgradeControlController(
 	c.cacheSyncs = append(c.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
+	// Re-evaluate a deferred failed-node retry when a V2 expansion starts or
+	// completes. The retry must wait until the expansion is no longer pending.
+	if _, err = ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj interface{}) { c.enqueueIMUCForVolumeExpansionChange(nil, obj) },
+		UpdateFunc: c.enqueueIMUCForVolumeExpansionChange,
+		DeleteFunc: func(obj interface{}) { c.enqueueIMUCForVolumeExpansionChange(obj, nil) },
+	}); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
+
 	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: c.isResponsibleForSetting,
@@ -148,6 +159,28 @@ func (c *InstanceManagerUpgradeControlController) isResponsibleForSetting(obj in
 
 func (c *InstanceManagerUpgradeControlController) enqueueSettingChange(obj interface{}) {
 	c.queue.Add(c.namespace + "/" + types.InstanceManagerUpgradeControlName)
+}
+
+func (c *InstanceManagerUpgradeControlController) enqueueIMUCForVolumeExpansionChange(oldObj, newObj interface{}) {
+	if isPendingV2VolumeExpansionEvent(oldObj) || isPendingV2VolumeExpansionEvent(newObj) {
+		c.queue.Add(c.namespace + "/" + types.InstanceManagerUpgradeControlName)
+	}
+}
+
+func isPendingV2VolumeExpansionEvent(obj interface{}) bool {
+	volume, ok := obj.(*longhorn.Volume)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+		volume, ok = deletedState.Obj.(*longhorn.Volume)
+		if !ok {
+			return false
+		}
+	}
+
+	return types.IsPendingV2VolumeExpansion(volume)
 }
 
 func (c *InstanceManagerUpgradeControlController) Run(workers int, stopCh <-chan struct{}) {
@@ -426,6 +459,17 @@ func (c *InstanceManagerUpgradeControlController) retryFailedNode(imuc *longhorn
 		if imu.Spec.TargetImage != imuc.Spec.TargetImage {
 			continue
 		}
+		expanding, err := c.hasPendingV2VolumeExpansionInRetainedPlan(imu)
+		if err != nil {
+			return false, err
+		}
+		if expanding {
+			// A Failed IMU is idle until this retry resumes it. Let the expansion
+			// finish first, then reuse the persisted plan without overlapping the
+			// two operations.
+			log.Debugf("Delaying retry of IMU %v on node %v until affected V2 volume expansion completes", imu.Name, nodeID)
+			continue
+		}
 
 		imu = imu.DeepCopy()
 		imu.Status.AbortRequested = false
@@ -451,6 +495,35 @@ func (c *InstanceManagerUpgradeControlController) retryFailedNode(imuc *longhorn
 
 		log.Warnf("Retrying node %v upgrade with IMU %v (retry %d/%d)", nodeID, imu.Name, info.RetryCount, imucMaxNodeRetries)
 		return true, nil
+	}
+
+	return false, nil
+}
+
+// hasPendingV2VolumeExpansionInRetainedPlan reports whether resuming an IMU's
+// persisted relocation or replica-detach plan would overlap an attached V2
+// volume expansion. A retry with no persisted plan re-enters Pending, where
+// reconcilePending performs the general expansion admission check.
+func (c *InstanceManagerUpgradeControlController) hasPendingV2VolumeExpansionInRetainedPlan(imu *longhorn.InstanceManagerUpgrade) (bool, error) {
+	plannedVolumes := map[string]struct{}{}
+	for volumeName := range imu.Status.Engines {
+		plannedVolumes[volumeName] = struct{}{}
+	}
+	for volumeName := range imu.Status.PlannedDetachedReplicas {
+		plannedVolumes[volumeName] = struct{}{}
+	}
+
+	for volumeName := range plannedVolumes {
+		volume, err := c.ds.GetVolumeRO(volumeName)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) || types.ErrorIsNotFound(err) {
+				continue
+			}
+			return false, errors.Wrapf(err, "failed to get volume %v for IMU retry", volumeName)
+		}
+		if types.IsPendingV2VolumeExpansion(volume) {
+			return true, nil
+		}
 	}
 
 	return false, nil
