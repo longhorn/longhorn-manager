@@ -214,6 +214,8 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		DiskSelector:                    volume.DiskSelector,
 		NodeSelector:                    volume.NodeSelector,
 		TopologyRequirement:             volume.TopologyRequirement,
+		VolumeAntiAffinity:              volume.VolumeAntiAffinity,
+		VolumeAntiAffinityFromPod:       volume.VolumeAntiAffinityFromPod,
 		SnapshotDataIntegrity:           volume.SnapshotDataIntegrity,
 		SnapshotMaxCount:                volume.SnapshotMaxCount,
 		SnapshotMaxSize:                 snapshotMaxSize,

@@ -50,8 +50,10 @@ const (
 	EventReasonEvictionFailed        = "EvictionFailed"
 
 	EventReasonDetachedUnexpectedly = "DetachedUnexpectedly"
-	EventReasonRemount              = "Remount"
-	EventReasonAutoSalvaged         = "AutoSalvaged"
+
+	EventReasonSkippedAntiAffinityInheritance = "SkippedAntiAffinityInheritance"
+	EventReasonRemount                        = "Remount"
+	EventReasonAutoSalvaged                   = "AutoSalvaged"
 
 	EventReasonFetching = "Fetching"
 	EventReasonFetched  = "Fetched"

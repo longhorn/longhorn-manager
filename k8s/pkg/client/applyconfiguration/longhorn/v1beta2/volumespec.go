@@ -59,7 +59,14 @@ type VolumeSpecApplyConfiguration struct {
 	// be scheduled in, derived from the CSI accessible topology at creation —
 	// the same failure domains as the PV nodeAffinity terms (a node must match
 	// at least one term). Empty means unconstrained.
-	TopologyRequirement       []VolumeTopologyTermApplyConfiguration     `json:"topologyRequirement,omitempty"`
+	TopologyRequirement []VolumeTopologyTermApplyConfiguration `json:"topologyRequirement,omitempty"`
+	// VolumeAntiAffinityFromPod controls whether VolumeAntiAffinity is derived
+	// from the spread declarations of the pod using this volume. "ignored"
+	// follows the volume-anti-affinity-from-pod setting.
+	VolumeAntiAffinityFromPod *longhornv1beta2.VolumeAntiAffinityFromPod `json:"volumeAntiAffinityFromPod,omitempty"`
+	// VolumeAntiAffinity spreads this volume's replicas away from the replicas
+	// of related volumes. Empty means no cross-volume preference.
+	VolumeAntiAffinity        *VolumeAntiAffinityApplyConfiguration      `json:"volumeAntiAffinity,omitempty"`
 	DisableFrontend           *bool                                      `json:"disableFrontend,omitempty"`
 	RevisionCounterDisabled   *bool                                      `json:"revisionCounterDisabled,omitempty"`
 	UnmapMarkSnapChainRemoved *longhornv1beta2.UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved,omitempty"`
@@ -281,6 +288,22 @@ func (b *VolumeSpecApplyConfiguration) WithTopologyRequirement(values ...*Volume
 		}
 		b.TopologyRequirement = append(b.TopologyRequirement, *values[i])
 	}
+	return b
+}
+
+// WithVolumeAntiAffinityFromPod sets the VolumeAntiAffinityFromPod field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the VolumeAntiAffinityFromPod field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithVolumeAntiAffinityFromPod(value longhornv1beta2.VolumeAntiAffinityFromPod) *VolumeSpecApplyConfiguration {
+	b.VolumeAntiAffinityFromPod = &value
+	return b
+}
+
+// WithVolumeAntiAffinity sets the VolumeAntiAffinity field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the VolumeAntiAffinity field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithVolumeAntiAffinity(value *VolumeAntiAffinityApplyConfiguration) *VolumeSpecApplyConfiguration {
+	b.VolumeAntiAffinity = value
 	return b
 }
 

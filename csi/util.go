@@ -235,6 +235,13 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.ReplicaSoftAntiAffinity = replicaSoftAntiAffinity
 	}
 
+	if volumeAntiAffinityFromPod, ok := volOptions["volumeAntiAffinityFromPod"]; ok {
+		if err := types.ValidateVolumeAntiAffinityFromPod(longhorn.VolumeAntiAffinityFromPod(volumeAntiAffinityFromPod)); err != nil {
+			return nil, errors.Wrap(err, "invalid parameter volumeAntiAffinityFromPod")
+		}
+		vol.VolumeAntiAffinityFromPod = volumeAntiAffinityFromPod
+	}
+
 	if replicaZoneSoftAntiAffinity, ok := volOptions["replicaZoneSoftAntiAffinity"]; ok {
 		if err := types.ValidateReplicaZoneSoftAntiAffinity(longhorn.ReplicaZoneSoftAntiAffinity(replicaZoneSoftAntiAffinity)); err != nil {
 			return nil, errors.Wrap(err, "invalid parameter replicaZoneSoftAntiAffinity")
