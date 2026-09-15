@@ -441,6 +441,13 @@ func (c *RecurringJobController) checkAndUpdateCronJob(cronJob, appliedCronJob *
 
 func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob) (*batchv1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
+	// Leave the deadline unset when the recurring job does not ask for one, so a
+	// job created before the field existed keeps running without an upper bound.
+	var activeDeadlineSeconds *int64
+	if recurringJob.Spec.ActiveDeadlineSeconds > 0 {
+		deadline := recurringJob.Spec.ActiveDeadlineSeconds
+		activeDeadlineSeconds = &deadline
+	}
 	settingSuccessfulJobsHistoryLimit, err := c.ds.GetSettingAsInt(types.SettingNameRecurringSuccessfulJobsHistoryLimit)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get setting of %v", types.SettingNameRecurringSuccessfulJobsHistoryLimit)
@@ -494,7 +501,8 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 			FailedJobsHistoryLimit:     &failedJobsHistoryLimit,
 			JobTemplate: batchv1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
-					BackoffLimit: &backoffLimit,
+					BackoffLimit:          &backoffLimit,
+					ActiveDeadlineSeconds: activeDeadlineSeconds,
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: recurringJob.Name,
