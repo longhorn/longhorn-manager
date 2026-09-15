@@ -1085,6 +1085,29 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 	ef.Status.CurrentSize = volumeInfo.Size
 
 	if shouldExpandEngineFrontend(ef, volume, engineForFrontend) {
+		// Defer expansion during live upgrade until the engine is restored
+		// and the volume is healthy. The monitor retries on its next refresh.
+		upgrades, err := m.ds.ListInstanceManagerUpgradesRO()
+		if err != nil {
+			return err
+		}
+		var replicas map[string]*longhorn.Replica
+		for _, upgrade := range upgrades {
+			// A completed upgrade cannot defer expansion. Avoid listing replicas
+			// when every IMU has already completed.
+			if upgrade.Status.State == longhorn.InstanceManagerUpgradeStateCompleted {
+				continue
+			}
+			if replicas == nil {
+				replicas, err = m.ds.ListVolumeReplicasRO(volume.Name)
+				if err != nil {
+					return errors.Wrapf(err, "failed to list replicas for volume %v while checking engine frontend expansion", volume.Name)
+				}
+			}
+			if shouldDeferEngineFrontendExpansionForUpgrade(ef, volume, replicas, upgrade) {
+				return nil
+			}
+		}
 		// Expand only when the volume is actually in expansion flow.
 		if m.expansionBackoff.IsInBackOffSinceUpdate(ef.Name, time.Now()) {
 			m.logger.Debug("Skipping engine frontend expansion since it is in the back-off window")
@@ -1290,4 +1313,73 @@ const v2ExpansionInProgressMsg = "expansion is in progress"
 
 func isV2ExpansionInProgressError(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), v2ExpansionInProgressMsg)
+}
+
+// shouldDeferEngineFrontendExpansionForUpgrade reports whether a V2 live upgrade
+// should delay the expansion RPC for an affected frontend. During recovery,
+// expansion can resume once the volume is healthy and any planned engine
+// relocation has returned to the original node. The monitor checks again on
+// its next refresh while expansion is deferred.
+func shouldDeferEngineFrontendExpansionForUpgrade(ef *longhorn.EngineFrontend, v *longhorn.Volume, replicas map[string]*longhorn.Replica, imu *longhorn.InstanceManagerUpgrade) bool {
+	if !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return false
+	}
+	_, enginePlanned := imu.Status.Engines[v.Name]
+	_, replicaPlanned := imu.Status.PlannedDetachedReplicas[v.Name]
+	// An expansion whose intent is already persisted wins while the IMU is
+	// Pending. The IMU Pending pre-check observes ExpansionRequired and waits
+	// before it records a relocation or replica-detach plan. A Pending IMU can
+	// retain a replica-detach plan for one reconcile, so it must still defer.
+	switch imu.Status.State {
+	case "", longhorn.InstanceManagerUpgradeStateCompleted:
+		return false
+	case longhorn.InstanceManagerUpgradeStatePending:
+		if len(imu.Status.Engines) == 0 && len(imu.Status.PlannedDetachedReplicas) == 0 {
+			return false
+		}
+	}
+
+	// Check the current nodes as well: CurrentEngineNodeID covers engine
+	// relocation, while CurrentNodeID covers the frontend's IM restarting even
+	// when the engine is on another node.
+	// A migration EngineFrontend can run on the IMU node while Volume status still
+	// points to the source node, so include the monitored frontend node as well.
+	affected := enginePlanned || replicaPlanned ||
+		v.Status.CurrentNodeID == imu.Spec.NodeID || v.Status.CurrentEngineNodeID == imu.Spec.NodeID ||
+		(ef != nil && ef.Spec.NodeID == imu.Spec.NodeID)
+	if !affected {
+		for _, replica := range replicas {
+			if replica.DeletionTimestamp == nil && replica.Spec.NodeID == imu.Spec.NodeID {
+				affected = true
+				break
+			}
+		}
+	}
+	if !affected {
+		return false
+	}
+
+	// Defer expansion through upgrade stages that can move engines or restart
+	// the IM. During recovery, allow each affected volume to expand once it is
+	// healthy and its engine is restored, without waiting for the entire upgrade
+	// to complete. Completed upgrades and failed attempts with no remaining plans
+	// no longer block expansion.
+	switch imu.Status.State {
+	case longhorn.InstanceManagerUpgradeStateFailed:
+		// A failed attempt only blocks volumes that still have unfinished cleanup.
+		if !enginePlanned && !replicaPlanned {
+			return false
+		}
+		fallthrough
+	case longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes:
+		if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+			return true
+		}
+		if relocation, ok := imu.Status.Engines[v.Name]; ok {
+			return v.Spec.EngineNodeID != relocation.OriginalNodeID || v.Status.CurrentEngineNodeID != relocation.OriginalNodeID
+		}
+		return false
+	default:
+		return true
+	}
 }

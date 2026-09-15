@@ -700,6 +700,20 @@ func (imuc *InstanceManagerUpgradeController) reconcilePending(imu *longhorn.Ins
 		return nil
 	}
 
+	// ExpansionRequired is persisted before the EngineFrontend monitor issues
+	// VolumeExpand. Wait for an already admitted expansion before recording the
+	// relocation or replica-detach plan, so expansion and live upgrade do not
+	// start concurrently.
+	expanding, err := imuc.hasPendingV2VolumeExpansion(imu)
+	if err != nil {
+		return err
+	}
+	if expanding {
+		log.Debugf("Waiting for V2 volume expansion before planning live upgrade on node %v", imu.Spec.NodeID)
+		imuc.markStartedAt(imu)
+		return nil
+	}
+
 	plan, err := imuc.buildEngineRelocationPlan(imu)
 	if err != nil {
 		if errors.Is(err, errUpgradeUnsupported) {
@@ -1584,6 +1598,51 @@ func isLiveUpgradeRelocatableVolume(volume *longhorn.Volume) bool {
 	}
 
 	return true
+}
+
+// hasPendingV2VolumeExpansion reports whether an already admitted expansion
+// would be affected by this Pending IMU. It includes a migration frontend on
+// this node even when the volume status still points to the source node.
+func (imuc *InstanceManagerUpgradeController) hasPendingV2VolumeExpansion(imu *longhorn.InstanceManagerUpgrade) (bool, error) {
+	volumes, err := imuc.ds.ListVolumesRO()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list volumes")
+	}
+
+	for _, volume := range volumes {
+		if volume.DeletionTimestamp != nil || !types.IsDataEngineV2(volume.Spec.DataEngine) || !volume.Status.ExpansionRequired {
+			continue
+		}
+		replicas, err := imuc.ds.ListVolumeReplicasRO(volume.Name)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list replicas for volume %v", volume.Name)
+		}
+
+		affected := volume.Status.CurrentNodeID == imu.Spec.NodeID || volume.Status.CurrentEngineNodeID == imu.Spec.NodeID
+		if !affected {
+			for _, replica := range replicas {
+				if replica.DeletionTimestamp == nil && replica.Spec.NodeID == imu.Spec.NodeID {
+					affected = true
+					break
+				}
+			}
+		}
+		if affected {
+			return true, nil
+		}
+
+		frontends, err := imuc.ds.ListVolumeEngineFrontendsRO(volume.Name)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list engine frontends for volume %v", volume.Name)
+		}
+		for _, frontend := range frontends {
+			if frontend.DeletionTimestamp == nil && frontend.Spec.NodeID == imu.Spec.NodeID {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
 
 func (imuc *InstanceManagerUpgradeController) validateNodeSupportsLiveUpgrade(nodeID string) error {

@@ -806,3 +806,84 @@ func (s *TestSuite) TestRecordEngineFrontendSwitchoverFailureEvent(c *C) {
 		}
 	}
 }
+
+func (s *TestSuite) TestShouldDeferEngineFrontendExpansionForUpgrade(c *C) {
+	for _, tc := range []struct {
+		name                                                                     string
+		state                                                                    longhorn.InstanceManagerUpgradeState
+		affectedBy                                                               string
+		healthy, desiredRestored, currentRestored, v1, otherVolumePlan, expected bool
+	}{
+		{name: "pending expansion wins without a plan", state: longhorn.InstanceManagerUpgradeStatePending, affectedBy: "attachment"},
+		{name: "pending engine relocation plan", state: longhorn.InstanceManagerUpgradeStatePending, affectedBy: "engine plan", expected: true},
+		{name: "pending replica detach plan", state: longhorn.InstanceManagerUpgradeStatePending, affectedBy: "replica plan", expected: true},
+		{name: "relocating healthy volume", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "engine plan", healthy: true, expected: true},
+		{name: "replica detach plan", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "replica plan", expected: true},
+		{name: "attached to source", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "attachment", expected: true},
+		{name: "engine on source", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "engine node", expected: true},
+		{name: "migration frontend on source", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "frontend node", expected: true},
+		{name: "replica on source", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "replica node", expected: true},
+		{name: "deleted replica on source", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "deleted replica"},
+		{name: "unrelated volume", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines},
+		{name: "v1 volume", state: longhorn.InstanceManagerUpgradeStateRelocatingEngines, affectedBy: "engine plan", v1: true},
+		{name: "waiting for rebuilding", state: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes, affectedBy: "engine plan", desiredRestored: true, currentRestored: true, expected: true},
+		{name: "healthy but still relocated", state: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes, affectedBy: "engine plan", healthy: true, expected: true},
+		{name: "restoration requested", state: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes, affectedBy: "engine plan", healthy: true, desiredRestored: true, expected: true},
+		{name: "restoration not requested", state: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes, affectedBy: "engine plan", healthy: true, currentRestored: true, expected: true},
+		{name: "restored and healthy", state: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes, affectedBy: "engine plan", healthy: true, desiredRestored: true, currentRestored: true},
+		{name: "replica only rebuilding", state: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes, affectedBy: "replica plan", expected: true},
+		{name: "replica only healthy", state: longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes, affectedBy: "replica plan", healthy: true},
+		{name: "completed", state: longhorn.InstanceManagerUpgradeStateCompleted, affectedBy: "engine plan"},
+		{name: "failed and cleaned up", state: longhorn.InstanceManagerUpgradeStateFailed, affectedBy: "attachment"},
+		{name: "failed plan for another volume", state: longhorn.InstanceManagerUpgradeStateFailed, affectedBy: "attachment", otherVolumePlan: true},
+		{name: "failed awaiting recovery", state: longhorn.InstanceManagerUpgradeStateFailed, affectedBy: "engine plan", expected: true},
+		{name: "failed but recovered", state: longhorn.InstanceManagerUpgradeStateFailed, affectedBy: "engine plan", healthy: true, desiredRestored: true, currentRestored: true},
+	} {
+		v := &longhorn.Volume{ObjectMeta: metav1.ObjectMeta{Name: "volume"}}
+		v.Spec.DataEngine = longhorn.DataEngineTypeV2
+		v.Spec.EngineNodeID = "temporary"
+		v.Status.CurrentEngineNodeID = "temporary"
+		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
+		if tc.v1 {
+			v.Spec.DataEngine = longhorn.DataEngineTypeV1
+		}
+		if tc.healthy {
+			v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+		}
+		if tc.desiredRestored {
+			v.Spec.EngineNodeID = "source"
+		}
+		if tc.currentRestored {
+			v.Status.CurrentEngineNodeID = "source"
+		}
+		imu := &longhorn.InstanceManagerUpgrade{}
+		imu.Spec.NodeID = "source"
+		imu.Status.State = tc.state
+		ef := &longhorn.EngineFrontend{}
+		replicas := map[string]*longhorn.Replica{}
+		switch tc.affectedBy {
+		case "engine plan":
+			imu.Status.Engines = map[string]longhorn.EngineRelocation{v.Name: {OriginalNodeID: "source", TemporaryNodeID: "temporary"}}
+		case "replica plan":
+			imu.Status.PlannedDetachedReplicas = map[string][]longhorn.PlannedDetachedReplica{v.Name: {}}
+		case "attachment":
+			v.Status.CurrentNodeID = "source"
+		case "engine node":
+			v.Status.CurrentEngineNodeID = "source"
+		case "frontend node":
+			ef.Spec.NodeID = "source"
+		case "replica node", "deleted replica":
+			r := &longhorn.Replica{}
+			r.Spec.NodeID = "source"
+			if tc.affectedBy == "deleted replica" {
+				now := metav1.Now()
+				r.DeletionTimestamp = &now
+			}
+			replicas["replica"] = r
+		}
+		if tc.otherVolumePlan {
+			imu.Status.Engines = map[string]longhorn.EngineRelocation{"another-volume": {OriginalNodeID: "source", TemporaryNodeID: "temporary"}}
+		}
+		c.Assert(shouldDeferEngineFrontendExpansionForUpgrade(ef, v, replicas, imu), Equals, tc.expected, Commentf(tc.name))
+	}
+}
