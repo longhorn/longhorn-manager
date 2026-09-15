@@ -1269,6 +1269,14 @@ spec:
               endpoint:
                 description: Endpoint is the initiator endpoint (e.g., /dev/longhorn/vol-name)
                 type: string
+              initiatorNodeID:
+                description: |-
+                  InitiatorNodeID is the node that actually hosts the initiator (where the
+                  DM device /dev/mapper/<volume> and endpoint /dev/longhorn/<volume> live).
+                  It is recorded while the frontend is running and not cleared during
+                  teardown so stale-device cleanup targets the correct host even if
+                  controller ownership changes or Spec.NodeID is cleared on detach.
+                type: string
               instanceManagerName:
                 type: string
               ip:

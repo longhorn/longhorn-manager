@@ -76,6 +76,13 @@ type EngineFrontendNvmeTCPPath struct {
 // EngineFrontendStatus defines the observed state of the Longhorn engine frontend
 type EngineFrontendStatus struct {
 	InstanceStatus `json:""`
+	// InitiatorNodeID is the node that actually hosts the initiator (where the
+	// DM device /dev/mapper/<volume> and endpoint /dev/longhorn/<volume> live).
+	// It is recorded while the frontend is running and not cleared during
+	// teardown so stale-device cleanup targets the correct host even if
+	// controller ownership changes or Spec.NodeID is cleared on detach.
+	// +optional
+	InitiatorNodeID string `json:"initiatorNodeID,omitempty"`
 	// CurrentSize is the current size of the frontend device in bytes, as
 	// observed from the data plane. It is 0 while the engine frontend is not
 	// running.
