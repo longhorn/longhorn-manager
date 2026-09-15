@@ -48,6 +48,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+const (
+	livenessProbeScript = "/usr/local/bin/instance-manager-liveness-probe"
+)
+
 var (
 	mountPropagationHostToContainer = corev1.MountPropagationHostToContainer
 )
@@ -1911,38 +1915,18 @@ func (imc *InstanceManagerController) setPodExtraAnnotations(podSpec *corev1.Pod
 	return nil
 }
 
-func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
-	var livenessProbes []string
+// getLivenessProbeCommand returns the command string for the liveness probe of the instance manager pod.
+//
+// podProbeTimeout is used to set the timeout for the probe command (nc) and it should be between TimeoutSeconds and PeriodSeconds to avoid false alarms and accumulate pending nc processes.
+func getLivenessProbeCommand(dataEngine longhorn.DataEngineType, podProbeTimeout int64) string {
+	var livenessProbes = []string{livenessProbeScript}
 
-	ports := []int{
-		engineapi.InstanceManagerProcessManagerServiceDefaultPort,
-		engineapi.InstanceManagerProxyServiceDefaultPort,
-		engineapi.InstanceManagerDiskServiceDefaultPort,
-		engineapi.InstanceManagerInstanceServiceDefaultPort,
-	}
-	for _, port := range ports {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
-	}
+	livenessProbes = append(livenessProbes, "--timeout", fmt.Sprintf("%d", podProbeTimeout))
 	if types.IsDataEngineV2(dataEngine) {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
-
-		// For v2, also verify:
-		// 1. spdk_tgt process exists.
-		// 2. spdk_tgt is not stuck in a stopped/traced state (for example, after SIGSTOP).
-		processProbe := `
-pids=$(pgrep -f '^spdk_tgt') &&
-[ -n "$pids" ] &&
-status=0 &&
-for pid in $pids; do
-  state=$(awk '/^State:/ {print $2}' /proc/$pid/status 2>/dev/null)
-  [ -n "$state" ] || status=1
-  [ "$state" != "T" ] && [ "$state" != "t" ] || status=1
-done
-test $status -eq 0
-`
-		livenessProbes = append(livenessProbes, processProbe)
+		livenessProbes = append(livenessProbes, "--data-engine", "v2")
 	}
-	return strings.Join(livenessProbes, " && ")
+
+	return strings.Join(livenessProbes, " ")
 }
 
 func (imc *InstanceManagerController) getLogPath() (string, error) {
@@ -2159,7 +2143,9 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 				Command: []string{
 					"/bin/sh",
 					"-c",
-					getLivenessProbeCommand(dataEngine),
+					// timeout is used for the nc command to check the port availability
+					// and it should be between TimeoutSeconds and PeriodSeconds to avoid false alarms and accumulate pending nc processes.
+					getLivenessProbeCommand(dataEngine, podProbeTimeout+1),
 				},
 			},
 		},
