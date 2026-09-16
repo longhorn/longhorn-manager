@@ -1696,9 +1696,79 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 		return false, fmt.Errorf("backup volume is empty for backup restoration of engine %v", engine.Name)
 	}
 
+	if needRestore, err := checkLinkedCloneBeforeRestoration(log, engine, ds); err != nil || !needRestore {
+		return needRestore, err
+	}
+
 	if (types.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade) ||
 		types.IsDataEngineV2(engine.Spec.DataEngine) {
 		return checkSizeBeforeRestoration(log, engine, ds)
+	}
+
+	return true, nil
+}
+
+// checkLinkedCloneBeforeRestoration holds a linked-clone restore back until the volume
+// is actually ready to receive data.
+//
+// A volume restored from a linked-clone backup inherits most of its content from a
+// source snapshot; the backup only carries what the clone wrote itself. The link to
+// that source is established by the ordinary cloning flow, so the restore has to wait
+// for cloning to finish, and for its own attachment ticket to be satisfied, before any
+// data is written.
+//
+// Waiting here rather than letting the data plane reject the request matters: a
+// rejected restore is reported back as a restore error, which the caller records in
+// the restore status and backs off on, turning a normal "not ready yet" into a failure.
+func checkLinkedCloneBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine, ds *datastore.DataStore) (bool, error) {
+	volume, err := ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get volume %v for backup restoration of engine %v", engine.Spec.VolumeName, engine.Name)
+	}
+	if volume.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return true, nil
+	}
+
+	// A failed clone is retried up to maxCloneRetry times by shouldInitVolumeClone, so
+	// only an exhausted one is terminal. Reporting the failure earlier would abort a
+	// restore that is about to recover on its own; waiting on an exhausted one would
+	// hang forever with nothing to show for it.
+	if volume.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed {
+		if volume.Status.CloneStatus.AttemptCount >= maxCloneRetry {
+			return false, fmt.Errorf("cannot restore volume %v: the linked clone from %v it depends on failed after %v attempts",
+				volume.Name, volume.Spec.DataSource, volume.Status.CloneStatus.AttemptCount)
+		}
+		log.Debugf("Waiting for the linked clone of volume %v to be retried before restore, attempt %v of %v",
+			volume.Name, volume.Status.CloneStatus.AttemptCount, maxCloneRetry)
+		return false, nil
+	}
+	if volume.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
+		log.Debugf("Waiting for the linked clone of volume %v to complete before restore, current state %v",
+			volume.Name, volume.Status.CloneStatus.State)
+		return false, nil
+	}
+
+	// Waiting for the restore controller's own attachment ticket, rather than merely for
+	// the volume to be attached, asks the question that matters: is this restore
+	// protected? A satisfied ticket implies the volume is attached, since satisfaction
+	// requires both an attached state and a NodeID matching vol.Status.CurrentNodeID, and
+	// it additionally confirms the ticket generation has been observed. Starting while
+	// the ticket is unsatisfied would mean restoring onto a volume held there by somebody
+	// else, which detaches the moment that other attacher lets go and interrupts the
+	// restore mid-flight.
+	va, err := ds.GetLHVolumeAttachmentByVolumeName(volume.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Debugf("Waiting for the volume attachment of volume %v to be created before restore", volume.Name)
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to get volume attachment of volume %v for backup restoration", volume.Name)
+	}
+	restoreTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRestoreController, volume.Name)
+	if !longhorn.IsAttachmentTicketSatisfied(restoreTicketID, va) {
+		log.Debugf("Waiting for the restore attachment ticket %v of volume %v to be satisfied before restore, current volume state %v",
+			restoreTicketID, volume.Name, volume.Status.State)
+		return false, nil
 	}
 
 	return true, nil

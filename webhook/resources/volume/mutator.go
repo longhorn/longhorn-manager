@@ -201,6 +201,57 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			}
 		}
 
+		// A backup of a linked-clone volume only holds the data that clone wrote
+		// itself; the rest was inherited from the source snapshot and never uploaded.
+		// The restored volume therefore has to become a linked clone of the same
+		// source to be whole. Carrying the source over also lets the replica
+		// scheduler co-locate the restored replicas with the source replicas, which
+		// the data plane requires in order to relink them.
+		if bv != nil && (bv.Status.LinkedCloneSourceVolume != "" || bv.Status.LinkedCloneSourceSnapshot != "") && volume.Spec.DataSource == "" {
+			if bv.Status.LinkedCloneSourceVolume == "" || bv.Status.LinkedCloneSourceSnapshot == "" {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: backup %v is a linked clone but its source volume %s or snapshot %s is missing",
+					name, volume.Spec.FromBackup, bv.Status.LinkedCloneSourceVolume, bv.Status.LinkedCloneSourceSnapshot), "spec.fromBackup")
+			}
+			srcVolumeName, srcSnapshotName := bv.Status.LinkedCloneSourceVolume, bv.Status.LinkedCloneSourceSnapshot
+
+			// The backup cannot produce a complete volume on its own, so refuse the
+			// restore up front when the source it needs is gone. Failing here gives a
+			// reason the user can act on, instead of a restore that dies in the data
+			// plane once the replicas are already scheduled.
+			srcVolume, err := v.ds.GetVolumeRO(srcVolumeName)
+			if err != nil {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: backup %v is a linked clone of volume %v, which is not available: %v",
+					name, volume.Spec.FromBackup, srcVolumeName, err), "spec.fromBackup")
+			}
+			if srcVolume.Spec.DataEngine != volume.Spec.DataEngine {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v with data engine %v: its linked-clone source volume %v uses data engine %v",
+					name, volume.Spec.DataEngine, srcVolumeName, srcVolume.Spec.DataEngine), "spec.dataEngine")
+			}
+			srcSnapshot, err := v.ds.GetSnapshotRO(srcSnapshotName)
+			if err != nil {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: backup %v is a linked clone of snapshot %v of volume %v, which is not available: %v",
+					name, volume.Spec.FromBackup, srcSnapshotName, srcVolumeName, err), "spec.fromBackup")
+			}
+			if srcSnapshot.Spec.Volume != srcVolumeName {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: snapshot %v belongs to volume %v, not to the linked-clone source volume %v",
+					name, srcSnapshotName, srcSnapshot.Spec.Volume, srcVolumeName), "spec.fromBackup")
+			}
+
+			dataSource := types.NewVolumeDataSourceTypeSnapshot(srcVolumeName, srcSnapshotName)
+			volume.Spec.DataSource = dataSource
+			volume.Spec.CloneMode = longhorn.CloneModeLinkedClone
+			patchOps = append(patchOps,
+				fmt.Sprintf(`{"op": "replace", "path": "/spec/dataSource", "value": "%s"}`, dataSource),
+				fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeLinkedClone))
+			logrus.Infof("Volume %v is restored from a linked-clone backup of volume %v snapshot %v, setting its data source to %v",
+				name, srcVolumeName, srcSnapshotName, dataSource)
+		}
+
 		// Volumes restored from backup should not have the label LonghornLabelV2EncryptedVolumeWithLuksHeader set to "true" because they are not extended.
 		if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
 			if backup == nil || backup.Status.Labels == nil {
@@ -231,27 +282,24 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	moreLabels[types.LonghornLabelBackupTarget] = backupTargetName
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
 
-	// For linked-clone volumes, fill spec.size from the source snapshot RestoreSize
-	// when the user leaves it unset. The validator rejects explicit sizes that do
-	// not match.
+	// For linked-clone volumes, fill spec.size from the source when the user leaves it
+	// unset. The validator rejects explicit sizes that do not match.
 	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone && volume.Spec.DataSource != "" && size == 0 {
-		srcVolName := types.GetVolumeName(volume.Spec.DataSource)
-		if srcVolName == "" {
-			return nil, werror.NewInvalidError(fmt.Sprintf("cannot parse source volume name from dataSource %v", volume.Spec.DataSource), ".spec.dataSource")
+		// A restored volume's size comes from the backup, which was already applied
+		// above. Reaching here means the backup reported no size, and the source is not
+		// a substitute: the clone may have been expanded after it was created and
+		// before it was backed up.
+		if volume.Spec.FromBackup != "" {
+			return nil, werror.NewInvalidError(fmt.Sprintf(
+				"cannot determine the size of volume %v restored from backup %v: the backup reports no volume size yet",
+				name, volume.Spec.FromBackup), ".spec.fromBackup")
 		}
-		if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
-			if snap, snapErr := v.ds.GetSnapshotRO(snapName); snapErr == nil && snap.Status.RestoreSize > 0 {
-				size = snap.Status.RestoreSize
-			}
+
+		srcSize, srcErr := linkedCloneSourceSize(v.ds, volume.Spec.DataSource)
+		if srcErr != nil {
+			return nil, srcErr
 		}
-		if size == 0 {
-			// RestoreSize not yet synced; fall back to the source volume spec.size.
-			srcVol, srcErr := v.ds.GetVolumeRO(srcVolName)
-			if srcErr != nil {
-				return nil, werror.NewInvalidError(errors.Wrapf(srcErr, "failed to get source volume %v", srcVolName).Error(), ".spec.dataSource")
-			}
-			size = srcVol.Spec.Size
-		}
+		size = srcSize
 	}
 
 	// Round up the size to the unit in bytes

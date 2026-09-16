@@ -145,7 +145,7 @@ func (t *TLS) Merge(target, additional *v1.Secret) (*v1.Secret, bool, error) {
 	// current one. This behavior is required to allow for renewal or regeneration.
 	// If FilterExisting is active and the cert has stale CNs beyond the filtered
 	// set, fall through to generateCert so pruneAnnotations can remove them.
-	if !NeedsUpdate(0, additional, mergedCNs...) && !t.IsExpired(additional) {
+	if !t.NeedsUpdate(0, additional, mergedCNs...) && !t.IsExpired(additional) {
 		if !t.hasStaleCNs(additional) {
 			return additional, true, nil
 		}
@@ -155,7 +155,7 @@ func (t *TLS) Merge(target, additional *v1.Secret) (*v1.Secret, bool, error) {
 	// if the target secret already has all the CNs, continue using it. The additional
 	// cert had only a subset of the current CNs, so nothing needs to be added.
 	// Same staleness check as above.
-	if !NeedsUpdate(0, target, mergedCNs...) && !t.IsExpired(target) {
+	if !t.NeedsUpdate(0, target, mergedCNs...) && !t.IsExpired(target) {
 		if !t.hasStaleCNs(target) {
 			return target, false, nil
 		}
@@ -195,7 +195,7 @@ func (t *TLS) Filter(cn ...string) []string {
 func (t *TLS) AddCN(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error) {
 	cn = t.Filter(cn...)
 
-	if IsStatic(secret) || !NeedsUpdate(0, secret, cn...) {
+	if IsStatic(secret) || !t.NeedsUpdate(0, secret, cn...) {
 		return secret, false, nil
 	}
 	return t.generateCert(secret, cn...)
@@ -331,11 +331,11 @@ func IsStatic(secret *v1.Secret) bool {
 // false if all requested CNs are already present (either explicitly, or covered
 // by an existing wildcard SAN per RFC 6125), or if maxSANs is non-zero and has
 // been exceeded.
-func NeedsUpdate(maxSANs int, secret *v1.Secret, cn ...string) bool {
+func (t *TLS) NeedsUpdate(maxSANs int, secret *v1.Secret, cn ...string) bool {
 	if secret == nil {
 		return true
 	}
-	existingCNs := cns(secret)
+	existingCNs := t.filteredCNs(secret)
 	for _, cn := range cn {
 		if secret.Annotations[getAnnotationKey(cn)] != "" {
 			continue

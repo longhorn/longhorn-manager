@@ -11,6 +11,7 @@ import (
 	commonns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/go-spdk-helper/pkg/types"
+	"github.com/longhorn/go-spdk-helper/pkg/util"
 )
 
 // DiscoverTarget discovers a target
@@ -84,7 +85,7 @@ func DisconnectController(nqn, ip, port string, executor *commonns.Executor) err
 		}
 		for _, path := range sys.Paths {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-			if controllerIP == ip && controllerPort == port {
+			if util.IsSameNvmeAddr(controllerIP, ip) && controllerPort == port {
 				return disconnectController(path.Name, executor)
 			}
 		}
@@ -182,7 +183,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 		}
 		for _, c := range d.Controllers {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(c.Address)
-			if ip != "" && ip != controllerIP {
+			if ip != "" && !util.IsSameNvmeAddr(ip, controllerIP) {
 				continue
 			}
 			if port != "" && port != controllerPort {
@@ -222,7 +223,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 			pathMatch := false
 			for _, path := range sys.Paths {
 				controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-				if ip != "" && ip != controllerIP {
+				if ip != "" && !util.IsSameNvmeAddr(ip, controllerIP) {
 					continue
 				}
 				if port != "" && port != controllerPort {

@@ -296,11 +296,11 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.DataEngine = driver
 	}
 
-	layoutType, hasLayoutType := volOptions["dataLayout.type"]
-	layoutMode, hasLayoutMode := volOptions["dataLayout.mode"]
-	dataChunksRaw, hasDataChunks := volOptions["dataLayout.dataChunks"]
-	parityChunksRaw, hasParityChunks := volOptions["dataLayout.parityChunks"]
-	stripSizeKBRaw, hasStripSizeKB := volOptions["dataLayout.stripSizeKB"]
+	layoutType, hasLayoutType := volOptions[longhorn.DataLayoutParameterType]
+	layoutMode, hasLayoutMode := volOptions[longhorn.DataLayoutParameterMode]
+	dataChunksRaw, hasDataChunks := volOptions[longhorn.DataLayoutParameterDataChunks]
+	parityChunksRaw, hasParityChunks := volOptions[longhorn.DataLayoutParameterParityChunks]
+	stripSizeKBRaw, hasStripSizeKB := volOptions[longhorn.DataLayoutParameterStripSizeKB]
 
 	if hasLayoutType || hasLayoutMode || hasDataChunks || hasParityChunks || hasStripSizeKB {
 		vol.DataLayout = &longhornclient.VolumeDataLayout{}
@@ -313,21 +313,21 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		if hasDataChunks {
 			dataChunks, err := strconv.Atoi(dataChunksRaw)
 			if err != nil {
-				return nil, errors.Wrap(err, "invalid parameter dataLayout.dataChunks")
+				return nil, errors.Wrapf(err, "invalid parameter %s", longhorn.DataLayoutParameterDataChunks)
 			}
 			vol.DataLayout.DataChunks = int64(dataChunks)
 		}
 		if hasParityChunks {
 			parityChunks, err := strconv.Atoi(parityChunksRaw)
 			if err != nil {
-				return nil, errors.Wrap(err, "invalid parameter dataLayout.parityChunks")
+				return nil, errors.Wrapf(err, "invalid parameter %s", longhorn.DataLayoutParameterParityChunks)
 			}
 			vol.DataLayout.ParityChunks = int64(parityChunks)
 		}
 		if hasStripSizeKB {
 			stripSizeKB, err := strconv.Atoi(stripSizeKBRaw)
 			if err != nil {
-				return nil, errors.Wrap(err, "invalid parameter dataLayout.stripSizeKB")
+				return nil, errors.Wrapf(err, "invalid parameter %s", longhorn.DataLayoutParameterStripSizeKB)
 			}
 			vol.DataLayout.StripSizeKB = int64(stripSizeKB)
 		}

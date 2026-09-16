@@ -76,6 +76,15 @@ type VolumeDataLayout struct {
 	StripSizeKB int `json:"stripSizeKB,omitempty"`
 }
 
+const (
+	DataLayoutParameterPrefix       = "dataLayout"
+	DataLayoutParameterType         = DataLayoutParameterPrefix + ".type"
+	DataLayoutParameterMode         = DataLayoutParameterPrefix + ".mode"
+	DataLayoutParameterDataChunks   = DataLayoutParameterPrefix + ".dataChunks"
+	DataLayoutParameterParityChunks = DataLayoutParameterPrefix + ".parityChunks"
+	DataLayoutParameterStripSizeKB  = DataLayoutParameterPrefix + ".stripSizeKB"
+)
+
 // +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;ublk;""
 type VolumeFrontend string
 

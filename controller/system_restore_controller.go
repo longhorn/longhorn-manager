@@ -384,10 +384,15 @@ func (c *SystemRestoreController) CreateSystemRestoreJob(systemRestore *longhorn
 		return nil, err
 	}
 
-	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore, c.namespace, cfg.ManagerImage, serviceAccountName, tolerations))
+	registrySecretSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore, c.namespace, cfg.ManagerImage, serviceAccountName, registrySecretSetting.Value, tolerations))
 }
 
-func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.SystemRestore, namespace, managerImage, serviceAccount string, tolerations []corev1.Toleration) *batchv1.Job {
+func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.SystemRestore, namespace, managerImage, serviceAccount, registrySecret string, tolerations []corev1.Toleration) *batchv1.Job {
 	backoffLimit := int32(RestoreJobBackoffLimit)
 
 	// This is required for the NFS mount to access the backup store
@@ -459,6 +464,14 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.Sy
 				},
 			},
 		},
+	}
+
+	if registrySecret != "" {
+		job.Spec.Template.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+			{
+				Name: registrySecret,
+			},
+		}
 	}
 
 	return job

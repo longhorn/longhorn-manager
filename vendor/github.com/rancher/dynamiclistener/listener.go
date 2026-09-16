@@ -34,6 +34,7 @@ type TLSFactory interface {
 	AddCN(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error)
 	Merge(target *v1.Secret, additional *v1.Secret) (*v1.Secret, bool, error)
 	Filter(cn ...string) []string
+	NeedsUpdate(maxSANs int, secret *v1.Secret, cn ...string) bool
 	Regenerate(secret *v1.Secret) (*v1.Secret, error)
 }
 
@@ -409,7 +410,7 @@ func (l *listener) updateCert(cn ...string) error {
 		return err
 	}
 
-	if factory.IsStatic(secret) || !factory.NeedsUpdate(l.maxSANs, secret, cn...) {
+	if factory.IsStatic(secret) || !l.factory.NeedsUpdate(l.maxSANs, secret, cn...) {
 		return nil
 	}
 

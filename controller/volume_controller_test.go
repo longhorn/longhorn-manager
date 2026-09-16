@@ -21,7 +21,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/longhorn/backupstore"
 
@@ -56,7 +58,7 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 
 func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*VolumeController, error) {
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	proxyConnCounter := util.NewAtomicCounter()
 
@@ -75,6 +77,93 @@ func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Client
 	vc.nowHandler = getTestNow
 
 	return vc, nil
+}
+
+func (s *TestSuite) TestGetPlannedDetachedReplicasForVolume(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	volume := newVolume(TestVolumeName, 3)
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Status.State = longhorn.VolumeStateAttached
+
+	imu := newInstanceManagerUpgrade("imu-test", TestNode1, TestExtraInstanceManagerImage, longhorn.InstanceManagerUpgradeStateWaitingForSourceIM)
+	imu.Status.PlannedDetachedReplicas = map[string][]longhorn.PlannedDetachedReplica{
+		TestVolumeName: {
+			{
+				Name:    "replica-on-upgrading-node",
+				Address: "10.0.0.1:20001",
+			},
+		},
+	}
+	err = imuIndexer.Add(imu)
+	c.Assert(err, IsNil)
+
+	planned, err := vc.getPlannedDetachedReplicasForVolume(volume)
+	c.Assert(err, IsNil)
+	_, ok := planned["replica-on-upgrading-node"]
+	c.Assert(ok, Equals, true)
+
+	for _, state := range []longhorn.VolumeState{
+		longhorn.VolumeStateAttaching,
+		longhorn.VolumeStateDetaching,
+	} {
+		volume.Status.State = state
+		planned, err = vc.getPlannedDetachedReplicasForVolume(volume)
+		c.Assert(err, IsNil)
+		_, ok = planned["replica-on-upgrading-node"]
+		c.Assert(ok, Equals, true)
+	}
+
+	volume.Status.State = longhorn.VolumeStateDetached
+	planned, err = vc.getPlannedDetachedReplicasForVolume(volume)
+	c.Assert(err, IsNil)
+	c.Assert(planned, HasLen, 0)
+
+	volume.Status.State = longhorn.VolumeStateAttached
+	imu.Status.State = longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes
+	err = imuIndexer.Update(imu)
+	c.Assert(err, IsNil)
+
+	planned, err = vc.getPlannedDetachedReplicasForVolume(volume)
+	c.Assert(err, IsNil)
+	c.Assert(planned, HasLen, 0)
+
+	imu.Status.State = longhorn.InstanceManagerUpgradeStateRelocatingEngines
+	imu.Status.Engines = map[string]longhorn.EngineRelocation{
+		TestVolumeName: {
+			OriginalNodeID:  TestNode1,
+			TemporaryNodeID: TestNode2,
+		},
+	}
+	volume.Status.CurrentEngineNodeID = TestNode1
+	err = imuIndexer.Update(imu)
+	c.Assert(err, IsNil)
+
+	planned, err = vc.getPlannedDetachedReplicasForVolume(volume)
+	c.Assert(err, IsNil)
+	_, ok = planned["replica-on-upgrading-node"]
+	c.Assert(ok, Equals, true)
+
+	otherVolume := newVolume("other-volume", 3)
+	otherVolume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	otherVolume.Status.State = longhorn.VolumeStateAttached
+	imu.Status.PlannedDetachedReplicas[otherVolume.Name] = []longhorn.PlannedDetachedReplica{{
+		Name: "replica-on-other-volume",
+	}}
+	err = imuIndexer.Update(imu)
+	c.Assert(err, IsNil)
+
+	planned, err = vc.getPlannedDetachedReplicasForVolume(otherVolume)
+	c.Assert(err, IsNil)
+	_, ok = planned["replica-on-other-volume"]
+	c.Assert(ok, Equals, true)
 }
 
 type VolumeTestCase struct {
@@ -2322,16 +2411,20 @@ func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetS
 	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
 }
 
-// TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete verifies
-// that the old engine is stopped only after the EngineFrontend status
-// confirms the migration target is active.
-func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete(c *C) {
-	vc, _, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+// TestProcessEngineSwitchoverRequestsOldEngineDeletionAfterSwitchoverComplete
+// verifies that the old engine deletion is requested only after the
+// EngineFrontend status confirms the migration target is active.
+func (s *TestSuite) TestProcessEngineSwitchoverRequestsOldEngineDeletionAfterSwitchoverComplete(c *C) {
+	vc, lhClient, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
 	// EF switchover is complete: both Spec and Status show the new target.
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
 	ef.Status.TargetIP = migrationEngine.Status.StorageIP
 	ef.Status.TargetPort = migrationEngine.Status.Port
+
+	createdCurrentEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), currentEngine, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	currentEngine = createdCurrentEngine
 
 	es := map[string]*longhorn.Engine{
 		currentEngine.Name:   currentEngine,
@@ -2340,12 +2433,11 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	rs := map[string]*longhorn.Replica{replica.Name: replica}
 	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
 
-	err := vc.processEngineSwitchover(v, es, rs, efs)
+	err = vc.processEngineSwitchover(v, es, rs, efs)
 	c.Assert(err, IsNil)
 
-	// The old engine must be stopped after switchover is confirmed.
-	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateStopped)
-	c.Assert(currentEngine.Spec.Active, Equals, false)
+	// The old engine is removed from the local map after its deletion is requested.
+	c.Assert(es[currentEngine.Name], IsNil)
 
 	// The migration engine is now the active engine.
 	c.Assert(migrationEngine.Spec.Active, Equals, true)
@@ -2356,6 +2448,138 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	// Replica should be reassigned to the migration engine.
 	c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+}
+
+// TestProcessEngineSwitchoverDoesNotPromoteMigrationEngineWhenOldEngineDeleteFails
+// verifies that an old engine delete failure leaves the migration state unchanged.
+// This prevents a persisted state with two active engines from blocking later cleanup.
+func (s *TestSuite) TestProcessEngineSwitchoverDoesNotPromoteMigrationEngineWhenOldEngineDeleteFails(c *C) {
+	vc, lhClient, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+
+	ef.Status.CurrentState = longhorn.InstanceStateRunning
+	ef.Status.TargetIP = migrationEngine.Status.StorageIP
+	ef.Status.TargetPort = migrationEngine.Status.Port
+
+	lhClient.PrependReactor("delete", "engines", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("transient delete failure")
+	})
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+
+	err := vc.processEngineSwitchover(v, es, rs, efs)
+	c.Assert(err, NotNil)
+
+	c.Assert(currentEngine.Spec.Active, Equals, true)
+	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(migrationEngine.Spec.Active, Equals, false)
+	c.Assert(replica.Spec.EngineName, Equals, currentEngine.Name)
+	c.Assert(replica.Spec.MigrationEngineName, Equals, migrationEngine.Name)
+	c.Assert(v.Status.CurrentEngineNodeID, Equals, TestNode1)
+}
+
+func (s *TestSuite) TestProcessEngineSwitchoverRecoversAfterPromotionConflict(c *C) {
+	for _, oldEngineDeleted := range []bool{false, true} {
+		vc, lhClient, engineIndexer, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+		ef.Status.CurrentState = longhorn.InstanceStateRunning
+		ef.Status.TargetIP = migrationEngine.Status.StorageIP
+		ef.Status.TargetPort = migrationEngine.Status.Port
+		persistedVolume := v.DeepCopy()
+		for _, engine := range []*longhorn.Engine{currentEngine, migrationEngine} {
+			_, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), engine, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+		}
+		failPromotion := true
+		lhClient.PrependReactor("update", "engines", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			if !failPromotion {
+				return false, nil, nil
+			}
+			return true, nil, apierrors.NewConflict(longhorn.Resource("engines"), migrationEngine.Name, fmt.Errorf("engine status changed"))
+		})
+		es := map[string]*longhorn.Engine{currentEngine.Name: currentEngine, migrationEngine.Name: migrationEngine}
+		rs := map[string]*longhorn.Replica{replica.Name: replica}
+		efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+		err := vc.processEngineSwitchover(v, es, rs, efs)
+		c.Assert(err, IsNil)
+		c.Assert(es[currentEngine.Name], IsNil)
+
+		// Simulate the deferred engine update conflicting after replica ownership
+		// has changed. The volume status update is then skipped.
+		_, err = vc.ds.UpdateEngine(migrationEngine)
+		c.Assert(apierrors.IsConflict(err), Equals, true)
+		persistedMigrationEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), migrationEngine.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(persistedMigrationEngine.Spec.Active, Equals, false)
+		c.Assert(persistedVolume.Status.CurrentEngineNodeID, Equals, TestNode1)
+		c.Assert(engineIndexer.Add(persistedMigrationEngine), IsNil)
+		if !oldEngineDeleted {
+			// The fake client deletes immediately; model the informer retaining
+			// the old engine while its finalizer runs.
+			deletionTime := metav1.Now()
+			currentEngine.DeletionTimestamp = &deletionTime
+			c.Assert(engineIndexer.Add(currentEngine), IsNil)
+		}
+
+		// A retry works on fresh copies and must reuse the existing target,
+		// whether the old engine is still deleting or has disappeared.
+		es, err = vc.ds.ListVolumeEngines(v.Name)
+		c.Assert(err, IsNil)
+		engineCount := len(es)
+		lhClient.ClearActions()
+		err = vc.processEngineSwitchover(persistedVolume, es, rs, efs)
+		c.Assert(err, IsNil)
+		c.Assert(lhClient.Actions(), HasLen, 0)
+		c.Assert(es, HasLen, engineCount)
+		c.Assert(es[migrationEngine.Name].Spec.Active, Equals, true)
+		c.Assert(persistedVolume.Status.CurrentEngineNodeID, Equals, TestNode2)
+		c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
+		c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+		c.Assert(persistedMigrationEngine.Spec.Active, Equals, false)
+
+		failPromotion = false
+		_, err = vc.ds.UpdateEngine(es[migrationEngine.Name])
+		c.Assert(err, IsNil)
+		promotedEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), migrationEngine.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(promotedEngine.Spec.Active, Equals, true)
+	}
+}
+
+func (s *TestSuite) TestProcessEngineSwitchoverIgnoresDeletingActiveEngine(c *C) {
+	vc, lhClient, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+
+	// The old engine remains visible while its finalizer runs, and the new
+	// engine has been promoted before the volume status update is observed.
+	now := metav1.Now()
+	currentEngine.DeletionTimestamp = &now
+	migrationEngine.Spec.Active = true
+	replica.Spec.EngineName = migrationEngine.Name
+	replica.Spec.MigrationEngineName = ""
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+	lhClient.ClearActions()
+
+	// Repeat to exercise different map iteration orders while deletion is pending.
+	for i := 0; i < 100; i++ {
+		v.Status.CurrentEngineNodeID = TestNode1
+		err := vc.processEngineSwitchover(v, es, rs, efs)
+		c.Assert(err, IsNil)
+		c.Assert(v.Status.CurrentEngineNodeID, Equals, TestNode2)
+		c.Assert(v.Status.SwitchoverState, Equals, longhorn.VolumeSwitchoverStateFinalizing)
+		c.Assert(es, HasLen, 2)
+		c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
+		c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+		c.Assert(lhClient.Actions(), HasLen, 0)
+	}
 }
 
 // TestProcessEngineSwitchoverCleanupUsesActiveEngine verifies that once
@@ -2372,8 +2596,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
 	v.Spec.NodeID = TestNode1
 	v.Status.CurrentNodeID = TestNode1
 
-	// Both engines are temporarily on the target engine node after a reverse
-	// switchover/remount cycle, but only the new current engine is Active.
+	// Only the new current engine is Active.
 	currentEngine.Spec.Active = false
 	currentEngine.Spec.NodeID = TestNode2
 	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
@@ -2716,7 +2939,7 @@ func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensB
 		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
 	}
 
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	vc := &VolumeController{
 		baseController: newBaseController("test-volume", logrus.StandardLogger()),
 		ds:             ds,

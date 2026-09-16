@@ -11,6 +11,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -35,8 +37,6 @@ import (
 	longhornapis "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-
-	. "gopkg.in/check.v1"
 )
 
 type SystemRolloutTestCase struct {
@@ -1012,7 +1012,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutVolumes(tc.backupVolumes, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutBackingImages(tc.backupBackingImages, c, informerFactories.LhInformerFactory, lhClient)
 
-		ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 		doneCh := make(chan struct{})
 		if tc.expectState != longhorn.SystemRestoreStateCompleted && tc.expectState != longhorn.SystemRestoreStateError {
 			doneChs = append(doneChs, doneCh)

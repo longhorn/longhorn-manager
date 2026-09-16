@@ -12,6 +12,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+func (p *Proxy) supportsBackupSignAcceptEncoding() bool {
+	return p.proxyAPIVersion >= MinProxyAPIVersionForBackupSignAcceptEncoding
+}
+
 func (p *Proxy) SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels, credential, parameters map[string]string) (string, string, error) {
@@ -29,7 +33,7 @@ func (p *Proxy) SnapshotBackup(obj DataEngineObject, snapshotName, backupName, b
 	}
 
 	// get environment variables if backup for s3
-	credentialEnv, err := getBackupCredentialEnv(backupTarget, credential)
+	credentialEnv, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding())
 	if err != nil {
 		return "", "", err
 	}
@@ -59,7 +63,7 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 	backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
-	envs, err := getBackupCredentialEnv(backupTarget, credential)
+	envs, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding())
 	if err != nil {
 		return err
 	}

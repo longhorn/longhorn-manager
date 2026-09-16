@@ -109,15 +109,17 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	return &Proxy{
 		logger:           logger,
 		grpcClient:       proxyClient,
+		proxyAPIVersion:  im.Status.ProxyAPIVersion,
 		proxyConnCounter: proxyConnCounter,
 		ds:               ds,
 	}, nil
 }
 
 type Proxy struct {
-	logger     logrus.FieldLogger
-	grpcClient *imclient.ProxyClient
-	ds         *datastore.DataStore
+	logger          logrus.FieldLogger
+	grpcClient      *imclient.ProxyClient
+	proxyAPIVersion int
+	ds              *datastore.DataStore
 
 	proxyConnCounter util.Counter
 }

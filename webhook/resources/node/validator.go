@@ -204,8 +204,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		if err != nil {
 			return werror.NewInvalidError(err.Error(), "")
 		}
-		if !v2DataEngineEnabled {
-			if disk.Type == longhorn.DiskTypeBlock {
+
+		// Reject updating only block disks when the v2 Data Engine (SPDK) is disabled.
+		if !v2DataEngineEnabled && disk.Type == longhorn.DiskTypeBlock {
+			oldDisk, existed := oldNode.Spec.Disks[name]
+			if !existed || !reflect.DeepEqual(oldDisk, disk) {
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) is a block device, but the SPDK feature is not enabled",
 					newNode.Name, name, disk.Path), "")
 			}

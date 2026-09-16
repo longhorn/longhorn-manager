@@ -207,6 +207,12 @@ type BackupVolume struct {
 	StorageClassName     string             `json:"storageClassName"`
 	BackupTargetName     string             `json:"backupTargetName"`
 	VolumeName           string             `json:"volumeName"`
+
+	// LinkedCloneSourceVolume and LinkedCloneSourceSnapshot are set when the backed
+	// up volume was a linked clone. Such a backup only holds the data the clone wrote
+	// itself, so restoring it requires re-establishing the link to this source.
+	LinkedCloneSourceVolume   string `json:"linkedCloneSourceVolume"`
+	LinkedCloneSourceSnapshot string `json:"linkedCloneSourceSnapshot"`
 }
 
 type Backup struct {

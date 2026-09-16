@@ -340,6 +340,7 @@ func getBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskPath string
 		DiskUUID:   info.UUID,
 		DiskDriver: longhorn.DiskDriver(info.Driver),
 		State:      info.State,
+		Message:    info.Message,
 	}, nil
 }
 
@@ -431,6 +432,7 @@ func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, 
 		DiskUUID:   info.UUID,
 		DiskDriver: longhorn.DiskDriver(info.Driver),
 		State:      info.State,
+		Message:    info.Message,
 	}, nil
 }
 

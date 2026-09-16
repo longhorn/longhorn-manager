@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"sort"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -39,6 +39,7 @@ type VolumeCloneController struct {
 	eventRecorder record.EventRecorder
 
 	ds         *datastore.DataStore
+	scheduler  *scheduler.ReplicaScheduler
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -59,7 +60,8 @@ func NewVolumeCloneController(
 		namespace:    namespace,
 		controllerID: controllerID,
 
-		ds: ds,
+		ds:        ds,
+		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-clone-controller"}),
@@ -318,76 +320,42 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 
 	expectedAttachmentTickets := make(map[string]bool)
 
-	var attachableNodes map[string]*longhorn.Node
 	log := getLoggerForVolume(vcc.logger, vol)
-	pickNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (chosenNodeID string, err error) {
-		if attachableNodes == nil {
-			attachableNodes, err = vcc.ds.ListNodesWithReadyInstanceManagerRO(v.Spec.DataEngine)
-			if err != nil {
-				return "", err
-			}
+
+	// Clone target (case 1): derive the preferred node with the shared, controller-wide
+	// picker so the ticket-priority logic is not duplicated, then let the scheduler enforce
+	// node/disk selector candidacy for the clone target (longhorn/longhorn#12792).
+	pickCloneTargetNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
+		preferredNodeID, err := pickAttachmentTicketNodeID(vcc.ds, log, v, va)
+		if err != nil {
+			return "", err
 		}
 
-		// The CurrentNodeID holds the 1st priority if it is valid.
-		// The corresponding ticket is implicitly satisfied.
-		if attachableNodes[v.Status.CurrentNodeID] != nil {
-			log.Debugf("Picked node %v for volume %v clone attachment: currently attached node", v.Status.CurrentNodeID, v.Name)
-			return v.Status.CurrentNodeID, nil
+		chosenNodeID, err := vcc.scheduler.GetReadyNodeForVolumeAttach(v, preferredNodeID)
+		if err != nil {
+			return "", err
 		}
+		if chosenNodeID == "" {
+			log.Warnf("Cannot find a schedulable node for volume %v clone attachment", v.Name)
+			vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+			return "", nil
+		}
+		log.Debugf("Picked node %v for volume %v clone target attachment via scheduler (preferred %v)", chosenNodeID, v.Name, preferredNodeID)
+		return chosenNodeID, nil
+	}
 
-		// The node already selected by other tickets holds the 2nd priority if it is valid.
-		// Among tickets with the highest priority level, pick the node that appears most
-		// frequently; break ties by sorting node IDs lexicographically.
-		highestPriority := -1
-		nodeCount := map[string]int{}
-		for _, ticket := range va.Spec.AttachmentTickets {
-			if attachableNodes[ticket.NodeID] == nil {
-				continue
-			}
-			priority := longhorn.GetAttacherPriorityLevel(ticket.Type)
-			if priority > highestPriority {
-				highestPriority = priority
-				nodeCount = map[string]int{ticket.NodeID: 1}
-			} else if priority == highestPriority {
-				nodeCount[ticket.NodeID]++
-			}
+	// Clone source (cases 2 and 3): use the shared picker directly. Scheduler candidacy is
+	// intentionally not applied here; CSI tickets outrank clone tickets, so requesting a
+	// different node can leave the clone ticket unsatisfied indefinitely.
+	pickCloneSourceNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
+		chosenNodeID, err := pickAttachmentTicketNodeID(vcc.ds, log, v, va)
+		if err != nil {
+			return "", err
 		}
-		if len(nodeCount) > 0 {
-			maxCount := 0
-			var candidates []string
-			for nodeID, count := range nodeCount {
-				if count > maxCount {
-					maxCount = count
-					candidates = []string{nodeID}
-				} else if count == maxCount {
-					candidates = append(candidates, nodeID)
-				}
-			}
-			sort.Strings(candidates)
-			log.Debugf("Picked node %v for volume %v clone attachment: majority node among highest-priority tickets", candidates[0], v.Name)
-			return candidates[0], nil
+		if chosenNodeID == "" {
+			vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
 		}
-
-		// The node of v.Status.OwnerID holds the 3rd priority if it is valid
-		if attachableNodes[v.Status.OwnerID] != nil {
-			log.Debugf("Picked node %v for volume %v clone attachment: volume owner node", v.Status.OwnerID, v.Name)
-			return v.Status.OwnerID, nil
-		}
-
-		// Otherwise, pick up the 1st node in sorted order for determinism
-		candidates := make([]string, 0, len(attachableNodes))
-		for n := range attachableNodes {
-			candidates = append(candidates, n)
-		}
-		sort.Strings(candidates)
-		if len(candidates) > 0 {
-			log.Debugf("Picked node %v for volume %v clone attachment: first available ready node", candidates[0], v.Name)
-			return candidates[0], nil
-		}
-
-		log.Warnf("Cannot find a valid node for volume %v clone attachment", v.Name)
-		vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
-		return "", nil
+		return chosenNodeID, nil
 	}
 
 	// case 1: this volume is target of a clone and the cloning hasn't completed
@@ -396,7 +364,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
 			expectedAttachmentTickets[cloningAttachmentTicketID] = true
 		} else {
-			chosenNodeID, err := pickNodeID(vol, va)
+			chosenNodeID, err := pickCloneTargetNodeID(vol, va)
 			if err != nil {
 				return err
 			}
@@ -420,7 +388,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 				expectedAttachmentTickets[cloningAttachmentTicketID] = true
 			} else {
 				if srcNodeID == "" {
-					srcNodeID, err = pickNodeID(vol, va)
+					srcNodeID, err = pickCloneSourceNodeID(vol, va)
 					if err != nil {
 						return err
 					}
@@ -451,7 +419,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 			expectedAttachmentTickets[cloningAttachmentTicketID] = true
 		} else {
 			if srcNodeID == "" {
-				srcNodeID, err = pickNodeID(vol, va)
+				srcNodeID, err = pickCloneSourceNodeID(vol, va)
 				if err != nil {
 					return err
 				}

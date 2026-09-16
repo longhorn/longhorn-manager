@@ -156,6 +156,36 @@ func TestNodeValidatorUpdateLostKubernetesNode(t *testing.T) {
 			},
 			expectedErrorMsg: "spec and status of disks",
 		},
+		{
+			name:           "updating block disk when v2 data engine is disabled is rejected",
+			kubeNodeExists: true,
+			disksSynced:    true,
+			mutate: func(_, newNode *longhorn.Node) {
+				newNode.Spec.Disks["disk-2"] = longhorn.DiskSpec{
+					Path:            "/var/lib/longhorn/disk2",
+					Type:            longhorn.DiskTypeBlock,
+					AllowScheduling: true,
+				}
+			},
+			expectedErrorMsg: "is a block device, but the SPDK feature is not enabled",
+		},
+		{
+			name:           "annotation update on node with block disk remaining unchanged (v2 disabled) is allowed",
+			kubeNodeExists: true,
+			disksSynced:    true,
+			mutate: func(oldNode, newNode *longhorn.Node) {
+				blockDisk := oldNode.Spec.Disks["disk-1"]
+				blockDisk.Type = longhorn.DiskTypeBlock
+
+				oldNode.Spec.Disks["disk-1"] = blockDisk
+				newNode.Spec.Disks["disk-1"] = blockDisk
+
+				if newNode.Annotations == nil {
+					newNode.Annotations = make(map[string]string)
+				}
+				newNode.Annotations["example.com/test-annotation"] = "updated-value"
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -191,7 +221,7 @@ func newNodeValidatorForTest(kubeClient *kubefake.Clientset) *nodeValidator {
 	lhClient := lhfake.NewClientset()
 	extensionsClient := apiextensionsfake.NewSimpleClientset()
 	informerFactories := managerutil.NewInformerFactories(nodeValidatorTestNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStore(nodeValidatorTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(nodeValidatorTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	return &nodeValidator{ds: ds}
 }
 

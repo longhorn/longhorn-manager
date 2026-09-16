@@ -191,6 +191,9 @@ const (
 	SettingNameEngineImagePodLivenessProbeTimeout                       = SettingName("engine-image-pod-liveness-probe-timeout")
 	SettingNameEngineImagePodLivenessProbeFailureThreshold              = SettingName("engine-image-pod-liveness-probe-failure-threshold")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
+	SettingNameAllowInstanceManagerAutomaticUpgrade                     = SettingName("allow-instance-manager-automatic-upgrade")
+	SettingNameInstanceManagerUpgradeStartTime                          = SettingName("instance-manager-upgrade-start-time")
+	SettingNameInstanceManagerUpgradeTimeout                            = SettingName("instance-manager-upgrade-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
 	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 	SettingNameNodeDiskHealthMonitoring                                 = SettingName("node-disk-health-monitoring")
@@ -325,6 +328,9 @@ var (
 		SettingNameEngineImagePodLivenessProbeTimeout,
 		SettingNameEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
+		SettingNameAllowInstanceManagerAutomaticUpgrade,
+		SettingNameInstanceManagerUpgradeStartTime,
+		SettingNameInstanceManagerUpgradeTimeout,
 		SettingNameLogPath,
 		SettingNameNodeDiskHealthMonitoring,
 		SettingNameSnapshotHeavyTaskConcurrentLimit,
@@ -351,6 +357,7 @@ type SettingCategory string
 const (
 	SettingCategorySystemInfo = SettingCategory("system info")
 	SettingCategoryGeneral    = SettingCategory("general")
+	SettingCategoryUpgrade    = SettingCategory("upgrade")
 	SettingCategoryBackup     = SettingCategory("backup")
 	SettingCategoryOrphan     = SettingCategory("orphan")
 	SettingCategoryScheduling = SettingCategory("scheduling")
@@ -493,12 +500,14 @@ var (
 		SettingNameEngineImagePodLivenessProbeTimeout:                       SettingDefinitionEngineImagePodLivenessProbeTimeout,
 		SettingNameEngineImagePodLivenessProbeFailureThreshold:              SettingDefinitionEngineImagePodLivenessProbeFailureThreshold,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
-		SettingNameLogPath:                                                  SettingDefinitionLogPath,
-		SettingNameNodeDiskHealthMonitoring:                                 SettingDefinitionNodeDiskHealthMonitoring,
-		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
-		SettingNameCSIAllowedTopologyKeys:                                   SettingDefinitionCSIAllowedTopologyKeys,
-		SettingNameCSIStorageCapacityTracking:                               SettingDefinitionCSIStorageCapacityTracking,
-		SettingNameAllowLiveEngineUpgradeOnSameImageCommit:                  SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit,
+		SettingNameAllowInstanceManagerAutomaticUpgrade:                     SettingDefinitionAllowInstanceManagerAutomaticUpgrade,
+		SettingNameInstanceManagerUpgradeStartTime:                          SettingDefinitionInstanceManagerUpgradeStartTime,
+		SettingNameInstanceManagerUpgradeTimeout:                            SettingDefinitionInstanceManagerUpgradeTimeout, SettingNameLogPath: SettingDefinitionLogPath,
+		SettingNameNodeDiskHealthMonitoring:                SettingDefinitionNodeDiskHealthMonitoring,
+		SettingNameSnapshotHeavyTaskConcurrentLimit:        SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
+		SettingNameCSIAllowedTopologyKeys:                  SettingDefinitionCSIAllowedTopologyKeys,
+		SettingNameCSIStorageCapacityTracking:              SettingDefinitionCSIStorageCapacityTracking,
+		SettingNameAllowLiveEngineUpgradeOnSameImageCommit: SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1789,6 +1798,56 @@ var (
 		},
 	}
 
+	SettingDefinitionAllowInstanceManagerAutomaticUpgrade = SettingDefinition{
+		DisplayName: "Allow Instance Manager Automatic Upgrade",
+		Description: "This setting allows Longhorn to automatically upgrade instance managers after Longhorn manager is upgraded. " +
+			"During the live upgrade, Longhorn may temporarily relocate engines, detach replicas from engines, and trigger replica rebuilding. " +
+			"When disabled, Longhorn does not automatically upgrade instance managers, and existing instance managers remain on the current image. " +
+			"If this setting is disabled while an automatic instance manager upgrade is in progress, Longhorn allows the current node upgrade to finish but does not start upgrades on additional nodes. " +
+			"This setting currently only supports the V2 Data Engine.",
+		Category:           SettingCategoryUpgrade,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionInstanceManagerUpgradeStartTime = SettingDefinition{
+		DisplayName: "Instance Manager Upgrade Start Time",
+		Description: "Specifies when the rolling upgrade of instance managers should begin, in RFC3339 format. " +
+			"This setting allows the upgrade to be scheduled at a preferred time. If empty, the upgrade starts immediately. " +
+			"Updates to this setting are rejected while an upgrade is in progress. " +
+			"This setting currently only applies to the V2 Data Engine.\n\n" +
+			"Example: 2026-04-20T15:00:00Z",
+		Category:           SettingCategoryUpgrade,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf(`{%q:""}`, longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionInstanceManagerUpgradeTimeout = SettingDefinition{
+		DisplayName: "Instance Manager Upgrade Timeout",
+		Description: "In minutes. The instance manager is upgraded one node at a time, so an unexpected issue on one node could block upgrades on the remaining nodes. " +
+			"This timeout specifies how long a single-node upgrade can remain in the upgrade phases before it is aborted, allowing the upgrade process to continue with other nodes. " +
+			"It applies while the upgrade is pending, relocating engines, waiting for the source instance manager, or restoring engines, but does not apply while waiting for post-restore volume health. " +
+			"The default value is 60 minutes. " +
+			"This setting currently only applies to the V2 Data Engine.\n\n" +
+			"Important: Changes to this setting take effect immediately and apply to all in-flight upgrade operations. " +
+			"Increasing the timeout gives struggling upgrades more time to complete; decreasing it may cause currently running upgrades to abort if they exceed the new timeout.\n\n",
+		Category:           SettingCategoryUpgrade,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf(`{%q:"60"}`, longhorn.DataEngineTypeV2),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
+	}
+
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName:        "Log Level",
 		Description:        "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
@@ -1928,7 +1987,9 @@ var (
 			"This setting is applicable only when the V2 Data Engine is enabled. \n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V2 volumes. \n\n" +
 			"  - `true`: Enables interrupt mode, which may reduce CPU usage. \n\n" +
-			"  - `false`: Uses polling mode for maximum performance. \n\n",
+			"  - `false`: Uses polling mode for maximum performance. \n\n" +
+			"  - When interrupt mode is enabled, **Enable Host CPU Isolation for Data Engine** is always disabled, because the SPDK reactors no longer busy-poll and do not need to be protected from host interrupt handling, deferred kernel work, or network softirq processing. " +
+			"This applies regardless of the **Enable Host CPU Isolation for Data Engine** value and of any per-Instance-Manager override. \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1941,8 +2002,10 @@ var (
 		DisplayName: "Enable Host CPU Isolation for Data Engine",
 		Description: "Applies only to the V2 Data Engine. Steers host hardware IRQs, unbound kernel workqueue workers, *and* network Receive Packet Steering (RPS) away from the CPUs used by the Storage Performance Development Kit (SPDK) target daemon, " +
 			"so that interrupt handling, deferred kernel work, and network softirq processing do not preempt SPDK polling reactors. \n\n" +
+			"  - This setting only takes effect in polling mode. When **Enable Interrupt Mode for Data Engine** is enabled, CPU isolation is always disabled, regardless of this setting and of any per-Instance-Manager override. \n\n" +
+			"  - In polling mode, CPU isolation is enabled whenever this setting is `true`. \n\n" +
 			"  - When applying the setting, Longhorn will try to restart all V2 instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n" +
-			"  - This value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.CPUIsolationEnabled` " +
+			"  - In polling mode, this value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.CPUIsolationEnabled` " +
 			"(set to `\"true\"` or `\"false\"` on a specific instance manager to force the value on that node; leave empty to inherit this setting). \n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,

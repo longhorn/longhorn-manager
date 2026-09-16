@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"maps"
+	"sync"
 	"time"
 
 	"github.com/rancher/dynamiclistener"
@@ -31,7 +32,23 @@ type storage struct {
 	secrets         v1controller.SecretController
 	tls             dynamiclistener.TLSFactory
 	queue           workqueue.TypedInterface[string]
-	queuedSecret    *v1.Secret
+
+	// mu guards queuedSecret, which is set from the Update caller and the
+	// secret watch goroutine, and read by the workqueue processor.
+	mu           sync.RWMutex
+	queuedSecret *v1.Secret
+}
+
+func (s *storage) setQueuedSecret(secret *v1.Secret) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.queuedSecret = secret
+}
+
+func (s *storage) getQueuedSecret() *v1.Secret {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.queuedSecret
 }
 
 func Load(ctx context.Context, secrets v1controller.SecretController, namespace, name string, backing dynamiclistener.TLSStorage) dynamiclistener.TLSStorage {
@@ -79,7 +96,7 @@ func (s *storage) Update(secret *v1.Secret) error {
 	// Asynchronously update the Kubernetes secret, as doing so inline may block the listener from
 	// accepting new connections if the apiserver becomes unavailable after the Secrets controller
 	// has been initialized.
-	s.queuedSecret = secret
+	s.setQueuedSecret(secret)
 	s.queue.Add(s.name)
 	return nil
 }
@@ -120,7 +137,7 @@ func (s *storage) init(ctx context.Context, secrets v1controller.SecretControlle
 				return
 			case ev := <-watch.ResultChan():
 				if secret, ok := ev.Object.(*v1.Secret); ok {
-					s.queuedSecret = secret
+					s.setQueuedSecret(secret)
 					s.queue.Add(secret.Name)
 				}
 			}
@@ -128,7 +145,8 @@ func (s *storage) init(ctx context.Context, secrets v1controller.SecretControlle
 	}()
 
 	// enqueue initial sync of the backing secret
-	s.queuedSecret, _ = s.Get()
+	secret, _ := s.Get()
+	s.setQueuedSecret(secret)
 	s.queue.Add(s.name)
 }
 
@@ -242,9 +260,12 @@ func isConflictOrAlreadyExists(err error) bool {
 // queued secret with the Kubernetes secret.  Only after successfully
 // updating the Kubernetes secret will the backing storage be updated.
 func (s *storage) update() (err error) {
+	// Snapshot the queued secret once, so a concurrent Update or watch event
+	// cannot swap it out from under the retry loop.
+	queuedSecret := s.getQueuedSecret()
 	var newSecret *v1.Secret
 	if err := retry.OnError(retry.DefaultRetry, isConflictOrAlreadyExists, func() error {
-		newSecret, err = s.saveInK8s(s.queuedSecret)
+		newSecret, err = s.saveInK8s(queuedSecret)
 		return err
 	}); err != nil {
 		return err

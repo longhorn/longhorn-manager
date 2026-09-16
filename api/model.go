@@ -160,6 +160,13 @@ type BackupVolume struct {
 	StorageClassName     string            `json:"storageClassName"`
 	BackupTargetName     string            `json:"backupTargetName"`
 	VolumeName           string            `json:"volumeName"`
+
+	// LinkedCloneSourceVolume and LinkedCloneSourceSnapshot are set when the backed
+	// up volume was a linked clone. Such a backup only holds the data the clone wrote
+	// itself, so restoring it requires the source below to still exist; a restore is
+	// rejected otherwise. Both are empty for an ordinary, self-contained backup.
+	LinkedCloneSourceVolume   string `json:"linkedCloneSourceVolume"`
+	LinkedCloneSourceSnapshot string `json:"linkedCloneSourceSnapshot"`
 }
 
 // SyncBackupResource is used for the Backup*Sync* actions
@@ -2209,6 +2216,9 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		StorageClassName:     bv.Status.StorageClassName,
 		BackupTargetName:     bv.Spec.BackupTargetName,
 		VolumeName:           bv.Spec.VolumeName,
+
+		LinkedCloneSourceVolume:   bv.Status.LinkedCloneSourceVolume,
+		LinkedCloneSourceSnapshot: bv.Status.LinkedCloneSourceSnapshot,
 	}
 	b.Actions = map[string]string{
 		"backupList":         apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),

@@ -11,6 +11,8 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
+
+	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk"
 )
 
 func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest) (*spdkrpc.Disk, error) {
@@ -18,19 +20,31 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 	spdkClient := s.spdkClient
 
 	disk, exists := s.diskMap[req.DiskName]
+	previousErrorMsg := ""
 	if exists {
-		if disk.GetState() == DiskStateReady {
+		state := disk.GetState()
+		if state == DiskStateReady {
 			s.Unlock()
 			return disk.DiskGet(spdkClient, req.DiskName, req.DiskPath, req.DiskDriver)
 		}
-		s.Unlock()
+		if state != DiskStateError {
+			s.Unlock()
 
-		return &spdkrpc.Disk{
-			State: string(disk.GetState()),
-		}, nil
+			return &spdkrpc.Disk{
+				State: string(state),
+			}, nil
+		}
+		// A previous attempt failed. Retry instead of latching on the error state
+		// forever, so the disk can recover once the underlying issue is resolved.
+		previousErrorMsg = disk.GetErrorMsg()
+		logrus.Warnf("Retrying the creation of disk %s(%s) path %s after a previous failure", req.DiskName, req.DiskUuid, req.DiskPath)
 	}
 
 	disk = NewDisk(req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver, req.BlockSize)
+	// The retry starts over from the creating state and can wait behind the disk
+	// creation lock for several monitoring cycles, so keep reporting the previous
+	// reason until this attempt reaches a conclusion.
+	disk.ErrorMsg = previousErrorMsg
 	s.diskMap[req.DiskName] = disk
 	s.Unlock()
 
@@ -75,6 +89,15 @@ func (s *Server) DiskDelete(ctx context.Context, req *spdkrpc.DiskDeleteRequest)
 	s.RLock()
 	disk := s.diskMap[req.DiskName]
 	spdkClient := s.spdkClient
+	pathOwnedByAnotherDisk := false
+	if disk == nil && req.DiskPath != "" {
+		for name, other := range s.diskMap {
+			if name != req.DiskName && other.DiskPath == req.DiskPath {
+				pathOwnedByAnotherDisk = true
+				break
+			}
+		}
+	}
 	s.RUnlock()
 
 	defer func() {
@@ -86,8 +109,18 @@ func (s *Server) DiskDelete(ctx context.Context, req *spdkrpc.DiskDeleteRequest)
 	}()
 
 	if disk == nil {
-		// If the specified disk does not exist, tlog a warning for visibility.
-		logrus.Warnf("Disk %s not found; skipping deletion", req.DiskName)
+		if pathOwnedByAnotherDisk {
+			logrus.Warnf("Disk %s not found and its path %s belongs to another disk; skipping the device release", req.DiskName, req.DiskPath)
+			return &emptypb.Empty{}, nil
+		}
+
+		// The disk record is only kept in memory, so it is gone after an instance
+		// manager restart. The device may still be bound to a userspace PCI driver
+		// from an interrupted creation, so release it instead of reporting success.
+		logrus.Warnf("Disk %s not found; trying to release its device %s", req.DiskName, req.DiskPath)
+		if _, err := spdkdisk.ReleaseOrphanDevice(spdkClient, req.DiskName, req.DiskPath); err != nil {
+			return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to release the device of disk %v: %v", req.DiskName, err)
+		}
 		return &emptypb.Empty{}, nil
 	}
 

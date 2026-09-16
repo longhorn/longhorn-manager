@@ -166,7 +166,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	}
 
 	if spec.DataSource != "" {
-		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size); err != nil {
+		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size, spec.FromBackup); err != nil {
 			return nil, err
 		}
 	}
@@ -549,6 +549,14 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return v, nil
 	}
 
+	blocked, err := m.isV2VolumeExpansionBlockedByLiveUpgrade(v)
+	if err != nil {
+		return nil, err
+	}
+	if blocked {
+		return nil, fmt.Errorf("cannot expand V2 volume %v while its instance manager is being live upgraded; retry after the upgrade completes", v.Name)
+	}
+
 	if _, err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
 		return nil, err
 	}
@@ -579,6 +587,73 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 	logrus.Infof("Expanding volume %v from %v to %v requested", v.Name, previousSize, size)
 
 	return v, nil
+}
+
+// isV2VolumeExpansionBlockedByLiveUpgrade reports whether an active live
+// upgrade can move this volume's engine or restart one of its replicas. The
+// expansion request must not update Volume.Spec.Size in that case: replica
+// replenishment is intentionally paused while an online expansion is pending,
+// whereas the live upgrade waits for the volume to become healthy.
+func (m *VolumeManager) isV2VolumeExpansionBlockedByLiveUpgrade(v *longhorn.Volume) (bool, error) {
+	if !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return false, nil
+	}
+
+	upgrades, err := m.ds.ListInstanceManagerUpgradesRO()
+	if err != nil {
+		return false, err
+	}
+
+	blockingUpgrades := make([]*longhorn.InstanceManagerUpgrade, 0, len(upgrades))
+	var control *longhorn.InstanceManagerUpgradeControl
+	controlLoaded := false
+	for _, upgrade := range upgrades {
+		if upgrade.Status.State == longhorn.InstanceManagerUpgradeStateCompleted ||
+			upgrade.Status.State == longhorn.InstanceManagerUpgradeStateFailed {
+			continue
+		}
+		if types.IsActiveInstanceManagerUpgradeState(upgrade.Status.State) ||
+			upgrade.Status.StartedAt != "" || upgrade.Status.AbortRequested {
+			blockingUpgrades = append(blockingUpgrades, upgrade)
+			continue
+		}
+		if upgrade.Status.State != "" && upgrade.Status.State != longhorn.InstanceManagerUpgradeStatePending {
+			continue
+		}
+
+		if !controlLoaded {
+			control, err = m.ds.GetInstanceManagerUpgradeControlRO(types.InstanceManagerUpgradeControlName)
+			if err != nil {
+				if !datastore.ErrorIsNotFound(err) && !types.ErrorIsNotFound(err) {
+					return false, err
+				}
+				control = nil
+			}
+			controlLoaded = true
+		}
+		if types.IsInstanceManagerUpgradeAuthorizedByControl(upgrade, control) {
+			blockingUpgrades = append(blockingUpgrades, upgrade)
+		}
+	}
+	if len(blockingUpgrades) == 0 {
+		return false, nil
+	}
+
+	replicas, err := m.ds.ListVolumeReplicasRO(v.Name)
+	if err != nil {
+		return false, err
+	}
+	frontends, err := m.ds.ListVolumeEngineFrontendsRO(v.Name)
+	if err != nil {
+		return false, err
+	}
+	for _, upgrade := range blockingUpgrades {
+		if types.IsVolumeAffectedByInstanceManagerUpgrade(v, replicas, frontends, upgrade) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (m *VolumeManager) checkAndExpandPVC(namespace string, pvcName string, size int64) (waitForPVCExpansion bool, s int64, err error) {
@@ -1219,7 +1294,7 @@ func (m *VolumeManager) UpdateReplicaDiskSoftAntiAffinity(name string, replicaDi
 	return v, nil
 }
 
-func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64) (err error) {
+func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64, fromBackup string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to verify data source")
 	}()
@@ -1234,7 +1309,12 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 		if err != nil {
 			return err
 		}
-		if requestSize != srcVol.Spec.Size {
+		// A volume restored from a backup takes its size from that backup, which the
+		// volume mutator applies after this point, so there is no size to compare here
+		// yet. The source is only a lower bound for such a volume anyway, since a
+		// linked clone may have been expanded before it was backed up; the size is
+		// checked against the backup in the volume webhook instead.
+		if fromBackup == "" && requestSize != srcVol.Spec.Size {
 			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
 		}
 

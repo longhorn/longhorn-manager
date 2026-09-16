@@ -24,31 +24,33 @@ import (
 )
 
 const (
-	LonghornKindNode                = "Node"
-	LonghornKindVolume              = "Volume"
-	LonghornKindVolumeAttachment    = "VolumeAttachment"
-	LonghornKindEngine              = "Engine"
-	LonghornKindEngineFrontend      = "EngineFrontend"
-	LonghornKindReplica             = "Replica"
-	LonghornKindBackupTarget        = "BackupTarget"
-	LonghornKindBackupVolume        = "BackupVolume"
-	LonghornKindBackup              = "Backup"
-	LonghornKindBackupBackingImage  = "BackupBackingImage"
-	LonghornKindSnapshot            = "Snapshot"
-	LonghornKindEngineImage         = "EngineImage"
-	LonghornKindInstanceManager     = "InstanceManager"
-	LonghornKindShareManager        = "ShareManager"
-	LonghornKindBackingImage        = "BackingImage"
-	LonghornKindBackingImageManager = "BackingImageManager"
-	LonghornKindRecurringJob        = "RecurringJob"
-	LonghornKindSetting             = "Setting"
-	LonghornKindSupportBundle       = "SupportBundle"
-	LonghornKindSystemBackup        = "SystemBackup"
-	LonghornKindSystemRestore       = "SystemRestore"
-	LonghornKindOrphan              = "Orphan"
-	LonghornKindShardGroup          = "ShardGroup"
-	LonghornKindShard               = "Shard"
-	LonghornKindSnapshotGroup       = "SnapshotGroup"
+	LonghornKindNode                          = "Node"
+	LonghornKindVolume                        = "Volume"
+	LonghornKindVolumeAttachment              = "VolumeAttachment"
+	LonghornKindEngine                        = "Engine"
+	LonghornKindEngineFrontend                = "EngineFrontend"
+	LonghornKindReplica                       = "Replica"
+	LonghornKindBackupTarget                  = "BackupTarget"
+	LonghornKindBackupVolume                  = "BackupVolume"
+	LonghornKindBackup                        = "Backup"
+	LonghornKindBackupBackingImage            = "BackupBackingImage"
+	LonghornKindSnapshot                      = "Snapshot"
+	LonghornKindEngineImage                   = "EngineImage"
+	LonghornKindInstanceManager               = "InstanceManager"
+	LonghornKindShareManager                  = "ShareManager"
+	LonghornKindBackingImage                  = "BackingImage"
+	LonghornKindBackingImageManager           = "BackingImageManager"
+	LonghornKindRecurringJob                  = "RecurringJob"
+	LonghornKindSetting                       = "Setting"
+	LonghornKindSupportBundle                 = "SupportBundle"
+	LonghornKindSystemBackup                  = "SystemBackup"
+	LonghornKindSystemRestore                 = "SystemRestore"
+	LonghornKindOrphan                        = "Orphan"
+	LonghornKindShardGroup                    = "ShardGroup"
+	LonghornKindShard                         = "Shard"
+	LonghornKindSnapshotGroup                 = "SnapshotGroup"
+	LonghornKindInstanceManagerUpgrade        = "InstanceManagerUpgrade"
+	LonghornKindInstanceManagerUpgradeControl = "InstanceManagerUpgradeControl"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -99,6 +101,13 @@ const (
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
 	CRDAPIVersionV1beta2  = "longhorn.io/v1beta2"
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
+
+	InstanceManagerUpgradeControlName = "longhorn-instance-manager-upgrade-control"
+
+	// MinimumLonghornVersionForV2InstanceManagerLiveUpgrade is the oldest
+	// Longhorn version that supports upgrading into the V2 instance manager
+	// live upgrade feature.
+	MinimumLonghornVersionForV2InstanceManagerLiveUpgrade = "v1.12.2"
 )
 
 // ECMaxBaseBdevs is the maximum number of base bdevs (k+m) an EC array may have.
@@ -184,6 +193,8 @@ const (
 	ConfigMapResourceVersionKey = "configmap-resource-version"
 	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
 
+	V2InstanceManagerLiveUpgradeUnsupported = "v2-instance-manager-live-upgrade-unsupported"
+
 	DeleteCustomResourceOnly = "delete-custom-resource-only"
 
 	// annotations to note that deleting backup target is by Longhorn during uninstalling.
@@ -205,6 +216,7 @@ const (
 
 	LonghornLabelEngineImage                     = "engine-image"
 	LonghornLabelInstanceManager                 = "instance-manager"
+	LonghornLabelInstanceManagerUpgrade          = "instance-manager-upgrade"
 	LonghornLabelNode                            = "node"
 	LonghornLabelDiskUUID                        = "disk-uuid"
 	LonghornLabelInstanceManagerType             = "instance-manager-type"
@@ -627,6 +639,15 @@ func GetInstanceManagerLabels(node, imImage string, imType longhorn.InstanceMana
 		labels[GetLonghornLabelKey(LonghornLabelDataEngine)] = string(dataEngine)
 	}
 
+	return labels
+}
+
+func GetInstanceManagerUpgradeLabels(node string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelInstanceManagerUpgrade
+	if node != "" {
+		labels[GetLonghornLabelKey(LonghornLabelNode)] = node
+	}
 	return labels
 }
 
@@ -1705,4 +1726,74 @@ func GetBackingImageMonitorName(imName string) string {
 
 func GetV2BackingImageWithDiskUUIDName(biName, v2DiskUUID string) string {
 	return fmt.Sprintf("%v-%v", biName, v2DiskUUID)
+}
+
+func IsActiveInstanceManagerUpgradeState(state longhorn.InstanceManagerUpgradeState) bool {
+	switch state {
+	case longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForSourceIM,
+		longhorn.InstanceManagerUpgradeStateRestoringEngines,
+		longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsPendingV2VolumeExpansion reports whether a V2 volume has an admitted
+// expansion that has not completed yet.
+func IsPendingV2VolumeExpansion(volume *longhorn.Volume) bool {
+	return volume != nil && volume.DeletionTimestamp == nil &&
+		IsDataEngineV2(volume.Spec.DataEngine) &&
+		volume.Status.ExpansionRequired
+}
+
+// IsVolumeAffectedByInstanceManagerUpgrade reports whether an IMU can move a
+// volume's engine frontend or restart one of its replicas.
+func IsVolumeAffectedByInstanceManagerUpgrade(volume *longhorn.Volume, replicas map[string]*longhorn.Replica, frontends map[string]*longhorn.EngineFrontend, imu *longhorn.InstanceManagerUpgrade) bool {
+	if volume == nil || imu == nil {
+		return false
+	}
+	if _, ok := imu.Status.Engines[volume.Name]; ok {
+		return true
+	}
+	if _, ok := imu.Status.PlannedDetachedReplicas[volume.Name]; ok {
+		return true
+	}
+
+	nodeID := imu.Spec.NodeID
+	if nodeID == "" {
+		return false
+	}
+	if volume.Status.CurrentNodeID == nodeID ||
+		volume.Status.CurrentEngineNodeID == nodeID ||
+		volume.Status.CurrentMigrationNodeID == nodeID ||
+		volume.Spec.NodeID == nodeID ||
+		volume.Spec.EngineNodeID == nodeID ||
+		volume.Spec.MigrationNodeID == nodeID {
+		return true
+	}
+
+	for _, replica := range replicas {
+		if replica.DeletionTimestamp == nil && replica.Spec.NodeID == nodeID {
+			return true
+		}
+	}
+	for _, frontend := range frontends {
+		if frontend.DeletionTimestamp == nil && frontend.Spec.NodeID == nodeID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsInstanceManagerUpgradeAuthorizedByControl(imu *longhorn.InstanceManagerUpgrade, control *longhorn.InstanceManagerUpgradeControl) bool {
+	if imu == nil || control == nil {
+		return false
+	}
+
+	nodeInfo, ok := control.Status.Nodes[imu.Spec.NodeID]
+	return ok && control.Status.CurrentNode == imu.Spec.NodeID &&
+		nodeInfo.State == longhorn.NodeUpgradeStateInProgress && nodeInfo.IMUName == imu.Name
 }
