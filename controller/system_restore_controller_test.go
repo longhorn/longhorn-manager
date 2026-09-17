@@ -10,6 +10,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	. "gopkg.in/check.v1"
+
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -21,6 +23,8 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apiextensionsinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
@@ -32,10 +36,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
-	apiextensionsinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
-
-	. "gopkg.in/check.v1"
 )
 
 const (
@@ -47,6 +47,8 @@ const (
 
 	TestDiffSuffix   = "-diff"
 	TestIgnoreSuffix = "-ignore"
+
+	TestRegistrySecret = "test-registry-secret"
 )
 
 type SystemRolloutCRName string
@@ -59,6 +61,7 @@ type SystemRestoreTestCase struct {
 	state            longhorn.SystemRestoreState
 	notExist         bool
 	isDeleting       bool
+	registrySecret   string
 
 	expectError    bool
 	expectJobExist bool
@@ -97,6 +100,10 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			expectState:      longhorn.SystemRestoreStateError,
 			expectJobExist:   false,
 		},
+		"system restore with private registry": {
+			registrySecret: TestRegistrySecret,
+			expectJobExist: true,
+		},
 	}
 
 	for name, tc := range testCases {
@@ -117,7 +124,13 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
 		fakeSystemRolloutManagerPod(c, informerFactories.KubeInformerFactory, kubeClient)
-		fakeSystemRolloutSettingDefaultEngineImage(c, informerFactories.LhInformerFactory, lhClient)
+		settings := map[SystemRolloutCRName]*longhorn.Setting{
+			SystemRolloutCRName(types.SettingNameDefaultEngineImage): {Value: TestEngineImage},
+		}
+		if tc.registrySecret != "" {
+			settings[SystemRolloutCRName(types.SettingNameRegistrySecret)] = &longhorn.Setting{Value: tc.registrySecret}
+		}
+		fakeSystemRolloutSettings(settings, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, informerFactories.LhInformerFactory, lhClient)
 
@@ -150,6 +163,11 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			c.Assert(job.Spec.Template.Spec.Containers[0].Image, Equals, TestManagerImage)
 			c.Assert(strings.HasPrefix(job.Name, SystemRolloutNamePrefix), Equals, true)
 			c.Assert(strings.HasPrefix(job.Spec.Template.Spec.Containers[0].Name, SystemRolloutNamePrefix), Equals, true)
+			if tc.registrySecret != "" {
+				c.Assert(job.Spec.Template.Spec.ImagePullSecrets, DeepEquals, []corev1.LocalObjectReference{{Name: tc.registrySecret}})
+			} else {
+				c.Assert(job.Spec.Template.Spec.ImagePullSecrets, HasLen, 0)
+			}
 		} else {
 			c.Assert(err, NotNil)
 		}
@@ -164,7 +182,7 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 
 func newFakeSystemRestoreController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*SystemRestoreController, error) {
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)

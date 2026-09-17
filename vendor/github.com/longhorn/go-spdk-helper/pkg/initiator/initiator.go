@@ -523,7 +523,7 @@ func (i *Initiator) StartNvmeTCPInitiator(transportAddress, transportServiceID s
 		i.logger.WithError(err).Warn("Failed to load existing NVMe/TCP path state before starting initiator")
 	}
 	if i.NVMeTCPInfo.TransportAddress != "" && i.NVMeTCPInfo.TransportServiceID != "" &&
-		(i.NVMeTCPInfo.TransportAddress != transportAddress || i.NVMeTCPInfo.TransportServiceID != transportServiceID) {
+		(!util.IsSameNvmeAddr(i.NVMeTCPInfo.TransportAddress, transportAddress) || i.NVMeTCPInfo.TransportServiceID != transportServiceID) {
 		i.logger.Warnf("NVMe/TCP initiator is launched but with incorrect address, the required one is %s:%s, will try to stop then relaunch it", transportAddress, transportServiceID)
 	}
 
@@ -803,7 +803,7 @@ func (i *Initiator) reuseExistingNVMeTCPPathWithoutLock(transportAddress, transp
 	if err := i.loadNVMeDeviceInfoWithoutLock(i.NVMeTCPInfo.TransportAddress, i.NVMeTCPInfo.TransportServiceID, i.NVMeTCPInfo.SubsystemNQN); err != nil {
 		return false, err
 	}
-	if i.NVMeTCPInfo.TransportAddress != transportAddress || i.NVMeTCPInfo.TransportServiceID != transportServiceID {
+	if !util.IsSameNvmeAddr(i.NVMeTCPInfo.TransportAddress, transportAddress) || i.NVMeTCPInfo.TransportServiceID != transportServiceID {
 		return false, nil
 	}
 
@@ -955,7 +955,7 @@ func (i *Initiator) findControllerBySubsystem(nqn, transportAddress, transportSe
 		}
 		for _, path := range sys.Paths {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-			if controllerIP == transportAddress && controllerPort == transportServiceID {
+			if util.IsSameNvmeAddr(controllerIP, transportAddress) && controllerPort == transportServiceID {
 				return path.Name, nil
 			}
 		}
@@ -1102,7 +1102,7 @@ func (i *Initiator) WaitForControllerLive(transportAddress, transportServiceID s
 				}
 				for _, path := range sys.Paths {
 					controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-					if controllerIP == transportAddress && controllerPort == transportServiceID {
+					if util.IsSameNvmeAddr(controllerIP, transportAddress) && controllerPort == transportServiceID {
 						if path.State == "live" {
 							i.logger.Infof("NVMe controller %s for %s:%s reached live state",
 								path.Name, transportAddress, transportServiceID)
@@ -1196,7 +1196,7 @@ func selectControllerForNVMeDevice(device Device, transportAddress, transportSer
 	if transportAddress != "" && transportServiceID != "" {
 		for _, controller := range device.Controllers {
 			controllerAddress, controllerServiceID := GetIPAndPortFromControllerAddress(controller.Address)
-			if controllerAddress == transportAddress && controllerServiceID == transportServiceID {
+			if util.IsSameNvmeAddr(controllerAddress, transportAddress) && controllerServiceID == transportServiceID {
 				return controller, nil
 			}
 		}

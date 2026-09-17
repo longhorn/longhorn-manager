@@ -194,19 +194,18 @@ func (vrsc *VolumeRestoreController) reconcile(volName string) (err error) {
 	restoringAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRestoreController, volName)
 
 	if vol.Status.RestoreRequired {
-		// Keep an already satisfied ticket where it is; moving it would detach the volume
-		// and interrupt a restore in flight.
-		if !longhorn.IsAttachmentTicketSatisfied(restoringAttachmentTicketID, va) {
-			chosenNodeID, err := pickAttachmentTicketNodeID(vrsc.ds, getLoggerForVolume(vrsc.logger, vol), vol, va)
-			if err != nil {
-				return err
-			}
-			if chosenNodeID == "" {
-				vrsc.enqueueVolumeAfter(vol, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
-				return nil
-			}
-			createOrUpdateAttachmentTicket(va, restoringAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeRestoreController)
+		// The satisfied ticket will keep unchanged as long as the node is still attachable
+		chosenNodeID, err := pickAttachmentTicketNodeID(vrsc.ds, getLoggerForVolume(vrsc.logger, vol), vol, va)
+		if err != nil {
+			return err
 		}
+		if chosenNodeID == "" {
+			// Leave any existing ticket alone rather than dropping the volume because no
+			// node looks ready at this instant.
+			vrsc.enqueueVolumeAfter(vol, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+			return nil
+		}
+		createOrUpdateAttachmentTicket(va, restoringAttachmentTicketID, chosenNodeID, longhorn.TrueValue, longhorn.AttacherTypeVolumeRestoreController)
 	} else {
 		delete(va.Spec.AttachmentTickets, restoringAttachmentTicketID)
 	}

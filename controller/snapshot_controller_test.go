@@ -67,7 +67,7 @@ func newSnapshotControllerFixture(c *C) *snapshotControllerFixture {
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	sc, err := NewSnapshotController(

@@ -88,7 +88,7 @@ func systemRollout(cmd *cli.Command) error {
 	}
 
 	informerFactories := util.NewInformerFactories(namespace, kubeClient, lhClient, 30*time.Second)
-	ds := datastore.NewDataStore(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)

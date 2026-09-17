@@ -221,7 +221,7 @@ func newNodeValidatorForTest(kubeClient *kubefake.Clientset) *nodeValidator {
 	lhClient := lhfake.NewClientset()
 	extensionsClient := apiextensionsfake.NewSimpleClientset()
 	informerFactories := managerutil.NewInformerFactories(nodeValidatorTestNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStore(nodeValidatorTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(nodeValidatorTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	return &nodeValidator{ds: ds}
 }
 

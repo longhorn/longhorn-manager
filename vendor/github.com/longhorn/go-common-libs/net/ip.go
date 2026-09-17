@@ -16,7 +16,21 @@ const (
 )
 
 // GetLocalIPv4fromInterface returns the local IPv4 address.
+//
+// Deprecated: use GetLocalIPFromInterface instead, which also supports IPv6-only
+// interfaces.
 func GetLocalIPv4fromInterface(name string) (ip string, err error) {
+	return getLocalIPFromInterface(name, true)
+}
+
+// GetLocalIPFromInterface returns the local IP address of the given interface.
+// IPv4 is preferred, and a global unicast IPv6 address is returned when the
+// interface has no IPv4 address.
+func GetLocalIPFromInterface(name string) (ip string, err error) {
+	return getLocalIPFromInterface(name, false)
+}
+
+func getLocalIPFromInterface(name string, ipv4Only bool) (string, error) {
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
 		return "", err
@@ -27,35 +41,56 @@ func GetLocalIPv4fromInterface(name string) (ip string, err error) {
 		return "", errors.Wrapf(err, "interface %s doesn't have address", name)
 	}
 
-	var ipv4 net.IP
+	var ipv6 net.IP
 	for _, addr := range addrs {
-		if ipv4 = addr.(*net.IPNet).IP.To4(); ipv4 != nil {
-			break
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP == nil {
+			continue
+		}
+
+		if ipv4 := ipNet.IP.To4(); ipv4 != nil {
+			return ipv4.String(), nil
+		}
+
+		// Link-local and multicast addresses are not routable between nodes.
+		if ipv6 == nil && ipNet.IP.IsGlobalUnicast() {
+			ipv6 = ipNet.IP
 		}
 	}
-	if ipv4 == nil {
+
+	if ipv4Only {
 		return "", errors.Errorf("interface %s don't have an IPv4 address", name)
 	}
+	if ipv6 == nil {
+		return "", errors.Errorf("interface %s doesn't have an IPv4 or a global unicast IPv6 address", name)
+	}
 
-	return ipv4.String(), nil
+	return ipv6.String(), nil
 }
 
 // GetIPForPod returns the IP address for the pod from the storage network first or the cluster network.
 func GetIPForPod() (ip string, err error) {
-	var storageIP string
-	if ip, err := GetLocalIPv4fromInterface(StorageNetworkInterface); err != nil {
-		storageIP = os.Getenv(EnvPodIP)
-		logrus.WithError(err).Tracef("Failed to get IP from %v interface, fallback to use the default pod IP %v",
-			StorageNetworkInterface, storageIP)
-	} else {
-		storageIP = ip
+	storageIP, err := GetLocalIPFromInterface(StorageNetworkInterface)
+	if err == nil {
+		return storageIP, nil
 	}
 
-	if storageIP == "" {
+	podIP := os.Getenv(EnvPodIP)
+	if _, ifaceErr := net.InterfaceByName(StorageNetworkInterface); ifaceErr == nil {
+		// The storage network is attached but unusable, so falling back to the cluster
+		// network silently bypasses it. Make that visible instead of hiding it.
+		logrus.WithError(err).Warnf("Failed to get IP from %v interface, fallback to use the default pod IP %v",
+			StorageNetworkInterface, podIP)
+	} else {
+		logrus.WithError(err).Tracef("Failed to get IP from %v interface, fallback to use the default pod IP %v",
+			StorageNetworkInterface, podIP)
+	}
+
+	if podIP == "" {
 		return "", fmt.Errorf("can't get a ip from either the specified interface or the environment variable")
 	}
 
-	return storageIP, nil
+	return podIP, nil
 }
 
 // IsLoopbackHost checks if the given host is a loopback host.
@@ -78,13 +113,15 @@ func IsLoopbackHost(host string) bool {
 	return true
 }
 
-// GetAnyExternalIP returns any external IP address.
+// GetAnyExternalIP returns any external IP address. IPv4 is preferred, and a
+// global unicast IPv6 address is returned when no IPv4 address is available.
 func GetAnyExternalIP() (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
 	}
 
+	var ipv6 net.IP
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 {
 			continue // interface down
@@ -110,12 +147,17 @@ func GetAnyExternalIP() (string, error) {
 			if ip == nil || ip.IsLoopback() {
 				continue
 			}
-			ip = ip.To4()
-			if ip == nil {
-				continue // not an ipv4 address
+			if ipv4 := ip.To4(); ipv4 != nil {
+				return ipv4.String(), nil
 			}
-			return ip.String(), nil
+			if ipv6 == nil && ip.IsGlobalUnicast() {
+				ipv6 = ip
+			}
 		}
+	}
+
+	if ipv6 != nil {
+		return ipv6.String(), nil
 	}
 
 	return "", fmt.Errorf("the current host is probably not connected to the network")

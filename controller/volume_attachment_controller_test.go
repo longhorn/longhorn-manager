@@ -430,7 +430,7 @@ func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *
 
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
 
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	logger := logrus.StandardLogger()
 
 	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
@@ -509,7 +509,7 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
 
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 	logger := logrus.StandardLogger()
 
 	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()

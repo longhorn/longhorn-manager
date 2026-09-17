@@ -20,6 +20,7 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 	spdkClient := s.spdkClient
 
 	disk, exists := s.diskMap[req.DiskName]
+	previousErrorMsg := ""
 	if exists {
 		state := disk.GetState()
 		if state == DiskStateReady {
@@ -35,10 +36,15 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 		}
 		// A previous attempt failed. Retry instead of latching on the error state
 		// forever, so the disk can recover once the underlying issue is resolved.
+		previousErrorMsg = disk.GetErrorMsg()
 		logrus.Warnf("Retrying the creation of disk %s(%s) path %s after a previous failure", req.DiskName, req.DiskUuid, req.DiskPath)
 	}
 
 	disk = NewDisk(req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver, req.BlockSize)
+	// The retry starts over from the creating state and can wait behind the disk
+	// creation lock for several monitoring cycles, so keep reporting the previous
+	// reason until this attempt reaches a conclusion.
+	disk.ErrorMsg = previousErrorMsg
 	s.diskMap[req.DiskName] = disk
 	s.Unlock()
 

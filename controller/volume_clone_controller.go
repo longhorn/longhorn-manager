@@ -21,6 +21,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -38,6 +39,7 @@ type VolumeCloneController struct {
 	eventRecorder record.EventRecorder
 
 	ds         *datastore.DataStore
+	scheduler  *scheduler.ReplicaScheduler
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -58,7 +60,8 @@ func NewVolumeCloneController(
 		namespace:    namespace,
 		controllerID: controllerID,
 
-		ds: ds,
+		ds:        ds,
+		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-clone-controller"}),
@@ -318,7 +321,33 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	expectedAttachmentTickets := make(map[string]bool)
 
 	log := getLoggerForVolume(vcc.logger, vol)
-	pickNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
+
+	// Clone target (case 1): derive the preferred node with the shared, controller-wide
+	// picker so the ticket-priority logic is not duplicated, then let the scheduler enforce
+	// node/disk selector candidacy for the clone target (longhorn/longhorn#12792).
+	pickCloneTargetNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
+		preferredNodeID, err := pickAttachmentTicketNodeID(vcc.ds, log, v, va)
+		if err != nil {
+			return "", err
+		}
+
+		chosenNodeID, err := vcc.scheduler.GetReadyNodeForVolumeAttach(v, preferredNodeID)
+		if err != nil {
+			return "", err
+		}
+		if chosenNodeID == "" {
+			log.Warnf("Cannot find a schedulable node for volume %v clone attachment", v.Name)
+			vcc.enqueueVolumeAfter(v, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+			return "", nil
+		}
+		log.Debugf("Picked node %v for volume %v clone target attachment via scheduler (preferred %v)", chosenNodeID, v.Name, preferredNodeID)
+		return chosenNodeID, nil
+	}
+
+	// Clone source (cases 2 and 3): use the shared picker directly. Scheduler candidacy is
+	// intentionally not applied here; CSI tickets outrank clone tickets, so requesting a
+	// different node can leave the clone ticket unsatisfied indefinitely.
+	pickCloneSourceNodeID := func(v *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
 		chosenNodeID, err := pickAttachmentTicketNodeID(vcc.ds, log, v, va)
 		if err != nil {
 			return "", err
@@ -335,7 +364,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
 			expectedAttachmentTickets[cloningAttachmentTicketID] = true
 		} else {
-			chosenNodeID, err := pickNodeID(vol, va)
+			chosenNodeID, err := pickCloneTargetNodeID(vol, va)
 			if err != nil {
 				return err
 			}
@@ -359,7 +388,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 				expectedAttachmentTickets[cloningAttachmentTicketID] = true
 			} else {
 				if srcNodeID == "" {
-					srcNodeID, err = pickNodeID(vol, va)
+					srcNodeID, err = pickCloneSourceNodeID(vol, va)
 					if err != nil {
 						return err
 					}
@@ -390,7 +419,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 			expectedAttachmentTickets[cloningAttachmentTicketID] = true
 		} else {
 			if srcNodeID == "" {
-				srcNodeID, err = pickNodeID(vol, va)
+				srcNodeID, err = pickCloneSourceNodeID(vol, va)
 				if err != nil {
 					return err
 				}
