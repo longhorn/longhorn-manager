@@ -533,19 +533,27 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, fmt.Errorf("invalid volume state to expand: %v", v.Status.State)
 	}
 
-	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
-		return nil, fmt.Errorf("invalid volume clone state to expand: %v", v.Status.CloneStatus.State)
-	}
-
-	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
-		return nil, fmt.Errorf("cannot expand volume when it is in faulted state")
-	}
-
 	size = util.RoundUpSize(size)
 
 	if v.Spec.Size >= size {
 		logrus.Infof("Volume %v expansion is not allowable since current size %v >= %v", v.Name, v.Spec.Size, size)
 		return v, nil
+	}
+
+	// Defer to the same readiness check the webhook enforces rather than spot-checking a
+	// single clone state here. The webhook rejects this update anyway, so reusing the check
+	// cannot refuse anything it would have allowed; it only reports the reason before the
+	// round trip instead of as an admission error, and it stops the two from drifting.
+	replicaMap, err := m.ds.ListVolumeReplicasRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	replicas := make([]*longhorn.Replica, 0, len(replicaMap))
+	for _, r := range replicaMap {
+		replicas = append(replicas, r)
+	}
+	if ready, msg := types.IsVolumeReady(v, replicas, types.VolumeOperationSizeExpansion); !ready {
+		return nil, fmt.Errorf("volume is not ready to expand: %v", msg)
 	}
 
 	if _, err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
