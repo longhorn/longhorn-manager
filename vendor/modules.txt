@@ -320,7 +320,7 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.13.0-rc1
+# github.com/longhorn/longhorn-engine v1.13.0-rc1 => github.com/mantissahz/longhorn-engine v1.3.0-preview1.0.20260917075215-109da446f5b4
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
@@ -617,8 +617,8 @@ golang.org/x/oauth2/internal
 # golang.org/x/sync v0.22.0
 ## explicit; go 1.25.0
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.47.0
-## explicit; go 1.25.0
+# golang.org/x/sys v0.48.0
+## explicit; go 1.26.0
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/plan9
@@ -1424,3 +1424,4 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.37.0
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.37.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.37.0
+# github.com/longhorn/longhorn-engine => github.com/mantissahz/longhorn-engine v1.3.0-preview1.0.20260917075215-109da446f5b4

@@ -85,7 +85,7 @@ require (
 	github.com/urfave/cli/v3 v3.11.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	golang.org/x/time v0.16.0
 	google.golang.org/grpc v1.83.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -226,3 +226,5 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/longhorn/longhorn-engine => github.com/mantissahz/longhorn-engine v1.3.0-preview1.0.20260917075215-109da446f5b4

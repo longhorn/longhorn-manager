@@ -2665,6 +2665,14 @@ func (ec *EngineController) handleRebuildFailure(
 		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding,
 			"Failed rebuilding replica with Address %v: %v", addr, rebuildErr)
 	}
+	if isReplicaAddressExistError(rebuildErr) {
+		// If operations before calling `rc.rebuildProxy.ReplicaAdd` take a long time (over 30 seconds),
+		// the second rebuild goroutine for the same replica might be created.
+		// If the replica exists when adding this replica, the replica should have been rebuilt already by previous rebuild goroutine.
+		// Therefore, skip the operations below.
+		log.WithError(rebuildErr).Warn("Replica rebuild failed because replica exists")
+		return
+	}
 
 	log.Infof("Removing failed rebuilding replica %v", addr)
 	if err := cleanupProxy.ReplicaRemove(engine, replicaURL, replicaName); err != nil {
@@ -3295,6 +3303,11 @@ func isV2ReplicaAddAlreadyInProgressError(err error) bool {
 
 func isV2ReplicaAddRestoreInProgressError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "restore is in progress")
+}
+
+func isReplicaAddressExistError(err error) bool {
+	// If the replica address already exists when creating a replica, it will return an error as "replica already exists at address tcp://10.1.1.10:12345".
+	return err != nil && strings.Contains(err.Error(), etypes.ErrorStringReplicaAddressExist)
 }
 
 func isV2ExpansionIncomplete(engine *longhorn.Engine) bool {

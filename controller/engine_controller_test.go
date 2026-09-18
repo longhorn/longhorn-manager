@@ -1,20 +1,31 @@
 package controller
 
 import (
+	"context"
 	"io"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
+
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
 
 // mockEngineClientProxy wraps EngineSimulator and overrides ReplicaRebuildVerify for test control.
@@ -22,6 +33,7 @@ type mockEngineClientProxy struct {
 	*engineapi.EngineSimulator
 	verifyErr    error
 	verifyCalled []string // replica names passed to ReplicaRebuildVerify
+	removeCalled []string // replica names passed to ReplicaRemove
 }
 
 var _ engineapi.EngineClientProxy = (*mockEngineClientProxy)(nil)
@@ -31,6 +43,11 @@ func (m *mockEngineClientProxy) Close() {}
 func (m *mockEngineClientProxy) ReplicaRebuildVerify(_ *longhorn.Engine, replicaName, _ string) error {
 	m.verifyCalled = append(m.verifyCalled, replicaName)
 	return m.verifyErr
+}
+
+func (m *mockEngineClientProxy) ReplicaRemove(_ *longhorn.Engine, _, replicaName string) error {
+	m.removeCalled = append(m.removeCalled, replicaName)
+	return nil
 }
 
 func TestNeedStatusUpdate(t *testing.T) {
@@ -284,6 +301,132 @@ func TestVerifyCompletedRebuild(t *testing.T) {
 
 			newMonitor().verifyCompletedRebuild(engine, tc.addressReplicaMap, tc.rebuildStatus, proxy)
 			assert.ElementsMatch(tc.expectVerified, proxy.verifyCalled, "ReplicaRebuildVerify call mismatch")
+		})
+	}
+}
+
+// When the operations before `rc.rebuildProxy.ReplicaAdd` take longer than the rebuild timeout, a
+// second rebuild goroutine can be started for the same replica. The loser of that race gets
+// "replica already exists at address ..." back from the engine, which means the replica is being
+// rebuilt by the winning goroutine rather than that anything is wrong with it.
+func TestIsReplicaAddressExistError(t *testing.T) {
+	tests := map[string]struct {
+		err      error
+		expected bool
+	}{
+		"nil error": {
+			err:      nil,
+			expected: false,
+		},
+		"unrelated error": {
+			err:      errors.New("connection refused"),
+			expected: false,
+		},
+		// The literal message longhorn-engine builds in pkg/controller/control.go. Hard-coded on
+		// purpose: the matcher is only useful while it still matches what the engine emits.
+		"error message from the engine": {
+			err:      errors.New("replica already exists at address tcp://10.0.0.1:10000"),
+			expected: true,
+		},
+		"wrapped error from the proxy": {
+			err: errors.Wrap(errors.New("rpc error: code = Unknown desc = replica already exists at address tcp://10.42.0.15:10000"),
+				"failed to add replica tcp://10.42.0.15:10000 for volume"),
+			expected: true,
+		},
+		// The replica is genuinely gone, so the rebuild failure has to be cleaned up as usual.
+		"replica missing at address": {
+			err:      errors.New("replica does not exist at address tcp://10.0.0.1:10000"),
+			expected: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.expected, isReplicaAddressExistError(tc.err))
+		})
+	}
+}
+
+func TestHandleRebuildFailure(t *testing.T) {
+	const (
+		addr       = "10.0.0.1:10000"
+		replicaURL = "tcp://" + addr
+	)
+
+	type testCase struct {
+		rebuildErr          error
+		expectRemoved       []string // replica names we expect ReplicaRemove to be called for
+		expectReplicaFailed bool
+	}
+
+	tests := map[string]testCase{
+		// The losing rebuild goroutine must leave the replica alone. Removing it from the engine or
+		// marking it failed would tear down the rebuild the winning goroutine is running.
+		"replica already exists at address is left alone": {
+			rebuildErr:          errors.New("proxyServer=10.0.0.1:8501 destination=10.0.0.1:10000: failed to add replica tcp://10.0.0.1:10000 for volume: rpc error: code = Unknown desc = replica already exists at address tcp://10.0.0.1:10000"),
+			expectRemoved:       nil,
+			expectReplicaFailed: false,
+		},
+		// Every other rebuild failure still has to clean up the half-added replica.
+		"other rebuild failure is cleaned up": {
+			rebuildErr:          errors.New("connection refused"),
+			expectRemoved:       []string{TestReplicaName},
+			expectReplicaFailed: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+			datastore.SkipListerCheck = true
+
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+			ec := &EngineController{
+				ds:            datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+				eventRecorder: record.NewFakeRecorder(100),
+				backoff:       flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
+			}
+
+			engine := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+				},
+			}
+			replica := &longhorn.Replica{
+				ObjectMeta: metav1.ObjectMeta{Name: TestReplicaName, Namespace: TestNamespace},
+				Spec: longhorn.ReplicaSpec{
+					InstanceSpec: longhorn.InstanceSpec{
+						VolumeName:  TestVolumeName,
+						NodeID:      TestNode1,
+						DesireState: longhorn.InstanceStateRunning,
+					},
+				},
+			}
+			_, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+			assert.NoError(err)
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			proxy := &mockEngineClientProxy{EngineSimulator: &engineapi.EngineSimulator{}}
+
+			ec.handleRebuildFailure(logrus.NewEntry(logger), engine, nil, TestReplicaName, addr, replicaURL, replica, proxy, tc.rebuildErr)
+
+			assert.ElementsMatch(tc.expectRemoved, proxy.removeCalled, "ReplicaRemove call mismatch")
+
+			updated, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(context.TODO(), TestReplicaName, metav1.GetOptions{})
+			assert.NoError(err)
+			if tc.expectReplicaFailed {
+				assert.Equal(longhorn.InstanceStateStopped, updated.Spec.DesireState)
+				assert.NotEmpty(updated.Spec.FailedAt)
+			} else {
+				assert.Equal(longhorn.InstanceStateRunning, updated.Spec.DesireState)
+				assert.Empty(updated.Spec.FailedAt)
+			}
 		})
 	}
 }
