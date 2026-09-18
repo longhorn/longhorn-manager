@@ -2,17 +2,26 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	clienttest "k8s.io/client-go/testing"
+	metricsfake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -313,5 +322,184 @@ func TestUpdateEngineImagePodLivenessProbesUsesDefaultValuesOnSettingError(t *te
 	}
 	if livenessProbe.FailureThreshold != datastore.PodLivenessProbeFailureThreshold {
 		t.Fatalf("unexpected failureThreshold: got %d, want %d", livenessProbe.FailureThreshold, datastore.PodLivenessProbeFailureThreshold)
+	}
+}
+
+func TestGetCheckUpgradeRequestExtraInfo(t *testing.T) {
+	const (
+		fakeGitVersion = "v1.30.0"
+		controllerID   = "node1"
+	)
+
+	tests := []struct {
+		name          string
+		setup         func(t *testing.T, kubeClient *fake.Clientset, lhClient *lhfake.Clientset, ds *datastore.DataStore)
+		wantTags      map[string]any
+		wantFields    map[string]any
+		wantErr       bool
+		wantLogSubStr []string
+	}{
+		{
+			name: "kube server version error - returns error",
+			setup: func(t *testing.T, kubeClient *fake.Clientset, lhClient *lhfake.Clientset, ds *datastore.DataStore) {
+				fd := kubeClient.Discovery().(*fakediscovery.FakeDiscovery)
+				fd.PrependReactor("get", "version", func(action clienttest.Action) (bool, runtime.Object, error) {
+					return true, nil, fmt.Errorf("api error")
+				})
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid usage setting value - logs warning and returns nil maps",
+			setup: func(t *testing.T, kubeClient *fake.Clientset, lhClient *lhfake.Clientset, ds *datastore.DataStore) {
+				createBoolSetting(t, lhClient, types.SettingNameAllowCollectingLonghornUsage, "invalid")
+			},
+			wantLogSubStr: []string{"Failed to get Setting", string(types.SettingNameAllowCollectingLonghornUsage)},
+		},
+		{
+			name: "usage collection disabled - returns kubernetes version tag only",
+			setup: func(t *testing.T, kubeClient *fake.Clientset, lhClient *lhfake.Clientset, ds *datastore.DataStore) {
+				createBoolSetting(t, lhClient, types.SettingNameAllowCollectingLonghornUsage, "false")
+			},
+			wantTags: map[string]any{
+				"kubernetesVersion": fakeGitVersion,
+			},
+			wantFields: nil,
+		},
+		{
+			name: "responsible node lookup failure - logs warning and returns nil maps",
+			setup: func(t *testing.T, kubeClient *fake.Clientset, lhClient *lhfake.Clientset, ds *datastore.DataStore) {
+				createBoolSetting(t, lhClient, types.SettingNameAllowCollectingLonghornUsage, "true")
+			},
+			wantLogSubStr: []string{"Failed to get responsible Node"},
+		},
+		{
+			name: "usage collection enabled and node is responsible - returns node and cluster info, no error",
+			setup: func(t *testing.T, kubeClient *fake.Clientset, lhClient *lhfake.Clientset, ds *datastore.DataStore) {
+				createBoolSetting(t, lhClient, types.SettingNameAllowCollectingLonghornUsage, "true")
+				createLonghornNode(t, lhClient, controllerID)
+			},
+			wantTags: map[string]any{
+				"kubernetesVersion": fakeGitVersion,
+				"longhornDistro":    "unknown",
+			},
+			wantFields: map[string]any{
+				"longhornNodeCount":              1,
+				"longhornVolumeNumberOfReplicas": 0,
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kubeClient := fake.NewSimpleClientset()
+			lhClient := lhfake.NewClientset()
+			extensionClient := apiextensionsfake.NewSimpleClientset()
+			metricsClient := metricsfake.NewSimpleClientset()
+
+			fd := kubeClient.Discovery().(*fakediscovery.FakeDiscovery)
+			fd.FakedServerVersion = &version.Info{GitVersion: fakeGitVersion}
+
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories)
+
+			logger, hook := test.NewNullLogger()
+			sc := &SettingController{
+				baseController: newBaseController("longhorn-setting", logger),
+				ds:             ds,
+				kubeClient:     kubeClient,
+				metricsClient:  metricsClient,
+				controllerID:   controllerID,
+				namespace:      TestNamespace,
+			}
+
+			if tc.setup != nil {
+				tc.setup(t, kubeClient, lhClient, ds)
+			}
+
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			informerFactories.Start(stopCh)
+			if !cache.WaitForCacheSync(stopCh,
+				informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().HasSynced,
+				informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().HasSynced,
+			) {
+				t.Fatal("failed to sync Longhorn informer caches")
+			}
+
+			gotTags, gotFields, err := sc.GetCheckUpgradeRequestExtraInfo()
+
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected an error, got nil")
+			}
+
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error: %s", err)
+			}
+
+			if tc.wantTags == nil {
+				if len(gotTags) != 0 {
+					t.Fatalf("expected no tags, got %d", len(gotTags))
+				}
+			} else {
+				for key, want := range tc.wantTags {
+					if got, ok := gotTags[key]; !ok || !reflect.DeepEqual(got, want) {
+						t.Errorf("unexpected tag %q: expected %v, got %v", key, want, got)
+					}
+				}
+			}
+
+			if tc.wantFields == nil {
+				if len(gotFields) != 0 {
+					t.Errorf("unexpected fields: expected empty map, got %v", gotFields)
+				}
+			} else {
+				for key, want := range tc.wantFields {
+					if got, ok := gotFields[key]; !ok || !reflect.DeepEqual(got, want) {
+						t.Errorf("unexpected field %q: expected %v, got %v", key, want, got)
+					}
+				}
+			}
+
+			for _, msg := range tc.wantLogSubStr {
+				found := false
+				for _, entry := range hook.AllEntries() {
+					if strings.Contains(entry.Message, msg) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					var msgs []string
+					for _, e := range hook.AllEntries() {
+						msgs = append(msgs, fmt.Sprintf("[%s] %s", e.Level, e.Message))
+					}
+					t.Errorf("expected a log entry containing %q, got: %v", msg, msgs)
+				}
+			}
+		})
+	}
+}
+
+func createBoolSetting(t *testing.T, lhClient *lhfake.Clientset, name types.SettingName, value string) {
+	t.Helper()
+	setting := newSetting(string(name), value)
+	if err := lhClient.Tracker().Add(setting); err != nil {
+		t.Fatalf("failed to add setting %s: %v", name, err)
+	}
+}
+
+func createLonghornNode(t *testing.T, lhClient *lhfake.Clientset, name string) {
+	t.Helper()
+	node := &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: TestNamespace},
+		Spec:       longhorn.NodeSpec{Name: name, AllowScheduling: true},
+		Status: longhorn.NodeStatus{
+			Conditions: []longhorn.Condition{
+				{Type: longhorn.NodeConditionTypeReady, Status: longhorn.ConditionStatusTrue},
+			},
+		},
+	}
+	if err := lhClient.Tracker().Add(node); err != nil {
+		t.Fatalf("failed to add node %s: %v", name, err)
 	}
 }

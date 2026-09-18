@@ -89,11 +89,8 @@ type Version struct {
 type CheckUpgradeRequest struct {
 	AppVersion string `json:"appVersion"`
 
-	ExtraTagInfo   CheckUpgradeExtraInfo `json:"extraTagInfo"`
-	ExtraFieldInfo CheckUpgradeExtraInfo `json:"extraFieldInfo"`
-}
-
-type CheckUpgradeExtraInfo interface {
+	ExtraTagInfo   map[string]any `json:"extraTagInfo"`
+	ExtraFieldInfo map[string]any `json:"extraFieldInfo"`
 }
 
 type CheckUpgradeResponse struct {
@@ -1508,7 +1505,7 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 	return nil
 }
 
-func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (extraTagInfo CheckUpgradeExtraInfo, extraFieldInfo CheckUpgradeExtraInfo, err error) {
+func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (map[string]any, map[string]any, error) {
 	clusterInfo := &ClusterInfo{
 		logger:        sc.logger,
 		ds:            sc.ds,
@@ -1522,15 +1519,9 @@ func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (extraTagInfo Che
 		namespace:    sc.namespace,
 	}
 
-	defer func() {
-		extraTagInfo = clusterInfo.structFields.tags.NewStruct()
-		extraFieldInfo = clusterInfo.structFields.fields.NewStruct()
-	}()
-
 	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
 	if err != nil {
-		err = errors.Wrap(err, "failed to get Kubernetes server version")
-		return
+		return nil, nil, errors.Wrap(err, "failed to get Kubernetes server version")
 	}
 	clusterInfo.structFields.tags.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
 
@@ -1540,22 +1531,23 @@ func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (extraTagInfo Che
 		return nil, nil, nil
 	}
 
-	if !allowCollectingUsage {
-		return
+	if allowCollectingUsage {
+		clusterInfo.collectNodeScope()
+
+		responsibleNodeID, err := getResponsibleNodeID(sc.ds)
+		if err != nil {
+			sc.logger.WithError(err).Warn("Failed to get responsible Node for extra info collection")
+			return nil, nil, nil
+		}
+		if responsibleNodeID == sc.controllerID {
+			clusterInfo.collectClusterScope()
+		}
 	}
 
-	clusterInfo.collectNodeScope()
+	extraTagInfo := clusterInfo.structFields.tags.ToMap()
+	extraFieldInfo := clusterInfo.structFields.fields.ToMap()
 
-	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
-	if err != nil {
-		sc.logger.WithError(err).Warn("Failed to get responsible Node for extra info collection")
-		return nil, nil, nil
-	}
-	if responsibleNodeID == sc.controllerID {
-		clusterInfo.collectClusterScope()
-	}
-
-	return
+	return extraTagInfo, extraFieldInfo, nil
 }
 
 // Cluster Scope Info: will be sent from one of the Longhorn cluster nodes
