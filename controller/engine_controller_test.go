@@ -4,17 +4,24 @@ import (
 	"io"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
+
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
 
 // mockEngineClientProxy wraps EngineSimulator and overrides ReplicaRebuildVerify for test control.
@@ -284,6 +291,82 @@ func TestVerifyCompletedRebuild(t *testing.T) {
 
 			newMonitor().verifyCompletedRebuild(engine, tc.addressReplicaMap, tc.rebuildStatus, proxy)
 			assert.ElementsMatch(tc.expectVerified, proxy.verifyCalled, "ReplicaRebuildVerify call mismatch")
+		})
+	}
+}
+
+// countingPurgeProxy wraps EngineSimulator and fails SnapshotPurge a fixed
+// number of times before succeeding, to exercise startPostRebuildPurge's retry.
+type countingPurgeProxy struct {
+	*engineapi.EngineSimulator
+	failCount int
+	calls     int
+}
+
+var _ engineapi.EngineClientProxy = (*countingPurgeProxy)(nil)
+
+func (p *countingPurgeProxy) Close() {}
+
+func (p *countingPurgeProxy) SnapshotPurge(_ engineapi.DataEngineObject) error {
+	p.calls++
+	if p.calls <= p.failCount {
+		return errors.New("transient failure")
+	}
+	return nil
+}
+
+// TestStartPostRebuildPurgeRetriesOnFailure guards against the regression in
+// https://github.com/longhorn/longhorn/issues/12229: unlike the pre-rebuild
+// purge (which gets retried for free on the next reconcile of an incomplete
+// rebuild), a failed post-rebuild purge start previously had no retry at all.
+func TestStartPostRebuildPurgeRetriesOnFailure(t *testing.T) {
+	origInterval, origTimeout := EnginePollInterval, EnginePollTimeout
+	EnginePollInterval = time.Millisecond
+	EnginePollTimeout = 50 * time.Millisecond
+	defer func() {
+		EnginePollInterval = origInterval
+		EnginePollTimeout = origTimeout
+	}()
+
+	datastore.SkipListerCheck = true
+	kubeClient := fake.NewSimpleClientset()             // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()              // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+	log := logrus.NewEntry(logger)
+
+	vol := newVolume(TestVolumeName, 1)
+	engine := newEngineForVolume(vol)
+
+	tests := map[string]struct {
+		failCount   int
+		expectCalls int
+	}{
+		"succeeds on first attempt": {failCount: 0, expectCalls: 1},
+		"retries after transient failures then succeeds": {failCount: 2, expectCalls: 3},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			proxy := &countingPurgeProxy{
+				EngineSimulator: &engineapi.EngineSimulator{},
+				failCount:       tc.failCount,
+			}
+			ec := &EngineController{
+				ds:                        ds,
+				snapshotConcurrentLimiter: NewSnapshotConcurrentLimiter(),
+				eventRecorder:             record.NewFakeRecorder(10),
+			}
+
+			ec.startPostRebuildPurge(log, engine, proxy)
+
+			assert.Equal(tc.expectCalls, proxy.calls, "SnapshotPurge call count mismatch")
 		})
 	}
 }
