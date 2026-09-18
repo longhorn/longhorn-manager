@@ -27,6 +27,8 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+const kubernetesNodeCleanupRetryInterval = 30 * time.Second
+
 type KubernetesNodeController struct {
 	*baseController
 
@@ -188,7 +190,36 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 
 	if kubeNode == nil {
 		knc.logger.Infof("Cleaning up Longhorn node %v since failed to find the related kubernetes node", name)
+		node, err := knc.ds.GetNode(name)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		// The node admission webhook rejects deletion while scheduling is
+		// enabled. Disable it first and let the resulting node update enqueue
+		// another reconciliation that performs the deletion.
+		if node.Spec.AllowScheduling {
+			node.Spec.AllowScheduling = false
+			if _, err := knc.ds.UpdateNode(node); err != nil {
+				if datastore.ErrorIsNotFound(err) {
+					return nil
+				}
+				return err
+			}
+			return nil
+		}
+
 		if err := knc.ds.DeleteNode(name); err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				return nil
+			}
+			// Replicas or engines can block deletion beyond the normal error
+			// retry budget, and their cleanup may not generate a node event.
+			// Keep a delayed retry even after handleErr forgets the key.
+			knc.queue.AddAfter(key, kubernetesNodeCleanupRetryInterval)
 			return err
 		}
 		return nil
