@@ -1,17 +1,25 @@
 #!/bin/bash
 
-PROC_DIR="/host/proc"
+PROC_DIR="${PROC_DIR:-/host/proc}"
+NSENTER_BIN="${NSENTER_BIN:-nsenter}"
 
 os_distro_talos="talos"
 os_distro=""
 
 get_os_distro() {
-  local version_info=$(< $PROC_DIR/version)
+  local version_info
+  version_info=$(< "$PROC_DIR/version")
 
   [[ $version_info =~ $os_distro_talos ]] && os_distro=$os_distro_talos
 }
 
 target_pid=1
+
+host_root=false
+if [ "${1:-}" = "--host-root" ]; then
+  host_root=true
+  shift
+fi
 
 get_pid() {
   local process_name=$1
@@ -19,7 +27,7 @@ get_pid() {
   local status_file
   local name
 
-  for dir in $PROC_DIR/*/; do
+  for dir in "$PROC_DIR"/*/; do
     name=""
     pid=$(basename "$dir")
     status_file="$PROC_DIR/$pid/status"
@@ -42,7 +50,7 @@ get_pid() {
 
 get_os_distro
 
-[[ $os_distro = $os_distro_talos ]] && get_pid "kubelet"
+[[ $os_distro = "$os_distro_talos" ]] && get_pid "kubelet"
 
 # Use namespace files instead of -t to avoid the need for HostPID.
 ns_dir="$PROC_DIR/$target_pid/ns"
@@ -50,4 +58,9 @@ ns_mnt="$ns_dir/mnt"
 ns_net="$ns_dir/net"
 ns_uts="$ns_dir/uts"
 
-nsenter --mount="$ns_mnt" --net="$ns_net" --uts="$ns_uts" -- "$@"
+if [ "$host_root" = true ]; then
+  "$NSENTER_BIN" --mount="$ns_mnt" --net="$ns_net" --uts="$ns_uts" \
+    --root="$PROC_DIR/$target_pid/root" --wd=/ -- "$@"
+else
+  "$NSENTER_BIN" --mount="$ns_mnt" --net="$ns_net" --uts="$ns_uts" -- "$@"
+fi
