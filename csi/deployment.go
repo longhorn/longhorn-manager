@@ -65,10 +65,13 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
-			// A full-copy clone is provisioned before its data is copied, so
-			// ControllerPublishVolume is rejected with "not ready for workloads"
-			// until the copy finishes. The default retry cap of 5m means the
-			// volume can sit idle for most of that after it becomes ready.
+			// Some special volume provisioning methods, like full-copy clone or
+			// restore, take time to pull data from an external source. Before the
+			// data copy finishes, the volume is not ready for workloads.
+			// ControllerPublishVolume will be rejected and retried multiple times
+			// with error "not ready for workloads" during this period.
+			// Using a small max retry interval helps reduce the volume idle time
+			// after it becomes ready.
 			"--retry-interval-max=1m",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
@@ -188,6 +191,14 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
+			// Some special volume provisioning methods, like full-copy clone or
+			// restore, take time to pull data from an external source. Before the
+			// data copy finishes, the volume is not ready for workloads.
+			// ControllerExpandVolume will be rejected and retried multiple times
+			// during this period.
+			// Using a small max retry interval helps reduce the volume idle time
+			// after it becomes ready.
+			"--retry-interval-max=1m",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
