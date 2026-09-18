@@ -342,6 +342,17 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol.TopologyRequirement = topologyTerms
 
+	antiAffinityFromPod, err := cs.apiClient.Setting.ById(string(types.SettingNameVolumeAntiAffinityFromPod))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameVolumeAntiAffinityFromPod, err)
+	}
+	if types.IsVolumeAntiAffinityFromPodEnabled(longhorn.VolumeAntiAffinityFromPod(vol.VolumeAntiAffinityFromPod), antiAffinityFromPod.Value == "true") {
+		// The manager derives the anti-affinity from the pod once the PV is
+		// bound; until then replica scheduling is held so the first placement
+		// already honors it.
+		vol.VolumeAntiAffinity = &longhornclient.VolumeAntiAffinity{PendingInheritance: true}
+	}
+
 	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters, vol.DataEngine); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}

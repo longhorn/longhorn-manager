@@ -135,6 +135,10 @@ type Volume struct {
 
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved,omitempty" yaml:"unmap_mark_snap_chain_removed,omitempty"`
 
+	VolumeAntiAffinity *VolumeAntiAffinity `json:"volumeAntiAffinity,omitempty" yaml:"volume_anti_affinity,omitempty"`
+
+	VolumeAntiAffinityFromPod string `json:"volumeAntiAffinityFromPod,omitempty" yaml:"volume_anti_affinity_from_pod,omitempty"`
+
 	VolumeAttachment VolumeAttachment `json:"volumeAttachment,omitempty" yaml:"volume_attachment,omitempty"`
 }
 
