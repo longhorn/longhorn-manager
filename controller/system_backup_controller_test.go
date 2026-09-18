@@ -180,6 +180,90 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			expectState:               longhorn.SystemBackupStateBackingImageBackup,
 			expectNewVolumBackupCount: 1,
 		},
+		"system backup create volume backup if-not-present when an older snapshot has no new data": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Status: longhorn.VolumeStatus{
+						LastBackup: "exists",
+					},
+				},
+			},
+			existBackups: map[string]*longhorn.Backup{
+				"exists": {
+					Status: longhorn.BackupStatus{
+						State:        longhorn.BackupStateCompleted,
+						SnapshotName: "exists",
+						VolumeName:   TestVolumeName,
+					},
+				},
+			},
+			existSnapshots: map[string]*longhorn.Snapshot{
+				"exists": {
+					ObjectMeta: metav1.ObjectMeta{Name: "exists"},
+					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+					Status: longhorn.SnapshotStatus{
+						ReadyToUse:   true,
+						Size:         1,
+						CreationTime: metav1.Now().Format(time.RFC3339),
+					},
+				},
+				"older": {
+					ObjectMeta: metav1.ObjectMeta{Name: "older"},
+					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+					Status: longhorn.SnapshotStatus{
+						ReadyToUse:   true,
+						Size:         1,
+						CreationTime: metav1.NewTime(time.Now().Add(-time.Hour)).Format(time.RFC3339),
+					},
+				},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 0,
+		},
+		"system backup create volume backup if-not-present when another snapshot creationTime is not set": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Status: longhorn.VolumeStatus{
+						LastBackup: "exists",
+					},
+				},
+			},
+			existBackups: map[string]*longhorn.Backup{
+				"exists": {
+					Status: longhorn.BackupStatus{
+						State:        longhorn.BackupStateCompleted,
+						SnapshotName: "exists",
+						VolumeName:   TestVolumeName,
+					},
+				},
+			},
+			existSnapshots: map[string]*longhorn.Snapshot{
+				"exists": {
+					ObjectMeta: metav1.ObjectMeta{Name: "exists"},
+					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+					Status: longhorn.SnapshotStatus{
+						ReadyToUse:   true,
+						Size:         1,
+						CreationTime: metav1.Now().Format(time.RFC3339),
+					},
+				},
+				"leftover": {
+					ObjectMeta: metav1.ObjectMeta{Name: "leftover"},
+					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+					Status: longhorn.SnapshotStatus{
+						ReadyToUse: true,
+						Size:       1,
+						// CreationTime is not set
+					},
+				},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
+		},
 		"system backup create volume backup always": {
 			state:              longhorn.SystemBackupStateVolumeBackup,
 			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyAlways,
@@ -361,7 +445,12 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 					fakeSystemRolloutSnapshot(existBackupSnap, c, informerFactories.LhInformerFactory, lhClient)
 				}
 			}
-			backups, _ := systemBackupController.BackupVolumes(systemBackup)
+			backups, err := systemBackupController.BackupVolumes(systemBackup)
+			if tc.expectError {
+				c.Assert(err, NotNil)
+			} else {
+				c.Assert(err, IsNil)
+			}
 
 			for _, backup := range backups {
 				backup.Status.State = longhorn.BackupStateCompleted
