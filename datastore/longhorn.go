@@ -2346,6 +2346,23 @@ func (s *DataStore) ListEngineFrontendsByVolumeRO(volumeName string) ([]*longhor
 	return s.listEngineFrontendsRO(selector)
 }
 
+// ListEngineFrontendsByNodeRO returns a list of all EngineFrontends whose initiator belongs
+// to the given node.
+// The list contains direct references to the internal cache objects and should not be mutated.
+func (s *DataStore) ListEngineFrontendsByNodeRO(nodeID string) ([]*longhorn.EngineFrontend, error) {
+	engineFrontends, err := s.engineFrontendLister.EngineFrontends(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	result := []*longhorn.EngineFrontend{}
+	for _, ef := range engineFrontends {
+		if ef.Spec.NodeID == nodeID {
+			result = append(result, ef)
+		}
+	}
+	return result, nil
+}
+
 func (s *DataStore) listEngineFrontendsRO(selector labels.Selector) ([]*longhorn.EngineFrontend, error) {
 	list, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: selector.String(),
