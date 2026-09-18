@@ -72,18 +72,21 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 		backupURL, backupTarget, backupVolumeName, envs, concurrentLimit, needCorrectEncryptedVolumeSize)
 }
 
-func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error) {
+func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (*BackupRestoreStatusInfo, error) {
 	recv, err := p.grpcClient.BackupRestoreStatus(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
 		p.DirectToURL(e))
 	if err != nil {
 		return nil, err
 	}
 
-	status = map[string]*longhorn.RestoreStatus{}
-	for k, v := range recv {
-		status[k] = (*longhorn.RestoreStatus)(v)
+	info := &BackupRestoreStatusInfo{
+		ReplicaStatuses: map[string]*longhorn.RestoreStatus{},
+		EngineError:     recv.EngineError,
 	}
-	return status, nil
+	for k, v := range recv.Status {
+		info.ReplicaStatuses[k] = (*longhorn.RestoreStatus)(v)
+	}
+	return info, nil
 }
 
 func (p *Proxy) CleanupBackupMountPoints() (err error) {
