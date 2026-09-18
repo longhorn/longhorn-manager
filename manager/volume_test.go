@@ -75,10 +75,17 @@ func TestExpandDefersAffectedV2VolumeDuringLiveUpgrade(t *testing.T) {
 				Spec: longhorn.VolumeSpec{
 					Size:       2 * 1024 * 1024 * 1024,
 					DataEngine: longhorn.DataEngineTypeV2,
+					NodeID:     "node-a",
 				},
 				Status: longhorn.VolumeStatus{
 					State:         state,
 					CurrentNodeID: "node-a",
+					Conditions: []longhorn.Condition{
+						{
+							Type:   string(longhorn.VolumeConditionTypeScheduled),
+							Status: longhorn.ConditionStatusTrue,
+						},
+					},
 				},
 			}
 			if _, err := lhClient.LonghornV1beta2().Volumes("default").Create(context.TODO(), volume, metav1.CreateOptions{}); err != nil {
