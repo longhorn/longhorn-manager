@@ -589,6 +589,42 @@ func getDiskFormat(devicePath string) (string, error) {
 	return m.GetDiskFormat(devicePath)
 }
 
+// checkDeviceReadable verifies that the block device can be read before
+// allowing filesystem initialization.
+//
+// The existence of a device node does not guarantee that the underlying
+// Longhorn data path is healthy. If the block device is temporarily
+// unreadable, filesystem probing may incorrectly report the device as
+// unformatted and SafeFormatAndMount may enter the formatting path.
+func checkDeviceReadable(devicePath string) error {
+	device, err := os.Open(devicePath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open device %v", devicePath)
+	}
+	defer func() {
+		if err := device.Close(); err != nil {
+			logrus.WithError(err).Warnf("Failed to close device %v", devicePath)
+		}
+	}()
+
+	// Reading the first block is sufficient here because the purpose is only
+	// to distinguish an unavailable block device from a genuinely empty device.
+	// Filesystem validation is still handled by mount-utils.
+	buf := make([]byte, 4096)
+
+	// Per the io.ReaderAt contract, a partial read that does not fill the
+	// buffer still returns a non-nil error (e.g. io.EOF). Only treat the
+	// device as unreadable when zero bytes could be read, which indicates
+	// the data path is unavailable rather than the device being merely
+	// smaller than the probe size.
+	n, err := device.ReadAt(buf, 0)
+	if n == 0 && err != nil {
+		return errors.Wrapf(err, "failed to read device %v", devicePath)
+	}
+
+	return nil
+}
+
 func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, error) {
 	var statfs unix.Statfs_t
 	// See http://man7.org/linux/man-pages/man2/statfs.2.html for details.

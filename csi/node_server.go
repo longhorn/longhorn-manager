@@ -578,6 +578,34 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem %v format: %v", devicePath, err)
 	}
 
+	// If filesystem detection reports an empty format, verify that the device
+	// is actually readable before treating it as a new volume.
+	//
+	// blkid can return "no filesystem found" when the underlying Longhorn
+	// data path is temporarily unavailable. Without this check, the volume
+	// may incorrectly enter the initialization path (mkfs/encryption) even
+	// though it already contains user data.
+	//
+	// Aborted rather than Internal: an unreadable device is usually a
+	// transient data path failure. Per the CSI spec, Aborted signals a
+	// retryable condition so kubelet backs off and retries, and it stays
+	// distinguishable from an Internal blkid execution failure.
+	if diskFormat == "" {
+		if err := checkDeviceReadable(devicePath); err != nil {
+			log.WithError(err).Warnf(
+				"Volume %v device %v probed as unformatted but unreadable; "+
+					"refusing to format to avoid potential data loss",
+				volumeID, devicePath)
+			return nil, status.Errorf(
+				codes.Aborted,
+				"device %v is not readable, refusing to initialize volume %v: %v",
+				devicePath,
+				volumeID,
+				err,
+			)
+		}
+	}
+
 	dataEngine := volume.DataEngine
 	log.Infof("Volume %v (%v) device %v contains filesystem of format %v", volumeID, dataEngine, devicePath, diskFormat)
 
