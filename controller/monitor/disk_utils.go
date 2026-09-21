@@ -87,7 +87,8 @@ func getDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDr
 		err = fmt.Errorf("unknown disk type %v", diskType)
 	}
 
-	return healthData, time.Now(), err
+	// Second precision, matching the value decoded from the Node CR.
+	return healthData, time.Now().Truncate(time.Second), err
 }
 
 func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
