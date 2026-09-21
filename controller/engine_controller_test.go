@@ -5,11 +5,15 @@ import (
 	"io"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/client-go/util/flowcontrol"
+
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
+	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -184,3 +188,138 @@ func TestShouldAllowEngineImageUpgrade(t *testing.T) {
 		})
 	}
 }
+<<<<<<< HEAD
+=======
+
+func TestVerifyCompletedRebuild(t *testing.T) {
+	newMonitor := func() *EngineMonitor {
+		logger := logrus.New()
+		logger.Out = io.Discard
+		return &EngineMonitor{logger: logger}
+	}
+
+	const (
+		replicaRW = "replica-rw"
+		replicaWO = "replica-wo"
+		addrRW    = "10.0.0.1:10000"
+		addrWO    = "10.0.0.2:10000"
+		urlRW     = "tcp://" + addrRW
+		urlWO     = "tcp://" + addrWO
+	)
+
+	type testCase struct {
+		rebuildStatus     map[string]*longhorn.RebuildStatus
+		replicaModeMap    map[string]longhorn.ReplicaMode
+		addressReplicaMap map[string]string
+		verifyErr         error
+		expectVerified    []string // replica names we expect ReplicaRebuildVerify to be called for
+	}
+
+	tests := map[string]testCase{
+		// The core fix: replica finished rebuilding while the gRPC connection to the sync agent
+		// was interrupted. reloadAndVerify was never called, so the replica is stuck in WO.
+		"completed rebuild with WO replica triggers verify": {
+			rebuildStatus: map[string]*longhorn.RebuildStatus{
+				urlWO: {State: engineapi.ProcessStateComplete, IsRebuilding: false},
+			},
+			replicaModeMap:    map[string]longhorn.ReplicaMode{replicaWO: longhorn.ReplicaModeWO},
+			addressReplicaMap: map[string]string{addrWO: replicaWO},
+			expectVerified:    []string{replicaWO},
+		},
+		// Rebuild still in progress — must not call verify yet.
+		"in-progress rebuild is skipped": {
+			rebuildStatus: map[string]*longhorn.RebuildStatus{
+				urlWO: {State: engineapi.ProcessStateInProgress, IsRebuilding: true},
+			},
+			replicaModeMap:    map[string]longhorn.ReplicaMode{replicaWO: longhorn.ReplicaModeWO},
+			addressReplicaMap: map[string]string{addrWO: replicaWO},
+			expectVerified:    nil,
+		},
+		// Replica already in RW (normal rebuild path succeeded) — must not call verify again.
+		"completed rebuild with RW replica is skipped": {
+			rebuildStatus: map[string]*longhorn.RebuildStatus{
+				urlRW: {State: engineapi.ProcessStateComplete, IsRebuilding: false},
+			},
+			replicaModeMap:    map[string]longhorn.ReplicaMode{replicaRW: longhorn.ReplicaModeRW},
+			addressReplicaMap: map[string]string{addrRW: replicaRW},
+			expectVerified:    nil,
+		},
+		// Verify fails (e.g. connection still flaky) — must only warn, not return error,
+		// so the next monitor poll cycle can retry instead of setting the replica to ERR.
+		"verify failure is logged but not returned": {
+			rebuildStatus: map[string]*longhorn.RebuildStatus{
+				urlWO: {State: engineapi.ProcessStateComplete, IsRebuilding: false},
+			},
+			replicaModeMap:    map[string]longhorn.ReplicaMode{replicaWO: longhorn.ReplicaModeWO},
+			addressReplicaMap: map[string]string{addrWO: replicaWO},
+			verifyErr:         errors.New("connection refused"),
+			expectVerified:    []string{replicaWO},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			proxy := &mockEngineClientProxy{
+				EngineSimulator: &engineapi.EngineSimulator{},
+				verifyErr:       tc.verifyErr,
+			}
+			engine := &longhorn.Engine{
+				Status: longhorn.EngineStatus{
+					ReplicaModeMap: tc.replicaModeMap,
+				},
+			}
+
+			newMonitor().verifyCompletedRebuild(engine, tc.addressReplicaMap, tc.rebuildStatus, proxy)
+			assert.ElementsMatch(tc.expectVerified, proxy.verifyCalled, "ReplicaRebuildVerify call mismatch")
+		})
+	}
+}
+
+func TestHandleRestoreError(t *testing.T) {
+	const replicaAddress = "tcp://10.0.0.1:10000"
+	const lockConflictMessage = "failed to restore backup data cifs://backup-target?backup=backup-1&volume=volume-1: rpc error: code = Unknown desc = error starting backup restore: error initiating incremental backup restore: failed to acquire lock backupstore/volumes/aa/bb/volume-1/locks/lock-1234.lck when performing backup create/restore, please try again later"
+	const terminalMessage = "failed to restore backup data: checksum mismatch"
+
+	tests := map[string]struct {
+		message         string
+		expectError     string
+		expectInBackoff bool
+	}{
+		// A concurrent deletion/retention lock only blocks the restore temporarily. Recording it
+		// would fail every restoring replica and leave the DR volume Faulted.
+		"backupstore lock conflict is retried": {
+			message:         lockConflictMessage,
+			expectError:     "",
+			expectInBackoff: true,
+		},
+		"terminal restore error is recorded": {
+			message:         terminalMessage,
+			expectError:     replicaAddress + ": " + terminalMessage,
+			expectInBackoff: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			engine := &longhorn.Engine{}
+			engine.Name = "engine"
+			backoff := flowcontrol.NewBackOff(time.Second, time.Minute)
+			rsMap := map[string]*longhorn.RestoreStatus{replicaAddress: {}}
+
+			err := imclient.TaskError{ReplicaErrors: []imclient.ReplicaError{
+				{Address: replicaAddress, Message: tc.message},
+			}}
+
+			assert.NoError(handleRestoreError(logger, engine, rsMap, backoff, err))
+			assert.Equal(tc.expectError, rsMap[replicaAddress].Error, "restore status error")
+			assert.Equal(tc.expectInBackoff, backoff.IsInBackOffSinceUpdate(engine.Name, time.Now()), "restore backoff")
+		})
+	}
+}
+>>>>>>> 8bb4b30 (fix(restore): retry restore on backupstore lock conflict)

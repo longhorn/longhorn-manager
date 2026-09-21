@@ -31,6 +31,12 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+<<<<<<< HEAD
+=======
+	"github.com/longhorn/backupstore"
+
+	lhtypes "github.com/longhorn/go-common-libs/types"
+>>>>>>> 8bb4b30 (fix(restore): retry restore on backupstore lock conflict)
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -1640,8 +1646,12 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 }
 
 func isReplicaRestoreFailedLockError(err *imclient.ReplicaError) bool {
-	failedLock := regexp.MustCompile(restoreGetLockFailedPatternMsg)
-	return failedLock.MatchString(err.Error())
+	if backupstore.IsLockConflictError(err) {
+		return true
+	}
+
+	// Engines predating the backupstore lock error rework report the conflict this way.
+	return regexp.MustCompile(restoreGetLockFailedPatternMsg).MatchString(err.Error())
 }
 
 func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, backoff *flowcontrol.Backoff, err error) error {
