@@ -1574,9 +1574,14 @@ const (
 	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
 	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
 
-	ClusterInfoV2DataEngineCPUCores        = util.StructName("LonghornV2DataEngineCpuCores")
-	ClusterInfoV2DataEngineHugepageSize    = util.StructName("LonghornV2DataEngineHugepageSize")
-	ClusterInfoV2DataEngineHugepageEnabled = util.StructName("LonghornV2DataEngineHugepageEnabled")
+	ClusterInfoV2DataEngineCPUCores             = util.StructName("LonghornV2DataEngineCpuCores")
+	ClusterInfoV2DataEngineHugepageSize         = util.StructName("LonghornV2DataEngineHugepageSize")
+	ClusterInfoV2DataEngineHugepageEnabled      = util.StructName("LonghornV2DataEngineHugepageEnabled")
+	ClusterInfoV2DataEngineInterruptModeEnabled = util.StructName("LonghornV2DataEngineInterruptModeEnabled")
+	ClusterInfoV2DataEngineCPUIsolationEnabled  = util.StructName("LonghornV2DataEngineCPUIsolationEnabled")
+	ClusterInfoV2DataEngineIobufSmallPoolSize   = util.StructName("LonghornV2DataEngineIobufSmallPoolSize")
+	ClusterInfoV2DataEngineIobufLargePoolSize   = util.StructName("LonghornV2DataEngineIobufLargePoolSize")
+	ClusterInfoV2DataEngineNumberOfCPUCores     = util.StructName("LonghornV2DataEngineNumberOfCPUCores")
 
 	ClusterInfoBackupTargetSchemeCountFmt                            = "LonghornBackupTarget%sCount"
 	ClusterInfoPodAvgCPUUsageFmt                                     = "Longhorn%sAverageCpuUsageMilliCores"
@@ -2248,6 +2253,41 @@ func (info *ClusterInfo) collectV2DataEngineInfo() error {
 		info.logger.WithError(err).Warn("Failed to get V2 data engine hugepage enabled setting")
 	} else {
 		info.structFields.tags.Append(ClusterInfoV2DataEngineHugepageEnabled, fmt.Sprint(hugepageEnabled))
+	}
+
+	interruptModeEnabled, err := info.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine interrupt mode enabled setting")
+	} else {
+		info.structFields.tags.Append(ClusterInfoV2DataEngineInterruptModeEnabled, fmt.Sprint(interruptModeEnabled))
+	}
+
+	cpuIsolationEnabled, err := info.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine CPU isolation enabled setting")
+	} else {
+		info.structFields.tags.Append(ClusterInfoV2DataEngineCPUIsolationEnabled, fmt.Sprint(cpuIsolationEnabled))
+	}
+
+	iobufSmallPoolSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer small pool size setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufSmallPoolSize, int(iobufSmallPoolSize))
+	}
+
+	iobufLargePoolSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer large pool size setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufLargePoolSize, int(iobufLargePoolSize))
+	}
+
+	numberOfCPUCores, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine number of CPU cores setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineNumberOfCPUCores, int(numberOfCPUCores))
 	}
 
 	return nil
