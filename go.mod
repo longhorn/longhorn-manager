@@ -66,14 +66,14 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.1
-	github.com/longhorn/backupstore v0.0.0-20260820153238-ab5179ec9ca0
+	github.com/longhorn/backupstore v0.0.0-20260922010936-57b3845ad4ef
 	github.com/longhorn/go-common-libs v0.0.0-20260907073218-e53e6775eb8a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.9.1-0.20260907084552-730dfff4eda5
-	github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20260909015656-facebbbbaabd
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260909005100-6bcae6bf7407
+	github.com/longhorn/go-spdk-helper v0.10.1-0.20260921021616-6102449746a0
+	github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20260922023504-2674a90d4718
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20260922031808-e6c4585cdd01
 	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260906102010-f611adc51225
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260909081303-a8855eeeda66
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20260922025759-d89a5378b0db
 	github.com/longhorn/types v0.0.0-20260907075641-298b8746fcde
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
@@ -190,7 +190,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.26 // indirect
+	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
