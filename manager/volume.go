@@ -722,11 +722,25 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 		engine = e
 	}
 
-	if engine.Status.IsExpanding {
-		return nil, fmt.Errorf("the engine expansion is in progress")
+	if types.IsVolumeExpansionStarted(v) {
+		return nil, fmt.Errorf("the expansion has already started")
 	}
-	if engine.Status.CurrentSize == v.Spec.Size {
-		return nil, fmt.Errorf("the engine expansion is already complete")
+
+	// Keep this check for expansions that started before the ExpansionStarted
+	// condition was introduced.
+	if engine.Spec.VolumeSize >= v.Spec.Size {
+		return nil, fmt.Errorf("cannot cancel expansion after engine spec size is updated (engineSpec=%v, volumeSpec=%v)", engine.Spec.VolumeSize, v.Spec.Size)
+	}
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		efs, err := m.ds.ListVolumeEngineFrontends(v.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list engine frontends for volume %v: %v", v.Name, err)
+		}
+		for _, ef := range efs {
+			if ef.Spec.VolumeSize >= v.Spec.Size || ef.Spec.Size >= v.Spec.Size {
+				return nil, fmt.Errorf("cannot cancel expansion after engine frontend spec size is updated (engineFrontend=%v, volumeSpec=%v)", ef.Name, v.Spec.Size)
+			}
+		}
 	}
 
 	previousSize := v.Spec.Size

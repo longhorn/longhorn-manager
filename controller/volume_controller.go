@@ -2267,6 +2267,8 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		if expansionComplete {
 			v.Status.ExpansionRequired = false
 			v.Status.FrontendDisabled = false
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				longhorn.VolumeConditionTypeExpansionStarted, longhorn.ConditionStatusFalse, "", "")
 		}
 	}
 
@@ -3068,15 +3070,17 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			return err
 		}
 		if ef != nil {
-			ef.Spec.VolumeSize = v.Spec.Size
-			// Always propagate the target size to the EF so the EF
-			// monitor can detect that expansion is needed and trigger
-			// EngineFrontendExpand (which expands replicas -> engine ->
-			// frontend).  The createEngineFrontend function already
-			// creates the SPDK EF at the pre-expansion size, so
-			// ef.Status.CurrentSize will correctly reflect the actual
-			// device size until expansion completes.
-			ef.Spec.Size = v.Spec.Size
+			if shouldPropagateVolumeSizeToEngineFrontend(v, e) {
+				ef.Spec.VolumeSize = v.Spec.Size
+				// Always propagate the target size to the EF so the EF
+				// monitor can detect that expansion is needed and trigger
+				// EngineFrontendExpand (which expands replicas -> engine ->
+				// frontend).  The createEngineFrontend function already
+				// creates the SPDK EF at the pre-expansion size, so
+				// ef.Status.CurrentSize will correctly reflect the actual
+				// device size until expansion completes.
+				ef.Spec.Size = v.Spec.Size
+			}
 			// Only set EngineFrontend to running when Engine is actually running
 			// so we have the TargetIP available.
 			// For DR volumes (frontend disabled or empty), bypass the Port check
@@ -3210,8 +3214,10 @@ func (c *VolumeController) openVolumeDependentResourcesEC(v *longhorn.Volume, e 
 		return err
 	}
 	if ef != nil {
-		ef.Spec.VolumeSize = v.Spec.Size
-		ef.Spec.Size = v.Spec.Size
+		if shouldPropagateVolumeSizeToEngineFrontend(v, e) {
+			ef.Spec.VolumeSize = v.Spec.Size
+			ef.Spec.Size = v.Spec.Size
+		}
 		if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" &&
 			(e.Status.Port != 0 || v.Status.FrontendDisabled || v.Spec.Frontend == longhorn.VolumeFrontendEmpty || v.Spec.Frontend == longhorn.VolumeFrontendUblk) {
 			ef.Spec.NodeID = v.Spec.NodeID
@@ -3481,6 +3487,10 @@ func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volu
 func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) error {
 	log := getLoggerForVolume(c.logger, v)
 
+	if e == nil {
+		return nil
+	}
+
 	if e.Status.SnapshotsError == "" {
 		actualSize := int64(0)
 		for _, snapshot := range e.Status.Snapshots {
@@ -3494,7 +3504,17 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		v.Status.ActualSize = actualSize
 	}
 
-	if e == nil {
+	if e.Spec.VolumeSize < v.Spec.Size && !types.IsVolumeExpansionStarted(v) {
+		v.Status.ExpansionRequired = true
+	}
+
+	if e.Spec.VolumeSize == v.Spec.Size && e.Status.CurrentSize == v.Spec.Size &&
+		v.Status.ExpansionRequired && !types.IsVolumeExpansionStarted(v) {
+		v.Status.ExpansionRequired = false
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeExpansionStarted, longhorn.ConditionStatusFalse, "", "")
+		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonCanceledExpansion,
+			"Canceled expanding the volume %v, will automatically detach it", v.Name)
 		return nil
 	}
 
@@ -3506,6 +3526,13 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		}
 		log.Infof("Expanding EC volume from size %v to size %v", e.Spec.VolumeSize, v.Spec.Size)
 		v.Status.ExpansionRequired = true
+		claimed, err := c.claimVolumeExpansion(v)
+		if err != nil {
+			return err
+		}
+		if claimed {
+			return nil
+		}
 		e.Spec.VolumeSize = v.Spec.Size
 		ef, err := pickCurrentEngineFrontend(v, efs)
 		if err != nil {
@@ -3560,6 +3587,8 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	}
 	if expansionCanceledOrNotStarted {
 		v.Status.ExpansionRequired = false
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeExpansionStarted, longhorn.ConditionStatusFalse, "", "")
 		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonCanceledExpansion,
 			"Canceled expanding the volume %v, will automatically detach it", v.Name)
 	} else {
@@ -3575,6 +3604,13 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		}
 		log.Infof("Expanding volume from size %v to size %v", e.Spec.VolumeSize, v.Spec.Size)
 		v.Status.ExpansionRequired = true
+		claimed, err := c.claimVolumeExpansion(v)
+		if err != nil {
+			return err
+		}
+		if claimed {
+			return nil
+		}
 	}
 
 	e.Spec.VolumeSize = v.Spec.Size
@@ -6614,6 +6650,12 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	if err != nil {
 		return err
 	}
+	// Do not start or continue a switchover while an expansion is pending.
+	// The spec-size check covers the first reconciliation after an expansion
+	// request, before reconcileVolumeSize records ExpansionRequired.
+	if v.Status.ExpansionRequired || currentEngine.Spec.VolumeSize < v.Spec.Size {
+		return nil
+	}
 	if currentEngine.Spec.NodeID != "" {
 		v.Status.CurrentEngineNodeID = currentEngine.Spec.NodeID
 	}
@@ -7577,4 +7619,26 @@ func (c *VolumeController) syncVolumeOnDemandSnapshotStatus(v *longhorn.Volume, 
 	// All relevant snapshots have at least one checksum, and we have fresh results where possible. Acknowledge this request.
 	v.Status.LastOnDemandSnapshotHashingCompleteAt = v.Spec.SnapshotHashingRequestedAt
 	return nil
+}
+
+// claimVolumeExpansion persists that the controller has consumed the expansion
+// request before any dependent resource receives the new size.
+func (c *VolumeController) claimVolumeExpansion(v *longhorn.Volume) (bool, error) {
+	if types.IsVolumeExpansionStarted(v) {
+		return false, nil
+	}
+	v.Status.ExpansionRequired = true
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeExpansionStarted, longhorn.ConditionStatusTrue, "", "")
+
+	updatedVolume, err := c.ds.UpdateVolumeStatus(v)
+	if err != nil {
+		return false, err
+	}
+	*v = *updatedVolume
+	return true, nil
+}
+
+func shouldPropagateVolumeSizeToEngineFrontend(v *longhorn.Volume, e *longhorn.Engine) bool {
+	return e.Spec.VolumeSize == v.Spec.Size || types.IsVolumeExpansionStarted(v)
 }

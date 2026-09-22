@@ -67,3 +67,9 @@ func IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(v *longhorn.Volume) bool {
 
 	return luksExtendedLabel == longhorn.TrueValue
 }
+
+// IsVolumeExpansionStarted reports whether the volume controller has claimed
+// the current expansion request before updating dependent resources.
+func IsVolumeExpansionStarted(v *longhorn.Volume) bool {
+	return v != nil && GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeExpansionStarted).Status == longhorn.ConditionStatusTrue
+}
