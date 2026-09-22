@@ -310,7 +310,7 @@ func (c *SystemBackupController) recordErrorState(record *systemBackupRecord, sy
 		longhorn.SystemBackupConditionTypeError,
 		longhorn.ConditionStatusTrue,
 		record.reason,
-		record.message,
+		util.SanitizeVolatileErrorContent(record.message),
 	)
 }
 
