@@ -2125,6 +2125,31 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	return obj, nil
 }
 
+// RecordEngineExpansionCancellation records on the engine that its failed
+// expansion is canceled for the given volume generation. The update is based on
+// the resourceVersion of the given engine, so it fails with a conflict if the
+// engine monitor has claimed an expansion retry since the engine was read. A
+// cancellation for an older volume generation is rejected: overwriting a newer
+// one would let the engine monitor retry the expansion while the newer
+// cancellation rolls back the volume.
+func (s *DataStore) RecordEngineExpansionCancellation(e *longhorn.Engine, volumeGeneration int64) (*longhorn.Engine, error) {
+	e = e.DeepCopy()
+	if e.Annotations == nil {
+		e.Annotations = map[string]string{}
+	}
+	if value, exists := e.Annotations[types.EngineAnnotationExpansionCanceledVolumeGeneration]; exists {
+		recorded, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid expansion cancellation generation %q on engine %v", value, e.Name)
+		}
+		if volumeGeneration < recorded {
+			return nil, fmt.Errorf("expansion cancellation for volume generation %v is already recorded, the volume generation %v is stale", recorded, volumeGeneration)
+		}
+	}
+	e.Annotations[types.EngineAnnotationExpansionCanceledVolumeGeneration] = strconv.FormatInt(volumeGeneration, 10)
+	return s.UpdateEngine(e)
+}
+
 // UpdateEngineStatus updates Longhorn Engine status and verifies update
 func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	obj, err := s.lhClient.LonghornV1beta2().Engines(s.namespace).UpdateStatus(context.TODO(), e, metav1.UpdateOptions{})
