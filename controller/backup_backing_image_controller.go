@@ -384,7 +384,7 @@ func (bc *BackupBackingImageController) checkMonitor(bbi *longhorn.BackupBacking
 
 	monitor, err := bc.enableBackupBackingImageMonitor(bbi, backingImage, backupTargetClient, longhorn.BackupCompressionMethod(compressionMethod), int(concurrentLimit), bimClient)
 	if err != nil {
-		bbi.Status.Error = err.Error()
+		bbi.Status.Error = util.SanitizeVolatileErrorContent(err.Error())
 		bbi.Status.State = longhorn.BackupStateError
 		bbi.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err
