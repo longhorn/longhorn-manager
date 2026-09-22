@@ -307,6 +307,13 @@ const (
 
 	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
 
+	// EngineAnnotationExpansionCanceledVolumeGeneration records the volume
+	// generation for which the failed expansion of the engine is being
+	// canceled. Until a newer volume spec requests the engine spec size again,
+	// the engine monitor does not retry the expansion. The volume controller
+	// removes the annotation once it updates the engine spec size.
+	EngineAnnotationExpansionCanceledVolumeGeneration = "longhorn.io/expansion-canceled-volume-generation"
+
 	// ShardAnnotationIntentionalDelete marks a Shard CR whose deletion is admin-driven
 	// (kubectl delete, eviction, drain) rather than caused by a real failure. The
 	// ShardGroup controller force-fails the slot via ShardGroupShardForceFail and
@@ -568,6 +575,23 @@ func GetBackingImagePathForReplicaManagerContainer(diskPath, backingImageName, b
 var (
 	LonghornSystemKey = "longhorn"
 )
+
+// IsExpansionCancellationInEffect reports whether a cancellation recorded on
+// the engine still applies to the volume. A newer volume spec that requests the
+// engine spec size supersedes it. Before the volume controller observes a
+// rolled-back volume, the engine spec size still differs from the volume size,
+// so the cancellation stays in effect.
+func IsExpansionCancellationInEffect(e *longhorn.Engine, v *longhorn.Volume) bool {
+	value, exists := e.Annotations[EngineAnnotationExpansionCanceledVolumeGeneration]
+	if !exists {
+		return false
+	}
+	generation, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return true
+	}
+	return v.Generation <= generation || v.Spec.Size != e.Spec.VolumeSize
+}
 
 func GetLonghornLabelKey(name string) string {
 	return fmt.Sprintf("%s/%s", LonghornLabelKeyPrefix, name)

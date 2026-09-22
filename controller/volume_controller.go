@@ -3579,6 +3579,9 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	}
 
 	e.Spec.VolumeSize = v.Spec.Size
+	// Updating the engine spec size supersedes the cancellation recorded by
+	// CancelExpansion.
+	delete(e.Annotations, types.EngineAnnotationExpansionCanceledVolumeGeneration)
 	for _, r := range rs {
 		r.Spec.VolumeSize = v.Spec.Size
 	}

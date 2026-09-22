@@ -11,22 +11,27 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clienttesting "k8s.io/client-go/testing"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	utilfake "github.com/longhorn/longhorn-manager/util/fake"
 )
 
 // mockEngineClientProxy wraps EngineSimulator and overrides ReplicaRebuildVerify for test control.
@@ -492,6 +497,255 @@ func TestHandleRebuildFailure(t *testing.T) {
 				assert.Equal(longhorn.InstanceStateRunning, updated.Spec.DesireState)
 				assert.Empty(updated.Spec.FailedAt)
 			}
+		})
+	}
+}
+
+func TestClaimExpansion(t *testing.T) {
+	const (
+		originalSize       = int64(1024 * 1024 * 1024)
+		requestedSize      = 2 * originalSize
+		canceledGeneration = int64(3)
+		lastExpansionErr   = "the expansion failed since all replica expansion failed"
+	)
+	canceled := map[string]string{
+		types.EngineAnnotationExpansionCanceledVolumeGeneration: strconv.FormatInt(canceledGeneration, 10),
+	}
+
+	for name, tc := range map[string]struct {
+		annotations       map[string]string
+		latestVolumeSize  int64
+		volumeGeneration  int64
+		volumeSize        int64
+		lastExpansionErr  string
+		expectedClaimed   bool
+		expectedLastError string
+	}{
+		"first expansion attempt": {
+			latestVolumeSize: requestedSize,
+			volumeGeneration: canceledGeneration,
+			volumeSize:       requestedSize,
+			expectedClaimed:  true,
+		},
+		// CancelExpansion only accepts a recorded failure, so clearing it
+		// makes a concurrent cancellation fail.
+		"retry after a failure": {
+			latestVolumeSize: requestedSize,
+			volumeGeneration: canceledGeneration,
+			volumeSize:       requestedSize,
+			lastExpansionErr: lastExpansionErr,
+			expectedClaimed:  true,
+		},
+		// The volume rollback is not observed or may not be applied yet.
+		"cancellation recorded": {
+			annotations:       canceled,
+			latestVolumeSize:  requestedSize,
+			volumeGeneration:  canceledGeneration,
+			volumeSize:        requestedSize,
+			lastExpansionErr:  lastExpansionErr,
+			expectedClaimed:   false,
+			expectedLastError: lastExpansionErr,
+		},
+		"volume rolled back": {
+			annotations:       canceled,
+			latestVolumeSize:  requestedSize,
+			volumeGeneration:  canceledGeneration + 1,
+			volumeSize:        originalSize,
+			lastExpansionErr:  lastExpansionErr,
+			expectedClaimed:   false,
+			expectedLastError: lastExpansionErr,
+		},
+		// The same size was requested again before the volume controller
+		// reverted the engine spec size.
+		"size requested again after the rollback": {
+			annotations:      canceled,
+			latestVolumeSize: requestedSize,
+			volumeGeneration: canceledGeneration + 2,
+			volumeSize:       requestedSize,
+			lastExpansionErr: lastExpansionErr,
+			expectedClaimed:  true,
+		},
+		"engine spec size changed": {
+			latestVolumeSize:  originalSize,
+			volumeGeneration:  canceledGeneration,
+			volumeSize:        requestedSize,
+			lastExpansionErr:  lastExpansionErr,
+			expectedClaimed:   false,
+			expectedLastError: lastExpansionErr,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			latest := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace, Annotations: tc.annotations},
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{
+					VolumeName: TestVolumeName,
+					VolumeSize: tc.latestVolumeSize,
+				}},
+				Status: longhorn.EngineStatus{
+					CurrentSize:        originalSize,
+					LastExpansionError: tc.lastExpansionErr,
+				},
+			}
+			if tc.lastExpansionErr != "" {
+				latest.Status.LastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			}
+			_, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), latest, metav1.CreateOptions{})
+			require.NoError(t, err)
+
+			// The engine monitor may act on a stale engine.
+			engine := latest.DeepCopy()
+			engine.Annotations = nil
+			engine.Spec.VolumeSize = requestedSize
+
+			volume := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: TestVolumeName, Namespace: TestNamespace, Generation: tc.volumeGeneration},
+				Spec:       longhorn.VolumeSpec{Size: tc.volumeSize},
+			}
+
+			m := &EngineMonitor{ds: ds}
+			claimed, err := m.claimExpansion(engine, volume)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedClaimed, claimed)
+
+			updated, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), TestEngineName, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedLastError, updated.Status.LastExpansionError)
+			if tc.expectedLastError == "" {
+				require.Empty(t, updated.Status.LastExpansionFailedAt)
+			}
+		})
+	}
+}
+
+// TestClaimExpansionCancellationRace checks that an expansion retry and a
+// cancellation of the failed expansion serialize on the engine
+// resourceVersion: whichever updates the engine first wins, so the retry never
+// starts after the cancellation is recorded.
+func TestClaimExpansionCancellationRace(t *testing.T) {
+	const (
+		originalSize     = int64(1024 * 1024 * 1024)
+		requestedSize    = 2 * originalSize
+		volumeGeneration = int64(3)
+		lastExpansionErr = "the expansion failed since all replica expansion failed"
+	)
+
+	newDataStore := func(lhClient *lhfake.Clientset) *datastore.DataStore {
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+		return datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	}
+
+	for name, tc := range map[string]struct {
+		// cancelAt is when CancelExpansion records the cancellation relative to
+		// claimExpansion.
+		cancelAt               string
+		expectedClaimed        bool
+		expectedClaimConflict  bool
+		expectedCancelConflict bool
+	}{
+		// CancelExpansion read the engine before the retry was claimed.
+		"retry claimed first": {
+			cancelAt:               "after claim",
+			expectedClaimed:        true,
+			expectedCancelConflict: true,
+		},
+		"cancellation recorded between the read and the claim of the retry": {
+			cancelAt:              "after engine read",
+			expectedClaimConflict: true,
+		},
+		"cancellation recorded first": {
+			cancelAt: "before claim",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			gvr := longhorn.SchemeGroupVersion.WithResource("engines")
+			tracker := lhfake.NewSimpleClientset().Tracker() // nolint: staticcheck
+			engine := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace, ResourceVersion: "1"},
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{
+					VolumeName: TestVolumeName,
+					VolumeSize: requestedSize,
+				}},
+				Status: longhorn.EngineStatus{
+					CurrentSize:           originalSize,
+					LastExpansionError:    lastExpansionErr,
+					LastExpansionFailedAt: time.Now().UTC().Format(time.RFC3339Nano),
+				},
+			}
+			require.NoError(t, tracker.Add(engine))
+			volume := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: TestVolumeName, Namespace: TestNamespace, Generation: volumeGeneration},
+				Spec:       longhorn.VolumeSpec{Size: requestedSize},
+			}
+
+			monitorClient := utilfake.NewEngineConflictClient(tracker)
+			monitor := &EngineMonitor{ds: newDataStore(monitorClient)}
+			cancelClient := utilfake.NewEngineConflictClient(tracker)
+			cancelDS := newDataStore(cancelClient)
+
+			// CancelExpansion reads the engine, checks it, then records the
+			// cancellation based on that engine.
+			var cancelErr error
+			cancel := func(cancelEngine *longhorn.Engine) {
+				_, cancelErr = cancelDS.RecordEngineExpansionCancellation(cancelEngine, volumeGeneration)
+			}
+			cancelEngine, err := cancelDS.GetEngineUncached(engine.Name)
+			require.NoError(t, err)
+
+			switch tc.cancelAt {
+			case "before claim":
+				cancel(cancelEngine)
+			case "after engine read":
+				recorded := false
+				monitorClient.PrependReactor("get", "engines", func(action clienttesting.Action) (bool, runtime.Object, error) {
+					obj, err := tracker.Get(gvr, action.GetNamespace(), action.(clienttesting.GetAction).GetName())
+					if !recorded {
+						recorded = true
+						cancel(cancelEngine)
+					}
+					return true, obj, err
+				})
+			}
+
+			claimed, claimErr := monitor.claimExpansion(engine.DeepCopy(), volume)
+			if tc.cancelAt == "after claim" {
+				cancel(cancelEngine)
+			}
+
+			require.Equal(t, tc.expectedClaimed, claimed)
+			require.Equal(t, tc.expectedClaimConflict, apierrors.IsConflict(errors.Cause(claimErr)), "claim error: %v", claimErr)
+			if !tc.expectedClaimConflict {
+				require.NoError(t, claimErr)
+			}
+			require.Equal(t, tc.expectedCancelConflict, apierrors.IsConflict(errors.Cause(cancelErr)), "cancel error: %v", cancelErr)
+			if !tc.expectedCancelConflict {
+				require.NoError(t, cancelErr)
+			}
+
+			obj, err := tracker.Get(gvr, TestNamespace, engine.Name)
+			require.NoError(t, err)
+			updated := obj.(*longhorn.Engine)
+			if tc.expectedClaimed {
+				// A retried CancelExpansion reads no recorded failure and is
+				// rejected.
+				require.NotContains(t, updated.Annotations, types.EngineAnnotationExpansionCanceledVolumeGeneration)
+				require.Empty(t, updated.Status.LastExpansionError)
+				return
+			}
+			require.Contains(t, updated.Annotations, types.EngineAnnotationExpansionCanceledVolumeGeneration)
+			require.Equal(t, lastExpansionErr, updated.Status.LastExpansionError)
+
+			// The retry is not started after the cancellation is recorded.
+			claimed, err = monitor.claimExpansion(engine.DeepCopy(), volume)
+			require.NoError(t, err)
+			require.False(t, claimed)
 		})
 	}
 }
