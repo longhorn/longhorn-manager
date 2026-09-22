@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	commonns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/go-spdk-helper/pkg/types"
@@ -23,6 +25,17 @@ const (
 	defaultCtrlLossTmo    = 30
 	defaultKeepAliveTmo   = 5
 	defaultReconnectDelay = 2
+	// defaultFastIOFailTmo makes the kernel fail the I/O queued on a namespace whose
+	// paths are all down. Its default is off, meaning the I/O is requeued for as long
+	// as any controller of the subsystem lingers, which wedges every holder of the
+	// device in uninterruptible sleep and cannot be undone from user space. Must stay
+	// below defaultCtrlLossTmo.
+	defaultFastIOFailTmo = 15
+	// NvmeControllerStateLive is the state nvme-cli reports for a usable path.
+	NvmeControllerStateLive = "live"
+	// NvmeControllerStateDeleting prefixes the states of a path the kernel is already
+	// tearing down (e.g. "deleting", "deleting (no IO)").
+	NvmeControllerStateDeleting = "deleting"
 )
 
 type Device struct {
@@ -320,6 +333,8 @@ func connect(hostID, hostNQN, nqn, transpotType, ip, port string, nrIoQueues int
 		"--ctrl-loss-tmo", strconv.Itoa(defaultCtrlLossTmo),
 		"--keep-alive-tmo", strconv.Itoa(defaultKeepAliveTmo),
 		"--reconnect-delay", strconv.Itoa(defaultReconnectDelay),
+		// Spelled with underscores, unlike the options above.
+		"--fast_io_fail_tmo", strconv.Itoa(defaultFastIOFailTmo),
 		"-o", "json",
 	}
 
@@ -374,7 +389,14 @@ func disconnect(nqn string, executor *commonns.Executor) error {
 	// NQN:nqn.2023-01.io.spdk:raid01 disconnected 1 controller(s)
 	//
 	// And trying to disconnect a non-existing target would return exit code 0
-	_, err := executor.Execute(nil, nvmeBinary, opts, types.ExecuteTimeout)
+	//
+	// This tears down every controller of the subsystem, including any the kernel
+	// can block on, so keep the wait bounded like the per-controller disconnect.
+	_, err := executor.Execute(nil, nvmeBinary, opts, types.NvmeDisconnectTimeout)
+	if types.ErrorIsTimeoutExecuting(err) {
+		logrus.WithError(err).Warnf("Timed out waiting for NVMe subsystem %s to disconnect, leaving it to the kernel", nqn)
+		return nil
+	}
 	return err
 }
 
@@ -387,7 +409,15 @@ func disconnectController(controllerName string, executor *commonns.Executor) er
 		"disconnect",
 		"--device", devPath,
 	}
-	_, err := executor.Execute(nil, nvmeBinary, opts, types.ExecuteTimeout)
+	// Deleting a controller that is stuck reconnecting can block in the kernel, so
+	// keep the wait bounded.
+	_, err := executor.Execute(nil, nvmeBinary, opts, types.NvmeDisconnectTimeout)
+	if types.ErrorIsTimeoutExecuting(err) {
+		// Giving up on the wait is the point of the bound. The kernel carries the
+		// deletion on without us, and retrying only adds another blocked process.
+		logrus.WithError(err).Warnf("Timed out waiting for NVMe controller %s to disconnect, leaving it to the kernel", devPath)
+		return nil
+	}
 	return err
 }
 
