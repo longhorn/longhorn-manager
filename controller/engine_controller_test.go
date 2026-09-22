@@ -23,6 +23,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -491,6 +492,128 @@ func TestHandleRebuildFailure(t *testing.T) {
 			} else {
 				assert.Equal(longhorn.InstanceStateRunning, updated.Spec.DesireState)
 				assert.Empty(updated.Spec.FailedAt)
+			}
+		})
+	}
+}
+
+func TestClaimExpansion(t *testing.T) {
+	const (
+		originalSize       = int64(1024 * 1024 * 1024)
+		requestedSize      = 2 * originalSize
+		canceledGeneration = int64(3)
+		lastExpansionErr   = "the expansion failed since all replica expansion failed"
+	)
+	canceled := map[string]string{
+		types.EngineAnnotationExpansionCanceledVolumeGeneration: strconv.FormatInt(canceledGeneration, 10),
+	}
+
+	for name, tc := range map[string]struct {
+		annotations       map[string]string
+		latestVolumeSize  int64
+		volumeGeneration  int64
+		volumeSize        int64
+		lastExpansionErr  string
+		expectedClaimed   bool
+		expectedLastError string
+	}{
+		"first expansion attempt": {
+			latestVolumeSize: requestedSize,
+			volumeGeneration: canceledGeneration,
+			volumeSize:       requestedSize,
+			expectedClaimed:  true,
+		},
+		// CancelExpansion only accepts a recorded failure, so clearing it
+		// makes a concurrent cancellation fail.
+		"retry after a failure": {
+			latestVolumeSize: requestedSize,
+			volumeGeneration: canceledGeneration,
+			volumeSize:       requestedSize,
+			lastExpansionErr: lastExpansionErr,
+			expectedClaimed:  true,
+		},
+		// The volume rollback is not observed or may not be applied yet.
+		"cancellation recorded": {
+			annotations:       canceled,
+			latestVolumeSize:  requestedSize,
+			volumeGeneration:  canceledGeneration,
+			volumeSize:        requestedSize,
+			lastExpansionErr:  lastExpansionErr,
+			expectedClaimed:   false,
+			expectedLastError: lastExpansionErr,
+		},
+		"volume rolled back": {
+			annotations:       canceled,
+			latestVolumeSize:  requestedSize,
+			volumeGeneration:  canceledGeneration + 1,
+			volumeSize:        originalSize,
+			lastExpansionErr:  lastExpansionErr,
+			expectedClaimed:   false,
+			expectedLastError: lastExpansionErr,
+		},
+		// The same size was requested again before the volume controller
+		// reverted the engine spec size.
+		"size requested again after the rollback": {
+			annotations:      canceled,
+			latestVolumeSize: requestedSize,
+			volumeGeneration: canceledGeneration + 2,
+			volumeSize:       requestedSize,
+			lastExpansionErr: lastExpansionErr,
+			expectedClaimed:  true,
+		},
+		"engine spec size changed": {
+			latestVolumeSize:  originalSize,
+			volumeGeneration:  canceledGeneration,
+			volumeSize:        requestedSize,
+			lastExpansionErr:  lastExpansionErr,
+			expectedClaimed:   false,
+			expectedLastError: lastExpansionErr,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			latest := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace, Annotations: tc.annotations},
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{
+					VolumeName: TestVolumeName,
+					VolumeSize: tc.latestVolumeSize,
+				}},
+				Status: longhorn.EngineStatus{
+					CurrentSize:        originalSize,
+					LastExpansionError: tc.lastExpansionErr,
+				},
+			}
+			if tc.lastExpansionErr != "" {
+				latest.Status.LastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			}
+			_, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), latest, metav1.CreateOptions{})
+			require.NoError(t, err)
+
+			// The engine monitor may act on a stale engine.
+			engine := latest.DeepCopy()
+			engine.Annotations = nil
+			engine.Spec.VolumeSize = requestedSize
+
+			volume := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: TestVolumeName, Namespace: TestNamespace, Generation: tc.volumeGeneration},
+				Spec:       longhorn.VolumeSpec{Size: tc.volumeSize},
+			}
+
+			m := &EngineMonitor{ds: ds}
+			claimed, err := m.claimExpansion(engine, volume)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedClaimed, claimed)
+
+			updated, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), TestEngineName, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedLastError, updated.Status.LastExpansionError)
+			if tc.expectedLastError == "" {
+				require.Empty(t, updated.Status.LastExpansionFailedAt)
 			}
 		})
 	}
