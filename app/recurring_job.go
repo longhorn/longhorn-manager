@@ -77,7 +77,7 @@ func recurringJob(ctx context.Context, cmd *cli.Command) (err error) {
 	}
 
 	recurringJob.Status.ExecutionCount += 1
-	if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).UpdateStatus(ctx, recurringJob, metav1.UpdateOptions{}); err != nil {
+	if recurringJob, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).UpdateStatus(ctx, recurringJob, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrap(err, "failed to update job execution count")
 	}
 

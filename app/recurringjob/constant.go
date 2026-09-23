@@ -18,3 +18,9 @@ const (
 	BackupProcessStartTimeout = 90  // 1.5 minutes
 	SnapshotReadyTimeout      = 390 // 6.5 minutes
 )
+
+const (
+	ConditionTypeVolumesSkipped = "VolumesSkipped"
+
+	ConditionReasonReplicaRebuilding = "ReplicaRebuilding"
+)

@@ -2,6 +2,7 @@ package recurringjob
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"sort"
@@ -42,12 +43,12 @@ func (o *volumeOperationsWithGetError) ById(string) (*longhornclient.Volume, err
 // rebuilding.
 type volumeOperationsRebuilding struct {
 	longhornclient.VolumeOperations
-	t      *testing.T
-	volume *longhornclient.Volume
+	t       *testing.T
+	volumes map[string]*longhornclient.Volume
 }
 
-func (o *volumeOperationsRebuilding) ById(string) (*longhornclient.Volume, error) {
-	return o.volume, nil
+func (o *volumeOperationsRebuilding) ById(id string) (*longhornclient.Volume, error) {
+	return o.volumes[id], nil
 }
 
 func (o *volumeOperationsRebuilding) ActionSnapshotCRList(*longhornclient.Volume) (*longhornclient.SnapshotCRListOutput, error) {
@@ -186,6 +187,10 @@ func TestStartVolumeJobs(t *testing.T) {
 		}
 	}
 	recurringJob := &longhorn.RecurringJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName,
+			Namespace: namespace,
+		},
 		Spec: longhorn.RecurringJobSpec{Concurrency: 1},
 	}
 
@@ -234,19 +239,67 @@ func TestStartVolumeJobs(t *testing.T) {
 		}
 
 		clientVolume := &longhornclient.Volume{
-			Name:  volumeName,
-			State: string(longhorn.VolumeStateAttached),
-			RebuildStatus: []longhornclient.RebuildStatus{
-				{IsRebuilding: true},
-			},
+			Name:          volumeName,
+			State:         string(longhorn.VolumeStateAttached),
+			RebuildStatus: []longhornclient.RebuildStatus{{IsRebuilding: true}},
 		}
 
 		job := newJob(&longhornclient.RancherClient{
-			Volume: &volumeOperationsRebuilding{t: t, volume: clientVolume},
-		}, newSetting(), volume)
+			Volume: &volumeOperationsRebuilding{t: t, volumes: map[string]*longhornclient.Volume{volumeName: clientVolume}},
+		}, newSetting(), volume, recurringJob.DeepCopy())
 
 		err := StartVolumeJobs(job, recurringJob)
-
 		assert.NoError(t, err, "a rebuild-related skip must not fail the sweep")
+
+		// skippedVolumes condition should be set to true in recurringJob.Status
+		rj, err := job.lhClient.LonghornV1beta2().RecurringJobs(namespace).Get(context.Background(), recurringJob.Name, metav1.GetOptions{})
+		if assert.NoError(t, err, "no error expected when getting a recurring job") {
+			cond := types.GetCondition(rj.Status.Conditions, ConditionTypeVolumesSkipped)
+			assert.Equal(t, longhorn.ConditionStatusTrue, cond.Status)
+			assert.Equal(t, ConditionReasonReplicaRebuilding, cond.Reason)
+			assert.Contains(t, cond.Message, ErrSnapshotPurgeSkipped.Error(), "expected snapshot purge skipped message")
+			assert.Contains(t, cond.Message, volume.Name, "condition message should list the skipped volume")
+		}
+	})
+
+	t.Run("lists every skipped volume in the condition", func(t *testing.T) {
+		names := []string{"vol-c", "vol-a", "vol-b"}
+
+		objs := []runtime.Object{newSetting(), recurringJob.DeepCopy()}
+		clientVols := map[string]*longhornclient.Volume{}
+		for _, n := range names {
+			objs = append(objs, &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      n,
+					Namespace: namespace,
+					Labels:    types.GetRecurringJobLabelValueMap(types.LonghornLabelRecurringJob, jobName),
+				},
+				Status: longhorn.VolumeStatus{
+					State:      longhorn.VolumeStateAttached,
+					Robustness: longhorn.VolumeRobustnessDegraded,
+				},
+			})
+			clientVols[n] = &longhornclient.Volume{
+				Name:          n,
+				State:         string(longhorn.VolumeStateAttached),
+				RebuildStatus: []longhornclient.RebuildStatus{{IsRebuilding: true}},
+			}
+		}
+
+		job := newJob(&longhornclient.RancherClient{
+			Volume: &volumeOperationsRebuilding{t: t, volumes: clientVols},
+		}, objs...)
+
+		err := StartVolumeJobs(job, recurringJob)
+		assert.NoError(t, err, "a rebuild-related skip must not fail the sweep")
+
+		rj, getErr := job.lhClient.LonghornV1beta2().RecurringJobs(namespace).
+			Get(context.Background(), jobName, metav1.GetOptions{})
+		if assert.NoError(t, getErr, "no error expected when getting a recurring job") {
+			cond := types.GetCondition(rj.Status.Conditions, ConditionTypeVolumesSkipped)
+			assert.Equal(t, longhorn.ConditionStatusTrue, cond.Status)
+			assert.Contains(t, cond.Message, "3 volume(s)")
+			assert.Contains(t, cond.Message, "vol-a, vol-b, vol-c")
+		}
 	})
 }
