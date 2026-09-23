@@ -999,7 +999,10 @@ func (c *FakeSystemBackupTargetClient) UploadSystemBackup(name, localFile, longh
 	case TestSystemBackupNameUploadFailed, TestSystemRestoreNameUploadFailed:
 		return "", fmt.Errorf("%v", name)
 	case TestSystemBackupNameUploadExceedTimeout, TestSystemRestoreNameUploadExceedTimeout:
-		time.Sleep(datastore.SystemBackupTimeout * 2)
+		// Sleep longer than the short system-backup-timeout the tests configure
+		// (see testSystemBackupTimeoutSeconds) so the controller's timeout path
+		// fires first.
+		time.Sleep(2 * testSystemBackupTimeoutSeconds * time.Second)
 	}
 
 	return "", nil
