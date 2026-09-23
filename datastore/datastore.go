@@ -28,9 +28,6 @@ var (
 	// SkipListerCheck bypass the created longhorn resource validation
 	SkipListerCheck = false
 
-	// SystemBackupTimeout is the timeout for system backup
-	SystemBackupTimeout = time.Hour
-
 	// SystemRestoreTimeout is the timeout for system restore
 	SystemRestoreTimeout = 24 * time.Hour
 
