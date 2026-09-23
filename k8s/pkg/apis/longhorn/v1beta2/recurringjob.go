@@ -102,6 +102,11 @@ type RecurringJobStatus struct {
 	Conditions []Condition `json:"conditions"`
 }
 
+const (
+	RecurringJobConditionTypeVolumesSkipped      = "VolumesSkipped"
+	RecurringJobConditionReasonReplicaRebuilding = "ReplicaRebuilding"
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhrj
