@@ -548,6 +548,17 @@ func (c *SystemBackupController) InitSystemBackup(systemBackup *longhorn.SystemB
 	return nil
 }
 
+// getSystemBackupTimeout returns the configured timeout for system backup
+// operations, covering volume snapshot creation and uploading the system
+// backup archive to the backup target.
+func (c *SystemBackupController) getSystemBackupTimeout() (time.Duration, error) {
+	systemBackupTimeoutSeconds, err := c.ds.GetSettingAsInt(types.SettingNameSystemBackupTimeout)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(systemBackupTimeoutSeconds) * time.Second, nil
+}
+
 func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.SystemBackup, archievePath, tempDir string, backupTargetClient engineapi.SystemBackupOperationInterface) {
 	log := getLoggerForSystemBackup(c.logger, systemBackup)
 
@@ -580,7 +591,13 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 		return
 	}
 
-	timer := time.NewTimer(datastore.SystemBackupTimeout)
+	systemBackupTimeout, err := c.getSystemBackupTimeout()
+	if err != nil {
+		recordErr = errors.Wrapf(err, SystemBackupErrGetFmt, "system backup timeout")
+		return
+	}
+
+	timer := time.NewTimer(systemBackupTimeout)
 	defer timer.Stop()
 
 	ticker := time.NewTicker(time.Second)
@@ -1020,8 +1037,13 @@ func (c *SystemBackupController) createVolumeSnapshot(ctx context.Context, volum
 		return snapshot, nil
 	}
 
+	systemBackupTimeout, err := c.getSystemBackupTimeout()
+	if err != nil {
+		return nil, err
+	}
+
 	// Poll until snapshot is ready or timeout exceeded.
-	timeout := time.After(datastore.SystemBackupTimeout)
+	timeout := time.After(systemBackupTimeout)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 

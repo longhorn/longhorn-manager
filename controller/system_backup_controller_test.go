@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,7 +59,6 @@ type SystemBackupTestCase struct {
 
 func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 	datastore.SkipListerCheck = true
-	datastore.SystemBackupTimeout = 10 * time.Second
 	datastore.VolumeBackupTimeout = 10 * time.Second
 
 	rolloutOwnerID := TestNode1
@@ -315,6 +315,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 
 		fakeSystemRolloutNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutSettingDefaultEngineImage(c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutSettingSystemBackupTimeout(testSystemBackupTimeoutSeconds, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutStorageClassesDefault(c, informerFactories.KubeInformerFactory, kubeClient)
 
@@ -426,6 +427,25 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(len(volumeBackups.Items), Equals, tc.expectNewVolumBackupCount)
 	}
+}
+
+// testSystemBackupTimeoutSeconds is a short system-backup-timeout setting
+// value (in seconds) used so timeout-related test cases do not have to wait
+// for the setting's real-world default.
+const testSystemBackupTimeoutSeconds = 10
+
+// fakeSystemRolloutSettingSystemBackupTimeout creates the system-backup-timeout
+// Setting CR with the given value without disturbing any other already fake
+// settings (unlike fakeSystemRolloutSettings, which replaces the whole set).
+func fakeSystemRolloutSettingSystemBackupTimeout(seconds int, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) {
+	indexer := informerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	clientInterface := client.LonghornV1beta2().Settings(TestNamespace)
+
+	exist, err := clientInterface.Create(context.TODO(), initSettingsNameValue(string(types.SettingNameSystemBackupTimeout), strconv.Itoa(seconds)), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	err = indexer.Add(exist)
+	c.Assert(err, IsNil)
 }
 
 func newFakeSystemBackupController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
