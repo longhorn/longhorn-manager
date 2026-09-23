@@ -178,6 +178,7 @@ const (
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
+	SettingNameSystemBackupTimeout                                      = SettingName("system-backup-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
@@ -314,6 +315,7 @@ var (
 		SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted,
 		SettingNameDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout,
+		SettingNameSystemBackupTimeout,
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
@@ -485,6 +487,7 @@ var (
 		SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted:          SettingDefinitionAutoCleanupSnapshotAfterOnDemandBackupCompleted,
 		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
+		SettingNameSystemBackupTimeout:                                      SettingDefinitionSystemBackupTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
@@ -545,6 +548,21 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "1",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
+	}
+
+	SettingDefinitionSystemBackupTimeout = SettingDefinition{
+		DisplayName: "System Backup Timeout",
+		Description: "In seconds. The timeout for creating a system backup, covering volume snapshot creation and uploading the system backup archive to the backup target. The default value is 3600 (1 hour).\n\n" +
+			"When the timeout is reached, the system backup is marked as failed.",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "3600",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},
