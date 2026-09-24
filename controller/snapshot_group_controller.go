@@ -954,11 +954,16 @@ func (ctrl *SnapshotGroupController) updateDegradedCondition(snapshotGroup *long
 
 // handleDeletion deletes the member Snapshots through the existing per-volume
 // deletion path, then removes the finalizer once every member deletion has
-// been requested. Waiting for the DeletionTimestamp instead of the CR
-// disappearing matches the per-volume CSI DeleteSnapshot semantics: once
-// deletion is requested it is irrevocable, and the snapshot controller owns
-// the deferred purge.
+// been requested. A hooked group waits first: its paused pods must be
+// released by the executor, or the release time bound must pass.
 func (ctrl *SnapshotGroupController) handleDeletion(snapshotGroup *longhorn.SnapshotGroup) error {
+	if snapshothook.IsHooked(snapshotGroup) {
+		released, err := ctrl.waitForHookRelease(snapshotGroup)
+		if err != nil || !released {
+			return err
+		}
+	}
+
 	allDeletionsRequested := true
 	for _, member := range snapshotGroup.Spec.Members {
 		snapshot, err := ctrl.ds.GetSnapshotRO(member.SnapshotName)
@@ -996,4 +1001,42 @@ func (ctrl *SnapshotGroupController) handleDeletion(snapshotGroup *longhorn.Snap
 		return nil
 	}
 	return ctrl.ds.RemoveFinalizerForSnapshotGroup(snapshotGroup)
+}
+
+// waitForHookRelease reports whether deletion may proceed: true once every
+// recorded pod is released, or once the release has run past its time bound.
+// False with a nil error means wait.
+//
+// The bound ignores executor state: a deletion should not hang on an
+// executor that cannot reach a kubelet.
+func (ctrl *SnapshotGroupController) waitForHookRelease(snapshotGroup *longhorn.SnapshotGroup) (bool, error) {
+	unreleased := snapshothook.UnreleasedHookPods(snapshotGroup)
+	if len(unreleased) == 0 {
+		return true, nil
+	}
+
+	attempts, err := ctrl.ds.GetSettingAsInt(types.SettingNameHookReleaseAttempts)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to read setting %v", types.SettingNameHookReleaseAttempts)
+	}
+	timeoutSeconds, err := ctrl.ds.GetSettingAsInt(types.SettingNameHookReleaseTimeout)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to read setting %v", types.SettingNameHookReleaseTimeout)
+	}
+	bound := snapshothook.ReleaseAbandonTime(snapshothook.GroupDeadline(snapshotGroup), snapshotGroup.DeletionTimestamp.Time,
+		int(attempts), snapshothook.CountMembersWithHookPods(snapshotGroup), time.Duration(timeoutSeconds)*time.Second)
+
+	if now := ctrl.nowHandler(); !now.After(bound) {
+		ctrl.enqueueSnapshotGroupAfter(snapshotGroup, bound.Sub(now)+time.Second)
+		return false, nil
+	}
+
+	pods := make([]string, 0, len(unreleased))
+	for _, pod := range unreleased {
+		pods = append(pods, pod.Namespace+"/"+pod.Name)
+	}
+	ctrl.logger.WithField("snapshotGroup", snapshotGroup.Name).Warnf("Giving up on the hook release of pods %v, not released by %v", pods, bound.UTC().Format(time.RFC3339))
+	ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonHookReleaseAbandoned,
+		"Snapshot group deleted with %v paused pods that were never released: %v; run the post-command in each pod by hand to resume the application", len(pods), strings.Join(pods, ", "))
+	return true, nil
 }
