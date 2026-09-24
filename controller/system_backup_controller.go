@@ -967,7 +967,8 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 
 		snapshotTime, err := time.Parse(time.RFC3339, snapshot.Status.CreationTime)
 		if err != nil {
-			return false, err
+			log.WithError(err).Warnf("Failed to parse creation time %q for snapshot %v, assuming the volume backup is not up-to-date", snapshot.Status.CreationTime, snapshot.Name)
+			return false, nil
 		}
 
 		if snapshotTime.After(lastBackupTime) {
