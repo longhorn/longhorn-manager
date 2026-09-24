@@ -49,6 +49,18 @@ func GroupDeadline(group *longhorn.SnapshotGroup) time.Time {
 	return group.CreationTimestamp.Add(time.Duration(group.Spec.DeadlineSeconds) * time.Second)
 }
 
+// These markers end the status.error of a hooked group that failed for a
+// reason no HookReason names: a HookReason belongs to the executor's hook
+// records in status.hooks.
+const (
+	// QueuedPastDeadlineMarker means the deadline passed before the executor
+	// started on the group, so nothing was paused.
+	QueuedPastDeadlineMarker = "(queued-past-deadline)"
+	// PreHooksSkippedMarker means the group reached InProgress without the
+	// executor recording that the pre-hooks finished.
+	PreHooksSkippedMarker = "(pre-hooks-skipped)"
+)
+
 // FindMember returns the member with the given snapshot name, or nil.
 func FindMember(group *longhorn.SnapshotGroup, snapshotName string) *longhorn.SnapshotGroupMember {
 	for i := range group.Spec.Members {
