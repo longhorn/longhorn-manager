@@ -172,7 +172,8 @@ func (m *SnapshotMonitor) checkSnapshots(dataEngine longhorn.DataEngineType) {
 	defer func() {
 		m.Lock()
 		defer m.Unlock()
-		m.LastSnapshotPeriodicCheckedAt = metav1.Time{Time: time.Now().UTC()}
+		// Second precision and local location, matching the value decoded from the API server.
+		m.LastSnapshotPeriodicCheckedAt = metav1.NewTime(time.Now().Truncate(time.Second))
 	}()
 
 	for _, engine := range engines {
