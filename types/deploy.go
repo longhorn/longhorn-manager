@@ -21,6 +21,10 @@ const (
 	// controllers it hosts.
 	LonghornGlobalManagerName = "longhorn-global-manager"
 
+	// LonghornHookExecutorName names the hook-executor Deployment and
+	// its leader-election Lease.
+	LonghornHookExecutorName = "longhorn-hook-executor"
+
 	DriverDeployerName              = "longhorn-driver-deployer"
 	CSIAttacherName                 = "csi-attacher"
 	CSIProvisionerName              = "csi-provisioner"
