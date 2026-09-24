@@ -589,6 +589,53 @@ func getDiskFormat(devicePath string) (string, error) {
 	return m.GetDiskFormat(devicePath)
 }
 
+// checkDeviceReadable verifies that the first block of the device can be
+// read before allowing filesystem initialization.
+//
+// The existence of a device node does not guarantee that the underlying
+// Longhorn data path is healthy. When the data path is unavailable (e.g.
+// all reads fail with ENODATA), filesystem probing incorrectly reports
+// the device as unformatted and SafeFormatAndMount may enter the
+// formatting path, destroying an existing volume.
+//
+// Limitation: this is a narrow guard, not a complete blank-device proof.
+// It only rejects devices whose first block cannot be read at all. It
+// does not detect partial failures where the first block is readable
+// while other regions that blkid inspects are failing, and it does not
+// verify that the readable content is actually blank.
+func checkDeviceReadable(devicePath string) error {
+	device, err := os.Open(devicePath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open device %v", devicePath)
+	}
+	defer func() {
+		if err := device.Close(); err != nil {
+			logrus.WithError(err).Warnf("Failed to close device %v", devicePath)
+		}
+	}()
+
+	// Reading the first block is a cheap availability probe for the data
+	// path; filesystem validation itself remains mount-utils' job. The
+	// content of the block is intentionally not inspected.
+	buf := make([]byte, 4096)
+
+	// Per the io.ReaderAt contract, a short read may return both a positive
+	// byte count and a non-nil error. A partial read ending in io.EOF means
+	// the device is merely smaller than the probe size, which is fine. Any
+	// other error (e.g. EIO, ENODATA) indicates part of the first block is
+	// unavailable, and zero bytes read means the data path is unavailable.
+	// Both must be rejected so the caller does not initialize the device.
+	n, err := device.ReadAt(buf, 0)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return errors.Wrapf(err, "failed to read device %v", devicePath)
+	}
+	if n == 0 {
+		return errors.Errorf("failed to read device %v: no data returned", devicePath)
+	}
+
+	return nil
+}
+
 func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, error) {
 	var statfs unix.Statfs_t
 	// See http://man7.org/linux/man-pages/man2/statfs.2.html for details.
