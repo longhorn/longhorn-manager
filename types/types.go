@@ -233,6 +233,7 @@ const (
 	LonghornLabelManagedBy                       = "managed-by"
 	LonghornLabelSnapshotForCloningVolume        = "for-cloning-volume"
 	LonghornLabelSnapshotGroup                   = "snapshot-group"
+	LonghornLabelSnapshotGroupHooked             = "snapshot-group-hooked"
 	LonghornLabelSnapshotGroupCSIType            = "snapshot-group-csi-type"
 	LonghornLabelSnapshotGroupUID                = "snapshot-group-uid"
 	LonghornLabelBackingImageDataSource          = "backing-image-data-source"
