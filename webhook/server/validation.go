@@ -35,6 +35,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/systemrestore"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volumeattachment"
+	"github.com/longhorn/longhorn-manager/webhook/resources/volumehookpolicy"
 )
 
 func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, error) {
@@ -57,6 +58,7 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		orphan.NewValidator(ds),
 		snapshot.NewValidator(ds),
 		snapshotgroup.NewValidator(ds),
+		volumehookpolicy.NewValidator(ds),
 		shardgroup.NewValidator(ds),
 		shard.NewValidator(ds),
 		storageclass.NewValidator(ds),
