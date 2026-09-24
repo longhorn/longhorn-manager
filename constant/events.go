@@ -89,6 +89,7 @@ const (
 	// Events the group controller records for snapshot group hooks.
 	EventReasonHookDeadlineExceeded       = "HookDeadlineExceeded"
 	EventReasonHookDeadlineNearlyExceeded = "HookDeadlineNearlyExceeded"
+	EventReasonHookReleaseAbandoned       = "HookReleaseAbandoned"
 	EventReasonPreHooksSkipped            = "PreHooksSkipped"
 
 	// Events the hook executor records while running snapshot group hooks.

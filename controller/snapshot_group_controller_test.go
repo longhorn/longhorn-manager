@@ -1502,3 +1502,98 @@ func (s *SnapshotGroupControllerSuite) TestPausedGroupWarnsWhenDeadlineNearlyExc
 	}
 	c.Assert(warned, Equals, true)
 }
+
+// TestDeletionOfPausedGroupWaitsForRelease verifies the finalizer of a
+// hooked group stays while a recorded pod is still paused, proceeds once the
+// executor reports it released, and never touches the member snapshot in
+// between.
+func (s *SnapshotGroupControllerSuite) TestDeletionOfPausedGroupWaitsForRelease(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	deletionTime := metav1.NewTime(testSnapshotGroupBaseTime.Add(time.Minute))
+	group.DeletionTimestamp = &deletionTime
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(30*time.Second))
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	c.Assert(f.getGroup(c).Finalizers, HasLen, 1)
+	f.assertSnapshotCount(c, 1)
+
+	// The executor releases the pod; deletion proceeds.
+	released := f.getGroup(c)
+	released.Status.Hooks[0].Pods[0].Phase = longhorn.HookPhasePostDone
+	_, err := f.lhClient.LonghornV1beta2().SnapshotGroups(TestNamespace).UpdateStatus(context.TODO(), released, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	f.syncGroupFromClient(c)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+	f.assertSnapshotCount(c, 0)
+}
+
+// TestDeletionOfPausedGroupAbandonsReleaseAfterBound verifies the escape:
+// past max(deadline, deletion) plus the worst case of the release attempts
+// over every paused member, the finalizer stops waiting,
+// HookReleaseAbandoned names the never-released pods, and the member
+// snapshots are deleted. Two members: the release runs them one at a time,
+// so the bound must leave room for both, or the second member's remaining
+// attempts would be cut off while its pods are still paused.
+func (s *SnapshotGroupControllerSuite) TestDeletionOfPausedGroupAbandonsReleaseAfterBound(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	group.Spec.Volumes = append(group.Spec.Volumes, "vol-2")
+	group.Spec.Members = append(group.Spec.Members, longhorn.SnapshotGroupMember{
+		VolumeName: "vol-2", SnapshotName: testSnapshotGroupName + "-vol-2", HookPolicyRef: testVolumeHookPolicyRef(),
+	})
+	group.Status.Members = initializedMemberStatuses(group)
+	group.Status.Hooks = append(group.Status.Hooks, longhorn.HookStatus{
+		SnapshotName: group.Spec.Members[1].SnapshotName,
+		Phase:        longhorn.HookPhasePreDone,
+		PVCRef:       &longhorn.PVCRef{Namespace: testHookPodNamespace, Name: "data-2"},
+		Pods: []longhorn.HookPodStatus{{
+			Namespace: testHookPodNamespace, Name: "mongo-1", UID: "pod-uid-2",
+			ContainerIDs: []string{"containerd://c2"}, HookName: "default", Phase: longhorn.HookPhasePreDone,
+		}},
+	})
+	deletionTime := metav1.NewTime(testSnapshotGroupBaseTime.Add(time.Minute))
+	group.DeletionTimestamp = &deletionTime
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(30*time.Second))
+	f.registerMemberSnapshot(c, group.Spec.Members[1], true, creationTimeAt(30*time.Second))
+
+	// Defaults: 3 attempts x 2 members x 60s + 2 x 32s backoff cap past the
+	// 300s deadline.
+	bound := testSnapshotGroupBaseTime.Add(time.Duration(testSnapshotGroupDeadlineSeconds)*time.Second + 3*2*60*time.Second + 2*32*time.Second)
+	f.controller.nowHandler = func() time.Time { return bound.Add(-time.Second) }
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+	c.Assert(f.getGroup(c).Finalizers, HasLen, 1)
+	f.recordedEvents()
+
+	f.controller.nowHandler = func() time.Time { return bound.Add(time.Second) }
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	f.assertSnapshotCount(c, 0)
+	abandoned := false
+	for _, event := range f.recordedEvents() {
+		if strings.Contains(event, "HookReleaseAbandoned") && strings.Contains(event, "app/mongo-0") && strings.Contains(event, "app/mongo-1") {
+			abandoned = true
+		}
+	}
+	c.Assert(abandoned, Equals, true)
+}
+
+// TestDeletionOfUnclaimedHookedGroupProceeds verifies a hooked group deleted
+// before the executor recorded any pod waits for nothing: there is no pause
+// to release.
+func (s *SnapshotGroupControllerSuite) TestDeletionOfUnclaimedHookedGroupProceeds(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestHookedSnapshotGroup("vol-1")
+	deletionTime := metav1.NewTime(testSnapshotGroupBaseTime.Add(time.Minute))
+	group.DeletionTimestamp = &deletionTime
+	group.Status = longhorn.SnapshotGroupStatus{OwnerID: TestOwnerID1, Phase: longhorn.SnapshotGroupPhaseRunningPreHooks, Members: initializedMemberStatuses(group)}
+	f.registerSnapshotGroup(c, group)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	c.Assert(f.getGroup(c).Finalizers, HasLen, 0)
+}
