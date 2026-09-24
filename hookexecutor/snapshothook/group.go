@@ -2,6 +2,7 @@ package snapshothook
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -233,6 +234,36 @@ func postFailedHookPods(group *longhorn.SnapshotGroup, volumeName string) []long
 		}
 	}
 	return pods
+}
+
+// MembersInPauseOrder returns a copy of the members in the order the
+// executor pauses them. A group with an explicit spec.volumes list is
+// paused in that order; a selector group is paused in stored volume-name
+// order. The release walks the result in reverse.
+func MembersInPauseOrder(group *longhorn.SnapshotGroup) []longhorn.SnapshotGroupMember {
+	members := make([]longhorn.SnapshotGroupMember, len(group.Spec.Members))
+	copy(members, group.Spec.Members)
+	SortByPauseOrder(group.Spec.Volumes, members, func(member longhorn.SnapshotGroupMember) string {
+		return member.VolumeName
+	})
+	return members
+}
+
+// SortByPauseOrder reorders items in place to follow their volume's
+// position in spec.volumes. When spec.volumes is empty the order stays as
+// stored. The sort is stable: items whose volume is not listed keep their
+// original order.
+func SortByPauseOrder[T any](volumes []string, items []T, volumeName func(T) string) {
+	if len(volumes) == 0 {
+		return
+	}
+	index := make(map[string]int, len(volumes))
+	for i, name := range volumes {
+		index[name] = i
+	}
+	sort.SliceStable(items, func(a, b int) bool {
+		return index[volumeName(items[a])] < index[volumeName(items[b])]
+	})
 }
 
 // RunningWorkloadPods returns the names of the pods the volume's

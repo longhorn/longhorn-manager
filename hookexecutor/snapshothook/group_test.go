@@ -30,6 +30,33 @@ func hookedGroup(phase longhorn.SnapshotGroupPhase, podPhases ...longhorn.HookPh
 	return group
 }
 
+func TestMembersInPauseOrder(t *testing.T) {
+	members := []longhorn.SnapshotGroupMember{
+		{VolumeName: "vol-a", SnapshotName: "g-1"},
+		{VolumeName: "vol-b", SnapshotName: "g-2"},
+		{VolumeName: "vol-c", SnapshotName: "g-3"},
+	}
+	volumeNames := func(ordered []longhorn.SnapshotGroupMember) []string {
+		names := make([]string, 0, len(ordered))
+		for _, m := range ordered {
+			names = append(names, m.VolumeName)
+		}
+		return names
+	}
+
+	t.Run("selector group keeps volume-name order", func(t *testing.T) {
+		group := &longhorn.SnapshotGroup{Spec: longhorn.SnapshotGroupSpec{Members: members}}
+		assert.Equal(t, []string{"vol-a", "vol-b", "vol-c"}, volumeNames(MembersInPauseOrder(group)))
+	})
+	t.Run("explicit list orders by spec.volumes index", func(t *testing.T) {
+		group := &longhorn.SnapshotGroup{Spec: longhorn.SnapshotGroupSpec{
+			Volumes: []string{"vol-c", "vol-a", "vol-b"}, Members: members,
+		}}
+		assert.Equal(t, []string{"vol-c", "vol-a", "vol-b"}, volumeNames(MembersInPauseOrder(group)))
+		assert.Equal(t, "vol-a", members[0].VolumeName, "spec.members is left untouched")
+	})
+}
+
 func TestIsHooked(t *testing.T) {
 	cases := []struct {
 		name   string
