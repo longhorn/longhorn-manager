@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,7 @@ import (
 	lhutils "github.com/longhorn/go-common-libs/utils"
 
 	"github.com/longhorn/longhorn-manager/csi/crypto"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -6558,6 +6560,131 @@ func snapshotGroupMemberValidationFailure(volume *longhorn.Volume) string {
 		return fmt.Sprintf("volume %v is a legacy linked-clone volume and cannot be a member", volume.Name)
 	}
 	return ""
+}
+
+// VolumeHookPolicy is namespaced to the application, not to longhorn-system.
+// The accessors below therefore take an explicit namespace instead of
+// defaulting to s.namespace.
+
+// GetVolumeHookPolicyRO gets the VolumeHookPolicy in the given namespace.
+// The returned object MUST NOT be modified.
+func (s *DataStore) GetVolumeHookPolicyRO(namespace, name string) (*longhorn.VolumeHookPolicy, error) {
+	if namespace == "" {
+		return nil, fmt.Errorf("namespace is required to get volume hook policy %v", name)
+	}
+	return s.volumeHookPolicyLister.VolumeHookPolicies(namespace).Get(name)
+}
+
+// ListVolumeHookPoliciesRO lists the VolumeHookPolicies in one namespace.
+// The returned objects MUST NOT be modified.
+func (s *DataStore) ListVolumeHookPoliciesRO(namespace string) ([]*longhorn.VolumeHookPolicy, error) {
+	if namespace == "" {
+		return nil, fmt.Errorf("namespace is required to list volume hook policies")
+	}
+	return s.volumeHookPolicyLister.VolumeHookPolicies(namespace).List(labels.Everything())
+}
+
+// ListAllVolumeHookPoliciesRO lists the VolumeHookPolicies of every
+// namespace. The returned objects MUST NOT be modified.
+func (s *DataStore) ListAllVolumeHookPoliciesRO() ([]*longhorn.VolumeHookPolicy, error) {
+	return s.volumeHookPolicyLister.List(labels.Everything())
+}
+
+// ResolveVolumeHookPolicyForVolume finds the one VolumeHookPolicy that
+// covers the volume's bound PVC, matched by pvcNames or pvcSelector, reading
+// only from cache. Both the admission webhook and the preview action call
+// it, so the two always agree.
+//
+// Longhorn must always know exactly which command to run for a volume, so
+// the lookup fails unless exactly one policy matches the PVC; a policy
+// matching by name and another matching by selector count as two. A volume
+// whose PVC does not exist also fails, because the pods to pause are found
+// through the PVC. A PVC in the Longhorn namespace also fails, because
+// hooks do not run there.
+//
+// Each of these failures is returned as a
+// *snapshothook.PolicyResolutionError that records the reason, the volume,
+// its PVC, and the policies involved. A failed cache read is returned as an
+// ordinary error.
+// The returned object MUST NOT be modified.
+func (s *DataStore) ResolveVolumeHookPolicyForVolume(volume *longhorn.Volume) (*longhorn.VolumeHookPolicy, error) {
+	namespace, pvcName, bound := snapshothook.BoundPVC(volume)
+	if !bound {
+		return nil, &snapshothook.PolicyResolutionError{
+			Reason:  snapshothook.AdmissionFailureNoPVC,
+			Message: fmt.Sprintf("volume %v has no bound PVC, so no volume hook policy can apply to it", volume.Name),
+		}
+	}
+	if namespace == s.namespace {
+		return nil, &snapshothook.PolicyResolutionError{
+			Reason:  snapshothook.AdmissionFailureLonghornNamespace,
+			Message: snapshothook.LonghornNamespaceMessage(s.namespace),
+		}
+	}
+	pvcRef := namespace + "/" + pvcName
+
+	pvc, err := s.GetPersistentVolumeClaimRO(namespace, pvcName)
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			return nil, &snapshothook.PolicyResolutionError{
+				Reason:  snapshothook.AdmissionFailureNoPVC,
+				Message: fmt.Sprintf("PVC %v of volume %v does not exist", pvcRef, volume.Name),
+			}
+		}
+		return nil, errors.Wrapf(err, "failed to get PVC %v of volume %v", pvcRef, volume.Name)
+	}
+
+	policies, err := s.ListVolumeHookPoliciesRO(namespace)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list volume hook policies in namespace %v", namespace)
+	}
+
+	pvcLabels := labels.Set(pvc.Labels)
+	var matched []*longhorn.VolumeHookPolicy
+	for _, policy := range policies {
+		covers, err := volumeHookPolicyCoversPVC(policy, pvc.Name, pvcLabels)
+		if err != nil {
+			return nil, err
+		}
+		if covers {
+			matched = append(matched, policy)
+		}
+	}
+
+	switch len(matched) {
+	case 0:
+		return nil, &snapshothook.PolicyResolutionError{
+			Reason:  snapshothook.AdmissionFailureNoPolicy,
+			Message: fmt.Sprintf("no volume hook policy in namespace %v matches PVC %v of volume %v", namespace, pvcRef, volume.Name),
+		}
+	case 1:
+		return matched[0], nil
+	}
+	keys := make([]string, 0, len(matched))
+	for _, policy := range matched {
+		keys = append(keys, snapshothook.PolicyNamespacedName(policy))
+	}
+	sort.Strings(keys)
+	return nil, &snapshothook.PolicyResolutionError{
+		Reason:  snapshothook.AdmissionFailureMultiplePolicies,
+		Message: fmt.Sprintf("volume hook policies %v all match PVC %v of volume %v; exactly one must", strings.Join(keys, ", "), pvcRef, volume.Name),
+	}
+}
+
+// volumeHookPolicyCoversPVC reports whether the policy covers the PVC: by
+// name when the policy lists pvcNames, by labels otherwise.
+func volumeHookPolicyCoversPVC(policy *longhorn.VolumeHookPolicy, pvcName string, pvcLabels labels.Set) (bool, error) {
+	if len(policy.Spec.PVCNames) > 0 {
+		return slices.Contains(policy.Spec.PVCNames, pvcName), nil
+	}
+	if policy.Spec.PVCSelector == nil {
+		return false, fmt.Errorf("volume hook policy %v has neither pvcSelector nor pvcNames", snapshothook.PolicyNamespacedName(policy))
+	}
+	selector, err := metav1.LabelSelectorAsSelector(policy.Spec.PVCSelector)
+	if err != nil {
+		return false, errors.Wrapf(err, "volume hook policy %v has an invalid pvcSelector", snapshothook.PolicyNamespacedName(policy))
+	}
+	return selector.Matches(pvcLabels), nil
 }
 
 // CreateRecurringJob creates a Longhorn RecurringJob resource and verifies
