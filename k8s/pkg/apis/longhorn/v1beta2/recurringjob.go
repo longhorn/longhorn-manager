@@ -96,6 +96,10 @@ type RecurringJobStatus struct {
 	// The number of jobs that have been triggered.
 	// +optional
 	ExecutionCount int `json:"executionCount"`
+	// Records the outcome of the latest run of the recurring job.
+	// +optional
+	// +nullable
+	Conditions []Condition `json:"conditions"`
 }
 
 // +genclient
