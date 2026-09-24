@@ -20,6 +20,7 @@ package v1beta2
 
 import (
 	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // SnapshotGroupStatusApplyConfiguration represents a declarative configuration of the SnapshotGroupStatus type for use
@@ -29,8 +30,9 @@ import (
 type SnapshotGroupStatusApplyConfiguration struct {
 	// OwnerID is the ID of the node that owns this SnapshotGroup.
 	OwnerID *string `json:"ownerID,omitempty"`
-	// Phase is the lifecycle phase: empty until the first reconcile, then
-	// InProgress -> Ready | Failed.
+	// Phase is the lifecycle phase. It is empty until the first reconcile,
+	// then moves InProgress -> Ready or Failed. A hooked group passes through
+	// RunningPreHooks first.
 	Phase *longhornv1beta2.SnapshotGroupPhase `json:"phase,omitempty"`
 	// Members is the observed state of every member, one entry per spec
 	// member. It is the primary debugging signal: each entry carries the
@@ -52,6 +54,27 @@ type SnapshotGroupStatusApplyConfiguration struct {
 	// Conditions holds the latest observations of the SnapshotGroup's state,
 	// such as Degraded.
 	Conditions []ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// PreHooksDone is set by the hook executor once every member's
+	// pre-command has succeeded. It is the controller's signal to leave
+	// RunningPreHooks.
+	PreHooksDone *bool `json:"preHooksDone,omitempty"`
+	// HooksStartedAt is when the executor started on the first member. The
+	// time between creationTimestamp and this is queue wait, not hook time.
+	HooksStartedAt *v1.Time `json:"hooksStartedAt,omitempty"`
+	// PreHooksDoneAt is when the last pre-command succeeded, set by the
+	// executor. The application is paused from here until PostHooksDoneAt.
+	PreHooksDoneAt *v1.Time `json:"preHooksDoneAt,omitempty"`
+	// PostHooksDoneAt is when every recorded pod reached PostDone or
+	// PostFailed. Unset when nothing was paused.
+	PostHooksDoneAt *v1.Time `json:"postHooksDoneAt,omitempty"`
+	// HookProgress summarizes hook progress for the HookProgress printer
+	// column, for example "pre 2/3" or "post done". The hook executor
+	// maintains it. Empty when Hooks is none.
+	HookProgress *string `json:"hookProgress,omitempty"`
+	// Hooks records the hook outcome of each member. An entry's snapshotName
+	// matches the member in spec.members. Only the hook executor writes it. It
+	// never includes the command itself or its output.
+	Hooks []HookStatusApplyConfiguration `json:"hooks,omitempty"`
 }
 
 // SnapshotGroupStatusApplyConfiguration constructs a declarative configuration of the SnapshotGroupStatus type for use with
@@ -122,6 +145,59 @@ func (b *SnapshotGroupStatusApplyConfiguration) WithConditions(values ...*Condit
 			panic("nil value passed to WithConditions")
 		}
 		b.Conditions = append(b.Conditions, *values[i])
+	}
+	return b
+}
+
+// WithPreHooksDone sets the PreHooksDone field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PreHooksDone field is set to the value of the last call.
+func (b *SnapshotGroupStatusApplyConfiguration) WithPreHooksDone(value bool) *SnapshotGroupStatusApplyConfiguration {
+	b.PreHooksDone = &value
+	return b
+}
+
+// WithHooksStartedAt sets the HooksStartedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HooksStartedAt field is set to the value of the last call.
+func (b *SnapshotGroupStatusApplyConfiguration) WithHooksStartedAt(value v1.Time) *SnapshotGroupStatusApplyConfiguration {
+	b.HooksStartedAt = &value
+	return b
+}
+
+// WithPreHooksDoneAt sets the PreHooksDoneAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PreHooksDoneAt field is set to the value of the last call.
+func (b *SnapshotGroupStatusApplyConfiguration) WithPreHooksDoneAt(value v1.Time) *SnapshotGroupStatusApplyConfiguration {
+	b.PreHooksDoneAt = &value
+	return b
+}
+
+// WithPostHooksDoneAt sets the PostHooksDoneAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PostHooksDoneAt field is set to the value of the last call.
+func (b *SnapshotGroupStatusApplyConfiguration) WithPostHooksDoneAt(value v1.Time) *SnapshotGroupStatusApplyConfiguration {
+	b.PostHooksDoneAt = &value
+	return b
+}
+
+// WithHookProgress sets the HookProgress field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HookProgress field is set to the value of the last call.
+func (b *SnapshotGroupStatusApplyConfiguration) WithHookProgress(value string) *SnapshotGroupStatusApplyConfiguration {
+	b.HookProgress = &value
+	return b
+}
+
+// WithHooks adds the given value to the Hooks field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Hooks field.
+func (b *SnapshotGroupStatusApplyConfiguration) WithHooks(values ...*HookStatusApplyConfiguration) *SnapshotGroupStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithHooks")
+		}
+		b.Hooks = append(b.Hooks, *values[i])
 	}
 	return b
 }
