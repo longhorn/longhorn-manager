@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta2
 
 import (
+	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
@@ -40,12 +41,18 @@ type SnapshotGroupSpecApplyConfiguration struct {
 	// spec.labels). They are not visible to Kubernetes label selectors.
 	// Reserved recurring-job label keys are rejected at admission.
 	Labels map[string]string `json:"labels,omitempty"`
-	// DeadlineSeconds is the deadline for taking every member snapshot,
-	// measured from the group's metadata.creationTimestamp. When the field is
-	// omitted, the CRD default applies. Go clients cannot omit the field: an
-	// unset field arrives as 0, and the mutating webhook replaces the 0 with
-	// the default.
+	// DeadlineSeconds bounds how long the whole group may take, measured from
+	// metadata.creationTimestamp. When omitted or 0, admission sets 300, or 60
+	// for a hooked group because the deadline also bounds the time between the
+	// pre- and post-commands. The default is set by the webhook, not the
+	// schema, because it depends on Hooks.
 	DeadlineSeconds *int64 `json:"deadlineSeconds,omitempty"`
+	// Hooks selects whether VolumeHookPolicy commands run around the member
+	// snapshots: none (default) or command.
+	Hooks *longhornv1beta2.SnapshotGroupHooks `json:"hooks,omitempty"`
+	// HookOperation is the operation the hooks run for: snapshot or backup.
+	// Set only for a hooked group; admission defaults it to snapshot.
+	HookOperation *longhornv1beta2.HookOperation `json:"hookOperation,omitempty"`
 	// Members is the fixed member set, resolved from Volumes or VolumeSelector
 	// and stamped by the mutating webhook at admission. It may not be set by
 	// the user.
@@ -95,6 +102,22 @@ func (b *SnapshotGroupSpecApplyConfiguration) WithLabels(entries map[string]stri
 // If called multiple times, the DeadlineSeconds field is set to the value of the last call.
 func (b *SnapshotGroupSpecApplyConfiguration) WithDeadlineSeconds(value int64) *SnapshotGroupSpecApplyConfiguration {
 	b.DeadlineSeconds = &value
+	return b
+}
+
+// WithHooks sets the Hooks field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Hooks field is set to the value of the last call.
+func (b *SnapshotGroupSpecApplyConfiguration) WithHooks(value longhornv1beta2.SnapshotGroupHooks) *SnapshotGroupSpecApplyConfiguration {
+	b.Hooks = &value
+	return b
+}
+
+// WithHookOperation sets the HookOperation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HookOperation field is set to the value of the last call.
+func (b *SnapshotGroupSpecApplyConfiguration) WithHookOperation(value longhornv1beta2.HookOperation) *SnapshotGroupSpecApplyConfiguration {
+	b.HookOperation = &value
 	return b
 }
 

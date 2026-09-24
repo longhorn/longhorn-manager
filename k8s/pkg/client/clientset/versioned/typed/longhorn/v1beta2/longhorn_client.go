@@ -56,6 +56,7 @@ type LonghornV1beta2Interface interface {
 	SystemRestoresGetter
 	VolumesGetter
 	VolumeAttachmentsGetter
+	VolumeHookPoliciesGetter
 }
 
 // LonghornV1beta2Client is used to interact with features provided by the longhorn.io group.
@@ -173,6 +174,10 @@ func (c *LonghornV1beta2Client) Volumes(namespace string) VolumeInterface {
 
 func (c *LonghornV1beta2Client) VolumeAttachments(namespace string) VolumeAttachmentInterface {
 	return newVolumeAttachments(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) VolumeHookPolicies(namespace string) VolumeHookPolicyInterface {
+	return newVolumeHookPolicies(c, namespace)
 }
 
 // NewForConfig creates a new LonghornV1beta2Client for the given config.
