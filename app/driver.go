@@ -399,27 +399,27 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, types.CSIControllerServiceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSIAttacher)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, types.CSIControllerServiceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), csiAttacherPriorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSIAttacher)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, types.CSIControllerServiceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSIProvisioner)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, types.CSIControllerServiceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), csiProvisionerPriorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSIProvisioner)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	resizerDeployment := csi.NewResizerDeployment(namespace, types.CSIControllerServiceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSIResizer)
+	resizerDeployment := csi.NewResizerDeployment(namespace, types.CSIControllerServiceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), csiResizerPriorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSIResizer)
 	if err := resizerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, types.CSIControllerServiceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSISnapshotter, volumeGroupSnapshotEnabled)
+	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, types.CSIControllerServiceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), csiSnapshotterPriorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSISnapshotter, volumeGroupSnapshotEnabled)
 	if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, endpointNetworkForRWXVolumeSetting, resourceLimits, volumeGroupSnapshotEnabled)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), csiPluginPriorityClass, registrySecret, imagePullPolicy, nodeSelector, endpointNetworkForRWXVolumeSetting, resourceLimits, volumeGroupSnapshotEnabled)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
