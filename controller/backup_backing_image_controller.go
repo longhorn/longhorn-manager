@@ -10,17 +10,18 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/backupstore/backupbackingimage"
 
@@ -382,7 +383,7 @@ func (bc *BackupBackingImageController) checkMonitor(bbi *longhorn.BackupBacking
 
 	monitor, err := bc.enableBackupBackingImageMonitor(bbi, backingImage, backupTargetClient, longhorn.BackupCompressionMethod(compressionMethod), int(concurrentLimit), bimClient)
 	if err != nil {
-		bbi.Status.Error = err.Error()
+		bbi.Status.Error = sanitizeVolatileErrorContent(err.Error())
 		bbi.Status.State = longhorn.BackupStateError
 		bbi.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err

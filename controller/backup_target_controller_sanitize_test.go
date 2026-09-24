@@ -81,7 +81,7 @@ func TestSanitizeBackupStoreErrorMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeBackupStoreErrorMessage(tt.input)
+			got := sanitizeVolatileErrorContent(tt.input)
 			if got != tt.expected {
 				t.Fatalf("sanitizeBackupStoreErrorMessage(%q):\n  got:      %q\n  expected: %q", tt.input, got, tt.expected)
 			}
@@ -96,8 +96,8 @@ func TestSanitizeBackupStoreErrorMessageStableAcrossAttempts(t *testing.T) {
 	attempt1 := "AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n403 1eed0c50c2cb9133\n"
 	attempt2 := "AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\n403 9e4e1d90d4c091bc\n"
 
-	got1 := sanitizeBackupStoreErrorMessage(attempt1)
-	got2 := sanitizeBackupStoreErrorMessage(attempt2)
+	got1 := sanitizeVolatileErrorContent(attempt1)
+	got2 := sanitizeVolatileErrorContent(attempt2)
 
 	if got1 != got2 {
 		t.Fatalf("expected sanitized messages to be equal across attempts, got %q vs %q", got1, got2)
@@ -135,8 +135,8 @@ func TestSanitizeBackupStoreErrorMessageStableAcrossAttemptsWithSubprocessLogs(t
 		"error: AWS Error:  InvalidAccessKeyId Malformed Access Key Id <nil>\\n403 bbbbbbbbbbbbbbbb\\n\"\n" +
 		": exit status 1"
 
-	got1 := sanitizeBackupStoreErrorMessage(attempt1)
-	got2 := sanitizeBackupStoreErrorMessage(attempt2)
+	got1 := sanitizeVolatileErrorContent(attempt1)
+	got2 := sanitizeVolatileErrorContent(attempt2)
 
 	if got1 != got2 {
 		t.Fatalf("expected sanitized messages to be equal across attempts, got:\n%q\nvs\n%q", got1, got2)

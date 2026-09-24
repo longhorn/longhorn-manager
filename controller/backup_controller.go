@@ -976,7 +976,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
 		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
 	if err != nil {
-		backup.Status.Error = err.Error()
+		backup.Status.Error = sanitizeVolatileErrorContent(err.Error())
 		backup.Status.State = longhorn.BackupStateError
 		backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err
