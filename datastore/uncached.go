@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -11,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	"github.com/longhorn/longhorn-manager/hookexecutor"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -140,6 +143,40 @@ func (s *DataStore) GetLonghornNamespace() (*corev1.Namespace, error) {
 // For example, support bundle creation
 func (s *DataStore) GetNamespace(name string) (*corev1.Namespace, error) {
 	return s.kubeClient.CoreV1().Namespaces().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// IsServiceAccountAllowed asks the API server, through a SubjectAccessReview,
+// whether the named ServiceAccount in the Longhorn namespace can perform the
+// action described by attributes (verb, resource, and namespace). The review
+// includes the ServiceAccount's groups, so a RoleBinding whose subject is a
+// group the account belongs to, rather than the account itself, also counts.
+func (s *DataStore) IsServiceAccountAllowed(serviceAccount string, attributes authorizationv1.ResourceAttributes) (bool, error) {
+	review := &authorizationv1.SubjectAccessReview{
+		Spec: authorizationv1.SubjectAccessReviewSpec{
+			User: fmt.Sprintf("system:serviceaccount:%s:%s", s.namespace, serviceAccount),
+			Groups: []string{
+				"system:serviceaccounts",
+				"system:serviceaccounts:" + s.namespace,
+				"system:authenticated",
+			},
+			ResourceAttributes: &attributes,
+		},
+	}
+	result, err := s.kubeClient.AuthorizationV1().SubjectAccessReviews().Create(context.TODO(), review, metav1.CreateOptions{})
+	if err != nil {
+		return false, err
+	}
+	return result.Status.Allowed && !result.Status.Denied, nil
+}
+
+// VerifyHookExecutorAccess checks that the hook executor has every grant it
+// needs in namespace. It returns a denial naming the missing grant and the
+// RoleBinding that fixes it, nil when all grants are in place, or an error
+// when a check could not complete.
+func (s *DataStore) VerifyHookExecutorAccess(namespace string) (*hookexecutor.AccessDenial, error) {
+	return snapshothook.VerifyExecutorAccess(namespace, s.namespace, func(attributes authorizationv1.ResourceAttributes) (bool, error) {
+		return s.IsServiceAccountAllowed(types.HookExecutorServiceAccountName, attributes)
+	})
 }
 
 // GetAllEventsList returns an uncached list of events for the given namespace
