@@ -340,13 +340,22 @@ const (
 	// also keeps the auto-attach of detached member volumes bounded.
 	SnapshotGroupMaxMemberCount = 64
 
-	// SnapshotGroupDefaultDeadlineSeconds is stamped by the mutating webhook
-	// when spec.deadlineSeconds is unset.
+	// SnapshotGroupDefaultDeadlineSeconds is set by the mutating webhook when
+	// spec.deadlineSeconds is omitted or 0.
 	SnapshotGroupDefaultDeadlineSeconds = 300
 	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds
 	// mirror the CRD schema bounds on spec.deadlineSeconds.
 	SnapshotGroupMinDeadlineSeconds = 10
 	SnapshotGroupMaxDeadlineSeconds = 3600
+
+	// Longhorn ships the hook executor's ClusterRole but never binds it. A
+	// namespace admin grants exec access by applying a RoleBinding in the
+	// application namespace that binds the ClusterRole to the executor's
+	// ServiceAccount in the Longhorn namespace. SnapshotGroup admission
+	// checks the grant and prints the manifest when it is missing.
+	HookExecutorClusterRoleName    = "longhorn-hook-executor"
+	HookExecutorRoleBindingName    = "longhorn-hook-executor"
+	HookExecutorServiceAccountName = "longhorn-hook-executor"
 
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network
