@@ -51,6 +51,22 @@ func TerminatingPodsUsingPVC(pods []corev1.Pod, pvcName string) []*corev1.Pod {
 	return podsUsingPVC(pods, pvcName, true)
 }
 
+// TerminalPodsUsingPVC returns the pods that mount the claim, ran at least
+// one container, and have since reached a terminal phase. The pods must come
+// from a list call without a status.phase field selector.
+func TerminalPodsUsingPVC(pods []corev1.Pod, pvcName string) []*corev1.Pod {
+	var matched []*corev1.Pod
+	for i := range pods {
+		pod := &pods[i]
+		if (pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed) &&
+			len(util.PodContainerIDs(pod)) > 0 &&
+			util.PodUsesPVC(pod, pvcName) {
+			matched = append(matched, pod)
+		}
+	}
+	return matched
+}
+
 // PodIdentityChange compares the pods recorded at pause time against the
 // live set and returns the first difference, or "" when they match: same
 // pods, same UIDs, same container IDs. Any difference means something may

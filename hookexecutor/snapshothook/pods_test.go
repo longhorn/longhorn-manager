@@ -45,7 +45,11 @@ func TestConsumerPodsUsingPVC(t *testing.T) {
 	terminatingSucceeded := newRunningPod("terminating-succeeded", "5", "pvc", "c")
 	terminatingSucceeded.Status.Phase = corev1.PodSucceeded
 	terminatingSucceeded.DeletionTimestamp = &now
-	pods := []corev1.Pod{running, otherPVC, starting, scheduled, terminating, terminatingSucceeded}
+	succeeded := newRunningPod("succeeded", "7", "pvc", "c")
+	succeeded.Status.Phase = corev1.PodSucceeded
+	failedNeverRan := newRunningPod("failed-never-ran", "8", "pvc")
+	failedNeverRan.Status.Phase = corev1.PodFailed
+	pods := []corev1.Pod{running, otherPVC, starting, scheduled, terminating, terminatingSucceeded, succeeded, failedNeverRan}
 
 	matched := ConsumerPodsUsingPVC(pods, "pvc")
 	assert.Len(t, matched, 2)
@@ -55,6 +59,13 @@ func TestConsumerPodsUsingPVC(t *testing.T) {
 	shuttingDown := TerminatingPodsUsingPVC(pods, "pvc")
 	assert.Len(t, shuttingDown, 1)
 	assert.Equal(t, "terminating", shuttingDown[0].Name)
+
+	// Terminal pods that ran a container are returned whether retained or
+	// being deleted; one that never started a container wrote nothing.
+	finished := TerminalPodsUsingPVC(pods, "pvc")
+	assert.Len(t, finished, 2)
+	assert.Equal(t, "terminating-succeeded", finished[0].Name)
+	assert.Equal(t, "succeeded", finished[1].Name)
 }
 
 func TestPodIdentityChange(t *testing.T) {
