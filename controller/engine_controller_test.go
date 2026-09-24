@@ -4,12 +4,16 @@ import (
 	"io"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/client-go/util/flowcontrol"
+
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
+	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
@@ -284,6 +288,52 @@ func TestVerifyCompletedRebuild(t *testing.T) {
 
 			newMonitor().verifyCompletedRebuild(engine, tc.addressReplicaMap, tc.rebuildStatus, proxy)
 			assert.ElementsMatch(tc.expectVerified, proxy.verifyCalled, "ReplicaRebuildVerify call mismatch")
+		})
+	}
+}
+
+func TestHandleRestoreError(t *testing.T) {
+	const replicaAddress = "tcp://10.0.0.1:10000"
+	const lockConflictMessage = "failed to restore backup data cifs://backup-target?backup=backup-1&volume=volume-1: rpc error: code = Unknown desc = error starting backup restore: error initiating incremental backup restore: failed to acquire lock backupstore/volumes/aa/bb/volume-1/locks/lock-1234.lck when performing backup create/restore, please try again later"
+	const terminalMessage = "failed to restore backup data: checksum mismatch"
+
+	tests := map[string]struct {
+		message         string
+		expectError     string
+		expectInBackoff bool
+	}{
+		// A concurrent deletion/retention lock only blocks the restore temporarily. Recording it
+		// would fail every restoring replica and leave the DR volume Faulted.
+		"backupstore lock conflict is retried": {
+			message:         lockConflictMessage,
+			expectError:     "",
+			expectInBackoff: true,
+		},
+		"terminal restore error is recorded": {
+			message:         terminalMessage,
+			expectError:     replicaAddress + ": " + terminalMessage,
+			expectInBackoff: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			engine := &longhorn.Engine{}
+			engine.Name = "engine"
+			backoff := flowcontrol.NewBackOff(time.Second, time.Minute)
+			rsMap := map[string]*longhorn.RestoreStatus{replicaAddress: {}}
+
+			err := imclient.TaskError{ReplicaErrors: []imclient.ReplicaError{
+				{Address: replicaAddress, Message: tc.message},
+			}}
+
+			assert.NoError(handleRestoreError(logger, engine, rsMap, backoff, err))
+			assert.Equal(tc.expectError, rsMap[replicaAddress].Error, "restore status error")
+			assert.Equal(tc.expectInBackoff, backoff.IsInBackOffSinceUpdate(engine.Name, time.Now()), "restore backoff")
 		})
 	}
 }
