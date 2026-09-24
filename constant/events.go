@@ -83,6 +83,13 @@ const (
 
 	EventReasonShardFailed = "ShardFailed"
 
+	// Events the hook executor records while running snapshot group hooks.
+	EventReasonPreHooksSucceeded  = "PreHooksSucceeded"
+	EventReasonPostHooksSucceeded = "PostHooksSucceeded"
+	EventReasonPreHookFailed      = "PreHookFailed"
+	EventReasonPostHookFailed     = "PostHookFailed"
+	EventReasonHookReleaseBlocked = "HookReleaseBlocked"
+
 	// EventReasonDegradedReadEIO means a read was failed with EIO because the
 	// data could not be safely rebuilt from parity: a crash left some stripes
 	// unscrubbed and a disk failed before the startup scrub could repair them.
