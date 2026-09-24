@@ -342,6 +342,12 @@ const (
 	// it matches the CSI driver's "bak" snapshot type.
 	SnapshotGroupCSITypeBackup = "bak"
 
+	// SnapshotGroupCSIParameterHooks and SnapshotGroupCSIParameterDeadlineSeconds
+	// are the VolumeGroupSnapshotClass parameter keys the CSI plugin maps to
+	// spec.hooks and spec.deadlineSeconds.
+	SnapshotGroupCSIParameterHooks           = "hooks"
+	SnapshotGroupCSIParameterDeadlineSeconds = "deadlineSeconds"
+
 	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
 	// also keeps the auto-attach of detached member volumes bounded.
 	SnapshotGroupMaxMemberCount = 64
