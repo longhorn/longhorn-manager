@@ -59,6 +59,16 @@ const (
 	// PreHooksSkippedMarker means the group reached InProgress without the
 	// executor recording that the pre-hooks finished.
 	PreHooksSkippedMarker = "(pre-hooks-skipped)"
+	// PodChangedMarker means the pods changed during the hook window.
+	PodChangedMarker = "(pod-changed)"
+	// ReleasedBeforeReadyMarker means the executor began releasing the group
+	// before every member snapshot was taken. The executor releases at the
+	// deadline on its own clock; if that runs ahead of the controller's, the
+	// pause can end while the controller still sees time left. The snapshots
+	// are then only crash-consistent, not application-consistent, so the
+	// group fails instead of claiming a consistency the pause no longer
+	// guarantees.
+	ReleasedBeforeReadyMarker = "(released-before-ready)"
 )
 
 // FindMember returns the member with the given snapshot name, or nil.
@@ -212,6 +222,28 @@ func VolumeConflictMessage(volumeName, groupName string) string {
 // hooked group still holds through another volume.
 func PodConflictMessage(namespace, podName, groupName string) string {
 	return fmt.Sprintf("pod %v/%v is still paused by snapshot group %v through another volume, which has not released it", namespace, podName, groupName)
+}
+
+// PodChangedMessage is the status.error of a group whose pods changed during
+// the hook window.
+func PodChangedMessage(member longhorn.SnapshotGroupMember, detail string) string {
+	return fmt.Sprintf("pod changed during the hook window on member %v (%v): %v %v",
+		member.SnapshotName, PolicyRefNamespacedName(member.HookPolicyRef), detail, PodChangedMarker)
+}
+
+// ReleasedBeforeReadyMessage is the status.error of a group the executor
+// began releasing before every member snapshot was taken, naming
+// the first pod found past its pause.
+func ReleasedBeforeReadyMessage(group *longhorn.SnapshotGroup) string {
+	for _, member := range group.Status.Hooks {
+		for _, pod := range member.Pods {
+			if IsPodPastPause(pod.Phase) {
+				return fmt.Sprintf("the hook executor released pod %v/%v of member %v before every member snapshot was taken; its deadline clock ran ahead of the controller's %v",
+					pod.Namespace, pod.Name, member.SnapshotName, ReleasedBeforeReadyMarker)
+			}
+		}
+	}
+	return "the hook executor released the pause before every member snapshot was taken " + ReleasedBeforeReadyMarker
 }
 
 // PostFailedHookPodWarnings returns one warning for each PostFailed pod
