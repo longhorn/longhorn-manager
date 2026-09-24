@@ -101,6 +101,9 @@ type EngineController struct {
 	engineMonitorMutex *sync.RWMutex
 	engineMonitorMap   map[string]chan struct{}
 
+	rebuildingReplicas      map[string]bool // key: <engineName>/<replicaName>
+	rebuildingReplicasMutex *sync.RWMutex
+
 	proxyConnCounter util.Counter
 
 	restoringCounter      util.Counter
@@ -170,6 +173,9 @@ func NewEngineController(
 		engines:            engines,
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   map[string]chan struct{}{},
+
+		rebuildingReplicasMutex: &sync.RWMutex{},
+		rebuildingReplicas:      map[string]bool{},
 
 		proxyConnCounter:      proxyConnCounter,
 		restoringCounter:      util.NewAtomicCounter(),
@@ -2310,6 +2316,12 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		return nil
 	}
 
+	rebuildingMapReplica := fmt.Sprintf("%v/%v", e.Name, replicaName)
+	if ec.isEngineReplicaRebuilding(rebuildingMapReplica) {
+		log.Infof("Replica %v is already rebuilding", replicaName)
+		return nil
+	}
+
 	rc, err := ec.prepareRebuildContext(log, e, ef, replicaName, addr)
 	if err != nil {
 		return err
@@ -2329,7 +2341,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 
 	// Transfer proxy ownership to the goroutine by nil-ing the local pointer
 	// so the deferred cleanup above becomes a no-op.
-	go ec.runRebuild(rc)
+	go ec.runRebuild(rc, rebuildingMapReplica)
 	rc = nil
 
 	// Wait until engine confirmed that rebuild started.
@@ -2340,6 +2352,29 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 	}
 
 	return nil
+}
+
+func (ec *EngineController) isEngineReplicaRebuilding(rebuildingMapReplica string) bool {
+	defer ec.rebuildingReplicasMutex.Unlock()
+
+	ec.rebuildingReplicasMutex.Lock()
+	if ec.rebuildingReplicas[rebuildingMapReplica] {
+		return true
+	}
+
+	ec.logger.Debugf("Marking replica %v as rebuilding", rebuildingMapReplica)
+	ec.rebuildingReplicas[rebuildingMapReplica] = true
+	return false
+}
+
+func (ec *EngineController) removedEngineReplicaFromRebuildingMap(rebuildingMapReplica string) {
+	ec.rebuildingReplicasMutex.Lock()
+	defer ec.rebuildingReplicasMutex.Unlock()
+
+	if ec.rebuildingReplicas[rebuildingMapReplica] {
+		ec.logger.Debugf("Removing replica %v from rebuilding map", rebuildingMapReplica)
+		delete(ec.rebuildingReplicas, rebuildingMapReplica)
+	}
 }
 
 // prepareRebuildContext performs all synchronous setup for a replica rebuild:
@@ -2505,7 +2540,9 @@ func (ec *EngineController) prepareRebuildContext(
 // runRebuild is the fire-and-forget goroutine body that performs the actual
 // rebuild work: optional pre-rebuild purge, ReplicaAdd, v2 rebuild wait,
 // and optional post-rebuild purge.
-func (ec *EngineController) runRebuild(rc *rebuildContext) {
+func (ec *EngineController) runRebuild(rc *rebuildContext, rebuildingMapReplica string) {
+	defer ec.removedEngineReplicaFromRebuildingMap(rebuildingMapReplica)
+
 	defer rc.rebuildProxy.Close()
 	if rc.cleanupProxy != rc.rebuildProxy {
 		defer rc.cleanupProxy.Close()
@@ -2670,6 +2707,14 @@ func (ec *EngineController) handleRebuildFailure(
 	} else {
 		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding,
 			"Failed rebuilding replica with Address %v: %v", addr, rebuildErr)
+	}
+	if isReplicaAddressExistError(rebuildErr) {
+		// If operations before calling `rc.rebuildProxy.ReplicaAdd` take a long time (over 30 seconds),
+		// the second rebuild goroutine for the same replica might be created.
+		// If the replica exists when adding this replica, the replica should have been rebuilt already by previous rebuild goroutine.
+		// Therefore, skip the operations below.
+		log.WithError(rebuildErr).Warn("Replica rebuild failed because replica exists")
+		return
 	}
 
 	log.Infof("Removing failed rebuilding replica %v", addr)
@@ -3301,6 +3346,11 @@ func isV2ReplicaAddAlreadyInProgressError(err error) bool {
 
 func isV2ReplicaAddRestoreInProgressError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "restore is in progress")
+}
+
+func isReplicaAddressExistError(err error) bool {
+	// If the replica address already exists when creating a replica, it will return an error as "replica already exists at address tcp://10.1.1.10:12345".
+	return err != nil && strings.Contains(err.Error(), etypes.ErrorStringReplicaAddressExist)
 }
 
 func isV2ExpansionIncomplete(engine *longhorn.Engine) bool {
