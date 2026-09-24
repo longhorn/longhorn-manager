@@ -69,10 +69,25 @@ func getDevicePathOf(mountPath, procMountPath string) (string, error) {
 	if devicePath == "" {
 		return "", fmt.Errorf("cannot find device path of %v", mountPath)
 	}
+	// /proc/mounts reports the device as it appears under /dev, which may be a
+	// symbolic link (e.g. /dev/mapper/vg1-longhorn -> ../dm-2). The matching
+	// entry under /sys/class/block is for the underlying device, so resolve
+	// the symlink here. If the path is not a symlink or cannot be resolved,
+	// fall back to the original path to keep existing behavior.
+	if resolved, err := filepath.EvalSymlinks(devicePath); err == nil {
+		devicePath = resolved
+	}
 	return devicePath, nil
 }
 
 func GetBlockDeviceType(devicePath string) (string, error) {
+	// Users may point Longhorn at a block-type disk that is itself a symlink
+	// (e.g. /dev/mapper/vg1-lv1 -> ../dm-2). The /sys entries for the device
+	// only exist under the real (resolved) name, so resolve here as well.
+	if resolved, err := filepath.EvalSymlinks(devicePath); err == nil {
+		devicePath = resolved
+	}
+
 	// Check if device rotational file exist
 	deviceID := filepath.Base(devicePath)
 	rotationalPath := fmt.Sprintf("/sys/block/%s/queue/rotational", deviceID)
