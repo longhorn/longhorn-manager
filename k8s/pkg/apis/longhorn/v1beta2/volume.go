@@ -201,6 +201,9 @@ const (
 	VolumeConditionTypeWaitForBackingImage      = "WaitForBackingImage"
 	VolumeConditionTypeBackingImageIncompatible = "BackingImageIncompatible"
 	VolumeConditionTypeOfflineRebuilding        = "OfflineRebuilding"
+	// VolumeConditionTypeExpansionStarted indicates that the volume controller
+	// has claimed an expansion request before updating dependent resources.
+	VolumeConditionTypeExpansionStarted = "ExpansionStarted"
 )
 
 const (
