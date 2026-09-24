@@ -55,6 +55,26 @@ func TestGetVolumeOptions(t *testing.T) {
 				RevisionCounterDisabled: true,
 			},
 		},
+		"volume anti-affinity from pod": {
+			volumeID: "test-vol-anti-affinity",
+			volumeOptions: map[string]string{
+				"volumeAntiAffinityFromPod": "enabled",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:       defaultStaleReplicaTimeout,
+				AccessMode:                string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:                string(longhorn.DataEngineTypeV1),
+				RevisionCounterDisabled:   true,
+				VolumeAntiAffinityFromPod: "enabled",
+			},
+		},
+		"invalid volume anti-affinity from pod": {
+			volumeID: "test-vol-anti-affinity-invalid",
+			volumeOptions: map[string]string{
+				"volumeAntiAffinityFromPod": "maybe",
+			},
+			expectedError: true,
+		},
 		"exclusive and shared conflict": {
 			volumeID: "test-vol-conflict",
 			volumeOptions: map[string]string{
