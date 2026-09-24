@@ -440,6 +440,13 @@ func (s *DataStore) GetLonghornSnapshotUncached(name string) (*longhorn.Snapshot
 	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
+// GetSnapshotGroupUncached returns the SnapshotGroup directly from the API
+// server, for decisions that must see the executor's latest writes rather
+// than the lister's copy.
+func (s *DataStore) GetSnapshotGroupUncached(name string) (*longhorn.SnapshotGroup, error) {
+	return s.lhClient.LonghornV1beta2().SnapshotGroups(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
 // GetAllBackingImages returns an uncached list of BackingImage in Longhorn
 // namespace directly from the API server.
 // Using cached informers should be preferred but current lister doesn't have a
