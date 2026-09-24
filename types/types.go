@@ -336,13 +336,27 @@ const (
 	// spec requires.
 	SnapshotGroupAnnotationCSIParameters = "longhorn.io/snapshot-group-csi-parameters"
 
+	// SnapshotGroupCSITypeBackup is the LonghornLabelSnapshotGroupCSIType
+	// value the CSI driver stamps on a group it backs up after the snapshots;
+	// it matches the CSI driver's "bak" snapshot type.
+	SnapshotGroupCSITypeBackup = "bak"
+
 	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
 	// also keeps the auto-attach of detached member volumes bounded.
 	SnapshotGroupMaxMemberCount = 64
 
 	// SnapshotGroupDefaultDeadlineSeconds is set by the mutating webhook when
-	// spec.deadlineSeconds is omitted or 0.
+	// spec.deadlineSeconds is omitted or 0. The CRD schema declares no default
+	// because the default depends on whether the group has hooks; this is the
+	// value for groups without hooks.
 	SnapshotGroupDefaultDeadlineSeconds = 300
+	// SnapshotGroupHookedDefaultDeadlineSeconds is the default for a hooked
+	// group. It is shorter than SnapshotGroupDefaultDeadlineSeconds because a
+	// hooked group never waits for auto-attach (admission requires running
+	// pods, so member volumes are already attached), and the deadline also
+	// bounds how long the application stays paused, so failing fast is
+	// preferable to a long freeze.
+	SnapshotGroupHookedDefaultDeadlineSeconds = 60
 	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds
 	// mirror the CRD schema bounds on spec.deadlineSeconds.
 	SnapshotGroupMinDeadlineSeconds = 10

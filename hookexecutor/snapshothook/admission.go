@@ -26,6 +26,10 @@ const (
 	// AdmissionFailureVolumeConflict means another hooked group includes the
 	// volume and has not released it.
 	AdmissionFailureVolumeConflict AdmissionFailureReason = "VolumeConflict"
+	// AdmissionFailurePodConflict means another hooked group ran its
+	// pre-command in one of the volume's pods, through a different volume of
+	// the same pod, and has not released it.
+	AdmissionFailurePodConflict AdmissionFailureReason = "PodConflict"
 	// AdmissionFailureLonghornNamespace means the PVC is in the Longhorn
 	// namespace, where hooks never run.
 	AdmissionFailureLonghornNamespace AdmissionFailureReason = "LonghornNamespace"
