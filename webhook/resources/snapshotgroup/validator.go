@@ -154,9 +154,19 @@ func validateHookReferences(snapshotGroup *longhorn.SnapshotGroup) error {
 // pod outside the Longhorn namespace, no other hooked group still holds a
 // member, and the executor has access in every member namespace.
 func (v *snapshotGroupValidator) validateHookClusterState(request *admission.Request, snapshotGroup *longhorn.SnapshotGroup) error {
-	// Only the CSI backup flow backs up the member snapshots. A backup
-	// operation on any other group pauses applications for backups that
-	// never happen, so warn rather than reject.
+	// During an upgrade, manager pods on different images may handle the
+	// group differently. So a group with hooks is refused until every
+	// manager pod runs the new image.
+	outdated, err := v.ds.ListOutdatedManagerPods()
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to check the longhorn-manager rollout: %v; retry the create", err))
+	}
+	if len(outdated) > 0 {
+		return werror.NewInvalidError(datastore.OutdatedManagerPodsMessage(outdated), "spec.hooks")
+	}
+
+	// This is a warning, not a rejection, because the user may still back
+	// up the snapshots themselves.
 	if snapshotGroup.Spec.HookOperation == longhorn.HookOperationBackup &&
 		snapshotGroup.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupCSIType)] != types.SnapshotGroupCSITypeBackup {
 		request.AddWarning(fmt.Sprintf("hookOperation is %v but the group was not created by a CSI VolumeGroupSnapshot of type %v; Longhorn will not back up the member snapshots, so the backup hooks only matter if you back them up yourself", longhorn.HookOperationBackup, types.SnapshotGroupCSITypeBackup))

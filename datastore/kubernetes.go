@@ -590,6 +590,64 @@ func (s *DataStore) ListManagerPodsRO() ([]*corev1.Pod, error) {
 	return s.ListPodsBySelectorRO(selector)
 }
 
+// ListOutdatedManagerPods names the manager pods not yet running the image
+// the manager DaemonSet specifies, so a rollout has still to replace them.
+func (s *DataStore) ListOutdatedManagerPods() ([]string, error) {
+	daemonSet, err := s.GetDaemonSet(types.LonghornManagerDaemonSetName)
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			// Without the DaemonSet there is no rollout to wait on.
+			return nil, nil
+		}
+		return nil, err
+	}
+	pods, err := s.ListManagerPodsRO()
+	if err != nil {
+		return nil, err
+	}
+	return outdatedManagerPods(daemonSet, pods), nil
+}
+
+// outdatedManagerPods returns the sorted names of the manager pods still
+// running an image other than the one the DaemonSet specifies. Pods that
+// have exited are not counted.
+func outdatedManagerPods(daemonSet *appsv1.DaemonSet, pods []*corev1.Pod) []string {
+	wanted := managerImage(daemonSet.Spec.Template.Spec.Containers)
+	if wanted == "" {
+		return nil
+	}
+	var outdated []string
+	for _, pod := range pods {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		if managerImage(pod.Spec.Containers) != wanted {
+			outdated = append(outdated, pod.Name)
+		}
+	}
+	sort.Strings(outdated)
+	return outdated
+}
+
+// OutdatedManagerPodsMessage explains why a group with hooks is refused
+// while some manager pods still run the old image. It is empty once every
+// pod runs the new image.
+func OutdatedManagerPodsMessage(outdated []string) string {
+	if len(outdated) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("hooks: command is refused until the longhorn-manager rollout completes: pods %v still run the previous image and would snapshot without running the hooks", strings.Join(outdated, ", "))
+}
+
+func managerImage(containers []corev1.Container) string {
+	for _, container := range containers {
+		if container.Name == types.LonghornManagerContainerName {
+			return container.Image
+		}
+	}
+	return ""
+}
+
 func (s *DataStore) GetManagerPodForNode(nodeName string) (*corev1.Pod, error) {
 	pods, err := s.ListManagerPods()
 	if err != nil {

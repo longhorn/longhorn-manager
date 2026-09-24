@@ -178,6 +178,31 @@ func TestSnapshotGroupValidatorCreateHooked(t *testing.T) {
 		assert.NoError(t, v.Create(nil, sg))
 	})
 
+	t.Run("a manager rollout still in progress refuses hooked groups, naming the pods", func(t *testing.T) {
+		sg, cache := validHookedGroup()
+		cache.managerDS = newTestManagerDaemonSet("longhorn-manager:v2")
+		cache.managerPods = []*corev1.Pod{
+			newTestManagerPod("longhorn-manager-a", "longhorn-manager:v2"),
+			newTestManagerPod("longhorn-manager-b", "longhorn-manager:v1"),
+		}
+		v := &snapshotGroupValidator{ds: newHookTestDataStore(t, cache)}
+		err := v.Create(nil, sg)
+		require.Error(t, err)
+		assert.Equal(t, int32(422), err.(werror.AdmitError).AsResult().Code)
+		assert.Contains(t, err.Error(), "rollout completes")
+		assert.Contains(t, err.Error(), "longhorn-manager-b")
+		assert.NotContains(t, err.Error(), "longhorn-manager-a")
+
+		// Unhooked groups are not held back: the old manager runs them fine.
+		plain := validGroup()
+		assert.NoError(t, v.Create(nil, plain))
+
+		// Once the last pod is on the new image the group is admitted.
+		cache.managerPods[1] = newTestManagerPod("longhorn-manager-b", "longhorn-manager:v2")
+		v = &snapshotGroupValidator{ds: newHookTestDataStore(t, cache)}
+		assert.NoError(t, v.Create(nil, sg))
+	})
+
 	t.Run("a member without a stamped policy is rejected", func(t *testing.T) {
 		sg, cache := validHookedGroup()
 		sg.Spec.Members[0].HookPolicyRef = nil

@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
+	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
@@ -55,14 +56,18 @@ func membersFromPatchOps(t *testing.T, patchOps []string) []longhorn.SnapshotGro
 	return nil
 }
 
-// testCache holds the objects admission of a hooked group reads from the
-// informer caches: member volumes, their PVCs, the hook policies in the PVC
-// namespaces, and the existing groups that may already hold a member volume.
+// testCache holds the objects to load into the informer caches: everything
+// a group with hooks is checked against on admission — the member volumes
+// and their PVCs, the hook policies in the PVC namespaces, the existing
+// groups that may already hold a member volume, and the manager DaemonSet
+// with its pods.
 type testCache struct {
-	volumes  []*longhorn.Volume
-	pvcs     []*corev1.PersistentVolumeClaim
-	policies []*longhorn.VolumeHookPolicy
-	groups   []*longhorn.SnapshotGroup
+	volumes     []*longhorn.Volume
+	pvcs        []*corev1.PersistentVolumeClaim
+	policies    []*longhorn.VolumeHookPolicy
+	groups      []*longhorn.SnapshotGroup
+	managerDS   *appsv1.DaemonSet
+	managerPods []*corev1.Pod
 	// executorAccess answers the executor's SubjectAccessReviews; nil grants
 	// everything.
 	executorAccess func(attributes authorizationv1.ResourceAttributes) (allowed bool, err error)
@@ -103,7 +108,30 @@ func newHookTestDataStore(t *testing.T, seed testCache) *datastore.DataStore {
 	for _, pvc := range seed.pvcs {
 		require.NoError(t, pvcIndexer.Add(pvc))
 	}
+	if seed.managerDS != nil {
+		require.NoError(t, informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer().Add(seed.managerDS))
+	}
+	podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	for _, pod := range seed.managerPods {
+		require.NoError(t, podIndexer.Add(pod))
+	}
 	return ds
+}
+
+// newTestManagerDaemonSet returns the manager DaemonSet on the given image.
+func newTestManagerDaemonSet(image string) *appsv1.DaemonSet {
+	ds := &appsv1.DaemonSet{ObjectMeta: metav1.ObjectMeta{Name: types.LonghornManagerDaemonSetName, Namespace: testNamespace}}
+	ds.Spec.Template.Spec.Containers = []corev1.Container{{Name: types.LonghornManagerContainerName, Image: image}}
+	return ds
+}
+
+// newTestManagerPod returns a Running manager pod on the given image.
+func newTestManagerPod(name, image string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: types.GetManagerLabels()},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: types.LonghornManagerContainerName, Image: image}}},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+	}
 }
 
 func newTestVolume(name string, labels map[string]string) *longhorn.Volume {
