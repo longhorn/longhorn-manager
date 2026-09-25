@@ -325,6 +325,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return errors.Wrapf(err, "failed to sync node selector for engine image daemonset %v", ds.Name)
 	}
 
+	if err := ic.syncEngineImageDaemonSetToleration(ds); err != nil {
+		return errors.Wrapf(err, "failed to sync toleration for engine image daemonset %v", ds.Name)
+	}
+
 	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
 		return errors.Wrapf(err, "failed to update RefCount for engine image %v(%v)", engineImage.Name, engineImage.Spec.Image)
 	}
@@ -903,6 +907,76 @@ func (ic *EngineImageController) syncEngineImageDaemonSetNodeSelector(ds *appsv1
 		ds.Name, currentNodeSelector, nodeSelector)
 	_, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
 	return err
+}
+
+// syncEngineImageDaemonSetToleration updates the DaemonSet's pod template tolerations
+// when they diverge from the taint-toleration setting. Tolerations are otherwise only
+// read on the DaemonSet creation path, so a DaemonSet that outlives a setting change
+// keeps its original tolerations forever.
+func (ic *EngineImageController) syncEngineImageDaemonSetToleration(ds *appsv1.DaemonSet) error {
+	newTolerations, err := ic.ds.GetSettingTaintToleration()
+	if err != nil {
+		return err
+	}
+	newTolerationsMap := util.TolerationListToMap(newTolerations)
+
+	lastAppliedTolerations, err := getLastAppliedTolerationsList(ds)
+	if err != nil {
+		return err
+	}
+	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
+	if reflect.DeepEqual(lastAppliedTolerationsMap, newTolerationsMap) {
+		return nil
+	}
+
+	// taint-toleration is a Danger Zone setting. Dropping a toleration can strand
+	// Engine Image pods on tainted nodes, so that direction keeps the "detach every
+	// volume first" safeguard. Adding a toleration only widens the set of
+	// schedulable nodes and evicts nothing, and Engine Image pods must reach the
+	// tainted storage nodes before any volume there can attach, so waiting for a
+	// full detach in that direction is a deadlock.
+	if !isTolerationSuperset(newTolerationsMap, lastAppliedTolerationsMap) {
+		detached, err := ic.ds.AreAllVolumesDetachedState()
+		if err != nil {
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameTaintToleration)
+		}
+		if !detached {
+			ic.logger.Debugf("Skipping toleration removal for engine image daemonset %v because some volumes are still attached", ds.Name)
+			return nil
+		}
+	}
+
+	// ds is already a deep copy returned by GetEngineImageDaemonSet, so mutating it
+	// directly is safe.
+	existingTolerationsMap := util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations)
+	ds.Spec.Template.Spec.Tolerations = getFinalTolerations(existingTolerationsMap, lastAppliedTolerationsMap, newTolerationsMap)
+
+	newTolerationsByte, err := json.Marshal(newTolerations)
+	if err != nil {
+		return err
+	}
+	if err := util.SetAnnotation(ds, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
+		return err
+	}
+
+	ic.logger.Infof("Updating tolerations for engine image daemonset %v from %v to %v",
+		ds.Name, lastAppliedTolerationsMap, newTolerationsMap)
+	updatedDS, err := ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	*ds = *updatedDS
+	return nil
+}
+
+// isTolerationSuperset reports whether every toleration in subset is also in superset.
+func isTolerationSuperset(superset, subset map[string]corev1.Toleration) bool {
+	for checksum := range subset {
+		if _, ok := superset[checksum]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []corev1.Toleration,
