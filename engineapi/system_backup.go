@@ -102,7 +102,7 @@ func (btc *BackupTargetClient) UploadSystemBackup(name, localFile, longhornVersi
 	}
 
 	output, err := btc.ExecuteEngineBinaryWithTimeout(
-		datastore.SystemBackupTimeout,
+		btc.SystemBackupTimeout,
 		"system-backup", "upload", localFile, systemBackupURL,
 		"--git-commit", longhornGitCommit,
 		"--manager-image", managerImage,

@@ -35,15 +35,19 @@ type BackupTargetClient struct {
 	URL            string
 	Credential     map[string]string
 	ExecuteTimeout time.Duration
+	// SystemBackupTimeout is the timeout for system backup operations, such
+	// as uploading the system backup archive to the backup target.
+	SystemBackupTimeout time.Duration
 }
 
 // NewBackupTargetClient returns the backup target client
-func NewBackupTargetClient(engineImage, url string, credential map[string]string, executeTimeout time.Duration) *BackupTargetClient {
+func NewBackupTargetClient(engineImage, url string, credential map[string]string, executeTimeout, systemBackupTimeout time.Duration) *BackupTargetClient {
 	return &BackupTargetClient{
-		Image:          engineImage,
-		URL:            url,
-		Credential:     credential,
-		ExecuteTimeout: executeTimeout,
+		Image:               engineImage,
+		URL:                 url,
+		Credential:          credential,
+		ExecuteTimeout:      executeTimeout,
+		SystemBackupTimeout: systemBackupTimeout,
 	}
 }
 
@@ -76,7 +80,13 @@ func NewBackupTargetClientFromBackupTarget(backupTarget *longhorn.BackupTarget, 
 	}
 	timeout := time.Duration(executeTimeout) * time.Minute
 
-	return NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
+	systemBackupTimeoutSeconds, err := ds.GetSettingAsInt(types.SettingNameSystemBackupTimeout)
+	if err != nil {
+		return nil, err
+	}
+	systemBackupTimeout := time.Duration(systemBackupTimeoutSeconds) * time.Second
+
+	return NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential, timeout, systemBackupTimeout), nil
 }
 
 func (btc *BackupTargetClient) LonghornEngineBinary() string {
