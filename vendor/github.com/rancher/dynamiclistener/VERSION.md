@@ -8,6 +8,3 @@ The current supported release lines are:
 | release/v0.8 | v0.8 | v1.27 - v1.35 | v3 |
 | release/v0.7 | v0.7 | v1.27 - v1.34 | v3 |
 | release/v0.6 | v0.6 | v1.27 - v1.32 | v3 |
-| release/v0.5 | v0.5 | v1.26 - v1.30 | v3 |
-| release/v0.4 | v0.4 | v1.25 - v1.28 | v2 |
-| release/v0.3 | v0.3 | v1.23 - v1.27 | v2 |
