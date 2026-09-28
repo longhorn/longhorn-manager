@@ -15,7 +15,10 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -620,4 +623,106 @@ func TestUpdateReplicaRebuiltStatus(t *testing.T) {
 	assert.Equal(longhorn.ConditionStatusTrue, condition.Status)
 	assert.Equal(longhorn.ReplicaConditionReasonRebuiltFast, condition.Reason)
 	assert.Equal("Rebuilt 2 snapshot(s): 1 by full rebuild, 0 by delta rebuild, 1 by fast rebuild", condition.Message)
+}
+
+func TestUpdateReplicaRebuiltStatusRetriesWithUncachedReplica(t *testing.T) {
+	assert := require.New(t)
+
+	const (
+		volumeName  = "test-volume"
+		replicaName = "test-volume-r-00000000"
+		snapshot1   = "snap-1"
+	)
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	staleReplica := &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            replicaName,
+			Namespace:       TestNamespace,
+			ResourceVersion: "1",
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: volumeName,
+			},
+		},
+	}
+	staleReplica.Status.Conditions = types.SetCondition(staleReplica.Status.Conditions,
+		longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusFalse, "", "")
+
+	currentReplica := staleReplica.DeepCopy()
+	currentReplica.ResourceVersion = "2"
+
+	replicaIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+	assert.NoError(replicaIndexer.Add(staleReplica))
+
+	lhClient.PrependReactor("get", "replicas", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.(k8stesting.GetAction).GetName() != replicaName {
+			return false, nil, nil
+		}
+		return true, currentReplica.DeepCopy(), nil
+	})
+	lhClient.PrependReactor("update", "replicas", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" {
+			return false, nil, nil
+		}
+
+		updated := action.(k8stesting.UpdateAction).GetObject().(*longhorn.Replica)
+		if updated.ResourceVersion != currentReplica.ResourceVersion {
+			return true, nil, apierrors.NewConflict(longhorn.Resource("replicas"), updated.Name, errors.New("replica status changed"))
+		}
+
+		currentReplica = updated.DeepCopy()
+		currentReplica.ResourceVersion = "3"
+		return true, currentReplica.DeepCopy(), nil
+	})
+
+	snapshotIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+	snapshotCR := newSnapshot(snapshot1)
+	snapshotCR.Labels = types.GetVolumeLabels(volumeName)
+	snapshotCR.Status.Checksum = "checksum-1"
+	assert.NoError(snapshotIndexer.Add(snapshotCR))
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+	ec := &EngineController{ds: ds}
+	rc := &rebuildContext{
+		log: logrus.NewEntry(logger),
+		currentEngine: &longhorn.Engine{
+			Spec: longhorn.EngineSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					VolumeName: volumeName,
+				},
+			},
+		},
+		cleanupProxy: &snapshotListEngineClientProxy{
+			EngineSimulator: &engineapi.EngineSimulator{},
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				etypes.VolumeHeadName: {Name: etypes.VolumeHeadName},
+				snapshot1:             {Name: snapshot1, Created: "2026-01-01T00:00:00Z", UserCreated: true},
+			},
+		},
+		replicaName:        replicaName,
+		fastReplicaRebuild: true,
+		reusableDataCutoff: time.Date(2026, 1, 1, 0, 10, 0, 0, time.UTC),
+		rebuildStartedAt:   time.Date(2026, 1, 1, 0, 30, 0, 0, time.UTC),
+	}
+
+	ec.updateReplicaRebuiltStatus(rc)
+
+	assert.NotNil(currentReplica.Status.LastRebuildStatistics)
+	assert.NotEmpty(currentReplica.Status.LastRebuildStatistics.RebuiltAt)
+	assert.Equal(0, currentReplica.Status.LastRebuildStatistics.FullRebuildSnapshotCount)
+	assert.Equal(0, currentReplica.Status.LastRebuildStatistics.DeltaRebuildSnapshotCount)
+	assert.Equal(1, currentReplica.Status.LastRebuildStatistics.FastRebuildSnapshotCount)
+
+	condition := types.GetCondition(currentReplica.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt)
+	assert.Equal(longhorn.ConditionStatusTrue, condition.Status)
+	assert.Equal(longhorn.ReplicaConditionReasonRebuiltFast, condition.Reason)
+	assert.Equal("Rebuilt 1 snapshot(s): 0 by full rebuild, 0 by delta rebuild, 1 by fast rebuild", condition.Message)
 }

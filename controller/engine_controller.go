@@ -2864,7 +2864,7 @@ func (ec *EngineController) updateReplicaRebuiltStatus(rc *rebuildContext) {
 	reason, message := getReplicaRebuiltConditionReasonAndMessage(statistics)
 
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		replica, err := ec.ds.GetReplica(rc.replicaName)
+		replica, err := ec.ds.GetLonghornReplicaUncached(rc.replicaName)
 		if err != nil {
 			return err
 		}
