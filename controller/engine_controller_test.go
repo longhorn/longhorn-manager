@@ -830,3 +830,111 @@ func TestRunRebuildRejectedStartRestoresRebuiltCondition(t *testing.T) {
 	assert.Nil(updated.Status.LastRebuildStatistics)
 	assert.Equal(1, rebuildProxy.replicaAddCalls)
 }
+
+func TestRestoreReplicaRebuiltConditionRetriesWithUncachedReplica(t *testing.T) {
+	testCases := map[string]struct {
+		initialConditions         []longhorn.Condition
+		previousCondition         longhorn.Condition
+		hasPreviousCondition      bool
+		expectedConditionsChecker func(*require.Assertions, []longhorn.Condition)
+	}{
+		"restore previous condition": {
+			initialConditions: types.SetCondition(nil,
+				longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusFalse, "", ""),
+			previousCondition:    longhorn.Condition{Type: longhorn.ReplicaConditionTypeRebuilt, Status: longhorn.ConditionStatusTrue, Reason: longhorn.ReplicaConditionReasonRebuiltFull, Message: "already rebuilt"},
+			hasPreviousCondition: true,
+			expectedConditionsChecker: func(assert *require.Assertions, conditions []longhorn.Condition) {
+				condition := types.GetCondition(conditions, longhorn.ReplicaConditionTypeRebuilt)
+				assert.Equal(longhorn.ConditionStatusTrue, condition.Status)
+				assert.Equal(longhorn.ReplicaConditionReasonRebuiltFull, condition.Reason)
+				assert.Equal("already rebuilt", condition.Message)
+			},
+		},
+		"remove rebuilt condition": {
+			initialConditions: types.SetCondition(nil,
+				longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusFalse, "", ""),
+			expectedConditionsChecker: func(assert *require.Assertions, conditions []longhorn.Condition) {
+				_, exists := getReplicaConditionWithExistence(conditions, longhorn.ReplicaConditionTypeRebuilt)
+				assert.False(exists)
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			const (
+				volumeName  = "test-volume"
+				replicaName = "test-volume-r-00000000"
+			)
+
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+			staleReplica := &longhorn.Replica{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            replicaName,
+					Namespace:       TestNamespace,
+					ResourceVersion: "1",
+				},
+				Spec: longhorn.ReplicaSpec{
+					InstanceSpec: longhorn.InstanceSpec{
+						VolumeName: volumeName,
+					},
+				},
+			}
+			staleReplica.Status.Conditions = append([]longhorn.Condition(nil), tc.initialConditions...)
+
+			currentReplica := staleReplica.DeepCopy()
+			currentReplica.ResourceVersion = "2"
+
+			replicaIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+			assert.NoError(replicaIndexer.Add(staleReplica))
+
+			lhClient.PrependReactor("get", "replicas", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if action.(k8stesting.GetAction).GetName() != replicaName {
+					return false, nil, nil
+				}
+				return true, currentReplica.DeepCopy(), nil
+			})
+			lhClient.PrependReactor("update", "replicas", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if action.GetSubresource() != "status" {
+					return false, nil, nil
+				}
+
+				updated := action.(k8stesting.UpdateAction).GetObject().(*longhorn.Replica)
+				if updated.ResourceVersion != currentReplica.ResourceVersion {
+					return true, nil, apierrors.NewConflict(longhorn.Resource("replicas"), updated.Name, errors.New("replica status changed"))
+				}
+
+				currentReplica = updated.DeepCopy()
+				currentReplica.ResourceVersion = "3"
+				return true, currentReplica.DeepCopy(), nil
+			})
+
+			ec := &EngineController{ds: ds}
+			rc := &rebuildContext{
+				engine: &longhorn.Engine{
+					Spec: longhorn.EngineSpec{
+						InstanceSpec: longhorn.InstanceSpec{
+							DataEngine: longhorn.DataEngineTypeV2,
+						},
+					},
+				},
+				replica:                     staleReplica.DeepCopy(),
+				replicaName:                 replicaName,
+				previousRebuiltCondition:    tc.previousCondition,
+				hasPreviousRebuiltCondition: tc.hasPreviousCondition,
+			}
+
+			err := ec.restoreReplicaRebuiltCondition(rc)
+			assert.NoError(err)
+			assert.Equal("3", rc.replica.ResourceVersion)
+			tc.expectedConditionsChecker(assert, currentReplica.Status.Conditions)
+		})
+	}
+}

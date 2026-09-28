@@ -2848,24 +2848,30 @@ func (ec *EngineController) restoreReplicaRebuiltCondition(rc *rebuildContext) e
 		return nil
 	}
 
-	if rc.hasPreviousRebuiltCondition {
-		updatedReplica, err := ec.updateReplicaRebuiltCondition(
-			rc.replica,
-			rc.previousRebuiltCondition.Status,
-			rc.previousRebuiltCondition.Reason,
-			rc.previousRebuiltCondition.Message)
+	var updatedReplica *longhorn.Replica
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		replica, err := ec.ds.GetLonghornReplicaUncached(rc.replicaName)
 		if err != nil {
 			return err
 		}
-		rc.replica = updatedReplica
-		return nil
-	}
 
-	rc.replica.Status.Conditions = types.RemoveCondition(rc.replica.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt)
-	updatedReplica, err := ec.ds.UpdateReplicaStatus(rc.replica)
-	if err != nil {
+		if rc.hasPreviousRebuiltCondition {
+			replica.Status.Conditions = types.SetCondition(
+				replica.Status.Conditions,
+				longhorn.ReplicaConditionTypeRebuilt,
+				rc.previousRebuiltCondition.Status,
+				rc.previousRebuiltCondition.Reason,
+				rc.previousRebuiltCondition.Message)
+		} else {
+			replica.Status.Conditions = types.RemoveCondition(replica.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt)
+		}
+
+		updatedReplica, err = ec.ds.UpdateReplicaStatus(replica)
+		return err
+	}); err != nil {
 		return err
 	}
+
 	rc.replica = updatedReplica
 	return nil
 }
