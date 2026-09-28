@@ -515,6 +515,31 @@ func TestGetReplicaRebuiltConditionReasonAndMessage(t *testing.T) {
 	}
 }
 
+func TestIsSnapshotSyncRebuild(t *testing.T) {
+	tests := map[string]struct {
+		dataEngine             longhorn.DataEngineType
+		requestedBackupRestore string
+		expected               bool
+	}{
+		"v1 volume":         {dataEngine: longhorn.DataEngineTypeV1, expected: true},
+		"v1 restore volume": {dataEngine: longhorn.DataEngineTypeV1, requestedBackupRestore: "backup-1", expected: false},
+		"v2 volume":         {dataEngine: longhorn.DataEngineTypeV2, expected: true},
+		"v2 restore volume": {dataEngine: longhorn.DataEngineTypeV2, requestedBackupRestore: "backup-1", expected: true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			e := &longhorn.Engine{
+				Spec: longhorn.EngineSpec{
+					InstanceSpec:           longhorn.InstanceSpec{DataEngine: tc.dataEngine},
+					RequestedBackupRestore: tc.requestedBackupRestore,
+				},
+			}
+			require.Equal(t, tc.expected, isSnapshotSyncRebuild(e))
+		})
+	}
+}
+
 func TestUpdateReplicaRebuiltStatus(t *testing.T) {
 	assert := require.New(t)
 

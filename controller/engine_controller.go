@@ -2450,10 +2450,12 @@ func (ec *EngineController) prepareRebuildContext(
 	if err != nil {
 		return nil, err
 	}
-	rc.reusableDataCutoff = getReplicaReusableDataCutoff(rc.replica)
-	// The Rebuilt condition becomes true again once this rebuild succeeds.
-	rc.replica.Status.Conditions = types.SetCondition(rc.replica.Status.Conditions,
-		longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusFalse, "", "")
+	if isSnapshotSyncRebuild(e) {
+		rc.reusableDataCutoff = getReplicaReusableDataCutoff(rc.replica)
+		// The Rebuilt condition becomes true again once this rebuild succeeds.
+		rc.replica.Status.Conditions = types.SetCondition(rc.replica.Status.Conditions,
+			longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusFalse, "", "")
+	}
 	rc.replica, err = ec.updateReplicaRebuildFailedCondition(rc.replica, "")
 	if err != nil {
 		return nil, err
@@ -2539,8 +2541,6 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 
 	// Start rebuild — v1 and v2 diverge on the ReplicaAdd call.
 	var replicaAddErr error
-	// The v1 replica of a restore volume is rebuilt by the backup restore rather than the snapshot sync.
-	isSnapshotSyncRebuild := true
 	rc.rebuildStartedAt = time.Now()
 	if types.IsDataEngineV2(rc.engine.Spec.DataEngine) {
 		ec.eventRecorder.Eventf(rc.currentEngine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
@@ -2567,7 +2567,6 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 		}
 
 		if rc.engine.Spec.RequestedBackupRestore != "" {
-			isSnapshotSyncRebuild = false
 			if rc.engine.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
@@ -2604,7 +2603,7 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 			"Replica %v with Address %v has been rebuilt for volume %v", rc.replicaName, rc.addr, rc.currentEngine.Spec.VolumeName)
 	}
 
-	if isSnapshotSyncRebuild {
+	if isSnapshotSyncRebuild(rc.engine) {
 		ec.updateReplicaRebuiltStatus(rc)
 	}
 
@@ -2835,6 +2834,12 @@ func (ec *EngineController) getReplicaRebuildFailedReason(replicaNodeID, errMsg 
 	}
 
 	return failedReason, conditionStatus, nil
+}
+
+// isSnapshotSyncRebuild returns false for the v1 replica of a restore volume, since it is rebuilt by
+// the backup restore rather than the snapshot sync.
+func isSnapshotSyncRebuild(e *longhorn.Engine) bool {
+	return types.IsDataEngineV2(e.Spec.DataEngine) || e.Spec.RequestedBackupRestore == ""
 }
 
 // updateReplicaRebuiltStatus records the number of snapshots rebuilt by each rebuild method and
