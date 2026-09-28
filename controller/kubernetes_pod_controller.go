@@ -39,6 +39,8 @@ const (
 )
 
 // KubernetesPodController is hosted by the longhorn-global-manager Deployment.
+// TODO: Enable reconcile metrics when longhorn-global-manager exposes the
+// Longhorn metrics registry.
 type KubernetesPodController struct {
 	*baseController
 

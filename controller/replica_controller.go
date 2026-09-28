@@ -160,6 +160,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	rc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(rc.worker, time.Second, stopCh)
 	}
@@ -180,7 +181,7 @@ func (rc *ReplicaController) processNextWorkItem() bool {
 	}
 	defer rc.queue.Done(key)
 
-	err := rc.syncReplica(key.(string))
+	err := rc.syncWithMetrics(func() error { return rc.syncReplica(key.(string)) })
 	rc.handleErr(err, key)
 
 	return true

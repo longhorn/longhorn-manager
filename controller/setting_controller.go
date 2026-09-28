@@ -161,6 +161,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 		return
 	}
 
+	sc.initReconcileMetrics(1)
 	// must remain single threaded since backup store timer is not thread-safe now
 	go wait.Until(sc.worker, time.Second, stopCh)
 
@@ -180,7 +181,7 @@ func (sc *SettingController) processNextWorkItem() bool {
 	}
 	defer sc.queue.Done(key)
 
-	err := sc.syncSetting(key.(string))
+	err := sc.syncWithMetrics(func() error { return sc.syncSetting(key.(string)) })
 	sc.handleErr(err, key)
 
 	return true

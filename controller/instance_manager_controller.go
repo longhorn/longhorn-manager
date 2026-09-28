@@ -275,6 +275,7 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	imc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(imc.worker, time.Second, stopCh)
 	}
@@ -295,7 +296,7 @@ func (imc *InstanceManagerController) processNextWorkItem() bool {
 	}
 	defer imc.queue.Done(key)
 
-	err := imc.syncInstanceManager(key.(string))
+	err := imc.syncWithMetrics(func() error { return imc.syncInstanceManager(key.(string)) })
 	imc.handleErr(err, key)
 
 	return true

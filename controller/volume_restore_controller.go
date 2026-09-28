@@ -107,6 +107,7 @@ func (vrsc *VolumeRestoreController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	vrsc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(vrsc.worker, time.Second, stopCh)
 	}
@@ -125,7 +126,7 @@ func (vrsc *VolumeRestoreController) processNextWorkItem() bool {
 		return false
 	}
 	defer vrsc.queue.Done(key)
-	err := vrsc.syncHandler(key.(string))
+	err := vrsc.syncWithMetrics(func() error { return vrsc.syncHandler(key.(string)) })
 	vrsc.handleErr(err, key)
 	return true
 }

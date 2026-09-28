@@ -332,6 +332,7 @@ func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	nc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(nc.worker, time.Second, stopCh)
 	}
@@ -352,7 +353,7 @@ func (nc *NodeController) processNextWorkItem() bool {
 	}
 	defer nc.queue.Done(key)
 
-	err := nc.syncNode(key.(string))
+	err := nc.syncWithMetrics(func() error { return nc.syncNode(key.(string)) })
 	nc.handleErr(err, key)
 
 	return true

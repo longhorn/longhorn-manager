@@ -177,6 +177,7 @@ func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.cacheSyncs...) {
 		return
 	}
+	btc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(btc.worker, time.Second, stopCh)
 	}
@@ -194,7 +195,7 @@ func (btc *BackupTargetController) processNextWorkItem() bool {
 		return false
 	}
 	defer btc.queue.Done(key)
-	err := btc.syncHandler(key.(string))
+	err := btc.syncWithMetrics(func() error { return btc.syncHandler(key.(string)) })
 	btc.handleErr(err, key)
 	return true
 }
