@@ -11,17 +11,19 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -46,6 +48,19 @@ func (m *mockEngineClientProxy) Close() {}
 func (m *mockEngineClientProxy) ReplicaRebuildVerify(_ *longhorn.Engine, replicaName, _ string) error {
 	m.verifyCalled = append(m.verifyCalled, replicaName)
 	return m.verifyErr
+}
+
+type replicaAddEngineClientProxy struct {
+	*engineapi.EngineSimulator
+	replicaAddErr   error
+	replicaAddCalls int
+}
+
+func (m *replicaAddEngineClientProxy) Close() {}
+
+func (m *replicaAddEngineClientProxy) ReplicaAdd(_ engineapi.DataEngineObject, _ string, _ string, _ bool, _ bool, _ *etypes.FileLocalSync, _ int64, _ int64, _ *imrpc.LinkedCloneSource) error {
+	m.replicaAddCalls++
+	return m.replicaAddErr
 }
 
 func TestNeedStatusUpdate(t *testing.T) {
@@ -725,4 +740,93 @@ func TestUpdateReplicaRebuiltStatusRetriesWithUncachedReplica(t *testing.T) {
 	assert.Equal(longhorn.ConditionStatusTrue, condition.Status)
 	assert.Equal(longhorn.ReplicaConditionReasonRebuiltFast, condition.Reason)
 	assert.Equal("Rebuilt 1 snapshot(s): 0 by full rebuild, 0 by delta rebuild, 1 by fast rebuild", condition.Message)
+}
+
+func TestRunRebuildRejectedStartRestoresRebuiltCondition(t *testing.T) {
+	assert := require.New(t)
+
+	const (
+		volumeName  = "test-volume"
+		engineName  = "test-engine"
+		replicaName = "test-volume-r-00000000"
+		replicaAddr = "10.0.0.1:10000"
+	)
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	replica := &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      replicaName,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: volumeName,
+			},
+		},
+	}
+	replica.Status.Conditions = types.SetCondition(replica.Status.Conditions,
+		longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusTrue, longhorn.ReplicaConditionReasonRebuiltFull, "already rebuilt")
+	replica, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+	assert.NoError(err)
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+	rebuildProxy := &replicaAddEngineClientProxy{
+		EngineSimulator: &engineapi.EngineSimulator{},
+		replicaAddErr:   errors.New("restore is in progress"),
+	}
+	ec := &EngineController{
+		ds:            ds,
+		eventRecorder: record.NewFakeRecorder(10),
+	}
+	rc := &rebuildContext{
+		log: logrus.NewEntry(logger),
+		engine: &longhorn.Engine{
+			ObjectMeta: metav1.ObjectMeta{Name: engineName, Namespace: TestNamespace},
+			Spec: longhorn.EngineSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					DataEngine: longhorn.DataEngineTypeV2,
+					VolumeName: volumeName,
+				},
+			},
+		},
+		currentEngine: &longhorn.Engine{
+			ObjectMeta: metav1.ObjectMeta{Name: engineName, Namespace: TestNamespace},
+			Spec: longhorn.EngineSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					DataEngine: longhorn.DataEngineTypeV2,
+					VolumeName: volumeName,
+				},
+			},
+		},
+		currentEF: &longhorn.EngineFrontend{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-ef", Namespace: TestNamespace},
+		},
+		rebuildProxy:                rebuildProxy,
+		cleanupProxy:                rebuildProxy,
+		rebuildObj:                  &longhorn.EngineFrontend{},
+		replica:                     replica,
+		replicaName:                 replicaName,
+		replicaURL:                  engineapi.GetBackendReplicaURL(replicaAddr),
+		addr:                        replicaAddr,
+		previousRebuiltCondition:    types.GetCondition(replica.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt),
+		hasPreviousRebuiltCondition: true,
+	}
+
+	ec.runRebuild(rc)
+
+	updated, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(context.TODO(), replicaName, metav1.GetOptions{})
+	assert.NoError(err)
+
+	condition := types.GetCondition(updated.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt)
+	assert.Equal(longhorn.ConditionStatusTrue, condition.Status)
+	assert.Equal(longhorn.ReplicaConditionReasonRebuiltFull, condition.Reason)
+	assert.Equal("already rebuilt", condition.Message)
+	assert.Nil(updated.Status.LastRebuildStatistics)
+	assert.Equal(1, rebuildProxy.replicaAddCalls)
 }
