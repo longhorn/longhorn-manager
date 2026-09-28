@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"io"
 	"strconv"
 	"testing"
@@ -10,15 +11,22 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/util/flowcontrol"
+
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
 
 // mockEngineClientProxy wraps EngineSimulator and overrides ReplicaRebuildVerify for test control.
@@ -336,4 +344,255 @@ func TestHandleRestoreError(t *testing.T) {
 			assert.Equal(tc.expectInBackoff, backoff.IsInBackOffSinceUpdate(engine.Name, time.Now()), "restore backoff")
 		})
 	}
+}
+
+// snapshotListEngineClientProxy wraps EngineSimulator and overrides SnapshotList for test control.
+type snapshotListEngineClientProxy struct {
+	*engineapi.EngineSimulator
+	snapshots map[string]*longhorn.SnapshotInfo
+}
+
+func (m *snapshotListEngineClientProxy) Close() {}
+
+func (m *snapshotListEngineClientProxy) SnapshotList(_ engineapi.DataEngineObject) (map[string]*longhorn.SnapshotInfo, error) {
+	return m.snapshots, nil
+}
+
+func TestGetReplicaReusableDataCutoff(t *testing.T) {
+	tests := map[string]struct {
+		lastHealthyAt string
+		lastFailedAt  string
+		expected      string
+	}{
+		"never healthy replica has no reusable data": {
+			lastFailedAt: "2026-01-01T00:10:00Z",
+		},
+		"unparsable last healthy time is treated as no reusable data": {
+			lastHealthyAt: "invalid",
+			lastFailedAt:  "2026-01-01T00:10:00Z",
+		},
+		"failed replica uses the last failed time": {
+			lastHealthyAt: "2026-01-01T00:00:00Z",
+			lastFailedAt:  "2026-01-01T00:10:00Z",
+			expected:      "2026-01-01T00:10:00Z",
+		},
+		"replica healthy again after the last failure uses the last healthy time": {
+			lastHealthyAt: "2026-01-01T00:20:00Z",
+			lastFailedAt:  "2026-01-01T00:10:00Z",
+			expected:      "2026-01-01T00:20:00Z",
+		},
+		"replica without failure uses the last healthy time": {
+			lastHealthyAt: "2026-01-01T00:00:00Z",
+			expected:      "2026-01-01T00:00:00Z",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			r := &longhorn.Replica{
+				Spec: longhorn.ReplicaSpec{
+					LastHealthyAt: tc.lastHealthyAt,
+					LastFailedAt:  tc.lastFailedAt,
+				},
+			}
+			cutoff := getReplicaReusableDataCutoff(r)
+			if tc.expected == "" {
+				assert.True(cutoff.IsZero())
+				return
+			}
+			expected, err := time.Parse(time.RFC3339, tc.expected)
+			assert.NoError(err)
+			assert.True(expected.Equal(cutoff), "expected %v, got %v", expected, cutoff)
+		})
+	}
+}
+
+func TestGetReplicaRebuildStatistics(t *testing.T) {
+	const (
+		oldHashedSnapshot   = "snap-old-hashed"
+		oldUnhashedSnapshot = "snap-old-unhashed"
+		newSystemSnapshot   = "snap-new-system"
+		newUserSnapshot     = "snap-new-user"
+		duringRebuildUser   = "snap-during-rebuild-user"
+		duringRebuildSystem = "snap-during-rebuild-system"
+	)
+
+	mustParse := func(timestamp string) time.Time {
+		parsed, err := time.Parse(time.RFC3339, timestamp)
+		require.NoError(t, err)
+		return parsed
+	}
+
+	cutoff := mustParse("2026-01-01T00:10:00Z")
+	rebuildStartedAt := mustParse("2026-01-01T00:30:00Z")
+
+	snapshots := map[string]*longhorn.SnapshotInfo{
+		etypes.VolumeHeadName: {Name: etypes.VolumeHeadName, Created: "2026-01-01T00:31:00Z"},
+		oldHashedSnapshot:     {Name: oldHashedSnapshot, Created: "2026-01-01T00:01:00Z", UserCreated: true},
+		oldUnhashedSnapshot:   {Name: oldUnhashedSnapshot, Created: "2026-01-01T00:10:00Z", UserCreated: true},
+		newSystemSnapshot:     {Name: newSystemSnapshot, Created: "2026-01-01T00:20:00Z"},
+		newUserSnapshot:       {Name: newUserSnapshot, Created: "2026-01-01T00:25:00Z", UserCreated: true},
+		duringRebuildUser:     {Name: duringRebuildUser, Created: "2026-01-01T00:40:00Z", UserCreated: true},
+		duringRebuildSystem:   {Name: duringRebuildSystem, Created: "2026-01-01T00:30:01Z"},
+		"nil-snapshot":        nil,
+	}
+	snapshotCRs := map[string]*longhorn.Snapshot{
+		oldHashedSnapshot:   {Status: longhorn.SnapshotStatus{Checksum: "checksum-old"}},
+		oldUnhashedSnapshot: {},
+		newSystemSnapshot:   {Status: longhorn.SnapshotStatus{Checksum: "checksum-new"}},
+	}
+
+	tests := map[string]struct {
+		reusableDataCutoff time.Time
+		fastReplicaRebuild bool
+		expected           longhorn.ReplicaRebuildStatistics
+	}{
+		"replica without reusable data is fully rebuilt": {
+			fastReplicaRebuild: true,
+			expected:           longhorn.ReplicaRebuildStatistics{FullRebuildSnapshotCount: 5},
+		},
+		"reused replica is delta rebuilt when fast replica rebuild is disabled": {
+			reusableDataCutoff: cutoff,
+			expected: longhorn.ReplicaRebuildStatistics{
+				FullRebuildSnapshotCount:  3,
+				DeltaRebuildSnapshotCount: 2,
+			},
+		},
+		"reused replica is fast rebuilt for the hashed snapshots when fast replica rebuild is enabled": {
+			reusableDataCutoff: cutoff,
+			fastReplicaRebuild: true,
+			expected: longhorn.ReplicaRebuildStatistics{
+				FullRebuildSnapshotCount:  3,
+				DeltaRebuildSnapshotCount: 1,
+				FastRebuildSnapshotCount:  1,
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			statistics := getReplicaRebuildStatistics(snapshots, snapshotCRs, tc.reusableDataCutoff, rebuildStartedAt, tc.fastReplicaRebuild)
+			require.Equal(t, tc.expected, *statistics)
+		})
+	}
+}
+
+func TestGetReplicaRebuiltConditionReasonAndMessage(t *testing.T) {
+	tests := map[string]struct {
+		statistics      longhorn.ReplicaRebuildStatistics
+		expectedReason  string
+		expectedMessage string
+	}{
+		"no snapshot": {
+			expectedReason:  longhorn.ReplicaConditionReasonRebuiltFull,
+			expectedMessage: "Rebuilt 0 snapshot(s): 0 by full rebuild, 0 by delta rebuild, 0 by fast rebuild",
+		},
+		"full rebuild only": {
+			statistics:      longhorn.ReplicaRebuildStatistics{FullRebuildSnapshotCount: 3},
+			expectedReason:  longhorn.ReplicaConditionReasonRebuiltFull,
+			expectedMessage: "Rebuilt 3 snapshot(s): 3 by full rebuild, 0 by delta rebuild, 0 by fast rebuild",
+		},
+		"delta rebuild": {
+			statistics:      longhorn.ReplicaRebuildStatistics{FullRebuildSnapshotCount: 1, DeltaRebuildSnapshotCount: 2},
+			expectedReason:  longhorn.ReplicaConditionReasonRebuiltDelta,
+			expectedMessage: "Rebuilt 3 snapshot(s): 1 by full rebuild, 2 by delta rebuild, 0 by fast rebuild",
+		},
+		"fast rebuild": {
+			statistics:      longhorn.ReplicaRebuildStatistics{FullRebuildSnapshotCount: 1, DeltaRebuildSnapshotCount: 2, FastRebuildSnapshotCount: 3},
+			expectedReason:  longhorn.ReplicaConditionReasonRebuiltFast,
+			expectedMessage: "Rebuilt 6 snapshot(s): 1 by full rebuild, 2 by delta rebuild, 3 by fast rebuild",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			reason, message := getReplicaRebuiltConditionReasonAndMessage(&tc.statistics)
+			require.Equal(t, tc.expectedReason, reason)
+			require.Equal(t, tc.expectedMessage, message)
+		})
+	}
+}
+
+func TestUpdateReplicaRebuiltStatus(t *testing.T) {
+	assert := require.New(t)
+
+	const (
+		volumeName  = "test-volume"
+		replicaName = "test-volume-r-00000000"
+		snapshot1   = "snap-1"
+		snapshot2   = "snap-2"
+	)
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	replica := &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      replicaName,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: volumeName,
+			},
+		},
+	}
+	replica.Status.Conditions = types.SetCondition(replica.Status.Conditions,
+		longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusFalse, "", "")
+	replica, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+	assert.NoError(err)
+	replicaIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+	assert.NoError(replicaIndexer.Add(replica))
+
+	snapshotIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+	snapshotCR := newSnapshot(snapshot1)
+	snapshotCR.Labels = types.GetVolumeLabels(volumeName)
+	snapshotCR.Status.Checksum = "checksum-1"
+	assert.NoError(snapshotIndexer.Add(snapshotCR))
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+	ec := &EngineController{ds: ds}
+	rc := &rebuildContext{
+		log: logrus.NewEntry(logger),
+		currentEngine: &longhorn.Engine{
+			Spec: longhorn.EngineSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					VolumeName: volumeName,
+				},
+			},
+		},
+		cleanupProxy: &snapshotListEngineClientProxy{
+			EngineSimulator: &engineapi.EngineSimulator{},
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				etypes.VolumeHeadName: {Name: etypes.VolumeHeadName},
+				snapshot1:             {Name: snapshot1, Created: "2026-01-01T00:00:00Z", UserCreated: true},
+				snapshot2:             {Name: snapshot2, Created: "2026-01-01T00:20:00Z"},
+			},
+		},
+		replicaName:        replicaName,
+		fastReplicaRebuild: true,
+		reusableDataCutoff: time.Date(2026, 1, 1, 0, 10, 0, 0, time.UTC),
+		rebuildStartedAt:   time.Date(2026, 1, 1, 0, 30, 0, 0, time.UTC),
+	}
+
+	ec.updateReplicaRebuiltStatus(rc)
+
+	updated, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(context.TODO(), replicaName, metav1.GetOptions{})
+	assert.NoError(err)
+	assert.NotNil(updated.Status.LastRebuildStatistics)
+	assert.NotEmpty(updated.Status.LastRebuildStatistics.RebuiltAt)
+	assert.Equal(1, updated.Status.LastRebuildStatistics.FullRebuildSnapshotCount)
+	assert.Equal(0, updated.Status.LastRebuildStatistics.DeltaRebuildSnapshotCount)
+	assert.Equal(1, updated.Status.LastRebuildStatistics.FastRebuildSnapshotCount)
+
+	condition := types.GetCondition(updated.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt)
+	assert.Equal(longhorn.ConditionStatusTrue, condition.Status)
+	assert.Equal(longhorn.ReplicaConditionReasonRebuiltFast, condition.Reason)
+	assert.Equal("Rebuilt 2 snapshot(s): 1 by full rebuild, 0 by delta rebuild, 1 by fast rebuild", condition.Message)
 }
