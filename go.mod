@@ -58,7 +58,6 @@ require (
 	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.13.0
 	github.com/docker/go-connections v0.8.1
-	github.com/go-co-op/gocron v1.37.0
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
@@ -95,7 +94,6 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.37.0
 	k8s.io/apiextensions-apiserver v0.37.0
@@ -108,7 +106,6 @@ require (
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.25.0
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
-	sigs.k8s.io/structured-merge-diff/v7 v7.0.0
 )
 
 require (
@@ -162,6 +159,7 @@ require (
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/renameio/v2 v2.0.2 // indirect
 	github.com/gorilla/context v1.1.2 // indirect
+	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
@@ -199,7 +197,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.56.0 // indirect
