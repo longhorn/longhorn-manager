@@ -10,7 +10,7 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/cockroachdb/errors"
-	"github.com/go-co-op/gocron"
+	"github.com/go-co-op/gocron/v2"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 
@@ -68,7 +68,7 @@ type SnapshotMonitor struct {
 	nodeName      string
 	eventRecorder record.EventRecorder
 
-	checkSchedulers map[longhorn.DataEngineType]*gocron.Scheduler
+	checkSchedulers map[longhorn.DataEngineType]gocron.Scheduler
 
 	snapshotChangeEventQueue workqueue.TypedInterface[any]
 	snapshotCheckTaskQueue   workqueue.TypedRateLimitingInterface[any]
@@ -77,7 +77,7 @@ type SnapshotMonitor struct {
 	inProgressSnapshotCheckTasksLock sync.RWMutex
 
 	existingDataIntegrityCronJobs map[longhorn.DataEngineType]string
-	scheduledJobs                 map[longhorn.DataEngineType]*gocron.Job
+	scheduledJobs                 map[longhorn.DataEngineType]gocron.Job
 
 	syncCallback func(key string)
 
@@ -97,7 +97,7 @@ func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 		nodeName:      nodeName,
 		eventRecorder: eventRecorder,
 
-		checkSchedulers: make(map[longhorn.DataEngineType]*gocron.Scheduler),
+		checkSchedulers: make(map[longhorn.DataEngineType]gocron.Scheduler),
 
 		snapshotChangeEventQueue: snapshotChangeEventQueue,
 
@@ -109,7 +109,7 @@ func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 		inProgressSnapshotCheckTasks: map[string]struct{}{},
 
 		existingDataIntegrityCronJobs: make(map[longhorn.DataEngineType]string),
-		scheduledJobs:                 make(map[longhorn.DataEngineType]*gocron.Job),
+		scheduledJobs:                 make(map[longhorn.DataEngineType]gocron.Job),
 
 		syncCallback:     syncCallback,
 		proxyConnCounter: util.NewAtomicCounter(),
@@ -119,8 +119,11 @@ func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 		longhorn.DataEngineTypeV1,
 		longhorn.DataEngineTypeV2,
 	} {
-		m.checkSchedulers[dataEngine] = gocron.NewScheduler(time.Local)
-		m.checkSchedulers[dataEngine].SingletonModeAll()
+		scheduler, err := gocron.NewScheduler(gocron.WithLocation(time.Local))
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create snapshot check scheduler for %s", dataEngine)
+		}
+		m.checkSchedulers[dataEngine] = scheduler
 	}
 
 	go m.Start()
@@ -261,7 +264,9 @@ func (m *SnapshotMonitor) Stop() {
 		longhorn.DataEngineTypeV1,
 		longhorn.DataEngineTypeV2,
 	} {
-		m.checkSchedulers[dataEngine].Stop()
+		if err := m.checkSchedulers[dataEngine].Shutdown(); err != nil {
+			m.logger.WithField("monitor", monitorName).WithError(err).Warnf("Failed to shut down snapshot check scheduler for %s", dataEngine)
+		}
 	}
 	m.quit()
 }
@@ -291,7 +296,7 @@ func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
 		longhorn.DataEngineTypeV1,
 		longhorn.DataEngineTypeV2,
 	} {
-		if dataIntegrityCronJobs[dataEngine] != m.existingDataIntegrityCronJobs[dataEngine] || m.checkSchedulers[dataEngine].Len() == 0 {
+		if dataIntegrityCronJobs[dataEngine] != m.existingDataIntegrityCronJobs[dataEngine] || len(m.checkSchedulers[dataEngine].Jobs()) == 0 {
 			modified = true
 		}
 	}
@@ -306,10 +311,21 @@ func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
 		longhorn.DataEngineTypeV1,
 		longhorn.DataEngineTypeV2,
 	} {
-		if m.checkSchedulers[dataEngine].Len() > 0 {
-			m.checkSchedulers[dataEngine].Remove(m.checkSnapshots)
+		scheduler := m.checkSchedulers[dataEngine]
+		if len(scheduler.Jobs()) > 0 {
+			job := m.scheduledJobs[dataEngine]
+			if job == nil {
+				return errors.Errorf("failed to find scheduled snapshot check job for %s", dataEngine)
+			}
+			if err := scheduler.RemoveJob(job.ID()); err != nil {
+				return errors.Wrapf(err, "failed to remove snapshot check job for %s", dataEngine)
+			}
 		}
-		job, err := m.checkSchedulers[dataEngine].Cron(dataIntegrityCronJobs[dataEngine]).Do(m.checkSnapshots, dataEngine)
+		job, err := scheduler.NewJob(
+			gocron.CronJob(dataIntegrityCronJobs[dataEngine], false),
+			gocron.NewTask(m.checkSnapshots, dataEngine),
+			gocron.WithSingletonMode(gocron.LimitModeWait),
+		)
 
 		if err != nil {
 			return errors.Wrap(err, "failed to schedule snapshot check job")
@@ -322,10 +338,14 @@ func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
 		m.existingDataIntegrityCronJobs[dataEngine] = dataIntegrityCronJobs[dataEngine]
 		m.Unlock()
 
-		m.checkSchedulers[dataEngine].StartAsync()
+		scheduler.Start()
 
+		nextRun, err := job.NextRun()
+		if err != nil {
+			return errors.Wrapf(err, "failed to get next snapshot check job run for %s", dataEngine)
+		}
 		m.logger.WithField("monitor", monitorName).Infof("Cron is changed from %v to %v for all volumes with %s. Next snapshot check job will be executed at %v",
-			previousDataIntegrityCronJob, m.existingDataIntegrityCronJobs[dataEngine], dataEngine, job.NextRun())
+			previousDataIntegrityCronJob, m.existingDataIntegrityCronJobs[dataEngine], dataEngine, nextRun)
 
 	}
 
