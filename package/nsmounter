@@ -14,30 +14,12 @@ get_os_distro() {
 target_pid=1
 
 get_pid() {
-  local process_name=$1
-  local pid
-  local status_file
-  local name
-
-  for dir in $PROC_DIR/*/; do
-    name=""
-    pid=$(basename "$dir")
-    status_file="$PROC_DIR/$pid/status"
-
-    if [ -f "$status_file" ]; then
-      while IFS= read -r line; do
-        if [[ $line == "Name:"* ]]; then
-          name="${line#*:}"
-          name="${name//[$'\t ']/}"  # Remove both spaces and tabs
-          break  # Exit the loop once the Name is found
-        fi
-      done < "$status_file"
-    fi
-
-    if [ "$name" = "$process_name" ]; then
-      target_pid=$pid
-    fi
-  done
+  local match
+  match=$(printf '%s\0' "$PROC_DIR"/[0-9]*/comm | xargs -0 grep -lxF -e "$1" 2>/dev/null | tail -n 1)
+  if [ -n "$match" ]; then
+    match=${match#"$PROC_DIR"/}
+    target_pid=${match%/comm}
+  fi
 }
 
 get_os_distro
