@@ -30,46 +30,47 @@ type Empty struct {
 type Volume struct {
 	client.Resource
 
-	Name                            string                                 `json:"name"`
-	Size                            string                                 `json:"size"`
-	Frontend                        longhorn.VolumeFrontend                `json:"frontend"`
-	DisableFrontend                 bool                                   `json:"disableFrontend"`
-	FromBackup                      string                                 `json:"fromBackup"`
-	RestoreVolumeRecurringJob       longhorn.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
-	DataSource                      longhorn.VolumeDataSource              `json:"dataSource"`
-	CloneMode                       longhorn.CloneMode                     `json:"cloneMode"`
-	DataLocality                    longhorn.DataLocality                  `json:"dataLocality"`
-	StaleReplicaTimeout             int                                    `json:"staleReplicaTimeout"`
-	State                           longhorn.VolumeState                   `json:"state"`
-	Robustness                      longhorn.VolumeRobustness              `json:"robustness"`
-	Image                           string                                 `json:"image"`
-	CurrentImage                    string                                 `json:"currentImage"`
-	BackingImage                    string                                 `json:"backingImage"`
-	Created                         string                                 `json:"created"`
-	LastBackup                      string                                 `json:"lastBackup"`
-	LastBackupAt                    string                                 `json:"lastBackupAt"`
-	LastAttachedBy                  string                                 `json:"lastAttachedBy"`
-	Standby                         bool                                   `json:"standby"`
-	RestoreRequired                 bool                                   `json:"restoreRequired"`
-	RestoreInitiated                bool                                   `json:"restoreInitiated"`
-	RevisionCounterDisabled         bool                                   `json:"revisionCounterDisabled"`
-	SnapshotDataIntegrity           longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
-	UnmapMarkSnapChainRemoved       longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
-	BackupCompressionMethod         longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
-	BackupBlockSize                 string                                 `json:"backupBlockSize"`
-	ReplicaSoftAntiAffinity         longhorn.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity"`
-	ReplicaZoneSoftAntiAffinity     longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
-	ReplicaDiskSoftAntiAffinity     longhorn.ReplicaDiskSoftAntiAffinity   `json:"replicaDiskSoftAntiAffinity"`
-	DataEngine                      longhorn.DataEngineType                `json:"dataEngine"`
-	SnapshotMaxCount                int                                    `json:"snapshotMaxCount"`
-	SnapshotMaxSize                 string                                 `json:"snapshotMaxSize"`
-	ReplicaRebuildingBandwidthLimit int64                                  `json:"replicaRebuildingBandwidthLimit"`
-	UblkQueueDepth                  int                                    `json:"ublkQueueDepth"`
-	UblkNumberOfQueue               int                                    `json:"ublkNumberOfQueue"`
-	NvmeTcpNrIoQueues               int                                    `json:"nvmeTcpNrIoQueues"`
-	FreezeFilesystemForSnapshot     longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
-	BackupTargetName                string                                 `json:"backupTargetName"`
-	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`
+	Name                               string                                      `json:"name"`
+	Size                               string                                      `json:"size"`
+	Frontend                           longhorn.VolumeFrontend                     `json:"frontend"`
+	DisableFrontend                    bool                                        `json:"disableFrontend"`
+	FromBackup                         string                                      `json:"fromBackup"`
+	RestoreVolumeRecurringJob          longhorn.RestoreVolumeRecurringJobType      `json:"restoreVolumeRecurringJob"`
+	DataSource                         longhorn.VolumeDataSource                   `json:"dataSource"`
+	CloneMode                          longhorn.CloneMode                          `json:"cloneMode"`
+	DataLocality                       longhorn.DataLocality                       `json:"dataLocality"`
+	StaleReplicaTimeout                int                                         `json:"staleReplicaTimeout"`
+	State                              longhorn.VolumeState                        `json:"state"`
+	Robustness                         longhorn.VolumeRobustness                   `json:"robustness"`
+	Image                              string                                      `json:"image"`
+	CurrentImage                       string                                      `json:"currentImage"`
+	BackingImage                       string                                      `json:"backingImage"`
+	Created                            string                                      `json:"created"`
+	LastBackup                         string                                      `json:"lastBackup"`
+	LastBackupAt                       string                                      `json:"lastBackupAt"`
+	LastAttachedBy                     string                                      `json:"lastAttachedBy"`
+	Standby                            bool                                        `json:"standby"`
+	RestoreRequired                    bool                                        `json:"restoreRequired"`
+	RestoreInitiated                   bool                                        `json:"restoreInitiated"`
+	RevisionCounterDisabled            bool                                        `json:"revisionCounterDisabled"`
+	SnapshotDataIntegrity              longhorn.SnapshotDataIntegrity              `json:"snapshotDataIntegrity"`
+	UnmapMarkSnapChainRemoved          longhorn.UnmapMarkSnapChainRemoved          `json:"unmapMarkSnapChainRemoved"`
+	BackupCompressionMethod            longhorn.BackupCompressionMethod            `json:"backupCompressionMethod"`
+	BackupBlockSize                    string                                      `json:"backupBlockSize"`
+	ReplicaSoftAntiAffinity            longhorn.ReplicaSoftAntiAffinity            `json:"replicaSoftAntiAffinity"`
+	ReplicaZoneSoftAntiAffinity        longhorn.ReplicaZoneSoftAntiAffinity        `json:"replicaZoneSoftAntiAffinity"`
+	ReplicaDiskSoftAntiAffinity        longhorn.ReplicaDiskSoftAntiAffinity        `json:"replicaDiskSoftAntiAffinity"`
+	ReplicaSchedulingSkipUnhealthyDisk longhorn.ReplicaSchedulingSkipUnhealthyDisk `json:"replicaSchedulingSkipUnhealthyDisk"`
+	DataEngine                         longhorn.DataEngineType                     `json:"dataEngine"`
+	SnapshotMaxCount                   int                                         `json:"snapshotMaxCount"`
+	SnapshotMaxSize                    string                                      `json:"snapshotMaxSize"`
+	ReplicaRebuildingBandwidthLimit    int64                                       `json:"replicaRebuildingBandwidthLimit"`
+	UblkQueueDepth                     int                                         `json:"ublkQueueDepth"`
+	UblkNumberOfQueue                  int                                         `json:"ublkNumberOfQueue"`
+	NvmeTcpNrIoQueues                  int                                         `json:"nvmeTcpNrIoQueues"`
+	FreezeFilesystemForSnapshot        longhorn.FreezeFilesystemForSnapshot        `json:"freezeFilesystemForSnapshot"`
+	BackupTargetName                   string                                      `json:"backupTargetName"`
+	DataLayout                         longhorn.VolumeDataLayout                   `json:"dataLayout"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -430,6 +431,10 @@ type UpdateReplicaZoneSoftAntiAffinityInput struct {
 
 type UpdateReplicaDiskSoftAntiAffinityInput struct {
 	ReplicaDiskSoftAntiAffinity string `json:"replicaDiskSoftAntiAffinity"`
+}
+
+type UpdateReplicaSchedulingSkipUnhealthyDiskInput struct {
+	ReplicaSchedulingSkipUnhealthyDisk string `json:"replicaSchedulingSkipUnhealthyDisk"`
 }
 
 type UpdateSnapshotMaxCount struct {
@@ -815,6 +820,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateReplicaSoftAntiAffinityInput", UpdateReplicaSoftAntiAffinityInput{})
 	schemas.AddType("UpdateReplicaZoneSoftAntiAffinityInput", UpdateReplicaZoneSoftAntiAffinityInput{})
 	schemas.AddType("UpdateReplicaDiskSoftAntiAffinityInput", UpdateReplicaDiskSoftAntiAffinityInput{})
+	schemas.AddType("UpdateReplicaSchedulingSkipUnhealthyDiskInput", UpdateReplicaSchedulingSkipUnhealthyDiskInput{})
 	schemas.AddType("UpdateFreezeFilesystemForSnapshotInput", UpdateFreezeFilesystemForSnapshotInput{})
 	schemas.AddType("UpdateBackupTargetInput", UpdateBackupTargetInput{})
 	schemas.AddType("UpdateOfflineRebuildingInput", UpdateOfflineRebuildingInput{})
@@ -1376,6 +1382,10 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateReplicaDiskSoftAntiAffinityInput",
 		},
 
+		"updateReplicaSchedulingSkipUnhealthyDisk": {
+			Input: "UpdateReplicaSchedulingSkipUnhealthyDiskInput",
+		},
+
 		"updateFreezeFilesystemForSnapshot": {
 			Input: "UpdateFreezeFilesystemForSnapshotInput",
 		},
@@ -1516,6 +1526,12 @@ func volumeSchema(volume *client.Schema) {
 	replicaDiskSoftAntiAffinity.Create = true
 	replicaDiskSoftAntiAffinity.Default = longhorn.ReplicaDiskSoftAntiAffinityDefault
 	volume.ResourceFields["replicaDiskSoftAntiAffinity"] = replicaDiskSoftAntiAffinity
+
+	replicaSchedulingSkipUnhealthyDisk := volume.ResourceFields["replicaSchedulingSkipUnhealthyDisk"]
+	replicaSchedulingSkipUnhealthyDisk.Required = true
+	replicaSchedulingSkipUnhealthyDisk.Create = true
+	replicaSchedulingSkipUnhealthyDisk.Default = longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored
+	volume.ResourceFields["replicaSchedulingSkipUnhealthyDisk"] = replicaSchedulingSkipUnhealthyDisk
 
 	rebuildConcurrentSyncLimit := volume.ResourceFields["rebuildConcurrentSyncLimit"]
 	rebuildConcurrentSyncLimit.Create = true
@@ -1930,21 +1946,22 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		BackupTargetName:                v.Spec.BackupTargetName,
 		DataLayout:                      v.Spec.DataLayout,
 
-		State:                       v.Status.State,
-		Robustness:                  v.Status.Robustness,
-		CurrentImage:                v.Status.CurrentImage,
-		LastBackup:                  v.Status.LastBackup,
-		LastBackupAt:                v.Status.LastBackupAt,
-		RestoreRequired:             v.Status.RestoreRequired,
-		RestoreInitiated:            v.Status.RestoreInitiated,
-		RevisionCounterDisabled:     v.Spec.RevisionCounterDisabled,
-		UnmapMarkSnapChainRemoved:   v.Spec.UnmapMarkSnapChainRemoved,
-		ReplicaSoftAntiAffinity:     v.Spec.ReplicaSoftAntiAffinity,
-		ReplicaZoneSoftAntiAffinity: v.Spec.ReplicaZoneSoftAntiAffinity,
-		ReplicaDiskSoftAntiAffinity: v.Spec.ReplicaDiskSoftAntiAffinity,
-		DataEngine:                  v.Spec.DataEngine,
-		Ready:                       ready,
-		NotReadyMessage:             notReadyMessage,
+		State:                              v.Status.State,
+		Robustness:                         v.Status.Robustness,
+		CurrentImage:                       v.Status.CurrentImage,
+		LastBackup:                         v.Status.LastBackup,
+		LastBackupAt:                       v.Status.LastBackupAt,
+		RestoreRequired:                    v.Status.RestoreRequired,
+		RestoreInitiated:                   v.Status.RestoreInitiated,
+		RevisionCounterDisabled:            v.Spec.RevisionCounterDisabled,
+		UnmapMarkSnapChainRemoved:          v.Spec.UnmapMarkSnapChainRemoved,
+		ReplicaSoftAntiAffinity:            v.Spec.ReplicaSoftAntiAffinity,
+		ReplicaZoneSoftAntiAffinity:        v.Spec.ReplicaZoneSoftAntiAffinity,
+		ReplicaDiskSoftAntiAffinity:        v.Spec.ReplicaDiskSoftAntiAffinity,
+		ReplicaSchedulingSkipUnhealthyDisk: v.Spec.ReplicaSchedulingSkipUnhealthyDisk,
+		DataEngine:                         v.Spec.DataEngine,
+		Ready:                              ready,
+		NotReadyMessage:                    notReadyMessage,
 
 		AccessMode:        v.Spec.AccessMode,
 		ShareEndpoint:     v.Status.ShareEndpoint,
@@ -2010,6 +2027,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
+			actions["updateReplicaSchedulingSkipUnhealthyDisk"] = struct{}{}
 			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
 			actions["updateBackupTargetName"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
@@ -2046,6 +2064,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
+			actions["updateReplicaSchedulingSkipUnhealthyDisk"] = struct{}{}
 			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
 			actions["updateBackupTargetName"] = struct{}{}
 			actions["pvCreate"] = struct{}{}

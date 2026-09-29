@@ -120,6 +120,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
 	}
 
+	if err := types.ValidateReplicaSchedulingSkipUnhealthyDisk(volume.Spec.ReplicaSchedulingSkipUnhealthyDisk); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaSchedulingSkipUnhealthyDisk")
+	}
+
 	if err := types.ValidateOfflineRebuild(volume.Spec.OfflineRebuilding); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.offlineRebuilding")
 	}
@@ -305,6 +309,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(newVolume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
+	}
+
+	if err := types.ValidateReplicaSchedulingSkipUnhealthyDisk(newVolume.Spec.ReplicaSchedulingSkipUnhealthyDisk); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaSchedulingSkipUnhealthyDisk")
 	}
 
 	if err := types.ValidateOfflineRebuild(newVolume.Spec.OfflineRebuilding); err != nil {

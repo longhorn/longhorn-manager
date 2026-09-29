@@ -197,14 +197,15 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			},
 		},
 		Spec: longhorn.VolumeSpec{
-			NumberOfReplicas:            replicaCount,
-			Size:                        TestVolumeSize,
-			StaleReplicaTimeout:         TestVolumeStaleTimeout,
-			Image:                       TestEngineImage,
-			ReplicaSoftAntiAffinity:     longhorn.ReplicaSoftAntiAffinityDefault,
-			ReplicaZoneSoftAntiAffinity: longhorn.ReplicaZoneSoftAntiAffinityDefault,
-			ReplicaDiskSoftAntiAffinity: longhorn.ReplicaDiskSoftAntiAffinityDefault,
-			DataEngine:                  longhorn.DataEngineTypeV1,
+			NumberOfReplicas:                   replicaCount,
+			Size:                               TestVolumeSize,
+			StaleReplicaTimeout:                TestVolumeStaleTimeout,
+			Image:                              TestEngineImage,
+			ReplicaSoftAntiAffinity:            longhorn.ReplicaSoftAntiAffinityDefault,
+			ReplicaZoneSoftAntiAffinity:        longhorn.ReplicaZoneSoftAntiAffinityDefault,
+			ReplicaDiskSoftAntiAffinity:        longhorn.ReplicaDiskSoftAntiAffinityDefault,
+			ReplicaSchedulingSkipUnhealthyDisk: longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored,
+			DataEngine:                         longhorn.DataEngineTypeV1,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
@@ -261,17 +262,18 @@ func (s *TestSuite) SetUpTest(c *C) {
 }
 
 type ReplicaSchedulerTestCase struct {
-	volume                            *longhorn.Volume
-	daemons                           []*corev1.Pod
-	nodes                             map[string]*longhorn.Node
-	engineImage                       *longhorn.EngineImage
-	storageOverProvisioningPercentage string
-	storageMinimalAvailablePercentage string
-	replicaNodeSoftAntiAffinity       string
-	replicaZoneSoftAntiAffinity       string
-	replicaDiskSoftAntiAffinity       string
-	replicaAutoBalance                string
-	ReplicaReplenishmentWaitInterval  string
+	volume                             *longhorn.Volume
+	daemons                            []*corev1.Pod
+	nodes                              map[string]*longhorn.Node
+	engineImage                        *longhorn.EngineImage
+	storageOverProvisioningPercentage  string
+	storageMinimalAvailablePercentage  string
+	replicaNodeSoftAntiAffinity        string
+	replicaZoneSoftAntiAffinity        string
+	replicaDiskSoftAntiAffinity        string
+	replicaAutoBalance                 string
+	ReplicaReplenishmentWaitInterval   string
+	replicaSchedulingSkipUnhealthyDisk string
 
 	// some test cases only try to schedule a subset of a volume's replicas
 	allReplicas        map[string]*longhorn.Replica
@@ -1305,6 +1307,26 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.err = true
 	testCases["fail scheduling when no node in the volume's topology zone"] = tc
 
+	// Test unhealthy disks are skipped when the global setting is enabled.
+	tc = generateUnhealthyDiskTestCase("true", longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored, true)
+	testCases["skip unhealthy disk when replica-scheduling-skip-unhealthy-disk is true"] = tc
+
+	// Test unhealthy disks are not skipped when the global setting is disabled.
+	tc = generateUnhealthyDiskTestCase("false", longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored, false)
+	testCases["do not skip unhealthy disk when replica-scheduling-skip-unhealthy-disk is false"] = tc
+
+	// Test unhealthy disks are skipped by default.
+	tc = generateUnhealthyDiskTestCase("", "", true)
+	testCases["skip unhealthy disk by default"] = tc
+
+	// Test the volume setting enabled overrides the disabled global setting.
+	tc = generateUnhealthyDiskTestCase("false", longhorn.ReplicaSchedulingSkipUnhealthyDiskEnabled, true)
+	testCases["skip unhealthy disk when volume replicaSchedulingSkipUnhealthyDisk is enabled"] = tc
+
+	// Test the volume setting disabled overrides the enabled global setting.
+	tc = generateUnhealthyDiskTestCase("true", longhorn.ReplicaSchedulingSkipUnhealthyDiskDisabled, false)
+	testCases["do not skip unhealthy disk when volume replicaSchedulingSkipUnhealthyDisk is disabled"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 
@@ -1469,6 +1491,78 @@ func generateFailedReplicaTestCase(
 		TestNode1: node1,
 	}
 	tc.nodes = nodes
+	return
+}
+
+// generateUnhealthyDiskTestCase helps generate test cases in which a node contains a healthy disk and a disk reported
+// as unhealthy by disk health data, and the scheduler must decide whether to schedule replicas to the unhealthy disk.
+func generateUnhealthyDiskTestCase(globalSetting string, volumeSetting longhorn.ReplicaSchedulingSkipUnhealthyDisk,
+	expectUnhealthyDiskSkipped bool) (tc *ReplicaSchedulerTestCase) {
+	tc = generateSchedulerTestCase()
+	daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	tc.daemons = []*corev1.Pod{
+		daemon1,
+	}
+	node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): newDisk(TestDefaultDataPath, true, 0),
+		getDiskID(TestNode1, "2"): newDisk(TestDefaultDataPath, true, 0),
+	}
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
+			HealthData: map[string]longhorn.HealthData{
+				"sda": {
+					Source:       longhorn.HealthDataSourceSMART,
+					HealthStatus: longhorn.HealthDataStatusFailed,
+				},
+			},
+		},
+		getDiskID(TestNode1, "2"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode1, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
+			HealthData: map[string]longhorn.HealthData{
+				"sdb": {
+					Source:       longhorn.HealthDataSourceSMART,
+					HealthStatus: longhorn.HealthDataStatusPassed,
+				},
+			},
+		},
+	}
+	tc.nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.volume.Spec.ReplicaSchedulingSkipUnhealthyDisk = volumeSetting
+	tc.replicaSchedulingSkipUnhealthyDisk = globalSetting
+	tc.replicaNodeSoftAntiAffinity = "true"  // Allow replicas to schedule to the same node.
+	tc.replicaDiskSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same disk.
+	tc.err = false
+	if expectUnhealthyDiskSkipped {
+		// Only the healthy disk is schedulable, so the second replica must fail to schedule.
+		tc.firstNilReplica = 1
+		tc.expectedDisks = map[string]struct{}{
+			getDiskID(TestNode1, "2"): {},
+		}
+	} else {
+		tc.expectedDisks = map[string]struct{}{
+			getDiskID(TestNode1, "1"): {},
+			getDiskID(TestNode1, "2"): {},
+		}
+	}
 	return
 }
 
@@ -1644,6 +1738,17 @@ func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sInde
 		s := initSettings(
 			string(types.SettingNameReplicaReplenishmentWaitInterval),
 			tc.ReplicaReplenishmentWaitInterval)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica scheduling skip unhealthy disk setting
+	if tc.replicaSchedulingSkipUnhealthyDisk != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaSchedulingSkipUnhealthyDisk),
+			tc.replicaSchedulingSkipUnhealthyDisk)
 		setting, err :=
 			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -2303,6 +2408,17 @@ func (s *TestSuite) TestIsDiskEligibleForVolume(c *C) {
 			DiskSelector: []string{"primary"},
 		},
 	}
+	newDiskStatusWithHealthData := func(healthStatuses ...longhorn.HealthDataHealthStatus) *longhorn.DiskStatus {
+		diskStatus := baseDiskStatus.DeepCopy()
+		diskStatus.HealthData = map[string]longhorn.HealthData{}
+		for i, healthStatus := range healthStatuses {
+			diskStatus.HealthData[fmt.Sprintf("disk-%d", i)] = longhorn.HealthData{
+				Source:       longhorn.HealthDataSourceSMART,
+				HealthStatus: healthStatus,
+			}
+		}
+		return diskStatus
+	}
 
 	tests := []struct {
 		name                      string
@@ -2310,6 +2426,7 @@ func (s *TestSuite) TestIsDiskEligibleForVolume(c *C) {
 		diskStatus                *longhorn.DiskStatus
 		volume                    *longhorn.Volume
 		allowEmptyDiskSelectorVol bool
+		skipUnhealthyDisk         bool
 		biDiskSelector            []string
 		expect                    bool
 		expectReason              string
@@ -2471,14 +2588,185 @@ func (s *TestSuite) TestIsDiskEligibleForVolume(c *C) {
 			expect:                    false,
 			expectReason:              longhorn.ErrorReplicaScheduleTagsNotFulfilled,
 		},
+		{
+			name:              "Ineligible - disk health data reports failed with skipUnhealthyDisk=true",
+			diskSpec:          baseDiskSpec,
+			diskStatus:        newDiskStatusWithHealthData(longhorn.HealthDataStatusFailed),
+			volume:            baseVolume,
+			skipUnhealthyDisk: true,
+			expect:            false,
+			expectReason:      longhorn.ErrorReplicaScheduleDiskUnhealthy,
+		},
+		{
+			name:              "Ineligible - one of multiple disk health data entries reports failed with skipUnhealthyDisk=true",
+			diskSpec:          baseDiskSpec,
+			diskStatus:        newDiskStatusWithHealthData(longhorn.HealthDataStatusPassed, longhorn.HealthDataStatusFailed),
+			volume:            baseVolume,
+			skipUnhealthyDisk: true,
+			expect:            false,
+			expectReason:      longhorn.ErrorReplicaScheduleDiskUnhealthy,
+		},
+		{
+			name:              "Eligible - disk health data reports failed with skipUnhealthyDisk=false",
+			diskSpec:          baseDiskSpec,
+			diskStatus:        newDiskStatusWithHealthData(longhorn.HealthDataStatusFailed),
+			volume:            baseVolume,
+			skipUnhealthyDisk: false,
+			expect:            true,
+		},
+		{
+			name:              "Eligible - disk health data reports passed, warning or unknown with skipUnhealthyDisk=true",
+			diskSpec:          baseDiskSpec,
+			diskStatus:        newDiskStatusWithHealthData(longhorn.HealthDataStatusPassed, longhorn.HealthDataStatusWarning, longhorn.HealthDataStatusUnknown),
+			volume:            baseVolume,
+			skipUnhealthyDisk: true,
+			expect:            true,
+		},
+		{
+			name:              "Eligible - no disk health data with skipUnhealthyDisk=true",
+			diskSpec:          baseDiskSpec,
+			diskStatus:        baseDiskStatus,
+			volume:            baseVolume,
+			skipUnhealthyDisk: true,
+			expect:            true,
+		},
 	}
 
 	for _, tt := range tests {
 		c.Logf("Running scenario: %s", tt.name)
-		result, reason, _ := rcs.IsDiskEligibleForVolume(tt.diskSpec, tt.diskStatus, tt.volume, tt.allowEmptyDiskSelectorVol, tt.biDiskSelector)
+		result, reason, _ := rcs.IsDiskEligibleForVolume(tt.diskSpec, tt.diskStatus, tt.volume, tt.allowEmptyDiskSelectorVol, tt.skipUnhealthyDisk, tt.biDiskSelector)
 		c.Assert(result, Equals, tt.expect, Commentf("scenario: %s", tt.name))
 		if !tt.expect {
 			c.Assert(reason, Equals, tt.expectReason, Commentf("scenario: %s reason", tt.name))
+		}
+	}
+}
+
+func (s *TestSuite) TestCheckAndReuseFailedReplicaSkipUnhealthyDisk(c *C) {
+	type testCase struct {
+		globalSetting string
+		volumeSetting longhorn.ReplicaSchedulingSkipUnhealthyDisk
+		healthStatus  longhorn.HealthDataHealthStatus
+		expectReused  bool
+	}
+	testCases := map[string]testCase{
+		"reuse failed replica on healthy disk when replica-scheduling-skip-unhealthy-disk is true": {
+			globalSetting: "true",
+			volumeSetting: longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored,
+			healthStatus:  longhorn.HealthDataStatusPassed,
+			expectReused:  true,
+		},
+		"do not reuse failed replica on unhealthy disk when replica-scheduling-skip-unhealthy-disk is true": {
+			globalSetting: "true",
+			volumeSetting: longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored,
+			healthStatus:  longhorn.HealthDataStatusFailed,
+			expectReused:  false,
+		},
+		"reuse failed replica on unhealthy disk when replica-scheduling-skip-unhealthy-disk is false": {
+			globalSetting: "false",
+			volumeSetting: longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored,
+			healthStatus:  longhorn.HealthDataStatusFailed,
+			expectReused:  true,
+		},
+		"do not reuse failed replica on unhealthy disk when volume replicaSchedulingSkipUnhealthyDisk is enabled": {
+			globalSetting: "false",
+			volumeSetting: longhorn.ReplicaSchedulingSkipUnhealthyDiskEnabled,
+			healthStatus:  longhorn.HealthDataStatusFailed,
+			expectReused:  false,
+		},
+		"reuse failed replica on unhealthy disk when volume replicaSchedulingSkipUnhealthyDisk is disabled": {
+			globalSetting: "true",
+			volumeSetting: longhorn.ReplicaSchedulingSkipUnhealthyDiskDisabled,
+			healthStatus:  longhorn.HealthDataStatusFailed,
+			expectReused:  true,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		rcs := newReplicaScheduler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+		err := pIndexer.Add(newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1))
+		c.Assert(err, IsNil)
+
+		engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+		engineImage.Status.NodeDeploymentMap[TestNode1] = true
+		err = eiIndexer.Add(engineImage)
+		c.Assert(err, IsNil)
+
+		err = imIndexer.Add(newInstanceManager(TestNode1))
+		c.Assert(err, IsNil)
+
+		node := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node.Spec.Disks = map[string]longhorn.DiskSpec{
+			getDiskID(TestNode1, "1"): newDisk(TestDefaultDataPath, true, 0),
+		}
+		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+			getDiskID(TestNode1, "1"): {
+				StorageAvailable: TestDiskAvailableSize,
+				StorageMaximum:   TestDiskSize,
+				Conditions: []longhorn.Condition{
+					newCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue),
+					newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+				},
+				DiskUUID: getDiskID(TestNode1, "1"),
+				Type:     longhorn.DiskTypeFilesystem,
+				HealthData: map[string]longhorn.HealthData{
+					"sda": {
+						Source:       longhorn.HealthDataSourceSMART,
+						HealthStatus: tc.healthStatus,
+					},
+				},
+			},
+		}
+		err = nIndexer.Add(node)
+		c.Assert(err, IsNil)
+
+		for name, value := range map[types.SettingName]string{
+			types.SettingNameDefaultInstanceManagerImage:        TestInstanceManagerImage,
+			types.SettingNameReplicaSchedulingSkipUnhealthyDisk: tc.globalSetting,
+		} {
+			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), initSettings(string(name), value), metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
+
+		volume := newVolume(TestVolumeName, 2)
+		volume.Spec.ReplicaSchedulingSkipUnhealthyDisk = tc.volumeSetting
+		volume.Status.Robustness = longhorn.VolumeRobustnessDegraded
+		volume.Status.LastDegradedAt = TestTimeOneMinuteAgo
+
+		failedReplica := newReplicaForVolume(volume)
+		failedReplica.Spec.Active = true
+		failedReplica.Spec.DataEngine = longhorn.DataEngineTypeV1
+		failedReplica.Spec.NodeID = TestNode1
+		failedReplica.Spec.DiskID = getDiskID(TestNode1, "1")
+		failedReplica.Spec.FailedAt = TestTimeNow
+		replicas := map[string]*longhorn.Replica{
+			failedReplica.Name: failedReplica,
+		}
+
+		reusedReplica, err := rcs.CheckAndReuseFailedReplica(replicas, volume, "")
+		c.Assert(err, IsNil, Commentf("scenario: %s", name))
+		if tc.expectReused {
+			c.Assert(reusedReplica, NotNil, Commentf("scenario: %s", name))
+			c.Assert(reusedReplica.Name, Equals, failedReplica.Name, Commentf("scenario: %s", name))
+		} else {
+			c.Assert(reusedReplica, IsNil, Commentf("scenario: %s", name))
 		}
 	}
 }

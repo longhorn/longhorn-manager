@@ -7829,6 +7829,20 @@ func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(volumeName string, dat
 	return s.GetSettingAsBoolByDataEngine(types.SettingNameFreezeFilesystemForSnapshot, dataEngine)
 }
 
+// IsReplicaSchedulingSkipUnhealthyDiskEnabled returns whether the replica scheduler should skip disks
+// reported as unhealthy for the volume. The volume spec takes precedence over the global setting
+// unless it is set to ignored or left empty.
+func (s *DataStore) IsReplicaSchedulingSkipUnhealthyDiskEnabled(volume *longhorn.Volume) (bool, error) {
+	switch volume.Spec.ReplicaSchedulingSkipUnhealthyDisk {
+	case longhorn.ReplicaSchedulingSkipUnhealthyDiskEnabled:
+		return true, nil
+	case longhorn.ReplicaSchedulingSkipUnhealthyDiskDisabled:
+		return false, nil
+	}
+
+	return s.GetSettingAsBool(types.SettingNameReplicaSchedulingSkipUnhealthyDisk)
+}
+
 func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage, diskUUID string) (bool, error) {
 	node, diskName, err := s.GetReadyDiskNodeRO(diskUUID)
 	if err != nil {

@@ -1599,6 +1599,7 @@ const (
 	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt                 = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
 	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt             = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
 	ClusterInfoVolumeReplicaDiskSoftAntiAffinityCountFmt             = "LonghornVolumeReplicaDiskSoftAntiAffinity%sCount"
+	ClusterInfoVolumeReplicaSchedulingSkipUnhealthyDiskCountFmt      = "LonghornVolumeReplicaSchedulingSkipUnhealthyDisk%sCount"
 	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt               = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
 	ClusterInfoVolumeSnapshotDataIntegrityCountFmt                   = "LonghornVolumeSnapshotDataIntegrity%sCount"
 	ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt               = "LonghornVolumeUnmapMarkSnapChainRemoved%sCount"
@@ -1821,6 +1822,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameReplicaSoftAntiAffinity:                                  true,
 		types.SettingNameReplicaZoneSoftAntiAffinity:                              true,
 		types.SettingNameReplicaDiskSoftAntiAffinity:                              true,
+		types.SettingNameReplicaSchedulingSkipUnhealthyDisk:                       true,
 		types.SettingNameRestoreConcurrentLimit:                                   true,
 		types.SettingNameRestoreVolumeRecurringJobs:                               true,
 		types.SettingNameRWXVolumeFastFailover:                                    true,
@@ -1933,6 +1935,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	replicaSoftAntiAffinityCountStruct := newStruct()
 	replicaZoneSoftAntiAffinityCountStruct := newStruct()
 	replicaDiskSoftAntiAffinityCountStruct := newStruct()
+	replicaSchedulingSkipUnhealthyDiskCountStruct := newStruct()
 	restoreVolumeRecurringJobCountStruct := newStruct()
 	snapshotDataIntegrityCountStruct := newStruct()
 	unmapMarkSnapChainRemovedCountStruct := newStruct()
@@ -1984,6 +1987,13 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		replicaDiskSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaDiskSoftAntiAffinity), string(longhorn.ReplicaDiskSoftAntiAffinityDefault), volume.Spec.DataEngine, types.SettingNameReplicaDiskSoftAntiAffinity)
 		replicaDiskSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaDiskSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaDiskSoftAntiAffinity), "-")))]++
 
+		volumeReplicaSchedulingSkipUnhealthyDisk := volume.Spec.ReplicaSchedulingSkipUnhealthyDisk
+		if volumeReplicaSchedulingSkipUnhealthyDisk == "" {
+			volumeReplicaSchedulingSkipUnhealthyDisk = longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored
+		}
+		replicaSchedulingSkipUnhealthyDisk := info.collectSettingInVolume(string(volumeReplicaSchedulingSkipUnhealthyDisk), string(longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored), volume.Spec.DataEngine, types.SettingNameReplicaSchedulingSkipUnhealthyDisk)
+		replicaSchedulingSkipUnhealthyDiskCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaSchedulingSkipUnhealthyDiskCountFmt, util.ConvertToCamel(string(replicaSchedulingSkipUnhealthyDisk), "-")))]++
+
 		restoreVolumeRecurringJob := info.collectSettingInVolume(string(volume.Spec.RestoreVolumeRecurringJob), string(longhorn.RestoreVolumeRecurringJobDefault), volume.Spec.DataEngine, types.SettingNameRestoreVolumeRecurringJobs)
 		restoreVolumeRecurringJobCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt, util.ConvertToCamel(string(restoreVolumeRecurringJob), "-")))]++
 
@@ -2008,6 +2018,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(replicaZoneSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(replicaDiskSoftAntiAffinityCountStruct)
+	info.structFields.fields.AppendCounted(replicaSchedulingSkipUnhealthyDiskCountStruct)
 	info.structFields.fields.AppendCounted(restoreVolumeRecurringJobCountStruct)
 	info.structFields.fields.AppendCounted(snapshotDataIntegrityCountStruct)
 	info.structFields.fields.AppendCounted(unmapMarkSnapChainRemovedCountStruct)

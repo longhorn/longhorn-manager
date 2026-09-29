@@ -102,6 +102,26 @@ func TestGetVolumeOptions(t *testing.T) {
 				RevisionCounterDisabled: true,
 			},
 		},
+		"replicaSchedulingSkipUnhealthyDisk enabled": {
+			volumeID: "test-vol-skip-unhealthy-disk",
+			volumeOptions: map[string]string{
+				"replicaSchedulingSkipUnhealthyDisk": string(longhorn.ReplicaSchedulingSkipUnhealthyDiskEnabled),
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:                defaultStaleReplicaTimeout,
+				AccessMode:                         string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:                         string(longhorn.DataEngineTypeV1),
+				RevisionCounterDisabled:            true,
+				ReplicaSchedulingSkipUnhealthyDisk: string(longhorn.ReplicaSchedulingSkipUnhealthyDiskEnabled),
+			},
+		},
+		"replicaSchedulingSkipUnhealthyDisk invalid": {
+			volumeID: "test-vol-skip-unhealthy-disk-invalid",
+			volumeOptions: map[string]string{
+				"replicaSchedulingSkipUnhealthyDisk": "true",
+			},
+			expectedError: true,
+		},
 	}
 
 	for name, tc := range tests {
