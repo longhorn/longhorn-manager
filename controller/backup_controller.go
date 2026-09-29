@@ -26,8 +26,10 @@ import (
 
 	"github.com/longhorn/backupstore"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -434,6 +436,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			backup.Status.State = longhorn.BackupStateError
 			backup.Status.LastSyncedAt = syncTime
 			return nil // Ignore error to prevent enqueue
+		}
+
+		// The state is empty only on the first reconcile of a user-created
+		// backup, so the warning is recorded once.
+		if existingBackupState == "" {
+			bc.warnIfHookPolicyBypassed(backup, volume)
 		}
 
 		if err := bc.handleAttachmentTicketCreation(backup, canonicalBackupVolumeName); err != nil {
@@ -1029,6 +1037,24 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 		"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
 
 	return nil
+}
+
+// warnIfHookPolicyBypassed records a Warning when a VolumeHookPolicy covers
+// the volume but no SnapshotGroup ran hooks for this backup.
+func (bc *BackupController) warnIfHookPolicyBypassed(backup *longhorn.Backup, volume *longhorn.Volume) {
+	if snapshothook.IsSnapshotGroupMember(backup.Labels) {
+		return
+	}
+	policy, resolveErr := bc.ds.ResolveVolumeHookPolicyForVolume(volume)
+	message, err := snapshothook.BypassWarning(policy, resolveErr, volume.Name, longhorn.HookOperationBackup)
+	if err != nil {
+		bc.logger.WithError(err).Warnf("Failed to check whether backup %v bypassed a volume hook policy", backup.Name)
+		return
+	}
+	if message != "" {
+		bc.eventRecorder.Eventf(volume, corev1.EventTypeWarning, constant.EventReasonHookPolicyBypassed,
+			"Snapshot %s backup %s: %s", backup.Spec.SnapshotName, backup.Name, message)
+	}
 }
 
 // syncBackupVolume triggers the backup_volume_controller/backup_target_controller

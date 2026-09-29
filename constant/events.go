@@ -96,6 +96,11 @@ const (
 	EventReasonPostHookFailed     = "PostHookFailed"
 	EventReasonHookReleaseBlocked = "HookReleaseBlocked"
 
+	// EventReasonHookPolicyBypassed means a snapshot or backup was taken
+	// outside a SnapshotGroup on a volume that a VolumeHookPolicy covers, so
+	// its hooks did not run.
+	EventReasonHookPolicyBypassed = "HookPolicyBypassed"
+
 	// EventReasonDegradedReadEIO means a read was failed with EIO because the
 	// data could not be safely rebuilt from parity: a crash left some stripes
 	// unscrubbed and a disk failed before the startup scrub could repair them.
