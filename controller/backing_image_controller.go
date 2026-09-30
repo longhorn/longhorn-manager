@@ -949,6 +949,15 @@ func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.
 	return false, fmt.Errorf("backing image data source status is %v not %v", bids.Status.CurrentState, longhorn.BackingImageStateFailedAndCleanUp)
 }
 
+func shouldAdoptBackingImageDataSourceRecovery(bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, allFilesUnavailable bool) bool {
+	previouslyPrepared := bi.Status.Checksum != "" || bi.Status.Size > 0
+	return !bids.Spec.FileTransferred &&
+		!bids.Spec.RecoveryRequested &&
+		bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload &&
+		allFilesUnavailable &&
+		previouslyPrepared
+}
+
 func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.BackingImage) (err error) {
 	log := getLoggerForBackingImage(bic.logger, bi)
 
@@ -1154,6 +1163,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		fileStatus, exists := bi.Status.DiskFileStatusMap[bids.Spec.DiskUUID]
 		if exists && fileStatus.State == longhorn.BackingImageStateReady {
 			bids.Spec.FileTransferred = true
+			bids.Spec.RecoveryRequested = false
 			log.Info("Default backing image manager successfully took over the file, will mark the data source as file transferred")
 		}
 	} else if bids.Spec.FileTransferred && allFilesUnavailable {
@@ -1161,6 +1171,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		case longhorn.BackingImageDataSourceTypeDownload:
 			log.Info("Preparing to re-download backing image via data source since all existing files become unavailable")
 			bids.Spec.FileTransferred = false
+			bids.Spec.RecoveryRequested = true
 			bids.Spec.NodeID = ""
 			bids.Spec.DiskUUID = ""
 			bids.Spec.DiskPath = ""
@@ -1173,6 +1184,9 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		default:
 			log.Warnf("Failed to recover backing image after all existing files becoming unavailable, since the data source with type %v doesn't support restarting", bids.Spec.SourceType)
 		}
+	} else if shouldAdoptBackingImageDataSourceRecovery(bi, bids, allFilesUnavailable) {
+		log.Info("Adopting a pre-existing all-copies-lost download recovery so retry attempts are capped")
+		bids.Spec.RecoveryRequested = true
 	}
 
 	if !bids.Spec.FileTransferred {
