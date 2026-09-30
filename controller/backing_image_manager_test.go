@@ -402,3 +402,119 @@ func TestBackingImageManagerEmptyReadyTimestampContinuesReconcile(t *testing.T) 
 	require.Len(t, f.kube.Actions(), 1)
 	require.Equal(t, "delete", f.kube.Actions()[0].GetVerb(), "a corrected timestamp must resume stale-pod replacement")
 }
+
+func TestClassifyInvalidBackingImageFile(t *testing.T) {
+	const (
+		biUUID    = "bi-uuid"
+		diskUUID  = "disk-a"
+		otherDisk = "disk-b"
+	)
+	newBI := func(states map[string]longhorn.BackingImageState) *longhorn.BackingImage {
+		bi := &longhorn.BackingImage{Status: longhorn.BackingImageStatus{
+			UUID:              biUUID,
+			DiskFileStatusMap: map[string]*longhorn.BackingImageDiskFileStatus{},
+		}}
+		for disk, state := range states {
+			bi.Status.DiskFileStatusMap[disk] = &longhorn.BackingImageDiskFileStatus{State: state}
+		}
+		return bi
+	}
+	failedFile := longhorn.BackingImageFileInfo{UUID: biUUID, State: longhorn.BackingImageStateFailed}
+
+	testCases := []struct {
+		name           string
+		biRO           *longhorn.BackingImage
+		biNotFound     bool
+		specUUID       string
+		fileInfo       longhorn.BackingImageFileInfo
+		expectedDelete bool
+		expectedStale  bool
+		expectedSkip   bool
+	}{
+		{
+			name:           "backing image not found",
+			biNotFound:     true,
+			expectedDelete: true,
+			expectedStale:  true,
+		},
+		{
+			name:         "backing image UUID not set yet",
+			biRO:         &longhorn.BackingImage{},
+			specUUID:     biUUID,
+			fileInfo:     failedFile,
+			expectedSkip: true,
+		},
+		{
+			name:           "spec UUID mismatch",
+			biRO:           newBI(nil),
+			specUUID:       "old-uuid",
+			fileInfo:       longhorn.BackingImageFileInfo{UUID: biUUID, State: longhorn.BackingImageStateReady},
+			expectedDelete: true,
+			expectedStale:  true,
+		},
+		{
+			name:           "status UUID mismatch",
+			biRO:           newBI(nil),
+			specUUID:       biUUID,
+			fileInfo:       longhorn.BackingImageFileInfo{UUID: "old-uuid", State: longhorn.BackingImageStateReady},
+			expectedDelete: true,
+			expectedStale:  true,
+		},
+		{
+			name: "failed file with a ready copy elsewhere is deleted but keeps its backoff",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateReady,
+			}),
+			specUUID:       biUUID,
+			fileInfo:       failedFile,
+			expectedDelete: true,
+		},
+		{
+			name: "failed file with only an in-progress copy elsewhere is kept",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateInProgress,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+		{
+			name: "failed file with only unknown or pending copies elsewhere is kept",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateUnknown,
+				"disk-c":  longhorn.BackingImageStatePending,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+		{
+			name: "all copies failed",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateFailed,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+		{
+			name: "backing image status takes precedence over the manager file state",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateInProgress,
+				otherDisk: longhorn.BackingImageStateReady,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			deleteRequired, staleRecord, skip := classifyInvalidBackingImageFile(tc.biRO, tc.biNotFound, tc.specUUID, diskUUID, tc.fileInfo)
+			require.Equal(t, tc.expectedDelete, deleteRequired, "deleteRequired")
+			require.Equal(t, tc.expectedStale, staleRecord, "staleRecord")
+			require.Equal(t, tc.expectedSkip, skip, "skip")
+		})
+	}
+}

@@ -103,7 +103,7 @@ func NewBackingImageDataSourceController(
 
 		ds: ds,
 
-		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
+		backoff: flowcontrol.NewBackOff(time.Minute, time.Hour),
 
 		lock:       &sync.RWMutex{},
 		monitorMap: map[string]chan struct{}{},
@@ -562,11 +562,14 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 			bids.Status.Message = ""
 			bids.Status.Progress = 0
 			bids.Status.Checksum = ""
-			if err := c.createBackingImageDataSourcePod(bids); err != nil {
+			created, err := c.createBackingImageDataSourcePod(bids)
+			if err != nil {
 				return err
 			}
 			// The backoff entry will be cleaned up when the monitor finds the file becoming ready.
-			c.backoff.Next(bids.Name, time.Now())
+			if created {
+				c.backoff.Next(bids.Name, time.Now())
+			}
 		}
 	}
 
@@ -637,7 +640,8 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 	return nil
 }
 
-func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (err error) {
+// createBackingImageDataSourcePod returns created=false when the pod already exists, e.g. the pod informer cache has not observed it yet.
+func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (created bool, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to create backing image data source pod")
 	}()
@@ -648,13 +652,16 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 
 	podManifest, err := c.generateBackingImageDataSourcePodManifest(bids)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if _, err := c.ds.CreatePod(podManifest); err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
+	if _, err := c.ds.CreatePod(podManifest); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return false, nil
+		}
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*corev1.Pod, error) {
