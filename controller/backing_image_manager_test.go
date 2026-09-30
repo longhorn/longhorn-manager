@@ -402,3 +402,205 @@ func TestBackingImageManagerEmptyReadyTimestampContinuesReconcile(t *testing.T) 
 	require.Len(t, f.kube.Actions(), 1)
 	require.Equal(t, "delete", f.kube.Actions()[0].GetVerb(), "a corrected timestamp must resume stale-pod replacement")
 }
+
+func TestClassifyInvalidBackingImageFile(t *testing.T) {
+	const (
+		biUUID    = "bi-uuid"
+		diskUUID  = "disk-a"
+		otherDisk = "disk-b"
+	)
+	newBI := func(states map[string]longhorn.BackingImageState) *longhorn.BackingImage {
+		bi := &longhorn.BackingImage{Status: longhorn.BackingImageStatus{
+			UUID:              biUUID,
+			DiskFileStatusMap: map[string]*longhorn.BackingImageDiskFileStatus{},
+		}}
+		for disk, state := range states {
+			bi.Status.DiskFileStatusMap[disk] = &longhorn.BackingImageDiskFileStatus{State: state}
+		}
+		return bi
+	}
+	failedFile := longhorn.BackingImageFileInfo{UUID: biUUID, State: longhorn.BackingImageStateFailed}
+
+	testCases := []struct {
+		name           string
+		biRO           *longhorn.BackingImage
+		biNotFound     bool
+		specUUID       string
+		fileInfo       longhorn.BackingImageFileInfo
+		expectedDelete bool
+		expectedStale  bool
+		expectedSkip   bool
+	}{
+		{
+			name:           "backing image not found",
+			biNotFound:     true,
+			expectedDelete: true,
+			expectedStale:  true,
+		},
+		{
+			name:         "backing image UUID not set yet",
+			biRO:         &longhorn.BackingImage{},
+			specUUID:     biUUID,
+			fileInfo:     failedFile,
+			expectedSkip: true,
+		},
+		{
+			name:           "spec UUID mismatch",
+			biRO:           newBI(nil),
+			specUUID:       "old-uuid",
+			fileInfo:       longhorn.BackingImageFileInfo{UUID: biUUID, State: longhorn.BackingImageStateReady},
+			expectedDelete: true,
+			expectedStale:  true,
+		},
+		{
+			name:           "status UUID mismatch",
+			biRO:           newBI(nil),
+			specUUID:       biUUID,
+			fileInfo:       longhorn.BackingImageFileInfo{UUID: "old-uuid", State: longhorn.BackingImageStateReady},
+			expectedDelete: true,
+			expectedStale:  true,
+		},
+		{
+			name: "failed file with a ready copy elsewhere is deleted but keeps its backoff",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateReady,
+			}),
+			specUUID:       biUUID,
+			fileInfo:       failedFile,
+			expectedDelete: true,
+		},
+		{
+			name: "failed file with only an in-progress copy elsewhere is kept",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateInProgress,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+		{
+			name: "failed file with only unknown or pending copies elsewhere is kept",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateUnknown,
+				"disk-c":  longhorn.BackingImageStatePending,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+		{
+			name: "all copies failed",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateFailed,
+				otherDisk: longhorn.BackingImageStateFailed,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+		{
+			name: "backing image status takes precedence over the manager file state",
+			biRO: newBI(map[string]longhorn.BackingImageState{
+				diskUUID:  longhorn.BackingImageStateInProgress,
+				otherDisk: longhorn.BackingImageStateReady,
+			}),
+			specUUID: biUUID,
+			fileInfo: failedFile,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			deleteRequired, staleRecord, skip := classifyInvalidBackingImageFile(tc.biRO, tc.biNotFound, tc.specUUID, diskUUID, tc.fileInfo)
+			require.Equal(t, tc.expectedDelete, deleteRequired, "deleteRequired")
+			require.Equal(t, tc.expectedStale, staleRecord, "staleRecord")
+			require.Equal(t, tc.expectedSkip, skip, "skip")
+		})
+	}
+}
+
+// A failed file that deleteInvalidBackingImages() keeps must not be re-fetched by
+// prepareBackingImageFiles() in the same or any later reconcile. Any Fetch/Sync would
+// fail here because no backing image manager is listening, so the reconcile would
+// return an error and advance the backoff.
+func TestBackingImageManagerKeptFailedFileIsNotRefetched(t *testing.T) {
+	const (
+		biName    = "bi-kept-failed"
+		biUUID    = "bi-uuid"
+		otherDisk = "other-disk-uuid"
+	)
+	for _, tc := range []struct {
+		name       string
+		otherState longhorn.BackingImageState
+	}{
+		{name: "other copy unknown", otherState: longhorn.BackingImageStateUnknown},
+		{name: "other copy in progress", otherState: longhorn.BackingImageStateInProgress},
+		{name: "all copies failed", otherState: longhorn.BackingImageStateFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newStartingAtFixture(t)
+			lhInformers := f.factories.LhInformerFactory.Longhorn().V1beta2()
+
+			bi := &longhorn.BackingImage{
+				ObjectMeta: metav1.ObjectMeta{Name: biName, Namespace: TestNamespace},
+				Status: longhorn.BackingImageStatus{
+					UUID: biUUID, Size: 1024,
+					DiskFileStatusMap: map[string]*longhorn.BackingImageDiskFileStatus{
+						TestDiskID1: {State: longhorn.BackingImageStateFailed},
+						otherDisk:   {State: tc.otherState},
+					},
+				},
+			}
+			require.NoError(t, lhInformers.BackingImages().Informer().GetIndexer().Add(bi))
+			bids := &longhorn.BackingImageDataSource{
+				ObjectMeta: metav1.ObjectMeta{Name: biName, Namespace: TestNamespace},
+				Spec: longhorn.BackingImageDataSourceSpec{
+					UUID: biUUID, DiskUUID: otherDisk, FileTransferred: true,
+				},
+				Status: longhorn.BackingImageDataSourceStatus{CurrentState: longhorn.BackingImageStateReady},
+			}
+			require.NoError(t, lhInformers.BackingImageDataSources().Informer().GetIndexer().Add(bids))
+			bim := &longhorn.BackingImageManager{
+				ObjectMeta: metav1.ObjectMeta{Name: "bim-kept-failed", Namespace: TestNamespace},
+				Spec: longhorn.BackingImageManagerSpec{
+					Image: "bim-image", NodeID: TestNode1, DiskUUID: TestDiskID1, DiskPath: TestDefaultDataPath,
+					BackingImages: map[string]string{biName: biUUID},
+				},
+				Status: longhorn.BackingImageManagerStatus{
+					OwnerID: TestNode1, CurrentState: longhorn.BackingImageManagerStateRunning, IP: "127.0.0.1",
+					APIVersion:    engineapi.CurrentBackingImageManagerAPIVersion,
+					APIMinVersion: engineapi.MinBackingImageManagerAPIVersion,
+					BackingImageFileMap: map[string]longhorn.BackingImageFileInfo{
+						biName: {Name: biName, UUID: biUUID, State: longhorn.BackingImageStateFailed},
+					},
+				},
+			}
+
+			eventRecorder := record.NewFakeRecorder(100)
+			c := &BackingImageManagerController{
+				baseController:            newBaseController("test-bim-kept-failed", logrus.StandardLogger()),
+				namespace:                 TestNamespace,
+				controllerID:              TestNode1,
+				bimImageName:              bim.Spec.Image,
+				eventRecorder:             eventRecorder,
+				ds:                        f.ds,
+				lock:                      new(sync.RWMutex),
+				monitorMap:                map[string]chan struct{}{},
+				replenishLock:             &sync.Mutex{},
+				inProgressReplenishingMap: map[string]string{},
+				podRecreateBackoff:        flowcontrol.NewBackOff(time.Second, time.Minute),
+			}
+			t.Cleanup(c.queue.ShutDown)
+			backoff := flowcontrol.NewBackOff(time.Minute, 15*time.Minute)
+
+			// Repeat to cover the periodic resync: there is no backoff entry to stop a retry.
+			for range 3 {
+				require.NoError(t, c.handleBackingImageFiles(bim, backoff))
+				require.Contains(t, bim.Status.BackingImageFileMap, biName, "the failed file must be kept")
+				require.Equal(t, longhorn.BackingImageStateFailed, bim.Status.BackingImageFileMap[biName].State)
+				require.Zero(t, backoff.Get(biName), "no fetch attempt means no backoff step")
+				require.Empty(t, eventRecorder.Events, "neither a delete nor a fetch must happen")
+			}
+		})
+	}
+}

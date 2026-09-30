@@ -306,6 +306,7 @@ type BackingImage struct {
 	Size              int64                                          `json:"size"`
 	VirtualSize       int64                                          `json:"virtualSize"`
 	CurrentChecksum   string                                         `json:"currentChecksum"`
+	Conditions        map[string]longhorn.Condition                  `json:"conditions"`
 
 	Secret          string `json:"secret"`
 	SecretNamespace string `json:"secretNamespace"`
@@ -986,6 +987,10 @@ func backingImageSchema(backingImage *client.Schema) {
 	diskFileStatusMap := backingImage.ResourceFields["diskFileStatusMap"]
 	diskFileStatusMap.Type = "map[backingImageDiskFileStatus]"
 	backingImage.ResourceFields["diskFileStatusMap"] = diskFileStatusMap
+
+	conditions := backingImage.ResourceFields["conditions"]
+	conditions.Type = "map[longhornCondition]"
+	backingImage.ResourceFields["conditions"] = conditions
 }
 
 func backupBackingImageSchema(backupBackingImage *client.Schema) {
@@ -2426,6 +2431,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		Size:              bi.Status.Size,
 		VirtualSize:       bi.Status.VirtualSize,
 		CurrentChecksum:   bi.Status.Checksum,
+		Conditions:        sliceToMap(bi.Status.Conditions),
 
 		Secret:          bi.Spec.Secret,
 		SecretNamespace: bi.Spec.SecretNamespace,

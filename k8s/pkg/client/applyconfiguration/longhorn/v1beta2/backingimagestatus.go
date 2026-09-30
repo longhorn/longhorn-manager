@@ -35,6 +35,7 @@ type BackingImageStatusApplyConfiguration struct {
 	// Real size of image in bytes, which may be smaller than the size when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
 	RealSize          *int64                                                 `json:"realSize,omitempty"`
 	Checksum          *string                                                `json:"checksum,omitempty"`
+	Conditions        []ConditionApplyConfiguration                          `json:"conditions,omitempty"`
 	DiskFileStatusMap map[string]*longhornv1beta2.BackingImageDiskFileStatus `json:"diskFileStatusMap,omitempty"`
 	DiskLastRefAtMap  map[string]string                                      `json:"diskLastRefAtMap,omitempty"`
 	// It is pending -> in-progress -> ready/failed
@@ -93,6 +94,19 @@ func (b *BackingImageStatusApplyConfiguration) WithRealSize(value int64) *Backin
 // If called multiple times, the Checksum field is set to the value of the last call.
 func (b *BackingImageStatusApplyConfiguration) WithChecksum(value string) *BackingImageStatusApplyConfiguration {
 	b.Checksum = &value
+	return b
+}
+
+// WithConditions adds the given value to the Conditions field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Conditions field.
+func (b *BackingImageStatusApplyConfiguration) WithConditions(values ...*ConditionApplyConfiguration) *BackingImageStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithConditions")
+		}
+		b.Conditions = append(b.Conditions, *values[i])
+	}
 	return b
 }
 
