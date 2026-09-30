@@ -1281,6 +1281,126 @@ func (s *NodeControllerSuite) TestCleanupObsoleteLocalInstanceManagerAfterReplac
 	c.Assert(apierrors.IsNotFound(err), Equals, true)
 }
 
+// newLVMDiskSpec returns an lvm disk for the local data engine tests.
+func newLVMDiskSpec() longhorn.DiskSpec {
+	return longhorn.DiskSpec{
+		Type:            longhorn.DiskTypeLVM,
+		Path:            "/dev/sdb",
+		DiskDriver:      longhorn.DiskDriverNone,
+		AllowScheduling: true,
+	}
+}
+
+func defaultLocalInstanceManagerName(c *C) string {
+	name, err := types.GetInstanceManagerName(longhorn.InstanceManagerTypeAllInOne, TestNode1, TestInstanceManagerImage, string(longhorn.DataEngineTypeLocal))
+	c.Assert(err, IsNil)
+	return name
+}
+
+func newDefaultLocalInstanceManager(c *C, instances map[string]longhorn.InstanceProcess) *longhorn.InstanceManager {
+	return newInstanceManager(
+		defaultLocalInstanceManagerName(c), longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1, instances, map[string]longhorn.InstanceProcess{}, instances,
+		longhorn.DataEngineTypeLocal, TestInstanceManagerImage, false,
+	)
+}
+
+// initLocalInstanceManagerTest sets up a node controller with the local data
+// engine enabled, the given node and the given local instance managers next to
+// the default v1 one.
+func (s *NodeControllerSuite) initLocalInstanceManagerTest(c *C, node *longhorn.Node, ims ...*longhorn.InstanceManager) {
+	lhInstanceManagers := map[string]*longhorn.InstanceManager{
+		TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+	}
+	for _, im := range ims {
+		lhInstanceManagers[im.Name] = im
+	}
+	s.initTest(c, &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{TestNode1: node},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameLocalDataEngine):             newSetting(string(types.SettingNameLocalDataEngine), "true"),
+		},
+		lhInstanceManagers: lhInstanceManagers,
+	})
+}
+
+// assertV1InstanceManagerKept checks that the sync left the node's v1 instance
+// manager in place, so the local gate never reaches another data engine.
+func (s *NodeControllerSuite) assertV1InstanceManagerKept(c *C) {
+	im, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), TestInstanceManagerName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(types.IsDataEngineV1(im.Spec.DataEngine), Equals, true)
+}
+
+func (s *NodeControllerSuite) listLocalInstanceManagers(c *C) []longhorn.InstanceManager {
+	imList, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	local := []longhorn.InstanceManager{}
+	for _, im := range imList.Items {
+		if types.IsDataEngineLocal(im.Spec.DataEngine) {
+			local = append(local, im)
+		}
+	}
+	return local
+}
+
+func (s *NodeControllerSuite) TestSkipLocalInstanceManagerCreationWithoutLVMDisk(c *C) {
+	// The default node has only a filesystem disk.
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	s.initLocalInstanceManagerTest(c, node)
+
+	c.Assert(s.controller.syncInstanceManagers(node), IsNil)
+	c.Assert(s.listLocalInstanceManagers(c), HasLen, 0)
+	s.assertV1InstanceManagerKept(c)
+}
+
+func (s *NodeControllerSuite) TestCreateLocalInstanceManagerWithLVMDisk(c *C) {
+	skipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() { datastore.SkipListerCheck = skipListerCheck }()
+
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	node.Spec.Disks[TestDiskID2] = newLVMDiskSpec()
+	s.initLocalInstanceManagerTest(c, node)
+
+	c.Assert(s.controller.syncInstanceManagers(node), IsNil)
+	local := s.listLocalInstanceManagers(c)
+	c.Assert(local, HasLen, 1)
+	c.Assert(local[0].Name, Equals, defaultLocalInstanceManagerName(c))
+	c.Assert(local[0].Spec.NodeID, Equals, TestNode1)
+	s.assertV1InstanceManagerKept(c)
+}
+
+func (s *NodeControllerSuite) TestCleanupLocalInstanceManagerAfterLastLVMDiskRemoved(c *C) {
+	// The LVM disk is gone from both spec and status and the instance manager is idle.
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	im := newDefaultLocalInstanceManager(c, map[string]longhorn.InstanceProcess{})
+	s.initLocalInstanceManagerTest(c, node, im)
+
+	c.Assert(s.controller.syncInstanceManagers(node), IsNil)
+	_, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+	s.assertV1InstanceManagerKept(c)
+}
+
+func (s *NodeControllerSuite) TestKeepLocalInstanceManagerWithRunningInstanceWithoutLVMDisk(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
+	instances := map[string]longhorn.InstanceProcess{
+		ExistingInstance: {
+			Spec:   longhorn.InstanceProcessSpec{Name: ExistingInstance},
+			Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateRunning},
+		},
+	}
+	im := newDefaultLocalInstanceManager(c, instances)
+	s.initLocalInstanceManagerTest(c, node, im)
+
+	c.Assert(s.controller.syncInstanceManagers(node), IsNil)
+	_, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	s.assertV1InstanceManagerKept(c)
+}
+
 func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 	var err error
 

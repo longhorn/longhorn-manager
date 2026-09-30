@@ -1152,6 +1152,23 @@ func (nc *NodeController) isSystemManagedComponentsNodeSelectorMatching(nodeName
 	return labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
 }
 
+// nodeHasLVMDisk reports whether the node spec has a disk of type lvm. The
+// local engine and its replica always share the node, so a node needs a local
+// instance manager only while it has an LVM disk. The spec alone decides:
+// removing a disk tears down its volume group through the instance manager's
+// disk service in alignDiskSpecAndStatus, earlier in the same reconcile, and
+// the status entry is dropped there whether or not that succeeded. A teardown
+// that fails because the instance manager is already gone is not retried, which
+// is the base behaviour for every disk type.
+func nodeHasLVMDisk(node *longhorn.Node) bool {
+	for _, disk := range node.Spec.Disks {
+		if disk.Type == longhorn.DiskTypeLVM {
+			return true
+		}
+	}
+	return false
+}
+
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
@@ -1302,10 +1319,15 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 							cleanupRequired = true
 						}
 					}
+
+					if types.IsDataEngineLocal(dataEngine) && !nodeHasLVMDisk(node) && !runningOrStartingInstanceFound {
+						log.Infof("Cleaning up instance manager %v since node %v has no LVM disk", im.Name, node.Name)
+						cleanupRequired = true
+					}
 				} else {
 					// Local instances are kernel LVs discovered by every local instance manager,
 					// so an obsolete pod can report them after its replacement is ready.
-					if runningOrStartingInstanceFound && !(types.IsDataEngineLocal(dataEngine) && defaultLocalInstanceManagerRunning) {
+					if runningOrStartingInstanceFound && (!types.IsDataEngineLocal(dataEngine) || !defaultLocalInstanceManagerRunning) {
 						cleanupRequired = false
 					}
 
@@ -1354,6 +1376,10 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					if disabled {
 						continue
 					}
+				}
+				if types.IsDataEngineLocal(dataEngine) && !nodeHasLVMDisk(node) {
+					log.Debugf("Skipping local instance manager creation for node %v: the node has no LVM disk", node.Name)
+					continue
 				}
 
 				log.Infof("Creating default instance manager %v, image: %v, dataEngine: %v", imName, defaultInstanceManagerImage, dataEngine)
