@@ -949,6 +949,15 @@ func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.
 	return false, fmt.Errorf("backing image data source status is %v not %v", bids.Status.CurrentState, longhorn.BackingImageStateFailedAndCleanUp)
 }
 
+func shouldAdoptBackingImageDataSourceRecovery(bids *longhorn.BackingImageDataSource) bool {
+	// FileEverTransferred is the only persisted proof that the manager already
+	// took over a file. Checksum is written at ready-for-transfer, before that.
+	return !bids.Spec.FileTransferred &&
+		!bids.Spec.RecoveryRequested &&
+		bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload &&
+		bids.Spec.FileEverTransferred
+}
+
 func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.BackingImage) (err error) {
 	log := getLoggerForBackingImage(bic.logger, bi)
 
@@ -1074,6 +1083,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		}
 		if isReadyFile {
 			bids.Spec.FileTransferred = true
+			bids.Spec.FileEverTransferred = true
 		}
 		if bids.Spec.Parameters == nil {
 			bids.Spec.Parameters = map[string]string{}
@@ -1089,6 +1099,10 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 
 	if bids.Spec.UUID == "" {
 		bids.Spec.UUID = bi.Status.UUID
+	}
+
+	if bids.Spec.FileTransferred && !bids.Spec.FileEverTransferred {
+		bids.Spec.FileEverTransferred = true
 	}
 
 	recoveryWaitIntervalSettingValue, err := bic.ds.GetSettingAsInt(types.SettingNameBackingImageRecoveryWaitInterval)
@@ -1154,6 +1168,8 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		fileStatus, exists := bi.Status.DiskFileStatusMap[bids.Spec.DiskUUID]
 		if exists && fileStatus.State == longhorn.BackingImageStateReady {
 			bids.Spec.FileTransferred = true
+			bids.Spec.FileEverTransferred = true
+			bids.Spec.RecoveryRequested = false
 			log.Info("Default backing image manager successfully took over the file, will mark the data source as file transferred")
 		}
 	} else if bids.Spec.FileTransferred && allFilesUnavailable {
@@ -1161,6 +1177,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		case longhorn.BackingImageDataSourceTypeDownload:
 			log.Info("Preparing to re-download backing image via data source since all existing files become unavailable")
 			bids.Spec.FileTransferred = false
+			bids.Spec.RecoveryRequested = true
 			bids.Spec.NodeID = ""
 			bids.Spec.DiskUUID = ""
 			bids.Spec.DiskPath = ""
@@ -1173,6 +1190,9 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		default:
 			log.Warnf("Failed to recover backing image after all existing files becoming unavailable, since the data source with type %v doesn't support restarting", bids.Spec.SourceType)
 		}
+	} else if shouldAdoptBackingImageDataSourceRecovery(bids) {
+		log.Info("Adopting a pre-existing all-copies-lost download recovery so retry attempts are capped")
+		bids.Spec.RecoveryRequested = true
 	}
 
 	if !bids.Spec.FileTransferred {
