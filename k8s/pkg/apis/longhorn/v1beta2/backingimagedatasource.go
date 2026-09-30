@@ -75,6 +75,8 @@ type BackingImageDataSourceStatus struct {
 	Checksum string `json:"checksum"`
 	// +optional
 	Message string `json:"message"`
+	// +optional
+	RetryCount int `json:"retryCount"`
 }
 
 // +genclient
