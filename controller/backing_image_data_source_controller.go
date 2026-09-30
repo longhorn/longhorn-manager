@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -40,6 +41,8 @@ import (
 
 const (
 	BackingImageDataSourcePodContainerName = "backing-image-data-source"
+	backingImageDataSourceBackoffInit      = time.Minute
+	backingImageDataSourceBackoffMax       = time.Hour
 )
 
 type BackingImageDataSourceController struct {
@@ -63,6 +66,15 @@ type BackingImageDataSourceController struct {
 	monitorMap map[string]chan struct{}
 
 	proxyConnCounter util.Counter
+
+	createdPodsLock sync.Mutex
+	createdPods     map[string]struct{}
+	chargedAttempts map[string]struct{}
+
+	// pendingExportSnapshots remembers an export snapshot whose name is not in the
+	// fetched status yet, so a conflicted or stale reconcile reuses it.
+	pendingExportSnapshots map[string]string
+	createExportSnapshot   func(v *longhorn.Volume, e *longhorn.Engine, snapshotName string, labels map[string]string) (string, error)
 }
 
 type BackingImageDataSourceMonitor struct {
@@ -70,11 +82,12 @@ type BackingImageDataSourceMonitor struct {
 	retryCount int
 	client     *engineapi.BackingImageDataSourceClient
 
-	stopCh       chan struct{}
-	controllerID string
-	log          *logrus.Entry
-	ds           *datastore.DataStore
-	backoff      *flowcontrol.Backoff
+	stopCh        chan struct{}
+	controllerID  string
+	log           *logrus.Entry
+	ds            *datastore.DataStore
+	backoff       *flowcontrol.Backoff
+	chargeFailure func(bidsName string)
 }
 
 func NewBackingImageDataSourceController(
@@ -103,13 +116,18 @@ func NewBackingImageDataSourceController(
 
 		ds: ds,
 
-		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
+		backoff: flowcontrol.NewBackOff(backingImageDataSourceBackoffInit, backingImageDataSourceBackoffMax),
 
 		lock:       &sync.RWMutex{},
 		monitorMap: map[string]chan struct{}{},
 
 		proxyConnCounter: proxyConnCounter,
+
+		createdPods:            map[string]struct{}{},
+		chargedAttempts:        map[string]struct{}{},
+		pendingExportSnapshots: map[string]string{},
 	}
+	c.createExportSnapshot = c.createEngineSnapshot
 
 	var err error
 	if _, err = ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -258,6 +276,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 	bids, err := c.ds.GetBackingImageDataSource(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
+			c.forgetBackingImageDataSource(name)
 			return nil
 		}
 		return errors.Wrap(err, "failed to get backing image data source")
@@ -268,6 +287,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 	if !c.isResponsibleFor(bids) {
 		// The data source is rescheduled to other node. Blindly clean up the monitor if any.
 		c.stopMonitoring(bids.Name)
+		c.forgetBackingImageDataSource(bids.Name)
 		return nil
 	}
 	if bids.Status.OwnerID != c.controllerID {
@@ -284,6 +304,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 	}
 
 	if bids.DeletionTimestamp != nil {
+		c.forgetBackingImageDataSource(bids.Name)
 		if err := c.cleanup(bids); err != nil {
 			return err
 		}
@@ -330,7 +351,10 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 		return err
 	}
 
+	syncBackingImageDataSourceFileEverTransferred(bids)
+
 	if bids.Spec.FileTransferred {
+		c.forgetBackingImageDataSource(bids.Name)
 		bids.Status.CurrentState = longhorn.BackingImageStateReady
 		return c.cleanup(bids)
 	}
@@ -432,12 +456,18 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}()
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
 
-	newBackingImageDataSource := bids.Status.CurrentState == ""
+	isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
 
 	podName := types.GetBackingImageDataSourcePodName(bids.Name)
 	pod, err := c.ds.GetPod(podName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get pod for backing image data source %v", bids.Name)
+	}
+	podLost := false
+	if pod == nil && isValidTypeForRetry {
+		if podLost, err = c.isCreatedPodLost(bids, podName); err != nil {
+			return err
+		}
 	}
 	podReady := false
 	podFailed := false
@@ -493,10 +523,11 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		if bids.Status.CurrentState != longhorn.BackingImageStateFailed &&
 			bids.Status.CurrentState != longhorn.BackingImageStateFailedAndCleanUp {
 			if podSpecMismatch {
-				// cleanup existing pod for recreation
 				log.WithField("statusMessage", podNotReadyMessage).Error("Backing image data source pod spec mismatch, deleting the outdated pod for recreation")
-				bids.Status.Message = podNotReadyMessage
-				bids.Status.CurrentState = longhorn.BackingImageStateFailed
+				c.markBackingImageDataSourceFailed(bids, podNotReadyMessage)
+			} else if podLost {
+				log.Errorf("Backing image data source pod disappeared while the state was %q, the state will be updated to %v", bids.Status.CurrentState, longhorn.BackingImageStateFailed)
+				c.markBackingImageDataSourceFailed(bids, "the pod dedicated to prepare the first backing image file disappeared before the file preparation started")
 			} else if podFailed {
 				podLog := ""
 				podLogBytes, err := c.ds.GetPodContainerLog(podName, BackingImageDataSourcePodContainerName)
@@ -509,10 +540,8 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 					podLog = string(podLogBytes)
 				}
 				log.Errorf("Backing image data source was state %v but the pod failed, the state will be updated to %v, message: %s", bids.Status.CurrentState, longhorn.BackingImageStateFailed, podLog)
-				bids.Status.Message = fmt.Sprintf("the pod dedicated to prepare the first backing image file failed: %s", podLog)
-				bids.Status.CurrentState = longhorn.BackingImageStateFailed
+				c.markBackingImageDataSourceFailed(bids, fmt.Sprintf("the pod dedicated to prepare the first backing image file failed: %s", podLog))
 			} else {
-				// File processing started implicitly means the pod should have become ready.
 				fileProcessingStarted :=
 					bids.Status.CurrentState == longhorn.BackingImageStateStarting ||
 						bids.Status.CurrentState == longhorn.BackingImageStateInProgress ||
@@ -520,8 +549,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 						bids.Status.CurrentState == longhorn.BackingImageStateReady
 				if fileProcessingStarted || bids.Status.CurrentState == longhorn.BackingImageStateUnknown {
 					log.Errorf("Backing image data source was state %v but the pod became not ready, the state will be updated to %v, message: %v", bids.Status.CurrentState, longhorn.BackingImageStateFailed, podNotReadyMessage)
-					bids.Status.Message = podNotReadyMessage
-					bids.Status.CurrentState = longhorn.BackingImageStateFailed
+					c.markBackingImageDataSourceFailed(bids, podNotReadyMessage)
 				}
 			}
 		}
@@ -532,45 +560,150 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 
 	if bids.Status.CurrentState == longhorn.BackingImageStateFailed ||
 		bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp {
+		c.forgetCreatedPod(bids.Name)
 		if err := c.cleanup(bids); err != nil {
 			return err
 		}
 	}
 	if pod == nil {
-		// To avoid restarting backing image data source pod (for file preparation) too quickly or too frequently,
-		// Longhorn will leave failed backing image data source alone if it is still in the backoff period.
-		// If the backoff period pass, Longhorn will recreate the pod and increase the Backoff period for the next possible failure.
-		isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
-		isInBackoffWindow := true
-		if !newBackingImageDataSource && isValidTypeForRetry {
-			if !c.backoff.IsInBackOffSinceUpdate(bids.Name, time.Now()) {
-				isInBackoffWindow = false
-				log.Infof("Preparing to recreate pod for image data source %v since the backoff window is already passed", bids.Name)
-			} else {
-				log.Debugf("Failed backing image data source %v is still in the backoff window, Longhorn cannot recreate pod for it", bids.Name)
-			}
+		// The state may have just moved from empty to failed above.
+		newBackingImageDataSource := bids.Status.CurrentState == ""
+		isRetry := backingImageDataSourceRetryState(bids, newBackingImageDataSource)
+
+		if isValidTypeForRetry && c.backoff.IsInBackOffSinceUpdate(bids.Name, time.Now()) {
+			delay := c.backoff.Get(bids.Name)
+			log.Debugf("Failed backing image data source %v is still in the backoff window %v, skip recreating the pod", bids.Name, delay)
+			return enqueueAfterDelay(c.queue, bids, delay)
 		}
 
-		if newBackingImageDataSource ||
-			(isValidTypeForRetry && !isInBackoffWindow) {
+		isInitialPrepare := newBackingImageDataSource && !bids.Spec.RecoveryRequested
+		if isInitialPrepare || isValidTypeForRetry {
+			if isRetry {
+				log.Infof("Preparing to recreate pod for backing image data source %v after backoff", bids.Name)
+			}
 			if err := c.handleAttachmentTicketCreation(bids); err != nil {
 				return err
 			}
-			// For recovering the backing image exported from volumes, the controller needs to update the state regardless of the pod being created immediately.
-			// Otherwise, the backing image data source will stay in state failed/unknown then the volume controller won't do auto attachment.
 			bids.Status.CurrentState = ""
 			bids.Status.Message = ""
 			bids.Status.Progress = 0
 			bids.Status.Checksum = ""
-			if err := c.createBackingImageDataSourcePod(bids); err != nil {
+
+			podManifest, err := c.generateBackingImageDataSourcePodManifest(bids)
+			if err != nil {
+				return errors.Wrap(err, "failed to generate backing image data source pod manifest")
+			}
+			if err := c.persistBackingImageDataSourceStatus(bids); err != nil {
 				return err
 			}
-			// The backoff entry will be cleaned up when the monitor finds the file becoming ready.
-			c.backoff.Next(bids.Name, time.Now())
+
+			created, err := c.createBackingImageDataSourcePod(bids, podManifest)
+			if err != nil {
+				return err
+			}
+			c.recordCreatedPod(bids.Name)
+			if created {
+				c.startNewAttempt(bids.Name)
+			}
 		}
 	}
 
 	return nil
+}
+
+func (c *BackingImageDataSourceController) markBackingImageDataSourceFailed(bids *longhorn.BackingImageDataSource, msg string) {
+	alreadyFailed := bids.Status.CurrentState == longhorn.BackingImageStateFailed ||
+		bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp
+	if msg != "" {
+		bids.Status.Message = msg
+	}
+	bids.Status.CurrentState = longhorn.BackingImageStateFailed
+	if alreadyFailed {
+		return
+	}
+	c.chargeFailedAttempt(bids.Name)
+}
+
+// chargeFailedAttempt advances the retry backoff at most once per pod attempt. The
+// controller and the monitor can both observe the same failure, and a failed status
+// write is retried on the next poll.
+func (c *BackingImageDataSourceController) chargeFailedAttempt(bidsName string) {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	if _, charged := c.chargedAttempts[bidsName]; charged {
+		return
+	}
+	c.chargedAttempts[bidsName] = struct{}{}
+	c.backoff.Next(bidsName, time.Now())
+}
+
+func (c *BackingImageDataSourceController) startNewAttempt(bidsName string) {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	delete(c.chargedAttempts, bidsName)
+}
+
+func (c *BackingImageDataSourceController) forgetBackingImageDataSource(bidsName string) {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	delete(c.createdPods, bidsName)
+	delete(c.chargedAttempts, bidsName)
+	delete(c.pendingExportSnapshots, bidsName)
+	c.backoff.DeleteEntry(bidsName)
+}
+
+func (c *BackingImageDataSourceController) getPendingExportSnapshot(bidsName string) string {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	return c.pendingExportSnapshots[bidsName]
+}
+
+func (c *BackingImageDataSourceController) setPendingExportSnapshot(bidsName, snapshotName string) {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	c.pendingExportSnapshots[bidsName] = snapshotName
+}
+
+func (c *BackingImageDataSourceController) clearPendingExportSnapshot(bidsName string) {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	delete(c.pendingExportSnapshots, bidsName)
+}
+
+func (c *BackingImageDataSourceController) recordCreatedPod(bidsName string) {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	c.createdPods[bidsName] = struct{}{}
+}
+
+func (c *BackingImageDataSourceController) forgetCreatedPod(bidsName string) {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	delete(c.createdPods, bidsName)
+}
+
+func (c *BackingImageDataSourceController) hasCreatedPod(bidsName string) bool {
+	c.createdPodsLock.Lock()
+	defer c.createdPodsLock.Unlock()
+	_, exists := c.createdPods[bidsName]
+	return exists
+}
+
+func (c *BackingImageDataSourceController) isCreatedPodLost(bids *longhorn.BackingImageDataSource, podName string) (bool, error) {
+	if bids.Status.CurrentState != "" && bids.Status.CurrentState != longhorn.BackingImageStatePending {
+		return false, nil
+	}
+	if !c.hasCreatedPod(bids.Name) {
+		return false, nil
+	}
+	pod, err := c.kubeClient.CoreV1().Pods(c.namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, errors.Wrapf(err, "failed to get backing image data source pod %v from the API server", podName)
+	}
+	return pod.DeletionTimestamp != nil, nil
 }
 
 // handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
@@ -637,7 +770,16 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 	return nil
 }
 
-func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (err error) {
+func (c *BackingImageDataSourceController) persistBackingImageDataSourceStatus(bids *longhorn.BackingImageDataSource) error {
+	updated, err := c.ds.UpdateBackingImageDataSourceStatus(bids)
+	if err != nil {
+		return errors.Wrapf(err, "failed to persist the status of backing image data source %v before creating its pod", bids.Name)
+	}
+	bids.ResourceVersion = updated.ResourceVersion
+	return nil
+}
+
+func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource, podManifest *corev1.Pod) (created bool, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to create backing image data source pod")
 	}()
@@ -646,15 +788,14 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 
 	log.Info("Creating backing image data source pod")
 
-	podManifest, err := c.generateBackingImageDataSourcePodManifest(bids)
-	if err != nil {
-		return err
-	}
-	if _, err := c.ds.CreatePod(podManifest); err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
+	if _, err = c.ds.CreatePod(podManifest); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return false, nil
+		}
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*corev1.Pod, error) {
@@ -700,7 +841,24 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		"--source-type", string(bids.Spec.SourceType),
 	}
 
-	bids.Status.RunningParameters = bids.Spec.Parameters
+	// Spec.Parameters has no snapshot name. Copy it, then put back a name already
+	// chosen for this data source. Replacing the map outright drops that name, and
+	// the next retry creates another snapshot.
+	recordedSnapshot := ""
+	if bids.Status.RunningParameters != nil {
+		recordedSnapshot = bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName]
+	}
+	if recordedSnapshot == "" {
+		recordedSnapshot = c.getPendingExportSnapshot(bids.Name)
+	}
+	runningParameters := make(map[string]string, len(bids.Spec.Parameters)+1)
+	for key, value := range bids.Spec.Parameters {
+		runningParameters[key] = value
+	}
+	if recordedSnapshot != "" {
+		runningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] = recordedSnapshot
+	}
+	bids.Status.RunningParameters = runningParameters
 	if err := c.prepareRunningParametersForClone(bids); err != nil {
 		return nil, err
 	}
@@ -895,6 +1053,25 @@ func (c *BackingImageDataSourceController) prepareRunningParametersForClone(bids
 	return nil
 }
 
+func (c *BackingImageDataSourceController) createEngineSnapshot(v *longhorn.Volume, e *longhorn.Engine, snapshotName string, labels map[string]string) (string, error) {
+	freezeFilesystem, err := c.ds.GetFreezeFilesystemForSnapshotSetting(v.Name, v.Spec.DataEngine)
+	if err != nil {
+		return "", err
+	}
+
+	engineClientProxy, err := c.getEngineClientProxy(e)
+	if err != nil {
+		return "", err
+	}
+	defer engineClientProxy.Close()
+
+	dataEngineObj, err := c.ds.GetDataEngineObject(e)
+	if err != nil {
+		return "", err
+	}
+	return engineClientProxy.SnapshotCreate(dataEngineObj, snapshotName, labels, freezeFilesystem)
+}
+
 func (c *BackingImageDataSourceController) prepareRunningParametersForExport(bids *longhorn.BackingImageDataSource) error {
 	if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeExportFromVolume {
 		return nil
@@ -921,35 +1098,22 @@ func (c *BackingImageDataSourceController) prepareRunningParametersForExport(bid
 		return fmt.Errorf("the current engine %v is not ready for backing image exporting", e.Name)
 	}
 
-	newSnapshotRequired := true
-	if bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] != "" {
-		if _, ok := e.Status.Snapshots[bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName]]; ok {
-			newSnapshotRequired = false
-		}
+	// Reuse a name already stored in status or remembered from a write that conflicted.
+	// Engine status often does not list a snapshot that SnapshotCreate already made, so
+	// a missing entry is not a reason to create another one.
+	snapshotName := bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName]
+	if snapshotName == "" {
+		snapshotName = c.getPendingExportSnapshot(bids.Name)
 	}
-	if newSnapshotRequired {
-		freezeFilesystem, err := c.ds.GetFreezeFilesystemForSnapshotSetting(volumeName, v.Spec.DataEngine)
-		if err != nil {
-			return err
-		}
-
-		engineClientProxy, err := c.getEngineClientProxy(e)
-		if err != nil {
-			return err
-		}
-		defer engineClientProxy.Close()
-
-		dataEngineObj, err := c.ds.GetDataEngineObject(e)
-		if err != nil {
-			return err
-		}
+	if snapshotName == "" {
 		snapLabels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage): bids.Name}
-		snapshotName, err := engineClientProxy.SnapshotCreate(dataEngineObj, bids.Name+"-"+util.RandomID(), snapLabels, freezeFilesystem)
+		snapshotName, err = c.createExportSnapshot(v, e, bids.Name+"-"+util.RandomID(), snapLabels)
 		if err != nil {
 			return err
 		}
-		bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] = snapshotName
+		c.setPendingExportSnapshot(bids.Name, snapshotName)
 	}
+	bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] = snapshotName
 
 	for rName, mode := range e.Status.ReplicaModeMap {
 		if mode != longhorn.ReplicaModeRW {
@@ -1179,13 +1343,14 @@ func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.Backin
 
 	stopCh := make(chan struct{}, 1)
 	m := &BackingImageDataSourceMonitor{
-		Name:         bids.Name,
-		client:       engineapi.NewBackingImageDataSourceClient(bids.Status.IP),
-		stopCh:       stopCh,
-		controllerID: c.controllerID,
-		log:          log,
-		ds:           c.ds,
-		backoff:      c.backoff,
+		Name:          bids.Name,
+		client:        engineapi.NewBackingImageDataSourceClient(bids.Status.IP),
+		stopCh:        stopCh,
+		controllerID:  c.controllerID,
+		log:           log,
+		ds:            c.ds,
+		backoff:       c.backoff,
+		chargeFailure: c.chargeFailedAttempt,
 	}
 	c.monitorMap[bids.Name] = stopCh
 
@@ -1248,11 +1413,8 @@ func (m *BackingImageDataSourceMonitor) sync() {
 	}
 
 	existingBIDS := bids.DeepCopy()
-	bids.Status.CurrentState = longhorn.BackingImageState(fileInfo.State)
-	bids.Status.Size = fileInfo.Size
-	bids.Status.Progress = fileInfo.Progress
-	bids.Status.Checksum = fileInfo.CurrentChecksum
-	bids.Status.Message = fileInfo.Message
+	m.applyFileInfo(bids, fileInfo)
+
 	if !reflect.DeepEqual(bids.Status, existingBIDS.Status) {
 		if _, err := m.ds.UpdateBackingImageDataSourceStatus(bids); err != nil {
 			syncErr = errors.Wrapf(err, "failed to get %v info from backing image data source server", m.Name)
@@ -1263,6 +1425,24 @@ func (m *BackingImageDataSourceMonitor) sync() {
 
 	if bids.Status.CurrentState == longhorn.BackingImageStateReady || bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer {
 		m.backoff.DeleteEntry(bids.Name)
+	}
+}
+
+// applyFileInfo copies the data source server state into bids. A new failure is charged
+// before the caller publishes it, because the controller can recreate the pod as soon
+// as the failed status is visible.
+func (m *BackingImageDataSourceMonitor) applyFileInfo(bids *longhorn.BackingImageDataSource, fileInfo *engineapi.BackingImageDataSourceInfo) {
+	previousState := bids.Status.CurrentState
+	bids.Status.CurrentState = longhorn.BackingImageState(fileInfo.State)
+	bids.Status.Size = fileInfo.Size
+	bids.Status.Progress = fileInfo.Progress
+	bids.Status.Checksum = fileInfo.CurrentChecksum
+	bids.Status.Message = fileInfo.Message
+
+	if bids.Status.CurrentState == longhorn.BackingImageStateFailed &&
+		previousState != longhorn.BackingImageStateFailed &&
+		previousState != longhorn.BackingImageStateFailedAndCleanUp {
+		m.chargeFailure(m.Name)
 	}
 }
 
@@ -1278,4 +1458,16 @@ func isEncryptionRequire(bi *longhorn.BackingImage) bool {
 func secretExists(bids *longhorn.BackingImageDataSource) bool {
 	return bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecretNamespace] != "" &&
 		bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecret] != ""
+}
+
+func backingImageDataSourceRetryState(bids *longhorn.BackingImageDataSource, isNew bool) bool {
+	isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload ||
+		bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
+	return (!isNew || bids.Spec.RecoveryRequested) && isValidTypeForRetry
+}
+
+func syncBackingImageDataSourceFileEverTransferred(bids *longhorn.BackingImageDataSource) {
+	if bids.Spec.FileTransferred {
+		bids.Status.FileEverTransferred = true
+	}
 }

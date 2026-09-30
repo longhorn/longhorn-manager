@@ -28,6 +28,11 @@ const (
 	BackingImageStateUnknown          = BackingImageState("unknown")
 )
 
+const (
+	BackingImageConditionTypeFailed       = "Failed"
+	BackingImageConditionReasonDataSource = "DataSource"
+)
+
 type BackingImageDiskFileStatus struct {
 	// +optional
 	// +kubebuilder:validation:Enum=v1;v2
@@ -95,6 +100,9 @@ type BackingImageStatus struct {
 	RealSize int64 `json:"realSize"`
 	// +optional
 	Checksum string `json:"checksum"`
+	// +optional
+	// +nullable
+	Conditions []Condition `json:"conditions"`
 	// +optional
 	// +nullable
 	DiskFileStatusMap map[string]*BackingImageDiskFileStatus `json:"diskFileStatusMap"`
