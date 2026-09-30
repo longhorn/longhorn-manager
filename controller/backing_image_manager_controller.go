@@ -645,14 +645,14 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 	}()
 
 	for biName, biFileInfo := range bim.Status.BackingImageFileMap {
-		deleteRequired := false
+		staleRecord := false
 
 		biRO, err := c.ds.GetBackingImageRO(biName)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
-			deleteRequired = true
+			staleRecord = true
 			log.Warnf("Failed to find backing image %v during invalid backing image cleanup, will skip it", biName)
 		}
 		if biRO != nil && biRO.Status.UUID == "" {
@@ -665,8 +665,10 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 		//   2. The status record does not match the current backing image.
 		//   3. The file state recorded in the current backing image is failed
 		//      and there are available files in other backing image managers.
-		deleteRequired = deleteRequired || (biRO != nil && bim.Spec.BackingImages[biName] != biRO.Status.UUID)
-		deleteRequired = deleteRequired || (biRO != nil && biFileInfo.UUID != "" && biFileInfo.UUID != biRO.Status.UUID)
+		staleRecord = staleRecord || (biRO != nil && bim.Spec.BackingImages[biName] != biRO.Status.UUID)
+		staleRecord = staleRecord || (biRO != nil && biFileInfo.UUID != "" && biFileInfo.UUID != biRO.Status.UUID)
+
+		deleteRequired := staleRecord
 		if !deleteRequired && biRO != nil {
 			// Prefer to check the file state in BackingImage.Status,
 			// which is synced from BackingImageManager.Status with some
@@ -677,7 +679,7 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 			}
 			if fileState == longhorn.BackingImageStateFailed {
 				for _, biFileInfo := range biRO.Status.DiskFileStatusMap {
-					if biFileInfo.State == longhorn.BackingImageStateFailed {
+					if !backingImageFileAvailable(biFileInfo.State) {
 						continue
 					}
 					deleteRequired = true
@@ -694,7 +696,12 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 			return err
 		}
 		delete(bim.Status.BackingImageFileMap, biName)
-		backoff.DeleteEntry(biName)
+		// Only a stale record deserves a fresh retry budget. Resetting the backoff of a failed
+		// file makes the manager re-fetch it right after every cleanup, so a file that can never
+		// be recovered would be retried with no interval at all.
+		if staleRecord {
+			backoff.DeleteEntry(biName)
+		}
 		c.eventRecorder.Eventf(bim, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleted backing image %v in disk %v on node %v", biName, bim.Spec.DiskUUID, bim.Spec.NodeID)
 	}
 
@@ -1384,4 +1391,13 @@ func backingImageInProgress(state longhorn.BackingImageState) bool {
 	return state == longhorn.BackingImageStateInProgress ||
 		state == longhorn.BackingImageStatePending ||
 		state == longhorn.BackingImageStateStarting
+}
+
+// A file in state failed or failed-and-cleanup is unusable. State unknown means the related
+// manager pod is not running or the node is down/disconnected, so it cannot serve the file
+// to other managers either.
+func backingImageFileAvailable(state longhorn.BackingImageState) bool {
+	return state != longhorn.BackingImageStateFailed &&
+		state != longhorn.BackingImageStateFailedAndCleanUp &&
+		state != longhorn.BackingImageStateUnknown
 }
