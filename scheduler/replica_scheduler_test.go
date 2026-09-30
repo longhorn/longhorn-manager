@@ -2738,6 +2738,7 @@ func (s *TestSuite) TestCheckAndReuseFailedReplicaSkipUnhealthyDisk(c *C) {
 		for name, value := range map[types.SettingName]string{
 			types.SettingNameDefaultInstanceManagerImage:        TestInstanceManagerImage,
 			types.SettingNameReplicaSchedulingSkipUnhealthyDisk: tc.globalSetting,
+			types.SettingNameReplicaReplenishmentWaitInterval:   "600",
 		} {
 			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), initSettings(string(name), value), metav1.CreateOptions{})
 			c.Assert(err, IsNil)
@@ -2767,6 +2768,14 @@ func (s *TestSuite) TestCheckAndReuseFailedReplicaSkipUnhealthyDisk(c *C) {
 			c.Assert(reusedReplica.Name, Equals, failedReplica.Name, Commentf("scenario: %s", name))
 		} else {
 			c.Assert(reusedReplica, IsNil, Commentf("scenario: %s", name))
+		}
+
+		// Replenishment must wait only for a replica that can actually be reused later.
+		checkBackDuration := rcs.RequireNewReplica(replicas, volume, "")
+		if tc.expectReused {
+			c.Assert(checkBackDuration > 0, Equals, true, Commentf("scenario: %s", name))
+		} else {
+			c.Assert(checkBackDuration, Equals, time.Duration(0), Commentf("scenario: %s", name))
 		}
 	}
 }

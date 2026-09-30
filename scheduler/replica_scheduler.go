@@ -1105,12 +1105,24 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 		return 0
 	}
 
+	skipUnhealthyDisk, err := rcs.ds.IsReplicaSchedulingSkipUnhealthyDiskEnabled(volume)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to get %v setting for volume %v, will consider it as false",
+			types.SettingNameReplicaSchedulingSkipUnhealthyDisk, volume.Name)
+		skipUnhealthyDisk = false
+	}
+
 	hasPotentiallyReusableReplica := false
 	for _, r := range replicas {
-		if IsPotentiallyReusableReplica(r) {
-			hasPotentiallyReusableReplica = true
-			break
+		if !IsPotentiallyReusableReplica(r) {
+			continue
 		}
+		// The scheduler never reuses a replica on an unhealthy disk, so waiting for it only delays replenishment.
+		if skipUnhealthyDisk && rcs.isReplicaOnUnhealthyDisk(r) {
+			continue
+		}
+		hasPotentiallyReusableReplica = true
+		break
 	}
 	if !hasPotentiallyReusableReplica {
 		return 0
@@ -1412,6 +1424,19 @@ func (rcs *ReplicaScheduler) IsDiskEligibleForVolume(diskSpec longhorn.DiskSpec,
 	}
 
 	return true, "", ""
+}
+
+func (rcs *ReplicaScheduler) isReplicaOnUnhealthyDisk(r *longhorn.Replica) bool {
+	node, err := rcs.ds.GetNodeRO(r.Spec.NodeID)
+	if err != nil {
+		return false
+	}
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == r.Spec.DiskID {
+			return len(getFailedDiskHealthDataNames(diskStatus)) > 0
+		}
+	}
+	return false
 }
 
 // getFailedDiskHealthDataNames returns the sorted names of the disk health data
