@@ -3481,6 +3481,12 @@ func (s *DataStore) GetBackingImageDataSource(name string) (*longhorn.BackingIma
 	return resultRO.DeepCopy(), nil
 }
 
+// GetBackingImageDataSourceUncached returns the BackingImageDataSource from the API
+// server so a conflict retry does not reuse a stale lister copy.
+func (s *DataStore) GetBackingImageDataSourceUncached(name string) (*longhorn.BackingImageDataSource, error) {
+	return s.lhClient.LonghornV1beta2().BackingImageDataSources(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
 // ListBackingImageDataSources returns object includes all BackingImageDataSource in namespace
 func (s *DataStore) ListBackingImageDataSources() (map[string]*longhorn.BackingImageDataSource, error) {
 	return s.listBackingImageDataSources(labels.Everything())
