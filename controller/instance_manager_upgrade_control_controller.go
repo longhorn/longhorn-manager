@@ -194,6 +194,7 @@ func (c *InstanceManagerUpgradeControlController) Run(workers int, stopCh <-chan
 		return
 	}
 
+	c.initReconcileMetrics(workers)
 	for range workers {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -213,7 +214,7 @@ func (c *InstanceManagerUpgradeControlController) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncIMUC(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncIMUC(key.(string)) })
 	c.handleErr(err, key)
 	return true
 }

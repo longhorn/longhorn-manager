@@ -212,6 +212,7 @@ func (ec *EngineController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	ec.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(ec.worker, time.Second, stopCh)
 	}
@@ -232,7 +233,7 @@ func (ec *EngineController) processNextWorkItem() bool {
 	}
 	defer ec.queue.Done(key)
 
-	err := ec.syncEngine(key.(string))
+	err := ec.syncWithMetrics(func() error { return ec.syncEngine(key.(string)) })
 	ec.handleErr(err, key)
 
 	return true

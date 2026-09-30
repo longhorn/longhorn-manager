@@ -500,7 +500,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(req.Engine.Spec.DataEngine),
+		BackendStoreDriver: string(req.Engine.Spec.DataEngine), // nolint: staticcheck
 		DataEngine:         string(req.Engine.Spec.DataEngine),
 		Name:               req.Engine.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
@@ -594,7 +594,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 	targetAddress := util.BuildTargetAddress(req.TargetIP, req.TargetPort)
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(req.EngineFrontend.Spec.DataEngine),
+		BackendStoreDriver: string(req.EngineFrontend.Spec.DataEngine), // nolint: staticcheck
 		DataEngine:         string(req.EngineFrontend.Spec.DataEngine),
 		Name:               req.EngineFrontend.Name,
 		InstanceType:       string(longhorn.InstanceTypeEngineFrontend), // v2 initiator
@@ -681,7 +681,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(req.Replica.Spec.DataEngine),
+		BackendStoreDriver: string(req.Replica.Spec.DataEngine), // nolint: staticcheck
 		DataEngine:         string(req.Replica.Spec.DataEngine),
 		Name:               req.Replica.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
@@ -719,7 +719,7 @@ func (c *InstanceManagerClient) ShardInstanceCreate(req *ShardInstanceCreateRequ
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(longhorn.DataEngineTypeV2),
+		BackendStoreDriver: string(longhorn.DataEngineTypeV2), // nolint: staticcheck
 		DataEngine:         string(longhorn.DataEngineTypeV2),
 		Name:               req.Shard.Name,
 		InstanceType:       InstanceTypeShard,
@@ -780,7 +780,7 @@ func (c *InstanceManagerClient) ShardGroupInstanceCreate(req *ShardGroupInstance
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(longhorn.DataEngineTypeV2),
+		BackendStoreDriver: string(longhorn.DataEngineTypeV2), // nolint: staticcheck
 		DataEngine:         string(longhorn.DataEngineTypeV2),
 		Name:               req.ShardGroup.Name,
 		InstanceType:       InstanceTypeShardGroup,

@@ -30,13 +30,14 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -284,6 +285,7 @@ func (c *ShareManagerController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync("longhorn-share-manager-controller", stopCh, c.cacheSyncs...) {
 		return
 	}
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -302,7 +304,7 @@ func (c *ShareManagerController) processNextWorkItem() bool {
 		return false
 	}
 	defer c.queue.Done(key)
-	err := c.syncShareManager(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncShareManager(key.(string)) })
 	c.handleErr(err, key)
 	return true
 }

@@ -169,6 +169,7 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.cacheSyncs...) {
 		return
 	}
+	bc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(bc.worker, time.Second, stopCh)
 	}
@@ -187,7 +188,7 @@ func (bc *BackupController) processNextWorkItem() bool {
 		return false
 	}
 	defer bc.queue.Done(key)
-	err := bc.syncHandler(key.(string))
+	err := bc.syncWithMetrics(func() error { return bc.syncHandler(key.(string)) })
 	bc.handleErr(err, key)
 	return true
 }

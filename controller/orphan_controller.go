@@ -179,6 +179,7 @@ func (oc *OrphanController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(oc.name, stopCh, oc.cacheSyncs...) {
 		return
 	}
+	oc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(oc.worker, time.Second, stopCh)
 	}
@@ -196,7 +197,7 @@ func (oc *OrphanController) processNextWorkItem() bool {
 		return false
 	}
 	defer oc.queue.Done(key)
-	err := oc.syncOrphan(key.(string))
+	err := oc.syncWithMetrics(func() error { return oc.syncOrphan(key.(string)) })
 	oc.handleErr(err, key)
 	return true
 }
