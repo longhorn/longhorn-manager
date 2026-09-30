@@ -645,45 +645,19 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 	}()
 
 	for biName, biFileInfo := range bim.Status.BackingImageFileMap {
-		deleteRequired := false
-
 		biRO, err := c.ds.GetBackingImageRO(biName)
+		biNotFound := false
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
-			deleteRequired = true
+			biNotFound = true
 			log.Warnf("Failed to find backing image %v during invalid backing image cleanup, will skip it", biName)
 		}
-		if biRO != nil && biRO.Status.UUID == "" {
-			continue
-		}
 
-		// Delete the file from a backing image manager when:
-		//   1. The spec record is removed
-		//      or does not match the current backing image.
-		//   2. The status record does not match the current backing image.
-		//   3. The file state recorded in the current backing image is failed
-		//      and there are available files in other backing image managers.
-		deleteRequired = deleteRequired || (biRO != nil && bim.Spec.BackingImages[biName] != biRO.Status.UUID)
-		deleteRequired = deleteRequired || (biRO != nil && biFileInfo.UUID != "" && biFileInfo.UUID != biRO.Status.UUID)
-		if !deleteRequired && biRO != nil {
-			// Prefer to check the file state in BackingImage.Status,
-			// which is synced from BackingImageManager.Status with some
-			// adjustments.
-			fileState := biFileInfo.State
-			if biRO.Status.DiskFileStatusMap[bim.Spec.DiskUUID] != nil {
-				fileState = biRO.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State
-			}
-			if fileState == longhorn.BackingImageStateFailed {
-				for _, biFileInfo := range biRO.Status.DiskFileStatusMap {
-					if biFileInfo.State == longhorn.BackingImageStateFailed {
-						continue
-					}
-					deleteRequired = true
-					break
-				}
-			}
+		deleteRequired, staleRecord, skip := classifyInvalidBackingImageFile(biRO, biNotFound, bim.Spec.BackingImages[biName], bim.Spec.DiskUUID, biFileInfo)
+		if skip {
+			continue
 		}
 		if !deleteRequired {
 			continue
@@ -694,7 +668,12 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 			return err
 		}
 		delete(bim.Status.BackingImageFileMap, biName)
-		backoff.DeleteEntry(biName)
+
+		// A stale UUID or spec record gets a fresh backoff. A failed file deleted
+		// because another copy is available must keep its backoff.
+		if staleRecord {
+			backoff.DeleteEntry(biName)
+		}
 		c.eventRecorder.Eventf(bim, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleted backing image %v in disk %v on node %v", biName, bim.Spec.DiskUUID, bim.Spec.NodeID)
 	}
 
@@ -1384,4 +1363,49 @@ func backingImageInProgress(state longhorn.BackingImageState) bool {
 	return state == longhorn.BackingImageStateInProgress ||
 		state == longhorn.BackingImageStatePending ||
 		state == longhorn.BackingImageStateStarting
+}
+
+// A file in state failed or failed-and-cleanup is unusable. State unknown means the related
+// manager pod is not running or the node is down/disconnected, so it cannot serve the file
+// to other managers either.
+func backingImageFileAvailable(state longhorn.BackingImageState) bool {
+	return state != longhorn.BackingImageStateFailed &&
+		state != longhorn.BackingImageStateFailedAndCleanUp &&
+		state != longhorn.BackingImageStateUnknown
+}
+
+func hasAvailableBackingImageFile(diskFileStatusMap map[string]*longhorn.BackingImageDiskFileStatus) bool {
+	for _, fileStatus := range diskFileStatusMap {
+		if backingImageFileAvailable(fileStatus.State) {
+			return true
+		}
+	}
+	return false
+}
+
+func classifyInvalidBackingImageFile(biRO *longhorn.BackingImage, biNotFound bool, specUUID, diskUUID string, fileInfo longhorn.BackingImageFileInfo) (deleteRequired, staleRecord, skip bool) {
+	if biNotFound {
+		return true, true, false
+	}
+	if biRO.Status.UUID == "" {
+		return false, false, true
+	}
+
+	staleRecord = specUUID != biRO.Status.UUID
+	if fileInfo.UUID != "" && fileInfo.UUID != biRO.Status.UUID {
+		staleRecord = true
+	}
+	deleteRequired = staleRecord
+	if deleteRequired {
+		return deleteRequired, staleRecord, false
+	}
+
+	fileState := fileInfo.State
+	if status := biRO.Status.DiskFileStatusMap[diskUUID]; status != nil {
+		fileState = status.State
+	}
+	if fileState == longhorn.BackingImageStateFailed && hasAvailableBackingImageFile(biRO.Status.DiskFileStatusMap) {
+		deleteRequired = true
+	}
+	return deleteRequired, staleRecord, false
 }

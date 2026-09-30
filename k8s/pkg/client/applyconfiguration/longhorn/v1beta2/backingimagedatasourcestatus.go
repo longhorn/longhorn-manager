@@ -27,15 +27,17 @@ import (
 //
 // BackingImageDataSourceStatus defines the observed state of the Longhorn backing image data source
 type BackingImageDataSourceStatusApplyConfiguration struct {
-	OwnerID           *string                            `json:"ownerID,omitempty"`
-	RunningParameters map[string]string                  `json:"runningParameters,omitempty"`
-	CurrentState      *longhornv1beta2.BackingImageState `json:"currentState,omitempty"`
-	IP                *string                            `json:"ip,omitempty"`
-	StorageIP         *string                            `json:"storageIP,omitempty"`
-	Size              *int64                             `json:"size,omitempty"`
-	Progress          *int                               `json:"progress,omitempty"`
-	Checksum          *string                            `json:"checksum,omitempty"`
-	Message           *string                            `json:"message,omitempty"`
+	OwnerID             *string                            `json:"ownerID,omitempty"`
+	RunningParameters   map[string]string                  `json:"runningParameters,omitempty"`
+	CurrentState        *longhornv1beta2.BackingImageState `json:"currentState,omitempty"`
+	IP                  *string                            `json:"ip,omitempty"`
+	StorageIP           *string                            `json:"storageIP,omitempty"`
+	Size                *int64                             `json:"size,omitempty"`
+	Progress            *int                               `json:"progress,omitempty"`
+	Checksum            *string                            `json:"checksum,omitempty"`
+	Message             *string                            `json:"message,omitempty"`
+	RetryCount          *int                               `json:"retryCount,omitempty"`
+	FileEverTransferred *bool                              `json:"fileEverTransferred,omitempty"`
 }
 
 // BackingImageDataSourceStatusApplyConfiguration constructs a declarative configuration of the BackingImageDataSourceStatus type for use with
@@ -119,5 +121,21 @@ func (b *BackingImageDataSourceStatusApplyConfiguration) WithChecksum(value stri
 // If called multiple times, the Message field is set to the value of the last call.
 func (b *BackingImageDataSourceStatusApplyConfiguration) WithMessage(value string) *BackingImageDataSourceStatusApplyConfiguration {
 	b.Message = &value
+	return b
+}
+
+// WithRetryCount sets the RetryCount field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RetryCount field is set to the value of the last call.
+func (b *BackingImageDataSourceStatusApplyConfiguration) WithRetryCount(value int) *BackingImageDataSourceStatusApplyConfiguration {
+	b.RetryCount = &value
+	return b
+}
+
+// WithFileEverTransferred sets the FileEverTransferred field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the FileEverTransferred field is set to the value of the last call.
+func (b *BackingImageDataSourceStatusApplyConfiguration) WithFileEverTransferred(value bool) *BackingImageDataSourceStatusApplyConfiguration {
+	b.FileEverTransferred = &value
 	return b
 }
