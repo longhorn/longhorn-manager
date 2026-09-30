@@ -955,8 +955,8 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 
-	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		return nil, fmt.Errorf("cannot upgrade engine for volume %v using image %v because the volume is using data engine v2", volumeName, image)
+	if types.IsDataEngineV2(v.Spec.DataEngine) || types.IsDataEngineLocal(v.Spec.DataEngine) {
+		return nil, fmt.Errorf("cannot upgrade engine for volume %v using image %v because the volume is using data engine %v", volumeName, image, v.Spec.DataEngine)
 	}
 
 	if v.Spec.Image == image {

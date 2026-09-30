@@ -712,13 +712,18 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	return parseInstance(instance), nil
 }
 
-// LocalReplicaInstanceExpand expands the LV backing a local replica.
-func (c *InstanceManagerClient) LocalReplicaInstanceExpand(replica *longhorn.Replica, diskName string) error {
+// LocalReplicaInstanceExpand expands the LV backing a local replica to size
+// bytes. The caller names the size explicitly rather than the client reading
+// it off the replica, whose informer copy may lag behind the engine spec.
+func (c *InstanceManagerClient) LocalReplicaInstanceExpand(replica *longhorn.Replica, diskName string, size int64) error {
 	if !types.IsDataEngineLocal(replica.Spec.DataEngine) {
 		return fmt.Errorf("replica %v does not use the local data engine", replica.Name)
 	}
+	if size <= 0 {
+		return fmt.Errorf("invalid expansion size %v for local replica %v", size, replica.Name)
+	}
 	_, err := c.instanceServiceGrpcClient.LocalReplicaInstanceExpand(
-		replica.Name, diskName, replica.Spec.DiskID, uint64(replica.Spec.VolumeSize))
+		replica.Name, diskName, replica.Spec.DiskID, uint64(size))
 	return err
 }
 

@@ -471,7 +471,10 @@ func (ec *EngineController) syncLocalEngineEndpoint(engine *longhorn.Engine) err
 			ec.logger.WithError(closeErr).Warn("Failed to close instance manager client")
 		}
 	}()
-	if err := c.LocalReplicaInstanceExpand(replica, diskName); err != nil {
+	// The target comes from the engine spec, the object whose status is
+	// written below; the cached replica may not have caught up with the
+	// volume controller's size update yet.
+	if err := c.LocalReplicaInstanceExpand(replica, diskName, engine.Spec.VolumeSize); err != nil {
 		return errors.Wrapf(err, "failed to expand local replica %v to %v bytes", replicaName, engine.Spec.VolumeSize)
 	}
 	oldSize := engine.Status.CurrentSize

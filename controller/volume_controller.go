@@ -705,6 +705,12 @@ func handleConditionLastTransitionTime(existingStatus, newStatus *longhorn.Volum
 // EvictReplicas do creating one more replica for eviction, if requested
 func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 	e *longhorn.Engine, rs map[string]*longhorn.Replica, healthyCount int) (err error) {
+	// A local volume keeps its single replica for life: the LV is the data,
+	// and there is no second copy to evict to.
+	if types.IsDataEngineLocal(v.Spec.DataEngine) {
+		return nil
+	}
+
 	log := getLoggerForVolume(c.logger, v)
 
 	// strict-local volumes must keep exactly one local replica. Trying to
@@ -3855,6 +3861,13 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		return err
 	}
 	if len(rs) != 0 && len(plannedDetachedReplicas) > 0 {
+		return nil
+	}
+
+	// A local volume never replaces its replica: a replacement would be an
+	// empty LV and the failed one a cleanup candidate. Only the first-time
+	// creation of its single replica passes.
+	if types.IsDataEngineLocal(v.Spec.DataEngine) && len(rs) != 0 {
 		return nil
 	}
 
