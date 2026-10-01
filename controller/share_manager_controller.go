@@ -688,6 +688,11 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		c.detachShareManagerVolume(sm, va)
 		if sm.Status.State != longhorn.ShareManagerStateStopped {
 			log.Info("Stopping share manager since it is no longer required")
+			if sm.Status.State == longhorn.ShareManagerStateRunning {
+				// The share manager pod was serving the volume, so this stop is not caused by a pod failure.
+				// Clear the pod recreation backoff to let the next workload start the share manager right away.
+				c.backoff.DeleteEntry(sm.Name)
+			}
 			sm.Status.State = longhorn.ShareManagerStateStopping
 		}
 		return nil
