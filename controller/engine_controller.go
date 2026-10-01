@@ -101,6 +101,9 @@ type EngineController struct {
 	engineMonitorMutex *sync.RWMutex
 	engineMonitorMap   map[string]chan struct{}
 
+	rebuildingEngines      map[string]bool // key: <engineName>
+	rebuildingEnginesMutex *sync.RWMutex
+
 	proxyConnCounter util.Counter
 
 	restoringCounter      util.Counter
@@ -170,6 +173,9 @@ func NewEngineController(
 		engines:            engines,
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   map[string]chan struct{}{},
+
+		rebuildingEnginesMutex: &sync.RWMutex{},
+		rebuildingEngines:      map[string]bool{},
 
 		proxyConnCounter:      proxyConnCounter,
 		restoringCounter:      util.NewAtomicCounter(),
@@ -2278,7 +2284,18 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replicaName, e.Name)
 	}()
 
-	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})
+	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name, "replica": replicaName, "address": addr})
+
+	if !ec.claimEngineRebuild(e.Name) {
+		log.Info("Another replica rebuild is already in flight for this engine")
+		return nil
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			ec.releaseEngineRebuild(e.Name)
+		}
+	}()
 
 	// For v2, the ReplicaAdd call must go through the EngineFrontend (initiator),
 	// while membership and cleanup operations remain engine-owned.
@@ -2330,7 +2347,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 
 	// Transfer proxy ownership to the goroutine by nil-ing the local pointer
 	// so the deferred cleanup above becomes a no-op.
-	go ec.runRebuild(rc)
+	go ec.runRebuild(rc, e.Name)
+	handedOff = true
 	rc = nil
 
 	// Wait until engine confirmed that rebuild started.
@@ -2341,6 +2359,31 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 	}
 
 	return nil
+}
+
+func (ec *EngineController) claimEngineRebuild(engineName string) bool {
+	ec.rebuildingEnginesMutex.Lock()
+	defer ec.rebuildingEnginesMutex.Unlock()
+
+	if ec.rebuildingEngines[engineName] {
+		return false
+	}
+
+	ec.logger.Debugf("Marking engine %v as rebuilding", engineName)
+	ec.rebuildingEngines[engineName] = true
+	return true
+}
+
+func (ec *EngineController) releaseEngineRebuild(engineName string) {
+	ec.rebuildingEnginesMutex.Lock()
+	defer ec.rebuildingEnginesMutex.Unlock()
+
+	if ec.rebuildingEngines[engineName] {
+		ec.logger.Debugf("Removing engine %v from rebuilding map", engineName)
+		delete(ec.rebuildingEngines, engineName)
+		return
+	}
+	ec.logger.Debugf("Try to release engine %v was not marked as rebuilding", engineName)
 }
 
 // prepareRebuildContext performs all synchronous setup for a replica rebuild:
@@ -2506,7 +2549,9 @@ func (ec *EngineController) prepareRebuildContext(
 // runRebuild is the fire-and-forget goroutine body that performs the actual
 // rebuild work: optional pre-rebuild purge, ReplicaAdd, v2 rebuild wait,
 // and optional post-rebuild purge.
-func (ec *EngineController) runRebuild(rc *rebuildContext) {
+func (ec *EngineController) runRebuild(rc *rebuildContext, rebuildingEngineName string) {
+	defer ec.releaseEngineRebuild(rebuildingEngineName)
+
 	defer rc.rebuildProxy.Close()
 	if rc.cleanupProxy != rc.rebuildProxy {
 		defer rc.cleanupProxy.Close()
@@ -2525,6 +2570,12 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 		if !ec.waitForPreRebuildPurge(rc.log, rc.currentEngine, rc.replicaName, rc.addr, rc.cleanupProxy) {
 			return
 		}
+	}
+
+	// The engine may have been taken over by another node while this goroutine was running. The new
+	// owner does not know about this goroutine and starts its own rebuild for the same replica.
+	if !ec.isEngineOwner(rc.log, rc.currentEngine.Name) {
+		return
 	}
 
 	// Start rebuild — v1 and v2 diverge on the ReplicaAdd call.
@@ -2634,6 +2685,10 @@ func (ec *EngineController) waitForPreRebuildPurge(
 		if !shouldProceedToWaitAndRebuild(latestEngine, replicaName, addr, log) {
 			return false
 		}
+		if latestEngine.Status.OwnerID != ec.controllerID {
+			log.Warnf("Failed to proceed to rebuild since engine is now owned by %v", latestEngine.Status.OwnerID)
+			return false
+		}
 
 		purgeDone = true
 		for _, purgeStatus := range latestEngine.Status.PurgeStatus {
@@ -2671,6 +2726,19 @@ func (ec *EngineController) handleRebuildFailure(
 	} else {
 		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding,
 			"Failed rebuilding replica with Address %v: %v", addr, rebuildErr)
+	}
+	if isReplicaAddressExistError(rebuildErr) {
+		// If operations before calling `rc.rebuildProxy.ReplicaAdd` take a long time (over 30 seconds),
+		// the second rebuild goroutine for the same replica might be created.
+		// If the replica exists when adding this replica, the replica should have been rebuilt already by previous rebuild goroutine.
+		// Therefore, skip the operations below.
+		log.WithError(rebuildErr).Warn("Replica rebuild failed because replica exists")
+		return
+	}
+	if !ec.isEngineOwner(log, engine.Name) {
+		// The new owner may be rebuilding the same replica. Removing it from the engine or marking it
+		// failed here would tear down that rebuild, so leave the cleanup to the new owner.
+		return
 	}
 
 	log.Infof("Removing failed rebuilding replica %v", addr)
@@ -3042,6 +3110,21 @@ func removeInvalidEngineOpStatus(e *longhorn.Engine) {
 // shouldProceedToRebuild checks a variety of conditions that may cause us not to proceed with waiting for snapshot
 // purge and/or rebuilding a replica. We pass the logger to it so it can decide what level to log at depending on the
 // issue. We do not return any errors because shouldProceedToRebuild is called by startRebuilding in a goroutine.
+// isEngineOwner reports whether this node still owns the engine. A rebuild goroutine outlives the
+// engine sync that started it, so the engine can be owned by another node by the time it checks.
+func (ec *EngineController) isEngineOwner(log *logrus.Entry, engineName string) bool {
+	e, err := ec.ds.GetEngineRO(engineName)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get engine %v to check its owner", engineName)
+		return false
+	}
+	if e.Status.OwnerID != ec.controllerID {
+		log.Warnf("Engine %v is now owned by %v instead of %v", engineName, e.Status.OwnerID, ec.controllerID)
+		return false
+	}
+	return true
+}
+
 func shouldProceedToWaitAndRebuild(e *longhorn.Engine, replicaName, originalReplicaAddr string, log *logrus.Entry) bool {
 	// The engine is no longer running.
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
@@ -3302,6 +3385,11 @@ func isV2ReplicaAddAlreadyInProgressError(err error) bool {
 
 func isV2ReplicaAddRestoreInProgressError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "restore is in progress")
+}
+
+func isReplicaAddressExistError(err error) bool {
+	// If the replica address already exists when creating a replica, it will return an error as "replica already exists at address tcp://10.1.1.10:12345".
+	return err != nil && strings.Contains(err.Error(), etypes.ErrorStringReplicaAddressExist)
 }
 
 func isV2ExpansionIncomplete(engine *longhorn.Engine) bool {

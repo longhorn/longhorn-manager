@@ -281,7 +281,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20260922010936-57b3845ad4ef
+# github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
 ## explicit; go 1.25.10
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -323,7 +323,7 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20260922023432-4d144df2a773
+# github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
@@ -545,7 +545,7 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.11.0
 ## explicit; go 1.24.0
 github.com/tklauser/numcpus
-# github.com/urfave/cli/v3 v3.12.0
+# github.com/urfave/cli/v3 v3.13.0
 ## explicit; go 1.22
 github.com/urfave/cli/v3
 # github.com/x448/float16 v0.8.4

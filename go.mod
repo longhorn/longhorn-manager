@@ -67,11 +67,11 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.25.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20260922010936-57b3845ad4ef
+	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
 	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.10.1-0.20260921021616-6102449746a0
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20260922023432-4d144df2a773
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260922031848-d0a5b916d3ce
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
 	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260922025523-7ec03791a09c
@@ -84,7 +84,7 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
-	github.com/urfave/cli/v3 v3.12.0
+	github.com/urfave/cli/v3 v3.13.0
 	go.uber.org/multierr v1.11.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/sync v0.23.0
