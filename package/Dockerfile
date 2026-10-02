@@ -42,6 +42,11 @@ RUN zypper -n install \
     smartmontools \
     && zypper clean --all
 
+# nsmounter needs these utilities.
+RUN for cmd in xargs grep tail; do \
+    command -v "$cmd" >/dev/null || { echo "Error: $cmd is required by nsmounter"; exit 1; }; \
+    done
+
 COPY --from=builder /app/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
 
 COPY --from=builder /app/package/launch-manager /app/package/nsmounter /usr/local/sbin/
