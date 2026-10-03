@@ -82,6 +82,8 @@ const (
 	DiskTypeFilesystem = DiskType("filesystem")
 	// DiskTypeBlock is the disk type for storing v2 replica logical volumes
 	DiskTypeBlock = DiskType("block")
+	// DiskTypeLVM is the disk type for storing local data engine logical volumes
+	DiskTypeLVM = DiskType("lvm")
 )
 
 type DiskDriver string
@@ -159,7 +161,7 @@ type HealthAttribute struct {
 }
 
 type DiskSpec struct {
-	// +kubebuilder:validation:Enum=filesystem;block
+	// +kubebuilder:validation:Enum=filesystem;block;lvm
 	// +optional
 	Type DiskType `json:"diskType"`
 	// +optional

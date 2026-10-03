@@ -116,6 +116,8 @@ func checkOrphanForInstance(orphan *longhorn.Orphan) error {
 	switch orphan.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
 		break
+	case longhorn.DataEngineTypeLocal:
+		return fmt.Errorf("local data engine orphans are not supported yet")
 	default:
 		return fmt.Errorf("invalid data engine type %v for orphan %v", orphan.Spec.DataEngine, orphan.Name)
 	}

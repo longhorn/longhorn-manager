@@ -90,6 +90,9 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		if err != nil {
 			return werror.NewInvalidError(fmt.Sprintf("volume %v is invalid", snapshot), "")
 		}
+		if err := validateLocalVolumeBackup(volume); err != nil {
+			return err
+		}
 		snapshotVolumeName := volume.Name
 
 		if labelVolumeName != snapshotVolumeName {
@@ -129,6 +132,16 @@ func (b *backupValidator) Update(request *admission.Request, oldObj runtime.Obje
 	}
 
 	return nil
+}
+
+// validateLocalVolumeBackup rejects backups of local data engine volumes until
+// the engine implements them; otherwise the Backup CR would be created and
+// retry against an instance manager that answers Unimplemented.
+func validateLocalVolumeBackup(volume *longhorn.Volume) error {
+	if !types.IsDataEngineLocal(volume.Spec.DataEngine) {
+		return nil
+	}
+	return werror.NewInvalidError(fmt.Sprintf("backups are not supported for local data engine volume %v yet", volume.Name), "spec.snapshotName")
 }
 
 func (b *backupValidator) validateBackupBlockSize(backup *longhorn.Backup, allowInvalid bool) error {
