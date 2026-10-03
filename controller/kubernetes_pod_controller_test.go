@@ -485,3 +485,118 @@ func (s *TestSuite) TestCleanupForceDeletedPodResourcesOnAnyNode(c *C) {
 	_, err = kubeClient.StorageV1().VolumeAttachments().Get(context.TODO(), va.Name, metav1.GetOptions{})
 	c.Assert(apierrors.IsNotFound(err), Equals, true)
 }
+
+// TestCleanupForceDeletedPodResourcesMultiAttachEvent verifies that the stale
+// VolumeAttachment of a force-deleted pod is cleaned up when the replacement pod
+// reports the conflict with the event wording of older ("Multi-Attach error")
+// and newer ("Waiting for detach", kubernetes/kubernetes#138837) Kubernetes versions.
+func (s *TestSuite) TestCleanupForceDeletedPodResourcesMultiAttachEvent(c *C) {
+	type testCase struct {
+		eventMessage string
+		expectDelete bool
+	}
+	testCases := map[string]testCase{
+		"multi-attach error (older Kubernetes)": {
+			eventMessage: `Multi-Attach error for volume "` + TestPVName + `" Volume is already used by pod(s) ` + TestPod1,
+			expectDelete: true,
+		},
+		"waiting for detach (Kubernetes with kubernetes/kubernetes#138837)": {
+			eventMessage: `Waiting for detach for volume "` + TestPVName + `" Volume is already used by pod(s) ` + TestPod1,
+			expectDelete: true,
+		},
+		"multi-attach caused by another pod": {
+			eventMessage: `Waiting for detach for volume "` + TestPVName + `" Volume is already used by pod(s) other-pod`,
+			expectDelete: false,
+		},
+		"waiting for detach without pod names": {
+			eventMessage: `Waiting for detach for volume "` + TestPVName + `" Volume is already exclusively attached to one node, waiting on detach before it can be attached to another node`,
+			expectDelete: false,
+		},
+		"unrelated attach failure": {
+			eventMessage: `AttachVolume.Attach failed for volume "` + TestPVName + `" : rpc error, pod ` + TestPod1,
+			expectDelete: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		pvIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
+		pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		vaIndexer := informerFactories.KubeInformerFactory.Storage().V1().VolumeAttachments().Informer().GetIndexer()
+
+		kc, err := newTestKubernetesPodController(lhClient, kubeClient, extensionsClient, informerFactories)
+		c.Assert(err, IsNil)
+
+		// PV bound to the claim, so the cleanup has to find a conflicting pod.
+		pvObj, err := kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), newPV(), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(pvIndexer.Add(pvObj), IsNil)
+
+		pvc := newPVC()
+		pvc.Namespace = TestNamespace
+		pvcObj, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(pvcIndexer.Add(pvcObj), IsNil)
+
+		// Force-deleted workload pod (grace period 0) on TestNode1.
+		gracePeriod := int64(0)
+		deletionTime := metav1.Now()
+		oldPod := newPodWithPVC(TestPod1)
+		oldPod.Spec.NodeName = TestNode1
+		oldPod.DeletionTimestamp = &deletionTime
+		oldPod.DeletionGracePeriodSeconds = &gracePeriod
+
+		// Replacement pod on TestNode2, still Pending because the volume is
+		// attached to TestNode1.
+		newPod := newPodWithPVC(TestPod2)
+		newPod.Spec.NodeName = TestNode2
+		newPod.Status.Phase = corev1.PodPending
+		newPodObj, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), newPod, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(pIndexer.Add(newPodObj), IsNil)
+
+		_, err = kubeClient.CoreV1().Events(TestNamespace).Create(context.TODO(), &corev1.Event{
+			ObjectMeta: metav1.ObjectMeta{Name: TestPod2 + ".failedattach", Namespace: TestNamespace},
+			InvolvedObject: corev1.ObjectReference{
+				Kind:      "Pod",
+				Name:      TestPod2,
+				Namespace: TestNamespace,
+			},
+			Reason:  "FailedAttachVolume",
+			Type:    corev1.EventTypeWarning,
+			Message: tc.eventMessage,
+		}, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		pvName := TestPVName
+		va := &storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{Name: "csi-attach-abcde"},
+			Spec: storagev1.VolumeAttachmentSpec{
+				Attacher: types.LonghornDriverName,
+				NodeName: TestNode1,
+				Source:   storagev1.VolumeAttachmentSource{PersistentVolumeName: &pvName},
+			},
+			Status: storagev1.VolumeAttachmentStatus{Attached: true},
+		}
+		vaObj, err := kubeClient.StorageV1().VolumeAttachments().Create(context.TODO(), va, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(vaIndexer.Add(vaObj), IsNil)
+
+		err = kc.cleanupForceDeletedPodResources(oldPod)
+		c.Assert(err, IsNil)
+
+		_, err = kubeClient.StorageV1().VolumeAttachments().Get(context.TODO(), va.Name, metav1.GetOptions{})
+		if tc.expectDelete {
+			c.Assert(apierrors.IsNotFound(err), Equals, true, Commentf("test case: %v", name))
+		} else {
+			c.Assert(err, IsNil, Commentf("test case: %v", name))
+		}
+	}
+}
