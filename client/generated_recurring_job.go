@@ -7,6 +7,8 @@ const (
 type RecurringJob struct {
 	Resource `yaml:"-"`
 
+	ActiveDeadlineSeconds int64 `json:"activeDeadlineSeconds,omitempty" yaml:"active_deadline_seconds,omitempty"`
+
 	Concurrency int64 `json:"concurrency,omitempty" yaml:"concurrency,omitempty"`
 
 	Cron string `json:"cron,omitempty" yaml:"cron,omitempty"`

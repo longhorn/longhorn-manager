@@ -79,6 +79,14 @@ type RecurringJobSpec struct {
 	// The concurrency of taking the snapshot/backup.
 	// +optional
 	Concurrency int `json:"concurrency"`
+	// The maximum duration in seconds the recurring job may run before Kubernetes
+	// terminates it, propagated to the generated Job's activeDeadlineSeconds.
+	// A job that exceeds it is marked failed, which surfaces in the Job status and
+	// releases the concurrencyPolicy=Forbid slot for the next scheduled run.
+	// When 0 (the default) the job has no deadline and can run indefinitely.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	ActiveDeadlineSeconds int64 `json:"activeDeadlineSeconds,omitempty"`
 	// The label of the snapshot/backup.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
