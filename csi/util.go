@@ -252,6 +252,13 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.ReplicaDiskSoftAntiAffinity = replicaDiskSoftAntiAffinity
 	}
 
+	if replicaSchedulingSkipUnhealthyDisk, ok := volOptions["replicaSchedulingSkipUnhealthyDisk"]; ok {
+		if err := types.ValidateReplicaSchedulingSkipUnhealthyDisk(longhorn.ReplicaSchedulingSkipUnhealthyDisk(replicaSchedulingSkipUnhealthyDisk)); err != nil {
+			return nil, errors.Wrap(err, "invalid parameter replicaSchedulingSkipUnhealthyDisk")
+		}
+		vol.ReplicaSchedulingSkipUnhealthyDisk = replicaSchedulingSkipUnhealthyDisk
+	}
+
 	if fromBackup, ok := volOptions["fromBackup"]; ok {
 		vol.FromBackup = fromBackup
 	}

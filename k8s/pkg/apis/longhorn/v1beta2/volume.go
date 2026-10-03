@@ -262,6 +262,15 @@ const (
 )
 
 // +kubebuilder:validation:Enum=ignored;enabled;disabled
+type ReplicaSchedulingSkipUnhealthyDisk string
+
+const (
+	ReplicaSchedulingSkipUnhealthyDiskIgnored  = ReplicaSchedulingSkipUnhealthyDisk("ignored")
+	ReplicaSchedulingSkipUnhealthyDiskEnabled  = ReplicaSchedulingSkipUnhealthyDisk("enabled")
+	ReplicaSchedulingSkipUnhealthyDiskDisabled = ReplicaSchedulingSkipUnhealthyDisk("disabled")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
 type FreezeFilesystemForSnapshot string
 
 const (
@@ -392,6 +401,12 @@ type VolumeSpec struct {
 	// Replica disk soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same disk.
 	// +optional
 	ReplicaDiskSoftAntiAffinity ReplicaDiskSoftAntiAffinity `json:"replicaDiskSoftAntiAffinity"`
+	// Specifies whether Longhorn skips disks reported as unhealthy by disk health data (for example, SMART) when scheduling replicas of the volume.
+	// - ignored: Use the global setting replica-scheduling-skip-unhealthy-disk.
+	// - enabled: Skip unhealthy disks for this volume, regardless of the global setting.
+	// - disabled: Do not skip unhealthy disks for this volume, regardless of the global setting.
+	// +optional
+	ReplicaSchedulingSkipUnhealthyDisk ReplicaSchedulingSkipUnhealthyDisk `json:"replicaSchedulingSkipUnhealthyDisk"`
 	// +optional
 	LastAttachedBy string `json:"lastAttachedBy"`
 	// +optional

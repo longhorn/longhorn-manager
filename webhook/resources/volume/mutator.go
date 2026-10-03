@@ -500,6 +500,9 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	if string(volume.Spec.ReplicaDiskSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaDiskSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaDiskSoftAntiAffinityDefault))
 	}
+	if string(volume.Spec.ReplicaSchedulingSkipUnhealthyDisk) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSchedulingSkipUnhealthyDisk", "value": "%s"}`, longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored))
+	}
 	if string(volume.Spec.DataEngine) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
 	}

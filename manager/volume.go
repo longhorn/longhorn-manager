@@ -189,45 +189,46 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			Labels: labels,
 		},
 		Spec: longhorn.VolumeSpec{
-			Size:                            spec.Size,
-			AccessMode:                      spec.AccessMode,
-			Migratable:                      spec.Migratable,
-			Encrypted:                       spec.Encrypted,
-			Frontend:                        spec.Frontend,
-			Image:                           "",
-			FromBackup:                      spec.FromBackup,
-			RestoreVolumeRecurringJob:       spec.RestoreVolumeRecurringJob,
-			DataSource:                      spec.DataSource,
-			CloneMode:                       spec.CloneMode,
-			NumberOfReplicas:                spec.NumberOfReplicas,
-			ReplicaAutoBalance:              spec.ReplicaAutoBalance,
-			DataLocality:                    spec.DataLocality,
-			StaleReplicaTimeout:             spec.StaleReplicaTimeout,
-			BackingImage:                    spec.BackingImage,
-			Standby:                         spec.Standby,
-			DiskSelector:                    spec.DiskSelector,
-			NodeSelector:                    spec.NodeSelector,
-			TopologyRequirement:             spec.TopologyRequirement,
-			RevisionCounterDisabled:         spec.RevisionCounterDisabled,
-			SnapshotDataIntegrity:           spec.SnapshotDataIntegrity,
-			SnapshotMaxCount:                spec.SnapshotMaxCount,
-			SnapshotMaxSize:                 spec.SnapshotMaxSize,
-			BackupCompressionMethod:         spec.BackupCompressionMethod,
-			BackupBlockSize:                 spec.BackupBlockSize,
-			UnmapMarkSnapChainRemoved:       spec.UnmapMarkSnapChainRemoved,
-			ReplicaSoftAntiAffinity:         spec.ReplicaSoftAntiAffinity,
-			ReplicaZoneSoftAntiAffinity:     spec.ReplicaZoneSoftAntiAffinity,
-			ReplicaDiskSoftAntiAffinity:     spec.ReplicaDiskSoftAntiAffinity,
-			DataEngine:                      spec.DataEngine,
-			DataLayout:                      spec.DataLayout,
-			FreezeFilesystemForSnapshot:     spec.FreezeFilesystemForSnapshot,
-			BackupTargetName:                backupTargetName,
-			OfflineRebuilding:               spec.OfflineRebuilding,
-			ReplicaRebuildingBandwidthLimit: spec.ReplicaRebuildingBandwidthLimit,
-			RebuildConcurrentSyncLimit:      spec.RebuildConcurrentSyncLimit,
-			UblkQueueDepth:                  spec.UblkQueueDepth,
-			UblkNumberOfQueue:               spec.UblkNumberOfQueue,
-			NvmeTcpNrIoQueues:               spec.NvmeTcpNrIoQueues,
+			Size:                               spec.Size,
+			AccessMode:                         spec.AccessMode,
+			Migratable:                         spec.Migratable,
+			Encrypted:                          spec.Encrypted,
+			Frontend:                           spec.Frontend,
+			Image:                              "",
+			FromBackup:                         spec.FromBackup,
+			RestoreVolumeRecurringJob:          spec.RestoreVolumeRecurringJob,
+			DataSource:                         spec.DataSource,
+			CloneMode:                          spec.CloneMode,
+			NumberOfReplicas:                   spec.NumberOfReplicas,
+			ReplicaAutoBalance:                 spec.ReplicaAutoBalance,
+			DataLocality:                       spec.DataLocality,
+			StaleReplicaTimeout:                spec.StaleReplicaTimeout,
+			BackingImage:                       spec.BackingImage,
+			Standby:                            spec.Standby,
+			DiskSelector:                       spec.DiskSelector,
+			NodeSelector:                       spec.NodeSelector,
+			TopologyRequirement:                spec.TopologyRequirement,
+			RevisionCounterDisabled:            spec.RevisionCounterDisabled,
+			SnapshotDataIntegrity:              spec.SnapshotDataIntegrity,
+			SnapshotMaxCount:                   spec.SnapshotMaxCount,
+			SnapshotMaxSize:                    spec.SnapshotMaxSize,
+			BackupCompressionMethod:            spec.BackupCompressionMethod,
+			BackupBlockSize:                    spec.BackupBlockSize,
+			UnmapMarkSnapChainRemoved:          spec.UnmapMarkSnapChainRemoved,
+			ReplicaSoftAntiAffinity:            spec.ReplicaSoftAntiAffinity,
+			ReplicaZoneSoftAntiAffinity:        spec.ReplicaZoneSoftAntiAffinity,
+			ReplicaDiskSoftAntiAffinity:        spec.ReplicaDiskSoftAntiAffinity,
+			ReplicaSchedulingSkipUnhealthyDisk: spec.ReplicaSchedulingSkipUnhealthyDisk,
+			DataEngine:                         spec.DataEngine,
+			DataLayout:                         spec.DataLayout,
+			FreezeFilesystemForSnapshot:        spec.FreezeFilesystemForSnapshot,
+			BackupTargetName:                   backupTargetName,
+			OfflineRebuilding:                  spec.OfflineRebuilding,
+			ReplicaRebuildingBandwidthLimit:    spec.ReplicaRebuildingBandwidthLimit,
+			RebuildConcurrentSyncLimit:         spec.RebuildConcurrentSyncLimit,
+			UblkQueueDepth:                     spec.UblkQueueDepth,
+			UblkNumberOfQueue:                  spec.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues:                  spec.NvmeTcpNrIoQueues,
 		},
 	}
 
@@ -1299,6 +1300,32 @@ func (m *VolumeManager) UpdateReplicaDiskSoftAntiAffinity(name string, replicaDi
 	}
 
 	logrus.Infof("Updated volume %v field ReplicaDiskSoftAntiAffinity from %v to %v", v.Name, oldReplicaDiskSoftAntiAffinity, replicaDiskSoftAntiAffinity)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateReplicaSchedulingSkipUnhealthyDisk(name string, replicaSchedulingSkipUnhealthyDisk longhorn.ReplicaSchedulingSkipUnhealthyDisk) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field ReplicaSchedulingSkipUnhealthyDisk for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.ReplicaSchedulingSkipUnhealthyDisk == replicaSchedulingSkipUnhealthyDisk {
+		logrus.Debugf("Volume %v already set field ReplicaSchedulingSkipUnhealthyDisk to %v", v.Name, replicaSchedulingSkipUnhealthyDisk)
+		return v, nil
+	}
+
+	oldReplicaSchedulingSkipUnhealthyDisk := v.Spec.ReplicaSchedulingSkipUnhealthyDisk
+	v.Spec.ReplicaSchedulingSkipUnhealthyDisk = replicaSchedulingSkipUnhealthyDisk
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v field ReplicaSchedulingSkipUnhealthyDisk from %v to %v", v.Name, oldReplicaSchedulingSkipUnhealthyDisk, replicaSchedulingSkipUnhealthyDisk)
 	return v, nil
 }
 

@@ -5344,6 +5344,17 @@ spec:
                 format: int64
                 minimum: 0
                 type: integer
+              replicaSchedulingSkipUnhealthyDisk:
+                description: |-
+                  Specifies whether Longhorn skips disks reported as unhealthy by disk health data (for example, SMART) when scheduling replicas of the volume.
+                  - ignored: Use the global setting replica-scheduling-skip-unhealthy-disk.
+                  - enabled: Skip unhealthy disks for this volume, regardless of the global setting.
+                  - disabled: Do not skip unhealthy disks for this volume, regardless of the global setting.
+                enum:
+                - ignored
+                - enabled
+                - disabled
+                type: string
               replicaSoftAntiAffinity:
                 description: Replica soft anti affinity of the volume. Set enabled
                   to allow replicas to be scheduled on the same node.

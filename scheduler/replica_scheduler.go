@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -421,6 +422,13 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		diskSoftAntiAffinity = volume.Spec.ReplicaDiskSoftAntiAffinity == longhorn.ReplicaDiskSoftAntiAffinityEnabled
 	}
 
+	skipUnhealthyDisk, err := rcs.ds.IsReplicaSchedulingSkipUnhealthyDiskEnabled(volume)
+	if err != nil {
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
+			errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaSchedulingSkipUnhealthyDisk))
+		return map[string]*Disk{}, errs
+	}
+
 	creatingNewReplicasForReplenishment := false
 	if volume.Status.Robustness == longhorn.VolumeRobustnessDegraded {
 		timeToReplacementReplica, _, err := rcs.timeToReplacementReplica(volume)
@@ -438,7 +446,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 		for _, node := range nodes {
 			diskCandidatesFromNode, filterNodeDiskErrs := rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas,
-				volume, requireSchedulingCheck, biDiskSelector)
+				volume, requireSchedulingCheck, skipUnhealthyDisk, biDiskSelector)
 			for k, v := range diskCandidatesFromNode {
 				diskCandidates[k] = v
 			}
@@ -576,7 +584,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	return map[string]*Disk{}, errs
 }
 
-func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool, biDiskSelector []string) (preferredDisks map[string]*Disk, errs multierr.MultiError) {
+func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck, skipUnhealthyDisk bool, biDiskSelector []string) (preferredDisks map[string]*Disk, errs multierr.MultiError) {
 	errs = multierr.NewMultiError()
 	preferredDisks = map[string]*Disk{}
 
@@ -615,7 +623,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		if eligible, reason, msg := rcs.IsDiskEligibleForVolume(diskSpec, diskStatus, volume, allowEmptyDiskSelectorVolume, biDiskSelector); !eligible {
+		if eligible, reason, msg := rcs.IsDiskEligibleForVolume(diskSpec, diskStatus, volume, allowEmptyDiskSelectorVolume, skipUnhealthyDisk, biDiskSelector); !eligible {
 			errs.Append(reason,
 				fmt.Errorf("disk %v on node %v: %v", diskName, node.Name, msg))
 			continue
@@ -1097,12 +1105,24 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 		return 0
 	}
 
+	skipUnhealthyDisk, err := rcs.ds.IsReplicaSchedulingSkipUnhealthyDiskEnabled(volume)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to get %v setting for volume %v, will consider it as false",
+			types.SettingNameReplicaSchedulingSkipUnhealthyDisk, volume.Name)
+		skipUnhealthyDisk = false
+	}
+
 	hasPotentiallyReusableReplica := false
 	for _, r := range replicas {
-		if IsPotentiallyReusableReplica(r) {
-			hasPotentiallyReusableReplica = true
-			break
+		if !IsPotentiallyReusableReplica(r) {
+			continue
 		}
+		// The scheduler never reuses a replica on an unhealthy disk, so waiting for it only delays replenishment.
+		if skipUnhealthyDisk && rcs.isReplicaOnUnhealthyDisk(r) {
+			continue
+		}
+		hasPotentiallyReusableReplica = true
+		break
 	}
 	if !hasPotentiallyReusableReplica {
 		return 0
@@ -1352,11 +1372,15 @@ func (rcs *ReplicaScheduler) ValidateDiskAvailableForExpansion(requiredBytes int
 // fetch it once per volume evaluation via GetBackingImageRO and pass it in to
 // avoid repeated lister lookups inside per-disk loops.
 //
+// skipUnhealthyDisk indicates whether disks reported as unhealthy by disk health
+// data (for example, SMART) should be rejected. Callers should resolve it once per
+// volume evaluation via DataStore.IsReplicaSchedulingSkipUnhealthyDiskEnabled.
+//
 // Returns:
 //   - eligible: whether the disk passes all checks.
 //   - reason: an ErrorReplicaSchedule* constant categorizing the failure (empty when eligible).
 //   - message: a human-readable explanation of the failure (empty when eligible).
-func (rcs *ReplicaScheduler) IsDiskEligibleForVolume(diskSpec longhorn.DiskSpec, diskStatus *longhorn.DiskStatus, volume *longhorn.Volume, allowEmptyDiskSelectorVolume bool, biDiskSelector []string) (eligible bool, reason string, message string) {
+func (rcs *ReplicaScheduler) IsDiskEligibleForVolume(diskSpec longhorn.DiskSpec, diskStatus *longhorn.DiskStatus, volume *longhorn.Volume, allowEmptyDiskSelectorVolume, skipUnhealthyDisk bool, biDiskSelector []string) (eligible bool, reason string, message string) {
 	if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
 		return false, longhorn.ErrorReplicaScheduleDiskUnavailable, "disk does not allow scheduling or eviction is requested"
 	}
@@ -1392,7 +1416,45 @@ func (rcs *ReplicaScheduler) IsDiskEligibleForVolume(diskSpec longhorn.DiskSpec,
 		}
 	}
 
+	if skipUnhealthyDisk {
+		if failedHealthData := getFailedDiskHealthDataNames(diskStatus); len(failedHealthData) > 0 {
+			return false, longhorn.ErrorReplicaScheduleDiskUnhealthy,
+				fmt.Sprintf("disk is reported as unhealthy by disk health data %v", failedHealthData)
+		}
+	}
+
 	return true, "", ""
+}
+
+func (rcs *ReplicaScheduler) isReplicaOnUnhealthyDisk(r *longhorn.Replica) bool {
+	node, err := rcs.ds.GetNodeRO(r.Spec.NodeID)
+	if err != nil {
+		return false
+	}
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == r.Spec.DiskID {
+			return len(getFailedDiskHealthDataNames(diskStatus)) > 0
+		}
+	}
+	return false
+}
+
+// getFailedDiskHealthDataNames returns the sorted names of the disk health data
+// entries reporting a failed health status. A disk is considered unhealthy when
+// any of its health data entries reports a failed health status.
+func getFailedDiskHealthDataNames(diskStatus *longhorn.DiskStatus) []string {
+	if diskStatus == nil {
+		return nil
+	}
+
+	var names []string
+	for name, healthData := range diskStatus.HealthData {
+		if healthData.HealthStatus == longhorn.HealthDataStatusFailed {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 func (rcs *ReplicaScheduler) IsSchedulableToDiskConsiderDiskPressure(diskPressurePercentage, size, requiredStorage int64, info *DiskSchedulingInfo) bool {

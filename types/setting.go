@@ -198,6 +198,7 @@ const (
 	SettingNameCSIAllowedTopologyKeys                                   = SettingName("csi-allowed-topology-keys")
 	SettingNameCSIStorageCapacityTracking                               = SettingName("csi-storage-capacity-tracking")
 	SettingNameAllowLiveEngineUpgradeOnSameImageCommit                  = SettingName("allow-live-engine-upgrade-on-same-image-commit")
+	SettingNameReplicaSchedulingSkipUnhealthyDisk                       = SettingName("replica-scheduling-skip-unhealthy-disk")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -334,6 +335,7 @@ var (
 		SettingNameCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking,
 		SettingNameAllowLiveEngineUpgradeOnSameImageCommit,
+		SettingNameReplicaSchedulingSkipUnhealthyDisk,
 	}
 )
 
@@ -504,6 +506,7 @@ var (
 		SettingNameCSIAllowedTopologyKeys:                  SettingDefinitionCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking:              SettingDefinitionCSIStorageCapacityTracking,
 		SettingNameAllowLiveEngineUpgradeOnSameImageCommit: SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit,
+		SettingNameReplicaSchedulingSkipUnhealthyDisk:      SettingDefinitionReplicaSchedulingSkipUnhealthyDisk,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -2247,6 +2250,23 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "false",
+	}
+
+	SettingDefinitionReplicaSchedulingSkipUnhealthyDisk = SettingDefinition{
+		DisplayName: "Replica Scheduling Skip Unhealthy Disk",
+		Description: "Prevents Longhorn from scheduling replicas to disks that are reported as unhealthy by the collected disk health data (for example, SMART data), " +
+			"avoiding repeated replica failures and rebuilds on failing disks. This setting only takes effect if the individual volume setting is set to `ignored`. \n\n" +
+			"Available options: \n\n" +
+			"- **true**: Skips unhealthy disks when scheduling replicas, including new replicas and reused failed replicas, unless overridden by individual volume settings. \n\n" +
+			"- **false**: Does not consider disk health when scheduling replicas, unless overridden by individual volume settings. \n\n" +
+			"**Note:** A disk is considered unhealthy when its health status is `FAILED`. Disk health data is collected only when the setting `node-disk-health-monitoring` is enabled. " +
+			"Existing replicas on unhealthy disks are not evicted.",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 )
 

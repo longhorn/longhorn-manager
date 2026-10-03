@@ -611,6 +611,20 @@ func (s *TestSuite) TestIsTopologyZonePinned(c *C) {
 	}), Equals, false)
 }
 
+func (s *TestSuite) TestValidateReplicaSchedulingSkipUnhealthyDisk(c *C) {
+	for _, value := range []longhorn.ReplicaSchedulingSkipUnhealthyDisk{
+		longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored,
+		longhorn.ReplicaSchedulingSkipUnhealthyDiskEnabled,
+		longhorn.ReplicaSchedulingSkipUnhealthyDiskDisabled,
+	} {
+		c.Assert(ValidateReplicaSchedulingSkipUnhealthyDisk(value), IsNil, Commentf("value: %v", value))
+	}
+
+	for _, value := range []longhorn.ReplicaSchedulingSkipUnhealthyDisk{"", "true", "invalid"} {
+		c.Assert(ValidateReplicaSchedulingSkipUnhealthyDisk(value), NotNil, Commentf("value: %v", value))
+	}
+}
+
 func (s *TestSuite) TestIsBDF(c *C) {
 	testCases := map[string]bool{
 		"0000:00:1f.0":             true,
