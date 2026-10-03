@@ -447,9 +447,30 @@ func (kc *KubernetesPodController) shouldDeleteVolumeAttachmentForForceDeletedPo
 	return false, nil
 }
 
+// multiAttachEventMessages are the markers the Kubernetes attach/detach controller
+// puts into the FailedAttachVolume event of a pod whose RWO volume is still
+// attached to another node. Kubernetes v1.37 replaced "Multi-Attach error" with
+// "Waiting for detach" (kubernetes/kubernetes#138837), backported to
+// v1.36.4 and v1.35.9.
+var multiAttachEventMessages = []string{
+	"Multi-Attach error",
+	"Waiting for detach",
+}
+
+// isMultiAttachEvent returns true if the event reports that the volume is still
+// attached to another node.
+func isMultiAttachEvent(event *corev1.Event) bool {
+	for _, msg := range multiAttachEventMessages {
+		if strings.Contains(event.Message, msg) {
+			return true
+		}
+	}
+	return false
+}
+
 // getPodWithConflictedAttachment returns the first pod in Pending phase from the
-// given list of pods that has a "Multi-Attach error" event caused by the specified
-// conflictingPod
+// given list of pods that has a multi-attach event (see isMultiAttachEvent) caused
+// by the specified conflictingPod
 func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1.Pod, conflictingPod *corev1.Pod) *corev1.Pod {
 	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil {
@@ -466,8 +487,9 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 			continue
 		}
 
-		for _, event := range events.Items {
-			if !strings.Contains(event.Message, "Multi-Attach error") {
+		for i := range events.Items {
+			event := &events.Items[i]
+			if !isMultiAttachEvent(event) {
 				continue
 			}
 
@@ -475,7 +497,7 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 				return pod
 			}
 
-			logrus.Debugf("%s: pod %v has Multi-Attach error, but not caused by pod %v, skipping cleanup",
+			logrus.Debugf("%s: pod %v has multi-attach event, but not caused by pod %v, skipping cleanup",
 				controllerAgentName, pod.Name, conflictingPod.Name)
 		}
 	}
