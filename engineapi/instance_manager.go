@@ -43,6 +43,10 @@ const (
 	// to the new instance manager.
 	MinProxyAPIVersionForBackupSignAcceptEncoding = 8
 
+	// MinProxyAPIVersionForBackupRetrySettings is the minimum proxy API version whose backup env
+	// allowlist contains the AWS_RETRY_* keys. Older proxies reject the whole backup request.
+	MinProxyAPIVersionForBackupRetrySettings = 9
+
 	DefaultEnginePortCount = 1
 
 	DefaultReplicaPortCountV1 = 10
