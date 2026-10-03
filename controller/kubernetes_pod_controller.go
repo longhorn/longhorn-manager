@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -50,6 +51,10 @@ type KubernetesPodController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	// forceDeletedPods holds the last known state of force-deleted pods until
+	// the worker has cleaned them up.
+	forceDeletedPods sync.Map
 }
 
 func NewKubernetesPodController(
@@ -78,7 +83,7 @@ func NewKubernetesPodController(
 	if _, err = ds.PodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePodChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
-		DeleteFunc: kc.enqueuePodChange,
+		DeleteFunc: kc.enqueuePodDeletion,
 	}); err != nil {
 		return nil, err
 	}
@@ -134,6 +139,7 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 
 	handleReconcileErrorLogging(log, err, "Dropping Longhorn kubernetes pod out of the queue")
 	kc.queue.Forget(key)
+	kc.forceDeletedPods.Delete(key)
 	utilruntime.HandleError(err)
 }
 
@@ -157,6 +163,11 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "Error getting Pod: %s", name)
 	}
+
+	if err := kc.cleanupDeletedForceDeletedPod(key, pod); err != nil {
+		return err
+	}
+
 	if pod == nil {
 		return nil
 	}
@@ -360,14 +371,34 @@ func (kc *KubernetesPodController) isControllerInBlacklist(resource *metav1.Owne
 	return false
 }
 
-// cleanupForceDeletedPodResources removes stale resources left behind when a pod
-// is force-deleted (i.e., deletion grace period is zero).
-func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
-	if pod.DeletionTimestamp.IsZero() {
+func isForceDeletedPod(pod *corev1.Pod) bool {
+	return !pod.DeletionTimestamp.IsZero() &&
+		pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds == 0
+}
+
+// cleanupDeletedForceDeletedPod runs the cleanup for a force-deleted pod that is gone
+// from the informer cache or replaced by a pod with the same name.
+func (kc *KubernetesPodController) cleanupDeletedForceDeletedPod(key string, pod *corev1.Pod) error {
+	obj, ok := kc.forceDeletedPods.Load(key)
+	if !ok {
 		return nil
 	}
 
-	if *pod.DeletionGracePeriodSeconds != 0 {
+	deletedPod := obj.(*corev1.Pod)
+	if pod == nil || pod.UID != deletedPod.UID {
+		if err := kc.cleanupForceDeletedPodResources(deletedPod); err != nil {
+			return err
+		}
+	}
+
+	kc.forceDeletedPods.CompareAndDelete(key, obj)
+	return nil
+}
+
+// cleanupForceDeletedPodResources removes stale resources left behind when a pod
+// is force-deleted (i.e., deletion grace period is zero).
+func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
+	if !isForceDeletedPod(pod) {
 		return nil
 	}
 
@@ -833,6 +864,28 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 			break
 		}
 	}
+}
+
+// enqueuePodDeletion records the state of a force-deleted pod, because the worker
+// may only see the key after the pod is gone from the informer cache.
+func (kc *KubernetesPodController) enqueuePodDeletion(obj interface{}) {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		if deletedState, isTombstone := obj.(cache.DeletedFinalStateUnknown); isTombstone {
+			pod, ok = deletedState.Obj.(*corev1.Pod)
+		}
+	}
+
+	if ok && isForceDeletedPod(pod) && !isCSIPluginPod(pod) {
+		key, err := controller.KeyFunc(pod)
+		if err == nil {
+			kc.forceDeletedPods.Store(key, pod)
+			kc.queue.Add(key)
+			return
+		}
+	}
+
+	kc.enqueuePodChange(obj)
 }
 
 func (kc *KubernetesPodController) getAssociatedPersistentVolume(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolume, error) {
