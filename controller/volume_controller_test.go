@@ -1658,6 +1658,8 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecs(c *C) {
 	v.Spec.DataEngine = longhorn.DataEngineTypeV2
 	v.Spec.Size = TestVolumeSize * 2
 	v.Status.ExpansionRequired = true
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeExpansionStarted, longhorn.ConditionStatusTrue, "", "")
 
 	e := newEngineForVolume(v)
 	e.Spec.DataEngine = longhorn.DataEngineTypeV2
@@ -1715,6 +1717,8 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgre
 	v.Spec.DataEngine = longhorn.DataEngineTypeV2
 	v.Spec.Size = TestVolumeSize * 2
 	v.Status.ExpansionRequired = false
+	v, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), v, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
 
 	e := newEngineForVolume(v)
 	e.Spec.DataEngine = longhorn.DataEngineTypeV2
@@ -1746,9 +1750,36 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgre
 	c.Assert(err, IsNil)
 
 	c.Assert(v.Status.ExpansionRequired, Equals, true)
+	c.Assert(types.IsVolumeExpansionStarted(v), Equals, true)
+	c.Assert(e.Spec.VolumeSize, Equals, int64(TestVolumeSize))
+	c.Assert(r.Spec.VolumeSize, Equals, int64(TestVolumeSize))
+	c.Assert(ef.Spec.VolumeSize, Equals, int64(TestVolumeSize))
+
+	err = vc.reconcileVolumeSize(v, e, rs, efs)
+	c.Assert(err, IsNil)
+
 	c.Assert(e.Spec.VolumeSize, Equals, v.Spec.Size)
 	c.Assert(r.Spec.VolumeSize, Equals, v.Spec.Size)
 	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeClearsUnclaimedExpansionAfterCancellation(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Status.ExpansionRequired = true
+
+	e := newEngineForVolume(v)
+	e.Spec.VolumeSize = v.Spec.Size
+	e.Status.CurrentSize = v.Spec.Size
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, nil, nil)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, false)
+	c.Assert(types.IsVolumeExpansionStarted(v), Equals, false)
 }
 
 func (s *TestSuite) TestReconcileVolumeSizeV2KeepsExpansionRequiredWhenExpansionErrorExists(c *C) {
@@ -1764,6 +1795,8 @@ func (s *TestSuite) TestReconcileVolumeSizeV2KeepsExpansionRequiredWhenExpansion
 	v.Spec.DataEngine = longhorn.DataEngineTypeV2
 	v.Spec.Size = TestVolumeSize * 2
 	v.Status.ExpansionRequired = true
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeExpansionStarted, longhorn.ConditionStatusTrue, "", "")
 
 	e := newEngineForVolume(v)
 	e.Spec.DataEngine = longhorn.DataEngineTypeV2
@@ -2382,6 +2415,32 @@ func setupSwitchoverTestInfra(c *C) (
 	ef.Spec.EngineName = migrationEngine.Name
 
 	return
+}
+
+func (s *TestSuite) TestProcessEngineSwitchoverSkipsPendingExpansion(c *C) {
+	for _, prepareVolume := range []func(*longhorn.Volume, *longhorn.Engine){
+		func(v *longhorn.Volume, e *longhorn.Engine) {
+			v.Spec.Size *= 2
+		},
+		func(v *longhorn.Volume, e *longhorn.Engine) {
+			v.Status.ExpansionRequired = true
+		},
+	} {
+		vc, _, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+		prepareVolume(v, currentEngine)
+
+		es := map[string]*longhorn.Engine{
+			currentEngine.Name:   currentEngine,
+			migrationEngine.Name: migrationEngine,
+		}
+		rs := map[string]*longhorn.Replica{replica.Name: replica}
+		efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+
+		err := vc.processEngineSwitchover(v, es, rs, efs)
+		c.Assert(err, IsNil)
+		c.Assert(migrationEngine.Spec.Active, Equals, false)
+		c.Assert(v.Status.CurrentEngineNodeID, Equals, TestNode1)
+	}
 }
 
 // TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetStatusMoves verifies that

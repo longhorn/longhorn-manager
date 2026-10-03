@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"k8s.io/client-go/kubernetes/fake"
@@ -11,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -175,5 +177,55 @@ func TestV2VolumeExpansionIgnoresTerminalLiveUpgrade(t *testing.T) {
 	}
 	if blocked {
 		t.Fatal("terminal instance manager upgrades must not block expansion")
+	}
+}
+
+func TestCancelExpansionRejectsClaimedExpansion(t *testing.T) {
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories("default", kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	volume := &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{Name: "volume", Namespace: "default"},
+		Spec:       longhorn.VolumeSpec{Size: 2 * 1024 * 1024 * 1024},
+		Status: longhorn.VolumeStatus{
+			ExpansionRequired: true,
+			Conditions: []longhorn.Condition{{
+				Type:   longhorn.VolumeConditionTypeExpansionStarted,
+				Status: longhorn.ConditionStatusTrue,
+			}},
+		},
+	}
+	engine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "engine",
+			Namespace: "default",
+			Labels:    types.GetVolumeLabels(volume.Name),
+		},
+		Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{
+			VolumeName: volume.Name,
+			VolumeSize: 1024 * 1024 * 1024,
+		}},
+		Status: longhorn.EngineStatus{CurrentSize: 1024 * 1024 * 1024},
+	}
+	if _, err := lhClient.LonghornV1beta2().Volumes("default").Create(context.TODO(), volume, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create volume: %v", err)
+	}
+	if _, err := lhClient.LonghornV1beta2().Engines("default").Create(context.TODO(), engine, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+
+	ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories)
+	stop := make(chan struct{})
+	defer close(stop)
+	informerFactories.LhInformerFactory.Start(stop)
+	informerFactories.KubeInformerFactory.Start(stop)
+	informerFactories.LhInformerFactory.WaitForCacheSync(stop)
+	informerFactories.KubeInformerFactory.WaitForCacheSync(stop)
+
+	m := NewVolumeManager("test-node", ds, util.NewAtomicCounter(), nil)
+	if _, err := m.CancelExpansion(volume.Name); err == nil || !strings.Contains(err.Error(), "already started") {
+		t.Fatalf("expected claimed expansion to be rejected, got %v", err)
 	}
 }
