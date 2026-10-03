@@ -70,6 +70,21 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	return false
 }
 
+// isStrictLocalReplica returns true when the replica belongs to a strict-local volume.
+// Such a replica is pinned to its volume's node by HardNodeAffinity and can never be
+// evicted to another node. A replica whose volume is already gone is not strict-local.
+func isStrictLocalReplica(ds *datastore.DataStore, replica *longhorn.Replica) (bool, error) {
+	volume, err := ds.GetVolumeRO(replica.Spec.VolumeName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal, nil
+}
+
 func hasShardEvictionRequested(shards map[string]*longhorn.Shard) bool {
 	for _, s := range shards {
 		if s.Spec.EvictionRequested {
