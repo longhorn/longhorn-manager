@@ -14,6 +14,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -484,4 +485,110 @@ func (s *TestSuite) TestCleanupForceDeletedPodResourcesOnAnyNode(c *C) {
 
 	_, err = kubeClient.StorageV1().VolumeAttachments().Get(context.TODO(), va.Name, metav1.GetOptions{})
 	c.Assert(apierrors.IsNotFound(err), Equals, true)
+}
+
+// TestCleanupForceDeletedPodResourcesAfterPodDeletion verifies the cleanup when the
+// worker processes the key only after the pod is gone from the informer cache.
+func (s *TestSuite) TestCleanupForceDeletedPodResourcesAfterPodDeletion(c *C) {
+	testCases := map[string]struct {
+		gracePeriod    int64
+		tombstone      bool
+		replacementPod bool
+		expectVADelete bool
+	}{
+		"force-deleted pod": {
+			expectVADelete: true,
+		},
+		"force-deleted pod in DeletedFinalStateUnknown": {
+			tombstone:      true,
+			expectVADelete: true,
+		},
+		"force-deleted pod replaced by a pod with the same name": {
+			replacementPod: true,
+			expectVADelete: true,
+		},
+		"gracefully deleted pod": {
+			gracePeriod:    30,
+			expectVADelete: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("Running test case: %s", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		pvIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
+		pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+		vaIndexer := informerFactories.KubeInformerFactory.Storage().V1().VolumeAttachments().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		kc, err := newTestKubernetesPodController(lhClient, kubeClient, extensionsClient, informerFactories)
+		c.Assert(err, IsNil)
+
+		// PV without a claimRef -> the attachment is safe to delete.
+		pv := newPV()
+		pv.Spec.ClaimRef = nil
+		pvObj, err := kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(pvIndexer.Add(pvObj), IsNil)
+
+		pvcObj, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), newPVC(), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(pvcIndexer.Add(pvcObj), IsNil)
+
+		pvName := TestPVName
+		va := &storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{Name: "csi-attach-abcde"},
+			Spec: storagev1.VolumeAttachmentSpec{
+				Attacher: types.LonghornDriverName,
+				NodeName: TestNode1,
+				Source:   storagev1.VolumeAttachmentSource{PersistentVolumeName: &pvName},
+			},
+			Status: storagev1.VolumeAttachmentStatus{Attached: true},
+		}
+		vaObj, err := kubeClient.StorageV1().VolumeAttachments().Create(context.TODO(), va, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(vaIndexer.Add(vaObj), IsNil)
+
+		// Update event: the pod is in the cache with the deletion grace period set.
+		deletionTime := metav1.Now()
+		pod := newPodWithPVC(TestPod1)
+		pod.UID = "old-pod-uid"
+		pod.Spec.NodeName = TestNode1
+		pod.DeletionTimestamp = &deletionTime
+		pod.DeletionGracePeriodSeconds = ptrTo(tc.gracePeriod)
+		c.Assert(pIndexer.Add(pod), IsNil)
+		kc.enqueuePodChange(pod)
+
+		// Delete event before the worker picks up the key.
+		c.Assert(pIndexer.Delete(pod), IsNil)
+		if tc.replacementPod {
+			newPod := newPodWithPVC(TestPod1)
+			newPod.UID = "new-pod-uid"
+			c.Assert(pIndexer.Add(newPod), IsNil)
+		}
+		var deletedObj interface{} = pod
+		if tc.tombstone {
+			deletedObj = cache.DeletedFinalStateUnknown{Key: TestNamespace + "/" + TestPod1, Obj: pod}
+		}
+		kc.enqueuePodDeletion(deletedObj)
+
+		c.Assert(kc.queue.Len(), Equals, 1)
+		c.Assert(kc.processNextWorkItem(), Equals, true)
+		c.Assert(kc.queue.Len(), Equals, 0)
+
+		_, err = kubeClient.StorageV1().VolumeAttachments().Get(context.TODO(), va.Name, metav1.GetOptions{})
+		if tc.expectVADelete {
+			c.Assert(apierrors.IsNotFound(err), Equals, true, Commentf("Test case: %s", name))
+		} else {
+			c.Assert(err, IsNil, Commentf("Test case: %s", name))
+		}
+
+		_, found := kc.forceDeletedPods.Load(TestNamespace + "/" + TestPod1)
+		c.Assert(found, Equals, false, Commentf("Test case: %s", name))
+	}
 }
