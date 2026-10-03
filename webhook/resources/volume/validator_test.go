@@ -299,3 +299,137 @@ func TestValidateLinkedCloneSize(t *testing.T) {
 		})
 	}
 }
+
+// newRDMATestDataStore returns a datastore whose node and replica listers serve
+// the given objects, as if the informers had already delivered them.
+func newRDMATestDataStore(t *testing.T, nodes []*longhorn.Node, replicas []*longhorn.Replica) *datastore.DataStore {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(linkedCloneTestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStoreForGlobal(linkedCloneTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	for _, node := range nodes {
+		require.NoError(t, nodeIndexer.Add(node))
+	}
+	replicaIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+	for _, replica := range replicas {
+		require.NoError(t, replicaIndexer.Add(replica))
+	}
+	return ds
+}
+
+func newRDMATestNode(name string, rdmaCapable bool) *longhorn.Node {
+	status := longhorn.ConditionStatusFalse
+	if rdmaCapable {
+		status = longhorn.ConditionStatusTrue
+	}
+	return &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: linkedCloneTestNamespace},
+		Status: longhorn.NodeStatus{
+			Conditions: []longhorn.Condition{{Type: longhorn.NodeConditionTypeRDMACapable, Status: status}},
+		},
+	}
+}
+
+func newRDMATestVolume(dataEngine longhorn.DataEngineType, transport longhorn.DataEngineTransport, state longhorn.VolumeState) *longhorn.Volume {
+	return &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{Name: "vol", Namespace: linkedCloneTestNamespace},
+		Spec: longhorn.VolumeSpec{
+			DataEngine:          dataEngine,
+			DataEngineTransport: transport,
+			NumberOfReplicas:    3,
+		},
+		Status: longhorn.VolumeStatus{State: state},
+	}
+}
+
+func TestValidateDataEngineTransport(t *testing.T) {
+	v2, rdma, tcp := longhorn.DataEngineTypeV2, longhorn.DataEngineTransportRDMA, longhorn.DataEngineTransportTCP
+
+	sharded := newRDMATestVolume(v2, rdma, "")
+	sharded.Spec.DataLayout.Type = longhorn.VolumeDataLayoutTypeSharded
+
+	testCases := []struct {
+		name      string
+		volume    *longhorn.Volume
+		nodes     []*longhorn.Node
+		wantError string
+	}{
+		{"unset transport is accepted", newRDMATestVolume(longhorn.DataEngineTypeV1, "", ""), nil, ""},
+		{"tcp transport is accepted without RDMA nodes", newRDMATestVolume(v2, tcp, ""), nil, ""},
+		{"rdma is accepted with one RDMA-capable node", newRDMATestVolume(v2, rdma, ""),
+			[]*longhorn.Node{newRDMATestNode("n1", true), newRDMATestNode("n2", false)}, ""},
+		{"rdma is rejected on v1", newRDMATestVolume(longhorn.DataEngineTypeV1, rdma, ""),
+			[]*longhorn.Node{newRDMATestNode("n1", true)}, "only supported by data engine v2"},
+		{"rdma is rejected for sharded layout", sharded,
+			[]*longhorn.Node{newRDMATestNode("n1", true)}, "not supported for data layout"},
+		{"rdma is rejected without RDMA-capable nodes", newRDMATestVolume(v2, rdma, ""),
+			[]*longhorn.Node{newRDMATestNode("n1", false)}, "requires at least one RDMA-capable node"},
+		{"unknown transport is rejected", newRDMATestVolume(v2, "fc", ""), nil, "invalid data engine transport"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &volumeValidator{ds: newRDMATestDataStore(t, tc.nodes, nil)}
+			err := v.validateDataEngineTransport(tc.volume)
+			if tc.wantError == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantError)
+		})
+	}
+}
+
+func TestValidateDataEngineTransportUpdate(t *testing.T) {
+	v2, rdma, tcp := longhorn.DataEngineTypeV2, longhorn.DataEngineTransportRDMA, longhorn.DataEngineTransportTCP
+	detached, attached := longhorn.VolumeStateDetached, longhorn.VolumeStateAttached
+
+	nodes := []*longhorn.Node{newRDMATestNode("rdma-1", true), newRDMATestNode("rdma-2", true), newRDMATestNode("tcp-1", false)}
+	newReplica := func(name, nodeID string) *longhorn.Replica {
+		return &longhorn.Replica{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: linkedCloneTestNamespace, Labels: types.GetVolumeLabels("vol")},
+			Spec:       longhorn.ReplicaSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: nodeID}},
+		}
+	}
+
+	testCases := []struct {
+		name      string
+		old, new  *longhorn.Volume
+		replicas  []*longhorn.Replica
+		wantError string
+	}{
+		{"unchanged transport is accepted while attached",
+			newRDMATestVolume(v2, rdma, attached), newRDMATestVolume(v2, rdma, attached), nil, ""},
+		{"unset and tcp are the same transport",
+			newRDMATestVolume(v2, "", attached), newRDMATestVolume(v2, tcp, attached), nil, ""},
+		{"change is rejected while attached",
+			newRDMATestVolume(v2, "", attached), newRDMATestVolume(v2, rdma, attached), nil, "only be changed while the volume is detached"},
+		{"change to rdma is accepted while detached with replicas on RDMA nodes",
+			newRDMATestVolume(v2, tcp, detached), newRDMATestVolume(v2, rdma, detached),
+			[]*longhorn.Replica{newReplica("r1", "rdma-1"), newReplica("r2", "rdma-2"), newReplica("r3", "")}, ""},
+		{"change to rdma is rejected with a replica on a non-RDMA node",
+			newRDMATestVolume(v2, tcp, detached), newRDMATestVolume(v2, rdma, detached),
+			[]*longhorn.Replica{newReplica("r1", "rdma-1"), newReplica("r2", "tcp-1")}, "replica r2 is on node tcp-1"},
+		{"change to tcp is accepted while detached",
+			newRDMATestVolume(v2, rdma, detached), newRDMATestVolume(v2, tcp, detached),
+			[]*longhorn.Replica{newReplica("r1", "tcp-1")}, ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &volumeValidator{ds: newRDMATestDataStore(t, nodes, tc.replicas)}
+			err := v.validateDataEngineTransportUpdate(tc.old, tc.new)
+			if tc.wantError == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantError)
+		})
+	}
+}

@@ -713,6 +713,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 
 	instanceManagerStorageIP := ec.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
 	dataLayoutType := toIMRPCDataLayoutType(v.Spec.DataLayout.Type)
+	dataEngineTransport := toIMRPCDataEngineTransport(v.Spec.DataEngineTransport)
 
 	e.Status.Starting = true
 	engineName := e.Name
@@ -731,6 +732,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
 		DataLocality:                     v.Spec.DataLocality,
 		DataLayoutType:                   dataLayoutType,
+		DataEngineTransport:              dataEngineTransport,
 		EngineCLIAPIVersion:              cliAPIVersion,
 		UpgradeRequired:                  false,
 		InitiatorAddress:                 instanceManagerStorageIP,
@@ -744,6 +746,15 @@ func toIMRPCDataLayoutType(t longhorn.VolumeDataLayoutType) imrpc.DataLayoutType
 		return imrpc.DataLayoutType_DATA_LAYOUT_TYPE_SHARDED
 	}
 	return imrpc.DataLayoutType_DATA_LAYOUT_TYPE_REPLICATED
+}
+
+// toIMRPCDataEngineTransport maps the volume's data engine transport to the
+// instance-manager RPC enum. Empty or unknown values default to TCP.
+func toIMRPCDataEngineTransport(t longhorn.DataEngineTransport) imrpc.TransportType {
+	if t == longhorn.DataEngineTransportRDMA {
+		return imrpc.TransportType_TRANSPORT_TYPE_RDMA
+	}
+	return imrpc.TransportType_TRANSPORT_TYPE_TCP
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
