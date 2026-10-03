@@ -6,12 +6,21 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	. "gopkg.in/check.v1"
+
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/kubernetes/scheme"
+
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
 
 func TestShareManagerController_splitFormatOptions(t *testing.T) {
@@ -185,4 +194,65 @@ func TestSyncShareManagerCurrentImage(t *testing.T) {
 	if sm.Status.CurrentImage != "" {
 		t.Fatalf("expected current image to be cleared when pod is nil, got %q", sm.Status.CurrentImage)
 	}
+}
+
+func (s *TestSuite) TestEnqueueShareManagerForVolumeAttachment(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	smc, err := NewShareManagerController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestNamespace, TestOwnerID1, "")
+	c.Assert(err, IsNil)
+
+	newVA := func(tickets ...*longhorn.AttachmentTicket) *longhorn.VolumeAttachment {
+		va := newVolumeAttachment(TestVolumeName)
+		va.Spec.Volume = TestVolumeName
+		va.Spec.AttachmentTickets = map[string]*longhorn.AttachmentTicket{}
+		for _, t := range tickets {
+			va.Spec.AttachmentTickets[t.ID] = t
+		}
+		return va
+	}
+	csi1 := &longhorn.AttachmentTicket{ID: "csi-1", Type: longhorn.AttacherTypeCSIAttacher, NodeID: TestNode1}
+	csi2 := &longhorn.AttachmentTicket{ID: "csi-2", Type: longhorn.AttacherTypeCSIAttacher, NodeID: TestNode2}
+	sm := &longhorn.AttachmentTicket{ID: "sm", Type: longhorn.AttacherTypeShareManagerController, NodeID: TestNode1}
+
+	satisfied := newVA(csi1, sm)
+	satisfied.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{"csi-1": {ID: "csi-1", Satisfied: true}}
+
+	expectEnqueue := func(name string, expected bool) {
+		c.Assert(smc.queue.Len(), Equals, map[bool]int{true: 1, false: 0}[expected], Commentf(name))
+		if smc.queue.Len() == 1 {
+			key, _ := smc.queue.Get()
+			c.Assert(key, Equals, TestNamespace+"/"+TestVolumeName, Commentf(name))
+			smc.queue.Forget(key)
+			smc.queue.Done(key)
+		}
+	}
+
+	smc.enqueueShareManagerForNewVolumeAttachment(newVA(csi1))
+	expectEnqueue("new volume attachment with a CSI attacher ticket", true)
+
+	smc.enqueueShareManagerForNewVolumeAttachment(newVA())
+	expectEnqueue("new volume attachment without tickets", false)
+
+	smc.enqueueShareManagerForUpdatedVolumeAttachment(newVA(), newVA(csi1))
+	expectEnqueue("first CSI attacher ticket added", true)
+
+	smc.enqueueShareManagerForUpdatedVolumeAttachment(newVA(sm), newVA(sm, csi1))
+	expectEnqueue("first CSI attacher ticket added next to a share manager ticket", true)
+
+	smc.enqueueShareManagerForUpdatedVolumeAttachment(newVA(csi1), newVA(csi1, csi2))
+	expectEnqueue("second CSI attacher ticket added", false)
+
+	smc.enqueueShareManagerForUpdatedVolumeAttachment(newVA(csi1), newVA())
+	expectEnqueue("last CSI attacher ticket removed", false)
+
+	smc.enqueueShareManagerForUpdatedVolumeAttachment(newVA(csi1, sm), satisfied)
+	expectEnqueue("status update only", false)
+
+	smc.enqueueShareManagerForUpdatedVolumeAttachment(newVA(), newVA(sm))
+	expectEnqueue("share manager ticket added", false)
 }
