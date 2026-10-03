@@ -22,6 +22,7 @@ const (
 	OrphanConditionTypeDataCleanableReasonDiskInvalid     = "DiskInvalid"
 	OrphanConditionTypeDataCleanableReasonDiskEvicted     = "DiskEvicted"
 	OrphanConditionTypeDataCleanableReasonDiskChanged     = "DiskChanged"
+	OrphanConditionTypeDataCleanableReasonSkipped         = "Skipped"
 )
 
 const (
