@@ -16,6 +16,10 @@ func (p *Proxy) supportsBackupSignAcceptEncoding() bool {
 	return p.proxyAPIVersion >= MinProxyAPIVersionForBackupSignAcceptEncoding
 }
 
+func (p *Proxy) supportsBackupRetrySettings() bool {
+	return p.proxyAPIVersion >= MinProxyAPIVersionForBackupRetrySettings
+}
+
 func (p *Proxy) SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels, credential, parameters map[string]string) (string, string, error) {
@@ -33,7 +37,7 @@ func (p *Proxy) SnapshotBackup(obj DataEngineObject, snapshotName, backupName, b
 	}
 
 	// get environment variables if backup for s3
-	credentialEnv, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding())
+	credentialEnv, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding(), p.supportsBackupRetrySettings())
 	if err != nil {
 		return "", "", err
 	}
@@ -63,7 +67,7 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 	backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
-	envs, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding())
+	envs, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding(), p.supportsBackupRetrySettings())
 	if err != nil {
 		return err
 	}
