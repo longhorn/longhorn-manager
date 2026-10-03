@@ -17,7 +17,47 @@ const (
 
 	ReplicaConditionReasonRebuildFailedDisconnection = "Disconnection"
 	ReplicaConditionReasonRebuildFailedGeneral       = "General"
+
+	// ReplicaConditionTypeRebuilt indicates whether the latest rebuild of the replica succeeded.
+	// The reason records the rebuild method of the latest successful rebuild.
+	ReplicaConditionTypeRebuilt = "Rebuilt"
+
+	// ReplicaConditionReasonRebuiltFull indicates that all snapshots were fully rebuilt.
+	ReplicaConditionReasonRebuiltFull = "FullRebuild"
+	// ReplicaConditionReasonRebuiltDelta indicates that at least one snapshot was delta rebuilt, and no snapshot was fast rebuilt.
+	ReplicaConditionReasonRebuiltDelta = "DeltaRebuild"
+	// ReplicaConditionReasonRebuiltFast indicates that at least one snapshot was fast rebuilt.
+	ReplicaConditionReasonRebuiltFast = "FastRebuild"
 )
+
+type ReplicaRebuildMethod string
+
+const (
+	// ReplicaRebuildMethodFull means the whole snapshot data is transferred from the source replica.
+	ReplicaRebuildMethodFull = ReplicaRebuildMethod("full")
+	// ReplicaRebuildMethodDelta means the existing snapshot data of the rebuilding replica is reused,
+	// and only the data that differs from the source replica is transferred.
+	ReplicaRebuildMethodDelta = ReplicaRebuildMethod("delta")
+	// ReplicaRebuildMethodFast means the existing snapshot of the rebuilding replica is identical to the source replica
+	// according to the recorded snapshot checksum, hence the snapshot data transfer is skipped.
+	ReplicaRebuildMethodFast = ReplicaRebuildMethod("fast")
+)
+
+// ReplicaRebuildStatistics records how the snapshots were rebuilt in the last successful rebuild of the replica.
+type ReplicaRebuildStatistics struct {
+	// The time when the last successful rebuild completed.
+	// +optional
+	RebuiltAt string `json:"rebuiltAt"`
+	// The number of snapshots rebuilt by transferring the whole snapshot data.
+	// +optional
+	FullRebuildSnapshotCount int `json:"fullRebuildSnapshotCount"`
+	// The number of snapshots rebuilt by reusing the existing snapshot data and transferring the differences only.
+	// +optional
+	DeltaRebuildSnapshotCount int `json:"deltaRebuildSnapshotCount"`
+	// The number of snapshots rebuilt by skipping the data transfer since the existing snapshot is verified by checksum.
+	// +optional
+	FastRebuildSnapshotCount int `json:"fastRebuildSnapshotCount"`
+}
 
 // ReplicaSpec defines the desired state of the Longhorn replica
 type ReplicaSpec struct {
@@ -93,6 +133,10 @@ type ReplicaSpec struct {
 // ReplicaStatus defines the observed state of the Longhorn replica
 type ReplicaStatus struct {
 	InstanceStatus `json:""`
+	// LastRebuildStatistics records the number of snapshots rebuilt by each rebuild method in the last successful rebuild.
+	// +optional
+	// +nullable
+	LastRebuildStatistics *ReplicaRebuildStatistics `json:"lastRebuildStatistics,omitempty"`
 }
 
 // +genclient

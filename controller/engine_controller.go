@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -2271,6 +2272,15 @@ type rebuildContext struct {
 	// linkedCloneSource identifies the source replica/engine for a linked-clone rebuild.
 	// Nil for non-clone rebuilds.
 	linkedCloneSource *imrpc.LinkedCloneSource
+
+	// reusableDataCutoff is the time before which the snapshots are expected to exist in the
+	// existing data of the rebuilding replica. Zero if the replica has no reusable data.
+	reusableDataCutoff time.Time
+	// previousRebuiltCondition stores the Rebuilt condition before we mark a snapshot-sync rebuild as in progress.
+	previousRebuiltCondition    longhorn.Condition
+	hasPreviousRebuiltCondition bool
+	// rebuildStartedAt is the time right before the replica is added to the engine for rebuilding.
+	rebuildStartedAt time.Time
 }
 
 func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, addr string) (err error) {
@@ -2444,6 +2454,11 @@ func (ec *EngineController) prepareRebuildContext(
 	if err != nil {
 		return nil, err
 	}
+	if isSnapshotSyncRebuild(e) {
+		rc.reusableDataCutoff = getReplicaReusableDataCutoff(rc.replica)
+		rc.previousRebuiltCondition, rc.hasPreviousRebuiltCondition = getReplicaConditionWithExistence(
+			rc.replica.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt)
+	}
 	rc.replica, err = ec.updateReplicaRebuildFailedCondition(rc.replica, "")
 	if err != nil {
 		return nil, err
@@ -2527,8 +2542,18 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 		}
 	}
 
+	if isSnapshotSyncRebuild(rc.engine) {
+		updatedReplica, err := ec.updateReplicaRebuiltCondition(rc.replica, longhorn.ConditionStatusFalse, "", "")
+		if err != nil {
+			rc.log.WithError(err).Errorf("Failed to mark rebuild as in progress for replica %v", rc.replicaName)
+			return
+		}
+		rc.replica = updatedReplica
+	}
+
 	// Start rebuild — v1 and v2 diverge on the ReplicaAdd call.
 	var replicaAddErr error
+	rc.rebuildStartedAt = time.Now()
 	if types.IsDataEngineV2(rc.engine.Spec.DataEngine) {
 		ec.eventRecorder.Eventf(rc.currentEngine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 			"Start rebuilding replica %v with Address %v through engine frontend %v for engine %v and volume %v",
@@ -2545,6 +2570,9 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 			replicaAddErr = nil
 		case isV2ReplicaAddRestoreInProgressError(replicaAddErr):
 			rc.log.WithError(replicaAddErr).Info("Skipping replica rebuild because restore is in progress")
+			if err := ec.restoreReplicaRebuiltCondition(rc); err != nil {
+				rc.log.WithError(err).Warnf("Failed to restore the rebuilt condition for replica %v after the rebuild start was rejected", rc.replicaName)
+			}
 			return
 		}
 	} else {
@@ -2588,6 +2616,10 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 	} else {
 		ec.eventRecorder.Eventf(rc.currentEngine, corev1.EventTypeNormal, constant.EventReasonRebuilt,
 			"Replica %v with Address %v has been rebuilt for volume %v", rc.replicaName, rc.addr, rc.currentEngine.Spec.VolumeName)
+	}
+
+	if isSnapshotSyncRebuild(rc.engine) {
+		ec.updateReplicaRebuiltStatus(rc)
 	}
 
 	if rc.autoCleanup {
@@ -2801,6 +2833,50 @@ func (ec *EngineController) updateReplicaRebuildFailedCondition(replica *longhor
 	return ec.ds.UpdateReplicaStatus(replica)
 }
 
+func (ec *EngineController) updateReplicaRebuiltCondition(replica *longhorn.Replica, conditionStatus longhorn.ConditionStatus, reason, message string) (*longhorn.Replica, error) {
+	replica.Status.Conditions = types.SetCondition(
+		replica.Status.Conditions,
+		longhorn.ReplicaConditionTypeRebuilt,
+		conditionStatus,
+		reason,
+		message)
+
+	return ec.ds.UpdateReplicaStatus(replica)
+}
+
+func (ec *EngineController) restoreReplicaRebuiltCondition(rc *rebuildContext) error {
+	if !isSnapshotSyncRebuild(rc.engine) {
+		return nil
+	}
+
+	var updatedReplica *longhorn.Replica
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		replica, err := ec.ds.GetLonghornReplicaUncached(rc.replicaName)
+		if err != nil {
+			return err
+		}
+
+		if rc.hasPreviousRebuiltCondition {
+			replica.Status.Conditions = types.SetCondition(
+				replica.Status.Conditions,
+				longhorn.ReplicaConditionTypeRebuilt,
+				rc.previousRebuiltCondition.Status,
+				rc.previousRebuiltCondition.Reason,
+				rc.previousRebuiltCondition.Message)
+		} else {
+			replica.Status.Conditions = types.RemoveCondition(replica.Status.Conditions, longhorn.ReplicaConditionTypeRebuilt)
+		}
+
+		updatedReplica, err = ec.ds.UpdateReplicaStatus(replica)
+		return err
+	}); err != nil {
+		return err
+	}
+
+	rc.replica = updatedReplica
+	return nil
+}
+
 func (ec *EngineController) getReplicaRebuildFailedReason(replicaNodeID, errMsg string) (failedReason string, conditionStatus longhorn.ConditionStatus, err error) {
 	failedReason, conditionStatus, isRebuildingFailedByNetwork := getReplicaRebuildFailedReasonFromError(errMsg)
 	if isRebuildingFailedByNetwork {
@@ -2817,6 +2893,139 @@ func (ec *EngineController) getReplicaRebuildFailedReason(replicaNodeID, errMsg 
 	}
 
 	return failedReason, conditionStatus, nil
+}
+
+// isSnapshotSyncRebuild returns false for the v1 replica of a restore volume, since it is rebuilt by
+// the backup restore rather than the snapshot sync.
+func isSnapshotSyncRebuild(e *longhorn.Engine) bool {
+	return types.IsDataEngineV2(e.Spec.DataEngine) || e.Spec.RequestedBackupRestore == ""
+}
+
+func getReplicaConditionWithExistence(conditions []longhorn.Condition, conditionType string) (longhorn.Condition, bool) {
+	for _, condition := range conditions {
+		if condition.Type == conditionType {
+			return condition, true
+		}
+	}
+
+	return types.GetCondition(conditions, conditionType), false
+}
+
+// updateReplicaRebuiltStatus records the number of snapshots rebuilt by each rebuild method and
+// sets the Rebuilt condition on the replica after a successful rebuild.
+// The failure here is logged only since it does not affect the rebuilt data.
+func (ec *EngineController) updateReplicaRebuiltStatus(rc *rebuildContext) {
+	log := rc.log.WithField("replica", rc.replicaName)
+
+	snapshots, err := rc.cleanupProxy.SnapshotList(rc.currentEngine)
+	if err != nil {
+		log.WithError(err).Warn("Failed to list snapshots for recording the replica rebuild statistics")
+		return
+	}
+	snapshotCRs, err := ec.ds.ListVolumeSnapshotsRO(rc.currentEngine.Spec.VolumeName)
+	if err != nil {
+		log.WithError(err).Warn("Failed to list snapshot CRs for recording the replica rebuild statistics")
+		return
+	}
+
+	statistics := getReplicaRebuildStatistics(snapshots, snapshotCRs, rc.reusableDataCutoff, rc.rebuildStartedAt, rc.fastReplicaRebuild)
+	statistics.RebuiltAt = util.Now()
+	reason, message := getReplicaRebuiltConditionReasonAndMessage(statistics)
+
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		replica, err := ec.ds.GetLonghornReplicaUncached(rc.replicaName)
+		if err != nil {
+			return err
+		}
+		replica.Status.LastRebuildStatistics = statistics
+		replica.Status.Conditions = types.SetCondition(replica.Status.Conditions,
+			longhorn.ReplicaConditionTypeRebuilt, longhorn.ConditionStatusTrue, reason, message)
+		_, err = ec.ds.UpdateReplicaStatus(replica)
+		return err
+	}); err != nil {
+		log.WithError(err).Warn("Failed to record the replica rebuild statistics")
+		return
+	}
+
+	log.Infof("Recorded the replica rebuild statistics: %v", message)
+}
+
+// getReplicaReusableDataCutoff returns the time before which the snapshots are expected to exist in the
+// existing data of the replica. A replica that has never been healthy has no reusable data, hence the
+// zero time is returned.
+func getReplicaReusableDataCutoff(r *longhorn.Replica) time.Time {
+	lastHealthyAt, err := time.Parse(time.RFC3339, r.Spec.LastHealthyAt)
+	if err != nil {
+		return time.Time{}
+	}
+
+	// The replica keeps receiving the new snapshots until it fails.
+	if lastFailedAt, err := time.Parse(time.RFC3339, r.Spec.LastFailedAt); err == nil && lastFailedAt.After(lastHealthyAt) {
+		return lastFailedAt
+	}
+	return lastHealthyAt
+}
+
+// getSnapshotRebuildMethod determines how the snapshot is rebuilt based on the control plane knowledge:
+//   - full: the rebuilding replica does not contain the snapshot, so the whole snapshot data is transferred.
+//   - fast: the rebuilding replica contains the snapshot, fast replica rebuild is enabled, and the snapshot
+//     checksum is recorded, so the data transfer can be skipped once the checksum is verified.
+//   - delta: the rebuilding replica contains the snapshot, so only the differing data is transferred.
+func getSnapshotRebuildMethod(snapshot *longhorn.SnapshotInfo, snapshotCR *longhorn.Snapshot, reusableDataCutoff time.Time, fastReplicaRebuild bool) longhorn.ReplicaRebuildMethod {
+	if reusableDataCutoff.IsZero() {
+		return longhorn.ReplicaRebuildMethodFull
+	}
+
+	created, err := time.Parse(time.RFC3339, snapshot.Created)
+	if err != nil || created.After(reusableDataCutoff) {
+		return longhorn.ReplicaRebuildMethodFull
+	}
+
+	if fastReplicaRebuild && snapshotCR != nil && snapshotCR.Status.Checksum != "" {
+		return longhorn.ReplicaRebuildMethodFast
+	}
+	return longhorn.ReplicaRebuildMethodDelta
+}
+
+// getReplicaRebuildStatistics counts the snapshots rebuilt by each rebuild method.
+func getReplicaRebuildStatistics(snapshots map[string]*longhorn.SnapshotInfo, snapshotCRs map[string]*longhorn.Snapshot,
+	reusableDataCutoff, rebuildStartedAt time.Time, fastReplicaRebuild bool) *longhorn.ReplicaRebuildStatistics {
+	statistics := &longhorn.ReplicaRebuildStatistics{}
+	for name, snapshot := range snapshots {
+		if snapshot == nil || name == etypes.VolumeHeadName {
+			continue
+		}
+		// The user created snapshots taken during the rebuild are created in the rebuilding replica directly rather than rebuilt.
+		if created, err := time.Parse(time.RFC3339, snapshot.Created); err == nil && snapshot.UserCreated && created.After(rebuildStartedAt) {
+			continue
+		}
+
+		switch getSnapshotRebuildMethod(snapshot, snapshotCRs[name], reusableDataCutoff, fastReplicaRebuild) {
+		case longhorn.ReplicaRebuildMethodFast:
+			statistics.FastRebuildSnapshotCount++
+		case longhorn.ReplicaRebuildMethodDelta:
+			statistics.DeltaRebuildSnapshotCount++
+		default:
+			statistics.FullRebuildSnapshotCount++
+		}
+	}
+	return statistics
+}
+
+func getReplicaRebuiltConditionReasonAndMessage(statistics *longhorn.ReplicaRebuildStatistics) (reason, message string) {
+	switch {
+	case statistics.FastRebuildSnapshotCount > 0:
+		reason = longhorn.ReplicaConditionReasonRebuiltFast
+	case statistics.DeltaRebuildSnapshotCount > 0:
+		reason = longhorn.ReplicaConditionReasonRebuiltDelta
+	default:
+		reason = longhorn.ReplicaConditionReasonRebuiltFull
+	}
+
+	total := statistics.FullRebuildSnapshotCount + statistics.DeltaRebuildSnapshotCount + statistics.FastRebuildSnapshotCount
+	message = fmt.Sprintf("Rebuilt %d snapshot(s): %d by full rebuild, %d by delta rebuild, %d by fast rebuild",
+		total, statistics.FullRebuildSnapshotCount, statistics.DeltaRebuildSnapshotCount, statistics.FastRebuildSnapshotCount)
+	return reason, message
 }
 
 func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {

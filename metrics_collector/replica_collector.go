@@ -12,8 +12,9 @@ import (
 type ReplicaCollector struct {
 	*baseCollector
 
-	infoMetric  metricInfo
-	stateMetric metricInfo
+	infoMetric             metricInfo
+	stateMetric            metricInfo
+	rebuiltSnapshotsMetric metricInfo
 }
 
 func NewReplicaCollector(
@@ -45,12 +46,23 @@ func NewReplicaCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	rc.rebuiltSnapshotsMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemReplica, "rebuilt_snapshots"),
+			"The number of snapshots rebuilt by each rebuild method in the last successful rebuild of this replica",
+			[]string{replicaLabel, volumeLabel, nodeLabel, rebuildMethodLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return rc
 }
 
 func (rc *ReplicaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- rc.infoMetric.Desc
 	ch <- rc.stateMetric.Desc
+	ch <- rc.rebuiltSnapshotsMetric.Desc
 }
 
 func (rc *ReplicaCollector) Collect(ch chan<- prometheus.Metric) {
@@ -98,5 +110,31 @@ func (rc *ReplicaCollector) Collect(ch chan<- prometheus.Metric) {
 				string(s),
 			)
 		}
+
+		rc.collectRebuiltSnapshots(ch, r)
+	}
+}
+
+func (rc *ReplicaCollector) collectRebuiltSnapshots(ch chan<- prometheus.Metric, r *longhorn.Replica) {
+	statistics := r.Status.LastRebuildStatistics
+	if statistics == nil {
+		return
+	}
+
+	counts := map[longhorn.ReplicaRebuildMethod]int{
+		longhorn.ReplicaRebuildMethodFull:  statistics.FullRebuildSnapshotCount,
+		longhorn.ReplicaRebuildMethodDelta: statistics.DeltaRebuildSnapshotCount,
+		longhorn.ReplicaRebuildMethodFast:  statistics.FastRebuildSnapshotCount,
+	}
+	for method, count := range counts {
+		ch <- prometheus.MustNewConstMetric(
+			rc.rebuiltSnapshotsMetric.Desc,
+			rc.rebuiltSnapshotsMetric.Type,
+			float64(count),
+			r.Name,
+			r.Spec.VolumeName,
+			r.Spec.NodeID,
+			string(method),
+		)
 	}
 }

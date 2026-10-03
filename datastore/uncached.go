@@ -403,6 +403,13 @@ func (s *DataStore) GetLonghornSnapshotUncached(name string) (*longhorn.Snapshot
 	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
+// GetLonghornReplicaUncached returns the uncached Replica in the Longhorn namespace directly from the API server.
+// Direct retrieval from the API server should ideally only be used for one-shot tasks, but there may be other limited
+// situations in which it is necessary.
+func (s *DataStore) GetLonghornReplicaUncached(name string) (*longhorn.Replica, error) {
+	return s.lhClient.LonghornV1beta2().Replicas(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
 // GetAllBackingImages returns an uncached list of BackingImage in Longhorn
 // namespace directly from the API server.
 // Using cached informers should be preferred but current lister doesn't have a
