@@ -54,6 +54,12 @@ const (
 	deprecatedCSISnapshotTypeLonghornBackup = "bs"
 )
 
+// poll faster at the beginning, most attach and detach requests are satisfied within a few seconds
+const (
+	tickAttachDetachFast     = 500 * time.Millisecond
+	durationAttachDetachFast = 5 * time.Second
+)
+
 type ControllerServer struct {
 	csi.UnimplementedControllerServer
 	apiClient   *longhornclient.RancherClient
@@ -1519,9 +1525,10 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 	defer timer.Stop()
 	timeout := timer.C
 
-	ticker := time.NewTicker(tickAttachDetach)
-	defer ticker.Stop()
-	tick := ticker.C
+	start := time.Now()
+	pollTimer := time.NewTimer(tickAttachDetachFast)
+	defer pollTimer.Stop()
+	tick := pollTimer.C
 
 	for {
 		select {
@@ -1529,6 +1536,12 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 			log.Warnf("Timeout while waiting for volume %s state %s", volumeID, stateDescription)
 			return false
 		case <-tick:
+			if time.Since(start) < durationAttachDetachFast {
+				pollTimer.Reset(tickAttachDetachFast)
+			} else {
+				pollTimer.Reset(tickAttachDetach)
+			}
+
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
 			if err != nil {
 				log.WithError(err).Warnf("Failed to get volume while waiting for volume %s state %s", volumeID, stateDescription)
