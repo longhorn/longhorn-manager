@@ -22,6 +22,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/csi"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
@@ -384,6 +385,10 @@ func (c *UninstallController) uninstall() error {
 	}
 
 	if waitForUpdate, err := c.deleteDriver(); err != nil || waitForUpdate {
+		return err
+	}
+
+	if err := csi.CleanupLegacySecretRBAC(c.kubeClient, c.namespace); err != nil {
 		return err
 	}
 
