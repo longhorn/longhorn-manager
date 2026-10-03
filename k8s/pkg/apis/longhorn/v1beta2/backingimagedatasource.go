@@ -52,6 +52,8 @@ type BackingImageDataSourceSpec struct {
 	Parameters map[string]string `json:"parameters"`
 	// +optional
 	FileTransferred bool `json:"fileTransferred"`
+	// +optional
+	RecoveryRequested bool `json:"recoveryRequested"`
 }
 
 // BackingImageDataSourceStatus defines the observed state of the Longhorn backing image data source
@@ -75,6 +77,8 @@ type BackingImageDataSourceStatus struct {
 	Checksum string `json:"checksum"`
 	// +optional
 	Message string `json:"message"`
+	// +optional
+	RetryCount int `json:"retryCount"`
 }
 
 // +genclient
