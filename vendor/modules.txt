@@ -115,8 +115,8 @@ github.com/emicklei/go-restful/v3/log
 # github.com/evanphx/json-patch v5.9.11+incompatible
 ## explicit
 github.com/evanphx/json-patch
-# github.com/felixge/httpsnoop v1.0.4
-## explicit; go 1.13
+# github.com/felixge/httpsnoop v1.1.0
+## explicit; go 1.25
 github.com/felixge/httpsnoop
 # github.com/fxamacker/cbor/v2 v2.9.3
 ## explicit; go 1.20
@@ -545,7 +545,7 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.11.0
 ## explicit; go 1.24.0
 github.com/tklauser/numcpus
-# github.com/urfave/cli/v3 v3.11.0
+# github.com/urfave/cli/v3 v3.12.0
 ## explicit; go 1.22
 github.com/urfave/cli/v3
 # github.com/x448/float16 v0.8.4
@@ -646,7 +646,7 @@ golang.org/x/time/rate
 # google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.83.2
+# google.golang.org/grpc v1.84.0
 ## explicit; go 1.25.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
