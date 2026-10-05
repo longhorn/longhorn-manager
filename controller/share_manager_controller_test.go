@@ -207,6 +207,7 @@ func (s *TestSuite) TestSyncShareManagerVolumePodRecreateBackoff(c *C) {
 	testCases := []struct {
 		name          string
 		requiredByCSI bool
+		faulted       bool
 		state         longhorn.ShareManagerState
 		expectedState longhorn.ShareManagerState
 		expectBackoff bool
@@ -226,6 +227,14 @@ func (s *TestSuite) TestSyncShareManagerVolumePodRecreateBackoff(c *C) {
 		{
 			name:          "starting share manager no longer required: the backoff is kept",
 			state:         longhorn.ShareManagerStateStarting,
+			expectedState: longhorn.ShareManagerStateStopping,
+			expectBackoff: true,
+		},
+		{
+			name:          "running share manager of a faulted volume: the backoff is kept",
+			requiredByCSI: true,
+			faulted:       true,
+			state:         longhorn.ShareManagerStateRunning,
 			expectedState: longhorn.ShareManagerStateStopping,
 			expectBackoff: true,
 		},
@@ -256,6 +265,9 @@ func (s *TestSuite) TestSyncShareManagerVolumePodRecreateBackoff(c *C) {
 
 		v := newVolume(TestVolumeName, 1)
 		v.Spec.AccessMode = longhorn.AccessModeReadWriteMany
+		if tc.faulted {
+			v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+		}
 		v, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), v, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(lhInformers.Volumes().Informer().GetIndexer().Add(v), IsNil)
@@ -281,6 +293,6 @@ func (s *TestSuite) TestSyncShareManagerVolumePodRecreateBackoff(c *C) {
 		err = smc.syncShareManagerVolume(sm)
 		c.Assert(err, IsNil, Commentf(tc.name))
 		c.Assert(sm.Status.State, Equals, tc.expectedState, Commentf(tc.name))
-		c.Assert(smc.backoff.IsInBackOffSinceUpdate(sm.Name, time.Now()), Equals, tc.expectBackoff, Commentf(tc.name))
+		c.Assert(smc.backoff.Get(sm.Name) > 0, Equals, tc.expectBackoff, Commentf(tc.name))
 	}
 }
