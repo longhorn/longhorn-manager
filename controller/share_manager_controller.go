@@ -519,6 +519,16 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(sm *longhorn.Sh
 	return false
 }
 
+// hasRemainingCSIAttacherTicket returns true if a CSI attacher ticket remains on the volume attachment
+func hasRemainingCSIAttacherTicket(va *longhorn.VolumeAttachment) bool {
+	for _, ticket := range va.Spec.AttachmentTickets {
+		if isCSIAttacherTicket(ticket) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) error {
 	log := getLoggerForShareManager(c.logger, sm)
 	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
@@ -688,9 +698,9 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		c.detachShareManagerVolume(sm, va)
 		if sm.Status.State != longhorn.ShareManagerStateStopped {
 			log.Info("Stopping share manager since it is no longer required")
-			if sm.Status.State == longhorn.ShareManagerStateRunning {
-				// The share manager pod was serving the volume, so this stop is not caused by a pod failure.
-				// Clear the pod recreation backoff to let the next workload start the share manager right away.
+			if sm.Status.State == longhorn.ShareManagerStateRunning && !hasRemainingCSIAttacherTicket(va) {
+				// The workload released a share manager that worked, so the next start is not a pod failure retry.
+				// If a CSI attacher ticket remains, the stop is caused by the volume (e.g. faulted) and the backoff is kept.
 				c.backoff.DeleteEntry(sm.Name)
 			}
 			sm.Status.State = longhorn.ShareManagerStateStopping
