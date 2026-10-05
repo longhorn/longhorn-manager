@@ -9,6 +9,11 @@ import (
 const (
 	NQNPrefix = "nqn.2023-01.io.longhorn.spdk"
 
+	// InternalHostNQN is the host NQN the SPDK bdev_nvme initiator presents when it attaches a
+	// subsystem that only SPDK consumes, never a host kernel initiator (e.g. a replica lvol
+	// attached by an engine). Subsystems restricted to it are hidden from other hosts.
+	InternalHostNQN = NQNPrefix + ":internal-host"
+
 	DefaultJSONServerNetwork    = "unix"
 	DefaultUnixDomainSocketPath = "/var/tmp/spdk.sock"
 
@@ -25,12 +30,26 @@ const (
 	ShallowCopyStateError      = "error"
 
 	ExecuteTimeout = 180 * time.Second
+
+	// DmsetupTimeout covers every dmsetup call and NvmeDisconnectTimeout the NVMe
+	// disconnects. Those run while the initiator holds its per-volume file lock and
+	// are the ones that can block on a device the kernel is stuck on, so both stay
+	// below that lock timeout: otherwise one wedged device starves every other
+	// operation on the same volume until its lock waiters give up.
+	DmsetupTimeout        = 30 * time.Second
+	NvmeDisconnectTimeout = 30 * time.Second
 )
 
 const (
 	ErrorMessageCannotFindValidNvmeDevice = "cannot find a valid NVMe device"
 	ErrorMessageDeviceOrResourceBusy      = "device or resource busy"
+	ErrorMessageDuplicateCntlid           = "duplicate cntlid"
 	ErrorMessageNoSuchFileOrDirectory     = "no such file or directory"
+	ErrorMessageFailedToGetInitiatorLock  = "failed to get file lock for initiator"
+	// ErrorMessageTimeoutExecuting is what go-common-libs reports when a command
+	// outlives its timeout; the executor sends SIGKILL to the command's process group,
+	// but a process blocked in the kernel may not terminate promptly.
+	ErrorMessageTimeoutExecuting = "timeout executing:"
 )
 
 const (
@@ -79,9 +98,17 @@ type DiskStatus struct {
 }
 
 func ErrorIsDeviceOrResourceBusy(err error) bool {
-	return strings.Contains(strings.ToLower(err.Error()), ErrorMessageDeviceOrResourceBusy)
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), ErrorMessageDeviceOrResourceBusy)
 }
 
 func ErrorIsValidNvmeDeviceNotFound(err error) bool {
-	return strings.Contains(err.Error(), ErrorMessageCannotFindValidNvmeDevice)
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), ErrorMessageCannotFindValidNvmeDevice)
+}
+
+func ErrorIsTimeoutExecuting(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), ErrorMessageTimeoutExecuting)
+}
+
+func ErrorIsDuplicateCntlid(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), ErrorMessageDuplicateCntlid)
 }

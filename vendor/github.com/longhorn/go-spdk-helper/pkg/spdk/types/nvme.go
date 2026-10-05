@@ -101,6 +101,7 @@ type BdevNvmeAttachControllerRequest struct {
 
 	NvmeTransportID
 
+	Hostnqn   string `json:"hostnqn,omitempty"`
 	Hostaddr  string `json:"hostaddr,omitempty"`
 	Hostsvcid string `json:"hostsvcid,omitempty"`
 
