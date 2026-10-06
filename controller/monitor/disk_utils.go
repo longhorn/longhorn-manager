@@ -3,6 +3,7 @@ package monitor
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -397,8 +398,8 @@ func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.D
 
 	defer func() {
 		if err != nil {
-			if derr := util.DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(diskPath); derr != nil {
-				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", diskPath, derr)
+			if derr := lhns.DeletePath(diskCfgFilePath); derr != nil {
+				err = errors.Wrapf(err, "cleaning up disk config file %v failed with error: %v", diskCfgFilePath, derr)
 			}
 		}
 	}()
@@ -415,7 +416,31 @@ func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.D
 		return nil, err
 	}
 
+	// Syncing the file does not persist its entry in the parent directory. The recorded disk UUID is later used to
+	// tell an unmounted or replaced disk from a new one, so make sure the config file and the replica subdirectory
+	// are not lost after a crash once the UUID is reported.
+	if _, err = lhns.RunFunc(func() (interface{}, error) {
+		return nil, syncDirectory(diskPath)
+	}, 0); err != nil {
+		return nil, errors.Wrapf(err, "failed to sync disk path %v", diskPath)
+	}
+
 	return cfg, nil
+}
+
+// syncDirectory flushes the directory entries of the given directory to the disk.
+func syncDirectory(dirPath string) error {
+	dir, err := os.Open(dirPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if errClose := dir.Close(); errClose != nil {
+			logrus.WithError(errClose).Warnf("Failed to close directory %v", dirPath)
+		}
+	}()
+
+	return dir.Sync()
 }
 
 func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*util.DiskConfig, error) {
