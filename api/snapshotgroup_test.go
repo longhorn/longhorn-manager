@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -254,4 +255,66 @@ func TestRecordHookExecutorAccess(t *testing.T) {
 		assert.Empty(t, members[0].AccessFailureManifest)
 		assert.Empty(t, members[0].ValidationFailure)
 	})
+}
+
+func TestDescribeSnapshotGroupPreviewNamespaces(t *testing.T) {
+	policies := map[string][]*longhorn.VolumeHookPolicy{
+		"app":   {testHookPolicyPG, testHookPolicyMongo},
+		"other": nil,
+	}
+	listPolicies := func(namespace string) ([]*longhorn.VolumeHookPolicy, error) {
+		return policies[namespace], nil
+	}
+
+	t.Run("each member namespace is listed once, sorted, with policies sorted by name", func(t *testing.T) {
+		members := []SnapshotGroupPreviewMember{
+			{VolumeName: "vol-a", PVCRef: pvcRef("other", "data")},
+			{VolumeName: "vol-b", PVCRef: pvcRef("app", "data-pg-0")},
+			{VolumeName: "vol-c", PVCRef: pvcRef("app", "data-pg-1")},
+			{VolumeName: "vol-d", ValidationFailure: "no PVC"},
+		}
+		namespaces, err := describeSnapshotGroupPreviewNamespaces(members, listPolicies)
+		assert.NoError(t, err)
+		assert.Equal(t, []SnapshotGroupPreviewNamespace{
+			{
+				Namespace: "app",
+				HookPolicies: []VolumeHookPolicy{
+					*toVolumeHookPolicyResource(testHookPolicyMongo),
+					*toVolumeHookPolicyResource(testHookPolicyPG),
+				},
+			},
+			// A namespace without a policy is listed with an empty, not
+			// absent, policy list.
+			{Namespace: "other", HookPolicies: []VolumeHookPolicy{}},
+		}, namespaces)
+	})
+	t.Run("no PVC-bearing member yields an empty list, not nil", func(t *testing.T) {
+		namespaces, err := describeSnapshotGroupPreviewNamespaces([]SnapshotGroupPreviewMember{{VolumeName: "vol-a"}}, listPolicies)
+		assert.NoError(t, err)
+		assert.NotNil(t, namespaces)
+		assert.Empty(t, namespaces)
+	})
+	t.Run("a list failure names the namespace", func(t *testing.T) {
+		members := []SnapshotGroupPreviewMember{{VolumeName: "vol-a", PVCRef: pvcRef("app", "data")}}
+		_, err := describeSnapshotGroupPreviewNamespaces(members, func(string) ([]*longhorn.VolumeHookPolicy, error) {
+			return nil, errors.New("cache not synced")
+		})
+		assert.ErrorContains(t, err, "namespace app")
+		assert.ErrorContains(t, err, "cache not synced")
+	})
+}
+
+// TestSnapshotGroupPreviewOutputNamespacesSerialization pins the states a
+// client tells apart: null for a preview without hooks, a list, possibly
+// empty, for a hooked preview.
+func TestSnapshotGroupPreviewOutputNamespacesSerialization(t *testing.T) {
+	unhooked, err := json.Marshal(SnapshotGroupPreviewOutput{})
+	assert.NoError(t, err)
+	assert.Contains(t, string(unhooked), `"namespaces":null`)
+
+	hooked, err := json.Marshal(SnapshotGroupPreviewOutput{Namespaces: []SnapshotGroupPreviewNamespace{
+		{Namespace: "app", HookPolicies: []VolumeHookPolicy{}},
+	}})
+	assert.NoError(t, err)
+	assert.Contains(t, string(hooked), `"namespaces":[{"namespace":"app","hookPolicies":[]}]`)
 }
