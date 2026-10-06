@@ -590,6 +590,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						StorageScheduled: TestVolumeSize,
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+							newNodeCondition(longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusTrue, ""),
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 						},
 						ScheduledReplica: map[string]int64{
@@ -745,6 +746,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+							newNodeCondition(longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusTrue, ""),
 						},
 						ScheduledReplica:      map[string]int64{},
 						ScheduledBackingImage: map[string]int64{},
@@ -904,6 +906,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskNotReady)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskFilesystemChanged)),
+							newNodeCondition(longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusTrue, ""),
 						},
 						ScheduledReplica:      map[string]int64{},
 						ScheduledBackingImage: map[string]int64{},
@@ -1034,6 +1037,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+							newNodeCondition(longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusTrue, ""),
 						},
 						DiskName:              TestDiskID1,
 						ScheduledReplica:      map[string]int64{},
@@ -1183,6 +1187,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+							newNodeCondition(longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusTrue, ""),
 						},
 						DiskName:              TestDiskID1,
 						ScheduledReplica:      map[string]int64{},
@@ -3416,4 +3421,72 @@ func (s *NodeControllerSuite) TestSyncInstanceManagersKeepsV2IMOnOtherNodeDuring
 	c.Assert(err, IsNil)
 	c.Assert(instanceManagers.Items, HasLen, 1)
 	c.Assert(instanceManagers.Items[0].Name, Equals, oldIM.Name)
+}
+
+// TestSyncDiskStatusKeepsUnmountedDiskInitialized covers longhorn/longhorn#14102: after a node reboot the disk may
+// not be mounted yet. The disk must keep its recorded UUID and stay Initialized, so only Ready reports the problem
+// and the disk is recognized as the same disk once it is mounted.
+func (s *NodeControllerSuite) TestSyncDiskStatusKeepsUnmountedDiskInitialized(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{
+		TestDiskID1: {Type: longhorn.DiskTypeFilesystem, Path: TestDefaultDataPath, AllowScheduling: true},
+	}
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {Type: longhorn.DiskTypeFilesystem, DiskUUID: TestDiskID1, DiskPath: TestDefaultDataPath},
+	}
+	collected := map[string]*monitor.CollectedDiskInfo{
+		TestDiskID1: monitor.NewDiskInfo(TestDiskID1, TestDiskID1, TestDefaultDataPath, longhorn.DiskDriverNone, false, nil,
+			map[string]string{}, TestInstanceManagerName, string(longhorn.DiskConditionReasonDiskNotMounted), "disk config file not found"),
+	}
+
+	err := s.controller.syncDiskStatus(node, collected)
+	c.Assert(err, IsNil)
+
+	diskStatus := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(diskStatus.DiskUUID, Equals, TestDiskID1)
+	initialized := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeInitialized)
+	c.Assert(initialized.Status, Equals, longhorn.ConditionStatusTrue)
+	ready := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady)
+	c.Assert(ready.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(ready.Reason, Equals, string(longhorn.DiskConditionReasonDiskNotMounted))
+}
+
+// TestUpdateDiskStatusInitializedConditionFollowsRecordedDiskUUID makes sure Initialized only depends on whether a
+// disk UUID is recorded, so a disk that has never been created successfully is reported as uninitialized.
+func (s *NodeControllerSuite) TestUpdateDiskStatusInitializedConditionFollowsRecordedDiskUUID(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		"recorded-disk": {DiskUUID: TestDiskID1, DiskPath: TestDefaultDataPath},
+		"new-disk":      {DiskPath: "/mnt/new-disk"},
+	}
+
+	s.controller.updateDiskStatusInitializedCondition(node)
+
+	recorded := types.GetCondition(node.Status.DiskStatus["recorded-disk"].Conditions, longhorn.DiskConditionTypeInitialized)
+	c.Assert(recorded.Status, Equals, longhorn.ConditionStatusTrue)
+	uninitialized := types.GetCondition(node.Status.DiskStatus["new-disk"].Conditions, longhorn.DiskConditionTypeInitialized)
+	c.Assert(uninitialized.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(uninitialized.Reason, Equals, string(longhorn.DiskConditionReasonDiskUninitialized))
+}
+
+// TestMarkAllDisksNotReadyKeepsInitialized covers longhorn/longhorn#14102: a node going down must only flip Ready and
+// Schedulable. Initialized describes the disk identity, which a reboot does not change.
+func (s *NodeControllerSuite) TestMarkAllDisksNotReadyKeepsInitialized(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonKubernetesNodeNotReady))
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {
+			DiskUUID: TestDiskID1,
+			DiskPath: TestDefaultDataPath,
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusTrue, ""),
+			},
+		},
+	}
+
+	s.controller.markAllDisksNotReadyWhenNodeNotReady(node)
+
+	conditions := node.Status.DiskStatus[TestDiskID1].Conditions
+	c.Assert(types.GetCondition(conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(types.GetCondition(conditions, longhorn.DiskConditionTypeInitialized).Status, Equals, longhorn.ConditionStatusTrue)
 }

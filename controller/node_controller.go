@@ -750,6 +750,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 		}
 	}
 
+	nc.updateDiskStatusInitializedCondition(node)
+
 	return nc.updateDiskStatusSchedulableCondition(node)
 }
 
@@ -880,6 +882,14 @@ func (nc *NodeController) updateNotReadyDiskStatusReadyCondition(node *longhorn.
 				nc.eventRecorder,
 				node,
 				corev1.EventTypeWarning)
+	}
+}
+
+// updateDiskStatusInitializedCondition sets the Initialized condition of every disk from its recorded disk UUID.
+// No event is recorded since the condition only mirrors the recorded UUID.
+func (nc *NodeController) updateDiskStatusInitializedCondition(node *longhorn.Node) {
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		types.SetDiskInitializedCondition(diskStatus, node.Name, diskName)
 	}
 }
 

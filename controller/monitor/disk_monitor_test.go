@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -224,4 +225,112 @@ func TestCollectDiskDataToleratesNilDiskStatus(t *testing.T) {
 	assert.NotPanics(func() {
 		m.collectDiskData(node)
 	})
+}
+
+const (
+	testFilesystemDiskName = "filesystem-disk"
+	testFilesystemDiskPath = "/mnt/disk"
+	testFilesystemDiskUUID = "filesystem-disk-uuid"
+)
+
+func newTestFilesystemDiskNode(recordedDiskUUID string) *longhorn.Node {
+	return &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName, Namespace: testNamespace},
+		Spec: longhorn.NodeSpec{
+			Disks: map[string]longhorn.DiskSpec{
+				testFilesystemDiskName: {
+					Type: longhorn.DiskTypeFilesystem,
+					Path: testFilesystemDiskPath,
+				},
+			},
+		},
+		Status: longhorn.NodeStatus{
+			DiskStatus: map[string]*longhorn.DiskStatus{
+				testFilesystemDiskName: {
+					Type:     longhorn.DiskTypeFilesystem,
+					DiskUUID: recordedDiskUUID,
+					DiskPath: testFilesystemDiskPath,
+				},
+			},
+		},
+	}
+}
+
+// getMissingDiskConfig returns the error the host returns when longhorn-disk.cfg is absent at the data path.
+func getMissingDiskConfig(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+	return nil, errors.New("failed to read host disk config file longhorn-disk.cfg: cannot find file /mnt/disk/longhorn-disk.cfg")
+}
+
+// TestCollectDiskDataDoesNotGenerateConfigForInitializedFilesystemDisk covers longhorn/longhorn#14102: after a
+// node reboot the manager can come up before the disk is mounted, so the data path is an empty directory on the
+// root filesystem. Generating a config there writes longhorn-disk.cfg and replicas/ to the root filesystem under a
+// new UUID, so the monitor must report the disk as not mounted instead.
+func TestCollectDiskDataDoesNotGenerateConfigForInitializedFilesystemDisk(t *testing.T) {
+	assert := require.New(t)
+
+	generateCalls := 0
+	m := newTestDiskMonitor(t, getMissingDiskConfig,
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			generateCalls++
+			return &util.DiskConfig{DiskName: diskName, DiskUUID: "new-uuid", State: string(spdkdisk.DiskStateReady)}, nil
+		},
+	)
+
+	diskInfoMap := m.collectDiskData(newTestFilesystemDiskNode(testFilesystemDiskUUID))
+
+	assert.Equal(0, generateCalls)
+	diskInfo, ok := diskInfoMap[testFilesystemDiskName]
+	assert.True(ok)
+	assert.NotNil(diskInfo.Condition)
+	assert.Equal(string(longhorn.DiskConditionReasonDiskNotMounted), diskInfo.Condition.Reason)
+	// The recorded UUID is kept, so the disk is recognized as the same disk once it is mounted.
+	assert.Equal(testFilesystemDiskUUID, diskInfo.DiskUUID)
+}
+
+// TestCollectDiskDataGeneratesConfigForUninitializedFilesystemDisk makes sure a newly added disk, which has no
+// recorded UUID yet, is still initialized by generating its disk config.
+func TestCollectDiskDataGeneratesConfigForUninitializedFilesystemDisk(t *testing.T) {
+	assert := require.New(t)
+
+	generateCalls := 0
+	m := newTestDiskMonitor(t, getMissingDiskConfig,
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			generateCalls++
+			return &util.DiskConfig{DiskName: diskName, DiskUUID: "new-uuid", State: string(spdkdisk.DiskStateReady)}, nil
+		},
+	)
+
+	diskInfoMap := m.collectDiskData(newTestFilesystemDiskNode(""))
+
+	assert.Equal(1, generateCalls)
+	diskInfo, ok := diskInfoMap[testFilesystemDiskName]
+	assert.True(ok)
+	if diskInfo.Condition != nil {
+		assert.NotEqual(string(longhorn.DiskConditionReasonDiskNotMounted), diskInfo.Condition.Reason)
+	}
+}
+
+// TestCollectDiskDataRecreatesInitializedBlockDisk guards the v2 recovery path from the filesystem-only gate: after
+// an instance manager restart the disk service no longer knows the lvstore, and the monitor has to re-create it with
+// the recorded UUID so the existing lvstore is loaded instead of a new one.
+func TestCollectDiskDataRecreatesInitializedBlockDisk(t *testing.T) {
+	assert := require.New(t)
+
+	generateCalls := 0
+	generatedUUID := ""
+	m := newTestDiskMonitor(t,
+		func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+			return nil, errors.New("cannot find disk info")
+		},
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			generateCalls++
+			generatedUUID = diskUUID
+			return &util.DiskConfig{DiskName: diskName, DiskUUID: diskUUID, State: string(spdkdisk.DiskStateReady)}, nil
+		},
+	)
+
+	m.collectDiskData(newTestBlockDiskNode())
+
+	assert.Equal(1, generateCalls)
+	assert.Equal(testBlockDiskUUID, generatedUUID)
 }

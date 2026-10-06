@@ -38,6 +38,9 @@ const (
 	DiskConditionTypeSchedulable = "Schedulable"
 	DiskConditionTypeReady       = "Ready"
 	DiskConditionTypeError       = "Error"
+	// DiskConditionTypeInitialized is True once a disk UUID is recorded for the disk. It describes the disk
+	// identity rather than its reachability, so it stays True while the node is down or the disk is not mounted.
+	DiskConditionTypeInitialized = "Initialized"
 )
 
 const (
@@ -47,6 +50,8 @@ const (
 	DiskConditionReasonDiskNotReady           = "DiskNotReady"
 	DiskConditionReasonDiskServiceUnreachable = "DiskServiceUnreachable"
 	DiskConditionReasonNodeNotReady           = "NodeNotReady"
+	DiskConditionReasonDiskNotMounted         = "DiskNotMounted"
+	DiskConditionReasonDiskUninitialized      = "DiskUninitialized"
 )
 
 const (
