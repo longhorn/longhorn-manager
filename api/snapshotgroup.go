@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -165,10 +166,41 @@ func (s *Server) SnapshotGroupPreview(rw http.ResponseWriter, req *http.Request)
 	}
 	if hooked {
 		recordHookExecutorAccess(preview.Members, s.m.VerifyHookExecutorAccess)
+		preview.Namespaces, err = describeSnapshotGroupPreviewNamespaces(preview.Members, s.m.ListVolumeHookPolicies)
+		if err != nil {
+			return errors.Wrap(err, "failed to list the volume hook policies of the member namespaces")
+		}
 	}
 	preview.Warnings = append(preview.Warnings, snapshotGroupPreviewWarnings(preview.Members)...)
 	apiContext.Write(preview)
 	return nil
+}
+
+// describeSnapshotGroupPreviewNamespaces lists the hook policies of every
+// namespace the members' PVCs live in, once per namespace, sorted by
+// namespace. A namespace without a policy is kept, with an empty list.
+func describeSnapshotGroupPreviewNamespaces(members []SnapshotGroupPreviewMember, listPolicies func(namespace string) ([]*longhorn.VolumeHookPolicy, error)) ([]SnapshotGroupPreviewNamespace, error) {
+	namespaces := []SnapshotGroupPreviewNamespace{}
+	seen := map[string]bool{}
+	for _, member := range members {
+		if member.PVCRef == nil || seen[member.PVCRef.Namespace] {
+			continue
+		}
+		namespace := member.PVCRef.Namespace
+		seen[namespace] = true
+		policies, err := listPolicies(namespace)
+		if err != nil {
+			return nil, errors.Wrapf(err, "namespace %v", namespace)
+		}
+		namespaces = append(namespaces, SnapshotGroupPreviewNamespace{
+			Namespace:    namespace,
+			HookPolicies: toVolumeHookPolicyResources(policies),
+		})
+	}
+	sort.Slice(namespaces, func(i, j int) bool {
+		return namespaces[i].Namespace < namespaces[j].Namespace
+	})
+	return namespaces, nil
 }
 
 // describeSnapshotGroupPreviewPods describes each of a member's running
