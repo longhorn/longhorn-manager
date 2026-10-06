@@ -253,7 +253,7 @@ func (s *TestSuite) TestSyncShareManagerVolumePodRecreateBackoff(c *C) {
 		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
 		lhInformers := informerFactories.LhInformerFactory.Longhorn().V1beta2()
-		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+		ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 		smc, err := NewShareManagerController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestNamespace, TestOwnerID1, "")
 		c.Assert(err, IsNil)
