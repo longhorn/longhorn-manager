@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -756,12 +757,48 @@ type SnapshotGroupPreviewPod struct {
 	MatchFailure string `json:"matchFailure,omitempty"`
 }
 
+// VolumeHookPolicyHook describes one policy hook without its commands. An
+// unnamed hook is listed under its default name, as in the group status.
+//
+// The hook's commands are deliberately left out: they are the one policy
+// field that may carry an application secret. A client that needs them reads
+// the policy with kubectl, under the namespace's own RBAC.
+type VolumeHookPolicyHook struct {
+	Name        string                   `json:"name"`
+	Operations  []longhorn.HookOperation `json:"operations,omitempty"`
+	PodSelector *metav1.LabelSelector    `json:"podSelector,omitempty"`
+	Container   string                   `json:"container,omitempty"`
+}
+
+// VolumeHookPolicy is the read-only view of a policy in the snapshot group
+// preview. Exactly one of PVCNames and PVCSelector is set, as in the policy
+// spec.
+type VolumeHookPolicy struct {
+	Name        string                 `json:"name"`
+	PVCNames    []string               `json:"pvcNames,omitempty"`
+	PVCSelector *metav1.LabelSelector  `json:"pvcSelector,omitempty"`
+	Hooks       []VolumeHookPolicyHook `json:"hooks"`
+}
+
+// SnapshotGroupPreviewNamespace lists all hook policies in one member PVC
+// namespace, including ones that match no member, so a user can pick a
+// policy to extend over an uncovered member.
+type SnapshotGroupPreviewNamespace struct {
+	Namespace string `json:"namespace"`
+	// HookPolicies is [] for a namespace with no policy, never omitted.
+	HookPolicies []VolumeHookPolicy `json:"hookPolicies"`
+}
+
 // SnapshotGroupPreviewOutput previews which volumes a snapshot group spec
 // would select, without creating the group. Members are listed in the order
 // the executor would pause them.
 type SnapshotGroupPreviewOutput struct {
 	client.Resource
 	Members []SnapshotGroupPreviewMember `json:"members"`
+	// Namespaces lists the hook policies of every member PVC namespace,
+	// sorted by namespace. It is null when the preview did not request
+	// hooks.
+	Namespaces []SnapshotGroupPreviewNamespace `json:"namespaces"`
 	// Warnings carry conditions that admission accepts but the user should
 	// know about, such as one pod mounting several member volumes.
 	Warnings []string `json:"warnings,omitempty"`
@@ -943,6 +980,9 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("volumeHookPolicyRef", longhorn.VolumeHookPolicyRef{})
 	snapshotGroupPreviewPodSchema(schemas.AddType("snapshotGroupPreviewPod", SnapshotGroupPreviewPod{}))
 	snapshotGroupPreviewMemberSchema(schemas.AddType("snapshotGroupPreviewMember", SnapshotGroupPreviewMember{}))
+	volumeHookPolicyHookSchema(schemas.AddType("volumeHookPolicyHook", VolumeHookPolicyHook{}))
+	volumeHookPolicySchema(schemas.AddType("volumeHookPolicy", VolumeHookPolicy{}))
+	snapshotGroupPreviewNamespaceSchema(schemas.AddType("snapshotGroupPreviewNamespace", SnapshotGroupPreviewNamespace{}))
 	snapshotGroupPreviewOutputSchema(schemas.AddType("snapshotGroupPreviewOutput", SnapshotGroupPreviewOutput{}))
 	snapshotGroupMemberSchema(schemas.AddType("snapshotGroupMember", SnapshotGroupMember{}))
 	hookPodStatusSchema(schemas.AddType("hookPodStatus", longhorn.HookPodStatus{}))
@@ -1297,10 +1337,53 @@ func hookStatusSchema(hook *client.Schema) {
 	hook.ResourceFields["pods"] = pods
 }
 
+func volumeHookPolicyHookSchema(hook *client.Schema) {
+	operations := hook.ResourceFields["operations"]
+	operations.Type = "array[string]"
+	operations.Nullable = true
+	hook.ResourceFields["operations"] = operations
+
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	podSelector := hook.ResourceFields["podSelector"]
+	podSelector.Type = "labelSelector"
+	podSelector.Nullable = true
+	hook.ResourceFields["podSelector"] = podSelector
+}
+
+func volumeHookPolicySchema(policy *client.Schema) {
+	pvcNames := policy.ResourceFields["pvcNames"]
+	pvcNames.Type = "array[string]"
+	pvcNames.Nullable = true
+	policy.ResourceFields["pvcNames"] = pvcNames
+
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	pvcSelector := policy.ResourceFields["pvcSelector"]
+	pvcSelector.Type = "labelSelector"
+	pvcSelector.Nullable = true
+	policy.ResourceFields["pvcSelector"] = pvcSelector
+
+	hooks := policy.ResourceFields["hooks"]
+	hooks.Type = "array[volumeHookPolicyHook]"
+	policy.ResourceFields["hooks"] = hooks
+}
+
+func snapshotGroupPreviewNamespaceSchema(namespace *client.Schema) {
+	hookPolicies := namespace.ResourceFields["hookPolicies"]
+	hookPolicies.Type = "array[volumeHookPolicy]"
+	namespace.ResourceFields["hookPolicies"] = hookPolicies
+}
+
 func snapshotGroupPreviewOutputSchema(output *client.Schema) {
 	members := output.ResourceFields["members"]
 	members.Type = "array[snapshotGroupPreviewMember]"
 	output.ResourceFields["members"] = members
+
+	namespaces := output.ResourceFields["namespaces"]
+	namespaces.Type = "array[snapshotGroupPreviewNamespace]"
+	namespaces.Nullable = true
+	output.ResourceFields["namespaces"] = namespaces
 
 	warnings := output.ResourceFields["warnings"]
 	warnings.Type = "array[string]"
@@ -2966,6 +3049,40 @@ func toSnapshotGroupCollection(snapshotGroups []*longhorn.SnapshotGroup, apiCont
 		data = append(data, toSnapshotGroupResource(snapshotGroup, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshotGroup"}}
+}
+
+// toVolumeHookPolicyResource converts a policy to its read-only API view,
+// leaving out the commands and status.
+func toVolumeHookPolicyResource(policy *longhorn.VolumeHookPolicy) *VolumeHookPolicy {
+	resource := &VolumeHookPolicy{
+		Name:        policy.Name,
+		PVCNames:    policy.Spec.PVCNames,
+		PVCSelector: policy.Spec.PVCSelector,
+		Hooks:       make([]VolumeHookPolicyHook, 0, len(policy.Spec.Hooks)),
+	}
+	for i := range policy.Spec.Hooks {
+		hook := &policy.Spec.Hooks[i]
+		resource.Hooks = append(resource.Hooks, VolumeHookPolicyHook{
+			Name:        snapshothook.HookName(hook),
+			Operations:  hook.Operations,
+			PodSelector: hook.Exec.PodSelector,
+			Container:   hook.Exec.Container,
+		})
+	}
+	return resource
+}
+
+// toVolumeHookPolicyResources converts the policies, sorted by name. The
+// result is never nil, so it serialises as [].
+func toVolumeHookPolicyResources(policies []*longhorn.VolumeHookPolicy) []VolumeHookPolicy {
+	resources := make([]VolumeHookPolicy, 0, len(policies))
+	for _, policy := range policies {
+		resources = append(resources, *toVolumeHookPolicyResource(policy))
+	}
+	sort.Slice(resources, func(i, j int) bool {
+		return resources[i].Name < resources[j].Name
+	})
+	return resources
 }
 
 func toOrphanResource(orphan *longhorn.Orphan) *Orphan {
