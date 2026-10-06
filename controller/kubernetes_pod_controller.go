@@ -459,9 +459,15 @@ var multiAttachEventMessages = []string{
 	"Waiting for detach",
 }
 
+// failedAttachVolumeEventReason is the reason of the events with these markers
+const failedAttachVolumeEventReason = "FailedAttachVolume"
+
 // isMultiAttachEvent returns true if the event reports that the volume is still
-// attached to another node.
+// attached to another node. Substring match, aggregated events start with "(combined from similar events): ".
 func isMultiAttachEvent(event *corev1.Event) bool {
+	if event.Reason != failedAttachVolumeEventReason {
+		return false
+	}
 	for _, msg := range multiAttachEventMessages {
 		if strings.Contains(event.Message, msg) {
 			return true
