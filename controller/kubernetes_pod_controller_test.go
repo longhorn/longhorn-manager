@@ -492,6 +492,7 @@ func (s *TestSuite) TestCleanupForceDeletedPodResourcesOnAnyNode(c *C) {
 // and newer ("Waiting for detach", kubernetes/kubernetes#138837) Kubernetes versions.
 func (s *TestSuite) TestCleanupForceDeletedPodResourcesMultiAttachEvent(c *C) {
 	type testCase struct {
+		eventReason  string
 		eventMessage string
 		expectDelete bool
 	}
@@ -516,10 +517,23 @@ func (s *TestSuite) TestCleanupForceDeletedPodResourcesMultiAttachEvent(c *C) {
 			eventMessage: `AttachVolume.Attach failed for volume "` + TestPVName + `" : rpc error, pod ` + TestPod1,
 			expectDelete: false,
 		},
+		"aggregated waiting for detach event": {
+			eventMessage: `(combined from similar events): Waiting for detach for volume "` + TestPVName + `" Volume is already used by pod(s) ` + TestPod1,
+			expectDelete: true,
+		},
+		"waiting for detach text in an event with another reason": {
+			eventReason:  "FailedMount",
+			eventMessage: `Waiting for detach for volume "` + TestPVName + `" Volume is already used by pod(s) ` + TestPod1,
+			expectDelete: false,
+		},
 	}
 
 	for name, tc := range testCases {
 		c.Logf("testing %v", name)
+
+		if tc.eventReason == "" {
+			tc.eventReason = "FailedAttachVolume"
+		}
 
 		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
@@ -569,7 +583,7 @@ func (s *TestSuite) TestCleanupForceDeletedPodResourcesMultiAttachEvent(c *C) {
 				Name:      TestPod2,
 				Namespace: TestNamespace,
 			},
-			Reason:  "FailedAttachVolume",
+			Reason:  tc.eventReason,
 			Type:    corev1.EventTypeWarning,
 			Message: tc.eventMessage,
 		}, metav1.CreateOptions{})
