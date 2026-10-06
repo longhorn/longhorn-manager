@@ -219,6 +219,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaZoneSoftAntiAffinity:     spec.ReplicaZoneSoftAntiAffinity,
 			ReplicaDiskSoftAntiAffinity:     spec.ReplicaDiskSoftAntiAffinity,
 			DataEngine:                      spec.DataEngine,
+			LocalProvisioningMode:           spec.LocalProvisioningMode,
 			DataLayout:                      spec.DataLayout,
 			FreezeFilesystemForSnapshot:     spec.FreezeFilesystemForSnapshot,
 			BackupTargetName:                backupTargetName,
@@ -954,8 +955,8 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 
-	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		return nil, fmt.Errorf("cannot upgrade engine for volume %v using image %v because the volume is using data engine v2", volumeName, image)
+	if types.IsDataEngineV2(v.Spec.DataEngine) || types.IsDataEngineLocal(v.Spec.DataEngine) {
+		return nil, fmt.Errorf("cannot upgrade engine for volume %v using image %v because the volume is using data engine %v", volumeName, image, v.Spec.DataEngine)
 	}
 
 	if v.Spec.Image == image {
@@ -1470,6 +1471,10 @@ func (m *VolumeManager) UpdateUpdateUblkNumberOfQueue(name string, ublkNumberOfQ
 }
 
 func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, secretNamespace, dataEngine string) error {
+	if biName == "" {
+		return nil
+	}
+
 	if secret != "" || secretNamespace != "" {
 		_, err := m.ds.GetSecretRO(secretNamespace, secret)
 		if err != nil {
@@ -1485,9 +1490,6 @@ func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, se
 		return fmt.Errorf("invalid data engine type %v", dataEngine)
 	}
 
-	if biName == "" {
-		return nil
-	}
 	bi, err := m.ds.GetBackingImageRO(biName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {

@@ -4,7 +4,7 @@ package v1beta2
 // *EngineFrontend. It replaces interface{} in the EngineClient API so that
 // callers and implementations remain type-safe at compile time.
 type DataEngineObject interface {
-	// GetDataEngine returns the data engine type string (e.g. "v1" or "v2").
+	// GetDataEngine returns the data engine type string (e.g. "v1", "v2", or "local").
 	GetDataEngine() string
 	// GetEngineName returns the engine CR name.
 	// For Engine objects this is the object's own name.

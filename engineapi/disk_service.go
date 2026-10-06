@@ -9,6 +9,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -80,8 +81,8 @@ func (s *DiskService) Close() {
 	}
 }
 
-func (s *DiskService) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*imapi.DiskInfo, error) {
-	return s.grpcClient.DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver, blockSize)
+func (s *DiskService) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64, storageLayout rpc.LVMStorageLayout) (*imapi.DiskInfo, error) {
+	return s.grpcClient.DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver, blockSize, storageLayout)
 }
 
 func (s *DiskService) DiskGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskInfo, error) {

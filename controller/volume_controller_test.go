@@ -1702,6 +1702,31 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecs(c *C) {
 	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
 }
 
+func (s *TestSuite) TestReconcileLocalVolumeActualSize(c *C) {
+	tests := []struct {
+		mode     longhorn.LocalVolumeProvisioningMode
+		expected int64
+	}{
+		{mode: "", expected: TestVolumeSize},
+		{mode: longhorn.LocalVolumeProvisioningModeThick, expected: TestVolumeSize},
+		{mode: longhorn.LocalVolumeProvisioningModeThin, expected: 0},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+	for _, test := range tests {
+		v := newVolume(TestVolumeName, 1)
+		v.Spec.DataEngine = longhorn.DataEngineTypeLocal
+		v.Spec.LocalProvisioningMode = test.mode
+
+		err := vc.reconcileVolumeSize(v, nil, nil, nil)
+		c.Assert(err, IsNil)
+		c.Assert(v.Status.ActualSize, Equals, test.expected)
+	}
+}
+
 func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgress(c *C) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
@@ -2865,6 +2890,52 @@ func (s *TestSuite) TestReconcileEngineReplicaStateV1CanRecoverFromFaultedRobust
 	c.Assert(v.Status.Robustness, Equals, longhorn.VolumeRobustnessHealthy)
 }
 
+func (s *TestSuite) TestLocalUnknownInstanceKeepsAttachedVolumeIntact(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	v.Spec.NodeID = TestNode1
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.State = longhorn.VolumeStateAttached
+	v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	e.Spec.NodeID = TestNode1
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	r.Spec.DesireState = longhorn.InstanceStateRunning
+	r.Status.CurrentState = longhorn.InstanceStateUnknown
+
+	es := map[string]*longhorn.Engine{e.Name: e}
+	rs := map[string]*longhorn.Replica{r.Name: r}
+
+	err = vc.ReconcileEngineReplicaState(v, es, rs)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.State, Equals, longhorn.VolumeStateAttached)
+	c.Assert(v.Status.Robustness, Equals, longhorn.VolumeRobustnessUnknown)
+	c.Assert(v.Status.RemountRequestedAt, Equals, "")
+	c.Assert(r.Spec.FailedAt, Equals, "")
+	c.Assert(r.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+
+	err = vc.reconcileAttachDetachStateMachine(v, e, rs, nil, false, logrus.WithField("volume", v.Name))
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.State, Equals, longhorn.VolumeStateAttached)
+	c.Assert(v.Status.CurrentNodeID, Equals, TestNode1)
+	c.Assert(e.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(r.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+}
+
 func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensBalance(c *C) {
 	const testNode3 = "test-node-name-3"
 
@@ -3896,4 +3967,107 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			}
 		}
 	}
+}
+
+func (s *TestSuite) TestLocalVolumeNeverReplacesOrEvictsReplica(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	// A schedulable node with an LVM disk and the provisioning-mode setting
+	// the scheduler reads for LVM disks. Without them the unguarded paths
+	// would fail softly at scheduling and the test could not tell the
+	// difference; with them the unguarded code reuses the failed replica or
+	// creates a second one, which the assertions below catch.
+	nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	diskSpec := node.Spec.Disks[TestDiskID1]
+	diskSpec.Type = longhorn.DiskTypeLVM
+	node.Spec.Disks[TestDiskID1] = diskSpec
+	node.Status.DiskStatus[TestDiskID1].Type = longhorn.DiskTypeLVM
+	n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(nIndexer.Add(n), IsNil)
+	knode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(knIndexer.Add(kn), IsNil)
+	for _, setting := range []*longhorn.Setting{
+		newSetting(string(types.SettingNameLocalDataEngineProvisioningMode), string(longhorn.LocalVolumeProvisioningModeThick)),
+		newSetting(string(types.SettingNameDefaultEngineImage), TestEngineImage),
+		newSetting(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage),
+	} {
+		st, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(sIndexer.Add(st), IsNil)
+	}
+	// The scheduler also wants a running local instance manager and a ready
+	// engine image on the node.
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), newInstanceManager(
+		TestInstanceManagerName+"-"+TestNode1, longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1,
+		map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{},
+		longhorn.DataEngineTypeLocal, TestInstanceManagerImage, false), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(imIndexer.Add(im), IsNil)
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+	engineImage.Status.NodeDeploymentMap[TestNode1] = true
+	ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), engineImage, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(eiIndexer.Add(ei), IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	v.Spec.NodeID = TestNode1
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.State = longhorn.VolumeStateAttached
+	v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	e.Spec.NodeID = TestNode1
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+
+	// The only replica has failed and asks for eviction: in v1 both would
+	// schedule a replacement. A local replica is the data itself, so neither
+	// path may create another one.
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	r.Spec.DesireState = longhorn.InstanceStateRunning
+	r.Spec.HealthyAt = getTestNow()
+	r.Spec.LastHealthyAt = r.Spec.HealthyAt
+	r.Spec.FailedAt = getTestNow()
+	r.Spec.EvictionRequested = true
+	r.Status.CurrentState = longhorn.InstanceStateError
+
+	rs := map[string]*longhorn.Replica{r.Name: r}
+
+	failedAt := r.Spec.FailedAt
+	healthyAt := r.Spec.HealthyAt
+
+	err = vc.replenishReplicas(v, e, rs, "")
+	c.Assert(err, IsNil)
+	err = vc.EvictReplicas(v, e, rs, 0)
+	c.Assert(err, IsNil)
+
+	// Neither reused as a rebuilding replica ...
+	c.Assert(r.Spec.FailedAt, Equals, failedAt)
+	c.Assert(r.Spec.HealthyAt, Equals, healthyAt)
+	// ... nor replaced by a second one.
+	c.Assert(len(rs), Equals, 1)
+	_, exists := rs[r.Name]
+	c.Assert(exists, Equals, true)
+	replicas, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(len(replicas.Items), Equals, 0)
 }
