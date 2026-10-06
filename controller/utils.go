@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -330,4 +331,24 @@ func getContainerArgValue(args []string, flag string) string {
 		}
 	}
 	return ""
+}
+
+func isMigrationBlockedByEngine(e *longhorn.Engine) (blocked bool, reason string) {
+	var pending []string
+	for replicaName := range e.Spec.ReplicaAddressMap {
+		mode := e.Status.ReplicaModeMap[replicaName]
+		if mode == "" || mode == longhorn.ReplicaModeWO {
+			pending = append(pending, replicaName)
+		}
+	}
+	if len(pending) > 0 {
+		sort.Strings(pending)
+		return true, fmt.Sprintf("replicas %v of engine %v are pending or in rebuilding", pending, e.Name)
+	}
+	for _, status := range e.Status.PurgeStatus {
+		if status.IsPurging {
+			return true, fmt.Sprintf("snapshot purge is in progress for engine %v", e.Name)
+		}
+	}
+	return false, ""
 }
