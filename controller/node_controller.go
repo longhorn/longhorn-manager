@@ -751,6 +751,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 		}
 	}
 
+	nc.updateDiskStatusInitializedCondition(node)
+
 	return nc.updateDiskStatusSchedulableCondition(node)
 }
 
@@ -881,6 +883,24 @@ func (nc *NodeController) updateNotReadyDiskStatusReadyCondition(node *longhorn.
 				nc.eventRecorder,
 				node,
 				corev1.EventTypeWarning)
+	}
+}
+
+// updateDiskStatusInitializedCondition sets the Initialized condition of every disk from its recorded disk UUID.
+// It is derived from the recorded UUID rather than from what is currently visible at the disk path, so a node reboot
+// or an unmounted disk only affects Ready. No event is recorded since the condition only mirrors the recorded UUID.
+func (nc *NodeController) updateDiskStatusInitializedCondition(node *longhorn.Node) {
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		condValue := longhorn.ConditionStatusTrue
+		condReason := ""
+		condMessage := fmt.Sprintf("Disk %v(%v) on node %v is initialized with disk UUID %v", diskName, diskStatus.DiskPath, node.Name, diskStatus.DiskUUID)
+		if diskStatus.DiskUUID == "" {
+			condValue = longhorn.ConditionStatusFalse
+			condReason = string(longhorn.DiskConditionReasonDiskUninitialized)
+			condMessage = fmt.Sprintf("Disk %v(%v) on node %v has no disk UUID recorded yet", diskName, diskStatus.DiskPath, node.Name)
+		}
+		diskStatus.Conditions = types.SetCondition(diskStatus.Conditions,
+			longhorn.DiskConditionTypeInitialized, condValue, condReason, condMessage)
 	}
 }
 
