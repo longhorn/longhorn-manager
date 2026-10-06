@@ -770,11 +770,16 @@ type VolumeHookPolicyHook struct {
 	Container   string                   `json:"container,omitempty"`
 }
 
-// VolumeHookPolicy is the read-only view of a policy in the snapshot group
-// preview. Exactly one of PVCNames and PVCSelector is set, as in the policy
-// spec.
+// VolumeHookPolicy is the read-only view of a policy, served by the
+// volumehookpolicies collection and embedded in the snapshot group preview.
+// Exactly one of PVCNames and PVCSelector is set, as in the policy spec.
 type VolumeHookPolicy struct {
-	Name        string                 `json:"name"`
+	client.Resource
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	// Generation is what a group's hookPolicyRef records, so a client can
+	// tell whether the policy changed since a group ran.
+	Generation  int64                  `json:"generation"`
 	PVCNames    []string               `json:"pvcNames,omitempty"`
 	PVCSelector *metav1.LabelSelector  `json:"pvcSelector,omitempty"`
 	Hooks       []VolumeHookPolicyHook `json:"hooks"`
@@ -1352,6 +1357,9 @@ func volumeHookPolicyHookSchema(hook *client.Schema) {
 }
 
 func volumeHookPolicySchema(policy *client.Schema) {
+	policy.CollectionMethods = []string{"GET"}
+	policy.ResourceMethods = []string{"GET"}
+
 	pvcNames := policy.ResourceFields["pvcNames"]
 	pvcNames.Type = "array[string]"
 	pvcNames.Nullable = true
@@ -3052,10 +3060,17 @@ func toSnapshotGroupCollection(snapshotGroups []*longhorn.SnapshotGroup, apiCont
 }
 
 // toVolumeHookPolicyResource converts a policy to its read-only API view,
-// leaving out the commands and status.
+// leaving out the commands and status. The resource id is namespace/name
+// because the GET URL identifies a policy by both namespace and name.
 func toVolumeHookPolicyResource(policy *longhorn.VolumeHookPolicy) *VolumeHookPolicy {
 	resource := &VolumeHookPolicy{
+		Resource: client.Resource{
+			Id:   policy.Namespace + "/" + policy.Name,
+			Type: "volumeHookPolicy",
+		},
 		Name:        policy.Name,
+		Namespace:   policy.Namespace,
+		Generation:  policy.Generation,
 		PVCNames:    policy.Spec.PVCNames,
 		PVCSelector: policy.Spec.PVCSelector,
 		Hooks:       make([]VolumeHookPolicyHook, 0, len(policy.Spec.Hooks)),
@@ -3072,17 +3087,30 @@ func toVolumeHookPolicyResource(policy *longhorn.VolumeHookPolicy) *VolumeHookPo
 	return resource
 }
 
-// toVolumeHookPolicyResources converts the policies, sorted by name. The
-// result is never nil, so it serialises as [].
+// toVolumeHookPolicyResources converts the policies, sorted by namespace,
+// then name, so the one-namespace and cluster-wide lists share one order.
+// The result is never nil, so it serialises as [].
 func toVolumeHookPolicyResources(policies []*longhorn.VolumeHookPolicy) []VolumeHookPolicy {
 	resources := make([]VolumeHookPolicy, 0, len(policies))
 	for _, policy := range policies {
 		resources = append(resources, *toVolumeHookPolicyResource(policy))
 	}
 	sort.Slice(resources, func(i, j int) bool {
+		if resources[i].Namespace != resources[j].Namespace {
+			return resources[i].Namespace < resources[j].Namespace
+		}
 		return resources[i].Name < resources[j].Name
 	})
 	return resources
+}
+
+func toVolumeHookPolicyCollection(policies []*longhorn.VolumeHookPolicy) *client.GenericCollection {
+	resources := toVolumeHookPolicyResources(policies)
+	data := make([]interface{}, 0, len(resources))
+	for i := range resources {
+		data = append(data, &resources[i])
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "volumeHookPolicy"}}
 }
 
 func toOrphanResource(orphan *longhorn.Orphan) *Orphan {

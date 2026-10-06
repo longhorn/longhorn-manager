@@ -217,6 +217,9 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("DELETE").Path("/v1/snapshotgroups/{name}").Handler(f(schemas, s.SnapshotGroupDelete))
 	r.Methods("POST").Path("/v1/snapshotgroups").Handler(f(schemas, s.SnapshotGroupAction))
 
+	r.Methods("GET").Path("/v1/volumehookpolicies").Handler(f(schemas, s.VolumeHookPolicyList))
+	r.Methods("GET").Path("/v1/volumehookpolicies/{namespace}/{name}").Handler(f(schemas, s.VolumeHookPolicyGet))
+
 	r.Methods("GET").Path("/v1/orphans").Handler(f(schemas, s.OrphanList))
 	r.Methods("GET").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanGet))
 	r.Methods("DELETE").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanDelete))
@@ -261,6 +264,10 @@ func NewRouter(s *Server) *mux.Router {
 	snapshotGroupListStream := NewStreamHandlerFunc("snapshotgroups", s.wsc.NewWatcher("snapshotGroup"), s.snapshotGroupList)
 	r.Path("/v1/ws/snapshotgroups").Handler(f(schemas, snapshotGroupListStream))
 	r.Path("/v1/ws/{period}/snapshotgroups").Handler(f(schemas, snapshotGroupListStream))
+
+	volumeHookPolicyListStream := NewStreamHandlerFunc("volumehookpolicies", s.wsc.NewWatcher("volumeHookPolicy"), s.volumeHookPolicyListAll)
+	r.Path("/v1/ws/volumehookpolicies").Handler(f(schemas, volumeHookPolicyListStream))
+	r.Path("/v1/ws/{period}/volumehookpolicies").Handler(f(schemas, volumeHookPolicyListStream))
 
 	orphanListStream := NewStreamHandlerFunc("orphans", s.wsc.NewWatcher("orphan"), s.orphanList)
 	r.Path("/v1/ws/orphans").Handler(f(schemas, orphanListStream))

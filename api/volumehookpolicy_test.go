@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/rancher/go-rancher/client"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -17,7 +19,7 @@ var (
 
 	// A names policy with a single unnamed hook.
 	testHookPolicyPG = &longhorn.VolumeHookPolicy{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "pg"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "pg", Generation: 2},
 		Spec: longhorn.VolumeHookPolicySpec{
 			PVCNames: []string{"data-pg-0", "data-pg-1"},
 			Hooks: []longhorn.VolumeHookPolicyHook{{
@@ -27,7 +29,7 @@ var (
 	}
 	// A selector policy with two named hooks.
 	testHookPolicyMongo = &longhorn.VolumeHookPolicy{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "mongo"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "mongo", Generation: 5},
 		Spec: longhorn.VolumeHookPolicySpec{
 			PVCSelector: testHookPolicyPVCSelector,
 			Hooks: []longhorn.VolumeHookPolicyHook{
@@ -40,13 +42,19 @@ var (
 
 func TestToVolumeHookPolicyResource(t *testing.T) {
 	assert.Equal(t, &VolumeHookPolicy{
-		Name:     "pg",
-		PVCNames: []string{"data-pg-0", "data-pg-1"},
-		Hooks:    []VolumeHookPolicyHook{{Name: longhorn.VolumeHookPolicyDefaultHookName, Container: "postgres"}},
+		Resource:   client.Resource{Id: "app/pg", Type: "volumeHookPolicy"},
+		Name:       "pg",
+		Namespace:  "app",
+		Generation: 2,
+		PVCNames:   []string{"data-pg-0", "data-pg-1"},
+		Hooks:      []VolumeHookPolicyHook{{Name: longhorn.VolumeHookPolicyDefaultHookName, Container: "postgres"}},
 	}, toVolumeHookPolicyResource(testHookPolicyPG))
 
 	assert.Equal(t, &VolumeHookPolicy{
+		Resource:    client.Resource{Id: "app/mongo", Type: "volumeHookPolicy"},
 		Name:        "mongo",
+		Namespace:   "app",
+		Generation:  5,
 		PVCSelector: testHookPolicyPVCSelector,
 		Hooks: []VolumeHookPolicyHook{
 			{Name: "freeze", Operations: []longhorn.HookOperation{longhorn.HookOperationBackup}, PodSelector: testHookPolicyPodSelector},
@@ -82,7 +90,23 @@ func TestToVolumeHookPolicyResources(t *testing.T) {
 		*toVolumeHookPolicyResource(testHookPolicyPG),
 	}, toVolumeHookPolicyResources([]*longhorn.VolumeHookPolicy{testHookPolicyPG, testHookPolicyMongo}))
 
+	// The cluster-wide list orders by namespace first, so two policies with
+	// the same name in different namespaces have one fixed relative order.
+	paymentsPG := testHookPolicyPG.DeepCopy()
+	paymentsPG.Namespace = "payments"
+	assert.Equal(t, []VolumeHookPolicy{
+		*toVolumeHookPolicyResource(testHookPolicyMongo),
+		*toVolumeHookPolicyResource(testHookPolicyPG),
+		*toVolumeHookPolicyResource(paymentsPG),
+	}, toVolumeHookPolicyResources([]*longhorn.VolumeHookPolicy{paymentsPG, testHookPolicyPG, testHookPolicyMongo}))
+
 	empty := toVolumeHookPolicyResources(nil)
 	assert.NotNil(t, empty)
 	assert.Empty(t, empty)
+}
+
+func TestToVolumeHookPolicyCollection(t *testing.T) {
+	collection := toVolumeHookPolicyCollection([]*longhorn.VolumeHookPolicy{testHookPolicyPG})
+	assert.Equal(t, "volumeHookPolicy", collection.ResourceType)
+	assert.Equal(t, []interface{}{toVolumeHookPolicyResource(testHookPolicyPG)}, collection.Data)
 }
