@@ -3417,3 +3417,50 @@ func (s *NodeControllerSuite) TestSyncInstanceManagersKeepsV2IMOnOtherNodeDuring
 	c.Assert(instanceManagers.Items, HasLen, 1)
 	c.Assert(instanceManagers.Items[0].Name, Equals, oldIM.Name)
 }
+
+// TestSyncDiskStatusKeepsUnmountedDiskUUID covers longhorn/longhorn#14102: after a node reboot the disk may not be
+// mounted yet. The disk must keep its recorded UUID, so only Ready reports the problem and the disk is recognized as
+// the same disk once it is mounted.
+func (s *NodeControllerSuite) TestSyncDiskStatusKeepsUnmountedDiskUUID(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{
+		TestDiskID1: {Type: longhorn.DiskTypeFilesystem, Path: TestDefaultDataPath, AllowScheduling: true},
+	}
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {Type: longhorn.DiskTypeFilesystem, DiskUUID: TestDiskID1, DiskPath: TestDefaultDataPath},
+	}
+	collected := map[string]*monitor.CollectedDiskInfo{
+		TestDiskID1: monitor.NewDiskInfo(TestDiskID1, TestDiskID1, TestDefaultDataPath, longhorn.DiskDriverNone, false, nil,
+			map[string]string{}, TestInstanceManagerName, string(longhorn.DiskConditionReasonDiskFilesystemChanged), "disk config file not found"),
+	}
+
+	err := s.controller.syncDiskStatus(node, collected)
+	c.Assert(err, IsNil)
+
+	diskStatus := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(diskStatus.DiskUUID, Equals, TestDiskID1)
+	ready := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady)
+	c.Assert(ready.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(ready.Reason, Equals, string(longhorn.DiskConditionReasonDiskFilesystemChanged))
+}
+
+// TestMarkAllDisksNotReadyKeepsDiskUUID covers longhorn/longhorn#14102: a node going down must only flip Ready and
+// Schedulable. The recorded disk UUID identifies the disk and a reboot does not change it.
+func (s *NodeControllerSuite) TestMarkAllDisksNotReadyKeepsDiskUUID(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonKubernetesNodeNotReady))
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {
+			DiskUUID: TestDiskID1,
+			DiskPath: TestDefaultDataPath,
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+			},
+		},
+	}
+
+	s.controller.markAllDisksNotReadyWhenNodeNotReady(node)
+
+	diskStatus := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(diskStatus.DiskUUID, Equals, TestDiskID1)
+}
