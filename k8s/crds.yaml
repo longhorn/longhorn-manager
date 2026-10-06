@@ -3523,6 +3523,27 @@ spec:
                 type: string
               ip:
                 type: string
+              lastRebuildStatistics:
+                description: LastRebuildStatistics records the number of snapshots
+                  rebuilt by each rebuild method in the last successful rebuild.
+                nullable: true
+                properties:
+                  deltaRebuildSnapshotCount:
+                    description: The number of snapshots rebuilt by reusing the existing
+                      snapshot data and transferring the differences only.
+                    type: integer
+                  fastRebuildSnapshotCount:
+                    description: The number of snapshots rebuilt by skipping the data
+                      transfer since the existing snapshot is verified by checksum.
+                    type: integer
+                  fullRebuildSnapshotCount:
+                    description: The number of snapshots rebuilt by transferring the
+                      whole snapshot data.
+                    type: integer
+                  rebuiltAt:
+                    description: The time when the last successful rebuild completed.
+                    type: string
+                type: object
               logFetched:
                 type: boolean
               ownerID:
