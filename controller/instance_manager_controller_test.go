@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/ptr"
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
@@ -878,7 +879,7 @@ func (s *TestSuite) TestNodeHasEnoughHugepageTotalCapacity(c *C) {
 
 func (s *TestSuite) TestResolveCPUIsolationEnabled(c *C) {
 	type testCase struct {
-		imOverride       string
+		nodeOverride     *bool
 		interruptMode    string
 		isolationSetting string
 		expected         bool
@@ -900,20 +901,20 @@ func (s *TestSuite) TestResolveCPUIsolationEnabled(c *C) {
 			isolationSetting: longhorn.TrueValue,
 			expected:         false,
 		},
-		"interrupt mode wins over the instance manager override": {
-			imOverride:       longhorn.TrueValue,
+		"interrupt mode wins over the node override": {
+			nodeOverride:     ptr.To(true),
 			interruptMode:    longhorn.TrueValue,
 			isolationSetting: longhorn.TrueValue,
 			expected:         false,
 		},
-		"instance manager override wins over the isolation setting in polling mode": {
-			imOverride:       longhorn.FalseValue,
+		"node override wins over the isolation setting in polling mode": {
+			nodeOverride:     ptr.To(false),
 			interruptMode:    longhorn.FalseValue,
 			isolationSetting: longhorn.TrueValue,
 			expected:         false,
 		},
-		"instance manager override enables isolation in polling mode": {
-			imOverride:       longhorn.TrueValue,
+		"node override enables isolation in polling mode": {
+			nodeOverride:     ptr.To(true),
 			interruptMode:    longhorn.FalseValue,
 			isolationSetting: longhorn.FalseValue,
 			expected:         true,
@@ -956,7 +957,13 @@ func (s *TestSuite) TestResolveCPUIsolationEnabled(c *C) {
 			TestInstanceManagerImage,
 			false,
 		)
-		im.Spec.DataEngineSpec.V2.CPUIsolationEnabled = tc.imOverride
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		if tc.nodeOverride != nil {
+			lhNode.Spec.DataEngineResources = &longhorn.NodeDataEngineResources{
+				V2: &longhorn.NodeV2DataEngineResources{CPUIsolationEnabled: tc.nodeOverride},
+			}
+		}
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(lhNode), IsNil)
 
 		enabled, err := imc.resolveCPUIsolationEnabled(im)
 		c.Assert(err, IsNil)

@@ -237,6 +237,9 @@ type NodeV2DataEngineResources struct {
 	// Overrides the data-engine-cpu-mask setting for this node (static CPU mask path only).
 	// +optional
 	CPUMask *string `json:"cpuMask,omitempty"`
+	// Overrides the data-engine-cpu-isolation-enabled setting for this node. Ignored in interrupt mode.
+	// +optional
+	CPUIsolationEnabled *bool `json:"cpuIsolationEnabled,omitempty"`
 	// Overrides the data-engine-memory-size setting for this node.
 	// +optional
 	MemorySizeMiB *int64 `json:"memorySizeMiB,omitempty"`

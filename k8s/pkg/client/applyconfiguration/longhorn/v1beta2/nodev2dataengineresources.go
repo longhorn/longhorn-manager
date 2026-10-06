@@ -25,6 +25,8 @@ type NodeV2DataEngineResourcesApplyConfiguration struct {
 	NumberOfCPUCores *int64 `json:"numberOfCPUCores,omitempty"`
 	// Overrides the data-engine-cpu-mask setting for this node (static CPU mask path only).
 	CPUMask *string `json:"cpuMask,omitempty"`
+	// Overrides the data-engine-cpu-isolation-enabled setting for this node. Ignored in interrupt mode.
+	CPUIsolationEnabled *bool `json:"cpuIsolationEnabled,omitempty"`
 	// Overrides the data-engine-memory-size setting for this node.
 	MemorySizeMiB *int64 `json:"memorySizeMiB,omitempty"`
 	// Overrides the data-engine-hugepage-enabled setting for this node.
@@ -54,6 +56,14 @@ func (b *NodeV2DataEngineResourcesApplyConfiguration) WithNumberOfCPUCores(value
 // If called multiple times, the CPUMask field is set to the value of the last call.
 func (b *NodeV2DataEngineResourcesApplyConfiguration) WithCPUMask(value string) *NodeV2DataEngineResourcesApplyConfiguration {
 	b.CPUMask = &value
+	return b
+}
+
+// WithCPUIsolationEnabled sets the CPUIsolationEnabled field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CPUIsolationEnabled field is set to the value of the last call.
+func (b *NodeV2DataEngineResourcesApplyConfiguration) WithCPUIsolationEnabled(value bool) *NodeV2DataEngineResourcesApplyConfiguration {
+	b.CPUIsolationEnabled = &value
 	return b
 }
 

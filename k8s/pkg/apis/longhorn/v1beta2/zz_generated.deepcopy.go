@@ -2298,6 +2298,11 @@ func (in *NodeV2DataEngineResources) DeepCopyInto(out *NodeV2DataEngineResources
 		*out = new(string)
 		**out = **in
 	}
+	if in.CPUIsolationEnabled != nil {
+		in, out := &in.CPUIsolationEnabled, &out.CPUIsolationEnabled
+		*out = new(bool)
+		**out = **in
+	}
 	if in.MemorySizeMiB != nil {
 		in, out := &in.MemorySizeMiB, &out.MemorySizeMiB
 		*out = new(int64)

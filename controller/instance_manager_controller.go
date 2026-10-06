@@ -732,10 +732,6 @@ func (imc *InstanceManagerController) isDateEngineCPUMaskCoreNumberApplied(im *l
 		return im.Status.DataEngineStatus.V2.CPUCoreNumber == spdkCoreNumber, nil
 	}
 
-	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
-		return im.Spec.DataEngineSpec.V2.CPUMask == im.Status.DataEngineStatus.V2.CPUMask, nil
-	}
-
 	value, err := imc.ds.GetNodeEffectiveCPUMask(im.Spec.DataEngine, im.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameDataEngineCPUMask)
@@ -1178,8 +1174,7 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 //  1. Interrupt mode: CPU isolation only protects busy-polling SPDK reactors from
 //     being preempted, so it is disabled whenever the SPDK target runs in
 //     interrupt mode, regardless of any other input.
-//  2. The per-IM Spec.DataEngineSpec.V2.CPUIsolationEnabled field:
-//     "true" -> enabled, "false" -> disabled, "" -> fall through.
+//  2. The node's Spec.DataEngineResources.V2.CPUIsolationEnabled field.
 //  3. The cluster-wide data-engine-cpu-isolation-enabled setting.
 func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.InstanceManager) (bool, error) {
 	interruptMode, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, im.Spec.DataEngine)
@@ -1190,18 +1185,7 @@ func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.In
 		return false, nil
 	}
 
-	switch im.Spec.DataEngineSpec.V2.CPUIsolationEnabled {
-	case longhorn.TrueValue:
-		return true, nil
-	case longhorn.FalseValue:
-		return false, nil
-	}
-
-	val, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, im.Spec.DataEngine)
-	if err != nil {
-		return false, err
-	}
-	return val == longhorn.TrueValue, nil
+	return imc.ds.GetNodeEffectiveSettingAsBoolByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, im.Spec.DataEngine, im.Spec.NodeID)
 }
 
 // isSettingCPUIsolationEnabledSynced returns true if the effective CPU-isolation
@@ -2186,17 +2170,14 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		// CPU mask is required for SPDK.
 		cpuMask := ""
 		if !dynamicCPUPinningEnabled {
-			cpuMask = im.Spec.DataEngineSpec.V2.CPUMask
-			if cpuMask == "" {
-				value, err := imc.ds.GetNodeEffectiveCPUMask(dataEngine, im.Spec.NodeID)
-				if err != nil {
-					return nil, err
-				}
+			value, err := imc.ds.GetNodeEffectiveCPUMask(dataEngine, im.Spec.NodeID)
+			if err != nil {
+				return nil, err
+			}
 
-				cpuMask = value
-				if cpuMask == "" {
-					return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
-				}
+			cpuMask = value
+			if cpuMask == "" {
+				return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
 			}
 		}
 		// When CPU-manager-based pinning is enabled, SPDK CPUs are determined at runtime inside the IM pod (cpuMask may be empty here).

@@ -56,13 +56,22 @@ func (s *DataStore) GetNodeEffectiveSettingAsIntByDataEngine(settingName types.S
 }
 
 func (s *DataStore) GetNodeEffectiveSettingAsBoolByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType, nodeName string) (bool, error) {
-	if types.IsDataEngineV2(dataEngine) && settingName == types.SettingNameDataEngineHugepageEnabled {
+	if types.IsDataEngineV2(dataEngine) {
 		resources, err := s.getNodeV2DataEngineResources(nodeName)
 		if err != nil {
 			return false, err
 		}
-		if resources != nil && resources.HugepageEnabled != nil {
-			return *resources.HugepageEnabled, nil
+		if resources != nil {
+			switch settingName {
+			case types.SettingNameDataEngineHugepageEnabled:
+				if resources.HugepageEnabled != nil {
+					return *resources.HugepageEnabled, nil
+				}
+			case types.SettingNameDataEngineCPUIsolationEnabled:
+				if resources.CPUIsolationEnabled != nil {
+					return *resources.CPUIsolationEnabled, nil
+				}
+			}
 		}
 	}
 	return s.GetSettingAsBoolByDataEngine(settingName, dataEngine)
