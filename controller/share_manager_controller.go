@@ -117,6 +117,16 @@ func NewShareManagerController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
+	// the share manager is started when the volume attachment gets a CSI attacher ticket,
+	// so react to the first ticket right away instead of waiting for the next resync
+	if _, err = ds.LHVolumeAttachmentInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueShareManagerForNewVolumeAttachment,
+		UpdateFunc: c.enqueueShareManagerForUpdatedVolumeAttachment,
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.LHVolumeAttachmentInformer.HasSynced)
+
 	// we are only interested in pods for which we are responsible for managing
 	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isShareManagerPod,
@@ -178,6 +188,35 @@ func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 		c.queue.Add(key)
 		return
 	}
+}
+
+func (c *ShareManagerController) enqueueShareManagerForNewVolumeAttachment(obj interface{}) {
+	if hasCSIAttacherTicket(obj) {
+		c.enqueueShareManagerForVolumeAttachment(obj)
+	}
+}
+
+func (c *ShareManagerController) enqueueShareManagerForUpdatedVolumeAttachment(old, cur interface{}) {
+	// stopping the share manager is left to the existing triggers, only the first CSI attacher ticket is handled here
+	if !hasCSIAttacherTicket(old) && hasCSIAttacherTicket(cur) {
+		c.enqueueShareManagerForVolumeAttachment(cur)
+	}
+}
+
+func (c *ShareManagerController) enqueueShareManagerForVolumeAttachment(obj interface{}) {
+	va, ok := obj.(*longhorn.VolumeAttachment)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+		return
+	}
+
+	// the share manager has the same name as its volume; for volumes without a share manager the sync is a no-op
+	c.queue.Add(va.Namespace + "/" + va.Spec.Volume)
+}
+
+func hasCSIAttacherTicket(obj interface{}) bool {
+	va, ok := obj.(*longhorn.VolumeAttachment)
+	return ok && hasRemainingCSIAttacherTicket(va)
 }
 
 func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
