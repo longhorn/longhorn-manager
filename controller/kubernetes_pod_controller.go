@@ -119,12 +119,14 @@ func (kc *KubernetesPodController) processNextWorkItem() bool {
 		return false
 	}
 	defer kc.queue.Done(key)
+	// the state the sync works on, the delete handler may store a newer one meanwhile
+	deletedPod, _ := kc.forceDeletedPods.Load(key)
 	err := kc.syncHandler(key.(string))
-	kc.handleErr(err, key)
+	kc.handleErr(err, key, deletedPod)
 	return true
 }
 
-func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
+func (kc *KubernetesPodController) handleErr(err error, key, deletedPod interface{}) {
 	if err == nil {
 		kc.queue.Forget(key)
 		return
@@ -139,7 +141,7 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 
 	handleReconcileErrorLogging(log, err, "Dropping Longhorn kubernetes pod out of the queue")
 	kc.queue.Forget(key)
-	kc.forceDeletedPods.Delete(key)
+	kc.forceDeletedPods.CompareAndDelete(key, deletedPod)
 	utilruntime.HandleError(err)
 }
 
@@ -377,7 +379,7 @@ func isForceDeletedPod(pod *corev1.Pod) bool {
 }
 
 // cleanupDeletedForceDeletedPod runs the cleanup for a force-deleted pod that is gone
-// from the informer cache or replaced by a pod with the same name.
+// from the informer cache or replaced by a pod with the same name on another node.
 func (kc *KubernetesPodController) cleanupDeletedForceDeletedPod(key string, pod *corev1.Pod) error {
 	obj, ok := kc.forceDeletedPods.Load(key)
 	if !ok {
@@ -385,7 +387,13 @@ func (kc *KubernetesPodController) cleanupDeletedForceDeletedPod(key string, pod
 	}
 
 	deletedPod := obj.(*corev1.Pod)
-	if pod == nil || pod.UID != deletedPod.UID {
+	// The node of a replacement pod is unknown until it is scheduled, and its update re-enqueues the key.
+	if pod != nil && pod.UID != deletedPod.UID && pod.Spec.NodeName == "" {
+		return nil
+	}
+
+	// A replacement pod on the same node uses that node's VolumeAttachment now.
+	if pod == nil || (pod.UID != deletedPod.UID && pod.Spec.NodeName != deletedPod.Spec.NodeName) {
 		if err := kc.cleanupForceDeletedPodResources(deletedPod); err != nil {
 			return err
 		}
@@ -812,6 +820,12 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	// a pod with a stored force-deleted pod state under its key, e.g. a replacement pod getting scheduled
+	if _, ok := kc.forceDeletedPods.Load(key); ok {
+		kc.queue.Add(key)
 		return
 	}
 
