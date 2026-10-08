@@ -1,13 +1,16 @@
 package volumehookpolicy
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 // validPolicy returns a two-hook policy that passes every check. Cases
@@ -190,4 +193,74 @@ func TestVolumeHookPolicyValidatorRejectsWrongType(t *testing.T) {
 	v := &volumeHookPolicyValidator{}
 	assert.Error(t, v.Create(nil, &longhorn.SnapshotGroup{}))
 	assert.Error(t, v.Update(nil, &longhorn.VolumeHookPolicy{}, &longhorn.SnapshotGroup{}))
+	assert.Error(t, v.Delete(nil, &longhorn.SnapshotGroup{}))
+}
+
+func TestVolumeHookPolicyValidatorDelete(t *testing.T) {
+	policy := validPolicy()
+	ref := &longhorn.VolumeHookPolicyRef{Namespace: policy.Namespace, Name: policy.Name, Generation: 1}
+	otherRef := &longhorn.VolumeHookPolicyRef{Namespace: policy.Namespace, Name: "other", Generation: 1}
+
+	// hookedGroup returns a hooked group in the given phase whose single
+	// member was stamped with ref and whose paused pod is in podPhase.
+	hookedGroup := func(name string, phase longhorn.SnapshotGroupPhase, ref *longhorn.VolumeHookPolicyRef, podPhase longhorn.HookPhase) *longhorn.SnapshotGroup {
+		return &longhorn.SnapshotGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec: longhorn.SnapshotGroupSpec{
+				Hooks:   longhorn.SnapshotGroupHooksCommand,
+				Members: []longhorn.SnapshotGroupMember{{VolumeName: "vol", SnapshotName: name + "-00000001", HookPolicyRef: ref}},
+			},
+			Status: longhorn.SnapshotGroupStatus{
+				Phase: phase,
+				Hooks: []longhorn.HookStatus{{
+					SnapshotName: name + "-00000001",
+					Pods:         []longhorn.HookPodStatus{{Name: "db-0", Phase: podPhase}},
+				}},
+			},
+		}
+	}
+	withGroups := func(groups ...*longhorn.SnapshotGroup) *volumeHookPolicyValidator {
+		return &volumeHookPolicyValidator{listSnapshotGroups: func() ([]*longhorn.SnapshotGroup, error) { return groups, nil }}
+	}
+
+	t.Run("no referencing group admits the delete", func(t *testing.T) {
+		v := withGroups(hookedGroup("elsewhere", longhorn.SnapshotGroupPhaseInProgress, otherRef, longhorn.HookPhasePreDone))
+		assert.NoError(t, v.Delete(nil, policy))
+	})
+
+	t.Run("an in-progress group still referencing the policy refuses the delete, naming it", func(t *testing.T) {
+		v := withGroups(
+			hookedGroup("nightly", longhorn.SnapshotGroupPhaseInProgress, ref, longhorn.HookPhasePreDone),
+			hookedGroup("adhoc", longhorn.SnapshotGroupPhaseRunningPreHooks, ref, longhorn.HookPhasePreRunning),
+		)
+		err := v.Delete(nil, policy)
+		require.Error(t, err)
+		assert.Equal(t, int32(422), err.(werror.AdmitError).AsResult().Code)
+		assert.Contains(t, err.Error(), "app/analytics-db")
+		assert.Contains(t, err.Error(), "adhoc, nightly")
+	})
+
+	t.Run("a Ready group whose pod is not yet released still holds the policy", func(t *testing.T) {
+		v := withGroups(hookedGroup("nightly", longhorn.SnapshotGroupPhaseReady, ref, longhorn.HookPhasePreDone))
+		assert.Error(t, v.Delete(nil, policy))
+	})
+
+	t.Run("released, failed-and-released, and unhooked groups do not hold the policy", func(t *testing.T) {
+		unhooked := hookedGroup("plain", longhorn.SnapshotGroupPhaseInProgress, ref, longhorn.HookPhasePreDone)
+		unhooked.Spec.Hooks = ""
+		v := withGroups(
+			hookedGroup("done", longhorn.SnapshotGroupPhaseReady, ref, longhorn.HookPhasePostDone),
+			hookedGroup("gaveup", longhorn.SnapshotGroupPhaseFailed, ref, longhorn.HookPhasePostFailed),
+			unhooked,
+		)
+		assert.NoError(t, v.Delete(nil, policy))
+	})
+
+	t.Run("a group list that fails rejects with a retry", func(t *testing.T) {
+		v := &volumeHookPolicyValidator{listSnapshotGroups: func() ([]*longhorn.SnapshotGroup, error) { return nil, errors.New("cache down") }}
+		err := v.Delete(nil, policy)
+		require.Error(t, err)
+		assert.Equal(t, int32(500), err.(werror.AdmitError).AsResult().Code)
+		assert.Contains(t, err.Error(), "retry the delete")
+	})
 }
