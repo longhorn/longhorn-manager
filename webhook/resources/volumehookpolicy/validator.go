@@ -2,6 +2,7 @@ package volumehookpolicy
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,14 +21,20 @@ import (
 
 // volumeHookPolicyValidator checks everything about a policy that does not
 // depend on cluster state. Matching pods to hooks depends on which pods are
-// running at pause time, so the executor checks that instead.
+// running at pause time, so the executor checks that instead. The one
+// exception is delete, which refuses to remove a policy that an unreleased
+// SnapshotGroup still needs.
 type volumeHookPolicyValidator struct {
 	admission.DefaultValidator
-	longhornNamespace string
+	longhornNamespace  string
+	listSnapshotGroups func() ([]*longhorn.SnapshotGroup, error)
 }
 
 func NewValidator(ds *datastore.DataStore) admission.Validator {
-	return &volumeHookPolicyValidator{longhornNamespace: ds.Namespace()}
+	return &volumeHookPolicyValidator{
+		longhornNamespace:  ds.Namespace(),
+		listSnapshotGroups: ds.ListSnapshotGroupsRO,
+	}
 }
 
 func (v *volumeHookPolicyValidator) Resource() admission.Resource {
@@ -40,6 +47,7 @@ func (v *volumeHookPolicyValidator) Resource() admission.Resource {
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
 			admissionregv1.Update,
+			admissionregv1.Delete,
 		},
 	}
 }
@@ -61,6 +69,46 @@ func (v *volumeHookPolicyValidator) Update(request *admission.Request, oldObj ru
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeHookPolicy", newObj), "")
 	}
 	return v.validate(policy)
+}
+
+// Delete refuses to remove a policy while an unreleased hooked group still
+// references it. The executor re-reads the policy to run the post-command;
+// without it the application stays paused.
+func (v *volumeHookPolicyValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
+	policy, ok := oldObj.(*longhorn.VolumeHookPolicy)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeHookPolicy", oldObj), "")
+	}
+
+	groups, err := v.listSnapshotGroups()
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list snapshot groups referencing hook policy %v: %v; retry the delete", snapshothook.PolicyNamespacedName(policy), err))
+	}
+
+	var holders []string
+	for _, group := range groups {
+		if snapshothook.IsGroupUnreleased(group) && groupReferencesPolicy(group, policy) {
+			holders = append(holders, group.Name)
+		}
+	}
+	if len(holders) == 0 {
+		return nil
+	}
+	sort.Strings(holders)
+	return werror.NewInvalidError(fmt.Sprintf("hook policy %v is still needed to release snapshot group(s) %v; wait for them to release, or delete them, before deleting the policy",
+		snapshothook.PolicyNamespacedName(policy), strings.Join(holders, ", ")), "")
+}
+
+// groupReferencesPolicy reports whether any member of the group references
+// the policy.
+func groupReferencesPolicy(group *longhorn.SnapshotGroup, policy *longhorn.VolumeHookPolicy) bool {
+	for _, member := range group.Spec.Members {
+		ref := member.HookPolicyRef
+		if ref != nil && ref.Namespace == policy.Namespace && ref.Name == policy.Name {
+			return true
+		}
+	}
+	return false
 }
 
 // validate rejects any policy in the Longhorn namespace. A policy applies
