@@ -145,6 +145,7 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	ic.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(ic.worker, time.Second, stopCh)
 	}
@@ -165,7 +166,7 @@ func (ic *EngineImageController) processNextWorkItem() bool {
 	}
 	defer ic.queue.Done(key)
 
-	err := ic.syncEngineImage(key.(string))
+	err := ic.syncWithMetrics(func() error { return ic.syncEngineImage(key.(string)) })
 	ic.handleErr(err, key)
 
 	return true

@@ -40,6 +40,10 @@ type EngineImageExpansion interface{}
 
 type InstanceManagerExpansion interface{}
 
+type InstanceManagerUpgradeExpansion interface{}
+
+type InstanceManagerUpgradeControlExpansion interface{}
+
 type NodeExpansion interface{}
 
 type OrphanExpansion interface{}

@@ -173,6 +173,7 @@ func (c *SystemBackupController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(c.name, stopCh, c.cacheSyncs...) {
 		return
 	}
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -191,7 +192,7 @@ func (c *SystemBackupController) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncSystemBackup(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncSystemBackup(key.(string)) })
 	c.handleErr(err, key)
 
 	return true
@@ -309,7 +310,7 @@ func (c *SystemBackupController) recordErrorState(record *systemBackupRecord, sy
 		longhorn.SystemBackupConditionTypeError,
 		longhorn.ConditionStatusTrue,
 		record.reason,
-		record.message,
+		util.SanitizeVolatileErrorContent(record.message),
 	)
 }
 
@@ -960,6 +961,24 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 		return false, err
 	}
 
+	// The last backup contains the data of its snapshot and all earlier snapshots
+	// in the same chain. Skip any of these snapshots whose creation time cannot be
+	// parsed, such as the first snapshot of a volume restored or cloned on the
+	// V1 Data Engine.
+	backedUpAncestors := map[string]struct{}{}
+	for name := lastBackupSnapshot.Name; name != ""; {
+		if _, visited := backedUpAncestors[name]; visited {
+			break
+		}
+		backedUpAncestors[name] = struct{}{}
+
+		ancestor, exists := snapshots[name]
+		if !exists {
+			break
+		}
+		name = ancestor.Status.Parent
+	}
+
 	for _, snapshot := range snapshots {
 		if snapshot.Status.Size == 0 {
 			continue
@@ -967,7 +986,12 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 
 		snapshotTime, err := time.Parse(time.RFC3339, snapshot.Status.CreationTime)
 		if err != nil {
-			return false, err
+			if _, isAncestor := backedUpAncestors[snapshot.Name]; isAncestor {
+				log.WithError(err).Debugf("Failed to parse creation time %q for snapshot %v, ignoring it because it is an ancestor of the last backup snapshot %v", snapshot.Status.CreationTime, snapshot.Name, lastBackupSnapshot.Name)
+				continue
+			}
+			log.WithError(err).Warnf("Failed to parse creation time %q for snapshot %v, assuming the volume backup is not up-to-date", snapshot.Status.CreationTime, snapshot.Name)
+			return false, nil
 		}
 
 		if snapshotTime.After(lastBackupTime) {

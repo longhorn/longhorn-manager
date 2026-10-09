@@ -1,5 +1,11 @@
 package types
 
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
+
 type BdevProductName string
 
 const (
@@ -75,9 +81,40 @@ type BdevInfoBasic struct {
 
 	SupportedIoTypes SupportedIoTypes `json:"supported_io_types"`
 
-	MemoryDomains []struct {
-		DmaDeviceType string `json:"dma_device_type"`
-	} `json:"memory_domains,omitempty"`
+	MemoryDomains []BdevMemoryDomain `json:"memory_domains,omitempty"`
+}
+
+type BdevMemoryDomain struct {
+	DmaDeviceType string `json:"dma_device_type"`
+}
+
+// UnmarshalJSON keeps SPDK v25.09 (int32) and v26.05 (string) bdev output compatible
+// It is the safe way to handle both old and new SPDK JSON formats for the dma_device_type field.
+func (m *BdevMemoryDomain) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		DmaDeviceType json.RawMessage `json:"dma_device_type"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if len(raw.DmaDeviceType) == 0 || string(raw.DmaDeviceType) == "null" {
+		return nil
+	}
+
+	var dmaDeviceType string
+	if err := json.Unmarshal(raw.DmaDeviceType, &dmaDeviceType); err == nil {
+		m.DmaDeviceType = dmaDeviceType
+		return nil
+	}
+
+	var legacyDmaDeviceType int32
+	if err := json.Unmarshal(raw.DmaDeviceType, &legacyDmaDeviceType); err == nil {
+		m.DmaDeviceType = strconv.FormatInt(int64(legacyDmaDeviceType), 10)
+		return nil
+	}
+
+	return fmt.Errorf("cannot unmarshal %s into Go struct field BdevMemoryDomain.dma_device_type of type string", raw.DmaDeviceType)
 }
 
 type AssignedRateLimits struct {

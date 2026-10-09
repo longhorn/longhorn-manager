@@ -165,7 +165,7 @@ func GetCurrentReferredLonghornEngineImageVersions(namespace string, lhClient lh
 	return engineImageVersionMap, nil
 }
 
-func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientset.Clientset) error {
+func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient lhclientset.Interface) error {
 	s, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -183,6 +183,18 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 	}
 
 	if s.Value != meta.Version {
+		// Mark upgrades from a source release that does not support v2 instance
+		// manager live upgrade. A later upgrade from a supported source clears it.
+		if s.Value != "" && semver.Compare(s.Value, types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade) < 0 {
+			if s.Annotations == nil {
+				s.Annotations = make(map[string]string)
+			}
+			s.Annotations[types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported)] = "true"
+		} else if semver.Compare(meta.Version, types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade) >= 0 {
+			// Reaching a supported release through an offline upgrade makes subsequent
+			// live upgrades safe again.
+			delete(s.Annotations, types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported))
+		}
 		s.Value = meta.Version
 		if s.Annotations == nil {
 			s.Annotations = make(map[string]string)

@@ -124,6 +124,7 @@ func (c *KubernetesEndpointController) Run(workers int, stopCh <-chan struct{}) 
 	if !cache.WaitForNamedCacheSync(c.name, stopCh, c.cacheSyncs...) {
 		return
 	}
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -142,7 +143,7 @@ func (c *KubernetesEndpointController) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.sync(key.(string))
+	err := c.syncWithMetrics(func() error { return c.sync(key.(string)) })
 	c.handleErr(err, key)
 
 	return true

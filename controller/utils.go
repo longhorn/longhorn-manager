@@ -161,9 +161,10 @@ func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 //  3. vol.Status.OwnerID, the node running the volume's controller.
 //  4. The first ready node in sorted order, again for stability.
 //
-// Only nodes with a ready instance manager for the volume's data engine are eligible at
-// any step. "" is returned when none is, which is not an error: the caller decides
-// whether to retry, since a node may simply not be ready yet.
+// Only nodes with a ready instance manager for the volume's data engine, and with the
+// volume's engine image deployed, are eligible at any step. "" is returned when none is,
+// which is not an error: the caller decides whether to retry, since a node may simply not
+// be ready yet.
 //
 // The first choice is the one that carries weight, for a reason beyond avoiding a
 // pointless move. A ticket is only marked satisfied when its NodeID matches
@@ -175,7 +176,7 @@ func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 // hold the volume in place on its own.
 func pickAttachmentTicketNodeID(ds *datastore.DataStore, log logrus.FieldLogger,
 	vol *longhorn.Volume, va *longhorn.VolumeAttachment) (string, error) {
-	attachableNodes, err := ds.ListNodesWithReadyInstanceManagerRO(vol.Spec.DataEngine)
+	attachableNodes, err := listNodesAbleToRunVolume(ds, vol)
 	if err != nil {
 		return "", err
 	}
@@ -238,6 +239,45 @@ func pickAttachmentTicketNodeID(ds *datastore.DataStore, log logrus.FieldLogger,
 
 	log.Warnf("Cannot find a valid node for the attachment ticket of volume %v", vol.Name)
 	return "", nil
+}
+
+// listNodesAbleToRunVolume returns the nodes that could host the volume right now: those
+// with a ready instance manager for its data engine and, for data engine v1, with its
+// engine image deployed.
+//
+// The engine image half matters because the two are deployed independently. An engine
+// image DaemonSet pod can go away while the instance manager keeps running, leaving a node
+// that looks available but cannot operate the volume's engine anymore.
+func listNodesAbleToRunVolume(ds *datastore.DataStore, vol *longhorn.Volume) (map[string]*longhorn.Node, error) {
+	attachableNodes, err := ds.ListNodesWithReadyInstanceManagerRO(vol.Spec.DataEngine)
+	if err != nil {
+		return nil, err
+	}
+
+	image := vol.Status.CurrentImage
+	if image == "" {
+		image = vol.Spec.Image
+	}
+	if !types.IsDataEngineV1(vol.Spec.DataEngine) || image == "" {
+		return attachableNodes, nil
+	}
+
+	nodesWithEngineImage, err := ds.ListReadyNodesContainingEngineImageRO(image)
+	if err != nil {
+		return nil, err
+	}
+	if len(nodesWithEngineImage) == 0 {
+		// No node has the image at all, so filtering would rule out every node and stall
+		// the caller. Fall back to the instance manager check, as isResponsibleFor does in
+		// the same situation.
+		return attachableNodes, nil
+	}
+	for nodeID := range attachableNodes {
+		if nodesWithEngineImage[nodeID] == nil {
+			delete(attachableNodes, nodeID)
+		}
+	}
+	return attachableNodes, nil
 }
 
 func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nodeID, disableFrontend string, attacherType longhorn.AttacherType) {

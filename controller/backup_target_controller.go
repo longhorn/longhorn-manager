@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -177,6 +176,7 @@ func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.cacheSyncs...) {
 		return
 	}
+	btc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(btc.worker, time.Second, stopCh)
 	}
@@ -194,7 +194,7 @@ func (btc *BackupTargetController) processNextWorkItem() bool {
 		return false
 	}
 	defer btc.queue.Done(key)
-	err := btc.syncHandler(key.(string))
+	err := btc.syncWithMetrics(func() error { return btc.syncHandler(key.(string)) })
 	btc.handleErr(err, key)
 	return true
 }
@@ -326,55 +326,6 @@ func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backup
 	}
 
 	return newBackupTargetClient(ds, backupTarget, defaultEngineImage)
-}
-
-// requestIDPattern matches the volatile, per-attempt identifiers that
-// AWS/S3-compatible SDKs embed in error messages, e.g.
-// "403 1eed0c50c2cb9133" (HTTP status + hex request ID) as produced by
-// backupstore's parseAwsError, or an explicit "RequestId: ..." field.
-// The explicit "RequestId:" field matches the complete opaque token
-// ([0-9A-Za-z-]+), not just a hex prefix: S3-compatible backends issue
-// alphanumeric request IDs, and matching only the hex prefix would leave
-// the volatile alphanumeric suffix in the message, so repeated failures
-// would still differ and preserve the reconcile storm.
-// Note: no leading \b before the status code - error messages captured from
-// exec'd subprocess stderr often contain a literal two-character "\n"
-// escape sequence (backslash + n) rather than a real newline byte
-// immediately before the status code, which defeats a \b word-boundary
-// check (both 'n' and the following digit are word characters, so no
-// boundary exists between them). A trailing \b after the ID is safe
-// since it's normally followed by a quote, space, or real newline.
-var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-z-]+|[0-9]{3}\s+[0-9a-z-]{16,}\b)`)
-
-// timestampPattern matches RFC3339(-nano) timestamps that the exec'd
-// `longhorn` engine binary's own logrus output embeds in every log line
-// (e.g. `time="2026-07-24T16:31:27.852675962Z" level=error ...`). Since
-// that subprocess is invoked fresh on every reconcile attempt, its log
-// timestamps change every time even when the underlying error is
-// identical, so they must be normalized too.
-var timestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z`)
-
-// sanitizeBackupStoreErrorMessage strips volatile, per-attempt content
-// (S3 request IDs, HTTP status/request-ID pairs, subprocess log
-// timestamps) from a backup store error message before it is persisted to
-// BackupTarget.Status.Conditions.
-//
-// Without this, every failed poll produces a Status.Conditions[].Message
-// that differs from the last (by request ID and/or embedded subprocess
-// log timestamp), which fails the reflect.DeepEqual check in
-// reconcile()'s deferred status update. Each failure then triggers
-// UpdateBackupTargetStatus, which fires the BackupTargetInformer's
-// UpdateFunc handler and immediately re-enqueues reconcile - completely
-// bypassing BackupTarget.Spec.PollInterval and hammering the remote
-// backup target (observed live: a sustained ~6 reconciles/second with
-// invalid credentials, instead of one attempt per 5-minute poll
-// interval).
-//
-// See https://github.com/longhorn/longhorn/issues/13831
-func sanitizeBackupStoreErrorMessage(message string) string {
-	message = requestIDPattern.ReplaceAllString(message, "<redacted>")
-	message = timestampPattern.ReplaceAllString(message, "<timestamp>")
-	return message
 }
 
 func (btc *BackupTargetController) reconcile(name string) (err error) {
@@ -537,7 +488,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable,
-			sanitizeBackupStoreErrorMessage(errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error()))
+			util.SanitizeVolatileErrorContent(errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error()))
 		log.WithError(err).Error("Failed to get info from backup store")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
