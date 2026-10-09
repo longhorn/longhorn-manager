@@ -6793,7 +6793,8 @@ func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
 		task == longhorn.RecurringJobTypeSnapshotForceCreate ||
 		task == longhorn.RecurringJobTypeSnapshotCleanup ||
 		task == longhorn.RecurringJobTypeSnapshotDelete ||
-		task == longhorn.RecurringJobTypeSystemBackup
+		task == longhorn.RecurringJobTypeSystemBackup ||
+		task == longhorn.RecurringJobTypeSnapshotGroup
 }
 
 func isValidRecurringJobRetainPolicy(retainPolicy longhorn.RecurringJobRetentionPolicy) bool {
