@@ -128,26 +128,34 @@ func snapshotCRsToNames(snapshotCRs []longhornclient.SnapshotCR) []string {
 	return result
 }
 
+// filterVolumesForJob appends the names of eligible volumes not already in filterNames.
 func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNames *[]string) {
-	logger := logrus.StandardLogger()
 	for _, volume := range volumes {
 		// skip duplicates
 		if util.Contains(*filterNames, volume.Name) {
 			continue
 		}
-
-		if volume.Status.RestoreRequired {
-			logger.Infof("Bypassed to create job for %v volume during restoring from the backup", volume.Name)
-			continue
-		}
-
-		if volume.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
-			(volume.Status.State == longhorn.VolumeStateAttached || allowDetached) {
+		if isVolumeEligibleForJob(allowDetached, &volume) {
 			*filterNames = append(*filterNames, volume.Name)
-			continue
 		}
-		logger.Warnf("Cannot create job for %v volume in state %v", volume.Name, volume.Status.State)
 	}
+}
+
+// isVolumeEligibleForJob reports whether a recurring job can run on the volume: it must
+// not be restoring from a backup or faulted, and must be attached unless allowDetached
+// is set. It logs the reason when the volume is skipped.
+func isVolumeEligibleForJob(allowDetached bool, volume *longhorn.Volume) bool {
+	logger := logrus.StandardLogger()
+	if volume.Status.RestoreRequired {
+		logger.Infof("Bypassed to create job for %v volume during restoring from the backup", volume.Name)
+		return false
+	}
+	if volume.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
+		(volume.Status.State == longhorn.VolumeStateAttached || allowDetached) {
+		return true
+	}
+	logger.Warnf("Cannot create job for %v volume in state %v", volume.Name, volume.Status.State)
+	return false
 }
 
 func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, client lhclientset.Interface) ([]longhorn.Volume, error) {
@@ -212,4 +220,38 @@ func systemBackupsToNameWithTimestamps(systemBackups []longhorn.SystemBackup) []
 		})
 	}
 	return result
+}
+
+// activeSnapshotBackups returns a map of snapshot names to backup names
+// for backups that are still in progress and reference a snapshot.
+func activeSnapshotBackups(backups []longhorn.Backup) map[string]string {
+	result := map[string]string{}
+	for _, backup := range backups {
+		if isBackupSnapshotCleanupSafe(backup.Status.State) || backup.Spec.SnapshotName == "" {
+			continue
+		}
+		result[backup.Spec.SnapshotName] = backup.Name
+	}
+	return result
+}
+
+// isBackupSnapshotCleanupSafe returns whether the backup state allows
+// its associated snapshot to be safely cleaned up.
+func isBackupSnapshotCleanupSafe(state longhorn.BackupState) bool {
+	switch state {
+	case longhorn.BackupStateCompleted, longhorn.BackupStateError, longhorn.BackupStateUnknown, longhorn.BackupStateDeleting:
+		return true
+	default:
+		return false
+	}
+}
+
+// firstActiveBackupMember returns a member snapshot of the group that an in-flight backup still reads.
+func firstActiveBackupMember(group longhorn.SnapshotGroup, active map[string]string) (snapshot, backup string, found bool) {
+	for _, member := range group.Spec.Members {
+		if backup, ok := active[member.SnapshotName]; ok {
+			return member.SnapshotName, backup, true
+		}
+	}
+	return "", "", false
 }

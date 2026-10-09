@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -41,22 +42,79 @@ func (o *volumeOperationsWithGetError) ById(string) (*longhornclient.Volume, err
 // returns a volume with an in-progress replica rebuild. ActionSnapshotPurge
 // fails the test if called, since a purge must not be attempted while
 // rebuilding.
-type volumeOperationsRebuilding struct {
+//type volumeOperationsRebuilding struct {
+//	longhornclient.VolumeOperations
+//	t                 *testing.T
+//	volumes           map[string]*longhornclient.Volume
+//	replicaRebuilding bool
+//}
+//
+//func (o *volumeOperationsRebuilding) ById(id string) (*longhornclient.Volume, error) {
+//	return o.volumes[id], nil
+//}
+//
+//func (o *volumeOperationsRebuilding) ActionSnapshotCRList(*longhornclient.Volume) (*longhornclient.SnapshotCRListOutput, error) {
+//	return &longhornclient.SnapshotCRListOutput{}, nil
+//}
+//
+//func (o *volumeOperationsRebuilding) ActionSnapshotPurge(v *longhornclient.Volume) (*longhornclient.Volume, error) {
+//	if o.replicaRebuilding {
+//		o.t.Error("ActionSnapshotPurge must not be called while a replica is rebuilding")
+//		return nil, nil
+//	}
+//	return v, nil
+//}
+
+// fakeVolumeOperations is a configurable VolumeOperations for recurring-job tests.
+// Embedding the interface leaves every method we don't override unimplemented, so
+// an unexpected call panics instead of silently passing.
+type fakeVolumeOperations struct {
 	longhornclient.VolumeOperations
-	t                 *testing.T
-	volumes           map[string]*longhornclient.Volume
+
+	t *testing.T
+
+	volumes map[string]*longhornclient.Volume
+
+	// ActionSnapshotCRList / ActionSnapshotCRDelete.
+	snapshots []longhornclient.SnapshotCR
+	listErr   error
+	deleteErr error
+
+	// ActionSnapshotPurge: fails the test if called while a replica is rebuilding.
 	replicaRebuilding bool
+
+	// Recorded calls. Guarded by mu because the job runner can call concurrently.
+	mu         sync.Mutex
+	deleted    []string
+	purgeCalls int
 }
 
-func (o *volumeOperationsRebuilding) ById(id string) (*longhornclient.Volume, error) {
+func (o *fakeVolumeOperations) ById(id string) (*longhornclient.Volume, error) {
 	return o.volumes[id], nil
 }
 
-func (o *volumeOperationsRebuilding) ActionSnapshotCRList(*longhornclient.Volume) (*longhornclient.SnapshotCRListOutput, error) {
-	return &longhornclient.SnapshotCRListOutput{}, nil
+func (o *fakeVolumeOperations) ActionSnapshotCRList(*longhornclient.Volume) (*longhornclient.SnapshotCRListOutput, error) {
+	if o.listErr != nil {
+		return nil, o.listErr
+	}
+	return &longhornclient.SnapshotCRListOutput{Data: o.snapshots}, nil
 }
 
-func (o *volumeOperationsRebuilding) ActionSnapshotPurge(v *longhornclient.Volume) (*longhornclient.Volume, error) {
+func (o *fakeVolumeOperations) ActionSnapshotCRDelete(_ *longhornclient.Volume, input *longhornclient.SnapshotCRInput) (*longhornclient.Empty, error) {
+	if o.deleteErr != nil {
+		return nil, o.deleteErr
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.deleted = append(o.deleted, input.Name)
+	return &longhornclient.Empty{}, nil
+}
+
+func (o *fakeVolumeOperations) ActionSnapshotPurge(v *longhornclient.Volume) (*longhornclient.Volume, error) {
+	o.mu.Lock()
+	o.purgeCalls++
+	o.mu.Unlock()
+
 	if o.replicaRebuilding {
 		o.t.Error("ActionSnapshotPurge must not be called while a replica is rebuilding")
 		return nil, nil
@@ -165,13 +223,13 @@ const (
 	volumeName = "test-volume"
 )
 
-func newSetting() *longhorn.Setting {
+func newSetting(value string) *longhorn.Setting {
 	return &longhorn.Setting{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(types.SettingNameAllowRecurringJobWhileVolumeDetached),
 			Namespace: namespace,
 		},
-		Value: "false",
+		Value: value,
 	}
 }
 
@@ -213,7 +271,7 @@ func TestStartVolumeJobs(t *testing.T) {
 		}
 		job := newJob(&longhornclient.RancherClient{
 			Volume: &volumeOperationsWithGetError{err: errors.New("volume API unavailable")},
-		}, newSetting(), volume)
+		}, newSetting("false"), volume)
 
 		err := StartVolumeJobs(job, recurringJob)
 
@@ -221,7 +279,7 @@ func TestStartVolumeJobs(t *testing.T) {
 	})
 
 	t.Run("returns nil with no selected volumes", func(t *testing.T) {
-		job := newJob(&longhornclient.RancherClient{}, newSetting())
+		job := newJob(&longhornclient.RancherClient{}, newSetting("false"))
 
 		err := StartVolumeJobs(job, recurringJob)
 
@@ -250,8 +308,8 @@ func TestStartVolumeJobs(t *testing.T) {
 		}
 
 		job := newJob(&longhornclient.RancherClient{
-			Volume: &volumeOperationsRebuilding{t: t, volumes: map[string]*longhornclient.Volume{volumeName: clientVolume}, replicaRebuilding: true},
-		}, newSetting(), volume, recurringJob.DeepCopy())
+			Volume: &fakeVolumeOperations{t: t, volumes: map[string]*longhornclient.Volume{volumeName: clientVolume}, replicaRebuilding: true},
+		}, newSetting("false"), volume, recurringJob.DeepCopy())
 
 		err := StartVolumeJobs(job, recurringJob)
 		assert.NoError(t, err, "a rebuild-related skip must not fail the sweep")
@@ -272,7 +330,7 @@ func TestStartVolumeJobs(t *testing.T) {
 		objs, clientVols := seedVolumesForJob(names, recurringJob, true)
 
 		job := newJob(&longhornclient.RancherClient{
-			Volume: &volumeOperationsRebuilding{t: t, volumes: clientVols, replicaRebuilding: true},
+			Volume: &fakeVolumeOperations{t: t, volumes: clientVols, replicaRebuilding: true},
 		}, objs...)
 
 		err := StartVolumeJobs(job, recurringJob)
@@ -311,7 +369,7 @@ func TestStartVolumeJobs(t *testing.T) {
 		objs, clientVols := seedVolumesForJob(names, rjVolumesSkippedTrue, false)
 
 		job := newJob(&longhornclient.RancherClient{
-			Volume: &volumeOperationsRebuilding{t: t, volumes: clientVols, replicaRebuilding: false},
+			Volume: &fakeVolumeOperations{t: t, volumes: clientVols, replicaRebuilding: false},
 		}, objs...)
 
 		err := StartVolumeJobs(job, rjVolumesSkippedTrue)
@@ -328,7 +386,7 @@ func TestStartVolumeJobs(t *testing.T) {
 }
 
 func seedVolumesForJob(names []string, recurringJob *longhorn.RecurringJob, rebuilding bool) ([]runtime.Object, map[string]*longhornclient.Volume) {
-	objs := []runtime.Object{newSetting(), recurringJob.DeepCopy()}
+	objs := []runtime.Object{newSetting("false"), recurringJob.DeepCopy()}
 	clientVols := map[string]*longhornclient.Volume{}
 	for _, n := range names {
 		objs = append(objs, &longhorn.Volume{
@@ -349,4 +407,174 @@ func seedVolumesForJob(names []string, recurringJob *longhorn.RecurringJob, rebu
 		}
 	}
 	return objs, clientVols
+}
+
+func TestDoSnapshotCleanup(t *testing.T) {
+	tests := []struct {
+		name string
+
+		task        longhorn.RecurringJobType
+		policy      longhorn.RecurringJobRetentionPolicy
+		retainCount int
+		retainAge   time.Duration
+
+		volumeMissing bool
+		snapshots     []longhornclient.SnapshotCR
+		listErr       error
+		deleteErr     error
+
+		wantDeleted []string
+		wantPurge   bool
+		wantErr     bool
+	}{
+		{
+			name:        "snapshot-delete retain 0 skips group members and deletes the rest",
+			task:        longhorn.RecurringJobTypeSnapshotDelete,
+			policy:      longhorn.RecurringJobRetentionPolicyCountBased,
+			retainCount: 0,
+			snapshots: []longhornclient.SnapshotCR{
+				newSnapshotCRForCleanup("plain-old", 3*time.Hour, ""),
+				newSnapshotCRForCleanup("member", 2*time.Hour, "group-a"),
+				newSnapshotCRForCleanup("plain-new", 1*time.Hour, ""),
+			},
+			wantDeleted: []string{"plain-old", "plain-new"},
+		},
+		{
+			name:        "snapshot-delete count-based: group members do not consume a retain slot",
+			task:        longhorn.RecurringJobTypeSnapshotDelete,
+			policy:      longhorn.RecurringJobRetentionPolicyCountBased,
+			retainCount: 1,
+			snapshots: []longhornclient.SnapshotCR{
+				newSnapshotCRForCleanup("plain-old", 3*time.Hour, ""),
+				newSnapshotCRForCleanup("member", 2*time.Hour, "group-a"),
+				newSnapshotCRForCleanup("plain-new", 1*time.Hour, ""),
+			},
+			// Without the exclusion, "member" would be a candidate and also be deleted.
+			wantDeleted: []string{"plain-old"},
+		},
+		{
+			name:      "snapshot-delete age-based: expired group member is not deleted",
+			task:      longhorn.RecurringJobTypeSnapshotDelete,
+			policy:    longhorn.RecurringJobRetentionPolicyAgeBased,
+			retainAge: 24 * time.Hour,
+			snapshots: []longhornclient.SnapshotCR{
+				newSnapshotCRForCleanup("plain-expired", 48*time.Hour, ""),
+				newSnapshotCRForCleanup("member-expired", 48*time.Hour, "group-a"),
+				newSnapshotCRForCleanup("plain-fresh", 1*time.Hour, ""),
+			},
+			wantDeleted: []string{"plain-expired"},
+		},
+		{
+			name:        "snapshot-delete retain 0 with only group members deletes nothing",
+			task:        longhorn.RecurringJobTypeSnapshotDelete,
+			policy:      longhorn.RecurringJobRetentionPolicyCountBased,
+			retainCount: 0,
+			snapshots: []longhornclient.SnapshotCR{
+				newSnapshotCRForCleanup("member-1", 2*time.Hour, "group-a"),
+				newSnapshotCRForCleanup("member-2", 1*time.Hour, "group-b"),
+			},
+			wantDeleted: nil,
+		},
+		{
+			name:   "snapshot-cleanup deletes no snapshot CRs and purges",
+			task:   longhorn.RecurringJobTypeSnapshotCleanup,
+			policy: longhorn.RecurringJobRetentionPolicyCountBased,
+			snapshots: []longhornclient.SnapshotCR{
+				newSnapshotCRForCleanup("plain", 2*time.Hour, ""),
+				newSnapshotCRForCleanup("member", 1*time.Hour, "group-a"),
+			},
+			wantDeleted: nil,
+			wantPurge:   true,
+		},
+		{
+			name:          "missing volume is skipped without error",
+			task:          longhorn.RecurringJobTypeSnapshotDelete,
+			policy:        longhorn.RecurringJobRetentionPolicyCountBased,
+			volumeMissing: true,
+			wantDeleted:   nil,
+		},
+		{
+			name:    "snapshot CR list error is returned and nothing is deleted",
+			task:    longhorn.RecurringJobTypeSnapshotDelete,
+			policy:  longhorn.RecurringJobRetentionPolicyCountBased,
+			listErr: errors.New("list failed"),
+			wantErr: true,
+		},
+		{
+			name:        "snapshot CR delete error is returned",
+			task:        longhorn.RecurringJobTypeSnapshotDelete,
+			policy:      longhorn.RecurringJobRetentionPolicyCountBased,
+			retainCount: 0,
+			snapshots: []longhornclient.SnapshotCR{
+				newSnapshotCRForCleanup("plain", 1*time.Hour, ""),
+			},
+			deleteErr: errors.New("delete failed"),
+			wantErr:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := &fakeVolumeOperations{
+				t:         t,
+				snapshots: tc.snapshots,
+				listErr:   tc.listErr,
+				deleteErr: tc.deleteErr,
+				volumes:   map[string]*longhornclient.Volume{},
+			}
+			if !tc.volumeMissing {
+				ops.volumes[volumeName] = &longhornclient.Volume{
+					Name:  volumeName,
+					State: string(longhorn.VolumeStateAttached),
+				}
+			}
+
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+
+			// ADAPT: construct VolumeJob with the real field names. Only the fields
+			// doSnapshotCleanup and the retention filters read are needed.
+			job := &VolumeJob{
+				Job: &Job{
+					api:             &longhornclient.RancherClient{Volume: ops},
+					lhClient:        lhfake.NewClientset(),
+					logger:          logger,
+					eventRecorder:   record.NewFakeRecorder(10),
+					name:            jobName,
+					namespace:       namespace,
+					task:            tc.task,
+					retainCount:     tc.retainCount,
+					retainAge:       tc.retainAge,
+					retentionPolicy: tc.policy,
+				},
+				volumeName: volumeName,
+				logger:     logger.WithField("volume", volumeName),
+			}
+
+			err := job.doSnapshotCleanup(false)
+
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.ElementsMatch(t, tc.wantDeleted, ops.deleted)
+			assert.Equal(t, tc.wantPurge, ops.purgeCalls > 0, "unexpected purge behavior")
+		})
+	}
+}
+
+// newSnapshotCRForCleanup builds a ready snapshot CR created `age` ago. A
+// non-empty group stamps the SnapshotGroup ownership label.
+func newSnapshotCRForCleanup(name string, age time.Duration, group string) longhornclient.SnapshotCR {
+	created := time.Now().Add(-age).UTC().Format(time.RFC3339)
+	snapshotCR := longhornclient.SnapshotCR{
+		Name:           name,
+		Volume:         volumeName,
+		ReadyToUse:     true,
+		CreationTime:   created,
+		CrCreationTime: created,
+		SnapshotGroup:  group,
+	}
+	return snapshotCR
 }

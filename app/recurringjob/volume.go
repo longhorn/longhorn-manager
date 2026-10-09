@@ -369,7 +369,15 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 		return err
 	}
 
-	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
+	snapshotCRs := collection.Data
+
+	// Deleting a member would degrade its SnapshotGroup, so during snapshot-delete
+	// members are excluded here and removed only by deleting the group.
+	if job.task == longhorn.RecurringJobTypeSnapshotDelete {
+		snapshotCRs = job.excludeSnapshotGroupMembers(snapshotCRs)
+	}
+
+	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(snapshotCRs, backupDone)
 	activeBackupSnapshots := map[string]string{}
 	if len(cleanupSnapshotNames) != 0 {
 		activeBackupSnapshots, err = job.getSnapshotsReferencedByActiveBackups()
@@ -399,6 +407,21 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	return nil
 }
 
+// excludeSnapshotGroupMembers drops snapshots that belong to a SnapshotGroup so
+// recurring jobs never delete them (which would silently degrade the group).
+// Group members are removed only via deletion of the group itself.
+func (job *VolumeJob) excludeSnapshotGroupMembers(snapshotCRs []longhornclient.SnapshotCR) []longhornclient.SnapshotCR {
+	filteredSnapshotCRs := make([]longhornclient.SnapshotCR, 0, len(snapshotCRs))
+	for _, snapshotCR := range snapshotCRs {
+		if snapshotCR.SnapshotGroup != "" {
+			job.logger.Debugf("Excluded snapshot CR %v from cleanup because it belongs to a snapshot group: %v", snapshotCR.Name, snapshotCR.SnapshotGroup)
+			continue
+		}
+		filteredSnapshotCRs = append(filteredSnapshotCRs, snapshotCR)
+	}
+	return filteredSnapshotCRs
+}
+
 func (job *VolumeJob) getSnapshotsReferencedByActiveBackups() (map[string]string, error) {
 	backupList, err := job.lhClient.LonghornV1beta2().Backups(job.namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetBackupVolumeLabels(job.volumeName)).String(),
@@ -407,23 +430,7 @@ func (job *VolumeJob) getSnapshotsReferencedByActiveBackups() (map[string]string
 		return nil, err
 	}
 
-	result := map[string]string{}
-	for _, backup := range backupList.Items {
-		if isBackupSnapshotCleanupSafe(backup.Status.State) || backup.Spec.SnapshotName == "" {
-			continue
-		}
-		result[backup.Spec.SnapshotName] = backup.Name
-	}
-	return result, nil
-}
-
-func isBackupSnapshotCleanupSafe(state longhorn.BackupState) bool {
-	switch state {
-	case longhorn.BackupStateCompleted, longhorn.BackupStateError, longhorn.BackupStateUnknown, longhorn.BackupStateDeleting:
-		return true
-	default:
-		return false
-	}
+	return activeSnapshotBackups(backupList.Items), nil
 }
 
 func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error {
