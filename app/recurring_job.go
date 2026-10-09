@@ -89,6 +89,8 @@ func recurringJob(ctx context.Context, cmd *cli.Command) (err error) {
 	switch recurringJob.Spec.Task {
 	case longhorn.RecurringJobTypeSystemBackup:
 		return recurringjob.StartSystemBackupJob(job, recurringJob)
+	case longhorn.RecurringJobTypeSnapshotGroup:
+		return recurringjob.StartSnapshotGroupJob(job, recurringJob)
 	default:
 		return recurringjob.StartVolumeJobs(job, recurringJob)
 	}

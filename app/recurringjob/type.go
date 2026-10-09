@@ -7,6 +7,8 @@ import (
 
 	"k8s.io/client-go/tools/record"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -57,6 +59,18 @@ type SystemBackupJob struct {
 
 	systemBackupName   string                                        // Name of the SystemBackup.
 	volumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy // backup policy used for the SystemBackup.Spec.
+}
+
+// SnapshotGroupJob is a job for snapshotGroup tasks.
+// It embeds the Job struct and includes additional fields specific to snapshotGroup operations.
+type SnapshotGroupJob struct {
+	*Job // Embedding the base Job struct.
+
+	logger *logrus.Entry // Log messages related to the volume job.
+
+	snapshotGroup   string                // Name of the SnapshotGroup.
+	volumeSelector  *metav1.LabelSelector // built from recurringJob.Spec.Groups
+	deadlineSeconds int64
 }
 
 // NameWithTimestamp for resource cleanup.

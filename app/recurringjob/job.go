@@ -145,3 +145,21 @@ func (job *Job) ListSystemBackup() (*longhorn.SystemBackupList, error) {
 		LabelSelector: label,
 	})
 }
+
+func (job *Job) CreateSnapshotGroup(snapshotGroup *longhorn.SnapshotGroup) (*longhorn.SnapshotGroup, error) {
+	return job.lhClient.LonghornV1beta2().SnapshotGroups(job.namespace).Create(context.TODO(), snapshotGroup, metav1.CreateOptions{})
+}
+
+func (job *Job) GetSnapshotGroup(name string) (*longhorn.SnapshotGroup, error) {
+	return job.lhClient.LonghornV1beta2().SnapshotGroups(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func (job *Job) ListSnapshotGroup() (*longhorn.SnapshotGroupList, error) {
+	labelKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, string(longhorn.RecurringJobTypeSnapshotGroup))
+	label := fmt.Sprintf("%s=%s", labelKey, job.name)
+
+	job.logger.Infof("Getting SnapshotGroup by label %v", label)
+	return job.lhClient.LonghornV1beta2().SnapshotGroups(job.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: label,
+	})
+}
