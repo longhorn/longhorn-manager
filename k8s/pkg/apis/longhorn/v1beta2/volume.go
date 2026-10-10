@@ -204,16 +204,17 @@ const (
 )
 
 const (
-	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
-	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
-	VolumeConditionReasonShardSchedulingFailure          = "ShardSchedulingFailure"
-	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
-	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
-	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
-	VolumeConditionReasonWaitForBackingImageFailed       = "GetBackingImageFailed"
-	VolumeConditionReasonWaitForBackingImageWaiting      = "Waiting"
-	VolumeConditionReasonBackingImageVirtualSizeTooLarge = "BackingImageVirtualSizeTooLarge"
-	VolumeConditionReasonOfflineRebuildingInProgress     = "OfflineRebuildingInProgress"
+	VolumeConditionReasonReplicaSchedulingFailure            = "ReplicaSchedulingFailure"
+	VolumeConditionReasonLocalReplicaSchedulingFailure       = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonWaitingForVolumeAntiAffinityFromPod = "WaitingForVolumeAntiAffinityFromPod"
+	VolumeConditionReasonShardSchedulingFailure              = "ShardSchedulingFailure"
+	VolumeConditionReasonRestoreInProgress                   = "RestoreInProgress"
+	VolumeConditionReasonRestoreFailure                      = "RestoreFailure"
+	VolumeConditionReasonTooManySnapshots                    = "TooManySnapshots"
+	VolumeConditionReasonWaitForBackingImageFailed           = "GetBackingImageFailed"
+	VolumeConditionReasonWaitForBackingImageWaiting          = "Waiting"
+	VolumeConditionReasonBackingImageVirtualSizeTooLarge     = "BackingImageVirtualSizeTooLarge"
+	VolumeConditionReasonOfflineRebuildingInProgress         = "OfflineRebuildingInProgress"
 )
 
 type SnapshotDataIntegrity string
@@ -232,6 +233,15 @@ const (
 	RestoreVolumeRecurringJobDefault  = RestoreVolumeRecurringJobType("ignored")
 	RestoreVolumeRecurringJobEnabled  = RestoreVolumeRecurringJobType("enabled")
 	RestoreVolumeRecurringJobDisabled = RestoreVolumeRecurringJobType("disabled")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type VolumeAntiAffinityFromPod string
+
+const (
+	VolumeAntiAffinityFromPodDefault  = VolumeAntiAffinityFromPod("ignored")
+	VolumeAntiAffinityFromPodEnabled  = VolumeAntiAffinityFromPod("enabled")
+	VolumeAntiAffinityFromPodDisabled = VolumeAntiAffinityFromPod("disabled")
 )
 
 // +kubebuilder:validation:Enum=ignored;enabled;disabled
@@ -319,6 +329,22 @@ type VolumeTopologyTerm struct {
 	Region string `json:"region"`
 }
 
+// VolumeAntiAffinity keeps a volume's replicas away from the storage nodes that
+// hold replicas of related volumes. Labels identify this volume to other
+// volumes' selectors; Selectors pick the volumes this one avoids. The
+// preference is soft and evaluated only when a replica is newly placed.
+type VolumeAntiAffinity struct {
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+	// +optional
+	Selectors []metav1.LabelSelector `json:"selectors,omitempty"`
+	// PendingInheritance holds replica scheduling until the anti-affinity has
+	// been derived from the pod using the volume. Set by the CSI driver at
+	// creation and cleared once the PV is bound.
+	// +optional
+	PendingInheritance bool `json:"pendingInheritance,omitempty"`
+}
+
 // VolumeSpec defines the desired state of the Longhorn volume
 type VolumeSpec struct {
 	// +kubebuilder:validation:Type=string
@@ -377,6 +403,15 @@ type VolumeSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="TopologyRequirement is immutable"
 	TopologyRequirement []VolumeTopologyTerm `json:"topologyRequirement"`
+	// VolumeAntiAffinityFromPod controls whether VolumeAntiAffinity is derived
+	// from the spread declarations of the pod using this volume. "ignored"
+	// follows the volume-anti-affinity-from-pod setting.
+	// +optional
+	VolumeAntiAffinityFromPod VolumeAntiAffinityFromPod `json:"volumeAntiAffinityFromPod"`
+	// VolumeAntiAffinity spreads this volume's replicas away from the replicas
+	// of related volumes. Empty means no cross-volume preference.
+	// +optional
+	VolumeAntiAffinity *VolumeAntiAffinity `json:"volumeAntiAffinity,omitempty"`
 	// +optional
 	DisableFrontend bool `json:"disableFrontend"`
 	// +optional

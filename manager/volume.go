@@ -208,6 +208,8 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			DiskSelector:                    spec.DiskSelector,
 			NodeSelector:                    spec.NodeSelector,
 			TopologyRequirement:             spec.TopologyRequirement,
+			VolumeAntiAffinity:              spec.VolumeAntiAffinity,
+			VolumeAntiAffinityFromPod:       spec.VolumeAntiAffinityFromPod,
 			RevisionCounterDisabled:         spec.RevisionCounterDisabled,
 			SnapshotDataIntegrity:           spec.SnapshotDataIntegrity,
 			SnapshotMaxCount:                spec.SnapshotMaxCount,
