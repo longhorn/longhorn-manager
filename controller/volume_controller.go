@@ -4174,6 +4174,11 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 		return err
 	}
 
+	skipUnhealthyDisk, err := c.ds.IsReplicaSchedulingSkipUnhealthyDiskEnabled(volume)
+	if err != nil {
+		return err
+	}
+
 	var biDiskSelector []string
 	if volume.Spec.BackingImage != "" {
 		bi, err := c.ds.GetBackingImageRO(volume.Spec.BackingImage)
@@ -4218,7 +4223,7 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 			continue
 		}
 
-		if eligible, _, _ := c.scheduler.IsDiskEligibleForVolume(diskSpec, diskStatus, volume, allowEmptyDiskSelectorVolume, biDiskSelector); !eligible {
+		if eligible, _, _ := c.scheduler.IsDiskEligibleForVolume(diskSpec, diskStatus, volume, allowEmptyDiskSelectorVolume, skipUnhealthyDisk, biDiskSelector); !eligible {
 			continue
 		}
 

@@ -1332,6 +1332,15 @@ func ValidateReplicaDiskSoftAntiAffinity(value longhorn.ReplicaDiskSoftAntiAffin
 	return nil
 }
 
+func ValidateReplicaSchedulingSkipUnhealthyDisk(value longhorn.ReplicaSchedulingSkipUnhealthyDisk) error {
+	if value != longhorn.ReplicaSchedulingSkipUnhealthyDiskIgnored &&
+		value != longhorn.ReplicaSchedulingSkipUnhealthyDiskEnabled &&
+		value != longhorn.ReplicaSchedulingSkipUnhealthyDiskDisabled {
+		return fmt.Errorf("invalid ReplicaSchedulingSkipUnhealthyDisk setting: %v", value)
+	}
+	return nil
+}
+
 func ValidateFreezeFilesystemForSnapshot(value longhorn.FreezeFilesystemForSnapshot) error {
 	if value != longhorn.FreezeFilesystemForSnapshotDefault &&
 		value != longhorn.FreezeFilesystemForSnapshotEnabled &&

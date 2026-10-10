@@ -53,6 +53,7 @@ const (
 	ErrorReplicaScheduleInsufficientStorage               = "insufficient storage"
 	ErrorReplicaScheduleDiskNotFound                      = "disk not found"
 	ErrorReplicaScheduleDiskUnavailable                   = "disks are unavailable"
+	ErrorReplicaScheduleDiskUnhealthy                     = "disks are unhealthy"
 	ErrorReplicaScheduleTagsNotFulfilled                  = "tags not fulfilled"
 	ErrorReplicaScheduleNodeNotFound                      = "node not found"
 	ErrorReplicaScheduleNodeUnavailable                   = "nodes are unavailable"

@@ -69,14 +69,19 @@ type VolumeSpecApplyConfiguration struct {
 	ReplicaZoneSoftAntiAffinity *longhornv1beta2.ReplicaZoneSoftAntiAffinity `json:"replicaZoneSoftAntiAffinity,omitempty"`
 	// Replica disk soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same disk.
 	ReplicaDiskSoftAntiAffinity *longhornv1beta2.ReplicaDiskSoftAntiAffinity `json:"replicaDiskSoftAntiAffinity,omitempty"`
-	LastAttachedBy              *string                                      `json:"lastAttachedBy,omitempty"`
-	AccessMode                  *longhornv1beta2.AccessMode                  `json:"accessMode,omitempty"`
-	Migratable                  *bool                                        `json:"migratable,omitempty"`
-	Encrypted                   *bool                                        `json:"encrypted,omitempty"`
-	NumberOfReplicas            *int                                         `json:"numberOfReplicas,omitempty"`
-	ReplicaAutoBalance          *longhornv1beta2.ReplicaAutoBalance          `json:"replicaAutoBalance,omitempty"`
-	SnapshotDataIntegrity       *longhornv1beta2.SnapshotDataIntegrity       `json:"snapshotDataIntegrity,omitempty"`
-	BackupCompressionMethod     *longhornv1beta2.BackupCompressionMethod     `json:"backupCompressionMethod,omitempty"`
+	// Specifies whether Longhorn skips disks reported as unhealthy by disk health data (for example, SMART) when scheduling replicas of the volume.
+	// - ignored: Use the global setting replica-scheduling-skip-unhealthy-disk.
+	// - enabled: Skip unhealthy disks for this volume, regardless of the global setting.
+	// - disabled: Do not skip unhealthy disks for this volume, regardless of the global setting.
+	ReplicaSchedulingSkipUnhealthyDisk *longhornv1beta2.ReplicaSchedulingSkipUnhealthyDisk `json:"replicaSchedulingSkipUnhealthyDisk,omitempty"`
+	LastAttachedBy                     *string                                             `json:"lastAttachedBy,omitempty"`
+	AccessMode                         *longhornv1beta2.AccessMode                         `json:"accessMode,omitempty"`
+	Migratable                         *bool                                               `json:"migratable,omitempty"`
+	Encrypted                          *bool                                               `json:"encrypted,omitempty"`
+	NumberOfReplicas                   *int                                                `json:"numberOfReplicas,omitempty"`
+	ReplicaAutoBalance                 *longhornv1beta2.ReplicaAutoBalance                 `json:"replicaAutoBalance,omitempty"`
+	SnapshotDataIntegrity              *longhornv1beta2.SnapshotDataIntegrity              `json:"snapshotDataIntegrity,omitempty"`
+	BackupCompressionMethod            *longhornv1beta2.BackupCompressionMethod            `json:"backupCompressionMethod,omitempty"`
 	// BackupBlockSize indicate the block size to create backups. The block size is immutable.
 	BackupBlockSize  *int64                          `json:"backupBlockSize,omitempty"`
 	DataEngine       *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
@@ -329,6 +334,14 @@ func (b *VolumeSpecApplyConfiguration) WithReplicaZoneSoftAntiAffinity(value lon
 // If called multiple times, the ReplicaDiskSoftAntiAffinity field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithReplicaDiskSoftAntiAffinity(value longhornv1beta2.ReplicaDiskSoftAntiAffinity) *VolumeSpecApplyConfiguration {
 	b.ReplicaDiskSoftAntiAffinity = &value
+	return b
+}
+
+// WithReplicaSchedulingSkipUnhealthyDisk sets the ReplicaSchedulingSkipUnhealthyDisk field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ReplicaSchedulingSkipUnhealthyDisk field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithReplicaSchedulingSkipUnhealthyDisk(value longhornv1beta2.ReplicaSchedulingSkipUnhealthyDisk) *VolumeSpecApplyConfiguration {
+	b.ReplicaSchedulingSkipUnhealthyDisk = &value
 	return b
 }
 
