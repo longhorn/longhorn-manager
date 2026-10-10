@@ -205,3 +205,24 @@ func TestCreateOrUpdateSettingCreatesOrSkips(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncConsolidatedV2DataEngineSettingsMigratesIobufSmallPoolSize(t *testing.T) {
+	const value = `{"v2":"16384"}`
+	oldSetting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      string(types.SettingNameDataEngineIobufSmallPoolSize),
+			Namespace: "longhorn-system",
+		},
+		Value: value,
+	}
+	ds, lhClient, _ := newSettingTestDataStore(t, oldSetting)
+
+	require.NoError(t, ds.syncConsolidatedV2DataEngineSettings())
+	newSetting, err := lhClient.LonghornV1beta2().Settings(ds.namespace).Get(context.TODO(), string(types.SettingNameDataEngineIobufSmallPoolCount), metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, value, newSetting.Value)
+
+	require.NoError(t, ds.deleteReplacedSettings())
+	_, err = lhClient.LonghornV1beta2().Settings(ds.namespace).Get(context.TODO(), string(types.SettingNameDataEngineIobufSmallPoolSize), metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err))
+}

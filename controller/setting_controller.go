@@ -1582,8 +1582,8 @@ const (
 	ClusterInfoV2DataEngineHugepageEnabled      = util.StructName("LonghornV2DataEngineHugepageEnabled")
 	ClusterInfoV2DataEngineInterruptModeEnabled = util.StructName("LonghornV2DataEngineInterruptModeEnabled")
 	ClusterInfoV2DataEngineCPUIsolationEnabled  = util.StructName("LonghornV2DataEngineCPUIsolationEnabled")
-	ClusterInfoV2DataEngineIobufSmallPoolSize   = util.StructName("LonghornV2DataEngineIobufSmallPoolSize")
-	ClusterInfoV2DataEngineIobufLargePoolSize   = util.StructName("LonghornV2DataEngineIobufLargePoolSize")
+	ClusterInfoV2DataEngineIobufSmallPoolCount  = util.StructName("LonghornV2DataEngineIobufSmallPoolCount")
+	ClusterInfoV2DataEngineIobufLargePoolCount  = util.StructName("LonghornV2DataEngineIobufLargePoolCount")
 	ClusterInfoV2DataEngineNumberOfCPUCores     = util.StructName("LonghornV2DataEngineNumberOfCPUCores")
 
 	ClusterInfoBackupTargetSchemeCountFmt                            = "LonghornBackupTarget%sCount"
@@ -2309,18 +2309,18 @@ func (info *ClusterInfo) collectV2DataEngineInfo() error {
 		info.structFields.tags.Append(ClusterInfoV2DataEngineCPUIsolationEnabled, fmt.Sprint(cpuIsolationEnabled))
 	}
 
-	iobufSmallPoolSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, longhorn.DataEngineTypeV2)
+	iobufSmallPoolCount, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolCount, longhorn.DataEngineTypeV2)
 	if err != nil {
-		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer small pool size setting")
+		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer small pool count setting")
 	} else {
-		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufSmallPoolSize, int(iobufSmallPoolSize))
+		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufSmallPoolCount, int(iobufSmallPoolCount))
 	}
 
-	iobufLargePoolSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, longhorn.DataEngineTypeV2)
+	iobufLargePoolCount, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolCount, longhorn.DataEngineTypeV2)
 	if err != nil {
-		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer large pool size setting")
+		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer large pool count setting")
 	} else {
-		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufLargePoolSize, int(iobufLargePoolSize))
+		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufLargePoolCount, int(iobufLargePoolCount))
 	}
 
 	numberOfCPUCores, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, longhorn.DataEngineTypeV2)

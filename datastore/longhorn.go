@@ -300,10 +300,11 @@ func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 	}
 
 	settings := map[types.SettingName]types.SettingName{
-		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameDataEngineMemorySize,
-		types.SettingNameV2DataEngineCPUMask:       types.SettingNameDataEngineCPUMask,
-		types.SettingNameV2DataEngineLogLevel:      types.SettingNameDataEngineLogLevel,
-		types.SettingNameV2DataEngineLogFlags:      types.SettingNameDataEngineLogFlags,
+		types.SettingNameV2DataEngineHugepageLimit:    types.SettingNameDataEngineMemorySize,
+		types.SettingNameV2DataEngineCPUMask:          types.SettingNameDataEngineCPUMask,
+		types.SettingNameV2DataEngineLogLevel:         types.SettingNameDataEngineLogLevel,
+		types.SettingNameV2DataEngineLogFlags:         types.SettingNameDataEngineLogFlags,
+		types.SettingNameDataEngineIobufSmallPoolSize: types.SettingNameDataEngineIobufSmallPoolCount,
 	}
 
 	for oldSettingName, newSettingName := range settings {
