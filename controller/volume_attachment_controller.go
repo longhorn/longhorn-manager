@@ -471,10 +471,23 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
 			return
 		}
+
 		readyCond := types.GetCondition(targetNode.Status.Conditions, longhorn.NodeConditionTypeReady)
 		if readyCond.Status != longhorn.ConditionStatusTrue {
 			log.Infof("Pending migration attachment ticket %v: target node %v not ready (reason: %v)", attachmentTicket.ID, attachmentTicket.NodeID, readyCond.Reason)
 			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
+			return
+		}
+
+		// Do not start migration while the active engine is rebuilding replicas or purging snapshots.
+		reason, err := vac.getActiveEngineMigrationBlockingReason(vol)
+		if err != nil {
+			log.WithError(err).Warn("Failed to check the active engine before starting migration")
+			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
+			return
+		}
+		if reason != "" {
+			log.Infof("Pending migration attachment ticket %v: %v", attachmentTicket.ID, reason)
 			return
 		}
 
@@ -597,7 +610,39 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 		vol.Spec.MigrationNodeID = ""
 		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
 		log.Info("Rolling back migration")
+		return
 	}
+
+	if isCSIAttachmentTicketSatisfiedOnNode(vol.Spec.MigrationNodeID, va) ||
+		vac.isVolumeAvailableOnNode(vol.Name, vol.Spec.MigrationNodeID) {
+		return
+	}
+	reason, err := vac.getActiveEngineMigrationBlockingReason(vol)
+	if err != nil {
+		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+		log.WithError(err).Warn("Failed to check the active engine before rolling back migration")
+		return
+	}
+	if reason == "" {
+		return
+	}
+	vol.Spec.MigrationNodeID = ""
+	log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+	log.Infof("Rolling back migration since %v and the migration target has not been published; migration will restart afterwards", reason)
+}
+
+// isCSIAttachmentTicketSatisfiedOnNode returns whether a CSI attachment ticket requesting the node was satisfied as of
+// the last persisted VolumeAttachment status. CSI only publishes a volume after its ticket is satisfied.
+func isCSIAttachmentTicketSatisfiedOnNode(nodeID string, va *longhorn.VolumeAttachment) bool {
+	for _, ticket := range va.Spec.AttachmentTickets {
+		if ticket.Type != longhorn.AttacherTypeCSIAttacher || ticket.NodeID != nodeID {
+			continue
+		}
+		if status, ok := va.Status.AttachmentTicketStatuses[ticket.ID]; ok && status.Satisfied {
+			return true
+		}
+	}
+	return false
 }
 
 func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
@@ -852,7 +897,9 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 	}
 
 	if isMigratingCSIAttacherTicket(attachmentTicket, vol) {
-		if vac.isVolumeAvailableOnNode(vol.Name, attachmentTicket.NodeID) {
+		targetRequested := vol.Spec.MigrationNodeID == attachmentTicket.NodeID || vol.Spec.NodeID == attachmentTicket.NodeID
+		targetWasSatisfied := attachmentTicketStatus.Generation == attachmentTicket.Generation && attachmentTicketStatus.Satisfied
+		if targetRequested && (targetWasSatisfied || vac.isVolumeAvailableOnNode(vol.Name, attachmentTicket.NodeID)) {
 			attachmentTicketStatus.Satisfied = true
 			attachmentTicketStatus.Conditions = types.SetCondition(
 				attachmentTicketStatus.Conditions,
@@ -893,12 +940,23 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 
 	if attachmentTicket.NodeID != vol.Status.CurrentNodeID {
 		attachmentTicketStatus.Satisfied = false
+		reason := ""
+		message := fmt.Sprintf("the volume is currently attached to different node %v ", vol.Status.CurrentNodeID)
+		if isCSIAttacherTicket(attachmentTicket) && util.IsMigratableVolume(vol) && !util.IsVolumeMigrating(vol) {
+			blockingReason, err := vac.getActiveEngineMigrationBlockingReason(vol)
+			if err != nil {
+				log.WithError(err).Warn("Failed to check the active engine for the migration attachment ticket")
+			} else if blockingReason != "" {
+				reason = longhorn.AttachmentStatusConditionReasonMigrationPending
+				message = fmt.Sprintf("waiting to migrate the volume to node %v: %v", attachmentTicket.NodeID, blockingReason)
+			}
+		}
 		attachmentTicketStatus.Conditions = types.SetCondition(
 			attachmentTicketStatus.Conditions,
 			longhorn.AttachmentStatusConditionTypeSatisfied,
 			longhorn.ConditionStatusFalse,
-			"",
-			fmt.Sprintf("the volume is currently attached to different node %v ", vol.Status.CurrentNodeID),
+			reason,
+			message,
 		)
 		return
 	}
@@ -1080,4 +1138,22 @@ func getCSIAttachmentTicketNotRequestingNode(nodeID string, va *longhorn.VolumeA
 		}
 	}
 	return nil
+}
+
+// getActiveEngineMigrationBlockingReason returns why the volume cannot start a live migration from its active engine.
+// The migration engine is never active before the migration is confirmed, so only the source engine is checked.
+func (vac *VolumeAttachmentController) getActiveEngineMigrationBlockingReason(vol *longhorn.Volume) (string, error) {
+	es, err := vac.ds.ListVolumeEnginesRO(vol.Name)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range es {
+		if !e.Spec.Active || e.DeletionTimestamp != nil {
+			continue
+		}
+		if reason := getMigrationBlockingReason(e); reason != "" {
+			return reason, nil
+		}
+	}
+	return "", nil
 }
