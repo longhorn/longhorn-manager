@@ -33,7 +33,7 @@ type RecurringJobSpecApplyConfiguration struct {
 	// The recurring job group.
 	Groups []string `json:"groups,omitempty"`
 	// The recurring job task.
-	// Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create", "filesystem-trim" or "system-backup".
+	// Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create", "filesystem-trim", "system-backup" or "snapshot-group".
 	Task *longhornv1beta2.RecurringJobType `json:"task,omitempty"`
 	// The cron setting.
 	Cron *string `json:"cron,omitempty"`
