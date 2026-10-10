@@ -1048,6 +1048,12 @@ func recurringJobSchema(job *client.Schema) {
 	concurrency.Create = true
 	job.ResourceFields["concurrency"] = concurrency
 
+	activeDeadlineSeconds := job.ResourceFields["activeDeadlineSeconds"]
+	activeDeadlineSeconds.Required = false
+	activeDeadlineSeconds.Unique = false
+	activeDeadlineSeconds.Create = true
+	job.ResourceFields["activeDeadlineSeconds"] = activeDeadlineSeconds
+
 	labels := job.ResourceFields["labels"]
 	labels.Type = "map[string]"
 	labels.Nullable = true
@@ -2688,16 +2694,17 @@ func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api
 			Type: "recurringJob",
 		},
 		RecurringJobSpec: longhorn.RecurringJobSpec{
-			Name:            recurringJob.Name,
-			Groups:          recurringJob.Spec.Groups,
-			Task:            recurringJob.Spec.Task,
-			Cron:            recurringJob.Spec.Cron,
-			Retain:          recurringJob.Spec.Retain,
-			RetainAge:       recurringJob.Spec.RetainAge,
-			RetentionPolicy: recurringJob.Spec.RetentionPolicy,
-			Concurrency:     recurringJob.Spec.Concurrency,
-			Labels:          recurringJob.Spec.Labels,
-			Parameters:      recurringJob.Spec.Parameters,
+			Name:                  recurringJob.Name,
+			Groups:                recurringJob.Spec.Groups,
+			Task:                  recurringJob.Spec.Task,
+			Cron:                  recurringJob.Spec.Cron,
+			Retain:                recurringJob.Spec.Retain,
+			RetainAge:             recurringJob.Spec.RetainAge,
+			RetentionPolicy:       recurringJob.Spec.RetentionPolicy,
+			Concurrency:           recurringJob.Spec.Concurrency,
+			Labels:                recurringJob.Spec.Labels,
+			Parameters:            recurringJob.Spec.Parameters,
+			ActiveDeadlineSeconds: recurringJob.Spec.ActiveDeadlineSeconds,
 		},
 		RecurringJobStatus: longhorn.RecurringJobStatus{
 			ExecutionCount: recurringJob.Status.ExecutionCount,
