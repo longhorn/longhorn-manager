@@ -629,6 +629,14 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}
 
 	switch types.SettingName(name) {
+	case types.SettingNameV2DataEngineRDMADeviceResource:
+		// Must be an extended resource name, which is a domain-prefixed qualified name such as rdma/hca_shared_f0.
+		if value != "" {
+			if errs := validation.IsQualifiedName(value); len(errs) > 0 || !strings.Contains(value, "/") {
+				return fmt.Errorf("%v is not a valid extended resource name: must be a domain-prefixed name such as rdma/hca_shared_f0", value)
+			}
+		}
+
 	case types.SettingNamePriorityClass:
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
