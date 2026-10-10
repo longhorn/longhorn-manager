@@ -3,8 +3,10 @@ package node
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -12,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -80,6 +83,10 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 	// Validate no duplicate disk paths
 	if err := validateNodeDiskPaths(node.Name, node.Spec.Disks); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := n.validateNodeResourceOverrides(node); err != nil {
+		return err
 	}
 
 	return nil
@@ -172,6 +179,10 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
+	}
+
+	if err := n.validateNodeResourceOverrides(newNode); err != nil {
+		return err
 	}
 
 	// We need to ensure that the name is not empty because it can lead to errors in the Longhorn
@@ -325,4 +336,171 @@ func (n *nodeValidator) Delete(request *admission.Request, obj runtime.Object) e
 	}
 
 	return nil
+}
+
+// Rejects only configurations guaranteed to fail; risky but workable ones are accepted.
+func (n *nodeValidator) validateNodeResourceOverrides(node *longhorn.Node) error {
+	var v2Resources *longhorn.NodeV2DataEngineResources
+	if node.Spec.DataEngineResources != nil {
+		v2Resources = node.Spec.DataEngineResources.V2
+	}
+	var imResources *corev1.ResourceRequirements
+	if node.Spec.InstanceManagerResources != nil {
+		imResources = node.Spec.InstanceManagerResources.V2
+	}
+	if v2Resources == nil && imResources == nil {
+		return nil
+	}
+
+	kubeNode, err := n.ds.GetKubernetesNodeRO(node.Name)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		kubeNode = nil
+	}
+
+	explicitMask := ""
+	if v2Resources != nil {
+		if v2Resources.NumberOfCPUCores != nil {
+			numberOfCPUCores := *v2Resources.NumberOfCPUCores
+			if numberOfCPUCores < 0 {
+				return werror.NewInvalidError("dataEngineResources.v2.numberOfCPUCores cannot be negative", "")
+			}
+			if numberOfCPUCores > 0 {
+				if imResources != nil {
+					return werror.NewInvalidError("dataEngineResources.v2.numberOfCPUCores and instanceManagerResources.v2 cannot be set together: dynamic CPU pinning derives the instance manager pod resources by itself", "")
+				}
+				if !strings.EqualFold(string(node.Status.CPUPolicy), string(longhorn.CPUManagerPolicyStatic)) {
+					return werror.NewInvalidError(fmt.Sprintf("dataEngineResources.v2.numberOfCPUCores requires the kubelet CPU manager policy of node %v to be static", node.Name), "")
+				}
+				if kubeNode != nil && numberOfCPUCores*1000 > kubeNode.Status.Allocatable.Cpu().MilliValue() {
+					return werror.NewInvalidError(fmt.Sprintf("dataEngineResources.v2.numberOfCPUCores %v exceeds the %v allocatable CPUs of node %v", numberOfCPUCores, kubeNode.Status.Allocatable.Cpu().String(), node.Name), "")
+				}
+			}
+		}
+		if v2Resources.CPUMask != nil {
+			explicitMask, err = types.NormalizeCPUMask(*v2Resources.CPUMask)
+			if err != nil {
+				return werror.NewInvalidError(fmt.Sprintf("invalid dataEngineResources.v2.cpuMask: %v", err), "")
+			}
+		}
+		if v2Resources.MemorySizeMiB != nil && *v2Resources.MemorySizeMiB < 0 {
+			return werror.NewInvalidError("dataEngineResources.v2.memorySizeMiB cannot be negative", "")
+		}
+		// Same lower bounds as the corresponding global settings.
+		if v2Resources.IobufSmallPoolSize != nil && *v2Resources.IobufSmallPoolSize < types.SpdkDefaultIobufSmallPoolSize {
+			return werror.NewInvalidError(fmt.Sprintf("dataEngineResources.v2.iobufSmallPoolSize must be at least %v", types.SpdkDefaultIobufSmallPoolSize), "")
+		}
+		if v2Resources.IobufLargePoolSize != nil && *v2Resources.IobufLargePoolSize < types.SpdkDefaultIobufLargePoolSize {
+			return werror.NewInvalidError(fmt.Sprintf("dataEngineResources.v2.iobufLargePoolSize must be at least %v", types.SpdkDefaultIobufLargePoolSize), "")
+		}
+	}
+
+	if imResources != nil {
+		if len(imResources.Claims) > 0 {
+			return werror.NewInvalidError("instanceManagerResources.v2.claims is not supported: the instance manager pod declares no resource claims", "")
+		}
+		for _, list := range []corev1.ResourceList{imResources.Requests, imResources.Limits} {
+			for name, quantity := range list {
+				if name != corev1.ResourceCPU && name != corev1.ResourceMemory {
+					return werror.NewInvalidError(fmt.Sprintf("instanceManagerResources.v2 only supports cpu and memory: hugepages limits are derived from the effective data engine memory size, got %v", name), "")
+				}
+				if quantity.Sign() < 0 {
+					return werror.NewInvalidError(fmt.Sprintf("instanceManagerResources.v2 %v %v cannot be negative", name, quantity.String()), "")
+				}
+			}
+		}
+		for _, name := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+			request, hasRequest := imResources.Requests[name]
+			limit, hasLimit := imResources.Limits[name]
+			if hasRequest && hasLimit && request.Cmp(limit) > 0 {
+				return werror.NewInvalidError(fmt.Sprintf("instanceManagerResources.v2 %v request %v exceeds limit %v", name, request.String(), limit.String()), "")
+			}
+		}
+	}
+
+	// A node-level pod resources override (or an explicit numberOfCPUCores of 0) turns dynamic
+	// CPU pinning off for the node, so the inherited global mask becomes effective on it.
+	effectiveMask, maskSource := explicitMask, "dataEngineResources.v2.cpuMask"
+	switchesToStaticMask := imResources != nil ||
+		(v2Resources != nil && v2Resources.NumberOfCPUCores != nil && *v2Resources.NumberOfCPUCores == 0)
+	if effectiveMask == "" && switchesToStaticMask {
+		globalMask, err := n.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, longhorn.DataEngineTypeV2)
+		if err != nil {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		if effectiveMask, err = types.NormalizeCPUMask(globalMask); err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("invalid %v setting inherited by node %v: %v", types.SettingNameDataEngineCPUMask, node.Name, err), "")
+		}
+		maskSource = fmt.Sprintf("inherited %v setting", types.SettingNameDataEngineCPUMask)
+	}
+	if effectiveMask != "" && kubeNode != nil {
+		mask, ok := new(big.Int).SetString(strings.TrimPrefix(strings.ToLower(effectiveMask), "0x"), 16)
+		if !ok {
+			return werror.NewInvalidError(fmt.Sprintf("invalid CPU mask %v for node %v", effectiveMask, node.Name), "")
+		}
+		if int64(mask.BitLen())*1000 > kubeNode.Status.Capacity.Cpu().MilliValue() {
+			return werror.NewInvalidError(fmt.Sprintf("%v %v references CPUs beyond the %v CPUs of node %v", maskSource, effectiveMask, kubeNode.Status.Capacity.Cpu().String(), node.Name), "")
+		}
+	}
+
+	hugepageEnabled, memorySizeMiB, err := n.getEffectiveHugepageAndMemorySize(node, v2Resources)
+	if err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+	setsHugepageEnabled := v2Resources != nil && v2Resources.HugepageEnabled != nil
+	setsMemorySize := v2Resources != nil && v2Resources.MemorySizeMiB != nil
+	if hugepageEnabled {
+		// The memory size becomes the hugepages-2Mi limit, which Kubernetes requires to be page aligned.
+		if (setsHugepageEnabled || setsMemorySize) && memorySizeMiB%2 != 0 {
+			return werror.NewInvalidError(fmt.Sprintf("the effective data engine memory size %vMi of node %v must be a multiple of 2 when hugepages are enabled", memorySizeMiB, node.Name), "")
+		}
+	} else if imResources == nil {
+		// Dynamic CPU pinning caps the pod memory at a fixed small limit, which cannot hold
+		// the memory size that no-huge SPDK preallocates from regular memory.
+		setsNumberOfCPUCores := v2Resources != nil && v2Resources.NumberOfCPUCores != nil
+		if setsHugepageEnabled || setsNumberOfCPUCores {
+			numberOfCPUCores, err := n.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, longhorn.DataEngineTypeV2)
+			if err != nil {
+				return werror.NewInvalidError(err.Error(), "")
+			}
+			if setsNumberOfCPUCores {
+				numberOfCPUCores = *v2Resources.NumberOfCPUCores
+			}
+			if numberOfCPUCores > 0 {
+				return werror.NewInvalidError(fmt.Sprintf("the effective hugepage-enabled of node %v is false while dynamic CPU pinning is enabled with %v cores; SPDK would be OOM-killed while preallocating the data engine memory size under the pinned pod memory limit", node.Name, numberOfCPUCores), "")
+			}
+		}
+	} else {
+		// No-huge SPDK preallocates the memory size from regular memory at startup; a smaller
+		// pod memory limit is a guaranteed OOM kill.
+		if limit, ok := imResources.Limits[corev1.ResourceMemory]; ok && limit.Value()/(1<<20) < memorySizeMiB {
+			return werror.NewInvalidError(fmt.Sprintf("the effective hugepage-enabled of node %v is false and the effective data engine memory size %vMi exceeds the instance manager pod memory limit %v; SPDK would be OOM-killed while preallocating", node.Name, memorySizeMiB, limit.String()), "")
+		}
+	}
+
+	return nil
+}
+
+// getEffectiveHugepageAndMemorySize resolves from the node object being validated (the
+// datastore still holds the previous revision), with the global settings as fallback.
+func (n *nodeValidator) getEffectiveHugepageAndMemorySize(node *longhorn.Node, v2Resources *longhorn.NodeV2DataEngineResources) (bool, int64, error) {
+	hugepageEnabled, err := n.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return false, 0, err
+	}
+	memorySizeMiB, err := n.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return false, 0, err
+	}
+	if v2Resources != nil {
+		if v2Resources.HugepageEnabled != nil {
+			hugepageEnabled = *v2Resources.HugepageEnabled
+		}
+		if v2Resources.MemorySizeMiB != nil {
+			memorySizeMiB = *v2Resources.MemorySizeMiB
+		}
+	}
+	return hugepageEnabled, memorySizeMiB, nil
 }

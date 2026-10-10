@@ -178,18 +178,11 @@ type InstanceProcessStatus struct {
 }
 
 type V2DataEngineSpec struct {
+	// Deprecated. Ignored in favor of Node.Spec.DataEngineResources.V2.CPUMask.
 	// +optional
 	CPUMask string `json:"cpuMask"`
 
-	// CPUIsolationEnabled overrides the cluster-wide
-	// data-engine-cpu-isolation-enabled setting for this instance manager.
-	// "true"  -> pass --enable-irq-affinity and --enable-workqueue-affinity
-	//            to start-spdk-tgt (steer host IRQs and unbound kernel
-	//            workqueues away from the SPDK reactor CPUs).
-	// "false" -> do not pass the flags.
-	// ""      -> inherit the global setting value.
-	// This field is ignored when interrupt mode is enabled, since the SPDK
-	// reactors no longer busy-poll and CPU isolation is always disabled.
+	// Deprecated. Ignored in favor of Node.Spec.DataEngineResources.V2.CPUIsolationEnabled.
 	// +optional
 	// +kubebuilder:validation:Enum="";"true";"false"
 	CPUIsolationEnabled string `json:"cpuIsolationEnabled"`
@@ -226,6 +219,18 @@ type V2DataEngineStatus struct {
 	// +optional
 	// +kubebuilder:validation:Enum="";"true";"false"
 	InterruptModeEnabled string `json:"interruptModeEnabled"`
+
+	// Applied node effective values (node spec override or global setting) as of
+	// the last pod creation; nil until this manager version has created the pod.
+	// Set by Longhorn manager; read-only to users.
+	// +optional
+	MemorySizeMiB *int64 `json:"memorySizeMiB,omitempty"`
+	// +optional
+	HugepageEnabled *bool `json:"hugepageEnabled,omitempty"`
+	// +optional
+	IobufSmallPoolSize *int64 `json:"iobufSmallPoolSize,omitempty"`
+	// +optional
+	IobufLargePoolSize *int64 `json:"iobufLargePoolSize,omitempty"`
 }
 
 type DataEngineStatus struct {

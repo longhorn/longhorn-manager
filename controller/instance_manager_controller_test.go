@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/ptr"
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
@@ -769,7 +770,7 @@ func (s *TestSuite) TestHugepagePodDeletionDecision(c *C) {
 			Command: []string{"instance-manager"},
 			Args:    []string{"--spdk-memory-size", tc.podMemorySize},
 			Resources: corev1.ResourceRequirements{
-				Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")},
+				Requests: corev1.ResourceList{"cpu": resource.MustParse("480m"), "memory": resource.MustParse("128Mi")},
 				Limits: corev1.ResourceList{
 					corev1.ResourceName("hugepages-2Mi"): resource.MustParse(tc.podHugepageLimit),
 				},
@@ -878,7 +879,7 @@ func (s *TestSuite) TestNodeHasEnoughHugepageTotalCapacity(c *C) {
 
 func (s *TestSuite) TestResolveCPUIsolationEnabled(c *C) {
 	type testCase struct {
-		imOverride       string
+		nodeOverride     *bool
 		interruptMode    string
 		isolationSetting string
 		expected         bool
@@ -900,20 +901,20 @@ func (s *TestSuite) TestResolveCPUIsolationEnabled(c *C) {
 			isolationSetting: longhorn.TrueValue,
 			expected:         false,
 		},
-		"interrupt mode wins over the instance manager override": {
-			imOverride:       longhorn.TrueValue,
+		"interrupt mode wins over the node override": {
+			nodeOverride:     ptr.To(true),
 			interruptMode:    longhorn.TrueValue,
 			isolationSetting: longhorn.TrueValue,
 			expected:         false,
 		},
-		"instance manager override wins over the isolation setting in polling mode": {
-			imOverride:       longhorn.FalseValue,
+		"node override wins over the isolation setting in polling mode": {
+			nodeOverride:     ptr.To(false),
 			interruptMode:    longhorn.FalseValue,
 			isolationSetting: longhorn.TrueValue,
 			expected:         false,
 		},
-		"instance manager override enables isolation in polling mode": {
-			imOverride:       longhorn.TrueValue,
+		"node override enables isolation in polling mode": {
+			nodeOverride:     ptr.To(true),
 			interruptMode:    longhorn.FalseValue,
 			isolationSetting: longhorn.FalseValue,
 			expected:         true,
@@ -956,7 +957,13 @@ func (s *TestSuite) TestResolveCPUIsolationEnabled(c *C) {
 			TestInstanceManagerImage,
 			false,
 		)
-		im.Spec.DataEngineSpec.V2.CPUIsolationEnabled = tc.imOverride
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		if tc.nodeOverride != nil {
+			lhNode.Spec.DataEngineResources = &longhorn.NodeDataEngineResources{
+				V2: &longhorn.NodeV2DataEngineResources{CPUIsolationEnabled: tc.nodeOverride},
+			}
+		}
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(lhNode), IsNil)
 
 		enabled, err := imc.resolveCPUIsolationEnabled(im)
 		c.Assert(err, IsNil)
@@ -1090,7 +1097,7 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 			Command: []string{"instance-manager"},
 			Args:    podArgs,
 			Resources: corev1.ResourceRequirements{
-				Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")},
+				Requests: corev1.ResourceList{"cpu": resource.MustParse("480m"), "memory": resource.MustParse("128Mi")},
 				Limits: corev1.ResourceList{
 					corev1.ResourceName("hugepages-2Mi"): resource.MustParse("1024Mi"),
 				},
@@ -1118,5 +1125,82 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 		for _, isolationArg := range isolationArgs {
 			c.Assert(hasArg(args, isolationArg), Equals, false, Commentf("test case: %v, args: %v", name, args))
 		}
+	}
+}
+
+func (s *TestSuite) TestGetInstanceManagerResourceRequirement(c *C) {
+	type testCase struct {
+		dataEngine       longhorn.DataEngineType
+		numberOfCPUCores string
+		nodeIMResources  *corev1.ResourceRequirements
+		expected         *corev1.ResourceRequirements
+	}
+	testCases := map[string]testCase{
+		"v1 requests the guaranteed CPU only": {
+			dataEngine: longhorn.DataEngineTypeV1,
+			expected:   &corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("480m")}},
+		},
+		"v2 adds the memory request": {
+			dataEngine: longhorn.DataEngineTypeV2,
+			expected: &corev1.ResourceRequirements{Requests: corev1.ResourceList{
+				corev1.ResourceCPU: resource.MustParse("480m"), corev1.ResourceMemory: resource.MustParse("128Mi"),
+			}},
+		},
+		"v2 dynamic CPU pinning sets limits equal to requests": {
+			dataEngine:       longhorn.DataEngineTypeV2,
+			numberOfCPUCores: `{"v2":"2"}`,
+			expected: &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2"), corev1.ResourceMemory: resource.MustParse("128Mi")},
+				Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2"), corev1.ResourceMemory: resource.MustParse("128Mi")},
+			},
+		},
+		"v2 node pod resources replace the derived requirements": {
+			dataEngine:       longhorn.DataEngineTypeV2,
+			numberOfCPUCores: `{"v2":"2"}`,
+			nodeIMResources: &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("3"), corev1.ResourceMemory: resource.MustParse("4Gi")},
+			},
+			expected: &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("3"), corev1.ResourceMemory: resource.MustParse("4Gi")},
+				Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("3"), corev1.ResourceMemory: resource.MustParse("4Gi")},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Status.Allocatable = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4")}
+		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(kubeNode), IsNil)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		if tc.nodeIMResources != nil {
+			lhNode.Spec.InstanceManagerResources = &longhorn.NodeInstanceManagerResources{V2: tc.nodeIMResources}
+		}
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(lhNode), IsNil)
+
+		if tc.numberOfCPUCores != "" {
+			setting := &longhorn.Setting{
+				ObjectMeta: metav1.ObjectMeta{Name: string(types.SettingNameDataEngineNumberOfCPUCores), Namespace: TestNamespace},
+				Value:      tc.numberOfCPUCores,
+			}
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer().Add(setting), IsNil)
+		}
+
+		im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1,
+			nil, nil, nil, tc.dataEngine, TestInstanceManagerImage, false)
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
+
+		resourceReq, err := GetInstanceManagerResourceRequirement(ds, im.Name)
+		c.Assert(err, IsNil)
+		c.Assert(IsSameInstanceManagerResourceRequirement(resourceReq, tc.expected), Equals, true, Commentf("test case: %v, got %+v", name, resourceReq))
+		c.Assert(len(resourceReq.Limits) == 0, Equals, len(tc.expected.Limits) == 0, Commentf("test case: %v", name))
 	}
 }

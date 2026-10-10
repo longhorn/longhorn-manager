@@ -362,7 +362,24 @@ func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables 
 }
 
 func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
-	hugePageLimitInMiB, err := m.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2)
+	hugepageEnabled, err := m.ds.GetNodeEffectiveSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, longhorn.DataEngineTypeV2, m.nodeName)
+	if err != nil {
+		m.logger.Warnf("Failed to get setting %v for data engine %v, assuming hugepages are enabled",
+			types.SettingNameDataEngineHugepageEnabled, longhorn.DataEngineTypeV2)
+		hugepageEnabled = true
+	}
+	if !hugepageEnabled {
+		collectedData.conditions = types.SetCondition(
+			collectedData.conditions,
+			longhorn.NodeConditionTypeHugePagesAvailable,
+			longhorn.ConditionStatusTrue,
+			"",
+			"HugePages (2Mi) are not required because hugepages are disabled for the v2 data engine on this node",
+		)
+		return
+	}
+
+	hugePageLimitInMiB, err := m.ds.GetNodeEffectiveSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2, m.nodeName)
 	if err != nil {
 		m.logger.Warnf("Failed to get setting %v for data engine %v, using default value %d",
 			types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2, defaultHugePageLimitInMiB)
