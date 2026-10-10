@@ -2,6 +2,8 @@ package storageclass
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,12 +23,23 @@ import (
 
 const dataLayoutKeyPrefix = longhorn.DataLayoutParameterPrefix + "."
 
+const csiStorageClassParameterPrefix = "csi.storage.k8s.io/"
+
 var dataLayoutSubFields = sets.New[string](
 	longhorn.DataLayoutParameterType,
 	longhorn.DataLayoutParameterMode,
 	longhorn.DataLayoutParameterDataChunks,
 	longhorn.DataLayoutParameterParityChunks,
 	longhorn.DataLayoutParameterStripSizeKB,
+)
+
+var rejectedSecretParameters = sets.New[string](
+	"csi.storage.k8s.io/secret-name",
+	"csi.storage.k8s.io/secret-namespace",
+	"csiProvisionerSecretName",
+	"csiProvisionerSecretNamespace",
+	"csiControllerPublishSecretName",
+	"csiControllerPublishSecretNamespace",
 )
 
 type storageClassValidator struct {
@@ -66,10 +79,35 @@ func (v *storageClassValidator) Create(request *admission.Request, newObj runtim
 		return nil
 	}
 
-	if errs := validateDataLayout(sc.Parameters); len(errs) > 0 {
+	errs := validateSecretParameters(sc.Parameters)
+	errs = append(errs, validateDataLayout(sc.Parameters)...)
+	if len(errs) > 0 {
 		return werror.NewInvalidError(errs.ToAggregate().Error(), "parameters")
 	}
 	return nil
+}
+
+func validateSecretParameters(params map[string]string) field.ErrorList {
+	errors := field.ErrorList{}
+	fp := field.NewPath("parameters")
+
+	for _, key := range slices.Sorted(maps.Keys(params)) {
+		if rejectedSecretParameters.Has(key) ||
+			strings.HasPrefix(key, csiStorageClassParameterPrefix+"provisioner-secret-") ||
+			isControllerSecretParameter(key) {
+			errors = append(errors, field.Invalid(fp.Key(key), key,
+				"must use node-side Secret parameters"))
+		}
+	}
+	return errors
+}
+
+func isControllerSecretParameter(key string) bool {
+	const controllerPrefix = csiStorageClassParameterPrefix + "controller-"
+	if !strings.HasPrefix(key, controllerPrefix) {
+		return false
+	}
+	return strings.Contains(strings.TrimPrefix(key, controllerPrefix), "-secret-")
 }
 
 func validateDataLayout(params map[string]string) field.ErrorList {
