@@ -64,14 +64,17 @@ const (
 	ValueFloatRangeMinimum = "minimum"
 	ValueFloatRangeMaximum = "maximum"
 
-	// SpdkDefaultIobufLargePoolSize is SPDK's built-in default large_pool_count. A
-	// data-engine-iobuf-large-pool-size value not greater than this is a no-op (SPDK
+	// SpdkDefaultIobufLargePoolCount is SPDK's built-in default large_pool_count. A
+	// data-engine-iobuf-large-pool-count value not greater than this is a no-op (SPDK
 	// keeps its default), so only a larger value is passed through to override it.
-	SpdkDefaultIobufLargePoolSize = 1024
+	SpdkDefaultIobufLargePoolCount = 1024
 
-	// SpdkDefaultIobufSmallPoolSize is SPDK's built-in default small_pool_count. A
-	// data-engine-iobuf-small-pool-size value not greater than this is a no-op.
-	SpdkDefaultIobufSmallPoolSize = 8192
+	// SpdkDefaultIobufSmallPoolCount is SPDK's built-in default small_pool_count. A
+	// data-engine-iobuf-small-pool-count value not greater than this is a no-op.
+	SpdkDefaultIobufSmallPoolCount = 8192
+
+	// SpdkDefaultIobufLargeBufSize is SPDK's built-in default large_bufsize in bytes.
+	SpdkDefaultIobufLargeBufSize = 135168
 )
 
 type SettingName string
@@ -166,7 +169,8 @@ const (
 	SettingNameDataEngineHugepageEnabled                                = SettingName("data-engine-hugepage-enabled")
 	SettingNameDataEngineMemorySize                                     = SettingName("data-engine-memory-size")
 	SettingNameDataEngineIobufLargePoolSize                             = SettingName("data-engine-iobuf-large-pool-size")
-	SettingNameDataEngineIobufSmallPoolSize                             = SettingName("data-engine-iobuf-small-pool-size")
+	SettingNameDataEngineIobufLargePoolCount                            = SettingName("data-engine-iobuf-large-pool-count")
+	SettingNameDataEngineIobufSmallPoolCount                            = SettingName("data-engine-iobuf-small-pool-count")
 	SettingNameDataEngineCPUMask                                        = SettingName("data-engine-cpu-mask")
 	SettingNameDataEngineNumberOfCPUCores                               = SettingName("data-engine-number-of-cpu-cores")
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
@@ -209,6 +213,7 @@ const (
 	SettingNameV2DataEngineLogFlags                     = SettingName("v2-data-engine-log-flags")
 	SettingNameV2DataEngineFastReplicaRebuilding        = SettingName("v2-data-engine-fast-replica-rebuilding")
 	SettingNameV2DataEngineSnapshotDataIntegrity        = SettingName("v2-data-engine-snapshot-data-integrity")
+	SettingNameDataEngineIobufSmallPoolSize             = SettingName("data-engine-iobuf-small-pool-size")
 )
 
 var (
@@ -297,7 +302,8 @@ var (
 		SettingNameDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize,
 		SettingNameDataEngineIobufLargePoolSize,
-		SettingNameDataEngineIobufSmallPoolSize,
+		SettingNameDataEngineIobufLargePoolCount,
+		SettingNameDataEngineIobufSmallPoolCount,
 		SettingNameDataEngineCPUMask,
 		SettingNameDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel,
@@ -347,6 +353,7 @@ var replacedSettingNames = map[SettingName]bool{
 	SettingNameV2DataEngineLogFlags:                     true, // SettingNameDataEngineLogFlags
 	SettingNameV2DataEngineFastReplicaRebuilding:        true, // SettingNameFastReplicaRebuildEnabled
 	SettingNameV2DataEngineSnapshotDataIntegrity:        true, // SettingNameSnapshotDataIntegrity
+	SettingNameDataEngineIobufSmallPoolSize:             true, // SettingNameDataEngineIobufSmallPoolCount
 }
 
 type SettingCategory string
@@ -469,7 +476,8 @@ var (
 		SettingNameDataEngineHugepageEnabled:                                SettingDefinitionDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize:                                     SettingDefinitionDataEngineMemorySize,
 		SettingNameDataEngineIobufLargePoolSize:                             SettingDefinitionDataEngineIobufLargePoolSize,
-		SettingNameDataEngineIobufSmallPoolSize:                             SettingDefinitionDataEngineIobufSmallPoolSize,
+		SettingNameDataEngineIobufLargePoolCount:                            SettingDefinitionDataEngineIobufLargePoolCount,
+		SettingNameDataEngineIobufSmallPoolCount:                            SettingDefinitionDataEngineIobufSmallPoolCount,
 		SettingNameDataEngineCPUMask:                                        SettingDefinitionDataEngineCPUMask,
 		SettingNameDataEngineNumberOfCPUCores:                               SettingDefinitionDataEngineNumberOfCPUCores,
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
@@ -1880,38 +1888,56 @@ var (
 	}
 
 	SettingDefinitionDataEngineIobufLargePoolSize = SettingDefinition{
-		DisplayName: "Data Engine iobuf Large Pool Size",
-		Description: "Applies only to the V2 Data Engine. Sets the SPDK iobuf large buffer pool size (`large_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
-			"  - `1024` (default): SPDK's built-in default `large_pool_count`; behavior is unchanged. \n\n" +
-			"  - A larger value relieves NVMe-oF TCP large-buffer exhaustion (the `large_pool` `retry` / `NEED_BUFFER` stalls) under heavy mixed read/write workloads whose I/O size exceeds the iobuf small buffer size (8 KiB), e.g. 16 KiB database pages. Values not greater than 1024 keep the SPDK default. \n\n" +
-			"  - Larger values consume more hugepage memory: each large buffer is 132 KiB, so the large pool uses `large_pool_count x 132 KiB` (1024 -> 132 MiB, 4096 -> 528 MiB, 16384 -> ~2 GiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
-			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool size takes effect.",
+		DisplayName: "Data Engine iobuf Large Buffer Size",
+		Description: "Applies only to the V2 Data Engine. Specifies the size, in bytes, of each buffer in the SPDK iobuf large buffer pool (`large_bufsize`) on the Instance Manager's SPDK target. \n\n" +
+			"  - `135168` (default): SPDK's built-in default `large_bufsize` (132 KiB). \n\n" +
+			"  - The Instance Manager does not pass this value to spdk_tgt yet, so SPDK's default `large_bufsize` is used. \n\n" +
+			"  - This setting does not configure the number of buffers in the large buffer pool. Use the `Data Engine iobuf Large Pool Count` setting (`data-engine-iobuf-large-pool-count`) to size the large buffer pool. \n\n" +
+			"  - Before v1.14.0, this setting configured the large buffer pool count (`large_pool_count`). During upgrade, its value is migrated to `data-engine-iobuf-large-pool-count` and this setting is reset to `135168`.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufLargePoolSize),
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufLargeBufSize),
 		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: SpdkDefaultIobufLargePoolSize,
+			ValueIntRangeMinimum: SpdkDefaultIobufLargeBufSize,
 		},
 	}
 
-	SettingDefinitionDataEngineIobufSmallPoolSize = SettingDefinition{
-		DisplayName: "Data Engine iobuf Small Pool Size",
-		Description: "Applies only to the V2 Data Engine. Sets the SPDK iobuf small buffer pool size (`small_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
-			"  - `8192` (default): SPDK's built-in default `small_pool_count`; behavior is unchanged. \n\n" +
-			"  - A larger value relieves NVMe-oF TCP small-buffer exhaustion (the `small_pool` `retry` / `NEED_BUFFER` stalls) under workloads whose I/O size fits within the iobuf small buffer size (8 KiB), e.g. 4 KiB random reads at high queue depth across many volumes. Values not greater than 8192 keep the SPDK default. \n\n" +
-			"  - Larger values consume more hugepage memory: each small buffer is 8 KiB, so the small pool uses `small_pool_count x 8 KiB` (8192 -> 64 MiB, 16384 -> 128 MiB, 65536 -> 512 MiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
-			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool size takes effect.",
+	SettingDefinitionDataEngineIobufLargePoolCount = SettingDefinition{
+		DisplayName: "Data Engine iobuf Large Pool Count",
+		Description: "Applies only to the V2 Data Engine. Sets the number of buffers in the SPDK iobuf large buffer pool (`large_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
+			"  - `1024` (default): SPDK's built-in default `large_pool_count`; behavior is unchanged. \n\n" +
+			"  - A larger value relieves NVMe-oF TCP large-buffer exhaustion (the `large_pool` `retry` / `NEED_BUFFER` stalls) under heavy mixed read/write workloads whose I/O size exceeds the iobuf small buffer size (8 KiB), e.g. 16 KiB database pages. Values not greater than 1024 keep the SPDK default. \n\n" +
+			"  - Larger values consume more hugepage memory: each large buffer is 132 KiB, so the large pool uses `large_pool_count x 132 KiB` (1024 -> 132 MiB, 4096 -> 528 MiB, 16384 -> ~2 GiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
+			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool count takes effect.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufSmallPoolSize),
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufLargePoolCount),
 		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: SpdkDefaultIobufSmallPoolSize,
+			ValueIntRangeMinimum: SpdkDefaultIobufLargePoolCount,
+		},
+	}
+
+	SettingDefinitionDataEngineIobufSmallPoolCount = SettingDefinition{
+		DisplayName: "Data Engine iobuf Small Pool Count",
+		Description: "Applies only to the V2 Data Engine. Sets the number of buffers in the SPDK iobuf small buffer pool (`small_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
+			"  - `8192` (default): SPDK's built-in default `small_pool_count`; behavior is unchanged. \n\n" +
+			"  - A larger value relieves NVMe-oF TCP small-buffer exhaustion (the `small_pool` `retry` / `NEED_BUFFER` stalls) under workloads whose I/O size fits within the iobuf small buffer size (8 KiB), e.g. 4 KiB random reads at high queue depth across many volumes. Values not greater than 8192 keep the SPDK default. \n\n" +
+			"  - Larger values consume more hugepage memory: each small buffer is 8 KiB, so the small pool uses `small_pool_count x 8 KiB` (8192 -> 64 MiB, 16384 -> 128 MiB, 65536 -> 512 MiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
+			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool count takes effect.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufSmallPoolCount),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: SpdkDefaultIobufSmallPoolCount,
 		},
 	}
 
