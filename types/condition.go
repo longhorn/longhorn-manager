@@ -1,6 +1,8 @@
 package types
 
 import (
+	"fmt"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 
@@ -64,6 +66,21 @@ func SetCondition(originConditions []longhorn.Condition, conditionType string, c
 
 func SetConditionWithoutTimestamp(originConditions []longhorn.Condition, conditionType string, conditionValue longhorn.ConditionStatus, reason, message string) []longhorn.Condition {
 	return setCondition(originConditions, conditionType, conditionValue, reason, message, false)
+}
+
+// SetDiskInitializedCondition derives the disk Initialized condition from the recorded disk UUID rather than from
+// what is currently visible at the disk path, so a node reboot or an unmounted disk only affects Ready.
+func SetDiskInitializedCondition(diskStatus *longhorn.DiskStatus, nodeName, diskName string) {
+	if diskStatus.DiskUUID == "" {
+		diskStatus.Conditions = SetCondition(diskStatus.Conditions,
+			longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusFalse,
+			string(longhorn.DiskConditionReasonDiskUninitialized),
+			fmt.Sprintf("Disk %v(%v) on node %v has no disk UUID recorded yet", diskName, diskStatus.DiskPath, nodeName))
+		return
+	}
+	diskStatus.Conditions = SetCondition(diskStatus.Conditions,
+		longhorn.DiskConditionTypeInitialized, longhorn.ConditionStatusTrue,
+		"", fmt.Sprintf("Disk %v(%v) on node %v is initialized with disk UUID %v", diskName, diskStatus.DiskPath, nodeName, diskStatus.DiskUUID))
 }
 
 func setCondition(originConditions []longhorn.Condition, conditionType string, conditionValue longhorn.ConditionStatus, reason, message string, withTimestamp bool) []longhorn.Condition {

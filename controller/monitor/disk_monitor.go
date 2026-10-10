@@ -311,6 +311,18 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 				continue
 			}
 
+			// A filesystem-type disk with a recorded UUID already has a disk config, so a missing one means the
+			// data path is not mounted yet or the disk was replaced. Generating a config here would write it to
+			// whatever is behind the path, such as the root filesystem, under a new UUID.
+			if disk.Type == longhorn.DiskTypeFilesystem && recordedDiskUUID != "" {
+				diskInfoMap[diskName] = NewDiskInfo(diskName, recordedDiskUUID, disk.Path, requestedDiskDriver, nodeOrDiskEvicted, nil,
+					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonDiskNotMounted),
+					fmt.Sprintf("Disk %v(%v) on node %v is not ready: cannot find disk config file while disk UUID %v is recorded, "+
+						"the data path may not be mounted yet; if the disk was replaced, remove and re-add it",
+						diskName, disk.Path, node.Name, recordedDiskUUID))
+				continue
+			}
+
 			// Filesystem-type disk
 			//   Blindly check or generate disk config.
 			//   The handling of all disks containing the same fsid will be done in NodeController.
