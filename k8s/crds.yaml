@@ -80,6 +80,8 @@ spec:
                 type: string
               diskUUID:
                 type: string
+              fileEverTransferred:
+                type: boolean
               fileTransferred:
                 type: boolean
               nodeID:
@@ -88,6 +90,8 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              recoveryRequested:
+                type: boolean
               sourceType:
                 enum:
                 - download
@@ -114,6 +118,8 @@ spec:
               ownerID:
                 type: string
               progress:
+                type: integer
+              retryCount:
                 type: integer
               runningParameters:
                 additionalProperties:
