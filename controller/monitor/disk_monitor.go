@@ -80,7 +80,7 @@ type CollectedDiskInfo struct {
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
 type GetDiskHealthHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, time.Time, *DiskServiceClient, logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*util.DiskConfig, error)
-type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, *DiskServiceClient, *datastore.DataStore) (*util.DiskConfig, error)
+type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, int64, int64, *DiskServiceClient, *datastore.DataStore) (*util.DiskConfig, error)
 type GetReplicaDataStoresHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)
 
 func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*DiskMonitor, error) {
@@ -260,10 +260,12 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		diskDriver := longhorn.DiskDriverNone
 		recordedDiskUUID := ""
+		actualBlockSize := int64(0)
 		if node.Status.DiskStatus != nil {
 			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok && diskStatus != nil {
 				diskDriver = diskStatus.DiskDriver
 				recordedDiskUUID = diskStatus.DiskUUID
+				actualBlockSize = diskStatus.ActualBlockSize
 			}
 		}
 		// The recorded driver wins over the spec so that a re-creation reuses the
@@ -316,7 +318,8 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			//   The handling of all disks containing the same fsid will be done in NodeController.
 			// Block-type disk
 			//   Create a bdev lvstore
-			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, recordedDiskUUID, disk.Path, string(requestedDiskDriver), diskServiceClient, m.ds)
+			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, recordedDiskUUID, disk.Path,
+				string(requestedDiskDriver), disk.BlockSize, actualBlockSize, diskServiceClient, m.ds)
 			if err != nil {
 				errs.Append("errors", errors.Wrap(err, "failed to generate disk config"))
 
@@ -333,8 +336,16 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 				diskName, disk.Path, node.Name, diskConfig.Message)
 
 			previousMessage := diskConfig.Message
+			retryActualBlockSize := actualBlockSize
+			if retryActualBlockSize == 0 && disk.BlockSize == 0 && recordedDiskUUID != "" && diskConfig.DiskUUID == recordedDiskUUID {
+				// An Error-state disk retains the parameters of its failed creation.
+				// Reuse that size only for the same recorded disk; it is not persisted as
+				// observed geometry until the disk reaches Ready and DiskStat succeeds.
+				retryActualBlockSize = diskConfig.BlockSize
+			}
 
-			retriedDiskConfig, retryErr := m.generateDiskConfigHandler(disk.Type, diskName, recordedDiskUUID, disk.Path, string(requestedDiskDriver), diskServiceClient, m.ds)
+			retriedDiskConfig, retryErr := m.generateDiskConfigHandler(disk.Type, diskName, recordedDiskUUID, disk.Path,
+				string(requestedDiskDriver), disk.BlockSize, retryActualBlockSize, diskServiceClient, m.ds)
 			if retryErr != nil {
 				errs.Append("errors", errors.Wrap(retryErr, "failed to retry disk creation"))
 			} else {

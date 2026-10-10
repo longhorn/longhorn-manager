@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -504,6 +505,7 @@ type Node struct {
 
 type DiskStatus struct {
 	Conditions            map[string]longhorn.Condition `json:"conditions"`
+	ActualBlockSize       int64                         `json:"actualBlockSize"`
 	StorageAvailable      int64                         `json:"storageAvailable"`
 	StorageScheduled      int64                         `json:"storageScheduled"`
 	StorageMaximum        int64                         `json:"storageMaximum"`
@@ -525,6 +527,41 @@ type DiskInfo struct {
 
 type DiskUpdateInput struct {
 	Disks map[string]longhorn.DiskSpec `json:"disks"`
+
+	blockSizePresent map[string]bool
+}
+
+func (d *DiskUpdateInput) UnmarshalJSON(data []byte) error {
+	var input struct {
+		Disks map[string]json.RawMessage `json:"disks"`
+	}
+	if err := json.Unmarshal(data, &input); err != nil {
+		return err
+	}
+
+	d.Disks = make(map[string]longhorn.DiskSpec, len(input.Disks))
+	d.blockSizePresent = make(map[string]bool, len(input.Disks))
+	for diskName, rawDisk := range input.Disks {
+		var disk longhorn.DiskSpec
+		if err := json.Unmarshal(rawDisk, &disk); err != nil {
+			return err
+		}
+
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(rawDisk, &fields); err != nil {
+			return err
+		}
+		if rawBlockSize, exists := fields["blockSize"]; exists {
+			var blockSize *int64
+			if err := json.Unmarshal(rawBlockSize, &blockSize); err != nil {
+				return err
+			}
+			d.blockSizePresent[diskName] = blockSize != nil
+		}
+		d.Disks[diskName] = disk
+	}
+
+	return nil
 }
 
 type Event struct {
@@ -798,7 +835,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
-	schemas.AddType("diskUpdate", longhorn.DiskSpec{})
+	diskUpdateSchema(schemas.AddType("diskUpdate", longhorn.DiskSpec{}))
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
 	schemas.AddType("UpdateReplicaAutoBalanceInput", UpdateReplicaAutoBalanceInput{})
 	schemas.AddType("UpdateRebuildConcurrentSyncLimitInput", UpdateRebuildConcurrentSyncLimitInput{})
@@ -924,8 +961,14 @@ func nodeSchema(node *client.Schema) {
 
 func diskSchema(diskUpdateInput *client.Schema) {
 	disks := diskUpdateInput.ResourceFields["disks"]
-	disks.Type = "array[diskUpdate]"
+	disks.Type = "map[diskUpdate]"
 	diskUpdateInput.ResourceFields["disks"] = disks
+}
+
+func diskUpdateSchema(diskUpdate *client.Schema) {
+	blockSize := diskUpdate.ResourceFields["blockSize"]
+	blockSize.Nullable = true
+	diskUpdate.ResourceFields["blockSize"] = blockSize
 }
 
 func diskInfoSchema(diskInfo *client.Schema) {
@@ -2492,6 +2535,7 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		if node.Status.DiskStatus != nil && node.Status.DiskStatus[name] != nil {
 			di.DiskStatus = DiskStatus{
 				Conditions:                sliceToMap(node.Status.DiskStatus[name].Conditions),
+				ActualBlockSize:           node.Status.DiskStatus[name].ActualBlockSize,
 				StorageAvailable:          node.Status.DiskStatus[name].StorageAvailable,
 				StorageScheduled:          node.Status.DiskStatus[name].StorageScheduled,
 				StorageMaximum:            node.Status.DiskStatus[name].StorageMaximum,

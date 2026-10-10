@@ -7,7 +7,11 @@ const (
 type DiskInfo struct {
 	Resource `yaml:"-"`
 
+	ActualBlockSize int64 `json:"actualBlockSize,omitempty" yaml:"actual_block_size,omitempty"`
+
 	AllowScheduling bool `json:"allowScheduling,omitempty" yaml:"allow_scheduling,omitempty"`
+
+	BlockSize int64 `json:"blockSize,omitempty" yaml:"block_size,omitempty"`
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
