@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -1305,6 +1306,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.err = true
 	testCases["fail scheduling when no node in the volume's topology zone"] = tc
 
+	tc = generateUnhealthyDiskTestCase()
+	testCases["skip unhealthy disk"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 
@@ -1469,6 +1473,68 @@ func generateFailedReplicaTestCase(
 		TestNode1: node1,
 	}
 	tc.nodes = nodes
+	return
+}
+
+// generateUnhealthyDiskTestCase helps generate test cases in which a node contains a healthy disk and a disk reported
+// as unhealthy by disk health data, and the scheduler must not schedule replicas to the unhealthy disk.
+func generateUnhealthyDiskTestCase() (tc *ReplicaSchedulerTestCase) {
+	tc = generateSchedulerTestCase()
+	daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	tc.daemons = []*corev1.Pod{
+		daemon1,
+	}
+	node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): newDisk(TestDefaultDataPath, true, 0),
+		getDiskID(TestNode1, "2"): newDisk(TestDefaultDataPath, true, 0),
+	}
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
+			HealthData: map[string]longhorn.HealthData{
+				"sda": {
+					Source:       longhorn.HealthDataSourceSMART,
+					HealthStatus: longhorn.HealthDataStatusFailed,
+				},
+			},
+		},
+		getDiskID(TestNode1, "2"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode1, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
+			HealthData: map[string]longhorn.HealthData{
+				"sdb": {
+					Source:       longhorn.HealthDataSourceSMART,
+					HealthStatus: longhorn.HealthDataStatusPassed,
+				},
+			},
+		},
+	}
+	tc.nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.replicaNodeSoftAntiAffinity = "true"  // Allow replicas to schedule to the same node.
+	tc.replicaDiskSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same disk.
+	tc.err = false
+	// Only the healthy disk is schedulable, so the second replica must fail to schedule.
+	tc.firstNilReplica = 1
+	tc.expectedDisks = map[string]struct{}{
+		getDiskID(TestNode1, "2"): {},
+	}
 	return
 }
 
@@ -2303,6 +2369,17 @@ func (s *TestSuite) TestIsDiskEligibleForVolume(c *C) {
 			DiskSelector: []string{"primary"},
 		},
 	}
+	newDiskStatusWithHealthData := func(healthStatuses ...longhorn.HealthDataHealthStatus) *longhorn.DiskStatus {
+		diskStatus := baseDiskStatus.DeepCopy()
+		diskStatus.HealthData = map[string]longhorn.HealthData{}
+		for i, healthStatus := range healthStatuses {
+			diskStatus.HealthData[fmt.Sprintf("disk-%d", i)] = longhorn.HealthData{
+				Source:       longhorn.HealthDataSourceSMART,
+				HealthStatus: healthStatus,
+			}
+		}
+		return diskStatus
+	}
 
 	tests := []struct {
 		name                      string
@@ -2471,15 +2548,156 @@ func (s *TestSuite) TestIsDiskEligibleForVolume(c *C) {
 			expect:                    false,
 			expectReason:              longhorn.ErrorReplicaScheduleTagsNotFulfilled,
 		},
+		{
+			name:         "Ineligible - disk health data reports failed",
+			diskSpec:     baseDiskSpec,
+			diskStatus:   newDiskStatusWithHealthData(longhorn.HealthDataStatusFailed),
+			volume:       baseVolume,
+			expect:       false,
+			expectReason: longhorn.ErrorReplicaScheduleDiskUnhealthy,
+		},
+		{
+			name:         "Ineligible - one of multiple disk health data entries reports failed",
+			diskSpec:     baseDiskSpec,
+			diskStatus:   newDiskStatusWithHealthData(longhorn.HealthDataStatusPassed, longhorn.HealthDataStatusFailed),
+			volume:       baseVolume,
+			expect:       false,
+			expectReason: longhorn.ErrorReplicaScheduleDiskUnhealthy,
+		},
+		{
+			name:       "Eligible - disk health data reports passed, warning or unknown",
+			diskSpec:   baseDiskSpec,
+			diskStatus: newDiskStatusWithHealthData(longhorn.HealthDataStatusPassed, longhorn.HealthDataStatusWarning, longhorn.HealthDataStatusUnknown),
+			volume:     baseVolume,
+			expect:     true,
+		},
+		{
+			name:       "Eligible - no disk health data",
+			diskSpec:   baseDiskSpec,
+			diskStatus: baseDiskStatus,
+			volume:     baseVolume,
+			expect:     true,
+		},
 	}
 
 	for _, tt := range tests {
 		c.Logf("Running scenario: %s", tt.name)
-		result, reason, _ := rcs.IsDiskEligibleForVolume(tt.diskSpec, tt.diskStatus, tt.volume, tt.allowEmptyDiskSelectorVol, tt.biDiskSelector)
+		result, reason, msg := rcs.IsDiskEligibleForVolume(tt.diskSpec, tt.diskStatus, tt.volume, tt.allowEmptyDiskSelectorVol, tt.biDiskSelector)
 		c.Assert(result, Equals, tt.expect, Commentf("scenario: %s", tt.name))
 		if !tt.expect {
 			c.Assert(reason, Equals, tt.expectReason, Commentf("scenario: %s reason", tt.name))
 		}
+		if reason == longhorn.ErrorReplicaScheduleDiskUnhealthy {
+			c.Assert(strings.HasPrefix(msg, "disk is unhealthy because disk health data"), Equals, true, Commentf("scenario: %s message: %s", tt.name, msg))
+		}
+	}
+}
+
+func (s *TestSuite) TestCheckAndReuseFailedReplicaSkipUnhealthyDisk(c *C) {
+	type testCase struct {
+		healthStatus longhorn.HealthDataHealthStatus
+		expectReused bool
+	}
+	testCases := map[string]testCase{
+		"reuse failed replica on healthy disk": {
+			healthStatus: longhorn.HealthDataStatusPassed,
+			expectReused: true,
+		},
+		"do not reuse failed replica on unhealthy disk": {
+			healthStatus: longhorn.HealthDataStatusFailed,
+			expectReused: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		rcs := newReplicaScheduler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+		err := pIndexer.Add(newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1))
+		c.Assert(err, IsNil)
+
+		engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+		engineImage.Status.NodeDeploymentMap[TestNode1] = true
+		err = eiIndexer.Add(engineImage)
+		c.Assert(err, IsNil)
+
+		err = imIndexer.Add(newInstanceManager(TestNode1))
+		c.Assert(err, IsNil)
+
+		node := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+		node.Spec.Disks = map[string]longhorn.DiskSpec{
+			getDiskID(TestNode1, "1"): newDisk(TestDefaultDataPath, true, 0),
+		}
+		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+			getDiskID(TestNode1, "1"): {
+				StorageAvailable: TestDiskAvailableSize,
+				StorageMaximum:   TestDiskSize,
+				Conditions: []longhorn.Condition{
+					newCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue),
+					newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+				},
+				DiskUUID: getDiskID(TestNode1, "1"),
+				Type:     longhorn.DiskTypeFilesystem,
+				HealthData: map[string]longhorn.HealthData{
+					"sda": {
+						Source:       longhorn.HealthDataSourceSMART,
+						HealthStatus: tc.healthStatus,
+					},
+				},
+			},
+		}
+		err = nIndexer.Add(node)
+		c.Assert(err, IsNil)
+
+		for name, value := range map[types.SettingName]string{
+			types.SettingNameDefaultInstanceManagerImage:      TestInstanceManagerImage,
+			types.SettingNameReplicaReplenishmentWaitInterval: "600",
+		} {
+			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), initSettings(string(name), value), metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
+
+		volume := newVolume(TestVolumeName, 2)
+		volume.Status.Robustness = longhorn.VolumeRobustnessDegraded
+		volume.Status.LastDegradedAt = TestTimeOneMinuteAgo
+
+		failedReplica := newReplicaForVolume(volume)
+		failedReplica.Spec.Active = true
+		failedReplica.Spec.DataEngine = longhorn.DataEngineTypeV1
+		failedReplica.Spec.NodeID = TestNode1
+		failedReplica.Spec.DiskID = getDiskID(TestNode1, "1")
+		failedReplica.Spec.FailedAt = TestTimeNow
+		replicas := map[string]*longhorn.Replica{
+			failedReplica.Name: failedReplica,
+		}
+
+		reusedReplica, err := rcs.CheckAndReuseFailedReplica(replicas, volume, "")
+		c.Assert(err, IsNil, Commentf("scenario: %s", name))
+		if tc.expectReused {
+			c.Assert(reusedReplica, NotNil, Commentf("scenario: %s", name))
+			c.Assert(reusedReplica.Name, Equals, failedReplica.Name, Commentf("scenario: %s", name))
+		} else {
+			c.Assert(reusedReplica, IsNil, Commentf("scenario: %s", name))
+		}
+
+		// The replenishment wait interval still applies, since the disk health may recover within it.
+		checkBackDuration := rcs.RequireNewReplica(replicas, volume, "")
+		c.Assert(checkBackDuration > 0, Equals, true, Commentf("scenario: %s", name))
 	}
 }
 

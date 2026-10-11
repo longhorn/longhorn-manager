@@ -2181,8 +2181,11 @@ var (
 	}
 
 	SettingDefinitionNodeDiskHealthMonitoring = SettingDefinition{
-		DisplayName:        "Node Disk Health Monitoring",
-		Description:        "Controls whether Longhorn monitors and records health information for node disks. When disabled, disk health checks and status updates are skipped.",
+		DisplayName: "Node Disk Health Monitoring",
+		Description: "Controls whether Longhorn monitors and records health information (SMART or SPDK health data) for node disks. \n\n" +
+			"- **true**: Longhorn collects disk health data, and the replica scheduler does not place replicas on a disk whose health data reports `FAILED`. " +
+			"This applies to new replicas, failed replica reuse, and disk pressure rebalancing. Existing replicas on such a disk are not evicted. \n\n" +
+			"- **false**: Longhorn skips disk health checks and clears the collected health data, so disk health no longer affects replica scheduling.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
