@@ -2038,6 +2038,62 @@ func (s *NodeControllerSuite) TestNodeControllerIsResponsibleForSystemManagedCom
 	c.Assert(s.controller.isResponsibleForSetting(setting), Equals, true)
 }
 
+func (s *NodeControllerSuite) TestNodeControllerIsResponsibleForNodeDiskHealthMonitoringSetting(c *C) {
+	setting := newSetting(string(types.SettingNameNodeDiskHealthMonitoring), "false")
+	c.Assert(s.controller.isResponsibleForSetting(setting), Equals, true)
+}
+
+func (s *NodeControllerSuite) TestClearDiskHealthDataWhenNodeDiskHealthMonitoringDisabled(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {
+			Type:                longhorn.DiskTypeFilesystem,
+			FSType:              TestDiskPathFSType,
+			DiskPath:            TestDefaultDataPath,
+			DiskName:            TestDiskID1,
+			DiskUUID:            TestDiskID1,
+			InstanceManagerName: TestInstanceManagerName,
+			HealthData: map[string]longhorn.HealthData{
+				"smart": {Source: longhorn.HealthDataSourceSMART, HealthStatus: longhorn.HealthDataStatusFailed},
+			},
+			HealthDataLastCollectedAt: metav1.Now(),
+		},
+	}
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{TestNode1: node},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameNodeDiskHealthMonitoring):    newSetting(string(types.SettingNameNodeDiskHealthMonitoring), "false"),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+		},
+	}
+	s.initTest(c, fixture)
+
+	c.Assert(s.controller.diskMonitor.RunOnce(), IsNil)
+	c.Assert(s.controller.environmentCheckMonitor.RunOnce(), IsNil)
+	c.Assert(s.controller.cpuPolicyCheckMonitor.RunOnce(), IsNil)
+	c.Assert(s.controller.syncNode(getKey(node, c)), IsNil)
+
+	n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	diskStatus := n.Status.DiskStatus[TestDiskID1]
+	c.Assert(diskStatus, NotNil)
+	c.Assert(diskStatus.HealthData, IsNil)
+	c.Assert(diskStatus.HealthDataLastCollectedAt.IsZero(), Equals, true)
+}
+
 func (s *NodeControllerSuite) syncInstanceManagersNodeSelectorCase(c *C, selectorValue string, kubeNodeLabels map[string]string, existingIMs map[string]*longhorn.InstanceManager) map[string]bool {
 	datastore.SkipListerCheck = true
 	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
