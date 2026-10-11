@@ -214,7 +214,8 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy ||
-		types.SettingName(setting.Name) == types.SettingNameSystemManagedComponentsNodeSelector
+		types.SettingName(setting.Name) == types.SettingNameSystemManagedComponentsNodeSelector ||
+		types.SettingName(setting.Name) == types.SettingNameNodeDiskHealthMonitoring
 }
 
 func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
