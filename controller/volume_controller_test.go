@@ -3399,6 +3399,63 @@ func (s *TestSuite) TestEngineSwitchoverTransitionWindowDoesNotRejectMismatch(c 
 	c.Assert(shouldRejectEngineNodeMismatch(v, e, switchoverInProgress), Equals, false)
 }
 
+func (s *TestSuite) TestCheckReplicaDiskPressuredSchedulableCandidatesSkipUnhealthyDisk(c *C) {
+	testCases := map[string]struct {
+		targetDiskState longhorn.HealthDataHealthStatus
+		expectCandidate bool
+	}{
+		"healthy target disk is a candidate": {
+			targetDiskState: longhorn.HealthDataStatusPassed,
+			expectCandidate: true,
+		},
+		"unhealthy target disk is skipped": {
+			targetDiskState: longhorn.HealthDataStatusFailed,
+			expectCandidate: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+		vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		c.Assert(err, IsNil)
+
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(),
+			initSettingsNameValue(string(types.SettingNameReplicaAutoBalanceDiskPressurePercentage), "90"), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(sIndexer.Add(setting), IsNil)
+
+		v := newVolume(TestVolumeName, 1)
+		r := newReplicaForVolume(v, newEngineForVolume(v), TestNode1, TestDiskID1)
+
+		node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		node.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{r.Name: v.Spec.Size}
+		node.Spec.Disks[TestDiskID2] = node.Spec.Disks[TestDiskID1]
+		targetDiskStatus := node.Status.DiskStatus[TestDiskID1].DeepCopy()
+		targetDiskStatus.DiskUUID = TestDiskID2
+		targetDiskStatus.ScheduledReplica = map[string]int64{}
+		targetDiskStatus.HealthData = map[string]longhorn.HealthData{
+			"sda": {Source: longhorn.HealthDataSourceSMART, HealthStatus: tc.targetDiskState},
+		}
+		node.Status.DiskStatus[TestDiskID2] = targetDiskStatus
+		c.Assert(nIndexer.Add(node), IsNil)
+
+		err = vc.checkReplicaDiskPressuredSchedulableCandidates(v, r)
+		if tc.expectCandidate {
+			c.Assert(err, IsNil, Commentf("scenario: %s", name))
+		} else {
+			c.Assert(err, ErrorMatches, "no reschedulable candidates found for replica in disk pressure", Commentf("scenario: %s", name))
+		}
+	}
+}
+
 func newVolume(name string, replicaCount int) *longhorn.Volume {
 	return &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
