@@ -70,7 +70,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
 	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.10.1-0.20260921021616-6102449746a0
+	github.com/longhorn/go-spdk-helper v0.11.0
 	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260922031848-d0a5b916d3ce
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
@@ -87,7 +87,7 @@ require (
 	github.com/urfave/cli/v3 v3.13.0
 	go.uber.org/multierr v1.11.0
 	golang.org/x/mod v0.41.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.42.0
 	golang.org/x/time v0.16.0
