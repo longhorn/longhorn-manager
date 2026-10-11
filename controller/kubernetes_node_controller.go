@@ -125,6 +125,7 @@ func (knc *KubernetesNodeController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	knc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(knc.worker, time.Second, stopCh)
 	}
@@ -145,7 +146,7 @@ func (knc *KubernetesNodeController) processNextWorkItem() bool {
 	}
 	defer knc.queue.Done(key)
 
-	err := knc.syncKubernetesNode(key.(string))
+	err := knc.syncWithMetrics(func() error { return knc.syncKubernetesNode(key.(string)) })
 	knc.handleErr(err, key)
 
 	return true

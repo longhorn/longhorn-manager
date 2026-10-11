@@ -105,6 +105,7 @@ func (kc *KubernetesConfigMapController) Run(workers int, stopCh <-chan struct{}
 	if !cache.WaitForNamedCacheSync(kc.name, stopCh, kc.cacheSyncs...) {
 		return
 	}
+	kc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(kc.worker, time.Second, stopCh)
 	}
@@ -122,7 +123,7 @@ func (kc *KubernetesConfigMapController) processNextWorkItem() bool {
 		return false
 	}
 	defer kc.queue.Done(key)
-	err := kc.syncHandler(key.(string))
+	err := kc.syncWithMetrics(func() error { return kc.syncHandler(key.(string)) })
 	kc.handleErr(err, key)
 	return true
 }

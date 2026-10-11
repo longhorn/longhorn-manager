@@ -93,6 +93,7 @@ func (pc *KubernetesPDBController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(pc.name, stopCh, pc.cacheSyncs...) {
 		return
 	}
+	pc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(pc.worker, time.Second, stopCh)
 	}
@@ -110,7 +111,7 @@ func (pc *KubernetesPDBController) processNextWorkItem() bool {
 		return false
 	}
 	defer pc.queue.Done(key)
-	err := pc.syncHandler(key.(string))
+	err := pc.syncWithMetrics(func() error { return pc.syncHandler(key.(string)) })
 	pc.handleErr(err, key)
 	return true
 }

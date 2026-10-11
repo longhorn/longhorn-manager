@@ -166,8 +166,11 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
 		nor, err := strconv.Atoi(numberOfReplicas)
-		if err != nil || nor < 0 {
+		if err != nil {
 			return nil, errors.Wrap(err, "invalid parameter numberOfReplicas")
+		}
+		if nor < 0 {
+			return nil, fmt.Errorf("invalid parameter numberOfReplicas %v: must not be negative", numberOfReplicas)
 		}
 		vol.NumberOfReplicas = int64(nor)
 	}

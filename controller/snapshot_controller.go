@@ -350,6 +350,7 @@ func (sc *SnapshotController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	sc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(sc.worker, time.Second, stopCh)
 	}
@@ -367,7 +368,7 @@ func (sc *SnapshotController) processNextWorkItem() bool {
 		return false
 	}
 	defer sc.queue.Done(key)
-	err := sc.syncHandler(key.(string))
+	err := sc.syncWithMetrics(func() error { return sc.syncHandler(key.(string)) })
 	sc.handleErr(err, key)
 	return true
 }

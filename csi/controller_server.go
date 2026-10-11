@@ -38,8 +38,12 @@ import (
 
 const (
 	// we wait 1m30s for the volume state polling, this leaves 20s for the rest of the function call
-	timeoutAttachDetach         = 90 * time.Second
-	tickAttachDetach            = 2 * time.Second
+	timeoutAttachDetach = 90 * time.Second
+	tickAttachDetach    = 2 * time.Second
+	// poll faster at the beginning, most attach and detach requests are satisfied within a few seconds
+	tickAttachDetachFast     = 500 * time.Millisecond
+	durationAttachDetachFast = 5 * time.Second
+
 	timeoutBackupControllerSync = 30 * time.Second
 	tickBackupControllerSync    = 2 * time.Second
 	backupStateCompleted        = "Completed"
@@ -1512,6 +1516,14 @@ func isVolumeShareAvailable(vol *longhornclient.Volume) bool {
 		vol.ShareState == string(longhorn.ShareManagerStateRunning) && vol.ShareEndpoint != ""
 }
 
+// volumeStatePollInterval returns the time until the next volume state check, the first check happens after one interval
+func volumeStatePollInterval(elapsed time.Duration) time.Duration {
+	if elapsed < durationAttachDetachFast {
+		return tickAttachDetachFast
+	}
+	return tickAttachDetach
+}
+
 func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription string,
 	predicate func(vol *longhornclient.Volume) bool, notFoundRetry, notFoundReturn bool) bool {
 	log := cs.log.WithFields(logrus.Fields{"function": "waitForVolumeState"})
@@ -1519,9 +1531,10 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 	defer timer.Stop()
 	timeout := timer.C
 
-	ticker := time.NewTicker(tickAttachDetach)
-	defer ticker.Stop()
-	tick := ticker.C
+	start := time.Now()
+	pollTimer := time.NewTimer(volumeStatePollInterval(0))
+	defer pollTimer.Stop()
+	tick := pollTimer.C
 
 	for {
 		select {
@@ -1529,6 +1542,8 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 			log.Warnf("Timeout while waiting for volume %s state %s", volumeID, stateDescription)
 			return false
 		case <-tick:
+			pollTimer.Reset(volumeStatePollInterval(time.Since(start)))
+
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
 			if err != nil {
 				log.WithError(err).Warnf("Failed to get volume while waiting for volume %s state %s", volumeID, stateDescription)

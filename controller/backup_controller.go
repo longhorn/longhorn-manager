@@ -169,6 +169,7 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.cacheSyncs...) {
 		return
 	}
+	bc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(bc.worker, time.Second, stopCh)
 	}
@@ -187,7 +188,7 @@ func (bc *BackupController) processNextWorkItem() bool {
 		return false
 	}
 	defer bc.queue.Done(key)
-	err := bc.syncHandler(key.(string))
+	err := bc.syncWithMetrics(func() error { return bc.syncHandler(key.(string)) })
 	bc.handleErr(err, key)
 	return true
 }
@@ -976,7 +977,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
 		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
 	if err != nil {
-		backup.Status.Error = err.Error()
+		backup.Status.Error = util.SanitizeVolatileErrorContent(err.Error())
 		backup.Status.State = longhorn.BackupStateError
 		backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err
@@ -998,7 +999,7 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 	backupStatus := monitor.GetBackupStatus()
 	backup.Status.Progress = backupStatus.Progress
 	backup.Status.URL = backupStatus.URL
-	backup.Status.Error = backupStatus.Error
+	backup.Status.Error = util.SanitizeVolatileErrorContent(backupStatus.Error)
 	backup.Status.SnapshotName = backupStatus.SnapshotName
 	backup.Status.ReplicaAddress = backupStatus.ReplicaAddress
 	backup.Status.State = backupStatus.State

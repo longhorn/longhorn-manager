@@ -30,7 +30,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -1015,4 +1015,48 @@ func isIgnorableDMRemoveError(err error) bool {
 	return strings.Contains(errMsg, "no such device or address") ||
 		strings.Contains(errMsg, "not found") ||
 		strings.Contains(errMsg, "no such file or directory")
+}
+
+// requestIDPattern matches the volatile, per-attempt identifiers that
+// AWS/S3-compatible SDKs embed in error messages, e.g.
+// "403 1eed0c50c2cb9133" (HTTP status + hex request ID) as produced by
+// backupstore's parseAwsError, or an explicit "RequestId: ..." field.
+// The explicit "RequestId:" field matches the complete opaque token
+// ([0-9A-Za-z-]+), not just a hex prefix: S3-compatible backends issue
+// alphanumeric request IDs, and matching only the hex prefix would leave
+// the volatile alphanumeric suffix in the message, so repeated failures
+// would still differ and preserve the reconcile storm.
+// Note: no leading \b before the status code - error messages captured from
+// exec'd subprocess stderr often contain a literal two-character "\n"
+// escape sequence (backslash + n) rather than a real newline byte
+// immediately before the status code, which defeats a \b word-boundary
+// check (both 'n' and the following digit are word characters, so no
+// boundary exists between them). A trailing \b after the ID is safe
+// since it's normally followed by a quote, space, or real newline.
+var requestIDPattern = regexp.MustCompile(`(?i)(request ?id:?\s*[0-9a-z-]+|[0-9]{3}\s+[0-9a-z-]{16,}\b)`)
+
+// timestampPattern matches RFC3339(-nano) timestamps that the exec'd
+// `longhorn` engine binary's own logrus output embeds in every log line
+// (e.g. `time="2026-07-24T16:31:27.852675962Z" level=error ...`). Since
+// that subprocess is invoked fresh on every reconcile attempt, its log
+// timestamps change every time even when the underlying error is
+// identical, so they must be normalized too.
+var timestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z`)
+
+// pointerAddrPattern matches Go pointer addresses printed for fields like Bucket and
+// Delimiter (e.g. "Bucket:0x17df648243b0"). Addresses change on every attempt.
+var pointerAddrPattern = regexp.MustCompile(`\b0x[0-9a-zA-Z]{6,}`)
+
+// SanitizeVolatileErrorContent replaces volatile, per-attempt content
+// (Go pointer addresses, S3 request IDs, HTTP status/request-ID pairs, and
+// subprocess log timestamps) before an error is persisted to resource status.
+// Stable messages prevent controllers and monitors that compare status with
+// reflect.DeepEqual from treating identical failures as status changes.
+//
+// See https://github.com/longhorn/longhorn/issues/13831
+func SanitizeVolatileErrorContent(message string) string {
+	message = pointerAddrPattern.ReplaceAllString(message, "<redacted>")
+	message = requestIDPattern.ReplaceAllString(message, "<redacted>")
+	message = timestampPattern.ReplaceAllString(message, "<timestamp>")
+	return message
 }

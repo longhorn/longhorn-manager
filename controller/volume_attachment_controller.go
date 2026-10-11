@@ -261,6 +261,7 @@ func (vac *VolumeAttachmentController) Run(workers int, stopCh <-chan struct{}) 
 		return
 	}
 
+	vac.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(vac.worker, time.Second, stopCh)
 	}
@@ -279,7 +280,7 @@ func (vac *VolumeAttachmentController) processNextWorkItem() bool {
 		return false
 	}
 	defer vac.queue.Done(key)
-	err := vac.syncHandler(key.(string))
+	err := vac.syncWithMetrics(func() error { return vac.syncHandler(key.(string)) })
 	vac.handleErr(err, key)
 	return true
 }

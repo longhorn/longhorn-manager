@@ -101,7 +101,7 @@ type Fwd struct {
 func NewFwd(locator NodeLocator) *Fwd {
 	return &Fwd{
 		locator: locator,
-		proxy:   &httputil.ReverseProxy{Director: func(r *http.Request) {}},
+		proxy:   &httputil.ReverseProxy{Director: func(r *http.Request) {}}, // nolint: staticcheck
 	}
 }
 

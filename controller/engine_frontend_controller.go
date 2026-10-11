@@ -176,6 +176,7 @@ func (efc *EngineFrontendController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	efc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(efc.worker, time.Second, stopCh)
 	}
@@ -196,7 +197,7 @@ func (efc *EngineFrontendController) processNextWorkItem() bool {
 	}
 	defer efc.queue.Done(key)
 
-	err := efc.syncEngineFrontend(key.(string))
+	err := efc.syncWithMetrics(func() error { return efc.syncEngineFrontend(key.(string)) })
 	efc.handleErr(err, key)
 
 	return true

@@ -362,3 +362,114 @@ func TestTimestampAfterTimestamp(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeVolatileErrorContent(t *testing.T) {
+	tests := []struct {
+		name string
+		// inputVariants differ only in volatile, per-attempt content (request IDs, timestamps).
+		// They must sanitize to the same expected string,
+		// so repeated failures compare equal under reflect.DeepEqual and don't trigger a reconcile storm.
+		inputVariants []string
+		expected      string
+	}{
+		{
+			name:          "empty string",
+			inputVariants: []string{""},
+			expected:      "",
+		},
+		{
+			name:          "non-volatile content is returned as is",
+			inputVariants: []string{"failed to connect to backup target: connection refused"},
+			expected:      "failed to connect to backup target: connection refused",
+		},
+		{
+			name:          "HTTP status plus hex request ID (backupstore parseAwsError)",
+			inputVariants: []string{"error: 403 1eed0c50c2cb9133", "error: 403 9a8b7c6d5e4f3a2b"},
+			expected:      "error: <redacted>",
+		},
+		{
+			name:          "status plus request ID followed by a quote",
+			inputVariants: []string{`error="AWS Error: 403 1eed0c50c2cb9133"`, `error="AWS Error: 403 aaaabbbbccccdddd"`},
+			expected:      `error="AWS Error: <redacted>"`,
+		},
+		{
+			name:          "literal backslash-n escape directly before status code",
+			inputVariants: []string{`failed\n403 1eed0c50c2cb9133`, `failed\n403 ffffeeeeddddcccc`},
+			expected:      `failed\n<redacted>`,
+		},
+		{
+			name:          "RequestId in the middle of a sentence keeps surrounding text",
+			inputVariants: []string{"operation failed (RequestId: ABC123xyz) please retry", "operation failed (RequestId: ZZZ999abc) please retry"},
+			expected:      "operation failed (<redacted>) please retry",
+		},
+		{
+			name:          "multiple timestamps are all replaced",
+			inputVariants: []string{`time="2026-07-24T16:31:27.1Z" a time="2026-07-24T16:31:28.2Z" b`},
+			expected:      `time="<timestamp>" a time="<timestamp>" b`,
+		},
+		{
+			name:          "short numbers are not treated as request IDs",
+			inputVariants: []string{"listening on port 8080, exit status 127 and retrying"},
+			expected:      "listening on port 8080, exit status 127 and retrying",
+		},
+		{
+			name: "subprocess log line with timestamp and request ID",
+			inputVariants: []string{
+				`time="2026-07-24T16:31:27.852675962Z" level=error msg="error: 403 1eed0c50c2cb9133"`,
+				`time="2026-07-24T16:36:27.111111111Z" level=error msg="error: 403 aaaabbbbccccdddd"`,
+			},
+			expected: `time="<timestamp>" level=error msg="error: <redacted>"`,
+		},
+		{
+			name: "sanitize bucket & delimiter addresses",
+			inputVariants: []string{
+				"{Bucket:0x17df648243b04442587FB7D0A2F9:<nil> Delimiter:0x17df648243c8}",
+				"{Bucket:0xc000a1b2c3d0:<nil> Delimiter:0xc000a1b2c3e8}",
+			},
+			expected: "{Bucket:<redacted>:<nil> Delimiter:<redacted>}",
+		},
+		{
+			name: "non-volatile message untouched, with all pointer addresses, requestID redacted",
+			inputVariants: []string{
+				`failed to list objects with param: &{Bucket:0x17df64824 RequestId: ABC123xyz:<nil> Delimiter:0x17df648243b0 " +
+					"EncodingType: ExpectedBucketOwner:<nil> FetchOwner:<nil> MaxKeys:<nil> OptionalObjectAttributes:[] " +
+					"Prefix:0x17df648243a0 RequestPayer: StartAfter:<nil> noSmithyDocumentSerde:{}} " +
+					"error: AWS HTTP Error: 0 request send failed, " +
+					"Get \\\"https://example.com:9000/backupbucket?delimiter=%2F&list-type=2&prefix=%2F\\\": " +
+					"tls: failed to verify certificate: x509: certificate signed by unknown authority\"`,
+			},
+			expected: `failed to list objects with param: &{Bucket:<redacted> <redacted>:<nil> Delimiter:<redacted> " +
+					"EncodingType: ExpectedBucketOwner:<nil> FetchOwner:<nil> MaxKeys:<nil> OptionalObjectAttributes:[] " +
+					"Prefix:<redacted> RequestPayer: StartAfter:<nil> noSmithyDocumentSerde:{}} " +
+					"error: AWS HTTP Error: 0 request send failed, " +
+					"Get \\\"https://example.com:9000/backupbucket?delimiter=%2F&list-type=2&prefix=%2F\\\": " +
+					"tls: failed to verify certificate: x509: certificate signed by unknown authority\"`,
+		},
+		{
+			name:          "short hex literal is not treated as a pointer",
+			inputVariants: []string{"flags=0x1F"},
+			expected:      "flags=0x1F",
+		},
+		{
+			// a pointer address is redacted only when the character before "0x" is
+			// a non-word character (e.g. ':', ' ', '=').
+			// Here the literal `\n` leaves 'n' directly before "0x", so there is no
+			// boundary and the address is intentionally left as is.
+			name: "pointer address following a word is untouched",
+			inputVariants: []string{
+				`failed\n0xc000a1b2c3d0 bucket missing`,
+			},
+			expected: `failed\n0xc000a1b2c3d0 bucket missing`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, variant := range tc.inputVariants {
+				if got := SanitizeVolatileErrorContent(variant); got != tc.expected {
+					t.Errorf("SanitizeVolatileErrorContent(%q) = %q, want %q", variant, got, tc.expected)
+				}
+			}
+		})
+	}
+}

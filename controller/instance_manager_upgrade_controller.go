@@ -165,6 +165,7 @@ func (imuc *InstanceManagerUpgradeController) Run(workers int, stopCh <-chan str
 		return
 	}
 
+	imuc.initReconcileMetrics(workers)
 	for range workers {
 		go wait.Until(imuc.worker, time.Second, stopCh)
 	}
@@ -184,7 +185,7 @@ func (imuc *InstanceManagerUpgradeController) processNextWorkItem() bool {
 	}
 	defer imuc.queue.Done(key)
 
-	err := imuc.syncInstanceManagerUpgrade(key.(string))
+	err := imuc.syncWithMetrics(func() error { return imuc.syncInstanceManagerUpgrade(key.(string)) })
 	imuc.handleErr(err, key)
 
 	return true

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/sirupsen/logrus"
@@ -1124,5 +1125,37 @@ func TestRequirementsHaveTopologyKey(t *testing.T) {
 		if got := requirementsHaveTopologyKey(tc.reqs, tc.key); got != tc.expected {
 			t.Errorf("case %q: requirementsHaveTopologyKey() = %v, expected %v", name, got, tc.expected)
 		}
+	}
+}
+
+func TestVolumeStatePollInterval(t *testing.T) {
+	testCases := map[string]struct {
+		elapsed  time.Duration
+		expected time.Duration
+	}{
+		"first check":          {elapsed: 0, expected: tickAttachDetachFast},
+		"within the first 5 s": {elapsed: 4500 * time.Millisecond, expected: tickAttachDetachFast},
+		"at 5 s":               {elapsed: durationAttachDetachFast, expected: tickAttachDetach},
+		"long-running wait":    {elapsed: time.Minute, expected: tickAttachDetach},
+	}
+
+	for name, tc := range testCases {
+		if got := volumeStatePollInterval(tc.elapsed); got != tc.expected {
+			t.Errorf("case %q: volumeStatePollInterval(%v) = %v, expected %v", name, tc.elapsed, got, tc.expected)
+		}
+	}
+
+	// replay the schedule of waitForVolumeState: no check right away, every 500 ms up to 5 s, every 2 s after that
+	expected := []time.Duration{}
+	for elapsed := 500 * time.Millisecond; elapsed <= 5*time.Second; elapsed += 500 * time.Millisecond {
+		expected = append(expected, elapsed)
+	}
+	expected = append(expected, 7*time.Second, 9*time.Second)
+	var checks []time.Duration
+	for elapsed := volumeStatePollInterval(0); elapsed <= 9*time.Second && len(checks) <= len(expected); elapsed += volumeStatePollInterval(elapsed) {
+		checks = append(checks, elapsed)
+	}
+	if fmt.Sprint(checks) != fmt.Sprint(expected) {
+		t.Errorf("checks at %v, expected %v", checks, expected)
 	}
 }

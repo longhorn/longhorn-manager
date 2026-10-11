@@ -8,6 +8,8 @@ import (
 	bimapi "github.com/longhorn/backing-image-manager/api"
 	bimclient "github.com/longhorn/backing-image-manager/pkg/client"
 
+	"github.com/longhorn/longhorn-manager/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -169,7 +171,7 @@ func (c *BackingImageManagerClient) BackupStatus(name string) (*longhorn.BackupB
 	backupBackingImageStatus := &longhorn.BackupBackingImageStatus{
 		Progress: resp.Progress,
 		URL:      resp.BackupURL,
-		Error:    resp.ErrorMsg,
+		Error:    util.SanitizeVolatileErrorContent(resp.ErrorMsg),
 		State:    convertBackupState(resp.State),
 	}
 	return backupBackingImageStatus, nil
