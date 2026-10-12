@@ -41,10 +41,11 @@ const (
 )
 
 var (
-	kernelModules       = map[string]string{"CONFIG_DM_CRYPT": "dm_crypt"}
-	kernelModulesV2     = map[string]string{"CONFIG_VFIO_PCI": "vfio_pci", "CONFIG_UIO_PCI_GENERIC": "uio_pci_generic", "CONFIG_NVME_TCP": "nvme_tcp"}
-	nfsClientVersions   = map[string]string{"CONFIG_NFS_V4_2": "nfs", "CONFIG_NFS_V4_1": "nfs", "CONFIG_NFS_V4": "nfs"}
-	nfsProtocolVersions = map[string]bool{"4.0": true, "4.1": true, "4.2": true}
+	kernelModules          = map[string]string{"CONFIG_DM_CRYPT": "dm_crypt"}
+	kernelModulesV2        = map[string]string{"CONFIG_VFIO_PCI": "vfio_pci", "CONFIG_UIO_PCI_GENERIC": "uio_pci_generic", "CONFIG_NVME_TCP": "nvme_tcp"}
+	kernelModulesLocalThin = map[string]string{"CONFIG_DM_THIN_PROVISIONING": "dm_thin_pool"}
+	nfsClientVersions      = map[string]string{"CONFIG_NFS_V4_2": "nfs", "CONFIG_NFS_V4_1": "nfs", "CONFIG_NFS_V4": "nfs"}
+	nfsProtocolVersions    = map[string]bool{"4.0": true, "4.1": true, "4.2": true}
 )
 
 type EnvironmentCheckMonitor struct {
@@ -169,7 +170,9 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 		isV2DataEngine = false
 	}
 
-	m.checkKernelModulesLoaded(kubeNode, isV2DataEngine, collectedData)
+	isLocalThinDataEngine := m.isLocalDataEngineThin()
+
+	m.checkKernelModulesLoaded(kubeNode, isV2DataEngine, isLocalThinDataEngine, collectedData)
 
 	if isV2DataEngine {
 		m.checkHugePages(kubeNode, collectedData)
@@ -396,7 +399,27 @@ func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collecte
 	)
 }
 
-func (m *EnvironmentCheckMonitor) checkKernelModulesLoaded(kubeNode *corev1.Node, isV2DataEngine bool, collectedData *CollectedEnvironmentCheckInfo) {
+// isLocalDataEngineThin reports whether the local data engine is enabled in
+// thin provisioning mode, which is the only case that needs the thin-pool
+// device-mapper target on the host.
+func (m *EnvironmentCheckMonitor) isLocalDataEngineThin() bool {
+	isLocalDataEngine, err := m.ds.GetSettingAsBool(types.SettingNameLocalDataEngine)
+	if err != nil {
+		m.logger.WithError(err).Debug("Failed to fetch local-data-engine setting")
+		return false
+	}
+	if !isLocalDataEngine {
+		return false
+	}
+	provisioningMode, err := m.ds.GetSettingValueExisted(types.SettingNameLocalDataEngineProvisioningMode)
+	if err != nil {
+		m.logger.WithError(err).Debug("Failed to fetch local-data-engine-provisioning-mode setting")
+		return false
+	}
+	return provisioningMode == string(longhorn.LocalVolumeProvisioningModeThin)
+}
+
+func (m *EnvironmentCheckMonitor) checkKernelModulesLoaded(kubeNode *corev1.Node, isV2DataEngine, isLocalThinDataEngine bool, collectedData *CollectedEnvironmentCheckInfo) {
 	modulesToCheck := make(map[string]string)
 	for k, v := range kernelModules {
 		modulesToCheck[k] = v
@@ -404,6 +427,12 @@ func (m *EnvironmentCheckMonitor) checkKernelModulesLoaded(kubeNode *corev1.Node
 
 	if isV2DataEngine {
 		for k, v := range kernelModulesV2 {
+			modulesToCheck[k] = v
+		}
+	}
+
+	if isLocalThinDataEngine {
+		for k, v := range kernelModulesLocalThin {
 			modulesToCheck[k] = v
 		}
 	}
