@@ -31,8 +31,8 @@ const (
 	ValueEmpty   = "none"
 	ValueUnknown = "unknown"
 
-	LocalDataEngineStorageLayoutPerDisk = "per-disk"
-	LocalDataEngineStorageLayoutPerNode = "per-node"
+	DataEngineStorageLayoutPerDisk = "per-disk"
+	DataEngineStorageLayoutPerNode = "per-node"
 
 	// From `maximumChainLength` in longhorn-engine/pkg/replica/replica.go
 	MaxSnapshotNum = 250
@@ -167,8 +167,8 @@ const (
 	SettingNameV1DataEngine                                             = SettingName("v1-data-engine")
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameLocalDataEngine                                          = SettingName("local-data-engine")
-	SettingNameLocalDataEngineProvisioningMode                          = SettingName("local-data-engine-provisioning-mode")
-	SettingNameLocalDataEngineStorageLayout                             = SettingName("local-data-engine-storage-layout")
+	SettingNameDataEngineProvisioningMode                               = SettingName("data-engine-provisioning-mode")
+	SettingNameDataEngineStorageLayout                                  = SettingName("data-engine-storage-layout")
 	SettingNameDataEngineHugepageEnabled                                = SettingName("data-engine-hugepage-enabled")
 	SettingNameDataEngineMemorySize                                     = SettingName("data-engine-memory-size")
 	SettingNameDataEngineIobufLargePoolSize                             = SettingName("data-engine-iobuf-large-pool-size")
@@ -301,8 +301,8 @@ var (
 		SettingNameV1DataEngine,
 		SettingNameV2DataEngine,
 		SettingNameLocalDataEngine,
-		SettingNameLocalDataEngineProvisioningMode,
-		SettingNameLocalDataEngineStorageLayout,
+		SettingNameDataEngineProvisioningMode,
+		SettingNameDataEngineStorageLayout,
 		SettingNameDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize,
 		SettingNameDataEngineIobufLargePoolSize,
@@ -476,8 +476,8 @@ var (
 		SettingNameV1DataEngine:                                             SettingDefinitionV1DataEngine,
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameLocalDataEngine:                                          SettingDefinitionLocalDataEngine,
-		SettingNameLocalDataEngineProvisioningMode:                          SettingDefinitionLocalDataEngineProvisioningMode,
-		SettingNameLocalDataEngineStorageLayout:                             SettingDefinitionLocalDataEngineStorageLayout,
+		SettingNameDataEngineProvisioningMode:                               SettingDefinitionDataEngineProvisioningMode,
+		SettingNameDataEngineStorageLayout:                                  SettingDefinitionDataEngineStorageLayout,
 		SettingNameDataEngineHugepageEnabled:                                SettingDefinitionDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize:                                     SettingDefinitionDataEngineMemorySize,
 		SettingNameDataEngineIobufLargePoolSize:                             SettingDefinitionDataEngineIobufLargePoolSize,
@@ -1884,34 +1884,34 @@ var (
 		Default:            "false",
 	}
 
-	SettingDefinitionLocalDataEngineProvisioningMode = SettingDefinition{
-		DisplayName:        "Local Data Engine Provisioning Mode",
-		Description:        "Selects how local data engine LVM volumes allocate storage. The mode can be changed only when no local data engine volumes exist.",
+	SettingDefinitionDataEngineProvisioningMode = SettingDefinition{
+		DisplayName:        "Data Engine Provisioning Mode",
+		Description:        "Applies only to the local data engine. Selects whether the volumes of a data engine are thick or thin provisioned; for the local data engine this is the LVM logical volume type. The mode of a data engine can be changed only when no volumes of that data engine exist.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Default:            string(longhorn.LocalVolumeProvisioningModeThick),
+		DataEngineSpecific: true,
 		Choices: []any{
-			string(longhorn.LocalVolumeProvisioningModeThick),
-			string(longhorn.LocalVolumeProvisioningModeThin),
+			string(longhorn.VolumeProvisioningModeThick),
+			string(longhorn.VolumeProvisioningModeThin),
 		},
+		Default: fmt.Sprintf("{%q:%q}", longhorn.DataEngineTypeLocal, longhorn.VolumeProvisioningModeThick),
 	}
 
-	SettingDefinitionLocalDataEngineStorageLayout = SettingDefinition{
-		DisplayName:        "Local Data Engine Storage Layout",
-		Description:        "Selects whether each LVM disk has an independent volume group or all LVM disks on a node share one volume group. The per-node layout is risky because failure of a single disk can make all local volumes on that node unusable. The layout can be changed only while every node has at most one LVM disk.",
+	SettingDefinitionDataEngineStorageLayout = SettingDefinition{
+		DisplayName:        "Data Engine Storage Layout",
+		Description:        "Applies only to the local data engine. Selects whether each LVM disk has an independent volume group or all LVM disks on a node share one volume group. The per-node layout is risky because failure of a single disk can make all local volumes on that node unusable. The layout can be changed only while every node has at most one LVM disk.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Default:            LocalDataEngineStorageLayoutPerDisk,
+		DataEngineSpecific: true,
 		Choices: []any{
-			LocalDataEngineStorageLayoutPerDisk,
-			LocalDataEngineStorageLayoutPerNode,
+			DataEngineStorageLayoutPerDisk,
+			DataEngineStorageLayoutPerNode,
 		},
+		Default: fmt.Sprintf("{%q:%q}", longhorn.DataEngineTypeLocal, DataEngineStorageLayoutPerDisk),
 	}
 
 	SettingDefinitionDataEngineHugepageEnabled = SettingDefinition{

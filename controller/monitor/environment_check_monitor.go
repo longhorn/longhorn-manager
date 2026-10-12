@@ -411,12 +411,12 @@ func (m *EnvironmentCheckMonitor) isLocalDataEngineThin() bool {
 	if !isLocalDataEngine {
 		return false
 	}
-	provisioningMode, err := m.ds.GetSettingValueExisted(types.SettingNameLocalDataEngineProvisioningMode)
+	provisioningMode, err := m.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineProvisioningMode, longhorn.DataEngineTypeLocal)
 	if err != nil {
-		m.logger.WithError(err).Debug("Failed to fetch local-data-engine-provisioning-mode setting")
+		m.logger.WithError(err).Debug("Failed to fetch data-engine-provisioning-mode setting")
 		return false
 	}
-	return provisioningMode == string(longhorn.LocalVolumeProvisioningModeThin)
+	return provisioningMode == string(longhorn.VolumeProvisioningModeThin)
 }
 
 func (m *EnvironmentCheckMonitor) checkKernelModulesLoaded(kubeNode *corev1.Node, isV2DataEngine, isLocalThinDataEngine bool, collectedData *CollectedEnvironmentCheckInfo) {

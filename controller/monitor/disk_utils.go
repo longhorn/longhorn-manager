@@ -356,15 +356,15 @@ func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath
 	case longhorn.DiskTypeBlock:
 		return generateDiskServiceDiskConfig(client, diskType, diskName, diskUUID, diskPath, diskDriver, defaultBlockSize, rpc.LVMStorageLayout_LVM_STORAGE_LAYOUT_INVALID)
 	case longhorn.DiskTypeLVM:
-		storageLayoutSetting, err := ds.GetSettingValueExisted(types.SettingNameLocalDataEngineStorageLayout)
+		storageLayoutSetting, err := ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineStorageLayout, longhorn.DataEngineTypeLocal)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get local data engine storage layout")
 		}
 		var storageLayout rpc.LVMStorageLayout
 		switch storageLayoutSetting {
-		case types.LocalDataEngineStorageLayoutPerDisk:
+		case types.DataEngineStorageLayoutPerDisk:
 			storageLayout = rpc.LVMStorageLayout_LVM_STORAGE_LAYOUT_PER_DISK
-		case types.LocalDataEngineStorageLayoutPerNode:
+		case types.DataEngineStorageLayoutPerNode:
 			storageLayout = rpc.LVMStorageLayout_LVM_STORAGE_LAYOUT_PER_NODE
 		default:
 			return nil, fmt.Errorf("unsupported local data engine storage layout %q", storageLayoutSetting)

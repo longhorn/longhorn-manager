@@ -228,7 +228,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		ReplicaZoneSoftAntiAffinity:     volume.ReplicaZoneSoftAntiAffinity,
 		ReplicaDiskSoftAntiAffinity:     volume.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                      volume.DataEngine,
-		LocalProvisioningMode:           longhorn.LocalVolumeProvisioningMode(volume.LocalProvisioningMode),
+		ProvisioningMode:                longhorn.VolumeProvisioningMode(volume.ProvisioningMode),
 		DataLayout:                      volume.DataLayout,
 		FreezeFilesystemForSnapshot:     volume.FreezeFilesystemForSnapshot,
 		BackupTargetName:                volume.BackupTargetName,

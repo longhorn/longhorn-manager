@@ -2,6 +2,7 @@ package setting
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -62,22 +63,35 @@ func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Obj
 	if settingDef.ReadOnly && !isFromLHOld && !isFromLH {
 		return werror.NewInvalidError(fmt.Sprintf("setting %s is read-only", setting.Name), "metadata.name")
 	}
-	if setting.Name == string(types.SettingNameLocalDataEngineProvisioningMode) && setting.Value != existingSetting.Value {
-		selector := labels.SelectorFromSet(labels.Set{
-			types.GetLonghornLabelKey(types.LonghornLabelDataEngine): string(longhorn.DataEngineTypeLocal),
-		})
-		volumes, err := v.ds.ListVolumesBySelectorRO(selector)
+	if setting.Name == string(types.SettingNameDataEngineProvisioningMode) {
+		changedDataEngines, err := changedDataEngineValues(types.SettingNameDataEngineProvisioningMode, existingSetting.Value, setting.Value)
 		if err != nil {
-			return werror.NewInvalidError(fmt.Sprintf("failed to list local volumes before changing local provisioning mode: %v", err), "value")
+			return werror.NewInvalidError(fmt.Sprintf("failed to compare provisioning mode values: %v", err), "value")
 		}
-		if len(volumes) > 0 {
-			return werror.NewInvalidError(fmt.Sprintf("cannot change local provisioning mode while %d local volumes exist; delete all local volumes before changing the mode", len(volumes)), "value")
+		for _, dataEngine := range changedDataEngines {
+			selector := labels.SelectorFromSet(labels.Set{
+				types.GetLonghornLabelKey(types.LonghornLabelDataEngine): string(dataEngine),
+			})
+			volumes, err := v.ds.ListVolumesBySelectorRO(selector)
+			if err != nil {
+				return werror.NewInvalidError(fmt.Sprintf("failed to list %v volumes before changing the provisioning mode: %v", dataEngine, err), "value")
+			}
+			if len(volumes) > 0 {
+				return werror.NewInvalidError(fmt.Sprintf("cannot change the %v data engine provisioning mode while %d %v volumes exist; delete them before changing the mode", dataEngine, len(volumes), dataEngine), "value")
+			}
 		}
 	}
-	if setting.Name == string(types.SettingNameLocalDataEngineStorageLayout) && setting.Value != existingSetting.Value {
+	if setting.Name == string(types.SettingNameDataEngineStorageLayout) {
+		changedDataEngines, err := changedDataEngineValues(types.SettingNameDataEngineStorageLayout, existingSetting.Value, setting.Value)
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("failed to compare storage layout values: %v", err), "value")
+		}
+		if !slices.Contains(changedDataEngines, longhorn.DataEngineTypeLocal) {
+			return v.validateSetting(newObj)
+		}
 		nodes, err := v.ds.ListNodesRO()
 		if err != nil {
-			return werror.NewInvalidError(fmt.Sprintf("failed to list nodes before changing local storage layout: %v", err), "value")
+			return werror.NewInvalidError(fmt.Sprintf("failed to list nodes before changing the local data engine storage layout: %v", err), "value")
 		}
 		nodesWithMultipleLVMDisks := []string{}
 		for _, node := range nodes {
@@ -93,7 +107,7 @@ func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Obj
 		}
 		if len(nodesWithMultipleLVMDisks) > 0 {
 			sort.Strings(nodesWithMultipleLVMDisks)
-			return werror.NewInvalidError(fmt.Sprintf("cannot change local storage layout: each node must have at most one LVM disk; remove additional LVM disks from nodes: %s", strings.Join(nodesWithMultipleLVMDisks, ", ")), "value")
+			return werror.NewInvalidError(fmt.Sprintf("cannot change the local data engine storage layout: each node must have at most one LVM disk; remove additional LVM disks from nodes: %s", strings.Join(nodesWithMultipleLVMDisks, ", ")), "value")
 		}
 	}
 
@@ -135,4 +149,42 @@ func (v *settingValidator) validateSetting(newObj runtime.Object) error {
 	}
 
 	return werror.NewInvalidError(err.Error(), "value")
+}
+
+// changedDataEngineValues returns, sorted, the data engines whose value of a
+// data-engine-specific setting differs between oldValue and newValue. An empty
+// value stands for the definition default; a plain value applies to every data
+// engine the setting supports, like the setting parser does.
+func changedDataEngineValues(settingName types.SettingName, oldValue, newValue string) ([]longhorn.DataEngineType, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return nil, fmt.Errorf("setting %v is not supported", settingName)
+	}
+	parse := func(value string) (map[longhorn.DataEngineType]any, error) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			value = definition.Default
+		}
+		if types.IsJSONFormat(value) {
+			return types.ParseDataEngineSpecificSetting(definition, value)
+		}
+		return types.ParseSettingSingleValue(definition, value)
+	}
+	oldValues, err := parse(oldValue)
+	if err != nil {
+		return nil, err
+	}
+	newValues, err := parse(newValue)
+	if err != nil {
+		return nil, err
+	}
+
+	changed := []longhorn.DataEngineType{}
+	for dataEngine, value := range newValues {
+		if oldValues[dataEngine] != value {
+			changed = append(changed, dataEngine)
+		}
+	}
+	sort.Slice(changed, func(i, j int) bool { return changed[i] < changed[j] })
+	return changed, nil
 }

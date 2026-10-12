@@ -58,11 +58,11 @@ func TestToVolumeResourceUsesEngineFrontendNodeForV2Controller(t *testing.T) {
 	}
 }
 
-func TestVolumeSchemaAllowsLocalProvisioningModeOnCreate(t *testing.T) {
+func TestVolumeSchemaAllowsProvisioningModeOnCreate(t *testing.T) {
 	volumeSchema := NewSchema().Schema("volume")
-	field := volumeSchema.Field("localProvisioningMode")
+	field := volumeSchema.Field("provisioningMode")
 	if !field.Create {
-		t.Fatal("expected localProvisioningMode to be accepted when creating a volume")
+		t.Fatal("expected provisioningMode to be accepted when creating a volume")
 	}
 }
 

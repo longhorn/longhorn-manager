@@ -3543,7 +3543,7 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	log := getLoggerForVolume(c.logger, v)
 
 	if types.IsDataEngineLocal(v.Spec.DataEngine) {
-		if v.Spec.LocalProvisioningMode == "" || v.Spec.LocalProvisioningMode == longhorn.LocalVolumeProvisioningModeThick {
+		if v.Spec.ProvisioningMode == "" || v.Spec.ProvisioningMode == longhorn.VolumeProvisioningModeThick {
 			v.Status.ActualSize = v.Spec.Size
 		} else {
 			// TODO: Report the unique physical chunks used by the thin head and

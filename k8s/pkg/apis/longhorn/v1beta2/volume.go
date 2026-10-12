@@ -280,11 +280,11 @@ const (
 )
 
 // +kubebuilder:validation:Enum=thick;thin
-type LocalVolumeProvisioningMode string
+type VolumeProvisioningMode string
 
 const (
-	LocalVolumeProvisioningModeThick = LocalVolumeProvisioningMode("thick")
-	LocalVolumeProvisioningModeThin  = LocalVolumeProvisioningMode("thin")
+	VolumeProvisioningModeThick = VolumeProvisioningMode("thick")
+	VolumeProvisioningModeThin  = VolumeProvisioningMode("thin")
 )
 
 type KubernetesStatus struct {
@@ -428,10 +428,10 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=v1;v2;local
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
-	// LocalProvisioningMode records the immutable LVM allocation mode used by a local data engine volume.
+	// ProvisioningMode records the immutable allocation mode of the volume's storage. Only the local data engine uses it today, where it selects a thick or thin LVM logical volume.
 	// It is empty for v1 and v2 volumes.
 	// +optional
-	LocalProvisioningMode LocalVolumeProvisioningMode `json:"localProvisioningMode,omitempty"`
+	ProvisioningMode VolumeProvisioningMode `json:"provisioningMode,omitempty"`
 	// +optional
 	SnapshotMaxCount int `json:"snapshotMaxCount"`
 	// +kubebuilder:validation:Type=string

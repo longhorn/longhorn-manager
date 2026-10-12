@@ -251,11 +251,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	for name, disk := range oldNode.Spec.Disks {
 		if _, ok := newNode.Spec.Disks[name]; !ok {
 			if disk.Type == longhorn.DiskTypeLVM {
-				storageLayout, err := n.ds.GetSettingValueExisted(types.SettingNameLocalDataEngineStorageLayout)
+				storageLayout, err := n.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineStorageLayout, longhorn.DataEngineTypeLocal)
 				if err != nil {
 					return werror.NewInvalidError(errors.Wrap(err, "failed to get local data engine storage layout").Error(), "")
 				}
-				if storageLayout == types.LocalDataEngineStorageLayoutPerNode {
+				if storageLayout == types.DataEngineStorageLayoutPerNode {
 					if countLVMDisks(oldNode.Spec.Disks) > 1 && oldNode.Status.DiskStatus[name].StorageMaximum > 0 {
 						return werror.NewInvalidError(fmt.Sprintf("cannot remove representative LVM disk %v while its volume group has multiple physical volumes; remove the member disks first", name), "")
 					}

@@ -135,7 +135,7 @@ func TestGetCapacity(t *testing.T) {
 		skipOverProvisioningSettingCreation bool
 		overProvisioningPercentage          string
 		dataEngine                          string
-		localProvisioningMode               string
+		provisioningMode                    string
 		diskSelector                        string
 		nodeSelector                        string
 		maximumVolumeSize                   int64
@@ -295,7 +295,7 @@ func TestGetCapacity(t *testing.T) {
 			overProvisioningPercentage: "200",
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
 			dataEngine:                 "local",
-			localProvisioningMode:      string(longhorn.LocalVolumeProvisioningModeThin),
+			provisioningMode:           string(longhorn.VolumeProvisioningModeThin),
 			maximumVolumeSize:          3300,
 			disks: []*disk{
 				newDiskWithType(1950, 300, 0, "", longhorn.DiskTypeLVM, true, true, false),
@@ -388,8 +388,8 @@ func TestGetCapacity(t *testing.T) {
 			if test.dataEngine != "" {
 				req.Parameters["dataEngine"] = test.dataEngine
 			}
-			if test.localProvisioningMode != "" {
-				req.Parameters["localProvisioningMode"] = test.localProvisioningMode
+			if test.provisioningMode != "" {
+				req.Parameters["provisioningMode"] = test.provisioningMode
 			}
 			req.Parameters["diskSelector"] = test.diskSelector
 			req.Parameters["nodeSelector"] = test.nodeSelector

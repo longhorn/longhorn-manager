@@ -63,7 +63,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	if err := validateLocalVolume(volume); err != nil {
 		return err
 	}
-	if err := v.validateLocalProvisioningMode(volume); err != nil {
+	if err := v.validateProvisioningMode(volume); err != nil {
 		return err
 	}
 
@@ -258,15 +258,15 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	if err := validateLocalVolume(newVolume); err != nil {
 		return err
 	}
-	if err := v.validateLocalProvisioningMode(newVolume); err != nil {
+	if err := v.validateProvisioningMode(newVolume); err != nil {
 		return err
 	}
-	oldProvisioningMode := oldVolume.Spec.LocalProvisioningMode
+	oldProvisioningMode := oldVolume.Spec.ProvisioningMode
 	if types.IsDataEngineLocal(oldVolume.Spec.DataEngine) && oldProvisioningMode == "" {
-		oldProvisioningMode = longhorn.LocalVolumeProvisioningModeThick
+		oldProvisioningMode = longhorn.VolumeProvisioningModeThick
 	}
-	if newVolume.Spec.LocalProvisioningMode != oldProvisioningMode {
-		return werror.NewInvalidError("local provisioning mode is immutable", "spec.localProvisioningMode")
+	if newVolume.Spec.ProvisioningMode != oldProvisioningMode {
+		return werror.NewInvalidError("provisioning mode is immutable", "spec.provisioningMode")
 	}
 
 	if err := v.validateExpansionSize(oldVolume, newVolume); err != nil {
@@ -767,8 +767,8 @@ func validateDataLocalityUpdate(oldVolume *longhorn.Volume, newVolume *longhorn.
 // strict-local placement, and none of the features later phases will add.
 func validateLocalVolume(volume *longhorn.Volume) error {
 	if !types.IsDataEngineLocal(volume.Spec.DataEngine) {
-		if volume.Spec.LocalProvisioningMode != "" {
-			return werror.NewInvalidError("local provisioning mode is valid only for local data engine volumes", "spec.localProvisioningMode")
+		if volume.Spec.ProvisioningMode != "" {
+			return werror.NewInvalidError("provisioning mode is only supported by the local data engine", "spec.provisioningMode")
 		}
 		return nil
 	}
@@ -799,25 +799,25 @@ func validateLocalVolume(volume *longhorn.Volume) error {
 	return nil
 }
 
-func (v *volumeValidator) validateLocalProvisioningMode(volume *longhorn.Volume) error {
+func (v *volumeValidator) validateProvisioningMode(volume *longhorn.Volume) error {
 	if !types.IsDataEngineLocal(volume.Spec.DataEngine) {
 		return nil
 	}
 
-	mode := volume.Spec.LocalProvisioningMode
+	mode := volume.Spec.ProvisioningMode
 	switch mode {
-	case longhorn.LocalVolumeProvisioningModeThick,
-		longhorn.LocalVolumeProvisioningModeThin:
+	case longhorn.VolumeProvisioningModeThick,
+		longhorn.VolumeProvisioningModeThin:
 	default:
-		return werror.NewInvalidError(fmt.Sprintf("invalid local provisioning mode %q", mode), "spec.localProvisioningMode")
+		return werror.NewInvalidError(fmt.Sprintf("invalid provisioning mode %q", mode), "spec.provisioningMode")
 	}
 
-	configuredMode, err := v.ds.GetSettingValueExisted(types.SettingNameLocalDataEngineProvisioningMode)
+	configuredMode, err := v.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineProvisioningMode, volume.Spec.DataEngine)
 	if err != nil {
-		return werror.NewInvalidError(errors.Wrap(err, "failed to get local data engine provisioning mode").Error(), "spec.localProvisioningMode")
+		return werror.NewInvalidError(errors.Wrapf(err, "failed to get the %v provisioning mode", volume.Spec.DataEngine).Error(), "spec.provisioningMode")
 	}
 	if string(mode) != configuredMode {
-		return werror.NewInvalidError(fmt.Sprintf("local provisioning mode %q does not match cluster mode %q", mode, configuredMode), "spec.localProvisioningMode")
+		return werror.NewInvalidError(fmt.Sprintf("provisioning mode %q does not match the %v data engine mode %q", mode, volume.Spec.DataEngine, configuredMode), "spec.provisioningMode")
 	}
 	return nil
 }

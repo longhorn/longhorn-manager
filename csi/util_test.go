@@ -111,21 +111,21 @@ func TestGetVolumeOptions(t *testing.T) {
 				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
 				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
 				DataEngine:              string(longhorn.DataEngineTypeLocal),
-				LocalProvisioningMode:   string(longhorn.LocalVolumeProvisioningModeThick),
+				ProvisioningMode:        string(longhorn.VolumeProvisioningModeThick),
 				RevisionCounterDisabled: true,
 			},
 		},
-		"local provisioning mode override": {
+		"provisioning mode override": {
 			volumeID: "test-vol-local-thin",
 			volumeOptions: map[string]string{
-				"dataEngine":            "local",
-				"localProvisioningMode": "thin",
+				"dataEngine":       "local",
+				"provisioningMode": "thin",
 			},
 			expectedVolume: &longhornclient.Volume{
 				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
 				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
 				DataEngine:              string(longhorn.DataEngineTypeLocal),
-				LocalProvisioningMode:   string(longhorn.LocalVolumeProvisioningModeThin),
+				ProvisioningMode:        string(longhorn.VolumeProvisioningModeThin),
 				RevisionCounterDisabled: true,
 			},
 		},

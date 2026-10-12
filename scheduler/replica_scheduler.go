@@ -1614,11 +1614,11 @@ func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskS
 		return nil, err
 	}
 	if disk.Type == longhorn.DiskTypeLVM {
-		mode, err := rcs.ds.GetSettingValueExisted(types.SettingNameLocalDataEngineProvisioningMode)
+		mode, err := rcs.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineProvisioningMode, longhorn.DataEngineTypeLocal)
 		if err != nil {
 			return nil, err
 		}
-		if mode == string(longhorn.LocalVolumeProvisioningModeThick) && overProvisioningPercentage > 100 {
+		if mode == string(longhorn.VolumeProvisioningModeThick) && overProvisioningPercentage > 100 {
 			overProvisioningPercentage = 100
 		}
 	}

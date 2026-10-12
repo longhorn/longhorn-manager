@@ -510,8 +510,8 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	if string(volume.Spec.DataEngine) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
 	}
-	if types.IsDataEngineLocal(volume.Spec.DataEngine) && volume.Spec.LocalProvisioningMode == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/localProvisioningMode", "value": "%s"}`, longhorn.LocalVolumeProvisioningModeThick))
+	if types.IsDataEngineLocal(volume.Spec.DataEngine) && volume.Spec.ProvisioningMode == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/provisioningMode", "value": "%s"}`, longhorn.VolumeProvisioningModeThick))
 	}
 	if string(volume.Spec.FreezeFilesystemForSnapshot) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/freezeFilesystemForSnapshot", "value": "%s"}`, longhorn.FreezeFilesystemForSnapshotDefault))

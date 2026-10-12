@@ -1704,12 +1704,12 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecs(c *C) {
 
 func (s *TestSuite) TestReconcileLocalVolumeActualSize(c *C) {
 	tests := []struct {
-		mode     longhorn.LocalVolumeProvisioningMode
+		mode     longhorn.VolumeProvisioningMode
 		expected int64
 	}{
 		{mode: "", expected: TestVolumeSize},
-		{mode: longhorn.LocalVolumeProvisioningModeThick, expected: TestVolumeSize},
-		{mode: longhorn.LocalVolumeProvisioningModeThin, expected: 0},
+		{mode: longhorn.VolumeProvisioningModeThick, expected: TestVolumeSize},
+		{mode: longhorn.VolumeProvisioningModeThin, expected: 0},
 	}
 
 	vc := &VolumeController{
@@ -1719,7 +1719,7 @@ func (s *TestSuite) TestReconcileLocalVolumeActualSize(c *C) {
 	for _, test := range tests {
 		v := newVolume(TestVolumeName, 1)
 		v.Spec.DataEngine = longhorn.DataEngineTypeLocal
-		v.Spec.LocalProvisioningMode = test.mode
+		v.Spec.ProvisioningMode = test.mode
 
 		err := vc.reconcileVolumeSize(v, nil, nil, nil)
 		c.Assert(err, IsNil)
@@ -4000,7 +4000,7 @@ func (s *TestSuite) TestLocalVolumeNeverReplacesOrEvictsReplica(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(knIndexer.Add(kn), IsNil)
 	for _, setting := range []*longhorn.Setting{
-		newSetting(string(types.SettingNameLocalDataEngineProvisioningMode), string(longhorn.LocalVolumeProvisioningModeThick)),
+		newSetting(string(types.SettingNameDataEngineProvisioningMode), `{"local":"thick"}`),
 		newSetting(string(types.SettingNameDefaultEngineImage), TestEngineImage),
 		newSetting(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage),
 	} {

@@ -536,7 +536,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 type ReplicaInstanceCreateRequest struct {
 	Replica                       *longhorn.Replica
-	LocalProvisioningMode         longhorn.LocalVolumeProvisioningMode
+	ProvisioningMode              longhorn.VolumeProvisioningMode
 	DiskName                      string
 	DataPath                      string
 	BackingImagePath              string
@@ -702,7 +702,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		Replica: imclient.ReplicaCreateRequest{
 			DiskName:         req.DiskName,
 			DiskUUID:         req.Replica.Spec.DiskID,
-			ProvisioningMode: string(req.LocalProvisioningMode),
+			ProvisioningMode: string(req.ProvisioningMode),
 			BackingImageName: req.Replica.Spec.BackingImage,
 		},
 	})

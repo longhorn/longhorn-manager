@@ -5290,14 +5290,6 @@ spec:
                 type: string
               lastAttachedBy:
                 type: string
-              localProvisioningMode:
-                description: |-
-                  LocalProvisioningMode records the immutable LVM allocation mode used by a local data engine volume.
-                  It is empty for v1 and v2 volumes.
-                enum:
-                - thick
-                - thin
-                type: string
               migratable:
                 type: boolean
               migrationNodeID:
@@ -5329,6 +5321,14 @@ spec:
                 - ignored
                 - disabled
                 - enabled
+                type: string
+              provisioningMode:
+                description: |-
+                  ProvisioningMode records the immutable allocation mode of the volume's storage. Only the local data engine uses it today, where it selects a thick or thin LVM logical volume.
+                  It is empty for v1 and v2 volumes.
+                enum:
+                - thick
+                - thin
                 type: string
               rebuildConcurrentSyncLimit:
                 description: |-

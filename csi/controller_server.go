@@ -796,11 +796,11 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	}
 	if types.IsDataEngineLocal(dataEngine) {
 		// Thick mode does not support over-provisioning, so it is capped at 100%.
-		provisioningMode := longhorn.LocalVolumeProvisioningModeThick
-		if mode, ok := scParameters["localProvisioningMode"]; ok && mode != "" {
-			provisioningMode = longhorn.LocalVolumeProvisioningMode(mode)
+		provisioningMode := longhorn.VolumeProvisioningModeThick
+		if mode, ok := scParameters["provisioningMode"]; ok && mode != "" {
+			provisioningMode = longhorn.VolumeProvisioningMode(mode)
 		}
-		if provisioningMode == longhorn.LocalVolumeProvisioningModeThick && overProvisioningPercentage > 100 {
+		if provisioningMode == longhorn.VolumeProvisioningModeThick && overProvisioningPercentage > 100 {
 			overProvisioningPercentage = 100
 		}
 	}
