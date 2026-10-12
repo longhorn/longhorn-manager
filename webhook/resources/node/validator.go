@@ -226,8 +226,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 					newNode.Name, name, disk.Path), "")
 			}
 		}
-		if disk.Type == longhorn.DiskTypeLVM {
-			if !localDataEngineEnabled {
+		// Reject only new or modified LVM disks when the local data engine is disabled, so
+		// that nodes keeping their existing LVM disks can still be updated and drained.
+		if !localDataEngineEnabled && disk.Type == longhorn.DiskTypeLVM {
+			oldDisk, existed := oldNode.Spec.Disks[name]
+			if !existed || !reflect.DeepEqual(oldDisk, disk) {
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: disk %v(%v) is an LVM disk, but the local data engine is not enabled",
 					newNode.Name, name, disk.Path), "")
 			}
