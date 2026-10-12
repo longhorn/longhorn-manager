@@ -73,6 +73,17 @@ func TestBackupControllerGetBackupTargetName(t *testing.T) {
 			expectedName: labelTarget,
 		},
 		{
+			name: "empty label value falls back to the synced status backup target",
+			backup: &longhorn.Backup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   testBackupName,
+					Labels: map[string]string{types.LonghornLabelBackupTarget: ""},
+				},
+				Status: longhorn.BackupStatus{BackupTargetName: statusTarget},
+			},
+			expectedName: statusTarget,
+		},
+		{
 			name: "missing label falls back to the synced status backup target",
 			backup: &longhorn.Backup{
 				ObjectMeta: metav1.ObjectMeta{Name: testBackupName},

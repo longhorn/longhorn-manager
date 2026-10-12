@@ -723,8 +723,8 @@ func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.
 }
 
 func (bc *BackupController) getBackupTargetName(backup *longhorn.Backup) (string, error) {
-	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
-	if !ok {
+	backupTargetName := backup.Labels[types.LonghornLabelBackupTarget]
+	if backupTargetName == "" {
 		// The backup target name in the status is synced from the backup store and
 		// cannot be modified from the client side. Once the label is unexpectedly
 		// lost (e.g. kubectl apply drift on a pulled Backup CR), it is a more
