@@ -116,6 +116,15 @@ func (b *backupValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("newObj %v is not a longhorn.Backup", newObj), "")
 	}
 
+	// Reject changing or removing the backup-target label, which the backup
+	// controller resolves the target from.
+	// Ref: https://github.com/longhorn/longhorn/issues/14000
+	oldBackupTargetName := oldBackup.Labels[types.LonghornLabelBackupTarget]
+	newBackupTargetName := newBackup.Labels[types.LonghornLabelBackupTarget]
+	if oldBackupTargetName != "" && newBackupTargetName != oldBackupTargetName {
+		return werror.NewInvalidError(fmt.Sprintf("changing or removing the %v label of backup %v is not allowed", types.LonghornLabelBackupTarget, oldBackup.Name), "")
+	}
+
 	// Allow backup block size mutation only when the existing obj is not set, or correcting the existed invalid value
 	if oldBackup.Spec.BackupBlockSize != newBackup.Spec.BackupBlockSize {
 		if b.validateBackupBlockSize(oldBackup, false) == nil {
