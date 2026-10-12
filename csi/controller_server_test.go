@@ -135,6 +135,7 @@ func TestGetCapacity(t *testing.T) {
 		skipOverProvisioningSettingCreation bool
 		overProvisioningPercentage          string
 		dataEngine                          string
+		localProvisioningMode               string
 		diskSelector                        string
 		nodeSelector                        string
 		maximumVolumeSize                   int64
@@ -279,6 +280,29 @@ func TestGetCapacity(t *testing.T) {
 			},
 		},
 		{
+			testName:                   "local engine without provisioning mode defaults to thick and caps over-provisioning at 100%",
+			overProvisioningPercentage: "200",
+			node:                       newNode("node-0", "storage", "", true, true, true, false),
+			dataEngine:                 "local",
+			maximumVolumeSize:          1650,
+			disks: []*disk{
+				newDiskWithType(1950, 300, 0, "", longhorn.DiskTypeLVM, true, true, false),
+				newDiskWithType(1500, 500, 0, "", longhorn.DiskTypeLVM, true, true, false),
+			},
+		},
+		{
+			testName:                   "local engine in thin mode applies over-provisioning",
+			overProvisioningPercentage: "200",
+			node:                       newNode("node-0", "storage", "", true, true, true, false),
+			dataEngine:                 "local",
+			localProvisioningMode:      string(longhorn.LocalVolumeProvisioningModeThin),
+			maximumVolumeSize:          3300,
+			disks: []*disk{
+				newDiskWithType(1950, 300, 0, "", longhorn.DiskTypeLVM, true, true, false),
+				newDiskWithType(1500, 500, 0, "", longhorn.DiskTypeLVM, true, true, false),
+			},
+		},
+		{
 			testName:                   "v2 engine with one valid disk and two with unmatched tags",
 			overProvisioningPercentage: "100",
 			node:                       newNode("node-0", "storage", "", true, true, true, false),
@@ -363,6 +387,9 @@ func TestGetCapacity(t *testing.T) {
 			}
 			if test.dataEngine != "" {
 				req.Parameters["dataEngine"] = test.dataEngine
+			}
+			if test.localProvisioningMode != "" {
+				req.Parameters["localProvisioningMode"] = test.localProvisioningMode
 			}
 			req.Parameters["diskSelector"] = test.diskSelector
 			req.Parameters["nodeSelector"] = test.nodeSelector

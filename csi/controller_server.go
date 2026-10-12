@@ -794,6 +794,16 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	if dataEngineType, ok := scParameters["dataEngine"]; ok {
 		dataEngine = longhorn.DataEngineType(dataEngineType)
 	}
+	if types.IsDataEngineLocal(dataEngine) {
+		// Thick mode does not support over-provisioning, so it is capped at 100%.
+		provisioningMode := longhorn.LocalVolumeProvisioningModeThick
+		if mode, ok := scParameters["localProvisioningMode"]; ok && mode != "" {
+			provisioningMode = longhorn.LocalVolumeProvisioningMode(mode)
+		}
+		if provisioningMode == longhorn.LocalVolumeProvisioningModeThick && overProvisioningPercentage > 100 {
+			overProvisioningPercentage = 100
+		}
+	}
 	storageCapacityMode := types.CSIStorageCapacityTrackingModeNode
 	if storageCapacityModeRaw, ok := scParameters["storageCapacityMode"]; ok {
 		storageCapacityMode = types.CSIStorageCapacityTrackingMode(storageCapacityModeRaw)
