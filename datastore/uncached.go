@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/hookexecutor"
 	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
@@ -143,6 +144,14 @@ func (s *DataStore) GetLonghornNamespace() (*corev1.Namespace, error) {
 // For example, support bundle creation
 func (s *DataStore) GetNamespace(name string) (*corev1.Namespace, error) {
 	return s.kubeClient.CoreV1().Namespaces().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// GetWorkloadPod returns a pod from an application namespace directly from
+// the API server; the pod informer watches only the Longhorn namespace, so
+// workload pods are never in cache. Use only for one-shot reads, such as
+// the snapshot group preview describing a member's pods.
+func (s *DataStore) GetWorkloadPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
+	return s.kubeClient.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
 // IsServiceAccountAllowed asks the API server, through a SubjectAccessReview,
