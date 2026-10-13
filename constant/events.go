@@ -84,8 +84,9 @@ const (
 	EventReasonShardFailed = "ShardFailed"
 
 	// Events the group controller records for snapshot group hooks.
-	EventReasonHookDeadlineExceeded = "HookDeadlineExceeded"
-	EventReasonPreHooksSkipped      = "PreHooksSkipped"
+	EventReasonHookDeadlineExceeded       = "HookDeadlineExceeded"
+	EventReasonHookDeadlineNearlyExceeded = "HookDeadlineNearlyExceeded"
+	EventReasonPreHooksSkipped            = "PreHooksSkipped"
 
 	// Events the hook executor records while running snapshot group hooks.
 	EventReasonPreHooksSucceeded  = "PreHooksSucceeded"

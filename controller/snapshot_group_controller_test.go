@@ -1317,6 +1317,9 @@ func (s *SnapshotGroupControllerSuite) TestPausedGroupReadyWhenRecordedPodsUncha
 	updated := f.getGroup(c)
 	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseReady)
 	c.Assert(updated.Status.ReadyToUse, Equals, true)
+	for _, event := range f.recordedEvents() {
+		c.Assert(event, Not(Matches), ".*HookDeadlineNearlyExceeded.*")
+	}
 }
 
 // TestPausedGroupFailsWhenRecordedPodChanged verifies the identity gate
@@ -1475,4 +1478,27 @@ func (s *SnapshotGroupControllerSuite) TestPausedGroupFailsWhenReleaseStartsBefo
 	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
 	c.Assert(updated.Status.Error, Matches, ".* "+regexp.QuoteMeta(snapshothook.ReleasedBeforeReadyMarker))
 	c.Assert(updated.Annotations[types.SnapshotGroupAnnotationTerminalPhase], Equals, string(longhorn.SnapshotGroupPhaseFailed))
+}
+
+// TestPausedGroupWarnsWhenDeadlineNearlyExceeded verifies that a Ready
+// hooked group that used over 80% of its budget gets the warning with the
+// consumption split into queue, pre-hook, and snapshot time.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupWarnsWhenDeadlineNearlyExceeded(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	f.registerSnapshotGroup(c, group)
+	// Deadline 300s: queued 5s, pre-hooks 15s, snapshots up to 250s = 83%.
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(250*time.Second))
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	c.Assert(f.getGroup(c).Status.Phase, Equals, longhorn.SnapshotGroupPhaseReady)
+	warned := false
+	for _, event := range f.recordedEvents() {
+		if strings.Contains(event, "HookDeadlineNearlyExceeded") && strings.Contains(event, "used 250s of its 300s deadline (queued 5s, pre-hooks 15s, snapshots 230s)") {
+			warned = true
+		}
+	}
+	c.Assert(warned, Equals, true)
 }
