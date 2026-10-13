@@ -1120,3 +1120,40 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 		}
 	}
 }
+
+func (s *TestSuite) TestIsSettingV2DataEngineRDMADeviceResourceSynced(c *C) {
+	newPod := func(extra ...corev1.ResourceName) *corev1.Pod {
+		limits := corev1.ResourceList{
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2048Mi"),
+			corev1.ResourceCPU:                   resource.MustParse("1"),
+		}
+		for _, name := range extra {
+			limits[name] = resource.MustParse("1")
+		}
+		return &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{Resources: corev1.ResourceRequirements{Limits: limits}}}}}
+	}
+	newSetting := func(value string) *longhorn.Setting {
+		return &longhorn.Setting{Value: value}
+	}
+	v1IM := &longhorn.InstanceManager{Spec: longhorn.InstanceManagerSpec{DataEngine: longhorn.DataEngineTypeV1}}
+	v2IM := &longhorn.InstanceManager{Spec: longhorn.InstanceManagerSpec{DataEngine: longhorn.DataEngineTypeV2}}
+
+	testCases := []struct {
+		name     string
+		setting  string
+		im       *longhorn.InstanceManager
+		pod      *corev1.Pod
+		expected bool
+	}{
+		{"empty setting and no extended resource", "", v2IM, newPod(), true},
+		{"empty setting but extended resource requested", "", v2IM, newPod("rdma/hca_shared_f0"), false},
+		{"setting requested by the pod", "rdma/hca_shared_f0", v2IM, newPod("rdma/hca_shared_f0"), true},
+		{"setting not requested by the pod", "rdma/hca_shared_f0", v2IM, newPod(), false},
+		{"pod requests a different resource", "rdma/hca_shared_f1", v2IM, newPod("rdma/hca_shared_f0"), false},
+		{"v1 instance manager is ignored", "rdma/hca_shared_f0", v1IM, newPod(), true},
+	}
+	for _, tc := range testCases {
+		fmt.Printf("testing isSettingV2DataEngineRDMADeviceResourceSynced: %v\n", tc.name)
+		c.Assert(isSettingV2DataEngineRDMADeviceResourceSynced(newSetting(tc.setting), tc.im, tc.pod), Equals, tc.expected, Commentf(tc.name))
+	}
+}

@@ -237,7 +237,8 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineInterruptModeEnabled ||
-		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUIsolationEnabled
+		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUIsolationEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameV2DataEngineRDMADeviceResource
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -984,6 +985,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingIobufSmallPoolSizeSynced(im, pod)
 		case types.SettingNameDataEngineCPUIsolationEnabled:
 			isSettingSynced, err = imc.isSettingCPUIsolationEnabledSynced(setting, im, pod)
+		case types.SettingNameV2DataEngineRDMADeviceResource:
+			isSettingSynced = isSettingV2DataEngineRDMADeviceResourceSynced(setting, im, pod)
 		}
 		if err != nil {
 			return false, nil, false, false, err
@@ -1363,6 +1366,28 @@ func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *lon
 // argument matches the current setting. A value not greater than SPDK's default
 // (types.SpdkDefaultIobufLargePoolSize) means the flag is omitted from the pod args, so an
 // absent flag is considered synced; this prevents recreating existing pods that predate the setting.
+// isSettingV2DataEngineRDMADeviceResourceSynced checks that the only extended
+// resource the v2 instance manager pod requests is the configured RDMA device
+// resource, or none when the setting is empty.
+func isSettingV2DataEngineRDMADeviceResourceSynced(setting *longhorn.Setting, im *longhorn.InstanceManager, pod *corev1.Pod) bool {
+	if types.IsDataEngineV1(im.Spec.DataEngine) || len(pod.Spec.Containers) == 0 {
+		return true
+	}
+
+	current := ""
+	for name := range pod.Spec.Containers[0].Resources.Limits {
+		// Extended resources are domain-prefixed; cpu, memory and hugepages-* are not.
+		if !strings.Contains(string(name), "/") {
+			continue
+		}
+		if current != "" {
+			return false
+		}
+		current = string(name)
+	}
+	return current == setting.Value
+}
+
 func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return true, nil
@@ -2252,6 +2277,18 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 
 		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+
+		// Request the extended resource advertised by an RDMA device plugin (for example,
+		// k8s-rdma-shared-dev-plugin) so the pod gets the /dev/infiniband verbs devices
+		// declaratively. Empty (default) keeps relying on the privileged host device mount.
+		rdmaDeviceSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineRDMADeviceResource)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameV2DataEngineRDMADeviceResource)
+		}
+		if rdmaDeviceResource := rdmaDeviceSetting.Value; rdmaDeviceResource != "" {
+			podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName(rdmaDeviceResource)] = resource.MustParse("1")
+		}
+
 		if dynamicCPUPinningEnabled {
 			cpuQty, ok := podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
 			if !ok {
