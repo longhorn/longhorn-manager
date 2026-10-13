@@ -37,6 +37,7 @@ func (r *Runner) release(ctx context.Context, name string) (bool, error) {
 	newlyGated, pauseRunning := r.gateRelease(name, group.UID)
 	if newlyGated && !snapshothook.IsTerminal(group) && group.DeletionTimestamp.IsZero() {
 		log.Warnf("Group is past its %ds deadline and not terminal; releasing", group.Spec.DeadlineSeconds)
+		deadlineExceededTotal.WithLabelValues(string(group.Spec.HookOperation)).Inc()
 	}
 	if pauseRunning {
 		log.Info("Taking the group over from its pause")
@@ -318,6 +319,7 @@ func (r *Runner) reportPostFailures(round *releaseRound) {
 		r.warn(round.group, constant.EventReasonPostHookFailed,
 			"post-command of hook %v in policy %v failed in pod %v/%v (container %v): %v; the application may still be paused; run that hook's postCommand by hand with kubectl exec",
 			record.HookName, round.policyNamespacedName(), record.Namespace, record.Name, container, message)
+		commandFailures.WithLabelValues("post", string(record.Reason), string(round.group.Spec.HookOperation)).Inc()
 	}
 }
 
@@ -418,7 +420,12 @@ func (r *Runner) finishRelease(ctx context.Context, group *longhorn.SnapshotGrou
 		return err
 	}
 	if failed > 0 {
+		releasesTotal.WithLabelValues("post_failed", string(group.Spec.HookOperation)).Inc()
 		return nil
+	}
+	releasesTotal.WithLabelValues("released", string(group.Spec.HookOperation)).Inc()
+	if written.Status.HooksStartedAt != nil {
+		windowSeconds.WithLabelValues(string(group.Spec.HookOperation)).Observe(now.Sub(written.Status.HooksStartedAt.Time).Seconds())
 	}
 	r.logger.WithField("snapshotGroup", group.Name).Infof("Post-hooks done on %d pods", pods)
 	r.event(written, corev1.EventTypeNormal, constant.EventReasonPostHooksSucceeded, "Post-hooks succeeded in all %d recorded pods", pods)

@@ -7,9 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	dto "github.com/prometheus/client_model/go"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
@@ -812,6 +815,34 @@ func TestReleaseRunsPostCommand(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Contains(t, events[0], "PostHooksSucceeded")
 	assert.True(t, f.runner.isReleaseGated(group.UID))
+}
+
+// hookWindowSum reads the running sum of the windowSeconds histogram for one
+// operation. The collector is shared by all tests in the package, so tests
+// compare before/after differences rather than absolute values.
+func hookWindowSum(t *testing.T, operation longhorn.HookOperation) float64 {
+	t.Helper()
+	var m dto.Metric
+	require.NoError(t, windowSeconds.WithLabelValues(string(operation)).(prometheus.Metric).Write(&m))
+	return m.GetHistogram().GetSampleSum()
+}
+
+// The window is measured from the first pre-command, not from the end of
+// the pause walk: the first member has been paused since hooksStartedAt.
+func TestReleaseObservesHookWindowFromFirstPause(t *testing.T) {
+	f := newFixture(t)
+	f.policy(1)
+	f.runningPod(testPod, testPodUID)
+	group := f.pausedGroup(longhorn.SnapshotGroupPhaseReady)
+	startedAt := metav1.NewTime(f.now.Add(-10 * time.Second))
+	group.Status.HooksStartedAt = &startedAt
+	f.putGroup(group)
+	before := hookWindowSum(t, group.Spec.HookOperation)
+
+	_, err := f.runner.release(context.Background(), testGroupName)
+	require.NoError(t, err)
+
+	assert.InDelta(t, 10, hookWindowSum(t, group.Spec.HookOperation)-before, 0.001)
 }
 
 // transitionToReady wakes both the release and the controller's next
