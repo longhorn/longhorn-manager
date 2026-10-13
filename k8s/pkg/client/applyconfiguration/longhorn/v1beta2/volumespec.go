@@ -78,10 +78,11 @@ type VolumeSpecApplyConfiguration struct {
 	SnapshotDataIntegrity       *longhornv1beta2.SnapshotDataIntegrity       `json:"snapshotDataIntegrity,omitempty"`
 	BackupCompressionMethod     *longhornv1beta2.BackupCompressionMethod     `json:"backupCompressionMethod,omitempty"`
 	// BackupBlockSize indicate the block size to create backups. The block size is immutable.
-	BackupBlockSize  *int64                          `json:"backupBlockSize,omitempty"`
-	DataEngine       *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
-	SnapshotMaxCount *int                            `json:"snapshotMaxCount,omitempty"`
-	SnapshotMaxSize  *int64                          `json:"snapshotMaxSize,omitempty"`
+	BackupBlockSize      *int64                          `json:"backupBlockSize,omitempty"`
+	DataEngine           *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
+	SnapshotMaxCount     *int                            `json:"snapshotMaxCount,omitempty"`
+	SnapshotMaxSize      *int64                          `json:"snapshotMaxSize,omitempty"`
+	SnapshotRemoveOldest *bool                           `json:"snapshotRemoveOldest,omitempty"`
 	// Setting that freezes the filesystem on the root partition before a snapshot is created.
 	FreezeFilesystemForSnapshot *longhornv1beta2.FreezeFilesystemForSnapshot `json:"freezeFilesystemForSnapshot,omitempty"`
 	// The backup target name that the volume will be backed up to or is synced.
@@ -425,6 +426,14 @@ func (b *VolumeSpecApplyConfiguration) WithSnapshotMaxCount(value int) *VolumeSp
 // If called multiple times, the SnapshotMaxSize field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithSnapshotMaxSize(value int64) *VolumeSpecApplyConfiguration {
 	b.SnapshotMaxSize = &value
+	return b
+}
+
+// WithSnapshotRemoveOldest sets the SnapshotRemoveOldest field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SnapshotRemoveOldest field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithSnapshotRemoveOldest(value bool) *VolumeSpecApplyConfiguration {
+	b.SnapshotRemoveOldest = &value
 	return b
 }
 

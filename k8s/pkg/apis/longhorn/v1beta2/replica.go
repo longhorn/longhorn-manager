@@ -84,6 +84,8 @@ type ReplicaSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// +optional
+	SnapshotRemoveOldest bool `json:"snapshotRemoveOldest"`
 	// LinkedCloneSrcReplicaName is the name of the src replica this clone replica is parented to.
 	// Immutable once set. Non-empty only for linked-clone replicas.
 	// +optional
