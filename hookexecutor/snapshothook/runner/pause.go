@@ -190,6 +190,7 @@ func (r *Runner) claimMember(ctx context.Context, group *longhorn.SnapshotGroup,
 		if failure != nil {
 			log.Warnf("Pre-hook failed on member %v: %v: %v", snapshotName, failure.reason, failure.detail)
 			r.warn(written, constant.EventReasonPreHookFailed, "Pre-hook failed on member %v (policy %v): %v: %v", snapshotName, snapshothook.PolicyRefNamespacedName(member.HookPolicyRef), failure.reason, failure.detail)
+			commandFailures.WithLabelValues("pre", string(failure.reason), string(group.Spec.HookOperation)).Inc()
 			return written, nil, nil
 		}
 		log.Infof("Claimed member %v: %d pods on PVC %v", snapshotName, len(records), snapshothook.PVCRefNamespacedName(pvcRef))
@@ -473,6 +474,7 @@ func (r *Runner) reportPreFailures(log logrus.FieldLogger, group *longhorn.Snaps
 		r.warn(group, constant.EventReasonPreHookFailed,
 			"Pre-command of hook %v in policy %v failed in pod %v/%v on member %v: %v",
 			record.HookName, snapshothook.PolicyRefNamespacedName(member.HookPolicyRef), record.Namespace, record.Name, hook.SnapshotName, message)
+		commandFailures.WithLabelValues("pre", string(record.Reason), string(group.Spec.HookOperation)).Inc()
 	}
 }
 
