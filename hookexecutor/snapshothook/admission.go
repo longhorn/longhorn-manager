@@ -35,6 +35,22 @@ const (
 	AdmissionFailureLonghornNamespace AdmissionFailureReason = "LonghornNamespace"
 )
 
+// AdmissionFailureReasons returns every reason, in declaration order, for
+// the API schema enum. When adding a reason above, add it here too;
+// otherwise the new reason is missing from the schema enum.
+func AdmissionFailureReasons() []AdmissionFailureReason {
+	return []AdmissionFailureReason{
+		AdmissionFailureNoPVC,
+		AdmissionFailureNoPolicy,
+		AdmissionFailureMultiplePolicies,
+		AdmissionFailureNoHookForOperation,
+		AdmissionFailureNoRunningPod,
+		AdmissionFailureVolumeConflict,
+		AdmissionFailurePodConflict,
+		AdmissionFailureLonghornNamespace,
+	}
+}
+
 // LonghornNamespaceMessage explains why hooks never run in the Longhorn
 // namespace: its pods are privileged, so a command in one of them is a
 // command on the node.
