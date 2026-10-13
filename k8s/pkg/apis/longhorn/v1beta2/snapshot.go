@@ -57,6 +57,12 @@ type SnapshotStatus struct {
 	ReadyToUse bool `json:"readyToUse"`
 	// +optional
 	Checksum string `json:"checksum"`
+	// EncryptionKeyVersion is the store version of the volume's passphrase when the
+	// snapshot was taken. A volume cloned from this snapshot carries the LUKS header
+	// of that moment, so that is the version whose key opens it. Empty for anything
+	// but a vault volume.
+	// +optional
+	EncryptionKeyVersion int `json:"encryptionKeyVersion,omitempty"`
 	// +optional
 	// ChecksumCalculatedAt is the RFC3339 timestamp indicating when the checksum
 	// for this snapshot was last calculated or updated.

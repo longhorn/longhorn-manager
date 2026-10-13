@@ -164,6 +164,16 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.Encrypted = isEncrypted
 	}
 
+	// encryptionSecret names the Secret holding the volume's provider
+	// configuration. Its presence is what selects the vault key provider.
+	if secretName, ok := volOptions["encryptionSecret"]; ok {
+		secretName = strings.TrimSpace(secretName)
+		if secretName != "" && !vol.Encrypted {
+			return nil, errors.New("parameter encryptionSecret needs encrypted: \"true\"")
+		}
+		vol.EncryptionSecretName = secretName
+	}
+
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
 		nor, err := strconv.Atoi(numberOfReplicas)
 		if err != nil {

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,11 +33,11 @@ import (
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/go-common-libs/multierr"
 
+	lhcrypto "github.com/longhorn/go-common-libs/crypto"
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/constant"
-	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/scheduler"
@@ -86,6 +87,9 @@ type VolumeController struct {
 	scheduler *scheduler.ReplicaScheduler
 
 	backoff *flowcontrol.Backoff
+
+	// encryptionKeyDeleteDeadlines: volume name -> when to stop retrying the key store.
+	encryptionKeyDeleteDeadlines sync.Map
 
 	// for unit test
 	nowHandler func() string
@@ -553,7 +557,14 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			return nil
 		}
 
-		// now snapshots, replicas, engines, and engine frontends are deleted
+		// now snapshots, replicas, engines, and engine frontends are deleted, so the key can go
+		done, err := c.destroyEncryptionKey(volume)
+		if err != nil {
+			return err
+		}
+		if !done {
+			return nil
+		}
 		return c.ds.RemoveFinalizerForVolume(volume)
 	}
 
@@ -674,6 +685,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	if err := c.ReconcileBackupVolumeState(volume); err != nil {
+		return err
+	}
+
+	if err := c.reconcileEncryptionKey(volume); err != nil {
 		return err
 	}
 
@@ -2180,7 +2195,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				// Lazy unmount it here to clear stale mount state before re-attaching the volume.
 				if v.Spec.Encrypted {
 					log.Infof("Volume is encrypted, lazy unmounting crypto device for volume %v if it is still mounted", v.Name)
-					cryptoDevice := crypto.VolumeMapper(v.Name, string(v.Spec.DataEngine))
+					cryptoDevice := lhcrypto.VolumeMapper(v.Name, string(v.Spec.DataEngine))
 					if err := util.LazyUnmount(cryptoDevice); err != nil {
 						return errors.Wrapf(err, "failed to lazy unmount crypto device %v for volume %v", cryptoDevice, v.Name)
 					}
@@ -2899,6 +2914,11 @@ func isReplicaNeverStarted(r *longhorn.Replica) bool {
 func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend, log *logrus.Entry) error {
 	if isVolumeOfflineUpgrade(v) {
 		log.Info("Waiting for offline volume upgrade to finish")
+		return nil
+	}
+
+	if isWaitingForEncryptionKey(v) {
+		log.Info("Waiting for the encryption key of the volume to be stored")
 		return nil
 	}
 

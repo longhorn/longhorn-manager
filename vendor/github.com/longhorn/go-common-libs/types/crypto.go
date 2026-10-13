@@ -30,3 +30,15 @@ func GetBackendSize(volumeSize int64, encrypted bool, cliAPIVersion int) int64 {
 	}
 	return volumeSize
 }
+
+// EncryptionKeyProvider names where the LUKS passphrase of an encrypted volume
+// comes from. It is the value of CryptoKeyProvider in the volume's Secret, and
+// the string form of the provider field of the Longhorn Volume CR.
+type EncryptionKeyProvider string
+
+const (
+	// EncryptionKeyProviderSecret reads the literal passphrase from the Secret.
+	EncryptionKeyProviderSecret = EncryptionKeyProvider("secret")
+	// EncryptionKeyProviderVault generates a per-volume passphrase and keeps it in Vault KV v2.
+	EncryptionKeyProviderVault = EncryptionKeyProvider("vault")
+)

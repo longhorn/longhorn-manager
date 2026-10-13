@@ -1,6 +1,7 @@
 package volume
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -368,6 +369,22 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
 				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)] = snapName
 			}
+		}
+	}
+
+	if volume.Spec.Encrypted {
+		// Default the key provider, so an encrypted volume created from the CRD by
+		// kubectl or the UI is defaulted exactly as one created through the API.
+		encryption, err := types.ResolveVolumeEncryption(&volume.Spec)
+		if err != nil {
+			return nil, werror.NewInvalidError(err.Error(), "spec.encryption")
+		}
+		if encryption != volume.Spec.Encryption {
+			value, err := json.Marshal(encryption)
+			if err != nil {
+				return nil, werror.NewInvalidError(err.Error(), "spec.encryption")
+			}
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/encryption", "value": %s}`, string(value)))
 		}
 	}
 

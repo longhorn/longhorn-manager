@@ -93,7 +93,9 @@ type Volume struct {
 
 	Migratable bool `json:"migratable"`
 
-	Encrypted bool `json:"encrypted"`
+	Encrypted            bool                           `json:"encrypted"`
+	EncryptionProvider   longhorn.EncryptionKeyProvider `json:"encryptionProvider"`
+	EncryptionSecretName string                         `json:"encryptionSecretName"`
 
 	Replicas         []Replica        `json:"replicas"`
 	Controllers      []Controller     `json:"controllers"`
@@ -1953,7 +1955,9 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 
 		Migratable: v.Spec.Migratable,
 
-		Encrypted: v.Spec.Encrypted,
+		Encrypted:            v.Spec.Encrypted,
+		EncryptionProvider:   v.Spec.Encryption.Provider,
+		EncryptionSecretName: v.Spec.Encryption.SecretName,
 
 		Conditions:       sliceToMap(v.Status.Conditions),
 		KubernetesStatus: v.Status.KubernetesStatus,

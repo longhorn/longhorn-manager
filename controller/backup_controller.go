@@ -355,6 +355,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			}
 		}
 
+		if needsCleanupRemoteData {
+			// Kept remote data still needs its key.
+			destroyBackupEncryptionKey(bc.ds, bc.namespace, log, backup, canonicalBackupVolumeName)
+		}
+
 		// Disable monitor regardless of backup state
 		bc.disableBackupMonitor(backup.Name)
 
@@ -380,6 +385,13 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			}
 		}
 		return bc.ds.RemoveFinalizerForBackup(backup)
+	}
+
+	// On every reconcile, not only the transition, so an unreachable key store is retried.
+	if backup.Status.State == longhorn.BackupStateCompleted {
+		if err := storeBackupEncryptionKey(bc.ds, bc.namespace, log, backup, canonicalBackupVolumeName); err != nil {
+			return errors.Wrap(err, "failed to store the encryption key of the completed backup")
+		}
 	}
 
 	syncTime := metav1.Time{Time: time.Now().UTC()}

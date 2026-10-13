@@ -1,3 +1,8 @@
+// Package crypto wraps the cryptsetup operations Longhorn performs on an
+// encrypted volume's device: format, open, close, resize and status. It is
+// shared by every process that owns a LUKS mapping — the CSI node plugin for
+// RWO and migratable RWX volumes, and the share manager for the rest — so the
+// mapper naming and the LUKS options stay identical across them.
 package crypto
 
 import (
@@ -10,15 +15,16 @@ import (
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
-
-	"github.com/longhorn/longhorn-manager/types"
-
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
+	// MapperFilePathPrefix is where device-mapper exposes an opened LUKS device.
 	MapperFilePathPrefix = "/dev/mapper"
 	mapperV2VolumeSuffix = "-encrypted"
+
+	// dataEngineTypeV2 is the data engine whose volumes already own a dm device
+	// under the volume's name, so the LUKS mapping needs a distinct one.
+	dataEngineTypeV2 = "v2"
 
 	CryptoKeyDefaultCipher = "aes-xts-plain64"
 	CryptoKeyDefaultHash   = "sha256"
@@ -37,7 +43,7 @@ const (
 	Luks2MinimalVolumeSize = lhtypes.Luks2EncryptionHeaderSize
 )
 
-// EncryptParams keeps the customized cipher options from the secret CR
+// EncryptParams keeps the customized cipher options from the volume's Secret.
 type EncryptParams struct {
 	KeyProvider          string
 	KeyCipher            string
@@ -102,20 +108,47 @@ func (cp *EncryptParams) GetPBKDFMemory() string {
 	return cp.PBKDFMemory
 }
 
-// VolumeMapper returns the path for mapped encrypted device.
+// LuksFormatOptions returns the cryptsetup options these parameters describe.
+func (cp *EncryptParams) LuksFormatOptions() *lhns.LuksFormatOptions {
+	return &lhns.LuksFormatOptions{
+		KeyCipher:            cp.GetKeyCipher(),
+		KeyHash:              cp.GetKeyHash(),
+		KeySize:              cp.GetKeySize(),
+		PBKDF:                cp.GetPBKDF(),
+		PBKDFForceIterations: cp.GetPBKDFForceIterations(),
+		PBKDFMemory:          cp.GetPBKDFMemory(),
+	}
+}
+
+// EncryptVolumeName is the device-mapper name of the volume's LUKS mapping.
+func EncryptVolumeName(volume, dataEngine string) string {
+	if dataEngine == dataEngineTypeV2 {
+		return volume + mapperV2VolumeSuffix
+	}
+	return volume
+}
+
+// VolumeMapper returns the path of the volume's mapped encrypted device.
 func VolumeMapper(volume, dataEngine string) string {
-	if types.IsDataEngineV2(longhorn.DataEngineType(dataEngine)) {
+	if dataEngine == dataEngineTypeV2 {
 		// v2 volume will use a dm device as default to control IO path when attaching.
 		// This dm device will be created with the same name as the volume name.
 		// The encrypted volume will be created with the volume name with "-encrypted" suffix to resolve the naming conflict.
-		return path.Join(MapperFilePathPrefix, getEncryptVolumeName(volume, dataEngine))
+		return path.Join(MapperFilePathPrefix, EncryptVolumeName(volume, dataEngine))
 	}
 	return path.Join(MapperFilePathPrefix, volume)
 }
 
-// EncryptVolume encrypts provided device with LUKS.
+func newNamespaceExecutor() (*lhns.Executor, error) {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	return lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+}
+
+// EncryptVolume encrypts the provided device with LUKS. A device that already
+// carries a LUKS header is left alone: formatting it again would discard the
+// key that opens the data on it.
 func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) error {
-	isEncrypted, err := isDeviceEncrypted(devicePath)
+	isEncrypted, err := IsDeviceEncrypted(devicePath)
 	if err != nil {
 		logrus.WithError(err).Warnf("Failed to check IsDeviceEncrypted before encrypting volume %v", devicePath)
 		return err
@@ -125,26 +158,16 @@ func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) e
 		return nil
 	}
 
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	nsexec, err := newNamespaceExecutor()
 	if err != nil {
 		return err
 	}
 	logrus.Infof("Encrypting device %s with LUKS", devicePath)
-	options := &lhns.LuksFormatOptions{
-		KeyCipher:            cryptoParams.GetKeyCipher(),
-		KeyHash:              cryptoParams.GetKeyHash(),
-		KeySize:              cryptoParams.GetKeySize(),
-		PBKDF:                cryptoParams.GetPBKDF(),
-		PBKDFForceIterations: cryptoParams.GetPBKDFForceIterations(),
-		PBKDFMemory:          cryptoParams.GetPBKDFMemory(),
-	}
-
-	if _, err := nsexec.LuksFormat(devicePath, passphrase, options, lhtypes.LuksTimeout); err != nil {
+	if _, err := nsexec.LuksFormat(devicePath, passphrase, cryptoParams.LuksFormatOptions(), lhtypes.LuksTimeout); err != nil {
 		return errors.Wrapf(err, "failed to encrypt device %s with LUKS", devicePath)
 	}
 
-	isEncrypted, err = isDeviceEncrypted(devicePath)
+	isEncrypted, err = IsDeviceEncrypted(devicePath)
 	if err != nil {
 		logrus.WithError(err).Warnf("Failed to check IsDeviceEncrypted after encrypting volume %v", devicePath)
 		return err
@@ -158,69 +181,62 @@ func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) e
 	return nil
 }
 
-// OpenVolume opens volume so that it can be used by the client.
-// devicePath is the path of the volume on the host that will be opened for instance '/dev/longhorn/volume1'
+// OpenVolume opens the volume so that it can be used by the client. devicePath
+// is the path of the volume on the host, for instance '/dev/longhorn/volume1'.
 func OpenVolume(volume, dataEngine, devicePath, passphrase string) error {
-	if isOpen, _ := IsDeviceOpen(VolumeMapper(volume, dataEngine)); isOpen {
-		logrus.Infof("Device %s is already opened at %s", devicePath, VolumeMapper(volume, dataEngine))
+	mapperPath := VolumeMapper(volume, dataEngine)
+	if isOpen, _ := IsDeviceOpen(mapperPath); isOpen {
+		logrus.Infof("Device %s is already opened at %s", devicePath, mapperPath)
 		return nil
 	}
 
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	nsexec, err := newNamespaceExecutor()
 	if err != nil {
 		return err
 	}
 
-	encryptVolumeName := getEncryptVolumeName(volume, dataEngine)
+	encryptVolumeName := EncryptVolumeName(volume, dataEngine)
 	logrus.Infof("Opening device %s with LUKS on %s", devicePath, encryptVolumeName)
-	_, err = nsexec.LuksOpen(encryptVolumeName, devicePath, passphrase, lhtypes.LuksTimeout)
-	if err != nil {
+	if _, err := nsexec.LuksOpen(encryptVolumeName, devicePath, passphrase, lhtypes.LuksTimeout); err != nil {
 		logrus.WithError(err).Warnf("Failed to open LUKS device %s to %s", devicePath, encryptVolumeName)
+		return err
 	}
-	return err
+	return nil
 }
 
-func getEncryptVolumeName(volume, dataEngine string) string {
-	if types.IsDataEngineV2(longhorn.DataEngineType(dataEngine)) {
-		return volume + mapperV2VolumeSuffix
-	}
-	return volume
-}
-
-// CloseVolume closes encrypted volume so it can be detached.
+// CloseVolume closes the encrypted volume so it can be detached.
 func CloseVolume(volume, dataEngine string) error {
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	nsexec, err := newNamespaceExecutor()
 	if err != nil {
 		return err
 	}
 
-	encryptVolumeName := getEncryptVolumeName(volume, dataEngine)
+	encryptVolumeName := EncryptVolumeName(volume, dataEngine)
 	logrus.Infof("Closing LUKS device %s", encryptVolumeName)
 	_, err = nsexec.LuksClose(encryptVolumeName, lhtypes.LuksTimeout)
 	return err
 }
 
+// ResizeEncryptoDevice resizes the LUKS mapping after the underlying device grew.
 func ResizeEncryptoDevice(volume, dataEngine, passphrase string) error {
-	if isOpen, err := IsDeviceOpen(VolumeMapper(volume, dataEngine)); err != nil {
+	mapperPath := VolumeMapper(volume, dataEngine)
+	if isOpen, err := IsDeviceOpen(mapperPath); err != nil {
 		return err
 	} else if !isOpen {
-		return fmt.Errorf("volume %v encrypto device is closed for resizing", volume)
+		return fmt.Errorf("volume %v encrypto device %v is closed for resizing", volume, mapperPath)
 	}
 
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	nsexec, err := newNamespaceExecutor()
 	if err != nil {
 		return err
 	}
 
-	encryptVolumeName := getEncryptVolumeName(volume, dataEngine)
-	_, err = nsexec.LuksResize(encryptVolumeName, passphrase, lhtypes.LuksTimeout)
+	_, err = nsexec.LuksResize(EncryptVolumeName(volume, dataEngine), passphrase, lhtypes.LuksTimeout)
 	return err
 }
 
-// IsDeviceMappedToNullPath determines if encrypted device is already open at a null path. The command 'cryptsetup status [crypted_device]' show "device:  (null)"
+// IsDeviceMappedToNullPath determines if the encrypted device is already open at
+// a null path: 'cryptsetup status [crypted_device]' then shows "device:  (null)".
 func IsDeviceMappedToNullPath(device string) (bool, error) {
 	devPath, mappedFile, err := DeviceEncryptionStatus(device)
 	if err != nil {
@@ -230,15 +246,15 @@ func IsDeviceMappedToNullPath(device string) (bool, error) {
 	return mappedFile != "" && strings.Compare(devPath, "(null)") == 0, nil
 }
 
-// IsDeviceOpen determines if encrypted device is already open.
+// IsDeviceOpen determines if the encrypted device is already open.
 func IsDeviceOpen(device string) (bool, error) {
 	_, mappedFile, err := DeviceEncryptionStatus(device)
 	return mappedFile != "", err
 }
 
-func isDeviceEncrypted(devicePath string) (bool, error) {
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+// IsDeviceEncrypted reports whether the device carries a LUKS header.
+func IsDeviceEncrypted(devicePath string) (bool, error) {
+	nsexec, err := newNamespaceExecutor()
 	if err != nil {
 		return false, err
 	}
@@ -253,12 +269,22 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 		return devicePath, "", nil
 	}
 
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	nsexec, err := newNamespaceExecutor()
 	if err != nil {
 		return devicePath, "", err
 	}
 
+	// Check the mapper device using `cryptsetup status`. Sample output:
+	//   /dev/mapper/pvc-e2a1c50a-9409-4afd-9e7d-3c1f5a9afa7f is active and is in use.
+	//     type:    LUKS2
+	//     cipher:  aes-xts-plain64
+	//     keysize: 256 bits
+	//     key location: keyring
+	//     device:  /dev/sda
+	//     sector size:  512
+	//     offset:  32768 sectors
+	//     size:    110592 sectors
+	//     mode:    read/write
 	volume := strings.TrimPrefix(devicePath, MapperFilePathPrefix+"/")
 	stdout, err := nsexec.LuksStatus(volume, lhtypes.LuksTimeout)
 	if err != nil {
@@ -271,6 +297,9 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 		return "", "", fmt.Errorf("device encryption status returned no stdout for %s", devicePath)
 	}
 
+	// There are two possible cases for an encrypted mapper device:
+	// - "/path/to/device is active.": the mapper device is activated by `cryptsetup luksOpen`
+	// - "/path/to/device is active and is in use.": the activated device is mounted or exposed (e.g., NFS)
 	if !strings.Contains(lines[0], " is active") {
 		// Implies this is not a LUKS device
 		return devicePath, "", nil

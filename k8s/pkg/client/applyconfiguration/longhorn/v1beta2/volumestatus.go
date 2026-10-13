@@ -59,6 +59,8 @@ type VolumeStatusApplyConfiguration struct {
 	// SwitchoverState describes the current progress of a v2 engine live switchover.
 	// Empty when no switchover is in progress.
 	SwitchoverState *longhornv1beta2.VolumeSwitchoverState `json:"switchoverState,omitempty"`
+	// Encryption reports the key management state of an encrypted volume.
+	Encryption *VolumeEncryptionStatusApplyConfiguration `json:"encryption,omitempty"`
 }
 
 // VolumeStatusApplyConfiguration constructs a declarative configuration of the VolumeStatus type for use with
@@ -269,5 +271,13 @@ func (b *VolumeStatusApplyConfiguration) WithLastOnDemandSnapshotHashingComplete
 // If called multiple times, the SwitchoverState field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithSwitchoverState(value longhornv1beta2.VolumeSwitchoverState) *VolumeStatusApplyConfiguration {
 	b.SwitchoverState = &value
+	return b
+}
+
+// WithEncryption sets the Encryption field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Encryption field is set to the value of the last call.
+func (b *VolumeStatusApplyConfiguration) WithEncryption(value *VolumeEncryptionStatusApplyConfiguration) *VolumeStatusApplyConfiguration {
+	b.Encryption = value
 	return b
 }

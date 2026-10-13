@@ -19,6 +19,8 @@ import (
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
+	lhkeystore "github.com/longhorn/go-common-libs/crypto/keystore"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -71,6 +73,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	if err := types.ValidateAccessMode(volume.Spec.AccessMode); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.accessMode")
+	}
+
+	if err := v.validateEncryptionCreate(volume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.encryption")
 	}
 
 	if err := validateReplicaCount(volume.Spec.CloneMode, volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
@@ -888,6 +894,31 @@ func validateTopologyZonePin(volume *longhorn.Volume) error {
 	if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityEnabled {
 		return fmt.Errorf("spec.replicaZoneSoftAntiAffinity must be %v for a volume pinned to a single zone by spec.topologyRequirement: zone anti-affinity cannot be satisfied within one zone (got %v)",
 			longhorn.ReplicaZoneSoftAntiAffinityEnabled, volume.Spec.ReplicaZoneSoftAntiAffinity)
+	}
+	return nil
+}
+
+// validateEncryptionCreate refuses a vault volume whose encryption Secret is
+// missing or malformed here, rather than as a mount failure on some node.
+func (v *volumeValidator) validateEncryptionCreate(volume *longhorn.Volume) error {
+	encryption, err := types.ResolveVolumeEncryption(&volume.Spec)
+	if err != nil || encryption.Provider != longhorn.EncryptionKeyProviderVault {
+		return err
+	}
+	secret, err := v.ds.GetSecretRO(volume.Namespace, encryption.SecretName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return fmt.Errorf("spec.encryption.secretName %q names no Secret in %v", encryption.SecretName, volume.Namespace)
+		}
+		return err
+	}
+	data := lhkeystore.SecretData(secret.Data)
+	if err := lhkeystore.Validate(data); err != nil {
+		return fmt.Errorf("encryption secret %q: %v", encryption.SecretName, err)
+	}
+	if got := lhkeystore.ProviderName(data); string(got) != string(encryption.Provider) {
+		return fmt.Errorf("encryption secret %q selects the %v key provider but the volume was created with %v",
+			encryption.SecretName, got, encryption.Provider)
 	}
 	return nil
 }

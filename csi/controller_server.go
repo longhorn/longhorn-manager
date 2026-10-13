@@ -196,12 +196,18 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		log.Warnf("CreateVolume for %s requested volumeTopology %q but the nodes report no %v; the volume is unconstrained", volumeID, vt, domainKey)
 	}
 
+	// sourceVolumeForEncryption's LUKS header is copied, so its key provider must match.
+	sourceVolumeForEncryption := ""
+
 	volumeSource := req.GetVolumeContentSource()
 	if volumeSource != nil {
 		switch volumeSource.Type.(type) {
 		case *csi.VolumeContentSource_Snapshot:
 			if snapshot := volumeSource.GetSnapshot(); snapshot != nil {
 				csiSnapshotType, sourceVolumeName, id := decodeSnapshotID(snapshot.SnapshotId)
+				if csiSnapshotType == csiSnapshotTypeLonghornSnapshot || csiSnapshotType == csiSnapshotTypeLonghornBackup {
+					sourceVolumeForEncryption = sourceVolumeName
+				}
 				switch csiSnapshotType {
 				case csiSnapshotTypeLonghornBackingImage:
 					backingImageParameters := decodeSnapshoBackingImageID(snapshot.SnapshotId)
@@ -270,6 +276,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 				dataSource, _ := types.NewVolumeDataSource(longhorn.VolumeDataSourceTypeVolume, map[string]string{types.VolumeNameKey: srcVolume.VolumeId})
 				volumeParameters["dataSource"] = string(dataSource)
+				sourceVolumeForEncryption = srcVolume.VolumeId
 			}
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
@@ -346,6 +353,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol.TopologyRequirement = topologyTerms
 
+	if vol.Encrypted {
+		provider, err := cs.resolveEncryptionProvider(volumeID, vol.EncryptionSecretName, sourceVolumeForEncryption)
+		if err != nil {
+			return nil, err
+		}
+		vol.EncryptionProvider = string(provider)
+	}
+
 	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters, vol.DataEngine); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -383,6 +398,40 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			AccessibleTopology: accessibleTopology,
 		},
 	}, nil
+}
+
+// resolveEncryptionProvider picks the key provider of a new encrypted volume
+// (the encryptionSecret parameter selects vault) and rejects a source volume
+// whose key the chosen provider cannot supply.
+func (cs *ControllerServer) resolveEncryptionProvider(volumeID, secretName, sourceVolumeName string) (longhorn.EncryptionKeyProvider, error) {
+	provider := longhorn.EncryptionKeyProviderSecret
+	if secretName != "" {
+		provider = longhorn.EncryptionKeyProviderVault
+	}
+
+	if sourceVolumeName == "" {
+		return provider, nil
+	}
+	source, err := cs.apiClient.Volume.ById(sourceVolumeName)
+	if err != nil {
+		return "", status.Errorf(codes.Internal, "failed to get source volume %v of volume %v: %v", sourceVolumeName, volumeID, err)
+	}
+	if source == nil || !source.Encrypted {
+		// A deleted source (backup restore) cannot be checked here; the volume
+		// controller fails closed if the key its data needs is not in the store.
+		return provider, nil
+	}
+	sourceProvider := longhorn.EncryptionKeyProvider(source.EncryptionProvider)
+	if sourceProvider == "" {
+		sourceProvider = longhorn.EncryptionKeyProviderSecret
+	}
+	if sourceProvider != provider {
+		return "", status.Errorf(codes.InvalidArgument, "volume %v selects the %v key provider but its source volume %v uses %v; the copied data can only be unlocked with the source's key", volumeID, provider, sourceVolumeName, sourceProvider)
+	}
+	if provider == longhorn.EncryptionKeyProviderVault && source.EncryptionSecretName != secretName {
+		return "", status.Errorf(codes.InvalidArgument, "volume %v names encryption secret %v but its source volume %v uses %v; the key of the copied data is in the store that Secret names", volumeID, secretName, sourceVolumeName, source.EncryptionSecretName)
+	}
+	return provider, nil
 }
 
 func (cs *ControllerServer) getBackupVolumes(volumeName string) ([]*longhornclient.BackupVolume, error) {

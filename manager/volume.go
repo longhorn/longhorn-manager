@@ -193,6 +193,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			AccessMode:                      spec.AccessMode,
 			Migratable:                      spec.Migratable,
 			Encrypted:                       spec.Encrypted,
+			Encryption:                      spec.Encryption,
 			Frontend:                        spec.Frontend,
 			Image:                           "",
 			FromBackup:                      spec.FromBackup,

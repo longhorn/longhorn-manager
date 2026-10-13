@@ -606,6 +606,26 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		return err
 	}
 
+	return sc.syncSnapshotEncryptionKeyVersion(snapshot)
+}
+
+// syncSnapshotEncryptionKeyVersion records, once, the key version a clone of
+// this snapshot is encrypted with.
+func (sc *SnapshotController) syncSnapshotEncryptionKeyVersion(snapshot *longhorn.Snapshot) error {
+	if snapshot.Status.EncryptionKeyVersion != 0 {
+		return nil
+	}
+	volume, err := sc.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !types.IsVaultEncrypted(&volume.Spec) || volume.Status.Encryption.KeyVersion == 0 {
+		return nil
+	}
+	snapshot.Status.EncryptionKeyVersion = volume.Status.Encryption.KeyVersion
 	return nil
 }
 

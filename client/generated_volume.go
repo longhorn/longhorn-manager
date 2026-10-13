@@ -45,6 +45,10 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted,omitempty" yaml:"encrypted,omitempty"`
 
+	EncryptionSecretName string `json:"encryptionSecretName,omitempty" yaml:"encryption_secret_name,omitempty"`
+
+	EncryptionProvider string `json:"encryptionProvider,omitempty" yaml:"encryption_provider,omitempty"`
+
 	FreezeFilesystemForSnapshot string `json:"freezeFilesystemForSnapshot,omitempty" yaml:"freeze_filesystem_for_snapshot,omitempty"`
 
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
