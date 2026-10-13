@@ -724,7 +724,36 @@ func (ctrl *SnapshotGroupController) transitionToReady(snapshotGroup *longhorn.S
 	}
 	ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeNormal, constant.EventReasonReady,
 		"Snapshot group is ready: all %v member snapshots taken within the deadline", len(snapshotGroup.Spec.Members))
+	ctrl.warnIfHookDeadlineNearlyExceeded(snapshotGroup, latestCreationTime)
 	return nil
+}
+
+// hookDeadlineWarningFraction is how much of its deadline a Ready hooked
+// group may use before the controller warns that the next run may miss it.
+const hookDeadlineWarningFraction = 0.8
+
+// warnIfHookDeadlineNearlyExceeded records a HookDeadlineNearlyExceeded
+// warning event when a Ready hooked group used over 80% of its deadline.
+func (ctrl *SnapshotGroupController) warnIfHookDeadlineNearlyExceeded(snapshotGroup *longhorn.SnapshotGroup, latestCreationTime string) {
+	if !snapshothook.IsHooked(snapshotGroup) || snapshotGroup.Status.HooksStartedAt == nil || snapshotGroup.Status.PreHooksDoneAt == nil {
+		return
+	}
+	latest, err := time.Parse(time.RFC3339, latestCreationTime)
+	if err != nil {
+		return
+	}
+	start := snapshotGroup.CreationTimestamp.Time
+	used := latest.Sub(start)
+	budget := time.Duration(snapshotGroup.Spec.DeadlineSeconds) * time.Second
+	if float64(used) <= hookDeadlineWarningFraction*float64(budget) {
+		return
+	}
+	queued := snapshotGroup.Status.HooksStartedAt.Sub(start)
+	preHooks := snapshotGroup.Status.PreHooksDoneAt.Sub(snapshotGroup.Status.HooksStartedAt.Time)
+	snapshots := latest.Sub(snapshotGroup.Status.PreHooksDoneAt.Time)
+	ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonHookDeadlineNearlyExceeded,
+		"Snapshot group used %.0fs of its %ds deadline (queued %.0fs, pre-hooks %.0fs, snapshots %.0fs); raise the deadline or shorten the pre-command before the next run misses it",
+		used.Seconds(), snapshotGroup.Spec.DeadlineSeconds, queued.Seconds(), preHooks.Seconds(), snapshots.Seconds())
 }
 
 func (ctrl *SnapshotGroupController) transitionToFailed(snapshotGroup *longhorn.SnapshotGroup, message string) error {
