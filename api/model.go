@@ -16,6 +16,7 @@ import (
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -697,24 +698,77 @@ type SnapshotGroupMember struct {
 
 // SnapshotGroupPreviewInput is the payload of the preview collection action.
 // Member snapshot names are generated at creation, so the preview neither
-// takes a group name nor returns names.
+// takes a group name nor returns names. With hooks command, each member
+// also previews the policy that would apply and its running pods, checked
+// for HookOperation. An empty HookOperation means snapshot, as at admission.
 type SnapshotGroupPreviewInput struct {
-	Volumes        []string              `json:"volumes"`
-	VolumeSelector *metav1.LabelSelector `json:"volumeSelector"`
+	Volumes        []string                    `json:"volumes"`
+	VolumeSelector *metav1.LabelSelector       `json:"volumeSelector"`
+	Hooks          longhorn.SnapshotGroupHooks `json:"hooks"`
+	HookOperation  longhorn.HookOperation      `json:"hookOperation,omitempty"`
 }
 
+// SnapshotGroupPreviewMember is one member as admission would check it.
 type SnapshotGroupPreviewMember struct {
-	VolumeName        string `json:"volumeName"`
+	VolumeName string `json:"volumeName"`
+	// ValidationFailure is the message validation would reject the member
+	// with, empty when it would be accepted.
 	ValidationFailure string `json:"validationFailure,omitempty"`
+	// ValidationFailureReason names the hook check that failed. Failures of
+	// the volume itself, such as a volume that is not ready, are not hook
+	// checks and have no reason.
+	ValidationFailureReason snapshothook.AdmissionFailureReason `json:"validationFailureReason,omitempty"`
+	// PVCRef, HookPolicyRef and WorkloadPods are set only when the preview
+	// requests hooks. Each workload pod carries the hook the policy would
+	// pick for it.
+	PVCRef        *longhorn.PVCRef              `json:"pvcRef,omitempty"`
+	HookPolicyRef *longhorn.VolumeHookPolicyRef `json:"hookPolicyRef,omitempty"`
+	WorkloadPods  []SnapshotGroupPreviewPod     `json:"workloadPods,omitempty"`
+	// AccessFailure is set when the hook executor lacks access to the PVC's
+	// namespace, or when the access check itself failed; empty when access
+	// is granted. The check runs even when the namespace has no hook policy
+	// yet, so missing permissions surface before a policy is created.
+	AccessFailure string `json:"accessFailure,omitempty"`
+	// AccessFailureManifest is a RoleBinding manifest that grants the
+	// missing access. It is set only when access was denied.
+	AccessFailureManifest string `json:"accessFailureManifest,omitempty"`
+}
+
+// SnapshotGroupPreviewPod is one running pod of a previewed member, in the
+// member's PVC namespace.
+type SnapshotGroupPreviewPod struct {
+	Name string `json:"name"`
+	// Labels and Containers let the user check a policy's podSelector and
+	// container against the pod. Containers is the set the run picks a hook
+	// container from.
+	Labels     map[string]string `json:"labels,omitempty"`
+	Containers []string          `json:"containers,omitempty"`
+	// ReadFailure is set when the pod could not be read; the other fields
+	// are then empty.
+	ReadFailure string `json:"readFailure,omitempty"`
+	// HookName and Container are the hook the member's policy picks for the
+	// pod and the container its commands would run in, decided as the run
+	// decides it. Both are empty when no policy covers the operation.
+	HookName  string `json:"hookName,omitempty"`
+	Container string `json:"container,omitempty"`
+	// MatchFailure is set instead of HookName when no single hook matches
+	// the pod.
+	MatchFailure string `json:"matchFailure,omitempty"`
 }
 
 // SnapshotGroupPreviewOutput previews which volumes a snapshot group spec
-// would select, without creating the group. Structural selection failures are
-// reported in Error; per-volume failures in the member's ValidationFailure.
+// would select, without creating the group. Members are listed in the order
+// the executor would pause them.
 type SnapshotGroupPreviewOutput struct {
 	client.Resource
 	Members []SnapshotGroupPreviewMember `json:"members"`
-	Error   string                       `json:"error,omitempty"`
+	// Warnings carry conditions that admission accepts but the user should
+	// know about, such as one pod mounting several member volumes.
+	Warnings []string `json:"warnings,omitempty"`
+	// Error reports failures of the selection itself, such as an invalid
+	// volume selector. Per-volume failures are reported in each member's
+	// ValidationFailure and AccessFailure instead.
+	Error string `json:"error,omitempty"`
 }
 
 type ShardGroup struct {
@@ -885,8 +939,10 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("labelSelectorRequirement", metav1.LabelSelectorRequirement{})
 	labelSelectorSchema(schemas.AddType("labelSelector", metav1.LabelSelector{}))
 	snapshotGroupPreviewInputSchema(schemas.AddType("snapshotGroupPreviewInput", SnapshotGroupPreviewInput{}))
+	schemas.AddType("pvcRef", longhorn.PVCRef{})
 	schemas.AddType("volumeHookPolicyRef", longhorn.VolumeHookPolicyRef{})
-	schemas.AddType("snapshotGroupPreviewMember", SnapshotGroupPreviewMember{})
+	snapshotGroupPreviewPodSchema(schemas.AddType("snapshotGroupPreviewPod", SnapshotGroupPreviewPod{}))
+	snapshotGroupPreviewMemberSchema(schemas.AddType("snapshotGroupPreviewMember", SnapshotGroupPreviewMember{}))
 	snapshotGroupPreviewOutputSchema(schemas.AddType("snapshotGroupPreviewOutput", SnapshotGroupPreviewOutput{}))
 	snapshotGroupMemberSchema(schemas.AddType("snapshotGroupMember", SnapshotGroupMember{}))
 	hookPodStatusSchema(schemas.AddType("hookPodStatus", longhorn.HookPodStatus{}))
@@ -1161,6 +1217,44 @@ func snapshotGroupPreviewInputSchema(input *client.Schema) {
 	volumeSelector.Type = "labelSelector"
 	volumeSelector.Nullable = true
 	input.ResourceFields["volumeSelector"] = volumeSelector
+
+	hooks := input.ResourceFields["hooks"]
+	hooks.Type = "enum"
+	hooks.Options = []string{string(longhorn.SnapshotGroupHooksNone), string(longhorn.SnapshotGroupHooksCommand)}
+	hooks.Default = string(longhorn.SnapshotGroupHooksNone)
+	input.ResourceFields["hooks"] = hooks
+
+	hookOperation := input.ResourceFields["hookOperation"]
+	hookOperation.Type = "enum"
+	hookOperation.Options = []string{string(longhorn.HookOperationSnapshot), string(longhorn.HookOperationBackup)}
+	input.ResourceFields["hookOperation"] = hookOperation
+}
+
+func snapshotGroupPreviewMemberSchema(member *client.Schema) {
+	validationFailureReason := member.ResourceFields["validationFailureReason"]
+	validationFailureReason.Type = "enum"
+	for _, reason := range snapshothook.AdmissionFailureReasons() {
+		validationFailureReason.Options = append(validationFailureReason.Options, string(reason))
+	}
+	validationFailureReason.Nullable = true
+	member.ResourceFields["validationFailureReason"] = validationFailureReason
+
+	workloadPods := member.ResourceFields["workloadPods"]
+	workloadPods.Type = "array[snapshotGroupPreviewPod]"
+	workloadPods.Nullable = true
+	member.ResourceFields["workloadPods"] = workloadPods
+
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	pvcRef := member.ResourceFields["pvcRef"]
+	pvcRef.Type = "pvcRef"
+	pvcRef.Nullable = true
+	member.ResourceFields["pvcRef"] = pvcRef
+
+	hookPolicyRef := member.ResourceFields["hookPolicyRef"]
+	hookPolicyRef.Type = "volumeHookPolicyRef"
+	hookPolicyRef.Nullable = true
+	member.ResourceFields["hookPolicyRef"] = hookPolicyRef
 }
 
 func snapshotGroupMemberSchema(member *client.Schema) {
@@ -1170,6 +1264,18 @@ func snapshotGroupMemberSchema(member *client.Schema) {
 	hookPolicyRef.Type = "volumeHookPolicyRef"
 	hookPolicyRef.Nullable = true
 	member.ResourceFields["hookPolicyRef"] = hookPolicyRef
+}
+
+func snapshotGroupPreviewPodSchema(pod *client.Schema) {
+	labels := pod.ResourceFields["labels"]
+	labels.Type = "map[string]"
+	labels.Nullable = true
+	pod.ResourceFields["labels"] = labels
+
+	containers := pod.ResourceFields["containers"]
+	containers.Type = "array[string]"
+	containers.Nullable = true
+	pod.ResourceFields["containers"] = containers
 }
 
 func hookPodStatusSchema(pod *client.Schema) {
@@ -1195,6 +1301,11 @@ func snapshotGroupPreviewOutputSchema(output *client.Schema) {
 	members := output.ResourceFields["members"]
 	members.Type = "array[snapshotGroupPreviewMember]"
 	output.ResourceFields["members"] = members
+
+	warnings := output.ResourceFields["warnings"]
+	warnings.Type = "array[string]"
+	warnings.Nullable = true
+	output.ResourceFields["warnings"] = warnings
 }
 
 func labelSelectorSchema(labelSelector *client.Schema) {
