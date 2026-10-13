@@ -49,6 +49,7 @@ type EngineStatusApplyConfiguration struct {
 	UnmapMarkSnapChainRemovedEnabled *bool                                           `json:"unmapMarkSnapChainRemovedEnabled,omitempty"`
 	SnapshotMaxCount                 *int                                            `json:"snapshotMaxCount,omitempty"`
 	SnapshotMaxSize                  *int64                                          `json:"snapshotMaxSize,omitempty"`
+	SnapshotRemoveOldest             *bool                                           `json:"snapshotRemoveOldest,omitempty"`
 	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
 	// concurrently during a single replica rebuild.
 	// It is determined by the global setting or the volume spec field with the same name.
@@ -264,6 +265,14 @@ func (b *EngineStatusApplyConfiguration) WithSnapshotMaxCount(value int) *Engine
 // If called multiple times, the SnapshotMaxSize field is set to the value of the last call.
 func (b *EngineStatusApplyConfiguration) WithSnapshotMaxSize(value int64) *EngineStatusApplyConfiguration {
 	b.SnapshotMaxSize = &value
+	return b
+}
+
+// WithSnapshotRemoveOldest sets the SnapshotRemoveOldest field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SnapshotRemoveOldest field is set to the value of the last call.
+func (b *EngineStatusApplyConfiguration) WithSnapshotRemoveOldest(value bool) *EngineStatusApplyConfiguration {
+	b.SnapshotRemoveOldest = &value
 	return b
 }
 
