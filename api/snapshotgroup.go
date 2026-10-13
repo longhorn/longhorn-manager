@@ -74,6 +74,8 @@ func (s *Server) SnapshotGroupCreate(rw http.ResponseWriter, req *http.Request) 
 		VolumeSelector:  input.VolumeSelector,
 		Labels:          input.Labels,
 		DeadlineSeconds: input.DeadlineSeconds,
+		Hooks:           input.Hooks,
+		HookOperation:   input.HookOperation,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "failed to create snapshot group %v", input.Name)
