@@ -658,19 +658,41 @@ type Orphan struct {
 
 type SnapshotGroup struct {
 	client.Resource
-	Name            string                               `json:"name"`
-	Created         string                               `json:"created"`
-	Volumes         []string                             `json:"volumes"`
-	VolumeSelector  *metav1.LabelSelector                `json:"volumeSelector"`
-	Labels          map[string]string                    `json:"labels"`
-	DeadlineSeconds int64                                `json:"deadlineSeconds"`
-	Phase           longhorn.SnapshotGroupPhase          `json:"phase"`
-	Members         []longhorn.SnapshotGroupMemberStatus `json:"members"`
-	ReadyToUse      bool                                 `json:"readyToUse"`
-	CreationTime    string                               `json:"creationTime"`
-	Error           string                               `json:"error,omitempty"`
-	Degraded        bool                                 `json:"degraded"`
-	Conditions      []longhorn.Condition                 `json:"conditions"`
+	Name            string                      `json:"name"`
+	Created         string                      `json:"created"`
+	Volumes         []string                    `json:"volumes"`
+	VolumeSelector  *metav1.LabelSelector       `json:"volumeSelector"`
+	Labels          map[string]string           `json:"labels"`
+	DeadlineSeconds int64                       `json:"deadlineSeconds"`
+	Hooks           longhorn.SnapshotGroupHooks `json:"hooks"`
+	HookOperation   longhorn.HookOperation      `json:"hookOperation,omitempty"`
+	Phase           longhorn.SnapshotGroupPhase `json:"phase"`
+	Members         []SnapshotGroupMember       `json:"members"`
+	ReadyToUse      bool                        `json:"readyToUse"`
+	CreationTime    string                      `json:"creationTime"`
+	Error           string                      `json:"error,omitempty"`
+	Degraded        bool                        `json:"degraded"`
+	Conditions      []longhorn.Condition        `json:"conditions"`
+	// HookStatuses mirrors status.hooks: one entry per member, owned by the
+	// executor. Commands are never part of it.
+	HookStatuses    []longhorn.HookStatus `json:"hookStatuses"`
+	HookProgress    string                `json:"hookProgress,omitempty"`
+	PreHooksDone    bool                  `json:"preHooksDone"`
+	HooksStartedAt  string                `json:"hooksStartedAt,omitempty"`
+	PreHooksDoneAt  string                `json:"preHooksDoneAt,omitempty"`
+	PostHooksDoneAt string                `json:"postHooksDoneAt,omitempty"`
+}
+
+// SnapshotGroupMember is one member as the REST API reports it: the state
+// mirrored from its Snapshot, plus the hook policy admission set on the spec
+// member.
+type SnapshotGroupMember struct {
+	VolumeName    string                        `json:"volumeName"`
+	SnapshotName  string                        `json:"snapshotName"`
+	ReadyToUse    bool                          `json:"readyToUse"`
+	CreationTime  string                        `json:"creationTime"`
+	Error         string                        `json:"error,omitempty"`
+	HookPolicyRef *longhorn.VolumeHookPolicyRef `json:"hookPolicyRef,omitempty"`
 }
 
 // SnapshotGroupPreviewInput is the payload of the preview collection action.
@@ -863,9 +885,12 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("labelSelectorRequirement", metav1.LabelSelectorRequirement{})
 	labelSelectorSchema(schemas.AddType("labelSelector", metav1.LabelSelector{}))
 	snapshotGroupPreviewInputSchema(schemas.AddType("snapshotGroupPreviewInput", SnapshotGroupPreviewInput{}))
+	schemas.AddType("volumeHookPolicyRef", longhorn.VolumeHookPolicyRef{})
 	schemas.AddType("snapshotGroupPreviewMember", SnapshotGroupPreviewMember{})
 	snapshotGroupPreviewOutputSchema(schemas.AddType("snapshotGroupPreviewOutput", SnapshotGroupPreviewOutput{}))
-	schemas.AddType("snapshotGroupMemberStatus", longhorn.SnapshotGroupMemberStatus{})
+	snapshotGroupMemberSchema(schemas.AddType("snapshotGroupMember", SnapshotGroupMember{}))
+	hookPodStatusSchema(schemas.AddType("hookPodStatus", longhorn.HookPodStatus{}))
+	hookStatusSchema(schemas.AddType("hookStatus", longhorn.HookStatus{}))
 	snapshotGroupSchema(schemas.AddType("snapshotGroup", SnapshotGroup{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 	backingImageSchema(schemas.AddType("backingImage", BackingImage{}))
@@ -1101,9 +1126,28 @@ func snapshotGroupSchema(snapshotGroup *client.Schema) {
 	deadlineSeconds.Create = true
 	snapshotGroup.ResourceFields["deadlineSeconds"] = deadlineSeconds
 
+	hooks := snapshotGroup.ResourceFields["hooks"]
+	hooks.Type = "enum"
+	hooks.Options = []string{string(longhorn.SnapshotGroupHooksNone), string(longhorn.SnapshotGroupHooksCommand)}
+	hooks.Default = string(longhorn.SnapshotGroupHooksNone)
+	hooks.Create = true
+	snapshotGroup.ResourceFields["hooks"] = hooks
+
+	// No default. The mutating webhook sets snapshot only on a hooked group,
+	// and the validator rejects any value on an unhooked one.
+	hookOperation := snapshotGroup.ResourceFields["hookOperation"]
+	hookOperation.Type = "enum"
+	hookOperation.Options = []string{string(longhorn.HookOperationSnapshot), string(longhorn.HookOperationBackup)}
+	hookOperation.Create = true
+	snapshotGroup.ResourceFields["hookOperation"] = hookOperation
+
 	members := snapshotGroup.ResourceFields["members"]
-	members.Type = "array[snapshotGroupMemberStatus]"
+	members.Type = "array[snapshotGroupMember]"
 	snapshotGroup.ResourceFields["members"] = members
+
+	hookStatuses := snapshotGroup.ResourceFields["hookStatuses"]
+	hookStatuses.Type = "array[hookStatus]"
+	snapshotGroup.ResourceFields["hookStatuses"] = hookStatuses
 
 	conditions := snapshotGroup.ResourceFields["conditions"]
 	conditions.Type = "array[longhornCondition]"
@@ -1117,6 +1161,34 @@ func snapshotGroupPreviewInputSchema(input *client.Schema) {
 	volumeSelector.Type = "labelSelector"
 	volumeSelector.Nullable = true
 	input.ResourceFields["volumeSelector"] = volumeSelector
+}
+
+func snapshotGroupMemberSchema(member *client.Schema) {
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	hookPolicyRef := member.ResourceFields["hookPolicyRef"]
+	hookPolicyRef.Type = "volumeHookPolicyRef"
+	hookPolicyRef.Nullable = true
+	member.ResourceFields["hookPolicyRef"] = hookPolicyRef
+}
+
+func hookPodStatusSchema(pod *client.Schema) {
+	containerIDs := pod.ResourceFields["containerIDs"]
+	containerIDs.Type = "array[string]"
+	pod.ResourceFields["containerIDs"] = containerIDs
+
+	// The schema reflector drops pointer fields, so the type must be set
+	// here for the field to appear in the published schema at all.
+	exitCode := pod.ResourceFields["exitCode"]
+	exitCode.Type = "int"
+	exitCode.Nullable = true
+	pod.ResourceFields["exitCode"] = exitCode
+}
+
+func hookStatusSchema(hook *client.Schema) {
+	pods := hook.ResourceFields["pods"]
+	pods.Type = "array[hookPodStatus]"
+	hook.ResourceFields["pods"] = pods
 }
 
 func snapshotGroupPreviewOutputSchema(output *client.Schema) {
@@ -2714,6 +2786,10 @@ func toRecurringJobCollection(jobs []*longhorn.RecurringJob, apiContext *api.Api
 }
 
 func toSnapshotGroupResource(snapshotGroup *longhorn.SnapshotGroup, apiContext *api.ApiContext) *SnapshotGroup {
+	hooks := snapshotGroup.Spec.Hooks
+	if hooks == "" {
+		hooks = longhorn.SnapshotGroupHooksNone
+	}
 	return &SnapshotGroup{
 		Resource: client.Resource{
 			Id:   snapshotGroup.Name,
@@ -2725,15 +2801,52 @@ func toSnapshotGroupResource(snapshotGroup *longhorn.SnapshotGroup, apiContext *
 		VolumeSelector:  snapshotGroup.Spec.VolumeSelector,
 		Labels:          snapshotGroup.Spec.Labels,
 		DeadlineSeconds: snapshotGroup.Spec.DeadlineSeconds,
+		Hooks:           hooks,
+		HookOperation:   snapshotGroup.Spec.HookOperation,
 		Phase:           snapshotGroup.Status.Phase,
-		Members:         snapshotGroup.Status.Members,
+		Members:         toSnapshotGroupMembers(snapshotGroup),
 		ReadyToUse:      snapshotGroup.Status.ReadyToUse,
 		CreationTime:    snapshotGroup.Status.CreationTime,
 		Error:           snapshotGroup.Status.Error,
 		Degraded: types.GetCondition(snapshotGroup.Status.Conditions,
 			longhorn.SnapshotGroupConditionTypeDegraded).Status == longhorn.ConditionStatusTrue,
-		Conditions: snapshotGroup.Status.Conditions,
+		Conditions:      snapshotGroup.Status.Conditions,
+		HookStatuses:    snapshotGroup.Status.Hooks,
+		HookProgress:    snapshotGroup.Status.HookProgress,
+		PreHooksDone:    snapshotGroup.Status.PreHooksDone,
+		HooksStartedAt:  formatMetaTime(snapshotGroup.Status.HooksStartedAt),
+		PreHooksDoneAt:  formatMetaTime(snapshotGroup.Status.PreHooksDoneAt),
+		PostHooksDoneAt: formatMetaTime(snapshotGroup.Status.PostHooksDoneAt),
 	}
+}
+
+// toSnapshotGroupMembers joins status.members with the policy set on the
+// same volume's spec member. Both lists are keyed by volume name.
+func toSnapshotGroupMembers(snapshotGroup *longhorn.SnapshotGroup) []SnapshotGroupMember {
+	policies := make(map[string]longhorn.SnapshotGroupMember, len(snapshotGroup.Spec.Members))
+	for _, member := range snapshotGroup.Spec.Members {
+		policies[member.VolumeName] = member
+	}
+	members := make([]SnapshotGroupMember, 0, len(snapshotGroup.Status.Members))
+	for _, status := range snapshotGroup.Status.Members {
+		spec := policies[status.VolumeName]
+		members = append(members, SnapshotGroupMember{
+			VolumeName:    status.VolumeName,
+			SnapshotName:  status.SnapshotName,
+			ReadyToUse:    status.ReadyToUse,
+			CreationTime:  status.CreationTime,
+			Error:         status.Error,
+			HookPolicyRef: spec.HookPolicyRef,
+		})
+	}
+	return members
+}
+
+func formatMetaTime(t *metav1.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(time.RFC3339)
 }
 
 func toSnapshotGroupCollection(snapshotGroups []*longhorn.SnapshotGroup, apiContext *api.ApiContext) *client.GenericCollection {
