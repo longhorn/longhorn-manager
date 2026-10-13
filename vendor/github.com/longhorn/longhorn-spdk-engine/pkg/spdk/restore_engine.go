@@ -96,6 +96,19 @@ func (r *EngineRestore) DeepCopy() *EngineRestore {
 	}
 }
 
+// Revert restores the status fields that StartNewRestore resets.
+func (r *EngineRestore) Revert(prev *EngineRestore) {
+	r.Lock()
+	defer r.Unlock()
+
+	r.Progress = prev.Progress
+	r.Error = prev.Error
+	r.BackupURL = prev.BackupURL
+	r.State = prev.State
+	r.LastRestored = prev.LastRestored
+	r.CurrentRestoringBackup = prev.CurrentRestoringBackup
+}
+
 func (r *EngineRestore) OpenVolumeDev(_ string) (*os.File, string, error) {
 	endpoint := r.endpoint
 

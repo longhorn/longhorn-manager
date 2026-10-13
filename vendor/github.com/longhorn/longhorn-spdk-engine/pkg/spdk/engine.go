@@ -2386,6 +2386,12 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 		return resp, nil, err
 	}
 
+	prevRestore := e.restore
+	var prevRestoreStatus *EngineRestore
+	if prevRestore != nil {
+		prevRestoreStatus = prevRestore.DeepCopy()
+	}
+
 	isFullRestore, err := e.backupRestorePrepare(spdkClient, backupUrl, credential, superiorPortAllocator)
 	if err != nil {
 		if !errors.Is(err, ErrAlreadyRestored) {
@@ -2415,15 +2421,17 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	if isFullRestore {
 		e.log.Infof("Starting a new full restore for backup %v", backupUrl)
 		if err := e.backupRestore(backupUrl, concurrentLimit); err != nil {
-			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
-			return resp, nil, errors.Wrapf(err, "failed to start full backup restore")
+			err = errors.Wrapf(err, "failed to start full backup restore")
+			e.handleBackupRestoreStartErrorLocked(resp, prevRestore, prevRestoreStatus, err)
+			return resp, nil, err
 		}
 		e.log.Infof("Successfully initiated full restore for %v to %v", backupUrl, e.Name)
 	} else {
 		e.log.Infof("Starting an incremental restore for backup %v", backupUrl)
 		if err := e.backupRestoreIncrementally(backupUrl, lastRestored, concurrentLimit); err != nil {
-			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
-			return resp, nil, errors.Wrapf(err, "failed to start incremental backup restore")
+			err = errors.Wrapf(err, "failed to start incremental backup restore")
+			e.handleBackupRestoreStartErrorLocked(resp, prevRestore, prevRestoreStatus, err)
+			return resp, nil, err
 		}
 		e.log.Infof("Successfully initiated incremental restore for %v to %v", backupUrl, e.Name)
 	}
@@ -2445,6 +2453,26 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	}()
 
 	return resp, ch, nil
+}
+
+// handleBackupRestoreStartErrorLocked reports a failure to start the backupstore restore
+// per replica, like a v1 restore task error. A lock conflict is retryable, so the restore
+// status is reverted instead of being marked as failed, matching the v1 replica behavior.
+func (e *Engine) handleBackupRestoreStartErrorLocked(resp *spdkrpc.EngineBackupRestoreResponse, prevRestore, prevRestoreStatus *EngineRestore, startErr error) {
+	if backupstore.IsLockConflictError(startErr) {
+		e.log.WithError(startErr).Warn("Reverting the restore status since the backupstore lock is held by another operation")
+		if prevRestore == nil || e.restore != prevRestore {
+			e.restore = prevRestore
+		} else {
+			e.restore.Revert(prevRestoreStatus)
+		}
+	} else {
+		e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, startErr)
+	}
+
+	for _, replicaStatus := range e.backends {
+		resp.Errors[replicaStatus.Address()] = startErr.Error()
+	}
 }
 
 func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Client, backupURL, backupName string, superiorPortAllocator *commonbitmap.Bitmap, restoreErr error) {

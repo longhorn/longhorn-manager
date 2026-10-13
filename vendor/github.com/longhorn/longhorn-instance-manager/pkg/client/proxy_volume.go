@@ -59,6 +59,7 @@ func (c *ProxyClient) VolumeGet(dataEngine, engineName, engineFrontendName, volu
 		UnmapMarkSnapChainRemoved: resp.Volume.UnmapMarkSnapChainRemoved,
 		SnapshotMaxCount:          int(resp.Volume.SnapshotMaxCount),
 		SnapshotMaxSize:           resp.Volume.SnapshotMaxSize,
+		SnapshotRemoveOldest:      resp.Volume.SnapshotRemoveOldest,
 	}
 	return info, nil
 }
@@ -308,6 +309,46 @@ func (c *ProxyClient) VolumeSnapshotMaxSizeSet(dataEngine, engineName, volumeNam
 	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
 	defer cancel()
 	_, err = c.service.VolumeSnapshotMaxSizeSet(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *ProxyClient) VolumeSnapshotRemoveOldestSet(dataEngine, engineName, volumeName,
+	serviceAddress string, enabled bool) (err error) {
+	input := map[string]string{
+		"engineName":     engineName,
+		"volumeName":     volumeName,
+		"serviceAddress": serviceAddress,
+		"enabled":        strconv.FormatBool(enabled),
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to set volume flag SnapshotRemoveOldest")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to set volume flag SnapshotRemoveOldest: invalid data engine %v", dataEngine)
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to set SnapshotRemoveOldest", c.getProxyErrorPrefix(serviceAddress))
+	}()
+
+	req := &rpc.EngineVolumeSnapshotRemoveOldestSetRequest{
+		ProxyEngineRequest: &rpc.ProxyEngineRequest{
+			Address:    serviceAddress,
+			EngineName: engineName,
+			DataEngine: rpc.DataEngine(driver),
+			VolumeName: volumeName,
+		},
+		SnapshotRemoveOldest: &enginerpc.VolumeSnapshotRemoveOldestSetRequest{Enabled: enabled},
+	}
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err = c.service.VolumeSnapshotRemoveOldestSet(ctx, req)
 	if err != nil {
 		return err
 	}
