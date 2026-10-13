@@ -87,6 +87,17 @@ func TestSnapshotGroupValidatorCreate(t *testing.T) {
 		{"reserved recurring-job label key", func(sg *longhorn.SnapshotGroup) {
 			sg.Spec.Labels = map[string]string{types.RecurringJobLabel: "job"}
 		}, true},
+		{"CSI group carrying hooks as a label", func(sg *longhorn.SnapshotGroup) {
+			sg.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupCSIType): "snap"}
+			sg.Spec.Labels = map[string]string{"hooks": "command"}
+		}, true},
+		{"CSI group carrying deadlineSeconds as a label", func(sg *longhorn.SnapshotGroup) {
+			sg.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupCSIType): "snap"}
+			sg.Spec.Labels = map[string]string{"deadlineSeconds": "120"}
+		}, true},
+		{"non-CSI group may use hooks as a label", func(sg *longhorn.SnapshotGroup) {
+			sg.Spec.Labels = map[string]string{"hooks": "command"}
+		}, false},
 		{"empty member set", func(sg *longhorn.SnapshotGroup) {
 			sg.Spec.Members = nil
 		}, true},
