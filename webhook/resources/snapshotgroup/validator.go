@@ -81,6 +81,9 @@ func (v *snapshotGroupValidator) Create(request *admission.Request, newObj runti
 	if _, exists := snapshotGroup.Spec.Labels[types.RecurringJobLabel]; exists {
 		return werror.NewInvalidError(fmt.Sprintf("label key %v is reserved for recurring jobs", types.RecurringJobLabel), "spec.labels")
 	}
+	if err := validateCSIReservedLabelKeys(snapshotGroup); err != nil {
+		return err
+	}
 
 	if err := validateMembers(snapshotGroup); err != nil {
 		return err
@@ -103,6 +106,21 @@ func (v *snapshotGroupValidator) validateMembersHooks(request *admission.Request
 		return nil
 	}
 	return v.validateHookClusterState(request, snapshotGroup)
+}
+
+// A CSI plugin that does not consume the hooks and deadlineSeconds class
+// parameters (e.g. not yet updated during an upgrade) forwards them as
+// snapshot labels, silently dropping the hooks.
+func validateCSIReservedLabelKeys(snapshotGroup *longhorn.SnapshotGroup) error {
+	if snapshotGroup.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupCSIType)] == "" {
+		return nil
+	}
+	for _, key := range []string{types.SnapshotGroupCSIParameterHooks, types.SnapshotGroupCSIParameterDeadlineSeconds} {
+		if _, exists := snapshotGroup.Spec.Labels[key]; exists {
+			return werror.NewInvalidError(fmt.Sprintf("label key %v is a CSI class parameter this longhorn-manager consumes, but the CSI plugin that created this group predates it; the create is rejected until the plugin rollout completes", key), "spec.labels")
+		}
+	}
+	return nil
 }
 
 // validateUnhookedHookFields rejects hook fields on a group whose spec.hooks
