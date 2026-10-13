@@ -1081,6 +1081,14 @@ func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error
 	if vol.Spec.DataEngine != srcVol.Spec.DataEngine {
 		return werror.NewInvalidError(fmt.Sprintf("cannot clone volume with data engine %v into a volume with data engine %v", srcVol.Spec.DataEngine, vol.Spec.DataEngine), ".spec.dataSource")
 	}
+
+	// Clones copy raw blocks, so a LUKS header cannot be added or stripped on the way.
+	if srcVol.Spec.Encrypted != vol.Spec.Encrypted {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"failed to clone volume %v to volume %v because encryption settings must match (source: %v, destination: %v)",
+			srcVol.Name, vol.Name, srcVol.Spec.Encrypted, vol.Spec.Encrypted), "spec.encrypted")
+	}
+
 	// If the source volume is itself a linked-clone, it must have completed cloning
 	// before it can serve as the source for another linked-clone volume.
 	if srcVol.Spec.CloneMode == longhorn.CloneModeLinkedClone &&
