@@ -126,7 +126,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/longhorn/types v0.0.0-20260709032252-3d0a3cd8f06f // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
