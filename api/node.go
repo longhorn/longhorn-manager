@@ -107,7 +107,7 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.DiskUpdate(id, diskUpdate.Disks)
+		return s.m.DiskUpdate(id, diskUpdate.Disks, diskUpdate.blockSizePresent)
 	})
 	if err != nil {
 		return err

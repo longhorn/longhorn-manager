@@ -98,18 +98,26 @@ func TestCollectDiskDataRetriesFailedBlockDisk(t *testing.T) {
 	failureMessage := "unsupported disk driver vfio-pci for disk path 0000:05:00.0"
 	generateCalls := 0
 	generatedUUID, generatedDriver := "", ""
+	generatedBlockSize := int64(0)
 
 	m := newTestDiskMonitor(t,
 		func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
 			return &util.DiskConfig{
-				DiskName: diskName,
-				State:    string(spdkdisk.DiskStateError),
-				Message:  failureMessage,
+				DiskName:  diskName,
+				DiskUUID:  testBlockDiskUUID,
+				State:     string(spdkdisk.DiskStateError),
+				BlockSize: 512,
+				Message:   failureMessage,
 			}, nil
 		},
-		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 			generateCalls++
 			generatedUUID, generatedDriver = diskUUID, diskDriver
+			resolvedBlockSize, err := resolveDiskBlockSize(blockSize, actualBlockSize, diskUUID != "")
+			if err != nil {
+				return nil, err
+			}
+			generatedBlockSize = resolvedBlockSize
 			// The disk service only reports the state when a creation is started.
 			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
 		},
@@ -122,6 +130,7 @@ func TestCollectDiskDataRetriesFailedBlockDisk(t *testing.T) {
 	// lvstore of the previous attempt or re-resolves a driver that is already known.
 	assert.Equal(testBlockDiskUUID, generatedUUID)
 	assert.Equal(string(longhorn.DiskDriverNvme), generatedDriver)
+	assert.Equal(int64(512), generatedBlockSize)
 
 	diskInfo, ok := diskInfoMap[testBlockDiskName]
 	assert.True(ok)
@@ -129,6 +138,69 @@ func TestCollectDiskDataRetriesFailedBlockDisk(t *testing.T) {
 	// A retry restarts from the creating state with no message, so the reason of the
 	// previous failure has to be carried over; otherwise it is never reported.
 	assert.Contains(diskInfo.Condition.Message, failureMessage)
+}
+
+func TestCollectDiskDataDoesNotTrustErrorBlockSizeFromDifferentDisk(t *testing.T) {
+	assert := require.New(t)
+
+	diskCreateCalls := 0
+	m := newTestDiskMonitor(t,
+		func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+			return &util.DiskConfig{
+				DiskName:  diskName,
+				DiskUUID:  "different-disk-uuid",
+				State:     string(spdkdisk.DiskStateError),
+				BlockSize: 4096,
+			}, nil
+		},
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			resolvedBlockSize, err := resolveDiskBlockSize(blockSize, actualBlockSize, diskUUID != "")
+			if err != nil {
+				return nil, err
+			}
+			diskCreateCalls++
+			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating), BlockSize: resolvedBlockSize}, nil
+		},
+	)
+
+	diskInfo := m.collectDiskData(newTestBlockDiskNode())[testBlockDiskName]
+
+	assert.Equal(0, diskCreateCalls)
+	assert.NotNil(diskInfo.Condition)
+	assert.Contains(diskInfo.Condition.Message, "cannot determine the block size of initialized disk")
+}
+
+func TestCollectDiskDataUsesCorrectedRequestedSizeForErrorDisk(t *testing.T) {
+	assert := require.New(t)
+
+	generatedBlockSize := int64(0)
+	m := newTestDiskMonitor(t,
+		func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+			return &util.DiskConfig{
+				DiskName:  diskName,
+				DiskUUID:  testBlockDiskUUID,
+				State:     string(spdkdisk.DiskStateError),
+				BlockSize: 512,
+			}, nil
+		},
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			resolvedBlockSize, err := resolveDiskBlockSize(blockSize, actualBlockSize, diskUUID != "")
+			if err != nil {
+				return nil, err
+			}
+			generatedBlockSize = resolvedBlockSize
+			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating), BlockSize: resolvedBlockSize}, nil
+		},
+	)
+
+	node := newTestBlockDiskNode()
+	disk := node.Spec.Disks[testBlockDiskName]
+	disk.BlockSize = 4096
+	node.Spec.Disks[testBlockDiskName] = disk
+
+	m.collectDiskData(node)
+
+	assert.Equal(int64(4096), generatedBlockSize)
 }
 
 // TestCollectDiskDataKeepsReportingFailureAcrossCollections covers the steady state
@@ -150,7 +222,7 @@ func TestCollectDiskDataKeepsReportingFailureAcrossCollections(t *testing.T) {
 				Message:  failureMessage,
 			}, nil
 		},
-		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 			generateCalls++
 			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
 		},
@@ -184,7 +256,7 @@ func TestCollectDiskDataDoesNotRetryReadyBlockDisk(t *testing.T) {
 				State:      string(spdkdisk.DiskStateReady),
 			}, nil
 		},
-		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 			generateCalls++
 			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
 		},
@@ -213,7 +285,7 @@ func TestCollectDiskDataToleratesNilDiskStatus(t *testing.T) {
 				State:      string(spdkdisk.DiskStateReady),
 			}, nil
 		},
-		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, blockSize, actualBlockSize int64, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
 		},
 	)

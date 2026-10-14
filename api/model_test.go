@@ -17,6 +17,94 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+func TestDiskUpdateInputTracksBlockSizePresence(t *testing.T) {
+	var input DiskUpdateInput
+	err := json.Unmarshal([]byte(`{
+		"disks": {
+			"omitted": {"diskType": "block", "path": "/dev/omitted"},
+			"null": {"diskType": "block", "path": "/dev/null", "blockSize": null},
+			"zero": {"diskType": "block", "path": "/dev/zero", "blockSize": 0},
+			"four-k": {"diskType": "block", "path": "/dev/four-k", "blockSize": 4096}
+		}
+	}`), &input)
+	if err != nil {
+		t.Fatalf("failed to unmarshal disk update input: %v", err)
+	}
+
+	if input.blockSizePresent["omitted"] {
+		t.Fatal("expected omitted blockSize to remain absent")
+	}
+	if input.blockSizePresent["null"] {
+		t.Fatal("expected null blockSize to remain absent")
+	}
+	if !input.blockSizePresent["zero"] {
+		t.Fatal("expected explicit zero blockSize to be present")
+	}
+	if !input.blockSizePresent["four-k"] {
+		t.Fatal("expected explicit 4096 blockSize to be present")
+	}
+	if input.Disks["zero"].BlockSize != 0 {
+		t.Fatalf("expected explicit zero blockSize, got %d", input.Disks["zero"].BlockSize)
+	}
+	if input.Disks["four-k"].BlockSize != 4096 {
+		t.Fatalf("expected 4096 blockSize, got %d", input.Disks["four-k"].BlockSize)
+	}
+}
+
+func TestGeneratedDiskUpdatePreservesBlockSizePresence(t *testing.T) {
+	zero := int64(0)
+	fourK := int64(4096)
+	payload, err := json.Marshal(lhclient.DiskUpdateInput{
+		Disks: map[string]lhclient.DiskUpdate{
+			"omitted": {BlockSize: nil},
+			"zero":    {BlockSize: &zero},
+			"four-k":  {BlockSize: &fourK},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal generated disk update: %v", err)
+	}
+
+	var input DiskUpdateInput
+	if err := json.Unmarshal(payload, &input); err != nil {
+		t.Fatalf("failed to unmarshal generated disk update: %v", err)
+	}
+
+	if input.blockSizePresent["omitted"] {
+		t.Fatal("expected nil generated blockSize to remain absent")
+	}
+	if !input.blockSizePresent["zero"] || input.Disks["zero"].BlockSize != 0 {
+		t.Fatalf("expected generated client to encode explicit zero, got presence %v and value %d",
+			input.blockSizePresent["zero"], input.Disks["zero"].BlockSize)
+	}
+	if !input.blockSizePresent["four-k"] || input.Disks["four-k"].BlockSize != 4096 {
+		t.Fatalf("expected generated client to encode 4096, got presence %v and value %d",
+			input.blockSizePresent["four-k"], input.Disks["four-k"].BlockSize)
+	}
+}
+
+func TestDiskUpdateSchemaMarksBlockSizeNullable(t *testing.T) {
+	schema := NewSchema().Schema("diskUpdate")
+	field := schema.Field("blockSize")
+	if field.Type != "int" {
+		t.Fatalf("expected blockSize schema type int, got %q", field.Type)
+	}
+	if !field.Nullable {
+		t.Fatal("expected blockSize schema field to be nullable")
+	}
+	if field.Required {
+		t.Fatal("expected blockSize schema field to remain optional")
+	}
+}
+
+func TestDiskUpdateInputSchemaUsesNamedMap(t *testing.T) {
+	schema := NewSchema().Schema("diskUpdateInput")
+	field := schema.Field("disks")
+	if field.Type != "map[diskUpdate]" {
+		t.Fatalf("expected disks schema type map[diskUpdate], got %q", field.Type)
+	}
+}
+
 func TestToVolumeResourceUsesEngineFrontendNodeForV2Controller(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
 	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
