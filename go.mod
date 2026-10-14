@@ -19,7 +19,7 @@ go 1.26.0
 
 replace (
 	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
-	github.com/longhorn/types => github.com/longhorn/types v0.0.0-20260327130848-66f6de8a2fb3
+	github.com/longhorn/types => github.com/longhorn/types v0.0.0-20260930155107-5849431731c3
 	k8s.io/api => k8s.io/api v0.35.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.4
 	k8s.io/apimachinery => k8s.io/apimachinery v0.35.4
@@ -67,8 +67,8 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20251228.0.20260125135229-1c3981801092
-	github.com/longhorn/backupstore v0.0.0-20260922010936-57b3845ad4ef
-	github.com/longhorn/go-common-libs v0.0.0-20260730002911-add09e6eb92c
+	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
+	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.8.0
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20251228.0.20260821033200-571574ebd967
@@ -82,7 +82,7 @@ require (
 	github.com/rancher/wrangler/v3 v3.3.4
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.4
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.41.0
 	golang.org/x/net v0.58.0 // indirect
@@ -142,7 +142,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
