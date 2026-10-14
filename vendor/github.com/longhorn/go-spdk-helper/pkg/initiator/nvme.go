@@ -11,6 +11,7 @@ import (
 	commonns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/go-spdk-helper/pkg/types"
+	"github.com/longhorn/go-spdk-helper/pkg/util"
 )
 
 // DiscoverTarget discovers a target
@@ -40,6 +41,12 @@ func DiscoverTarget(ip, port string, executor *commonns.Executor) (subnqn string
 
 // ConnectTarget connects to a target
 func ConnectTarget(ip, port, nqn string, executor *commonns.Executor) (controllerName string, err error) {
+	return ConnectTargetWithNrIoQueues(ip, port, nqn, 0, executor)
+}
+
+// ConnectTargetWithNrIoQueues connects to a target with a limited number of
+// I/O queues (nrIoQueues 0 means unspecified, kernel default)
+func ConnectTargetWithNrIoQueues(ip, port, nqn string, nrIoQueues int32, executor *commonns.Executor) (controllerName string, err error) {
 	// Trying to connect an existing subsystem will error out with exit code 114.
 	// Hence, it's better to check the existence first.
 	if devices, err := GetDevices(ip, port, nqn, executor); err == nil && len(devices) > 0 {
@@ -55,12 +62,46 @@ func ConnectTarget(ip, port, nqn string, executor *commonns.Executor) (controlle
 		return "", err
 	}
 
-	return connect(hostID, hostNQN, nqn, DefaultTransportType, ip, port, executor)
+	return connect(hostID, hostNQN, nqn, DefaultTransportType, ip, port, nrIoQueues, executor)
 }
 
 // DisconnectTarget disconnects from a target
 func DisconnectTarget(nqn string, executor *commonns.Executor) error {
 	return disconnect(nqn, executor)
+}
+
+// DisconnectUsableTargetPaths disconnects only the controllers of the subsystem that
+// the kernel still considers usable.
+//
+// A path the kernel has already given up on must be left to ctrl_loss_tmo. Deleting it
+// clears NVME_CTRL_FAILFAST_EXPIRED, and a controller in the deleting state counts as an
+// available path again, so the I/O that failfast had started to error goes back to being
+// requeued and the delete itself never completes.
+func DisconnectUsableTargetPaths(nqn string, executor *commonns.Executor) error {
+	subsystems, err := listSubsystems("", executor)
+	if err != nil {
+		return errors.Wrap(err, "failed to list subsystems for target disconnect")
+	}
+
+	var errs []error
+	for _, sys := range subsystems {
+		if sys.NQN != nqn {
+			continue
+		}
+		for _, path := range sys.Paths {
+			// Anything the kernel does not report as live is left alone. A state we
+			// cannot read is no evidence that the path is safe to delete.
+			if path.State != NvmeControllerStateLive {
+				logrus.Warnf("Leaving NVMe/TCP path %s at %s in %q state to ctrl_loss_tmo instead of disconnecting it",
+					path.Name, path.Address, path.State)
+				continue
+			}
+			if err := disconnectController(path.Name, executor); err != nil {
+				errs = append(errs, errors.Wrapf(err, "failed to disconnect NVMe/TCP path %s of subsystem %s", path.Name, nqn))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // DisconnectController disconnects a single NVMe controller that
@@ -78,7 +119,7 @@ func DisconnectController(nqn, ip, port string, executor *commonns.Executor) err
 		}
 		for _, path := range sys.Paths {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-			if controllerIP == ip && controllerPort == port {
+			if util.IsSameNvmeAddr(controllerIP, ip) && controllerPort == port {
 				return disconnectController(path.Name, executor)
 			}
 		}
@@ -170,13 +211,19 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 
 	res := []Device{}
 	for _, d := range devices {
-		match := false
 		if d.SubsystemNQN != nqn {
 			continue
 		}
+		if len(d.Namespaces) == 0 {
+			continue
+		}
+		// A path being torn down disappears from the per-device subsystem listing,
+		// leaving no controller to match against. Without a requested address the
+		// namespace device itself already identifies the device.
+		match := ip == "" && port == ""
 		for _, c := range d.Controllers {
 			controllerIP, controllerPort := GetIPAndPortFromControllerAddress(c.Address)
-			if ip != "" && ip != controllerIP {
+			if ip != "" && !util.IsSameNvmeAddr(ip, controllerIP) {
 				continue
 			}
 			if port != "" && port != controllerPort {
@@ -184,9 +231,6 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 			}
 			match = true
 			break
-		}
-		if len(d.Namespaces) == 0 {
-			continue
 		}
 		if match {
 			res = append(res, d)
@@ -216,7 +260,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 			pathMatch := false
 			for _, path := range sys.Paths {
 				controllerIP, controllerPort := GetIPAndPortFromControllerAddress(path.Address)
-				if ip != "" && ip != controllerIP {
+				if ip != "" && !util.IsSameNvmeAddr(ip, controllerIP) {
 					continue
 				}
 				if port != "" && port != controllerPort {
@@ -282,6 +326,11 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 				continue
 			}
 			for _, path := range sys.Paths {
+				// A path the kernel is already tearing down explains nothing about why
+				// the device is missing, and reporting it hides the real state.
+				if strings.HasPrefix(path.State, NvmeControllerStateDeleting) {
+					continue
+				}
 				return nil, fmt.Errorf("subsystem NQN %s path %v address %v is in %s state",
 					nqn, path.Name, path.Address, path.State)
 			}
