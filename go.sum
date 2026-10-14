@@ -187,8 +187,8 @@ github.com/longhorn/longhorn-share-manager v1.13.1-dev-20260906 h1:Gxw1ilUd5ewdC
 github.com/longhorn/longhorn-share-manager v1.13.1-dev-20260906/go.mod h1:puc8OIzvERoJiOCQ1+ZpwLHMhRg7+fw06GGUr27W8I0=
 github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260922025450-0a58d6f146a1 h1:GamQ37+cXt6YYa23Lplj0yD9UGos6wVmO8MxoVopXe4=
 github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260922025450-0a58d6f146a1/go.mod h1:YUwG0VAu0ESrdxnmZAOY1fht2q4JhxpDqxSBJpxbt8c=
-github.com/longhorn/types v0.0.0-20260912171147-ce65698c8b35 h1:5toypxDyl3Y8aOztaRdjHixQMqmEzUFCQSlpOkq+gZA=
-github.com/longhorn/types v0.0.0-20260912171147-ce65698c8b35/go.mod h1:Vkzz3elQIX2hvqj1ubCVyPEX+AJdyuU5asYFpVNjqvs=
+github.com/longhorn/types v0.0.0-20260930155107-5849431731c3 h1:U5PUbPnjKEn0UqVU+S39vRkHj0b3G7Y4yoTcYeTazns=
+github.com/longhorn/types v0.0.0-20260930155107-5849431731c3/go.mod h1:t09pWhpJbufsg5yoZWyNif15QWp/5WQrTyEa3mEQfS4=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=
