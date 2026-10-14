@@ -1391,6 +1391,32 @@ func (m *VolumeManager) UpdateSnapshotMaxSize(name string, snapshotMaxSize int64
 	return v, nil
 }
 
+func (m *VolumeManager) UpdateSnapshotRemoveOldest(name string, snapshotRemoveOldest bool) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field SnapshotRemoveOldest for volume %s", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.SnapshotRemoveOldest == snapshotRemoveOldest {
+		logrus.Debugf("Volume %s already set field SnapshotRemoveOldest to %d", v.Name, snapshotRemoveOldest)
+		return v, nil
+	}
+
+	oldSnapshotRemoveOldest := v.Spec.SnapshotRemoveOldest
+	v.Spec.SnapshotRemoveOldest = snapshotRemoveOldest
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %s field SnapshotRemoveOldest from %d to %d", v.Name, oldSnapshotRemoveOldest, snapshotRemoveOldest)
+	return v, nil
+}
+
 func (m *VolumeManager) UpdateReplicaRebuildingBandwidthLimit(name string, replicaRebuildingBandwidthLimit int64) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update field ReplicaRebuildingBandwidthLimit for volume %s", name)

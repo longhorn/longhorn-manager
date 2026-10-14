@@ -155,6 +155,8 @@ type EngineSpec struct {
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
 	// +optional
+	SnapshotRemoveOldest bool `json:"snapshotRemoveOldest"`
+	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=5
 	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run
@@ -217,6 +219,8 @@ type EngineStatus struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// +optional
+	SnapshotRemoveOldest bool `json:"snapshotRemoveOldest"`
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// RebuildConcurrentSyncLimit controls the maximum number of file synchronization operations that can run

@@ -21,11 +21,6 @@ const (
 	CannotRequestHashingSnapshotPrefix = "cannot request hashing snapshot"
 
 	ErrorStringNoSpaceLeftOnDevice = "no space left on device"
-
-	ErrorStringReplicaAddress = "replica %s"
-	ErrorStringNotInModeWO    = "is not in mode WO:"
-
-	ErrorStringReplicaAddressExist = "replica already exists at address"
 )
 
 var ErrNoSpaceLeftOnDevice = errors.New(ErrorStringNoSpaceLeftOnDevice)
@@ -117,8 +112,4 @@ func UnmarshalGRPCError(err error) error {
 			fmt.Sprintf("failed to unmarshal gRPC error message, gRPC err: %v, json error: %v", err, jsonErr), "")
 	}
 	return retErr
-}
-
-func ErrReplicaNotInWOMode(replicaAddr, currentMode string) error {
-	return fmt.Errorf(ErrorStringReplicaAddress+" "+ErrorStringNotInModeWO+" %s", replicaAddr, currentMode)
 }

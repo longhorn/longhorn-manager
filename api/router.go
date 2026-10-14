@@ -81,6 +81,7 @@ func NewRouter(s *Server) *mux.Router {
 		"updateUnmapMarkSnapChainRemoved":       s.VolumeUpdateUnmapMarkSnapChainRemoved,
 		"updateSnapshotMaxCount":                s.VolumeUpdateSnapshotMaxCount,
 		"updateSnapshotMaxSize":                 s.VolumeUpdateSnapshotMaxSize,
+		"updateSnapshotRemoveOldest":            s.VolumeUpdateSnapshotRemoveOldest,
 		"updateReplicaRebuildingBandwidthLimit": s.VolumeUpdateReplicaRebuildingBandwidthLimit,
 		"updateUblkQueueDepth":                  s.VolumeUpdateUblkQueueDepth,
 		"updateUblkNumberOfQueue":               s.VolumeUpdateUpdateUblkNumberOfQueue,
