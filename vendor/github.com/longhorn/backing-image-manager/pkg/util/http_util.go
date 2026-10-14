@@ -8,17 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	commonnet "github.com/longhorn/go-common-libs/net"
 )
 
-const (
-	HTTPClientErrorPrefixTemplate = "resp.StatusCode(%d) != http.StatusOK(200)"
+const HTTPClientErrorPrefixTemplate = "resp.StatusCode(%d) != http.StatusOK(200)"
 
-	EnvPodIP = "POD_IP"
-
-	StorageNetworkInterface = "lhnet1"
-)
+type PodIPResolver func() (string, error)
 
 // NoProxyTransport is a copy of http.DefaultTransport with Proxy disabled.
 // Use it for all intra-pod HTTP calls so that requests are never forwarded to
@@ -67,48 +64,20 @@ func DetectHTTPServerAvailability(url string, waitIntervalInSecond int, shouldAv
 }
 
 func GetIPForPod() (ip string, err error) {
-	var storageIP string
-	if ip, err := GetLocalIPv4fromInterface(StorageNetworkInterface); err != nil {
-		storageIP = os.Getenv(EnvPodIP)
-		logrus.WithError(err).Debugf("failed to get IP from %v interface, fallback to use the default pod IP %v", StorageNetworkInterface, storageIP)
-	} else {
-		storageIP = ip
-	}
-	if storageIP == "" {
-		return "", fmt.Errorf("can't get a ip from either the specified interface or the environment variable")
-	}
-	return storageIP, nil
+	return commonnet.GetPreferredPodIP()
 }
 
-func GetLocalIPv4fromInterface(name string) (ip string, err error) {
-	iface, err := net.InterfaceByName(name)
-	if err != nil {
-		return "", err
-	}
-
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return "", errors.Wrapf(err, "interface %s doesn't have address\n", name)
-	}
-
-	var ipv4 net.IP
-	for _, addr := range addrs {
-		if ipv4 = addr.(*net.IPNet).IP.To4(); ipv4 != nil {
-			break
-		}
-	}
-	if ipv4 == nil {
-		return "", errors.Errorf("interface %s don't have an IPv4 address\n", name)
-	}
-
-	return ipv4.String(), nil
-}
-
-func GetSyncServiceAddressWithPodIP(address string) (string, error) {
+// GetBackingImageDownloadAddress returns the sync service address on the
+// primary pod IP so the manager's HTTP reverse proxy can reach it. The returned
+// address is intended for external access through the control plane, not internal
+// data transfers. Do not use this helper for internal transfers: it does not
+// select an address on the storage network.
+func GetBackingImageDownloadAddress(address string) (string, error) {
 	_, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return "", err
 	}
-	podIP := os.Getenv(EnvPodIP)
+
+	podIP := os.Getenv(commonnet.EnvPodIP)
 	return net.JoinHostPort(podIP, port), nil
 }
