@@ -59,6 +59,26 @@ type Server struct {
 	engineMap         map[string]*Engine
 	engineFrontendMap map[string]*EngineFrontend
 
+	// restoreFrontendMap tracks the temporary restore frontend of each engine,
+	// keyed by engine name. An entry exists from the moment a restore starts
+	// until its data path is fully torn down.
+	//
+	// While an entry exists, the server rejects two requests:
+	//   - a new restore for the same engine
+	//   - a new engine frontend for the same volume
+	// Both would connect to the volume NQN that the leftover restore data
+	// path is about to disconnect.
+	//
+	// Entries are added and checked under the server lock, and both
+	// EngineBackupRestore and EngineFrontendCreate also hold the volume host
+	// lock while they do so. The host lock is what closes the window between
+	// a create's check and its connect; see validateVolumeReadyForFrontendLocked.
+	//
+	// The entry is removed when the teardown succeeds or the engine frontend
+	// is deleted. If the teardown gives up, the entry stays, so the engine
+	// keeps rejecting both requests.
+	restoreFrontendMap map[string]*EngineFrontend
+
 	shardMap      map[string]*Shard
 	shardGroupMap map[string]*ShardGroup
 
@@ -80,7 +100,9 @@ type Server struct {
 	// volume. Recovery and all frontend lifecycle RPCs that mutate host
 	// NVMe controllers or dm devices (create, delete, suspend, resume,
 	// expand, switchover) acquire the per-volume lock so that these
-	// operations cannot overlap on one volume.
+	// operations cannot overlap on one volume. EngineBackupRestore holds it
+	// while registering its restore frontend so that a concurrent create
+	// for the same volume cannot miss the registration.
 	//
 	// Entries are reference-counted and removed when the last holder
 	// releases, so the map is bounded by the number of concurrently
@@ -137,9 +159,10 @@ func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient S
 
 		diskMap: map[string]*Disk{},
 
-		replicaMap:        map[string]*Replica{},
-		engineMap:         map[string]*Engine{},
-		engineFrontendMap: map[string]*EngineFrontend{},
+		replicaMap:         map[string]*Replica{},
+		engineMap:          map[string]*Engine{},
+		engineFrontendMap:  map[string]*EngineFrontend{},
+		restoreFrontendMap: map[string]*EngineFrontend{},
 
 		shardMap:      map[string]*Shard{},
 		shardGroupMap: map[string]*ShardGroup{},

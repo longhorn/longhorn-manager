@@ -466,7 +466,7 @@ func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, back
 
 // BackupRestoreStatus calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) BackupRestoreStatus(*longhorn.Engine) (map[string]*longhorn.RestoreStatus, error) {
+func (e *EngineBinary) BackupRestoreStatus(*longhorn.Engine) (*BackupRestoreStatusInfo, error) {
 	args := []string{"backup", "restore-status"}
 	output, err := e.ExecuteEngineBinary(args...)
 	if err != nil {
@@ -476,7 +476,9 @@ func (e *EngineBinary) BackupRestoreStatus(*longhorn.Engine) (map[string]*longho
 	if err := json.Unmarshal([]byte(output), &replicaStatusMap); err != nil {
 		return nil, err
 	}
-	return replicaStatusMap, nil
+	// The v1 engine binary does not report an engine-level restore error,
+	// so EngineError is always empty.
+	return &BackupRestoreStatusInfo{ReplicaStatuses: replicaStatusMap}, nil
 }
 
 // CleanupBackupMountPoints calls engine binary

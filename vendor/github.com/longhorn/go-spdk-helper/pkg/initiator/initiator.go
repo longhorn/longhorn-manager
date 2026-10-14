@@ -80,6 +80,19 @@ type Initiator struct {
 	NVMeTCPInfo *NVMeTCPInfo
 	UblkInfo    *UblkInfo
 
+	// targetDisconnected is true after this initiator disconnects the target,
+	// and false again once it connects to or sees a live connection.
+	//
+	// StopDisconnectFirst uses it to make retries safe: when true, a retry
+	// skips the subsystem-wide disconnect, which could otherwise kill a new
+	// connection made by someone else. An incorrectly false value removes
+	// that protection, so retries are only safe when they reuse the same
+	// Initiator instance.
+	//
+	// Not part of NVMeTCPInfo: ensureNVMeTCPPathWithoutLock rolls back
+	// NVMeTCPInfo on failure, and this flag must not be rolled back.
+	targetDisconnected bool
+
 	hostProc string
 	executor *commonns.Executor
 
@@ -157,6 +170,10 @@ func NewInitiator(name, hostProc string, nvmeTCPInfo *NVMeTCPInfo, ublkInfo *Ubl
 // gets its own lock file so that operations on different volumes can proceed
 // in parallel. The lock serializes operations within the same volume only
 // (e.g., preventing concurrent Start and Stop on the same NVMe subsystem).
+//
+// Never remove the lock file. Unlinking it while locked lets two callers
+// hold the lock at once: a waiter on the old inode and a newcomer on a
+// fresh file at the same path. A leftover empty file is harmless.
 func (i *Initiator) lockFilePath() string {
 	return fmt.Sprintf("%s-%s.lock", LockFilePrefix, i.Name)
 }
@@ -206,7 +223,9 @@ func (i *Initiator) DiscoverNVMeTCPTarget(ip, port string) (string, error) {
 	return DiscoverTarget(ip, port, i.executor)
 }
 
-// ConnectNVMeTCPTarget connects to a target
+// ConnectNVMeTCPTarget connects to a target. On success it clears the
+// targetDisconnected marker: a kernel connection now exists, so a later
+// StopDisconnectFirst must release it.
 func (i *Initiator) ConnectNVMeTCPTarget(ip, port, nqn string) (string, error) {
 	if i.hostProc != "" {
 		lock, err := i.newLock("ConnectNVMeTCPTarget")
@@ -216,7 +235,12 @@ func (i *Initiator) ConnectNVMeTCPTarget(ip, port, nqn string) (string, error) {
 		defer lock.Unlock()
 	}
 
-	return ConnectTargetWithNrIoQueues(ip, port, nqn, i.nrIoQueues(), i.executor)
+	controllerName, err := ConnectTargetWithNrIoQueues(ip, port, nqn, i.nrIoQueues(), i.executor)
+	if err != nil {
+		return "", err
+	}
+	i.targetDisconnected = false
+	return controllerName, nil
 }
 
 func (i *Initiator) nrIoQueues() int32 {
@@ -977,6 +1001,11 @@ func (i *Initiator) discoverAndConnectNVMeTCPTarget(transportAddress, transportS
 		return "", "", errors.Wrapf(err, "failed to discover and connect NVMe/TCP target %s:%s", transportAddress, transportServiceID)
 	}
 
+	// The kernel connection now exists, even if the caller later fails to
+	// record it or load the device info: a later stop must release it, so
+	// clear the targetDisconnected marker.
+	i.targetDisconnected = false
+
 	return subsystemNQN, controllerName, nil
 }
 
@@ -1010,16 +1039,7 @@ func (i *Initiator) Stop(spdkClient *client.Client, dmDeviceAndEndpointCleanupRe
 		if err != nil {
 			return false, err
 		}
-		defer func() {
-			// Remove the lock file while still holding the lock to avoid
-			// an unlink race (where a waiter locks the unlinked inode while
-			// a new arrival creates and locks a fresh file at the same path).
-			errRemove := os.Remove(i.lockFilePath())
-			if errRemove != nil && !os.IsNotExist(errRemove) {
-				i.logger.WithError(errRemove).Warnf("Failed to remove lock file %s after stopping initiator %s", i.lockFilePath(), i.Name)
-			}
-			lock.Unlock()
-		}()
+		defer lock.Unlock()
 	}
 
 	return i.stopWithoutLock(spdkClient, dmDeviceAndEndpointCleanupRequired, deferDmDeviceCleanup, returnErrorForBusyDevice)
@@ -1055,15 +1075,9 @@ func (i *Initiator) stopWithoutLock(spdkClient *client.Client, dmDeviceAndEndpoi
 
 	// stopping NvmeTcp initiator
 	if i.NVMeTCPInfo != nil {
-		err = DisconnectUsableTargetPaths(i.NVMeTCPInfo.SubsystemNQN, i.executor)
-		if err != nil {
-			return dmDeviceIsBusy, errors.Wrapf(err, "failed to disconnect target for NVMe/TCP initiator %s", i.Name)
+		if err := i.disconnectNVMeTCPTarget(); err != nil {
+			return dmDeviceIsBusy, err
 		}
-
-		i.NVMeTCPInfo.ControllerName = ""
-		i.NVMeTCPInfo.NamespaceName = ""
-		i.NVMeTCPInfo.TransportAddress = ""
-		i.NVMeTCPInfo.TransportServiceID = ""
 		return dmDeviceIsBusy, nil
 	}
 
@@ -1081,6 +1095,87 @@ func (i *Initiator) stopWithoutLock(spdkClient *client.Client, dmDeviceAndEndpoi
 		return dmDeviceIsBusy, err
 	}
 	return dmDeviceIsBusy, nil
+}
+
+// StopDisconnectFirst stops the NVMe/TCP initiator by disconnecting the
+// target before removing the dm device and endpoint. Use it when I/O may be
+// stuck on a dead qpair: removing the dm device first, as Stop does, would
+// block on that I/O, while disconnecting first releases it.
+//
+// The disconnect tears down every live path of the subsystem, including
+// paths added for switchover; paths the kernel no longer reports as live are
+// left to ctrl_loss_tmo. The caller must guarantee no concurrent path
+// operations on this initiator.
+//
+// If the disconnect fails, it returns immediately without cleanup so a retry
+// starts from the same state. After a successful disconnect, all cleanup
+// steps are attempted; their errors are combined into the returned error.
+//
+// After a successful disconnect, retries on the same instance skip the
+// disconnect and only re-attempt the cleanup, so they cannot tear down a new
+// connection to the same NQN made by someone else in the meantime. This only
+// holds if the caller reuses the same Initiator instance across retries.
+//
+// The cleanup removes the dm device and endpoint by volume name, like Stop.
+// The caller must not start the same volume between stop retries: a stale
+// retry would remove the dm device and endpoint created by the new start.
+func (i *Initiator) StopDisconnectFirst() error {
+	if i.NVMeTCPInfo == nil {
+		return fmt.Errorf("failed to StopDisconnectFirst because nvmeTCPInfo is nil")
+	}
+
+	if i.hostProc != "" {
+		lock, err := i.newLock("StopDisconnectFirst")
+		if err != nil {
+			return err
+		}
+		defer lock.Unlock()
+	}
+
+	if i.targetDisconnected {
+		i.logger.Info("Skipping NVMe/TCP target disconnect: this initiator already disconnected the target")
+		// The recorded connection state was already cleared by the disconnect
+		// that set the marker. Clear it again so a successful stop always ends
+		// with a clean state, whatever set the marker.
+		i.clearNVMeTCPConnectionState()
+	} else if err := i.disconnectNVMeTCPTarget(); err != nil {
+		return err
+	}
+
+	var cleanupErr error
+	if err := i.removeLinearDmDevice(false, false); err != nil && !os.IsNotExist(err) {
+		i.logger.WithError(err).Warnf("Failed to remove linear dm device for initiator %s", i.Name)
+		cleanupErr = errors.Join(cleanupErr, errors.Wrap(err, "failed to remove linear dm device"))
+	}
+	if err := i.removeEndpoint(); err != nil {
+		i.logger.WithError(err).Warnf("Failed to remove endpoint for initiator %s", i.Name)
+		cleanupErr = errors.Join(cleanupErr, errors.Wrap(err, "failed to remove endpoint"))
+	}
+	return cleanupErr
+}
+
+// disconnectNVMeTCPTarget disconnects the NVMe/TCP target. On success it
+// clears the recorded connection state and sets the targetDisconnected
+// marker.
+func (i *Initiator) disconnectNVMeTCPTarget() error {
+	if err := DisconnectUsableTargetPaths(i.NVMeTCPInfo.SubsystemNQN, i.executor); err != nil {
+		return errors.Wrapf(err, "failed to disconnect target for NVMe/TCP initiator %s", i.Name)
+	}
+
+	i.clearNVMeTCPConnectionState()
+	i.targetDisconnected = true
+	return nil
+}
+
+// clearNVMeTCPConnectionState clears the recorded connection state:
+// controller name, namespace name, transport address, and transport
+// service ID. It does not touch targetDisconnected; the disconnect
+// paths manage that marker explicitly.
+func (i *Initiator) clearNVMeTCPConnectionState() {
+	i.NVMeTCPInfo.ControllerName = ""
+	i.NVMeTCPInfo.NamespaceName = ""
+	i.NVMeTCPInfo.TransportAddress = ""
+	i.NVMeTCPInfo.TransportServiceID = ""
 }
 
 // GetControllerName returns the controller name
@@ -1209,6 +1304,14 @@ func (i *Initiator) loadNVMeDeviceInfoWithoutLock(transportAddress, transportSer
 	if err != nil {
 		return errors.Wrapf(err, "failed to select controller for NVMe/TCP initiator %s", i.Name)
 	}
+
+	// A matched controller proves a kernel connection exists, so clear the
+	// targetDisconnected marker. Clear it here instead of at the end of the
+	// load: device inspection can fail even though the connection exists,
+	// and the marker must not stay set in that case. This also covers
+	// connections made outside this instance and first observed by a
+	// device info load.
+	i.targetDisconnected = false
 
 	i.NVMeTCPInfo.ControllerName = controller.Controller
 	i.NVMeTCPInfo.NamespaceName = nvmeDevices[0].Namespaces[0].NameSpace

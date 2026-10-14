@@ -53,6 +53,14 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.37.1
 )
 
+replace github.com/longhorn/go-spdk-helper => github.com/c3y1huang/go-spdk-helper v0.0.0-20261013003334-c57b28a10468
+
+replace github.com/longhorn/longhorn-spdk-engine => github.com/c3y1huang/longhorn-spdk-engine v0.0.0-20261013082431-261c31e7aef9
+
+replace github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.13.0-dev-20260712.0.20261013082905-e1409df1905d
+
+replace github.com/longhorn/backupstore => github.com/c3y1huang/backupstore v0.0.0-20261013003523-e4de7b2516f1
+
 require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cockroachdb/errors v1.14.0
@@ -69,12 +77,12 @@ require (
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
 	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
 	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
+	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
 	github.com/longhorn/go-spdk-helper v0.11.0
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261013054859-320c0290712c
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260922031848-d0a5b916d3ce
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260922025523-7ec03791a09c
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20261008045848-9c8c9bdb8b83
 	github.com/longhorn/types v0.0.0-20260912171147-ce65698c8b35
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0

@@ -36,6 +36,16 @@ type BackupRestoreStatus struct {
 	BackupURL              string
 }
 
+// BackupRestoreStatusResponse carries the per-replica restore statuses plus
+// an engine-level restore error that is not attributable to any specific
+// replica. Status is keyed by replica address URL ("tcp://<ip>:<port>").
+// EngineError is produced by the v2 data engine only; an empty string means
+// there is no engine-level error.
+type BackupRestoreStatusResponse struct {
+	Status      map[string]*BackupRestoreStatus
+	EngineError string
+}
+
 type EngineBackupVolumeInfo struct {
 	Name                 string
 	Size                 int64
