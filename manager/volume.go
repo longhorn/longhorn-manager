@@ -212,6 +212,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			SnapshotDataIntegrity:           spec.SnapshotDataIntegrity,
 			SnapshotMaxCount:                spec.SnapshotMaxCount,
 			SnapshotMaxSize:                 spec.SnapshotMaxSize,
+			SnapshotRemoveOldest:            spec.SnapshotRemoveOldest,
 			BackupCompressionMethod:         spec.BackupCompressionMethod,
 			BackupBlockSize:                 spec.BackupBlockSize,
 			UnmapMarkSnapChainRemoved:       spec.UnmapMarkSnapChainRemoved,
@@ -1402,7 +1403,7 @@ func (m *VolumeManager) UpdateSnapshotRemoveOldest(name string, snapshotRemoveOl
 	}
 
 	if v.Spec.SnapshotRemoveOldest == snapshotRemoveOldest {
-		logrus.Debugf("Volume %s already set field SnapshotRemoveOldest to %d", v.Name, snapshotRemoveOldest)
+		logrus.Debugf("Volume %s already set field SnapshotRemoveOldest to %v", v.Name, snapshotRemoveOldest)
 		return v, nil
 	}
 
@@ -1413,7 +1414,7 @@ func (m *VolumeManager) UpdateSnapshotRemoveOldest(name string, snapshotRemoveOl
 		return nil, err
 	}
 
-	logrus.Infof("Updated volume %s field SnapshotRemoveOldest from %d to %d", v.Name, oldSnapshotRemoveOldest, snapshotRemoveOldest)
+	logrus.Infof("Updated volume %s field SnapshotRemoveOldest from %v to %v", v.Name, oldSnapshotRemoveOldest, snapshotRemoveOldest)
 	return v, nil
 }
 

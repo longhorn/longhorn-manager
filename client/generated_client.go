@@ -33,6 +33,7 @@ type RancherClient struct {
 	UpdateSnapshotDataIntegrityInput           UpdateSnapshotDataIntegrityInputOperations
 	UpdateSnapshotMaxCountInput                UpdateSnapshotMaxCountInputOperations
 	UpdateSnapshotMaxSizeInput                 UpdateSnapshotMaxSizeInputOperations
+	UpdateSnapshotRemoveOldestInput            UpdateSnapshotRemoveOldestInputOperations
 	UpdateReplicaRebuildingBandwidthLimitInput UpdateReplicaRebuildingBandwidthLimitInputOperations
 	UpdateUblkQueueDepthInput                  UpdateUblkQueueDepthInputOperations
 	UpdateUblkNumberOfQueueInput               UpdateUblkNumberOfQueueInputOperations
@@ -125,6 +126,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateSnapshotDataIntegrityInput = newUpdateSnapshotDataIntegrityInputClient(client)
 	client.UpdateSnapshotMaxCountInput = newUpdateSnapshotMaxCountInputClient(client)
 	client.UpdateSnapshotMaxSizeInput = newUpdateSnapshotMaxSizeInputClient(client)
+	client.UpdateSnapshotRemoveOldestInput = newUpdateSnapshotRemoveOldestInputClient(client)
 	client.UpdateReplicaRebuildingBandwidthLimitInput = newUpdateReplicaRebuildingBandwidthLimitInputClient(client)
 	client.UpdateUblkQueueDepthInput = newUpdateUblkQueueDepthInputClient(client)
 	client.UpdateUblkNumberOfQueueInput = newUpdateUblkNumberOfQueueInputClient(client)

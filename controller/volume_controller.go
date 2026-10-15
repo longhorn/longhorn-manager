@@ -1886,10 +1886,12 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 	for _, e := range es {
 		e.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
 		e.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
+		e.Spec.SnapshotRemoveOldest = v.Spec.SnapshotRemoveOldest
 	}
 	for _, r := range rs {
 		r.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
 		r.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
+		r.Spec.SnapshotRemoveOldest = v.Spec.SnapshotRemoveOldest
 	}
 
 	return nil
@@ -5545,6 +5547,7 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 			RevisionCounterDisabled:   v.Spec.RevisionCounterDisabled,
 			SnapshotMaxCount:          v.Spec.SnapshotMaxCount,
 			SnapshotMaxSize:           v.Spec.SnapshotMaxSize,
+			SnapshotRemoveOldest:      v.Spec.SnapshotRemoveOldest,
 		},
 	}
 
