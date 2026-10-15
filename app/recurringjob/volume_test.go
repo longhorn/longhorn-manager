@@ -223,13 +223,13 @@ const (
 	volumeName = "test-volume"
 )
 
-func newSetting() *longhorn.Setting {
+func newSetting(value string) *longhorn.Setting {
 	return &longhorn.Setting{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(types.SettingNameAllowRecurringJobWhileVolumeDetached),
 			Namespace: namespace,
 		},
-		Value: "false",
+		Value: value,
 	}
 }
 
@@ -271,7 +271,7 @@ func TestStartVolumeJobs(t *testing.T) {
 		}
 		job := newJob(&longhornclient.RancherClient{
 			Volume: &volumeOperationsWithGetError{err: errors.New("volume API unavailable")},
-		}, newSetting(), volume)
+		}, newSetting("false"), volume)
 
 		err := StartVolumeJobs(job, recurringJob)
 
@@ -279,7 +279,7 @@ func TestStartVolumeJobs(t *testing.T) {
 	})
 
 	t.Run("returns nil with no selected volumes", func(t *testing.T) {
-		job := newJob(&longhornclient.RancherClient{}, newSetting())
+		job := newJob(&longhornclient.RancherClient{}, newSetting("false"))
 
 		err := StartVolumeJobs(job, recurringJob)
 
@@ -309,7 +309,7 @@ func TestStartVolumeJobs(t *testing.T) {
 
 		job := newJob(&longhornclient.RancherClient{
 			Volume: &fakeVolumeOperations{t: t, volumes: map[string]*longhornclient.Volume{volumeName: clientVolume}, replicaRebuilding: true},
-		}, newSetting(), volume, recurringJob.DeepCopy())
+		}, newSetting("false"), volume, recurringJob.DeepCopy())
 
 		err := StartVolumeJobs(job, recurringJob)
 		assert.NoError(t, err, "a rebuild-related skip must not fail the sweep")
@@ -386,7 +386,7 @@ func TestStartVolumeJobs(t *testing.T) {
 }
 
 func seedVolumesForJob(names []string, recurringJob *longhorn.RecurringJob, rebuilding bool) ([]runtime.Object, map[string]*longhornclient.Volume) {
-	objs := []runtime.Object{newSetting(), recurringJob.DeepCopy()}
+	objs := []runtime.Object{newSetting("false"), recurringJob.DeepCopy()}
 	clientVols := map[string]*longhornclient.Volume{}
 	for _, n := range names {
 		objs = append(objs, &longhorn.Volume{
