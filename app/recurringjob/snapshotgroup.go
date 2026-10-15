@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -52,22 +53,32 @@ func StartSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) error 
 
 	sg, err := snapshotGroupJob.run()
 
-	switch {
-	case err != nil:
-		snapshotGroupJob.logger.WithError(err).Error("Failed to run snapshotGroup job")
+	recordFailure := func(err error) {
+		snapshotGroupJob.logger.WithError(err).Error("snapshotGroup job failed")
 		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning,
 			constant.EventReasonFailedSnapshotGroup, err.Error())
-		return err
-	case sg.Status.Phase == longhorn.SnapshotGroupPhaseReady:
-		snapshotGroupJob.logger.Infof("Finished running snapshotGroup job: group %v is Ready", sg.Name)
+	}
+	recordCompleted := func(msg string) {
+		snapshotGroupJob.logger.Info(msg)
 		job.eventRecorder.Event(recurringJob, corev1.EventTypeNormal,
-			constant.EventReasonCompletedSnapshotGroup,
-			fmt.Sprintf("SnapshotGroup %s is ready", sg.Name))
+			constant.EventReasonCompletedSnapshotGroup, msg)
+	}
+
+	switch {
+	case err != nil:
+		recordFailure(err)
+		return err
+
+	case sg.Status.Phase == longhorn.SnapshotGroupPhaseFailed:
+		recordFailure(fmt.Errorf("SnapshotGroup %s ended in phase %v", sg.Name, sg.Status.Phase))
+		return err
+
+	case sg.Status.Phase == longhorn.SnapshotGroupPhaseReady:
+		recordCompleted(fmt.Sprintf("SnapshotGroup %s is ready", sg.Name))
+
 	default:
-		snapshotGroupJob.logger.Warnf("Finished running snapshotGroup job: group %v ended in phase %v", sg.Name, sg.Status.Phase)
-		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning,
-			constant.EventReasonFailedSnapshotGroup,
-			fmt.Sprintf("SnapshotGroup %s failed", sg.Name))
+		recordFailure(fmt.Errorf("SnapshotGroup %s ended in unexpected phase %q", sg.Name, sg.Status.Phase))
+		return err
 	}
 
 	return nil
@@ -80,9 +91,15 @@ func newSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) (*Snapsh
 		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowRecurringJobWhileVolumeDetached)
 	}
 
-	volumes, err := resolveAssignedVolumes(job, recurringJob, allowDetached)
+	volumes, foundIneligibleVols, err := resolveAssignedVolumes(job, recurringJob, allowDetached)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to resolve volumes assigned to recurring job %v: %v", job.name, err)
+	}
+	// A snapshot group is meant to be a consistent set. If any assigned volume is left out by
+	// filterVolumesForJob (restoring, faulted, or detached while that is not allowed), skip the
+	// run instead of creating a smaller group that would still report Ready.
+	if foundIneligibleVols != 0 {
+		return nil, fmt.Errorf("skipping snapshotGroup for job %v: %d volumes are either faulted, restoring from backup or detached is disabled", job.name, foundIneligibleVols)
 	}
 	if len(volumes) == 0 {
 		return nil, fmt.Errorf("no volumes are assigned to recurring job %v", job.name)
@@ -155,11 +172,19 @@ func (job *SnapshotGroupJob) waitForTerminalPhase() (*longhorn.SnapshotGroup, er
 	defer cancel()
 
 	var final *longhorn.SnapshotGroup
+	var lastGetErr error
 	err := wait.PollUntilContextCancel(ctx, WaitInterval, true, func(ctx context.Context) (bool, error) {
 		sg, err := job.GetSnapshotGroup(ctx, job.snapshotGroup)
 		if err != nil {
-			return false, fmt.Errorf("failed to get SnapshotGroup: %v", err)
+			if apierrors.IsNotFound(err) {
+				// retrying cannot help: the group was deleted
+				return false, fmt.Errorf("failed to get SnapshotGroup: %w", err)
+			}
+			lastGetErr = err
+			job.logger.WithError(err).Warn("Transient error getting SnapshotGroup, will retry")
+			return false, nil
 		}
+		lastGetErr = nil
 		final = sg
 
 		switch sg.Status.Phase {
@@ -170,6 +195,9 @@ func (job *SnapshotGroupJob) waitForTerminalPhase() (*longhorn.SnapshotGroup, er
 		return false, nil
 	})
 	if err != nil {
+		if lastGetErr != nil {
+			err = fmt.Errorf("%w (last GET error: %v)", err, lastGetErr)
+		}
 		return final, fmt.Errorf("failed waiting for SnapshotGroup %v to finish: %v", job.snapshotGroup, err)
 	}
 	return final, nil

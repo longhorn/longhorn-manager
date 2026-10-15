@@ -3,6 +3,7 @@ package recurringjob
 import (
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -11,9 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/record"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -35,174 +38,129 @@ var (
 		types.LonghornLabelRecurringJob, string(longhorn.RecurringJobTypeSnapshotGroup))
 )
 
-// newJob builds a Job backed by a fake Longhorn clientset seeded with objects.
-func newJob(api *longhornclient.RancherClient, objects ...runtime.Object) *Job {
-	logger := logrus.New()
-	logger.SetOutput(io.Discard)
-
-	return &Job{
-		api:           api,
-		lhClient:      lhfake.NewSimpleClientset(objects...), // nolint: staticcheck
-		logger:        logger,
-		eventRecorder: record.NewFakeRecorder(10),
-		name:          testRecurringJob,
-		namespace:     testNamespace,
-		task:          longhorn.RecurringJobTypeSnapshotGroup,
-	}
-}
-
-// newSnapshotGroupJobForTest wires a SnapshotGroupJob to a fake Longhorn clientset
-// seeded with the given SnapshotGroupJobs.
-func newSnapshotGroupJobForTest(objs ...runtime.Object) *SnapshotGroupJob {
-	logger := logrus.New()
-	logger.SetOutput(io.Discard)
-
-	return &SnapshotGroupJob{
-		Job:             newJob(&longhornclient.RancherClient{}, objs...),
-		logger:          logrus.NewEntry(logger),
-		snapshotGroup:   testSnapshotGroup,
-		volumes:         []string{"vol-a"},
-		labels:          testVolumeLabels,
-		deadlineSeconds: defaultDeadlineSeconds,
-	}
-}
-
-func newRecurringJob(labels map[string]string, groups ...string) *longhorn.RecurringJob {
-	return &longhorn.RecurringJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testRecurringJob,
-			Namespace: testNamespace,
-		},
-		Spec: longhorn.RecurringJobSpec{
-			Labels: labels,
-			Groups: groups,
-		},
-	}
-}
-
-func snapshotGroupWithPhase(name string, phase longhorn.SnapshotGroupPhase) *longhorn.SnapshotGroup {
-	return &longhorn.SnapshotGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-			Labels:    map[string]string{testOwnerLabelKey: testRecurringJob},
-		},
-		Status: longhorn.SnapshotGroupStatus{Phase: phase},
-	}
-}
-
-// scriptPhases makes the fake clientset report the given phases for the
-// SnapshotGroup the job creates, whichever way the production code polls:
-//   - "get":   each call returns the next phase (last one repeats)
-//   - "list":  the FIRST call (the "is a previous group running?" pre-check)
-//     falls through to the tracker; later calls return the next phase
-//   - "watch": a buffered fake watcher is pre-loaded with one event per phase
-func scriptPhases(fakeClient *lhfake.Clientset, phases []longhorn.SnapshotGroupPhase) {
-	next := func(i *int) longhorn.SnapshotGroupPhase {
-		p := phases[min(*i, len(phases)-1)]
-		*i++
-		return p
-	}
-
-	getCalls := 0
-	fakeClient.PrependReactor("get", "snapshotgroups",
-		func(a k8stesting.Action) (bool, runtime.Object, error) {
-			ga := a.(k8stesting.GetAction)
-			return true, snapshotGroupWithPhase(ga.GetName(), next(&getCalls)), nil
-		})
-
-	listCalls := 0
-	fakeClient.PrependReactor("list", "snapshotgroups",
-		func(k8stesting.Action) (bool, runtime.Object, error) {
-			listCalls++
-			if listCalls == 1 {
-				return false, nil, nil // pre-check: use the tracker (empty list)
-			}
-			idx := listCalls - 2
-			p := phases[min(idx, len(phases)-1)]
-			return true, &longhorn.SnapshotGroupList{
-				Items: []longhorn.SnapshotGroup{*snapshotGroupWithPhase(testSnapshotGroup, p)},
-			}, nil
-		})
-
-	w := watch.NewFakeWithChanSize(len(phases), false)
-	for _, p := range phases {
-		w.Modify(snapshotGroupWithPhase(testSnapshotGroup, p))
-	}
-	fakeClient.PrependWatchReactor("snapshotgroups", k8stesting.DefaultWatchReactor(w, nil))
-}
-
 func TestNewSnapshotGroupJob(t *testing.T) {
 	// assigned builds an attached volume carrying the given assignment labels.
-	assigned := func(name string, labelSets ...map[string]string) *longhorn.Volume {
+	assigned := func(name string, labelSets []map[string]string, mutators ...func(*longhorn.Volume)) *longhorn.Volume {
 		labels := map[string]string{}
 		for _, set := range labelSets {
 			for k, v := range set {
 				labels[k] = v
 			}
 		}
-		return &longhorn.Volume{
+		v := &longhorn.Volume{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: labels},
 			Status:     longhorn.VolumeStatus{State: longhorn.VolumeStateAttached},
 		}
+		for _, m := range mutators {
+			m(v)
+		}
+		return v
 	}
-	direct := types.GetRecurringJobLabelValueMap(types.LonghornLabelRecurringJob, testRecurringJob)
-	group := func(g string) map[string]string {
+
+	jobLabel := types.GetRecurringJobLabelValueMap(types.LonghornLabelRecurringJob, testRecurringJob)
+	groupLabel := func(g string) map[string]string {
 		return types.GetRecurringJobLabelValueMap(types.LonghornLabelRecurringJobGroup, g)
 	}
 
+	faulted := func(v *longhorn.Volume) { v.Status.Robustness = longhorn.VolumeRobustnessFaulted }
+	restoring := func(v *longhorn.Volume) { v.Status.RestoreRequired = true }
+	detached := func(v *longhorn.Volume) { v.Status.State = longhorn.VolumeStateDetached }
+
 	tests := []struct {
-		name        string
-		labels      map[string]string // RecurringJob.Spec.Labels (snapshot labels)
-		groups      []string          // RecurringJob.Spec.Groups
-		volumes     []*longhorn.Volume
-		wantVolumes []string
-		wantErr     string
+		name          string
+		labels        map[string]string // RecurringJob.Spec.Labels (snapshot labels)
+		groups        []string          // RecurringJob.Spec.Groups
+		volumes       []*longhorn.Volume
+		wantVolumes   []string
+		wantErr       string
+		allowDetached bool
 	}{
 		{
 			name:        "volume assigned directly",
-			volumes:     []*longhorn.Volume{assigned("vol-a", direct)},
+			volumes:     []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel})},
 			wantVolumes: []string{"vol-a"},
 		},
 		{
 			name:        "volume assigned through a job group",
 			groups:      []string{"g1"},
-			volumes:     []*longhorn.Volume{assigned("vol-a", group("g1"))},
+			volumes:     []*longhorn.Volume{assigned("vol-a", []map[string]string{groupLabel("g1")})},
 			wantVolumes: []string{"vol-a"},
 		},
 		{
 			name:   "direct and group assignments are unioned and deduplicated",
 			groups: []string{"g1"},
 			volumes: []*longhorn.Volume{
-				assigned("vol-c", group("g1")),
-				assigned("vol-a", direct),
-				assigned("vol-b", direct, group("g1")), // both labels: listed once
-				assigned("vol-other", group("g-not-on-this-job")),
+				assigned("vol-c", []map[string]string{groupLabel("g1")}),
+				assigned("vol-a", []map[string]string{jobLabel}),
+				assigned("vol-b", []map[string]string{jobLabel, groupLabel("g1")}), // both labels: listed once
+				assigned("vol-other", []map[string]string{groupLabel("g-not-on-this-job")}),
 			},
 			wantVolumes: []string{"vol-a", "vol-b", "vol-c"},
 		},
 		{
 			name:        "snapshot labels are preserved and a job without labels is valid",
 			labels:      map[string]string{"env": "test"},
-			volumes:     []*longhorn.Volume{assigned("vol-a", direct)},
+			volumes:     []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel})},
 			wantVolumes: []string{"vol-a"},
 		},
 		{
 			// Regression: Spec.Labels used to be treated as a volume selector.
 			name:    "snapshot labels do not select volumes",
 			labels:  map[string]string{"app-group": "demo"},
-			volumes: []*longhorn.Volume{assigned("vol-labeled", map[string]string{"app-group": "demo"})},
+			volumes: []*longhorn.Volume{assigned("vol-labeled", []map[string]string{{"app-group": "demo"}})},
 			wantErr: "no volumes are assigned",
 		},
 		{
 			name:    "no assigned volumes",
 			wantErr: "no volumes are assigned",
 		},
+		{
+			name: "one assigned volume is faulted",
+			volumes: []*longhorn.Volume{
+				assigned("vol-a", []map[string]string{jobLabel}),
+				assigned("vol-b", []map[string]string{jobLabel}, faulted),
+			},
+			wantErr: "skipping snapshotGroup",
+		},
+		{
+			name: "one assigned volume is restoring",
+			volumes: []*longhorn.Volume{
+				assigned("vol-a", []map[string]string{jobLabel}),
+				assigned("vol-b", []map[string]string{jobLabel}, restoring),
+			},
+			wantErr: "skipping snapshotGroup",
+		},
+		{
+			name: "detached volume while detached jobs are disabled",
+			volumes: []*longhorn.Volume{
+				assigned("vol-a", []map[string]string{jobLabel}),
+				assigned("vol-b", []map[string]string{jobLabel}, detached),
+			},
+			wantErr: "skipping snapshotGroup",
+		},
+		{
+			name:          "detached volume while detached jobs are allowed",
+			allowDetached: true,
+			volumes: []*longhorn.Volume{
+				assigned("vol-a", []map[string]string{jobLabel}),
+				assigned("vol-b", []map[string]string{jobLabel}, detached),
+			},
+			wantVolumes: []string{"vol-a", "vol-b"},
+		},
+		{
+			// every assigned volume is ineligible: must report "skipping", not "no volumes are assigned"
+			name: "all assigned volumes are ineligible",
+			volumes: []*longhorn.Volume{
+				assigned("vol-a", []map[string]string{jobLabel}, faulted),
+				assigned("vol-b", []map[string]string{jobLabel}, restoring),
+			},
+			wantErr: "skipping snapshotGroup",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			objs := []runtime.Object{newSetting()}
+			objs := []runtime.Object{newSetting(strconv.FormatBool(tc.allowDetached))}
 			for _, v := range tc.volumes {
 				objs = append(objs, v)
 			}
@@ -231,6 +189,7 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 		labels              map[string]string
 		existingSGs         []longhorn.SnapshotGroup
 		getPhases           []longhorn.SnapshotGroupPhase
+		getErrs             []error
 		listErr             error
 		createErr           error
 		wantVolumes         []string
@@ -302,6 +261,23 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 			expectedErrStr:      "failed to create SnapshotGroup",
 			expectedEventReason: "FailedSnapshotGroup",
 		},
+		{
+			name:                "transient GET error while waiting, then Ready",
+			labels:              testVolumeLabels,
+			getErrs:             []error{errors.New("connection reset")},
+			getPhases:           []longhorn.SnapshotGroupPhase{longhorn.SnapshotGroupPhaseInProgress, longhorn.SnapshotGroupPhaseReady},
+			expectedEventReason: "CompletedSnapshotGroup",
+		},
+		{
+			name:   "group deleted while waiting is terminal",
+			labels: testVolumeLabels,
+			getErrs: []error{apierrors.NewNotFound(
+				schema.GroupResource{Group: "longhorn.io", Resource: "snapshotgroups"}, testSnapshotGroup)},
+			getPhases:           []longhorn.SnapshotGroupPhase{longhorn.SnapshotGroupPhaseInProgress},
+			wantErr:             true,
+			expectedErrStr:      "not found",
+			expectedEventReason: "FailedSnapshotGroup",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -310,7 +286,7 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 			runtimeObjs := make([]runtime.Object, 0, len(tc.existingSGs))
 			// newSnapshotGroupJob resolves members from the volumes assigned to the job,
 			// which first reads this setting.
-			runtimeObjs = append(runtimeObjs, newSetting())
+			runtimeObjs = append(runtimeObjs, newSetting("false"))
 			if !tc.noVolumes {
 				runtimeObjs = append(runtimeObjs, &longhorn.Volume{
 					ObjectMeta: metav1.ObjectMeta{
@@ -345,8 +321,8 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 					})
 			}
 
-			if len(tc.getPhases) > 0 {
-				scriptPhases(fakeClient, tc.getPhases)
+			if len(tc.getPhases) > 0 || len(tc.getErrs) > 0 {
+				scriptPhases(fakeClient, tc.getPhases, tc.getErrs...)
 			}
 
 			err := StartSnapshotGroupJob(job, recurringJob)
@@ -372,4 +348,100 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 
 		})
 	}
+}
+
+// newJob builds a Job backed by a fake Longhorn clientset seeded with objects.
+func newJob(api *longhornclient.RancherClient, objects ...runtime.Object) *Job {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	return &Job{
+		api:           api,
+		lhClient:      lhfake.NewSimpleClientset(objects...), // nolint: staticcheck
+		logger:        logger,
+		eventRecorder: record.NewFakeRecorder(10),
+		name:          testRecurringJob,
+		namespace:     testNamespace,
+		task:          longhorn.RecurringJobTypeSnapshotGroup,
+	}
+}
+
+// newSnapshotGroupJobForTest wires a SnapshotGroupJob to a fake Longhorn clientset
+// seeded with the given SnapshotGroupJobs.
+func newSnapshotGroupJobForTest(objs ...runtime.Object) *SnapshotGroupJob {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	return &SnapshotGroupJob{
+		Job:             newJob(&longhornclient.RancherClient{}, objs...),
+		logger:          logrus.NewEntry(logger),
+		snapshotGroup:   testSnapshotGroup,
+		volumes:         []string{"vol-a"},
+		labels:          testVolumeLabels,
+		deadlineSeconds: defaultDeadlineSeconds,
+	}
+}
+
+func newRecurringJob(labels map[string]string, groups ...string) *longhorn.RecurringJob {
+	return &longhorn.RecurringJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testRecurringJob,
+			Namespace: testNamespace,
+		},
+		Spec: longhorn.RecurringJobSpec{
+			Labels: labels,
+			Groups: groups,
+		},
+	}
+}
+
+func snapshotGroupWithPhase(name string, phase longhorn.SnapshotGroupPhase) *longhorn.SnapshotGroup {
+	return &longhorn.SnapshotGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+			Labels:    map[string]string{testOwnerLabelKey: testRecurringJob},
+		},
+		Status: longhorn.SnapshotGroupStatus{Phase: phase},
+	}
+}
+
+// scriptPhases makes the fake clientset report the given phases for the
+// SnapshotGroup the job creates, whichever way the production code polls:
+//   - "get":   each call returns the next phase (last one repeats)
+//   - "list":  the FIRST call (the "is a previous group running?" pre-check)
+//     falls through to the tracker; later calls return the next phase
+//   - "watch": a buffered fake watcher is pre-loaded with one event per phase
+func scriptPhases(fakeClient *lhfake.Clientset, phases []longhorn.SnapshotGroupPhase, getErrs ...error) {
+	getCalls := 0
+	fakeClient.PrependReactor("get", "snapshotgroups",
+		func(a k8stesting.Action) (bool, runtime.Object, error) {
+			call := getCalls
+			getCalls++
+			if call < len(getErrs) {
+				return true, nil, getErrs[call]
+			}
+			p := phases[min(call-len(getErrs), len(phases)-1)]
+			return true, snapshotGroupWithPhase(a.(k8stesting.GetAction).GetName(), p), nil
+		})
+
+	listCalls := 0
+	fakeClient.PrependReactor("list", "snapshotgroups",
+		func(k8stesting.Action) (bool, runtime.Object, error) {
+			listCalls++
+			if listCalls == 1 {
+				return false, nil, nil // pre-check: use the tracker (empty list)
+			}
+			idx := listCalls - 2
+			p := phases[min(idx, len(phases)-1)]
+			return true, &longhorn.SnapshotGroupList{
+				Items: []longhorn.SnapshotGroup{*snapshotGroupWithPhase(testSnapshotGroup, p)},
+			}, nil
+		})
+
+	w := watch.NewFakeWithChanSize(len(phases), false)
+	for _, p := range phases {
+		w.Modify(snapshotGroupWithPhase(testSnapshotGroup, p))
+	}
+	fakeClient.PrependWatchReactor("snapshotgroups", k8stesting.DefaultWatchReactor(w, nil))
 }
