@@ -188,7 +188,8 @@ const (
 	KubeNodeDefaultDiskConfigAnnotationKey    = "node.longhorn.io/default-disks-config"
 	KubeNodeDefaultNodeTagConfigAnnotationKey = "node.longhorn.io/default-node-tags"
 
-	LastAppliedTolerationAnnotationKeySuffix = "last-applied-tolerations"
+	LastAppliedTolerationAnnotationKeySuffix         = "last-applied-tolerations"
+	BackingImageManagerStartingAtAnnotationKeySuffix = "backing-image-manager-starting-at"
 
 	ConfigMapResourceVersionKey = "configmap-resource-version"
 	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
