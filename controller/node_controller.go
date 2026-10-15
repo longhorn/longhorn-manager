@@ -739,6 +739,27 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 	}
 
 	for _, diskInfoMap := range readyDiskInfoMap {
+		for diskName := range diskInfoMap {
+			diskStatus := node.Status.DiskStatus[diskName]
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeInitialized).Status != longhorn.ConditionStatusTrue ||
+				types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue {
+				continue
+			}
+
+			// Request a fresh pod mount when an initialized disk becomes ready again.
+			// Update BIM specs before recording disk readiness so failed updates are retried.
+			bims, err := nc.ds.ListBackingImageManagersByDiskUUID(diskStatus.DiskUUID)
+			if err != nil {
+				return err
+			}
+			startingAt := util.Now()
+			for _, bim := range bims {
+				bim.Spec.StartingAt = startingAt
+				if _, err := nc.ds.UpdateBackingImageManager(bim); err != nil {
+					return errors.Wrapf(err, "failed to update starting timestamp for backing image manager %v on recovered disk %v", bim.Name, diskStatus.DiskUUID)
+				}
+			}
+		}
 		nc.updateReadyDiskStatusReadyCondition(node, diskInfoMap, monitorDiskHealth)
 		nc.updateDiskStatusFileSystemType(node, diskInfoMap)
 	}

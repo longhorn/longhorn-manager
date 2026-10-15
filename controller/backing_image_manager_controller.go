@@ -495,6 +495,12 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			c.eventRecorder.Eventf(bim, corev1.EventTypeWarning, constant.EventReasonUpdate, "Pod deletion timestamp is set for backing image manager with state %v, will update to state %v", bim.Status.CurrentState, longhorn.BackingImageManagerStateError)
 			bim.Status.CurrentState = longhorn.BackingImageManagerStateError
 		}
+	} else if pod.Annotations[types.GetLonghornLabelKey(types.BackingImageManagerStartingAtAnnotationKeySuffix)] != bim.Spec.StartingAt {
+		if bim.Status.CurrentState != longhorn.BackingImageManagerStateError {
+			log.Infof("Pod starting timestamp %v does not match backing image manager starting timestamp %v, will update to state %v", pod.Annotations[types.GetLonghornLabelKey(types.BackingImageManagerStartingAtAnnotationKeySuffix)], bim.Spec.StartingAt, longhorn.BackingImageManagerStateError)
+			c.eventRecorder.Eventf(bim, corev1.EventTypeNormal, constant.EventReasonUpdate, "Pod starting timestamp does not match backing image manager starting timestamp %v, will update to state %v", bim.Spec.StartingAt, longhorn.BackingImageManagerStateError)
+			bim.Status.CurrentState = longhorn.BackingImageManagerStateError
+		}
 	} else {
 		switch pod.Status.Phase {
 		case corev1.PodPending:
@@ -909,7 +915,10 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 			Namespace:       c.namespace,
 			OwnerReferences: datastore.GetOwnerReferencesForBackingImageManager(bim),
 			Labels:          types.GetBackingImageManagerLabels(bim.Spec.NodeID, bim.Spec.DiskUUID),
-			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
+			Annotations: map[string]string{
+				types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix):         string(tolerationsByte),
+				types.GetLonghornLabelKey(types.BackingImageManagerStartingAtAnnotationKeySuffix): bim.Spec.StartingAt,
+			},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
