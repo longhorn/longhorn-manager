@@ -212,6 +212,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			SnapshotDataIntegrity:           spec.SnapshotDataIntegrity,
 			SnapshotMaxCount:                spec.SnapshotMaxCount,
 			SnapshotMaxSize:                 spec.SnapshotMaxSize,
+			SnapshotRemoveOldest:            spec.SnapshotRemoveOldest,
 			BackupCompressionMethod:         spec.BackupCompressionMethod,
 			BackupBlockSize:                 spec.BackupBlockSize,
 			UnmapMarkSnapChainRemoved:       spec.UnmapMarkSnapChainRemoved,

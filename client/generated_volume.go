@@ -121,6 +121,8 @@ type Volume struct {
 
 	SnapshotMaxSize string `json:"snapshotMaxSize,omitempty" yaml:"snapshot_max_size,omitempty"`
 
+	SnapshotRemoveOldest bool `json:"snapshotRemoveOldest,omitempty" yaml:"snapshot_remove_oldest,omitempty"`
+
 	StaleReplicaTimeout int64 `json:"staleReplicaTimeout,omitempty" yaml:"stale_replica_timeout,omitempty"`
 
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
