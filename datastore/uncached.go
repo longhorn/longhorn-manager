@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -394,6 +395,20 @@ func (s *DataStore) GetAllLonghornCustomResourceDefinitions() (runtime.Object, e
 // GetConfigMapWithoutCache return a new ConfigMap via Kubernetes client object for the given namespace and name
 func (s *DataStore) GetConfigMapWithoutCache(namespace, name string) (*corev1.ConfigMap, error) {
 	return s.kubeClient.CoreV1().ConfigMaps(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// GetVolumeUncached returns the uncached Volume in the Longhorn namespace directly from the API server.
+// Direct retrieval from the API server should ideally only be used for one-shot tasks, but there may be other limited
+// situations in which it is necessary.
+func (s *DataStore) GetVolumeUncached(name string) (*longhorn.Volume, error) {
+	return s.lhClient.LonghornV1beta2().Volumes(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// GetEngineUncached returns the uncached Engine in the Longhorn namespace directly from the API server.
+// Direct retrieval from the API server should ideally only be used for one-shot tasks, but there may be other limited
+// situations in which it is necessary.
+func (s *DataStore) GetEngineUncached(name string) (*longhorn.Engine, error) {
+	return s.lhClient.LonghornV1beta2().Engines(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 // GetLonghornSnapshotUncached returns the uncached Snapshot in the Longhorn namespace directly from the API server.

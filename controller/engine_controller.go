@@ -1024,6 +1024,35 @@ func (m *EngineMonitor) sync() bool {
 	return false
 }
 
+// claimExpansion reports whether the engine expansion can be started. The
+// engine CR is read from the API server: the expansion is skipped if a recorded
+// cancellation is still in effect. Otherwise, a recorded expansion failure is
+// cleared before the expansion starts. CancelExpansion only accepts a recorded
+// failure and records its request on the engine CR, so the resourceVersion
+// conflict makes either the cancellation or this expansion fail. The volume may
+// come from the cache: a stale volume can only keep a cancellation in effect.
+func (m *EngineMonitor) claimExpansion(engine *longhorn.Engine, volume *longhorn.Volume) (bool, error) {
+	latest, err := m.ds.GetEngineUncached(engine.Name)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get engine %v before expansion", engine.Name)
+	}
+	if latest.Spec.VolumeSize != engine.Spec.VolumeSize {
+		return false, nil
+	}
+	if types.IsExpansionCancellationInEffect(latest, volume) {
+		return false, nil
+	}
+	if latest.Status.LastExpansionError == "" && latest.Status.LastExpansionFailedAt == "" {
+		return true, nil
+	}
+	latest.Status.LastExpansionError = ""
+	latest.Status.LastExpansionFailedAt = ""
+	if _, err := m.ds.UpdateEngineStatus(latest); err != nil {
+		return false, errors.Wrapf(err, "failed to clear the last expansion failure of engine %v", engine.Name)
+	}
+	return true, nil
+}
+
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	existingEngine := engine.DeepCopy()
 
@@ -1313,6 +1342,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if types.IsDataEngineV1(engine.Spec.DataEngine) {
 			if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
 				m.logger.Debug("Cannot start engine expansion since it is in the back-off window")
+			} else if claimed, err := m.claimExpansion(engine, volume); err != nil {
+				return err
+			} else if !claimed {
+				m.logger.Infof("Skipping engine expansion to %v since the expansion is being canceled or the engine spec size has changed", engine.Spec.VolumeSize)
 			} else {
 				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
 				m.expansionUpdateTime = time.Now()
