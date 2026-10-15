@@ -371,7 +371,7 @@ type VolumeSpec struct {
 	// +optional
 	NodeSelector []string `json:"nodeSelector"`
 	// TopologyRequirement lists the failure domains the volume's replicas must
-	// be scheduled in, derived from the CSI accessible topology at creation —
+	// be scheduled in, derived from the CSI accessible topology at creation -
 	// the same failure domains as the PV nodeAffinity terms (a node must match
 	// at least one term). Empty means unconstrained.
 	// +optional
