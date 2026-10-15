@@ -53,7 +53,7 @@ func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob sta
 	}
 	job.logger.Infof("Setting %v is %v", allowDetachedSetting, allowDetached)
 
-	filteredVolumes, err := resolveAssignedVolumes(job, recurringJob, allowDetached)
+	filteredVolumes, _, err := resolveAssignedVolumes(job, recurringJob, allowDetached)
 	if err != nil {
 		return errors.Wrapf(err, "failed to filter volumes")
 	}
@@ -109,27 +109,35 @@ func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob sta
 	return err
 }
 
-func resolveAssignedVolumes(job *Job, recurringJob *longhorn.RecurringJob, allowDetached bool) ([]string, error) {
-	var filteredVolumes []string
+func resolveAssignedVolumes(job *Job, recurringJob *longhorn.RecurringJob, allowDetached bool) ([]string, int, error) {
+	recordedVols := make(map[string]struct{})
+	var filteredVols []string
+
+	recordAndFilter := func(vols []longhorn.Volume) {
+		for _, vol := range vols {
+			recordedVols[vol.Name] = struct{}{}
+		}
+		filterVolumesForJob(allowDetached, vols, &filteredVols)
+	}
 
 	volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJob, job.name, job.namespace, job.lhClient)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	filterVolumesForJob(allowDetached, volumes, &filteredVolumes)
+	recordAndFilter(volumes)
 
 	jobGroups := recurringJob.Spec.Groups
 	for _, jobGroup := range jobGroups {
 		volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJobGroup, jobGroup, job.namespace, job.lhClient)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		filterVolumesForJob(allowDetached, volumes, &filteredVolumes)
+		recordAndFilter(volumes)
 	}
 
-	slices.Sort(filteredVolumes)
-	return filteredVolumes, nil
+	slices.Sort(filteredVols)
+	return filteredVols, len(recordedVols) - len(filteredVols), nil
 }
 
 func startVolumeJob(job *Job, recurringJob *longhorn.RecurringJob,
