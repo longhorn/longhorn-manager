@@ -739,6 +739,27 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 	}
 
 	for _, diskInfoMap := range readyDiskInfoMap {
+		for diskName := range diskInfoMap {
+			diskStatus := node.Status.DiskStatus[diskName]
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeInitialized).Status != longhorn.ConditionStatusTrue ||
+				types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue {
+				continue
+			}
+
+			// Request a fresh pod mount when an initialized disk becomes ready again.
+			// Update BIM specs before recording disk readiness so failed updates are retried.
+			bims, err := nc.ds.ListBackingImageManagersByDiskUUID(diskStatus.DiskUUID)
+			if err != nil {
+				return err
+			}
+			startingAt := util.Now()
+			for _, bim := range bims {
+				bim.Spec.StartingAt = startingAt
+				if _, err := nc.ds.UpdateBackingImageManager(bim); err != nil {
+					return errors.Wrapf(err, "failed to update starting timestamp for backing image manager %v on recovered disk %v", bim.Name, diskStatus.DiskUUID)
+				}
+			}
+		}
 		nc.updateReadyDiskStatusReadyCondition(node, diskInfoMap, monitorDiskHealth)
 		nc.updateDiskStatusFileSystemType(node, diskInfoMap)
 	}
@@ -750,6 +771,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 			node.Status.DiskStatus[diskName] = diskStatus
 		}
 	}
+
+	nc.updateDiskStatusInitializedCondition(node)
 
 	return nc.updateDiskStatusSchedulableCondition(node)
 }
@@ -881,6 +904,24 @@ func (nc *NodeController) updateNotReadyDiskStatusReadyCondition(node *longhorn.
 				nc.eventRecorder,
 				node,
 				corev1.EventTypeWarning)
+	}
+}
+
+// updateDiskStatusInitializedCondition sets the Initialized condition of every disk from its recorded disk UUID.
+// It is derived from the recorded UUID rather than from what is currently visible at the disk path, so a node reboot
+// or an unmounted disk only affects Ready. No event is recorded since the condition only mirrors the recorded UUID.
+func (nc *NodeController) updateDiskStatusInitializedCondition(node *longhorn.Node) {
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		condValue := longhorn.ConditionStatusTrue
+		condReason := ""
+		condMessage := fmt.Sprintf("Disk %v(%v) on node %v is initialized with disk UUID %v", diskName, diskStatus.DiskPath, node.Name, diskStatus.DiskUUID)
+		if diskStatus.DiskUUID == "" {
+			condValue = longhorn.ConditionStatusFalse
+			condReason = string(longhorn.DiskConditionReasonDiskUninitialized)
+			condMessage = fmt.Sprintf("Disk %v(%v) on node %v has no disk UUID recorded yet", diskName, diskStatus.DiskPath, node.Name)
+		}
+		diskStatus.Conditions = types.SetCondition(diskStatus.Conditions,
+			longhorn.DiskConditionTypeInitialized, condValue, condReason, condMessage)
 	}
 }
 

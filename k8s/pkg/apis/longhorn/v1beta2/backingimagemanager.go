@@ -68,6 +68,9 @@ type BackingImageManagerSpec struct {
 	DiskPath string `json:"diskPath"`
 	// +optional
 	BackingImages map[string]string `json:"backingImages"`
+	// StartingAt requests a pod started with the disk mount visible at this timestamp.
+	// +optional
+	StartingAt string `json:"startingAt"`
 }
 
 // BackingImageManagerStatus defines the observed state of the Longhorn backing image manager

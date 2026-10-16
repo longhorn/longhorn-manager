@@ -28,6 +28,8 @@ type BackingImageManagerSpecApplyConfiguration struct {
 	DiskUUID      *string           `json:"diskUUID,omitempty"`
 	DiskPath      *string           `json:"diskPath,omitempty"`
 	BackingImages map[string]string `json:"backingImages,omitempty"`
+	// StartingAt requests a pod started with the disk mount visible at this timestamp.
+	StartingAt *string `json:"startingAt,omitempty"`
 }
 
 // BackingImageManagerSpecApplyConfiguration constructs a declarative configuration of the BackingImageManagerSpec type for use with
@@ -79,5 +81,13 @@ func (b *BackingImageManagerSpecApplyConfiguration) WithBackingImages(entries ma
 	for k, v := range entries {
 		b.BackingImages[k] = v
 	}
+	return b
+}
+
+// WithStartingAt sets the StartingAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the StartingAt field is set to the value of the last call.
+func (b *BackingImageManagerSpecApplyConfiguration) WithStartingAt(value string) *BackingImageManagerSpecApplyConfiguration {
+	b.StartingAt = &value
 	return b
 }

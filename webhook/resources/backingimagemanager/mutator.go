@@ -10,6 +10,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/common"
 
@@ -56,6 +57,10 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	}
 
 	var patchOps admission.PatchOps
+
+	if backingImageManager.Spec.StartingAt == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/startingAt", "value": %q}`, util.Now()))
+	}
 
 	if backingImageManager.Spec.BackingImages == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/backingImages", "value": {}}`)
