@@ -634,51 +634,61 @@ func fakeEngineImageUpdater(ei *longhorn.EngineImage) error {
 	return nil
 }
 
-func (s *TestSuite) TestIsSameGuaranteedCPURequirement(c *C) {
+func (s *TestSuite) TestIsSameInstanceManagerResourceRequirement(c *C) {
 	var (
 		a, b *corev1.ResourceRequirements
 		err  error
 	)
 
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	b = &corev1.ResourceRequirements{}
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	b.Requests = corev1.ResourceList{}
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0")
 	c.Assert(err, IsNil)
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0m")
 	c.Assert(err, IsNil)
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	a = &corev1.ResourceRequirements{}
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	a.Requests = corev1.ResourceList{}
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	a.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0")
 	c.Assert(err, IsNil)
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	a.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0m")
 	c.Assert(err, IsNil)
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
 
 	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("250m")
 	c.Assert(err, IsNil)
 	a = &corev1.ResourceRequirements{}
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, false)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, false)
 
 	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("250m")
 	c.Assert(err, IsNil)
 	a.Requests = corev1.ResourceList{}
 	a.Requests[corev1.ResourceCPU], _ = resource.ParseQuantity("0.25")
 	c.Assert(err, IsNil)
-	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
+
+	// Same CPU request, but the pod keeps a memory limit the desired requirements no longer have.
+	b.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")}
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, false)
+
+	a.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4096Mi")}
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, true)
+
+	b.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
+	c.Assert(IsSameInstanceManagerResourceRequirement(a, b), Equals, false)
 }

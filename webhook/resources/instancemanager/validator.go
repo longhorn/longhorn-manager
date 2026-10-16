@@ -45,6 +45,9 @@ func (i *instanceManagerValidator) Create(request *admission.Request, newObj run
 	if err := i.validate(im); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
+	if err := validateDeprecatedV2DataEngineSpec(longhorn.V2DataEngineSpec{}, im.Spec.DataEngineSpec.V2); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 
 	return nil
 }
@@ -55,10 +58,29 @@ func (i *instanceManagerValidator) Update(request *admission.Request, oldObj run
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
 	}
 
+	oldIm, ok := oldObj.(*longhorn.InstanceManager)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", oldObj), "")
+	}
+
 	if err := i.validate(newIm); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
+	if err := validateDeprecatedV2DataEngineSpec(oldIm.Spec.DataEngineSpec.V2, newIm.Spec.DataEngineSpec.V2); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
 
+	return nil
+}
+
+// Unchanged values are allowed: full-object updates of an instance manager carry them over.
+func validateDeprecatedV2DataEngineSpec(oldSpec, newSpec longhorn.V2DataEngineSpec) error {
+	if newSpec.CPUMask != "" && newSpec.CPUMask != oldSpec.CPUMask {
+		return fmt.Errorf("spec.dataEngineSpec.v2.cpuMask is deprecated, set dataEngineResources.v2.cpuMask on the Longhorn node instead")
+	}
+	if newSpec.CPUIsolationEnabled != "" && newSpec.CPUIsolationEnabled != oldSpec.CPUIsolationEnabled {
+		return fmt.Errorf("spec.dataEngineSpec.v2.cpuIsolationEnabled is deprecated, set dataEngineResources.v2.cpuIsolationEnabled on the Longhorn node instead")
+	}
 	return nil
 }
 

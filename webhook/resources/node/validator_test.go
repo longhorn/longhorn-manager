@@ -7,12 +7,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -246,4 +249,120 @@ func newNodeValidatorUpdate() (*longhorn.Node, *longhorn.Node) {
 		},
 	}
 	return oldNode, oldNode.DeepCopy()
+}
+
+func TestValidateNodeResourceOverrides(t *testing.T) {
+	int64Ptr := func(v int64) *int64 { return &v }
+	boolPtr := func(v bool) *bool { return &v }
+
+	testCases := []struct {
+		name             string
+		globalSettings   map[types.SettingName]string
+		v2Resources      *longhorn.NodeV2DataEngineResources
+		imResources      *corev1.ResourceRequirements
+		expectedErrorMsg string
+	}{
+		{
+			name:        "cores within fractional allocatable CPUs",
+			v2Resources: &longhorn.NodeV2DataEngineResources{NumberOfCPUCores: int64Ptr(3)},
+		},
+		{
+			name:             "cores exceeding fractional allocatable CPUs",
+			v2Resources:      &longhorn.NodeV2DataEngineResources{NumberOfCPUCores: int64Ptr(4)},
+			expectedErrorMsg: "exceeds the 3500m allocatable CPUs",
+		},
+		{
+			name:             "iobuf small pool below the global setting minimum",
+			v2Resources:      &longhorn.NodeV2DataEngineResources{IobufSmallPoolSize: int64Ptr(0)},
+			expectedErrorMsg: "iobufSmallPoolSize must be at least 8192",
+		},
+		{
+			name:             "iobuf large pool below the global setting minimum",
+			v2Resources:      &longhorn.NodeV2DataEngineResources{IobufLargePoolSize: int64Ptr(1023)},
+			expectedErrorMsg: "iobufLargePoolSize must be at least 1024",
+		},
+		{
+			name:        "iobuf pools at the global setting minimum",
+			v2Resources: &longhorn.NodeV2DataEngineResources{IobufSmallPoolSize: int64Ptr(8192), IobufLargePoolSize: int64Ptr(1024)},
+		},
+		{
+			name:             "odd memory size with hugepages",
+			v2Resources:      &longhorn.NodeV2DataEngineResources{MemorySizeMiB: int64Ptr(1023)},
+			expectedErrorMsg: "must be a multiple of 2",
+		},
+		{
+			name:             "enabling hugepages with an inherited odd memory size",
+			globalSettings:   map[types.SettingName]string{types.SettingNameDataEngineHugepageEnabled: `{"v2":"false"}`, types.SettingNameDataEngineMemorySize: `{"v2":"1023"}`},
+			v2Resources:      &longhorn.NodeV2DataEngineResources{HugepageEnabled: boolPtr(true)},
+			expectedErrorMsg: "must be a multiple of 2",
+		},
+		{
+			name:           "inherited odd memory size without a hugepage-related override",
+			globalSettings: map[types.SettingName]string{types.SettingNameDataEngineMemorySize: `{"v2":"1023"}`},
+			v2Resources:    &longhorn.NodeV2DataEngineResources{IobufLargePoolSize: int64Ptr(2048)},
+		},
+		{
+			name:             "disabling hugepages with inherited dynamic CPU pinning",
+			globalSettings:   map[types.SettingName]string{types.SettingNameDataEngineNumberOfCPUCores: `{"v2":"2"}`},
+			v2Resources:      &longhorn.NodeV2DataEngineResources{HugepageEnabled: boolPtr(false)},
+			expectedErrorMsg: "OOM-killed",
+		},
+		{
+			name:             "enabling dynamic CPU pinning with inherited no-huge",
+			globalSettings:   map[types.SettingName]string{types.SettingNameDataEngineHugepageEnabled: `{"v2":"false"}`},
+			v2Resources:      &longhorn.NodeV2DataEngineResources{NumberOfCPUCores: int64Ptr(2)},
+			expectedErrorMsg: "OOM-killed",
+		},
+		{
+			name:        "disabling hugepages without dynamic CPU pinning",
+			v2Resources: &longhorn.NodeV2DataEngineResources{HugepageEnabled: boolPtr(false)},
+		},
+		{
+			name:           "disabling hugepages with pod resources that turn dynamic CPU pinning off",
+			globalSettings: map[types.SettingName]string{types.SettingNameDataEngineNumberOfCPUCores: `{"v2":"2"}`},
+			v2Resources:    &longhorn.NodeV2DataEngineResources{HugepageEnabled: boolPtr(false)},
+			imResources: &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2"), corev1.ResourceMemory: resource.MustParse("4Gi")},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			validator := newNodeValidatorForTest(kubefake.NewSimpleClientset())
+			err := validator.ds.KubeNodeInformer.GetStore().Add(&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeValidatorTestName},
+				Status: corev1.NodeStatus{
+					Capacity:    corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4")},
+					Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("3500m")},
+				},
+			})
+			require.NoError(t, err)
+			for name, value := range tc.globalSettings {
+				err := validator.ds.SettingInformer.GetStore().Add(&longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{Name: string(name), Namespace: nodeValidatorTestNamespace},
+					Value:      value,
+				})
+				require.NoError(t, err)
+			}
+
+			_, node := newNodeValidatorUpdate()
+			node.Status.CPUPolicy = longhorn.CPUManagerPolicyStatic
+			if tc.v2Resources != nil {
+				node.Spec.DataEngineResources = &longhorn.NodeDataEngineResources{V2: tc.v2Resources}
+			}
+			if tc.imResources != nil {
+				node.Spec.InstanceManagerResources = &longhorn.NodeInstanceManagerResources{V2: tc.imResources}
+			}
+
+			err = validator.validateNodeResourceOverrides(node)
+			if tc.expectedErrorMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expectedErrorMsg)
+		})
+	}
 }
