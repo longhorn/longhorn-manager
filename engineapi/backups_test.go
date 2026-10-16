@@ -132,7 +132,7 @@ func TestGetBackupCredentialEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)
 
-			envs, err := getBackupCredentialEnv(tt.backupTarget, tt.credential, true)
+			envs, err := getBackupCredentialEnv(tt.backupTarget, tt.credential, true, true)
 			if tt.expectError {
 				assert.NotNil(err)
 			} else {
@@ -201,13 +201,90 @@ func TestGetBackupCredentialEnvSignAcceptEncoding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)
 
-			envs, err := getBackupCredentialEnv("s3://backupbucket@us-east-1/", tt.credential, tt.supportsSignAcceptEncoding)
+			envs, err := getBackupCredentialEnv("s3://backupbucket@us-east-1/", tt.credential, tt.supportsSignAcceptEncoding, true)
 			assert.Nil(err)
 			if tt.expectEnv {
 				assert.Contains(envs, tt.env)
 			} else {
 				assert.NotContains(envs, tt.env)
 			}
+		})
+	}
+}
+
+// TestGetBackupCredentialEnvRetrySettings pins that the S3 branch forwards the
+// AWS_RETRY_* keys only to a consumer whose allowlist accepts them.
+func TestGetBackupCredentialEnvRetrySettings(t *testing.T) {
+	credential := map[string]string{
+		"AWS_ACCESS_KEY_ID":          "my-aws-access-key-id",
+		"AWS_SECRET_ACCESS_KEY":      "my-aws-secret-access-key",
+		"AWS_SIGN_ACCEPT_ENCODING":   "false",
+		"AWS_RETRY_MAX_ATTEMPTS":     "8",
+		"AWS_RETRY_MAXIMUM_ATTEMPTS": "20",
+		"AWS_RETRY_MAXIMUM_BACKOFF":  "60s",
+	}
+	retryEnvs := []string{
+		"AWS_RETRY_MAX_ATTEMPTS=8",
+		"AWS_RETRY_MAXIMUM_ATTEMPTS=20",
+		"AWS_RETRY_MAXIMUM_BACKOFF=60s",
+	}
+
+	tests := []struct {
+		name                       string
+		credential                 map[string]string
+		supportsSignAcceptEncoding bool
+		supportsRetrySettings      bool
+		expectRetry                []string
+		expectSignAcceptEncoding   bool
+	}{
+		{
+			name:                       "forwards the values set in the secret",
+			credential:                 credential,
+			supportsSignAcceptEncoding: true,
+			supportsRetrySettings:      true,
+			expectRetry:                retryEnvs,
+			expectSignAcceptEncoding:   true,
+		},
+		{
+			// Sent even when unset so a value left in the instance manager process is cleared.
+			name: "forwards empty values when the secret omits the keys",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":     "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY": "my-aws-secret-access-key",
+			},
+			supportsSignAcceptEncoding: true,
+			supportsRetrySettings:      true,
+			expectRetry:                []string{"AWS_RETRY_MAX_ATTEMPTS=", "AWS_RETRY_MAXIMUM_ATTEMPTS=", "AWS_RETRY_MAXIMUM_BACKOFF="},
+			expectSignAcceptEncoding:   true,
+		},
+		{
+			// A proxy at API version 8 accepts AWS_SIGN_ACCEPT_ENCODING but not the retry keys.
+			name:                       "omits the retry keys for a proxy that only supports sign accept encoding",
+			credential:                 credential,
+			supportsSignAcceptEncoding: true,
+			supportsRetrySettings:      false,
+			expectSignAcceptEncoding:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert := require.New(t)
+
+			envs, err := getBackupCredentialEnv("s3://backupbucket@us-east-1/", tt.credential, tt.supportsSignAcceptEncoding, tt.supportsRetrySettings)
+			assert.Nil(err)
+			var retry []string
+			hasSignAcceptEncoding := false
+			for _, e := range envs {
+				if strings.HasPrefix(e, "AWS_RETRY_") {
+					retry = append(retry, e)
+				}
+				if strings.HasPrefix(e, "AWS_SIGN_ACCEPT_ENCODING=") {
+					hasSignAcceptEncoding = true
+				}
+			}
+			assert.ElementsMatch(tt.expectRetry, retry)
+			assert.Equal(tt.expectSignAcceptEncoding, hasSignAcceptEncoding)
 		})
 	}
 }
