@@ -2,7 +2,7 @@ package v1beta2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// +kubebuilder:validation:Enum=snapshot;snapshot-force-create;snapshot-cleanup;snapshot-delete;backup;backup-force-create;filesystem-trim;system-backup
+// +kubebuilder:validation:Enum=snapshot;snapshot-force-create;snapshot-cleanup;snapshot-delete;backup;backup-force-create;filesystem-trim;system-backup;snapshot-group
 type RecurringJobType string
 
 const (
@@ -14,6 +14,7 @@ const (
 	RecurringJobTypeBackupForceCreate   = RecurringJobType("backup-force-create")   // periodically create snapshots then do backups even if old snapshots cleanup failed
 	RecurringJobTypeFilesystemTrim      = RecurringJobType("filesystem-trim")       // periodically trim filesystem to reclaim disk space
 	RecurringJobTypeSystemBackup        = RecurringJobType("system-backup")         // periodically create system backups
+	RecurringJobTypeSnapshotGroup       = RecurringJobType("snapshot-group")        // periodically create snapshotGroups
 
 	RecurringJobGroupDefault = "default"
 )
@@ -51,7 +52,7 @@ type RecurringJobSpec struct {
 	// +optional
 	Groups []string `json:"groups,omitempty"`
 	// The recurring job task.
-	// Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create", "filesystem-trim" or "system-backup".
+	// Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create", "filesystem-trim", "system-backup" or "snapshot-group".
 	// +optional
 	Task RecurringJobType `json:"task"`
 	// The cron setting.
@@ -113,7 +114,7 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Groups",type=string,JSONPath=`.spec.groups`,description="Sets groupings to the jobs. When set to \"default\" group will be added to the volume label when no other job label exist in volume"
-// +kubebuilder:printcolumn:name="Task",type=string,JSONPath=`.spec.task`,description="Should be one of \"snapshot\", \"snapshot-force-create\", \"snapshot-cleanup\", \"snapshot-delete\", \"backup\", \"backup-force-create\", \"filesystem-trim\" or \"system-backup\""
+// +kubebuilder:printcolumn:name="Task",type=string,JSONPath=`.spec.task`,description="Should be one of \"snapshot\", \"snapshot-force-create\", \"snapshot-cleanup\", \"snapshot-delete\", \"backup\", \"backup-force-create\", \"filesystem-trim\", \"system-backup\" or \"snapshot-group\""
 // +kubebuilder:printcolumn:name="Cron",type=string,JSONPath=`.spec.cron`,description="The cron expression represents recurring job scheduling"
 // +kubebuilder:printcolumn:name="RetentionPolicy",type=string,JSONPath=`.spec.retentionPolicy`,description="Whether snapshots/backups are retained based on count (\"count-based\") or age (\"age-based\")"
 // +kubebuilder:printcolumn:name="RetainCount",type=integer,JSONPath=`.spec.retain`,description="The number of snapshots/backups to keep for the volume"

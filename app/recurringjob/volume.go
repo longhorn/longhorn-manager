@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,21 +53,9 @@ func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob sta
 	}
 	job.logger.Infof("Setting %v is %v", allowDetachedSetting, allowDetached)
 
-	volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJob, job.name, job.namespace, job.lhClient)
+	filteredVolumes, _, err := resolveAssignedVolumes(job, recurringJob, allowDetached)
 	if err != nil {
-		return err
-	}
-
-	filteredVolumes := []string{}
-	filterVolumesForJob(allowDetached, volumes, &filteredVolumes)
-
-	jobGroups := recurringJob.Spec.Groups
-	for _, jobGroup := range jobGroups {
-		volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJobGroup, jobGroup, job.namespace, job.lhClient)
-		if err != nil {
-			return err
-		}
-		filterVolumesForJob(allowDetached, volumes, &filteredVolumes)
+		return errors.Wrapf(err, "failed to filter volumes")
 	}
 
 	job.logger.Infof("Found %v volumes with recurring job %v", len(filteredVolumes), job.name)
@@ -79,7 +68,7 @@ func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob sta
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
 			// errgroup.Group has no context here, so returning an error does not stop sibling volume jobs.
-			jobErr := startJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups)
+			jobErr := startJob(job, recurringJob, startJobVolumeName, concurrentLimiter, recurringJob.Spec.Groups)
 			if errors.Is(jobErr, ErrSnapshotPurgeSkipped) {
 				skippedMu.Lock()
 				skippedVols = append(skippedVols, startJobVolumeName)
@@ -118,6 +107,37 @@ func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob sta
 		job.logger.WithError(uErr).Warn("Failed to update recurring job condition")
 	}
 	return err
+}
+
+func resolveAssignedVolumes(job *Job, recurringJob *longhorn.RecurringJob, allowDetached bool) ([]string, int, error) {
+	recordedVols := make(map[string]struct{})
+	var filteredVols []string
+
+	recordAndFilter := func(vols []longhorn.Volume) {
+		for _, vol := range vols {
+			recordedVols[vol.Name] = struct{}{}
+		}
+		filterVolumesForJob(allowDetached, vols, &filteredVols)
+	}
+
+	volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJob, job.name, job.namespace, job.lhClient)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	recordAndFilter(volumes)
+
+	jobGroups := recurringJob.Spec.Groups
+	for _, jobGroup := range jobGroups {
+		volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJobGroup, jobGroup, job.namespace, job.lhClient)
+		if err != nil {
+			return nil, 0, err
+		}
+		recordAndFilter(volumes)
+	}
+
+	slices.Sort(filteredVols)
+	return filteredVols, len(recordedVols) - len(filteredVols), nil
 }
 
 func startVolumeJob(job *Job, recurringJob *longhorn.RecurringJob,
@@ -369,7 +389,15 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 		return err
 	}
 
-	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
+	snapshotCRs := collection.Data
+
+	// Deleting a member would degrade its SnapshotGroup, so during snapshot-delete
+	// members are excluded here and removed only by deleting the group.
+	if job.task == longhorn.RecurringJobTypeSnapshotDelete {
+		snapshotCRs = job.excludeSnapshotGroupMembers(snapshotCRs)
+	}
+
+	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(snapshotCRs, backupDone)
 	activeBackupSnapshots := map[string]string{}
 	if len(cleanupSnapshotNames) != 0 {
 		activeBackupSnapshots, err = job.getSnapshotsReferencedByActiveBackups()
@@ -397,6 +425,21 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	}
 
 	return nil
+}
+
+// excludeSnapshotGroupMembers drops snapshots that belong to a SnapshotGroup so
+// recurring jobs never delete them (which would silently degrade the group).
+// Group members are removed only via deletion of the group itself.
+func (job *VolumeJob) excludeSnapshotGroupMembers(snapshotCRs []longhornclient.SnapshotCR) []longhornclient.SnapshotCR {
+	filteredSnapshotCRs := make([]longhornclient.SnapshotCR, 0, len(snapshotCRs))
+	for _, snapshotCR := range snapshotCRs {
+		if snapshotCR.SnapshotGroup != "" {
+			job.logger.Debugf("Excluded snapshot CR %v from cleanup because it belongs to a snapshot group: %v", snapshotCR.Name, snapshotCR.SnapshotGroup)
+			continue
+		}
+		filteredSnapshotCRs = append(filteredSnapshotCRs, snapshotCR)
+	}
+	return filteredSnapshotCRs
 }
 
 func (job *VolumeJob) getSnapshotsReferencedByActiveBackups() (map[string]string, error) {
