@@ -23,6 +23,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	fake "k8s.io/client-go/kubernetes/fake"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -2057,6 +2059,8 @@ func (s *NodeControllerSuite) TestClearDiskHealthDataWhenNodeDiskHealthMonitorin
 				"smart": {Source: longhorn.HealthDataSourceSMART, HealthStatus: longhorn.HealthDataStatusFailed},
 			},
 			HealthDataLastCollectedAt: metav1.Now(),
+			Conditions: types.SetCondition(nil, longhorn.DiskConditionTypeHealthDataCollected, longhorn.ConditionStatusFalse,
+				longhorn.DiskConditionReasonHealthDataCollectionFailed, "failed to collect health data"),
 		},
 	}
 
@@ -2092,6 +2096,64 @@ func (s *NodeControllerSuite) TestClearDiskHealthDataWhenNodeDiskHealthMonitorin
 	c.Assert(diskStatus, NotNil)
 	c.Assert(diskStatus.HealthData, IsNil)
 	c.Assert(diskStatus.HealthDataLastCollectedAt.IsZero(), Equals, true)
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeHealthDataCollected).Status, Equals, longhorn.ConditionStatusUnknown)
+}
+
+func (s *NodeControllerSuite) TestUpdateDiskHealthDataCollectedCondition(c *C) {
+	newTestNode := func() *longhorn.Node {
+		node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+			TestDiskID1: {
+				Type:     longhorn.DiskTypeFilesystem,
+				DiskPath: TestDefaultDataPath,
+				DiskName: TestDiskID1,
+				DiskUUID: TestDiskID1,
+			},
+		}
+		return node
+	}
+	newTestDiskInfo := func(condition *longhorn.Condition) map[string]*monitor.CollectedDiskInfo {
+		info := monitor.NewDiskInfo(TestDiskID1, TestDiskID1, TestDefaultDataPath, longhorn.DiskDriverNone, false,
+			&lhtypes.DiskStat{StorageMaximum: TestDiskSize, StorageAvailable: TestDiskAvailableSize}, nil, TestInstanceManagerName, "", "")
+		info.HealthDataCondition = condition
+		return map[string]*monitor.CollectedDiskInfo{TestDiskID1: info}
+	}
+	failedCondition := &longhorn.Condition{
+		Type:    longhorn.DiskConditionTypeHealthDataCollected,
+		Status:  longhorn.ConditionStatusFalse,
+		Reason:  longhorn.DiskConditionReasonHealthDataCollectionFailed,
+		Message: "failed to collect health data",
+	}
+
+	s.initTest(c, &NodeControllerFixture{})
+
+	// The collection failure is recorded in the disk condition.
+	node := newTestNode()
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(failedCondition), true)
+	condition := types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(condition.Reason, Equals, longhorn.DiskConditionReasonHealthDataCollectionFailed)
+	c.Assert(condition.Message, Equals, failedCondition.Message)
+
+	// No collection attempted in this round keeps the recorded condition.
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(nil), true)
+	condition = types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusFalse)
+
+	// A successful collection flips the condition.
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(&longhorn.Condition{
+		Type:   longhorn.DiskConditionTypeHealthDataCollected,
+		Status: longhorn.ConditionStatusTrue,
+	}), true)
+	condition = types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusTrue)
+	c.Assert(condition.Reason, Equals, "")
+
+	// The condition is not set when disk health monitoring is disabled.
+	node = newTestNode()
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(failedCondition), false)
+	condition = types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusUnknown)
 }
 
 func (s *NodeControllerSuite) syncInstanceManagersNodeSelectorCase(c *C, selectorValue string, kubeNodeLabels map[string]string, existingIMs map[string]*longhorn.InstanceManager) map[string]bool {
