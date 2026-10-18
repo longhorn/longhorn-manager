@@ -75,6 +75,9 @@ type CollectedDiskInfo struct {
 	InstanceManagerName       string
 	HealthData                map[string]longhorn.HealthData
 	HealthDataLastCollectedAt time.Time
+	// HealthDataCondition is the result of the latest health data collection. It is
+	// nil when no collection has been attempted.
+	HealthDataCondition *longhorn.Condition
 }
 
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
@@ -385,20 +388,52 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		diskInfoMap[diskName] = NewDiskInfo(diskConfig.DiskName, diskConfig.DiskUUID, disk.Path, diskConfig.DiskDriver, nodeOrDiskEvicted, stat,
 			orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo), "")
 
+		previousHealthDataCondition := types.GetCondition(nil, longhorn.DiskConditionTypeHealthDataCollected)
 		if node.Status.DiskStatus != nil {
 			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok && diskStatus != nil {
 				// Preserve existing health data to avoid losing it between collection intervals
 				diskInfoMap[diskName].HealthData = diskStatus.HealthData
 				diskInfoMap[diskName].HealthDataLastCollectedAt = diskStatus.HealthDataLastCollectedAt.Time
+				previousHealthDataCondition = types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+				if monitorDiskHealth && previousHealthDataCondition.Status != longhorn.ConditionStatusUnknown {
+					// Timestamps are maintained by the controller, not collection results.
+					previousHealthDataCondition.LastProbeTime = ""
+					previousHealthDataCondition.LastTransitionTime = ""
+					diskInfoMap[diskName].HealthDataCondition = &previousHealthDataCondition
+				}
 			}
 		}
 
 		if monitorDiskHealth {
-			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
+			lastCollectedAt := diskInfoMap[diskName].HealthDataLastCollectedAt
+			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, lastCollectedAt, diskServiceClient, m.logger)
 			if err != nil {
-				m.logger.WithError(err).Debugf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
-			} else if healthData != nil {
-				diskInfoMap[diskName].HealthData = healthData
+				// Only warn on the first failure. The failure is recorded in the disk
+				// condition, so the subsequent ones would just flood the log.
+				log := m.logger.WithError(err)
+				if previousHealthDataCondition.Status == longhorn.ConditionStatusFalse {
+					log.Debugf("Failed to get disk health for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+				} else {
+					log.Warnf("Failed to get disk health for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+				}
+				diskInfoMap[diskName].HealthDataCondition = &longhorn.Condition{
+					Type:    longhorn.DiskConditionTypeHealthDataCollected,
+					Status:  longhorn.ConditionStatusFalse,
+					Reason:  longhorn.DiskConditionReasonHealthDataCollectionFailed,
+					Message: fmt.Sprintf("Failed to collect health data for disk %v(%v) on node %v: %v", diskName, disk.Path, node.Name, truncateDiskMessage(err.Error())),
+				}
+			} else {
+				if healthData != nil {
+					diskInfoMap[diskName].HealthData = healthData
+				}
+				// The handler returns the last collection time when the collection is skipped.
+				if !collectedAt.Equal(lastCollectedAt) {
+					diskInfoMap[diskName].HealthDataCondition = &longhorn.Condition{
+						Type:    longhorn.DiskConditionTypeHealthDataCollected,
+						Status:  longhorn.ConditionStatusTrue,
+						Message: fmt.Sprintf("Health data for disk %v(%v) on node %v is collected", diskName, disk.Path, node.Name),
+					}
+				}
 			}
 
 			diskInfoMap[diskName].HealthDataLastCollectedAt = collectedAt
