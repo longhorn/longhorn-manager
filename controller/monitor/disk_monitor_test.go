@@ -1,12 +1,16 @@
 package monitor
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -224,4 +228,71 @@ func TestCollectDiskDataToleratesNilDiskStatus(t *testing.T) {
 	assert.NotPanics(func() {
 		m.collectDiskData(node)
 	})
+}
+
+// TestCollectDiskDataLogsDiskHealthFailureOnce covers longhorn/longhorn#12353: a
+// persistent disk health collection failure is warned about only once.
+func TestCollectDiskDataLogsDiskHealthFailureOnce(t *testing.T) {
+	assert := require.New(t)
+
+	m := newTestDiskMonitor(t,
+		func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+			return &util.DiskConfig{
+				DiskName:   diskName,
+				DiskUUID:   testBlockDiskUUID,
+				DiskDriver: longhorn.DiskDriverNvme,
+				State:      string(spdkdisk.DiskStateReady),
+			}, nil
+		},
+		nil,
+	)
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.DebugLevel)
+	m.logger = logger
+
+	healthErr := fmt.Errorf("smartctl failed")
+	skipped := false
+	m.getDiskHealthHandler = func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+		if skipped {
+			return nil, lastCollectedAt, nil
+		}
+		return nil, lastCollectedAt.Add(time.Second), healthErr
+	}
+
+	countWarnings := func() int {
+		count := 0
+		for _, entry := range hook.AllEntries() {
+			if entry.Level == logrus.WarnLevel && strings.Contains(entry.Message, "Failed to get disk health") {
+				count++
+			}
+		}
+		return count
+	}
+
+	node := newTestBlockDiskNode()
+	for i := 0; i < 3; i++ {
+		m.collectDiskData(node)
+	}
+	assert.Equal(1, countWarnings())
+	assert.Contains(m.diskHealthFailures, testBlockDiskName)
+
+	// A skipped collection is not a recovery.
+	skipped = true
+	m.collectDiskData(node)
+	assert.Contains(m.diskHealthFailures, testBlockDiskName)
+
+	// A successful collection clears the failure, so the next failure is warned again.
+	skipped = false
+	healthErr = nil
+	m.collectDiskData(node)
+	assert.NotContains(m.diskHealthFailures, testBlockDiskName)
+
+	healthErr = fmt.Errorf("smartctl failed again")
+	m.collectDiskData(node)
+	assert.Equal(2, countWarnings())
+
+	// Removing the disk drops its failure record.
+	delete(node.Spec.Disks, testBlockDiskName)
+	m.collectDiskData(node)
+	assert.Empty(m.diskHealthFailures)
 }
