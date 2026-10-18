@@ -63,7 +63,7 @@ type NvmfCreateSubsystemRequest struct {
 	TgtName       string `json:"tgt_name,omitempty"`
 	SerialNumber  string `json:"serial_number,omitempty"`
 	ModelNumber   string `json:"model_number,omitempty"`
-	AllowAnyHost  bool   `json:"allow_any_host,omitempty"`
+	AllowAnyHost  bool   `json:"allow_any_host"`
 	AnaReporting  bool   `json:"ana_reporting,omitempty"`
 	MaxNamespaces uint32 `json:"max_namespaces,omitempty"`
 	MinCntlid     uint16 `json:"min_cntlid,omitempty"`
@@ -141,6 +141,13 @@ func (ns *NvmfSubsystemNamespace) UnmarshalJSON(data []byte) error {
 
 type NvmfSubsystemHost struct {
 	Nqn string `json:"nqn"`
+}
+
+type NvmfSubsystemAddHostRequest struct {
+	Nqn  string `json:"nqn"`
+	Host string `json:"host"`
+
+	TgtName string `json:"tgt_name,omitempty"`
 }
 
 type NvmfSubsystemAddNsRequest struct {
