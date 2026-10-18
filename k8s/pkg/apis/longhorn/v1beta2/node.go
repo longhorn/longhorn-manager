@@ -35,9 +35,10 @@ const (
 )
 
 const (
-	DiskConditionTypeSchedulable = "Schedulable"
-	DiskConditionTypeReady       = "Ready"
-	DiskConditionTypeError       = "Error"
+	DiskConditionTypeSchedulable         = "Schedulable"
+	DiskConditionTypeReady               = "Ready"
+	DiskConditionTypeError               = "Error"
+	DiskConditionTypeHealthDataCollected = "HealthDataCollected"
 )
 
 const (
@@ -47,6 +48,8 @@ const (
 	DiskConditionReasonDiskNotReady           = "DiskNotReady"
 	DiskConditionReasonDiskServiceUnreachable = "DiskServiceUnreachable"
 	DiskConditionReasonNodeNotReady           = "NodeNotReady"
+
+	DiskConditionReasonHealthDataCollectionFailed = "HealthDataCollectionFailed"
 )
 
 const (

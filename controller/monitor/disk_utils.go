@@ -98,7 +98,10 @@ func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDrive
 		return getHealthDataFromBlockDevice(diskName, diskPath, logger)
 	case longhorn.DiskDriverNvme:
 		// NVME driver claims device exclusively, use SPDK health info instead
-		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client, logger)
+		if client == nil || client.c == nil {
+			return nil, errors.New("disk service client is nil")
+		}
+		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client.c, logger)
 	default:
 		return nil, fmt.Errorf("unknown block disk driver %v", diskDriver)
 	}
@@ -124,8 +127,12 @@ func getHealthDataFromBlockDevice(diskName, diskPath string, logger logrus.Field
 	return healthData, nil
 }
 
-func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
-	if client == nil || client.c == nil {
+type diskHealthClient interface {
+	DiskHealthGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskHealth, error)
+}
+
+func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client diskHealthClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
+	if client == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
@@ -136,9 +143,9 @@ func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *Di
 	log.Debugf("Collecting controller health info for NVME disk")
 
 	// Get health data from SPDK via disk service
-	health, err := client.c.DiskHealthGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(longhorn.DiskDriverNvme))
+	health, err := client.DiskHealthGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(longhorn.DiskDriverNvme))
 	if err != nil {
-		log.WithError(err).Warnf("Failed to get controller health info")
+		log.WithError(err).Debugf("Failed to get controller health info")
 		return nil, err
 	}
 

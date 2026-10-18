@@ -745,6 +745,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			diskStatus.HealthData = nil
 			diskStatus.HealthDataLastCollectedAt = metav1.Time{}
+			diskStatus.Conditions = types.RemoveCondition(diskStatus.Conditions, longhorn.DiskConditionTypeHealthDataCollected)
 			node.Status.DiskStatus[diskName] = diskStatus
 		}
 	}
@@ -903,6 +904,16 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			if monitorDiskHealth {
 				diskStatus.HealthData = info.HealthData
 				diskStatus.HealthDataLastCollectedAt = metav1.NewTime(info.HealthDataLastCollectedAt)
+				if condition := info.HealthDataCondition; condition != nil {
+					eventType := corev1.EventTypeNormal
+					if condition.Status != longhorn.ConditionStatusTrue {
+						eventType = corev1.EventTypeWarning
+					}
+					diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
+						longhorn.DiskConditionTypeHealthDataCollected, condition.Status,
+						condition.Reason, condition.Message,
+						nc.eventRecorder, node, eventType)
+				}
 			} else {
 				diskStatus.HealthData = nil
 				diskStatus.HealthDataLastCollectedAt = metav1.Time{}
