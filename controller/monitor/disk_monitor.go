@@ -54,6 +54,11 @@ type DiskMonitor struct {
 	collectedDataLock sync.RWMutex
 	collectedData     map[string]*CollectedDiskInfo
 
+	// diskHealthFailures records the disks, by name and path, whose last health
+	// collection failed, so that a persistent failure is warned about only once.
+	// It is only accessed by collectDiskData.
+	diskHealthFailures map[string]string
+
 	syncCallback func(key string)
 
 	getDiskStatHandler          GetDiskStatHandler
@@ -394,18 +399,63 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		}
 
 		if monitorDiskHealth {
-			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
+			lastCollectedAt := diskInfoMap[diskName].HealthDataLastCollectedAt
+			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, lastCollectedAt, diskServiceClient, m.logger)
 			if err != nil {
-				m.logger.WithError(err).Debugf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
-			} else if healthData != nil {
-				diskInfoMap[diskName].HealthData = healthData
+				m.recordDiskHealthFailure(diskName, disk.Path, err)
+			} else {
+				if healthData != nil {
+					diskInfoMap[diskName].HealthData = healthData
+				}
+				// An unchanged timestamp means the collection was skipped, not that it succeeded.
+				if !collectedAt.Equal(lastCollectedAt) {
+					m.recordDiskHealthSuccess(diskName, disk.Path)
+				}
 			}
 
 			diskInfoMap[diskName].HealthDataLastCollectedAt = collectedAt
 		}
 	}
 
+	m.pruneDiskHealthFailures(node, monitorDiskHealth)
+
 	return diskInfoMap
+}
+
+func (m *DiskMonitor) recordDiskHealthFailure(diskName, diskPath string, err error) {
+	if m.diskHealthFailures == nil {
+		m.diskHealthFailures = map[string]string{}
+	}
+
+	if failedPath, ok := m.diskHealthFailures[diskName]; ok && failedPath == diskPath {
+		m.logger.WithError(err).Debugf("Still failing to get disk health for disk %v(%v)", diskName, diskPath)
+		return
+	}
+
+	m.diskHealthFailures[diskName] = diskPath
+	m.logger.WithError(err).Warnf("Failed to get disk health for disk %v(%v), further failures will be logged at debug level until it recovers", diskName, diskPath)
+}
+
+func (m *DiskMonitor) recordDiskHealthSuccess(diskName, diskPath string) {
+	failedPath, ok := m.diskHealthFailures[diskName]
+	if !ok {
+		return
+	}
+
+	delete(m.diskHealthFailures, diskName)
+	if failedPath == diskPath {
+		m.logger.Infof("Recovered getting disk health for disk %v(%v)", diskName, diskPath)
+	}
+}
+
+// pruneDiskHealthFailures drops the failure records of disks that are no longer
+// monitored, so that the records cannot outgrow the disks of the node.
+func (m *DiskMonitor) pruneDiskHealthFailures(node *longhorn.Node, monitorDiskHealth bool) {
+	for diskName := range m.diskHealthFailures {
+		if _, ok := node.Spec.Disks[diskName]; !ok || !monitorDiskHealth {
+			delete(m.diskHealthFailures, diskName)
+		}
+	}
 }
 
 func isNodeOrDiskEvicted(node *longhorn.Node, disk longhorn.DiskSpec) bool {
