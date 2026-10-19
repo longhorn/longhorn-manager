@@ -172,6 +172,7 @@ func NewVolumeController(
 				oldEF.Status.Endpoint == curEF.Status.Endpoint &&
 				oldEF.Status.TargetIP == curEF.Status.TargetIP &&
 				oldEF.Status.TargetPort == curEF.Status.TargetPort &&
+				oldEF.Status.CurrentImage == curEF.Status.CurrentImage &&
 				reflect.DeepEqual(oldEF.Spec, curEF.Spec) {
 				return
 			}
@@ -629,6 +630,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			err = nil
 		}
 	}()
+
+	if updated, err := c.syncV2VolumeImage(volume, engines, replicas, engineFrontends); err != nil || updated {
+		return err
+	}
 
 	if err := c.handleVolumeAttachmentCreation(volume); err != nil {
 		return err
@@ -1251,7 +1256,7 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	}
 
 	// give a chance to delete new replicas failed when upgrading volume and waiting for IM-r starting
-	if isVolumeUpgrading(v) {
+	if isV1VolumeUpgrading(v) {
 		return nil
 	}
 
@@ -1321,7 +1326,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 	// See comments for isSafeAsLastReplica for an explanation of why we call getSafeAsLastReplicaCount instead of
 	// getHealthyAndActiveReplicaCount here.
 	safeAsLastReplicaCount := getSafeAsLastReplicaCount(rs)
-	cleanupLeftoverReplicas := !isVolumeUpgrading(v) && !util.IsVolumeMigrating(v)
+	cleanupLeftoverReplicas := !isV1VolumeUpgrading(v) && !util.IsVolumeMigrating(v)
 	log := getLoggerForVolume(c.logger, v)
 
 	for _, r := range rs {
@@ -2892,7 +2897,7 @@ func (c *VolumeController) getSnapshotTotalSize(e *longhorn.Engine, log *logrus.
 }
 
 func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
-	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.Image
+	return v.Status.State == longhorn.VolumeStateDetached && isV1VolumeUpgrading(v)
 }
 
 func isReplicaNeverStarted(r *longhorn.Replica) bool {
@@ -2935,14 +2940,14 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 
 		failedReason := ""
 		if canIMLaunchReplica {
-			if r.Spec.FailedAt == "" && r.Spec.Image == v.Status.CurrentImage {
+			if r.Spec.FailedAt == "" && (types.IsDataEngineV2(v.Spec.DataEngine) || r.Spec.Image == v.Status.CurrentImage) {
 				if r.Status.CurrentState == longhorn.InstanceStateStopped {
 					r.Spec.DesireState = longhorn.InstanceStateRunning
 				}
 			}
 		} else {
 			// wait for IM is starting when volume is upgrading
-			if isVolumeUpgrading(v) {
+			if isV1VolumeUpgrading(v) {
 				continue
 			}
 
@@ -2993,7 +2998,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if types.IsDataEngineV2(v.Spec.DataEngine) && r.DeletionTimestamp != nil {
 			continue
 		}
-		if r.Spec.Image != v.Status.CurrentImage {
+		if types.IsDataEngineV1(v.Spec.DataEngine) && r.Spec.Image != v.Status.CurrentImage {
 			continue
 		}
 		if r.Spec.EngineName != e.Name {
@@ -4794,6 +4799,116 @@ func (c *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[stri
 	return true
 }
 
+// syncV2VolumeImage syncs the image fields of a replicated V2 volume. They record
+// the instance manager image and do not drive an upgrade: the instance manager
+// upgrade moves the instances, whether it is live or offline.
+//
+//   - volume.spec.image follows the default instance manager image when automatic
+//     upgrade is enabled or the serving instances already run that image. The
+//     existing or last confirmed image is used while automatic upgrade is
+//     disabled. Engines, replicas and engine frontends follow the volume.
+//   - volume.status.currentImage is the image that every serving instance runs.
+//     It is kept while they do not run the same image, such as during the
+//     upgrade or while the volume is detached.
+//
+// It returns true when it updated volume.spec.image, and the caller must skip the
+// rest of this reconciliation because the cached volume is stale.
+func (c *VolumeController) syncV2VolumeImage(v *longhorn.Volume, es map[string]*longhorn.Engine,
+	rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (bool, error) {
+	// EC volumes require the ShardGroup and Shard instances to be synced as well.
+	if types.IsDataEngineV1(v.Spec.DataEngine) || isECVolume(v) {
+		return false, nil
+	}
+
+	log := getLoggerForVolume(c.logger, v)
+
+	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return false, err
+	}
+	runningImage := getV2VolumeRunningImage(es, rs, efs)
+
+	image := defaultImage
+	if image != v.Spec.Image || v.Status.CurrentImage != image || (runningImage != "" && runningImage != image) {
+		allowAutoUpgrade, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowInstanceManagerAutomaticUpgrade, v.Spec.DataEngine)
+		if err != nil {
+			return false, errors.Wrap(err, "failed to get V2 instance manager automatic upgrade setting")
+		}
+		if !allowAutoUpgrade && runningImage != defaultImage {
+			switch {
+			case v.Spec.Image != defaultImage:
+				image = v.Spec.Image
+			case runningImage != "":
+				image = runningImage
+			case v.Status.CurrentImage != "":
+				image = v.Status.CurrentImage
+			}
+		}
+	}
+	if image != v.Spec.Image {
+		log.Infof("Updating V2 volume image from %v to %v", v.Spec.Image, image)
+		updated := v.DeepCopy()
+		updated.Spec.Image = image
+		if _, err := c.ds.UpdateVolume(updated); err != nil {
+			return false, errors.Wrapf(err, "failed to update V2 volume image to %v", image)
+		}
+		return true, nil
+	}
+
+	// The deferred commit in syncVolume persists the changes below.
+	for _, e := range es {
+		e.Spec.Image = v.Spec.Image
+	}
+	for _, r := range rs {
+		r.Spec.Image = v.Spec.Image
+	}
+	for _, ef := range efs {
+		ef.Spec.Image = v.Spec.Image
+	}
+
+	if runningImage != "" && runningImage != v.Status.CurrentImage {
+		log.Infof("Updating V2 volume current image from %v to %v", v.Status.CurrentImage, runningImage)
+		v.Status.CurrentImage = runningImage
+	}
+	return false, nil
+}
+
+// getV2VolumeRunningImage returns the image that every serving instance of a V2
+// volume runs. It returns an empty string if no instance is serving, or if the
+// serving instances do not report the same image, such as in the middle of an
+// instance manager upgrade.
+func getV2VolumeRunningImage(es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica,
+	efs map[string]*longhorn.EngineFrontend) string {
+	// Deleting instances are included because they may keep serving I/O until they
+	// stop, such as a replica still held by a running engine. Non-running instances
+	// are skipped below.
+	statuses := []*longhorn.InstanceStatus{}
+	for _, e := range es {
+		statuses = append(statuses, &e.Status.InstanceStatus)
+	}
+	for _, r := range rs {
+		// Inactive or failed replicas do not serve I/O.
+		if r.Spec.Active && r.Spec.FailedAt == "" {
+			statuses = append(statuses, &r.Status.InstanceStatus)
+		}
+	}
+	for _, ef := range efs {
+		statuses = append(statuses, &ef.Status.InstanceStatus)
+	}
+
+	image := ""
+	for _, status := range statuses {
+		if status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+		if status.CurrentImage == "" || (image != "" && status.CurrentImage != image) {
+			return ""
+		}
+		image = status.CurrentImage
+	}
+	return image
+}
+
 func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	if len(es) > 1 {
 		return nil
@@ -4812,7 +4927,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		"volumeDesiredEngineImage": v.Spec.Image,
 	})
 
-	if !isVolumeUpgrading(v) {
+	if !isV1VolumeUpgrading(v) {
 		// it must be a rollback
 		if e.Spec.Image != v.Spec.Image {
 			e.Spec.Image = v.Spec.Image
@@ -6366,7 +6481,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	log := getLoggerForVolume(c.logger, v).WithField("migrationNodeID", v.Spec.MigrationNodeID)
 
 	// cannot process migrate when upgrading
-	if isVolumeUpgrading(v) {
+	if isV1VolumeUpgrading(v) {
 		log.Warn("Skip the migration processing since the volume is being upgraded")
 		return nil
 	}
