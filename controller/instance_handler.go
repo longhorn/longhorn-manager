@@ -201,11 +201,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 		if status.UblkID != instance.Status.UblkID {
 			status.UblkID = instance.Status.UblkID
 		}
-		// only set CurrentImage when first started, since later we may specify
-		// different spec.Image for upgrade
-		if status.CurrentImage == "" {
-			status.CurrentImage = spec.Image
-		}
+		status.CurrentImage = h.getInstanceCurrentImage(log, im, spec, status.CurrentImage)
 
 		if status.UUID != instance.Status.UUID {
 			status.UUID = instance.Status.UUID
@@ -250,9 +246,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			status.UblkID = instance.Status.UblkID
 		}
 
-		if status.CurrentImage == "" {
-			status.CurrentImage = spec.Image
-		}
+		status.CurrentImage = h.getInstanceCurrentImage(log, im, spec, status.CurrentImage)
 
 		if status.UUID != instance.Status.UUID {
 			status.UUID = instance.Status.UUID
@@ -299,6 +293,33 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 		status.UUID = ""
 		h.resetInstanceErrorCondition(status)
 	}
+}
+
+// getInstanceCurrentImage returns the image that a running or suspended instance runs.
+//
+// A V1 instance runs the engine binary of spec.Image. Only record it when first
+// started, since a later spec.Image change means a live upgrade, which updates
+// CurrentImage on completion.
+//
+// A V2 instance runs inside its instance manager regardless of spec.Image, so record
+// the instance manager image once its container is confirmed to run it. Keep the
+// last known image until then, which is empty for a newly started instance.
+func (h *InstanceHandler) getInstanceCurrentImage(log *logrus.Entry, im *longhorn.InstanceManager, spec *longhorn.InstanceSpec, currentImage string) string {
+	if types.IsDataEngineV1(spec.DataEngine) {
+		if currentImage == "" {
+			return spec.Image
+		}
+		return currentImage
+	}
+
+	image, err := h.ds.GetInstanceManagerRunningImage(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get running image of instance manager %v", im.Name)
+	}
+	if image != "" {
+		return image
+	}
+	return currentImage
 }
 
 func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProcess, status *longhorn.InstanceStatus) {

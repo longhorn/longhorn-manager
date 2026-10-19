@@ -107,7 +107,7 @@ func (f *snapshotControllerFixture) seedVolume(c *C) *longhorn.Volume {
 }
 
 // seedEngine creates an engine for vol in both the fake clientset and the
-// lister indexer.  Status.CurrentImage is left empty to make isEngineUpgrading
+// lister indexer.  Status.CurrentImage is left empty to make isV1EngineUpgrading
 // return true (Spec.Image = TestEngineImage != ""), which drives the
 // engine-upgrading branch without needing a real engine process.
 func (f *snapshotControllerFixture) seedEngine(c *C, vol *longhorn.Volume) *longhorn.Engine {
@@ -213,7 +213,7 @@ func (s *TestSuite) TestSnapshotDeletionShortcut_SkippedWhenRequestedTimeSet(c *
 	_, ticketID := f.seedVAWithTicket(c, snap.Name)
 
 	// The engine has Status.CurrentImage="" vs Spec.Image=TestEngineImage, so
-	// isEngineUpgrading=true.  The controller re-enqueues and returns nil.
+	// isV1EngineUpgrading=true.  The controller re-enqueues and returns nil.
 	c.Assert(f.sc.syncHandler(getKey(snap, c)), IsNil)
 
 	// Finalizer must still be present: the shortcut did not fire.
