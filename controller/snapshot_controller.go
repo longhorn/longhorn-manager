@@ -455,7 +455,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
-		if isEngineUpgrading(engine) {
+		if isV1EngineUpgrading(engine) {
 			// requeue the snapshot to wait for upgrading engine after 3 seconds
 			snapshot.Status.Error = fmt.Sprintf("snapshot deletion delayed: volume engine %v is upgrading from image %v to %v", engine.Name, engine.Status.CurrentImage, engine.Spec.Image)
 			sc.enqueueSnapshotAfter(snapshot, 3*time.Second)
@@ -571,7 +571,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return nil
 		}
 
-		if isEngineUpgrading(engine) {
+		if isV1EngineUpgrading(engine) {
 			// requeue the snapshot to wait for upgrading engine after 3 seconds
 			snapshot.Status.Error = fmt.Sprintf("snapshot creation delayed: volume engine %v is upgrading from image %v to %v", engine.Name, engine.Status.CurrentImage, engine.Spec.Image)
 			sc.enqueueSnapshotAfter(snapshot, 3*time.Second)
