@@ -14,6 +14,14 @@ import (
 	"github.com/longhorn/longhorn-manager/meta"
 )
 
+// Keep the main goroutine on the main thread so no other goroutine can be
+// scheduled there. Namespace joiners lock a thread and switch it into the host
+// namespaces; if that thread were the main thread, /proc/self/* (e.g.
+// /proc/mounts, /proc/net/*) would reflect the host for the whole process.
+func init() {
+	runtime.LockOSThread()
+}
+
 func cmdNotFound(c *cli.Context, command string) {
 	panic(fmt.Errorf("unrecognized command: %s", command))
 }
