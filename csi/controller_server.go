@@ -1360,11 +1360,6 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}
 	requestedSize := req.CapacityRange.GetRequiredBytes()
 
-	if req.VolumeCapability == nil {
-		return nil, status.Error(codes.InvalidArgument, "volume capacity missing in request")
-	}
-	isAccessModeMount := req.VolumeCapability.GetMount() != nil
-
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%v", err)
@@ -1426,13 +1421,10 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	if !isOnlineExpansion {
 		log.Info("Skip NodeExpandVolume since this is offline expansion, the filesystem resize will be handled by NodeStageVolume when there is a workload using the volume.")
 	}
-	if !isAccessModeMount {
-		log.Info("Skip NodeExpandVolume since the current volume is access mode block")
-	}
 
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         volumeSize,
-		NodeExpansionRequired: isAccessModeMount && isOnlineExpansion,
+		NodeExpansionRequired: isOnlineExpansion,
 	}, nil
 }
 
