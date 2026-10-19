@@ -485,11 +485,6 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		for _, v := range vs {
 			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
 
-			if types.IsDataEngineV2(v.Spec.DataEngine) {
-				ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Skip upgrading volume engine image to the default engine image %v automatically since it is using v2 data engine", defaultEngineImage)
-				continue
-			}
-
 			v.Spec.Image = defaultEngineImage
 			_, err = ic.ds.UpdateVolume(v)
 			if err != nil {
@@ -530,7 +525,11 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 	inProgress = make(map[string][]*longhorn.Volume)
 
 	for _, v := range volumes {
-		if v.Spec.Image != v.Status.CurrentImage {
+		// V2 volumes are upgraded with the instance manager, not the engine image.
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			continue
+		}
+		if isV1VolumeUpgrading(v) {
 			inProgress[v.Status.OwnerID] = append(inProgress[v.Status.OwnerID], v)
 			continue
 		}
