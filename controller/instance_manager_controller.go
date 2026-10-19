@@ -1481,7 +1481,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 			return nil
 		}
 
-		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im, unschedulable)
 		if err != nil {
 			return err
 		}
@@ -1512,7 +1512,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 	}
 
 	if clusterAutoscalerEnabled {
-		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im, unschedulable)
 		if err != nil {
 			return err
 		}
@@ -1648,7 +1648,7 @@ func formatReplicaMessage(rep []*longhorn.Replica) string {
 	return msg
 }
 
-func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.InstanceManager) (bool, string, error) {
+func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.InstanceManager, nodeUnschedulable bool) (bool, string, error) {
 	// If there is no engine instance process inside the engine instance manager,
 	// it means that all volumes are detached.
 	// We can delete the PodDisruptionBudget for the engine instance manager.
@@ -1689,6 +1689,27 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 			return true, "", nil
 		}
 		return false, "", err
+	}
+
+	// The eviction policies never request eviction for replicas of strict-local volumes,
+	// since those replicas cannot be moved (see NodeController.shouldEvictReplica). Keeping
+	// the PDB for them would block the drain forever. See longhorn/longhorn#8753.
+	// Only exempt them on a cordoned node: on a schedulable node (e.g. Cluster Autoscaler
+	// enabled) the PDB is what prevents the node holding the only copy from being removed.
+	if nodeUnschedulable &&
+		(nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEviction) ||
+			nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica)) {
+		evictableReplicas := []*longhorn.Replica{}
+		for _, replica := range replicasOnCurrentNode {
+			isStrictLocal, err := isStrictLocalReplica(imc.ds, replica)
+			if err != nil {
+				return false, "", err
+			}
+			if !isStrictLocal {
+				evictableReplicas = append(evictableReplicas, replica)
+			}
+		}
+		replicasOnCurrentNode = evictableReplicas
 	}
 
 	if nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEviction) && len(replicasOnCurrentNode) > 0 {
