@@ -363,6 +363,7 @@ func (r *Replica) GetAddress() string {
 }
 
 func (r *Replica) prepareIPAndPorts(portCount int32, superiorPortAllocator *commonbitmap.Bitmap) error {
+	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
 	podIP, err := commonnet.GetIPForPod()
 	if err != nil {
 		return err
@@ -683,14 +684,14 @@ func (r *Replica) syncCloneReplicaInfo(spdkClient *spdkclient.Client, bdevLvolMa
 
 	actualParent := rootBdev.DriverSpecific.Lvol.BaseSnapshot
 
-	// Case 1: The chain root's parent is the expected entrypoint — also verify that
+	// Case 1: The chain root's parent is the expected entrypoint - also verify that
 	// the entrypoint itself is correctly parented to the src snapshot.
 	// The entrypoint may have become an orphaned root (empty base_snapshot) if the
 	// src replica was rebuilt: rebuildingDstShallowCopyPrepare detaches all children
 	// of a corrupted or outdated snapshot, including any clone entrypoints, before
 	// deleting or reusing the snapshot. If the instance manager restarted before
 	// RebuildingDstSnapshotCreate could re-parent the entrypoint, the orphaned
-	// entrypoint persists. The chain-root → entrypoint link uses lvol names (not
+	// entrypoint persists. The chain-root -> entrypoint link uses lvol names (not
 	// UUIDs), so it survives the rebuild even though the entrypoint is broken.
 	if actualParent == r.cloneEntrypointLvolName {
 		expectedSrcSnapshotLvolName := GetReplicaSnapshotLvolName(r.cloneSourceReplicaName, r.cloneSourceSnapshotName)
@@ -1342,7 +1343,7 @@ func constructSnapshotLvolMap(replicaName string, bdevLvolMap map[string]*spdkty
 			continue
 		}
 		for _, childLvolName := range bdevLvolMap[curSvcLvol.Name].DriverSpecific.Lvol.Clones {
-			// Exclude clone entrypoint lvols — they are tracked separately
+			// Exclude clone entrypoint lvols - they are tracked separately
 			if IsCloneEntrypointOfReplica(replicaName, childLvolName) || IsCloneEntrypointTmpHeadLvol(childLvolName) {
 				delete(curSvcLvol.Children, childLvolName)
 				continue
@@ -1608,7 +1609,7 @@ func (r *Replica) Delete(spdkClient *spdkclient.Client, cleanupRequired bool, su
 			r.reconstructRequired = true
 		}
 
-		// Rebuild interrupted — SnapshotLvolMap is stale.
+		// Rebuild interrupted - SnapshotLvolMap is stale.
 		if r.State == types.InstanceStateStopped && wasRebuilding && !cleanupRequired {
 			r.reconstructRequired = true
 		}
@@ -2479,7 +2480,7 @@ func (r *Replica) SnapshotCloneDstStart(spdkClient *spdkclient.Client, snapshotN
 		}()
 
 		// Always notify the src replica to clear its snapshotCloningSrcCache
-		// entry — on success as completion, on failure as cleanup.
+		// entry - on success as completion, on failure as cleanup.
 		defer func() {
 			if cleanupErr := srcReplicaServiceCli.ReplicaSnapshotCloneSrcFinish(
 				r.snapshotCloningDstCache.srcReplicaName, r.Name); cleanupErr != nil {
@@ -2888,7 +2889,7 @@ func (r *Replica) snapshotLinkedCloneSrcStart(spdkClient *spdkclient.Client, sna
 		epAlias := spdktypes.GetLvolAlias(r.LvsName, epLvolName)
 		epBdev, err := spdkClient.BdevLvolGetByName(epAlias, 0)
 		if err != nil {
-			// Entrypoint is in the map but missing from SPDK — stale map entry; recreate.
+			// Entrypoint is in the map but missing from SPDK - stale map entry; recreate.
 			r.log.WithError(err).Warnf("Clone entrypoint %s is in map but not found in SPDK; removing stale entry and recreating", epLvolName)
 			delete(r.cloneEntrypointMap, epLvolName)
 			epInfo = nil
@@ -2974,7 +2975,7 @@ func createCloneEntrypointLvol(spdkClient *spdkclient.Client, log *safelog.SafeL
 	}
 
 	// Step 2: Snapshot the tmp head to create the read-only entrypoint.
-	// After this: srcSnapshot → entrypoint(read-only) → tmpHead(writable, child of entrypoint)
+	// After this: srcSnapshot -> entrypoint(read-only) -> tmpHead(writable, child of entrypoint)
 	epUUID, err := spdkClient.BdevLvolSnapshot(tmpHeadUUID, epLvolName, []spdkclient.Xattr{})
 	if err != nil {
 		if _, delErr := spdkClient.BdevLvolDelete(tmpHeadAlias); delErr != nil {
@@ -3875,7 +3876,7 @@ func (r *Replica) RebuildingDstStart(spdkClient *spdkclient.Client, srcReplicaNa
 	dstHeadLvolAddress := net.JoinHostPort(r.IP, strconv.Itoa(int(r.PortStart)))
 
 	// Snapshots may be deleted below hence this cache will become stale.
-	// On success, RebuildingDstFinish→construct() clears this flag.
+	// On success, RebuildingDstFinish->construct() clears this flag.
 	r.reconstructRequired = true
 
 	// Delete extra snapshots if any
@@ -4691,7 +4692,7 @@ func (r *Replica) RebuildingDstSnapshotCreate(spdkClient *spdkclient.Client, sna
 	}
 	// Guarantee the snapshot lvol has the correct parent after rebuilding.
 	// The ancestor snapshot's parent is a clone entrypoint for linked-clone replicas; however the
-	// entrypoint does not exist on DST at this point — it will be set in RebuildingDstFinish.
+	// entrypoint does not exist on DST at this point - it will be set in RebuildingDstFinish.
 	// Treat it the same as an empty parent here so we do not accidentally call BdevLvolDetachParent.
 	dstSnapParentLvolName := ""
 	if srcSnapSvcLvol.Parent == "" || IsCloneEntrypointLvol(srcSnapSvcLvol.Parent) {

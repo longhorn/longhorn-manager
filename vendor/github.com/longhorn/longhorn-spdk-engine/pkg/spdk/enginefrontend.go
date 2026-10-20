@@ -2957,7 +2957,7 @@ func (ef *EngineFrontend) BackupRestore(engine *Engine, spdkClient *spdkclient.C
 	ef.log.Infof("Using endpoint %s for backup restore", endpoint)
 	resp, doneCh, err := engine.BackupRestore(spdkClient, backupUrl, endpoint, credential, concurrentLimit, superiorPortAllocator)
 	if err != nil {
-		return nil, err
+		return resp, err
 	}
 
 	// Tear down the initiator connection once the restore goroutine signals completion.
