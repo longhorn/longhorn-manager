@@ -163,6 +163,8 @@ const (
 	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 	SettingNameV1DataEngine                                             = SettingName("v1-data-engine")
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
+	SettingNameLocalDataEngine                                          = SettingName("local-data-engine")
+	SettingNameDataEngineProvisioningMode                               = SettingName("data-engine-provisioning-mode")
 	SettingNameDataEngineHugepageEnabled                                = SettingName("data-engine-hugepage-enabled")
 	SettingNameDataEngineMemorySize                                     = SettingName("data-engine-memory-size")
 	SettingNameDataEngineIobufLargePoolSize                             = SettingName("data-engine-iobuf-large-pool-size")
@@ -294,6 +296,8 @@ var (
 		SettingNameLogLevel,
 		SettingNameV1DataEngine,
 		SettingNameV2DataEngine,
+		SettingNameLocalDataEngine,
+		SettingNameDataEngineProvisioningMode,
 		SettingNameDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize,
 		SettingNameDataEngineIobufLargePoolSize,
@@ -376,8 +380,8 @@ type SettingDefinition struct {
 	ValueIntRange   map[string]int     `json:"range,omitempty"`      // +optional
 	ValueFloatRange map[string]float64 `json:"floatRange,omitempty"` // +optional
 
-	// If DataEngineSpecific is false, the setting is applicable to both V1 and V2 Data Engine, and Default is a non-JSON string.
-	// If DataEngineSpecific is true, the setting is only applicable to V1 or V2 Data Engine, and Default is a JSON string.
+	// If DataEngineSpecific is false, the setting is applicable to every data engine, and Default is a non-JSON string.
+	// If DataEngineSpecific is true, the setting is applicable only to the data engines listed in its JSON-formatted Default.
 	DataEngineSpecific bool `json:"dataEngineSpecific,omitempty"` // +optional
 }
 
@@ -466,6 +470,8 @@ var (
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 		SettingNameV1DataEngine:                                             SettingDefinitionV1DataEngine,
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
+		SettingNameLocalDataEngine:                                          SettingDefinitionLocalDataEngine,
+		SettingNameDataEngineProvisioningMode:                               SettingDefinitionDataEngineProvisioningMode,
 		SettingNameDataEngineHugepageEnabled:                                SettingDefinitionDataEngineHugepageEnabled,
 		SettingNameDataEngineMemorySize:                                     SettingDefinitionDataEngineMemorySize,
 		SettingNameDataEngineIobufLargePoolSize:                             SettingDefinitionDataEngineIobufLargePoolSize,
@@ -842,7 +848,8 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"3\",%q:\"3\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+		Default: fmt.Sprintf("{%q:\"3\",%q:\"3\",%q:\"1\"}",
+			longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2, longhorn.DataEngineTypeLocal),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 20,
@@ -1320,7 +1327,9 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"12\",%q:\"12\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+		// The local data engine instance manager is control-plane only, so it needs less guaranteed CPU.
+		Default: fmt.Sprintf("{%q:\"12\",%q:\"12\",%q:\"1\"}",
+			longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2, longhorn.DataEngineTypeLocal),
 		ValueFloatRange: map[string]float64{
 			ValueFloatRangeMinimum: 0,
 			ValueFloatRangeMaximum: 40,
@@ -1506,7 +1515,9 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"8\",%q:\"8\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+		// The local data engine has no engine-replica connection; the value is unused.
+		Default: fmt.Sprintf("{%q:\"8\",%q:\"8\",%q:\"8\"}",
+			longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2, longhorn.DataEngineTypeLocal),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 8,
 			ValueIntRangeMaximum: 30,
@@ -1525,8 +1536,9 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default: fmt.Sprintf("{%q:%q,%q:%q}", longhorn.DataEngineTypeV1, string(longhorn.SnapshotDataIntegrityFastCheck),
-			longhorn.DataEngineTypeV2, string(longhorn.SnapshotDataIntegrityFastCheck)),
+		Default: fmt.Sprintf("{%q:%q,%q:%q,%q:%q}", longhorn.DataEngineTypeV1, string(longhorn.SnapshotDataIntegrityFastCheck),
+			longhorn.DataEngineTypeV2, string(longhorn.SnapshotDataIntegrityFastCheck),
+			longhorn.DataEngineTypeLocal, string(longhorn.SnapshotDataIntegrityDisabled)),
 		Choices: []any{
 			string(longhorn.SnapshotDataIntegrityDisabled),
 			string(longhorn.SnapshotDataIntegrityEnabled),
@@ -1852,6 +1864,33 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "false",
+	}
+
+	SettingDefinitionLocalDataEngine = SettingDefinition{
+		DisplayName: "Local Data Engine",
+		Description: "This setting allows users to activate the local data engine backed by LVM.\n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn blocks this setting update when local data engine volumes are attached. \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
+	}
+
+	SettingDefinitionDataEngineProvisioningMode = SettingDefinition{
+		DisplayName:        "Data Engine Provisioning Mode",
+		Description:        "Applies only to the local data engine. Selects whether the volumes of a data engine are thick or thin provisioned; for the local data engine this is the LVM logical volume type. The mode of a data engine can be changed only when no volumes of that data engine exist.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Choices: []any{
+			string(longhorn.VolumeProvisioningModeThick),
+			string(longhorn.VolumeProvisioningModeThin),
+		},
+		Default: fmt.Sprintf("{%q:%q}", longhorn.DataEngineTypeLocal, longhorn.VolumeProvisioningModeThick),
 	}
 
 	SettingDefinitionDataEngineHugepageEnabled = SettingDefinition{
@@ -2626,6 +2665,20 @@ func ParseDataEngineSpecificSetting(definition SettingDefinition, value string) 
 	var jsonValues map[longhorn.DataEngineType]string
 	if err := json.Unmarshal([]byte(value), &jsonValues); err != nil {
 		return map[longhorn.DataEngineType]any{}, errors.Wrapf(err, "failed to parse JSON-formatted value %v", value)
+	}
+
+	// Fill data engine keys missing from the stored value with the definition
+	// defaults: a value persisted before a data engine was added to the
+	// definition (e.g. across an upgrade) lacks the new key, and an absent key
+	// means "not customized", not "not applicable".
+	var defaultValues map[longhorn.DataEngineType]string
+	if err := json.Unmarshal([]byte(definition.Default), &defaultValues); err != nil {
+		return map[longhorn.DataEngineType]any{}, errors.Wrapf(err, "failed to parse JSON-formatted default value %v", definition.Default)
+	}
+	for dataEngine, defaultValue := range defaultValues {
+		if _, ok := jsonValues[dataEngine]; !ok {
+			jsonValues[dataEngine] = defaultValue
+		}
 	}
 
 	switch definition.Type {
