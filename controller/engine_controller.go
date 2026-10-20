@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -64,6 +65,9 @@ var (
 	EngineMonitorConflictRetryCount = 5
 
 	purgeWaitIntervalInSecond = 24 * 60 * 60
+
+	postRebuildPurgeRetryCount    = 3
+	postRebuildPurgeRetryInterval = 5 * time.Second
 
 	// restoreMaxInterval: deleting the backup of big size volume takes a long time for retain policy and restoring backups would be in backoff period.
 	restoreMaxInterval = 1 * time.Hour
@@ -2795,11 +2799,62 @@ func (ec *EngineController) startPostRebuildPurge(
 			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
 		return
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
-		log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
-		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
-		return
+
+	var lastErr error
+	for attempt := 1; attempt <= postRebuildPurgeRetryCount; attempt++ {
+		if attempt > 1 {
+			log.WithError(lastErr).Warnf("Failed to start snapshot purge after rebuilding (attempt %d/%d), retrying in %v",
+				attempt-1, postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval)
+			time.Sleep(postRebuildPurgeRetryInterval)
+		}
+
+		// The engine may have been taken over by another node during the rebuild or the retry interval.
+		if !ec.isEngineOwner(log, engine.Name) {
+			log.Warn("Stopped snapshot purge after rebuilding since this node no longer owns the engine")
+			return
+		}
+
+		if lastErr = cleanupProxy.SnapshotPurge(dataEngineObj); lastErr == nil {
+			ec.setPostRebuildPurgeError(log, engine.Name, nil)
+			return
+		}
+	}
+
+	log.WithError(lastErr).Errorf("Failed to start snapshot purge after rebuilding after %d attempts", postRebuildPurgeRetryCount)
+	ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+		"Failed to start snapshot purge for engine %v and volume %v after rebuilding (%d attempts): %v",
+		engine.Name, engine.Spec.VolumeName, postRebuildPurgeRetryCount, lastErr)
+	ec.setPostRebuildPurgeError(log, engine.Name, lastErr)
+}
+
+// setPostRebuildPurgeError records the post-rebuild purge start failure in
+// engine.Status.PostRebuildPurgeError, or clears it when purgeErr is nil.
+func (ec *EngineController) setPostRebuildPurgeError(log *logrus.Entry, engineName string, purgeErr error) {
+	errMsg := ""
+	if purgeErr != nil {
+		errMsg = fmt.Sprintf("failed to start snapshot purge after rebuilding (%d attempts): %v", postRebuildPurgeRetryCount, purgeErr)
+	}
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		e, err := ec.ds.GetEngineUncached(engineName)
+		if err != nil {
+			return err
+		}
+		// A node that no longer owns the engine must not write its status.
+		if e.Status.OwnerID != ec.controllerID {
+			log.Warnf("Skipped recording the post-rebuild snapshot purge result since engine %v is now owned by %v",
+				engineName, e.Status.OwnerID)
+			return nil
+		}
+		if e.Status.PostRebuildPurgeError == errMsg {
+			return nil
+		}
+		e.Status.PostRebuildPurgeError = errMsg
+		_, err = ec.ds.UpdateEngineStatus(e)
+		return err
+	})
+	if err != nil {
+		log.WithError(err).Warn("Failed to record the post-rebuild snapshot purge result in engine status")
 	}
 }
 
