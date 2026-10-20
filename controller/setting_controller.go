@@ -379,12 +379,13 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	dangerSettingsRequiringSpecificDataEngineVolumesDetached := []types.SettingName{
 		types.SettingNameV1DataEngine,
 		types.SettingNameV2DataEngine,
+		types.SettingNameLocalDataEngine,
 		types.SettingNameGuaranteedInstanceManagerCPU,
 	}
 
 	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
 		switch settingName {
-		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
+		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine, types.SettingNameLocalDataEngine:
 			if err := sc.updateDataEngine(settingName); err != nil {
 				return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
 					"It will be eventually applied", settingName)
@@ -985,6 +986,12 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 		if err != nil {
 			return err
 		}
+	case types.SettingNameLocalDataEngine:
+		dataEngine = longhorn.DataEngineTypeLocal
+		ims, err = sc.ds.ValidateLocalDataEngineEnabled(enabled)
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown setting %v for updating data engine", setting)
 	}
@@ -1450,7 +1457,7 @@ func hasInstanceManagerCPURequestChanged(oldPod, curPod *corev1.Pod) bool {
 // recreates the pod once no instances are running on it.
 func (sc *SettingController) checkInstanceManagerCPURequest() error {
 	pendingInstanceManagers := []string{}
-	for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+	for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2, longhorn.DataEngineTypeLocal} {
 		imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 		if err != nil {
 			return errors.Wrapf(err, "failed to list instance manager pods of data engine %v for CPU request check", dataEngine)
@@ -1862,6 +1869,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameDefaultUblkNumberOfQueue:                                 true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
+		types.SettingNameLocalDataEngine:                                          true,
 	}
 
 	settings, err := info.ds.ListSettings()
