@@ -71,7 +71,7 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
 	github.com/longhorn/go-spdk-helper v0.11.0
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20261004
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
 	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004
@@ -106,7 +106,6 @@ require (
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
-	sigs.k8s.io/structured-merge-diff/v7 v7.0.0
 )
 
 require (
