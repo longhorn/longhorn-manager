@@ -526,8 +526,9 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 	inProgress = make(map[string][]*longhorn.Volume)
 
 	for _, v := range volumes {
-		// V2 volumes are upgraded with the instance manager, not the engine image.
-		if types.IsDataEngineV2(v.Spec.DataEngine) {
+		// V2 and local volumes are upgraded with the instance manager, not the
+		// engine image.
+		if types.IsDataEngineV2(v.Spec.DataEngine) || types.IsDataEngineLocal(v.Spec.DataEngine) {
 			continue
 		}
 		if isV1VolumeUpgrading(v) {
