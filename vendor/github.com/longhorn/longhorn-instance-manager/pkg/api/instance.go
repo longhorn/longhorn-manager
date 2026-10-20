@@ -8,8 +8,9 @@ import (
 
 var (
 	dataEngines = map[string]string{
-		"DATA_ENGINE_V1": "v1",
-		"DATA_ENGINE_V2": "v2",
+		"DATA_ENGINE_V1":    "v1",
+		"DATA_ENGINE_V2":    "v2",
+		"DATA_ENGINE_LOCAL": "local",
 	}
 )
 
