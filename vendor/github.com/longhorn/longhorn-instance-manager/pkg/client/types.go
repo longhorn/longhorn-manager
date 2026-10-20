@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	dataEngineV1 = "v1"
-	dataEngineV2 = "v2"
+	dataEngineV1    = "v1"
+	dataEngineV2    = "v2"
+	dataEngineLocal = "local"
 
 	cloneModeFullCopy    = "full-copy"
 	cloneModeLinkedClone = "linked-clone"
@@ -42,11 +43,27 @@ func (e ReplicaError) Error() string {
 }
 
 func getDataEngine(dataEngine string) string {
-	if strings.HasSuffix(strings.ToLower(dataEngine), dataEngineV2) {
+	switch strings.ToLower(dataEngine) {
+	case dataEngineV1, "data_engine_v1":
+		return rpc.DataEngine_name[int32(rpc.DataEngine_DATA_ENGINE_V1)]
+	case dataEngineV2, "data_engine_v2":
 		return rpc.DataEngine_name[int32(rpc.DataEngine_DATA_ENGINE_V2)]
+	case dataEngineLocal, "data_engine_local":
+		return rpc.DataEngine_name[int32(rpc.DataEngine_DATA_ENGINE_LOCAL)]
+	default:
+		return ""
 	}
+}
 
-	return rpc.DataEngine_name[int32(rpc.DataEngine_DATA_ENGINE_V1)]
+// getLogDataEngine resolves the data engine for the log RPCs. An empty
+// dataEngine selects the instance manager itself, encoded on the wire as the
+// enum zero value (DATA_ENGINE_V1).
+func getLogDataEngine(dataEngine string) (int32, bool) {
+	if dataEngine == "" {
+		return int32(rpc.DataEngine_DATA_ENGINE_V1), true
+	}
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	return driver, ok
 }
 
 func getCloneMode(cloneMode string) rpc.CloneMode {
