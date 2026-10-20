@@ -65,14 +65,14 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
 	github.com/longhorn/backing-image-manager v1.13.0
-	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
-	github.com/longhorn/go-common-libs v0.0.0-20261013144042-4de833c70b5f
+	github.com/longhorn/backupstore v0.0.0-20261020110232-e14d5880bb6f
+	github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
 	github.com/longhorn/go-spdk-helper v0.11.0
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006055144-611615811a31
-	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260922031825-f85547f360de
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261020125007-31fa66a04265
+	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20261020153318-ce2814f6e1f1
 	github.com/longhorn/longhorn-share-manager v1.13.1-dev-20261004
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260922025450-0a58d6f146a1
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20261020151245-268d871df94b
 	github.com/longhorn/types v0.0.0-20260930155107-5849431731c3
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
@@ -82,10 +82,10 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
-	github.com/urfave/cli/v3 v3.13.0
+	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.84.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -123,7 +123,7 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/getsentry/sentry-go v0.46.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -141,7 +141,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/renameio/v2 v2.0.2 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
@@ -157,7 +157,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
+	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	howett.net/plist v1.0.1 // indirect
@@ -175,8 +175,8 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
-	github.com/gammazero/deque v1.0.0 // indirect
-	github.com/gammazero/workerpool v1.1.3 // indirect
+	github.com/gammazero/deque v1.2.1 // indirect
+	github.com/gammazero/workerpool v1.2.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-openapi/jsonpointer v0.22.4 // indirect
 	github.com/go-openapi/jsonreference v0.21.4 // indirect
@@ -194,7 +194,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.29 // indirect
+	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect

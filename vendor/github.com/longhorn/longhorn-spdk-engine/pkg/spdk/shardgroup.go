@@ -13,13 +13,14 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
+	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
+	"github.com/longhorn/types/pkg/generated/spdkrpc"
+
 	commonbitmap "github.com/longhorn/go-common-libs/bitmap"
 	commonnet "github.com/longhorn/go-common-libs/net"
-	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
-	"github.com/longhorn/types/pkg/generated/spdkrpc"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/api"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
@@ -1574,6 +1575,7 @@ func (sg *ShardGroup) tryDiscoverExistingLvstore(spdkClient *spdkclient.Client) 
 // (for the head lvol). A ShardGroup serves one target, so it always uses one port
 // and does not use the request's port_count.
 func (sg *ShardGroup) prepareIPAndPort(superiorPortAllocator *commonbitmap.Bitmap) error {
+	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
 	podIP, err := commonnet.GetIPForPod()
 	if err != nil {
 		return err
