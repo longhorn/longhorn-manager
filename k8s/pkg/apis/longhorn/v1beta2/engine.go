@@ -10,6 +10,14 @@ const (
 	ReplicaModeERR = ReplicaMode("ERR")
 )
 
+const (
+	EngineConditionTypePostRebuildPurgeFailed = "PostRebuildPurgeFailed"
+
+	EngineConditionReasonPostRebuildPurgeStartFailed = "StartFailed"
+	EngineConditionReasonPostRebuildPurgeStarted     = "Started"
+	EngineConditionReasonPostRebuildPurgeCleaned     = "SnapshotsCleaned"
+)
+
 type EngineBackupStatus struct {
 	// +optional
 	Progress int `json:"progress"`

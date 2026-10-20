@@ -65,6 +65,9 @@ var (
 
 	purgeWaitIntervalInSecond = 24 * 60 * 60
 
+	postRebuildPurgeRetryCount    = 3
+	postRebuildPurgeRetryInterval = 5 * time.Second
+
 	// restoreMaxInterval caps the backoff between restore retries. Most
 	// failures retry until the restore succeeds, for example while a backup
 	// deletion holds the backup lock or a backup target is unreachable, so
@@ -87,6 +90,18 @@ var (
 	// number of consecutive actual size updates allowed during bursts
 	sizeUpdateBurst = 3
 )
+
+var (
+	// errSnapshotPurgeConcurrentLimitReached means the snapshot heavy task concurrent limit is reached.
+	errSnapshotPurgeConcurrentLimitReached = errors.New("snapshot heavy task concurrent limit is reached")
+)
+
+// postRebuildPurgeResult is the outcome of a post-rebuild snapshot purge. The rebuild goroutine
+// stores it in memory and enqueues the engine; syncEngine records it in the engine conditions.
+type postRebuildPurgeResult struct {
+	err      error
+	attempts int
+}
 
 const (
 	ConflictRetryCount = 5
@@ -124,6 +139,11 @@ type EngineController struct {
 	restoringCounterMutex *sync.Mutex
 
 	snapshotConcurrentLimiter *SnapshotConcurrentLimiter
+
+	// postRebuildPurgeResults holds post-rebuild snapshot purge results from rebuild goroutines
+	// until syncEngine records them in the engine status conditions. Key: engine name.
+	postRebuildPurgeResults      map[string]*postRebuildPurgeResult
+	postRebuildPurgeResultsMutex *sync.Mutex
 }
 
 type EngineMonitor struct {
@@ -208,6 +228,9 @@ func NewEngineController(
 		restoringCounterMutex: &sync.Mutex{},
 
 		snapshotConcurrentLimiter: snapshotConcurrentLimiter,
+
+		postRebuildPurgeResults:      map[string]*postRebuildPurgeResult{},
+		postRebuildPurgeResultsMutex: &sync.Mutex{},
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -319,6 +342,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	engine, err := ec.ds.GetEngine(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
+			ec.deletePostRebuildPurgeResult(name)
 			return nil
 		}
 		return errors.Wrapf(err, "failed to get engine")
@@ -334,6 +358,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 	if !isResponsible {
+		ec.deletePostRebuildPurgeResult(name)
 		return nil
 	}
 
@@ -351,6 +376,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.DeletionTimestamp != nil {
+		ec.deletePostRebuildPurgeResult(name)
 		if err := ec.DeleteInstance(engine); err != nil {
 			return errors.Wrapf(err, "failed to clean up the related engine instance before deleting engine %v", engine.Name)
 		}
@@ -358,10 +384,15 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	existingEngine := engine.DeepCopy()
+	clearPostRebuildPurgeFailureIfCleaned(engine)
+	pendingPurgeResult := ec.applyPostRebuildPurgeResult(engine)
 	defer func() {
 		// we're going to update engine assume things changes
 		if err == nil && !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 			_, err = ec.ds.UpdateEngineStatus(engine)
+		}
+		if err == nil && pendingPurgeResult != nil {
+			ec.clearPostRebuildPurgeResult(name, pendingPurgeResult)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -1129,12 +1160,16 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	engine.Status.ReplicaModeMap = currentReplicaModeMap
 	engine.Status.ReplicaTransitionTimeMap = currentReplicaTransitionTimeMap
 
+	// Captured before the RPC so an in-flight list that started before the purge failure
+	// cannot be treated as a newer observation.
+	listStartedAt := util.Now()
 	snapshots, err := engineClientProxy.SnapshotList(engine)
 	if err != nil {
 		engine.Status.SnapshotsError = err.Error()
 	} else {
 		engine.Status.Snapshots = snapshots
 		engine.Status.SnapshotsError = ""
+		notePostRebuildSnapshotObservation(engine, listStartedAt)
 	}
 
 	// TODO: find a more advanced way to handle invocations for incompatible running engines
@@ -2862,7 +2897,9 @@ func (ec *EngineController) runRebuild(rc *rebuildContext, rebuildingEngineName 
 	}
 
 	if rc.autoCleanup {
-		ec.startPostRebuildPurge(rc.log, rc.currentEngine, rc.cleanupProxy)
+		ec.startPostRebuildPurge(rc.log, rc.currentEngine, func(e *longhorn.Engine) (engineapi.EngineClientProxy, error) {
+			return ec.getEngineClientProxy(e, e.Status.CurrentImage)
+		})
 	}
 }
 
@@ -2991,36 +3028,256 @@ func (ec *EngineController) handleRebuildFailure(
 }
 
 // startPostRebuildPurge attempts to start a snapshot purge after a successful rebuild.
+// Unlike the pre-rebuild purge, this runs only once and has no reconcile-driven second
+// chance, so every failure to start it (including the concurrency limit) is retried up to
+// postRebuildPurgeRetryCount attempts. The outcome is handed to syncEngine, which records it
+// in the engine's PostRebuildPurgeFailed condition.
 func (ec *EngineController) startPostRebuildPurge(
 	log *logrus.Entry,
 	engine *longhorn.Engine,
-	cleanupProxy engineapi.EngineClientProxy,
+	newProxy func(*longhorn.Engine) (engineapi.EngineClientProxy, error),
 ) {
-	allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(cleanupProxy, engine, ec.ds)
-	if err != nil {
-		log.WithError(err).Error("Failed to check whether can start snapshot purge after rebuilding")
-		return
-	}
-
-	if !allowSnapshotPurge {
-		log.Debug("Cannot start SnapshotPurge for engine after rebuilding because the concurrent limit is reached")
-		return
-	}
-
 	log.Info("Starting snapshot purge after rebuilding")
-	dataEngineObj, err := ec.ds.GetDataEngineObject(engine)
+	// The engine may be taken over by another node during the rebuild, an attempt or the retry
+	// interval. A node that no longer owns it must neither purge nor report a result.
+	ownsEngine := func() bool {
+		if ec.isEngineOwner(log, engine.Name) {
+			return true
+		}
+		log.Warn("Stopped snapshot purge after rebuilding since this node no longer owns the engine")
+		return false
+	}
+	var lastErr error
+	attempts := 0
+	for attempts < postRebuildPurgeRetryCount {
+		attempts++
+		if attempts > 1 {
+			log.WithError(lastErr).Warnf("Failed to start snapshot purge after rebuilding (attempt %d/%d), retrying in %v",
+				attempts-1, postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval)
+			time.Sleep(postRebuildPurgeRetryInterval)
+		}
+		if !ownsEngine() {
+			return
+		}
+		// Reload each attempt: the engine may have restarted and changed endpoints while we waited.
+		currentEngine, err := ec.ds.GetEngineRO(engine.Name)
+		if err != nil {
+			lastErr = errors.Wrap(err, "failed to get the latest engine")
+			continue
+		}
+		dataEngineObj, err := ec.ds.GetDataEngineObject(currentEngine)
+		if err != nil {
+			lastErr = errors.Wrap(err, "failed to get data engine object")
+			continue
+		}
+		attemptProxy, err := newProxy(currentEngine)
+		if err != nil {
+			lastErr = errors.Wrap(err, "failed to get engine client proxy")
+			continue
+		}
+		started, err := func() (bool, error) {
+			defer attemptProxy.Close()
+			allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(attemptProxy, currentEngine, ec.ds)
+			if err != nil {
+				return false, errors.Wrap(err, "failed to check whether can start snapshot purge")
+			}
+			if !allowSnapshotPurge {
+				return false, errSnapshotPurgeConcurrentLimitReached
+			}
+			// Limiter may block on status RPCs; ownership can change while it runs.
+			if !ownsEngine() {
+				return false, nil
+			}
+			if err := attemptProxy.SnapshotPurge(dataEngineObj); err != nil {
+				return false, err
+			}
+			return true, nil
+		}()
+		if started {
+			ec.recordPostRebuildPurgeResult(engine, attempts, nil)
+			return
+		}
+		if err == nil {
+			// Ownership was lost after the limiter; do not record a failure.
+			return
+		}
+		lastErr = err
+	}
+	if !ownsEngine() {
+		return
+	}
+	log.WithError(lastErr).Errorf("Failed to start snapshot purge after rebuilding after %d attempts", attempts)
+	ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+		"Failed to start snapshot purge for engine %v and volume %v after rebuilding (%d attempts): %v",
+		engine.Name, engine.Spec.VolumeName, attempts, lastErr)
+	ec.recordPostRebuildPurgeResult(engine, attempts, lastErr)
+}
+
+// recordPostRebuildPurgeResult keeps the post-rebuild purge result in memory and enqueues the
+// engine, so syncEngine records it in the engine conditions through its normal status update.
+func (ec *EngineController) recordPostRebuildPurgeResult(engine *longhorn.Engine, attempts int, purgeErr error) {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	ec.postRebuildPurgeResults[engine.Name] = &postRebuildPurgeResult{err: purgeErr, attempts: attempts}
+	ec.postRebuildPurgeResultsMutex.Unlock()
+
+	ec.enqueueEngine(engine)
+}
+
+// applyPostRebuildPurgeResult sets the PostRebuildPurgeFailed condition from the pending result of
+// the engine, if any, and returns that result so the caller can clear it after a successful update.
+func (ec *EngineController) applyPostRebuildPurgeResult(engine *longhorn.Engine) *postRebuildPurgeResult {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	result := ec.postRebuildPurgeResults[engine.Name]
+	ec.postRebuildPurgeResultsMutex.Unlock()
+	if result == nil {
+		return nil
+	}
+
+	if result.err != nil {
+		engine.Status.Conditions = types.SetCondition(engine.Status.Conditions,
+			longhorn.EngineConditionTypePostRebuildPurgeFailed, longhorn.ConditionStatusTrue,
+			longhorn.EngineConditionReasonPostRebuildPurgeStartFailed,
+			fmt.Sprintf("Failed to start snapshot purge after rebuilding (%d attempts): %v", result.attempts, result.err))
+		// SetCondition keeps the previous timestamps when the status is already True.
+		// Each failed result needs its own time, and must drop the previous observation,
+		// or an in-flight clean SnapshotList from the earlier failure clears this one.
+		stampPostRebuildPurgeFailure(engine)
+	} else {
+		engine.Status.Conditions = types.SetCondition(engine.Status.Conditions,
+			longhorn.EngineConditionTypePostRebuildPurgeFailed, longhorn.ConditionStatusFalse,
+			longhorn.EngineConditionReasonPostRebuildPurgeStarted, "")
+	}
+	return result
+}
+
+// stampPostRebuildPurgeFailure gives this failed result its own transition time and drops any
+// snapshot observation recorded for an earlier failure.
+func stampPostRebuildPurgeFailure(engine *longhorn.Engine) {
+	now := util.Now()
+	for i := range engine.Status.Conditions {
+		if engine.Status.Conditions[i].Type != longhorn.EngineConditionTypePostRebuildPurgeFailed {
+			continue
+		}
+		engine.Status.Conditions[i].LastTransitionTime = now
+		engine.Status.Conditions[i].LastProbeTime = ""
+		return
+	}
+}
+
+// clearPostRebuildPurgeResult drops the recorded result once it is persisted, unless a newer
+// result replaced it in the meantime.
+func (ec *EngineController) clearPostRebuildPurgeResult(engineName string, result *postRebuildPurgeResult) {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	defer ec.postRebuildPurgeResultsMutex.Unlock()
+	if ec.postRebuildPurgeResults[engineName] == result {
+		delete(ec.postRebuildPurgeResults, engineName)
+	}
+}
+
+// deletePostRebuildPurgeResult drops any pending result of an engine that is gone or no longer owned.
+func (ec *EngineController) deletePostRebuildPurgeResult(engineName string) {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	defer ec.postRebuildPurgeResultsMutex.Unlock()
+	delete(ec.postRebuildPurgeResults, engineName)
+}
+
+// clearPostRebuildPurgeFailureIfCleaned sets PostRebuildPurgeFailed back to False once no snapshot
+// that a purge would remove is left, so the condition does not stay True after the leftovers were
+// purged by other means, such as a manual purge or the recurring snapshot cleanup. It keeps the
+// condition while the snapshot list is unknown, and while the only successful snapshot list on
+// record started at or before the failure (that list can still be the pre-rebuild view).
+func clearPostRebuildPurgeFailureIfCleaned(engine *longhorn.Engine) {
+	condition := types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	if condition.Status != longhorn.ConditionStatusTrue {
+		return
+	}
+	if engine.Status.SnapshotsError != "" || engine.Status.Snapshots == nil {
+		return
+	}
+	if !snapshotListStartedAfter(condition.LastProbeTime, condition.LastTransitionTime) {
+		return
+	}
+	if hasPurgeableSnapshots(engine.Spec.DataEngine, engine.Status.Snapshots) {
+		return
+	}
+	engine.Status.Conditions = types.SetCondition(engine.Status.Conditions,
+		longhorn.EngineConditionTypePostRebuildPurgeFailed, longhorn.ConditionStatusFalse,
+		longhorn.EngineConditionReasonPostRebuildPurgeCleaned, "")
+}
+
+// notePostRebuildSnapshotObservation records a successful SnapshotList on PostRebuildPurgeFailed
+// when that list started after the failure. LastProbeTime is the list start time. It is written
+// once per failure so a later reconcile can tell a post-failure observation from the snapshot
+// list that was already present when the failure was recorded.
+func notePostRebuildSnapshotObservation(engine *longhorn.Engine, listStartedAt string) {
+	for i := range engine.Status.Conditions {
+		if engine.Status.Conditions[i].Type != longhorn.EngineConditionTypePostRebuildPurgeFailed {
+			continue
+		}
+		failure := &engine.Status.Conditions[i]
+		if failure.Status != longhorn.ConditionStatusTrue {
+			return
+		}
+		if !snapshotListStartedAfter(listStartedAt, failure.LastTransitionTime) {
+			return
+		}
+		if snapshotListStartedAfter(failure.LastProbeTime, failure.LastTransitionTime) {
+			return
+		}
+		failure.LastProbeTime = listStartedAt
+		return
+	}
+}
+
+// snapshotListStartedAfter reports whether listStartedAt is a parseable time strictly after failedAt.
+func snapshotListStartedAfter(listStartedAt, failedAt string) bool {
+	started, err := util.ParseTime(listStartedAt)
 	if err != nil {
-		log.WithError(err).Error("Failed to get data engine object after rebuilding")
-		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
-		return
+		return false
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
-		log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
-		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
-		return
+	failed, err := util.ParseTime(failedAt)
+	if err != nil {
+		return false
 	}
+	return started.After(failed)
+}
+
+// hasPurgeableSnapshots reports whether any snapshot is left that a snapshot purge would remove.
+// V1: system-generated or removed snapshots, excluding the current volume-head parent.
+// V2: non-user-created snapshots with at most one child (head parent included; branched skipped).
+func hasPurgeableSnapshots(dataEngine longhorn.DataEngineType, snapshots map[string]*longhorn.SnapshotInfo) bool {
+	for name, snapshot := range snapshots {
+		if snapshot == nil || name == etypes.VolumeHeadName {
+			continue
+		}
+		if types.IsDataEngineV2(dataEngine) {
+			if snapshot.UserCreated {
+				continue
+			}
+			if len(snapshot.Children) > 1 {
+				continue
+			}
+			return true
+		}
+		if (snapshot.UserCreated || isBackingImageExportSnapshot(snapshot)) && !snapshot.Removed {
+			continue
+		}
+		if snapshot.Children[etypes.VolumeHeadName] {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// isBackingImageExportSnapshot reports a snapshot created to export a backing image.
+// V1 snapshot purge does not delete it until it is marked removed.
+func isBackingImageExportSnapshot(snapshot *longhorn.SnapshotInfo) bool {
+	if snapshot == nil || snapshot.Labels == nil {
+		return false
+	}
+	_, ok := snapshot.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage)]
+	return ok
 }
 
 // getFileLocalSync retrieves details for local file sync between the target replica

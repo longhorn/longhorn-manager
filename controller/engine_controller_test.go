@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -836,4 +838,599 @@ func TestSyncSnapshotCRs(t *testing.T) {
 			}
 		})
 	}
+}
+
+type purgeMockProxy struct {
+	*engineapi.EngineSimulator
+	failUntil      int
+	firstCallDelay time.Duration
+	purgeCalls     int
+	closeCalls     int
+	onPurge        func()
+}
+
+var _ engineapi.EngineClientProxy = (*purgeMockProxy)(nil)
+
+func (p *purgeMockProxy) Close() {
+	p.closeCalls++
+}
+
+func (p *purgeMockProxy) SnapshotPurge(_ engineapi.DataEngineObject) error {
+	p.purgeCalls++
+	if p.onPurge != nil {
+		p.onPurge()
+	}
+	if p.purgeCalls == 1 && p.firstCallDelay > 0 {
+		time.Sleep(p.firstCallDelay)
+	}
+	if p.purgeCalls <= p.failUntil {
+		return errors.Newf("transient failure starting purge (call %d)", p.purgeCalls)
+	}
+	return nil
+}
+
+func drainFakeEvents(r *record.FakeRecorder) []string {
+	var events []string
+	for {
+		select {
+		case e := <-r.Events:
+			events = append(events, e)
+		default:
+			return events
+		}
+	}
+}
+
+func newPostRebuildPurgeTestController(t *testing.T, recorder *record.FakeRecorder) (*EngineController, *util.InformerFactories) {
+	t.Helper()
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+	ec := &EngineController{
+		baseController:               newBaseController("longhorn-engine", logrus.New()),
+		controllerID:                 TestNode1,
+		ds:                           datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+		eventRecorder:                recorder,
+		snapshotConcurrentLimiter:    NewSnapshotConcurrentLimiter(),
+		postRebuildPurgeResults:      map[string]*postRebuildPurgeResult{},
+		postRebuildPurgeResultsMutex: &sync.Mutex{},
+	}
+	return ec, informerFactories
+}
+
+func TestStartPostRebuildPurge(t *testing.T) {
+	// Use short, test-controlled timings instead of production values.
+	origCount, origInterval := postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval
+	origPollInterval, origPollTimeout := EnginePollInterval, EnginePollTimeout
+	postRebuildPurgeRetryCount = 3
+	postRebuildPurgeRetryInterval = time.Millisecond
+	// Keep the engine poll deadline far shorter than a slow attempt so that a regression back
+	// to a deadline-bounded poll loop would skip the retry and fail the slow-attempt case.
+	EnginePollInterval = time.Millisecond
+	EnginePollTimeout = 10 * time.Millisecond
+	defer func() {
+		postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval = origCount, origInterval
+		EnginePollInterval, EnginePollTimeout = origPollInterval, origPollTimeout
+	}()
+
+	tests := map[string]struct {
+		failUntil           int
+		firstCallDelay      time.Duration
+		engineOwner         string
+		prevFailedCondition bool // engine already has PostRebuildPurgeFailed=True
+		expectCalls         int
+		expectEvent         bool
+		expectErrorText     string // substring expected in the event and the True condition; "" means False
+		expectAttempts      int
+	}{
+		"succeeds on first attempt": {
+			engineOwner: TestNode1,
+			expectCalls: 1,
+		},
+		// A transient failure must be retried; once it succeeds, no further attempts are made.
+		"failures followed by success stop retrying": {
+			failUntil:   2,
+			engineOwner: TestNode1,
+			expectCalls: 3,
+		},
+		// Exhausting all attempts reports the last purge error in the event and the condition.
+		"persistent failure exhausts attempts and records condition": {
+			failUntil:       1000,
+			engineOwner:     TestNode1,
+			expectCalls:     3,
+			expectEvent:     true,
+			expectErrorText: "(call 3)",
+			expectAttempts:  3,
+		},
+		// A slow attempt that fails after a deadline-style budget has elapsed must still be
+		// followed by another attempt (the proxy RPC timeout is independent of any poll deadline).
+		"slow failing attempt is still retried": {
+			failUntil:      1,
+			firstCallDelay: 50 * time.Millisecond,
+			engineOwner:    TestNode1,
+			expectCalls:    2,
+		},
+		// A node that no longer owns the engine must not purge or hand over a result.
+		"no attempt and no result when engine ownership is lost": {
+			failUntil:   1000,
+			engineOwner: TestNode2,
+			expectCalls: 0,
+		},
+		// A later successful purge start clears a previously recorded failure.
+		"success clears a previous failure condition": {
+			engineOwner:         TestNode1,
+			prevFailedCondition: true,
+			expectCalls:         1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			recorder := record.NewFakeRecorder(100)
+			ec, informerFactories := newPostRebuildPurgeTestController(t, recorder)
+
+			// Empty DataEngine means v1: GetDataEngineObject returns the engine itself.
+			engine := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+				},
+				Status: longhorn.EngineStatus{
+					InstanceStatus: longhorn.InstanceStatus{OwnerID: tc.engineOwner},
+				},
+			}
+			if tc.prevFailedCondition {
+				engine.Status.Conditions = types.SetCondition(engine.Status.Conditions,
+					longhorn.EngineConditionTypePostRebuildPurgeFailed, longhorn.ConditionStatusTrue,
+					longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, "previous failure")
+			}
+			eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+			assert.NoError(eIndexer.Add(engine))
+
+			proxy := &purgeMockProxy{
+				EngineSimulator: &engineapi.EngineSimulator{},
+				failUntil:       tc.failUntil,
+				firstCallDelay:  tc.firstCallDelay,
+			}
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			ec.startPostRebuildPurge(logrus.NewEntry(logger), engine, func(_ *longhorn.Engine) (engineapi.EngineClientProxy, error) {
+				return proxy, nil
+			})
+
+			assert.Equal(tc.expectCalls, proxy.purgeCalls, "SnapshotPurge attempt count")
+			assert.Equal(tc.expectCalls, proxy.closeCalls, "each attempt must close its proxy")
+
+			events := drainFakeEvents(recorder)
+			if tc.expectEvent {
+				assert.Len(events, 1, "expected exactly one failure event")
+				assert.Contains(events[0], constant.EventReasonFailedStartingSnapshotPurge)
+				assert.Contains(events[0], tc.expectErrorText, "event should report the last purge error")
+			} else {
+				assert.Empty(events, "no FailedStartingSnapshotPurge event expected")
+			}
+
+			if tc.engineOwner != TestNode1 {
+				assert.Empty(ec.postRebuildPurgeResults, "a non-owner must not record a result")
+				assert.Zero(ec.queue.Len(), "a non-owner must not enqueue the engine")
+				return
+			}
+
+			// The result is handed to syncEngine: kept in memory and the engine enqueued.
+			assert.Equal(1, ec.queue.Len(), "engine should be enqueued so syncEngine records the result")
+			applied := engine.DeepCopy()
+			assert.NotNil(ec.applyPostRebuildPurgeResult(applied), "a pending result is expected")
+
+			cond := types.GetCondition(applied.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+			if tc.expectErrorText != "" {
+				assert.Equal(longhorn.ConditionStatusTrue, cond.Status)
+				assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, cond.Reason)
+				assert.Contains(cond.Message, tc.expectErrorText, "condition should report the last purge error")
+				assert.Contains(cond.Message, "("+strconv.Itoa(tc.expectAttempts)+" attempts)")
+			} else {
+				assert.Equal(longhorn.ConditionStatusFalse, cond.Status)
+				assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStarted, cond.Reason)
+			}
+			// PurgeStatus is engine-reported per replica and must never be written by this path.
+			assert.Empty(applied.Status.PurgeStatus, "PurgeStatus must not be touched")
+		})
+	}
+}
+
+// A result must survive until syncEngine persists it: a conflict leaves it in place for the next
+// sync, and clearing an older result must not drop a newer one recorded in the meantime.
+func TestPostRebuildPurgeResultIsKeptUntilPersisted(t *testing.T) {
+	assert := require.New(t)
+	ec, _ := newPostRebuildPurgeTestController(t, record.NewFakeRecorder(10))
+	engine := &longhorn.Engine{ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace}}
+
+	ec.recordPostRebuildPurgeResult(engine, 3, errors.New("injected purge failure"))
+
+	// First sync applies the result but its status update conflicts: the result is not cleared.
+	first := ec.applyPostRebuildPurgeResult(engine.DeepCopy())
+	assert.NotNil(first)
+
+	// A newer rebuild finishes before the retried sync: clearing the old result must keep the new one.
+	ec.recordPostRebuildPurgeResult(engine, 1, nil)
+	ec.clearPostRebuildPurgeResult(engine.Name, first)
+	assert.NotNil(ec.postRebuildPurgeResults[engine.Name], "a newer result must not be dropped")
+
+	// The retried sync applies the newer result and clears it after a successful update.
+	applied := engine.DeepCopy()
+	second := ec.applyPostRebuildPurgeResult(applied)
+	assert.Equal(longhorn.ConditionStatusFalse,
+		types.GetCondition(applied.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed).Status)
+	ec.clearPostRebuildPurgeResult(engine.Name, second)
+	assert.Empty(ec.postRebuildPurgeResults)
+
+	// An engine that is gone or no longer owned drops any pending result.
+	ec.recordPostRebuildPurgeResult(engine, 3, errors.New("injected purge failure"))
+	ec.deletePostRebuildPurgeResult(engine.Name)
+	assert.Empty(ec.postRebuildPurgeResults)
+}
+
+const (
+	postRebuildPurgeFailedAt   = "2026-11-26T10:00:00Z"
+	postRebuildPurgeObservedAt = "2026-11-26T10:00:05Z"
+)
+
+// A failed post-rebuild purge may be followed by a manual or recurring purge that removes the
+// leftovers; the condition must then go back to False instead of staying True forever.
+func TestClearPostRebuildPurgeFailureIfCleaned(t *testing.T) {
+	head := etypes.VolumeHeadName
+	failed := func() []longhorn.Condition {
+		return types.SetCondition(nil, longhorn.EngineConditionTypePostRebuildPurgeFailed,
+			longhorn.ConditionStatusTrue, longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, "previous failure")
+	}
+
+	tests := map[string]struct {
+		dataEngine     longhorn.DataEngineType
+		conditions     []longhorn.Condition
+		snapshots      map[string]*longhorn.SnapshotInfo
+		snapshotsError string
+		// observedAt is PostRebuildPurgeFailed.LastProbeTime: the start of a successful
+		// SnapshotList. Empty means no post-failure observation has been recorded.
+		observedAt   string
+		expectStatus longhorn.ConditionStatus
+	}{
+		"no failure condition is left untouched": {
+			snapshots:    map[string]*longhorn.SnapshotInfo{head: {Name: head}},
+			expectStatus: longhorn.ConditionStatusUnknown,
+		},
+		"only user snapshots left clears the failure": {
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"user": {Name: "user", UserCreated: true, Children: map[string]bool{head: true}},
+				head:   {Name: head, Parent: "user"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusFalse,
+		},
+		// The same clean list, observed before the failure, is still the pre-rebuild view.
+		"clean snapshots observed before the failure keep it": {
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"user": {Name: "user", UserCreated: true, Children: map[string]bool{head: true}},
+				head:   {Name: head, Parent: "user"},
+			},
+			observedAt:   "2026-11-26T09:59:59Z",
+			expectStatus: longhorn.ConditionStatusTrue,
+		},
+		"system snapshot still present keeps the failure": {
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"system": {Name: "system", Children: map[string]bool{"user": true}},
+				"user":   {Name: "user", UserCreated: true, Parent: "system", Children: map[string]bool{head: true}},
+				head:     {Name: head, Parent: "user"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusTrue,
+		},
+		"removed snapshot still present keeps the failure": {
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"removed": {Name: "removed", UserCreated: true, Removed: true, Children: map[string]bool{"user": true}},
+				"user":    {Name: "user", UserCreated: true, Parent: "removed", Children: map[string]bool{head: true}},
+				head:      {Name: head, Parent: "user"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusTrue,
+		},
+		// V1: the parent of the volume head cannot be purged yet, so it must not keep the condition stuck.
+		"v1 system snapshot behind the volume head does not block clearing": {
+			dataEngine: longhorn.DataEngineTypeV1,
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"system": {Name: "system", Children: map[string]bool{head: true}},
+				head:     {Name: head, Parent: "system"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusFalse,
+		},
+		"v1 unremoved backing-image export snapshot does not block clearing": {
+			dataEngine: longhorn.DataEngineTypeV1,
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"export": {
+					Name: "export", UserCreated: false,
+					Labels:   map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage): "bids"},
+					Children: map[string]bool{"user": true},
+				},
+				"user": {Name: "user", UserCreated: true, Parent: "export", Children: map[string]bool{head: true}},
+				head:   {Name: head, Parent: "user"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusFalse,
+		},
+		"v1 removed backing-image export snapshot keeps the failure": {
+			dataEngine: longhorn.DataEngineTypeV1,
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"export": {
+					Name: "export", UserCreated: false, Removed: true,
+					Labels:   map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage): "bids"},
+					Children: map[string]bool{"user": true},
+				},
+				"user": {Name: "user", UserCreated: true, Parent: "export", Children: map[string]bool{head: true}},
+				head:   {Name: head, Parent: "user"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusTrue,
+		},
+		// V2: head parent with a single child is purgeable, so the failure must stay.
+		"v2 system snapshot behind the volume head keeps the failure": {
+			dataEngine: longhorn.DataEngineTypeV2,
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"system": {Name: "system", Children: map[string]bool{head: true}},
+				head:     {Name: head, Parent: "system"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusTrue,
+		},
+		// V2: branched system snapshots are skipped by purge, so they must not block clearing.
+		"v2 branched system snapshot does not block clearing": {
+			dataEngine: longhorn.DataEngineTypeV2,
+			conditions: failed(),
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				"system": {Name: "system", Children: map[string]bool{"a": true, "b": true}},
+				"a":      {Name: "a", UserCreated: true, Parent: "system", Children: map[string]bool{head: true}},
+				"b":      {Name: "b", UserCreated: true, Parent: "system"},
+				head:     {Name: head, Parent: "a"},
+			},
+			observedAt:   postRebuildPurgeObservedAt,
+			expectStatus: longhorn.ConditionStatusFalse,
+		},
+		"unknown snapshot list keeps the failure": {
+			conditions:   failed(),
+			snapshots:    nil,
+			expectStatus: longhorn.ConditionStatusTrue,
+		},
+		"snapshot list error keeps the failure": {
+			conditions:     failed(),
+			snapshots:      map[string]*longhorn.SnapshotInfo{head: {Name: head}},
+			snapshotsError: "failed to list snapshots",
+			expectStatus:   longhorn.ConditionStatusTrue,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+			engine := &longhorn.Engine{
+				Spec: longhorn.EngineSpec{DataEngine: tc.dataEngine},
+				Status: longhorn.EngineStatus{
+					InstanceStatus: longhorn.InstanceStatus{Conditions: tc.conditions},
+					Snapshots:      tc.snapshots,
+					SnapshotsError: tc.snapshotsError,
+				},
+			}
+			for i := range engine.Status.Conditions {
+				if engine.Status.Conditions[i].Type != longhorn.EngineConditionTypePostRebuildPurgeFailed {
+					continue
+				}
+				engine.Status.Conditions[i].LastTransitionTime = postRebuildPurgeFailedAt
+				engine.Status.Conditions[i].LastProbeTime = tc.observedAt
+			}
+
+			clearPostRebuildPurgeFailureIfCleaned(engine)
+
+			cond := types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+			assert.Equal(tc.expectStatus, cond.Status)
+			if tc.expectStatus == longhorn.ConditionStatusFalse {
+				assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeCleaned, cond.Reason)
+			}
+		})
+	}
+}
+
+// An instance-manager replacement that changes the engine's IM name between attempts must
+// force a new client; reusing the pre-rebuild proxy would keep targeting the old endpoint.
+func TestStartPostRebuildPurgeUsesFreshProxyAfterInstanceManagerReplacement(t *testing.T) {
+	origCount, origInterval := postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval
+	postRebuildPurgeRetryCount = 3
+	postRebuildPurgeRetryInterval = time.Millisecond
+	defer func() {
+		postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval = origCount, origInterval
+	}()
+
+	assert := require.New(t)
+	recorder := record.NewFakeRecorder(100)
+	ec, informerFactories := newPostRebuildPurgeTestController(t, recorder)
+
+	engine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+		Spec: longhorn.EngineSpec{
+			InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+		},
+		Status: longhorn.EngineStatus{
+			InstanceStatus: longhorn.InstanceStatus{
+				OwnerID:             TestNode1,
+				InstanceManagerName: "im-old",
+			},
+		},
+	}
+	eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+	assert.NoError(eIndexer.Add(engine))
+
+	type trackedProxy struct {
+		*purgeMockProxy
+		imName string
+	}
+	var created []*trackedProxy
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+
+	ec.startPostRebuildPurge(logrus.NewEntry(logger), engine, func(e *longhorn.Engine) (engineapi.EngineClientProxy, error) {
+		p := &trackedProxy{
+			purgeMockProxy: &purgeMockProxy{EngineSimulator: &engineapi.EngineSimulator{}},
+			imName:         e.Status.InstanceManagerName,
+		}
+		if len(created) == 0 {
+			p.failUntil = 1
+			p.onPurge = func() {
+				latest, err := ec.ds.GetEngine(engine.Name)
+				assert.NoError(err)
+				latest.Status.InstanceManagerName = "im-new"
+				assert.NoError(eIndexer.Update(latest))
+			}
+		}
+		created = append(created, p)
+		return p, nil
+	})
+
+	assert.Len(created, 2)
+	assert.Equal("im-old", created[0].imName)
+	assert.Equal("im-new", created[1].imName)
+	assert.Equal(1, created[0].purgeCalls)
+	assert.Equal(1, created[0].closeCalls)
+	assert.Equal(1, created[1].purgeCalls)
+	assert.Equal(1, created[1].closeCalls)
+	assert.Empty(drainFakeEvents(recorder))
+
+	applied := engine.DeepCopy()
+	assert.NotNil(ec.applyPostRebuildPurgeResult(applied))
+	assert.Equal(longhorn.ConditionStatusFalse,
+		types.GetCondition(applied.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed).Status)
+}
+
+// A pending failure must win over a stale clean snapshot list in the same reconcile.
+func TestPendingPurgeFailureWinsOverStaleCleanSnapshots(t *testing.T) {
+	assert := require.New(t)
+	ec, _ := newPostRebuildPurgeTestController(t, record.NewFakeRecorder(10))
+	head := etypes.VolumeHeadName
+
+	engine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+		Status: longhorn.EngineStatus{
+			// Pre-rebuild view: only a non-purgeable head parent remains.
+			Snapshots: map[string]*longhorn.SnapshotInfo{
+				"system": {Name: "system", Children: map[string]bool{head: true}},
+				head:     {Name: head, Parent: "system"},
+			},
+		},
+	}
+	ec.recordPostRebuildPurgeResult(engine, 3, errors.New("injected purge failure"))
+
+	clearPostRebuildPurgeFailureIfCleaned(engine)
+	result := ec.applyPostRebuildPurgeResult(engine)
+	assert.NotNil(result)
+	cond := types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	assert.Equal(longhorn.ConditionStatusTrue, cond.Status)
+	assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, cond.Reason)
+
+	// Persist the result, then reconcile again with the same pre-rebuild snapshot list.
+	ec.clearPostRebuildPurgeResult(engine.Name, result)
+	clearPostRebuildPurgeFailureIfCleaned(engine)
+	cond = types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	assert.Equal(longhorn.ConditionStatusTrue, cond.Status)
+	assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, cond.Reason)
+}
+
+// A SnapshotList that started before the failure must not count, and a later one is recorded once.
+func TestNotePostRebuildSnapshotObservation(t *testing.T) {
+	assert := require.New(t)
+	failedAt := postRebuildPurgeFailedAt
+	engine := &longhorn.Engine{
+		Status: longhorn.EngineStatus{
+			InstanceStatus: longhorn.InstanceStatus{
+				Conditions: types.SetCondition(nil, longhorn.EngineConditionTypePostRebuildPurgeFailed,
+					longhorn.ConditionStatusTrue, longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, "previous failure"),
+			},
+		},
+	}
+	for i := range engine.Status.Conditions {
+		if engine.Status.Conditions[i].Type == longhorn.EngineConditionTypePostRebuildPurgeFailed {
+			engine.Status.Conditions[i].LastTransitionTime = failedAt
+		}
+	}
+
+	notePostRebuildSnapshotObservation(engine, "2026-11-26T09:59:59Z")
+	cond := types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	assert.Empty(cond.LastProbeTime)
+
+	notePostRebuildSnapshotObservation(engine, postRebuildPurgeObservedAt)
+	cond = types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	assert.Equal(postRebuildPurgeObservedAt, cond.LastProbeTime)
+
+	notePostRebuildSnapshotObservation(engine, "2026-11-26T10:00:10Z")
+	cond = types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	assert.Equal(postRebuildPurgeObservedAt, cond.LastProbeTime)
+}
+
+// A second failure while PostRebuildPurgeFailed is already True must not be cleared by a clean
+// SnapshotList that started after the first failure and before this one.
+func TestConsecutivePostRebuildFailureIgnoresInFlightCleanList(t *testing.T) {
+	assert := require.New(t)
+	ec, _ := newPostRebuildPurgeTestController(t, record.NewFakeRecorder(10))
+	head := etypes.VolumeHeadName
+
+	engine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+		Status: longhorn.EngineStatus{
+			Snapshots: map[string]*longhorn.SnapshotInfo{
+				"user": {Name: "user", UserCreated: true, Children: map[string]bool{head: true}},
+				head:   {Name: head, Parent: "user"},
+			},
+			InstanceStatus: longhorn.InstanceStatus{
+				Conditions: types.SetCondition(nil, longhorn.EngineConditionTypePostRebuildPurgeFailed,
+					longhorn.ConditionStatusTrue, longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, "first failure"),
+			},
+		},
+	}
+	for i := range engine.Status.Conditions {
+		if engine.Status.Conditions[i].Type != longhorn.EngineConditionTypePostRebuildPurgeFailed {
+			continue
+		}
+		engine.Status.Conditions[i].LastTransitionTime = "2020-01-01T00:00:00Z"
+		// Clean list that started after the first failure, before the second.
+		engine.Status.Conditions[i].LastProbeTime = "2020-01-01T00:00:05Z"
+	}
+
+	ec.recordPostRebuildPurgeResult(engine, 3, errors.New("second failure"))
+	clearPostRebuildPurgeFailureIfCleaned(engine)
+	result := ec.applyPostRebuildPurgeResult(engine)
+	assert.NotNil(result)
+
+	cond := types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	assert.Equal(longhorn.ConditionStatusTrue, cond.Status)
+	assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, cond.Reason)
+	assert.Empty(cond.LastProbeTime)
+	assert.NotEqual("2020-01-01T00:00:00Z", cond.LastTransitionTime)
+
+	// The in-flight list still predates this failure, so it must not be recorded.
+	notePostRebuildSnapshotObservation(engine, "2020-01-01T00:00:05Z")
+	clearPostRebuildPurgeFailureIfCleaned(engine)
+	cond = types.GetCondition(engine.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+	assert.Equal(longhorn.ConditionStatusTrue, cond.Status)
+	assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, cond.Reason)
+	assert.Empty(cond.LastProbeTime)
 }
