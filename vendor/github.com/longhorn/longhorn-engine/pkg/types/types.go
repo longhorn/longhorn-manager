@@ -110,6 +110,7 @@ type Backend interface {
 	ResetRebuild() error
 	SetSnapshotMaxCount(count int) error
 	SetSnapshotMaxSize(size int64) error
+	SetSnapshotRemoveOldest(enabled bool) error
 	GetSnapshotCountAndSizeUsage() (int, int, int64, error)
 }
 
@@ -159,6 +160,7 @@ type Frontend interface {
 	FrontendName() string
 	Init(name string, size, sectorSize int64) error
 	Startup(rwu ReaderWriterUnmapperAt) error
+	StartInitiatorAndWaitForDeviceReady() error
 	Shutdown() error
 	State() State
 	Endpoint() string

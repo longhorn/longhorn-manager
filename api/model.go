@@ -63,6 +63,7 @@ type Volume struct {
 	DataEngine                      longhorn.DataEngineType                `json:"dataEngine"`
 	SnapshotMaxCount                int                                    `json:"snapshotMaxCount"`
 	SnapshotMaxSize                 string                                 `json:"snapshotMaxSize"`
+	SnapshotRemoveOldest            bool                                   `json:"snapshotRemoveOldest"`
 	ReplicaRebuildingBandwidthLimit int64                                  `json:"replicaRebuildingBandwidthLimit"`
 	UblkQueueDepth                  int                                    `json:"ublkQueueDepth"`
 	UblkNumberOfQueue               int                                    `json:"ublkNumberOfQueue"`
@@ -400,6 +401,10 @@ type UpdateSnapshotMaxSizeInput struct {
 	SnapshotMaxSize string `json:"snapshotMaxSize"`
 }
 
+type UpdateSnapshotRemoveOldestInput struct {
+	SnapshotRemoveOldest string `json:"snapshotRemoveOldest"`
+}
+
 type UpdateReplicaRebuildingBandwidthLimitInput struct {
 	ReplicaRebuildingBandwidthLimit string `json:"replicaRebuildingBandwidthLimit"`
 }
@@ -438,6 +443,10 @@ type UpdateSnapshotMaxCount struct {
 
 type UpdateSnapshotMaxSize struct {
 	SnapshotMaxSize string `json:"snapshotMaxSize"`
+}
+
+type UpdateSnapshotRemoveOldest struct {
+	SnapshotRemoveOldest bool `json:"snapshotRemoveOldest"`
 }
 
 type UpdateReplicaRebuildingBandwidthLimit struct {
@@ -807,6 +816,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateSnapshotDataIntegrityInput", UpdateSnapshotDataIntegrityInput{})
 	schemas.AddType("UpdateSnapshotMaxCountInput", UpdateSnapshotMaxCountInput{})
 	schemas.AddType("UpdateSnapshotMaxSizeInput", UpdateSnapshotMaxSizeInput{})
+	schemas.AddType("UpdateSnapshotRemoveOldestInput", UpdateSnapshotRemoveOldestInput{})
 	schemas.AddType("UpdateReplicaRebuildingBandwidthLimitInput", UpdateReplicaRebuildingBandwidthLimitInput{})
 	schemas.AddType("UpdateUblkQueueDepthInput", UpdateUblkQueueDepthInput{})
 	schemas.AddType("UpdateUblkNumberOfQueueInput", UpdateUblkNumberOfQueueInput{})
@@ -1342,6 +1352,10 @@ func volumeSchema(volume *client.Schema) {
 
 		"updateSnapshotMaxSize": {
 			Input: "UpdateSnapshotMaxSizeInput",
+		},
+
+		"updateSnapshotRemoveOldest": {
+			Input: "UpdateSnapshotRemoveOldestInput",
 		},
 
 		"updateReplicaRebuildingBandwidthLimit": {
@@ -1911,6 +1925,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		SnapshotDataIntegrity:           v.Spec.SnapshotDataIntegrity,
 		SnapshotMaxCount:                v.Spec.SnapshotMaxCount,
 		SnapshotMaxSize:                 strconv.FormatInt(v.Spec.SnapshotMaxSize, 10),
+		SnapshotRemoveOldest:            v.Spec.SnapshotRemoveOldest,
 		ReplicaRebuildingBandwidthLimit: v.Spec.ReplicaRebuildingBandwidthLimit,
 		UblkQueueDepth:                  v.Spec.UblkQueueDepth,
 		UblkNumberOfQueue:               v.Spec.UblkNumberOfQueue,
@@ -2003,6 +2018,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateSnapshotMaxCount"] = struct{}{}
 			actions["updateSnapshotMaxSize"] = struct{}{}
+			actions["updateSnapshotRemoveOldest"] = struct{}{}
 			actions["updateReplicaRebuildingBandwidthLimit"] = struct{}{}
 			actions["updateUblkQueueDepth"] = struct{}{}
 			actions["updateUblkNumberOfQueue"] = struct{}{}
@@ -2041,6 +2057,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateSnapshotMaxCount"] = struct{}{}
 			actions["updateSnapshotMaxSize"] = struct{}{}
+			actions["updateSnapshotRemoveOldest"] = struct{}{}
 			actions["updateReplicaRebuildingBandwidthLimit"] = struct{}{}
 			actions["updateBackupCompressionMethod"] = struct{}{}
 			actions["updateReplicaSoftAntiAffinity"] = struct{}{}

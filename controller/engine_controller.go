@@ -1237,6 +1237,17 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				}
 			}
 		}
+
+		if cliAPIVersion >= 13 && im.Status.APIVersion >= 7 {
+			engine.Status.SnapshotRemoveOldest = volumeInfo.SnapshotRemoveOldest
+			if engine.Spec.SnapshotRemoveOldest != volumeInfo.SnapshotRemoveOldest {
+				logrus.Infof("Correcting flag SnapshotRemoveOldest from %v to %v", volumeInfo.SnapshotRemoveOldest, engine.Spec.SnapshotRemoveOldest)
+				if err := engineClientProxy.VolumeSnapshotRemoveOldestSet(engine); err != nil {
+					return errors.Wrapf(err, "failed to correct flag SnapshotRemoveOldest from %v to %v",
+						volumeInfo.SnapshotRemoveOldest, engine.Spec.SnapshotRemoveOldest)
+				}
+			}
+		}
 	} else {
 		// For incompatible running engine, the current size is always `engine.Spec.VolumeSize`.
 		engine.Status.CurrentSize = engine.Spec.VolumeSize

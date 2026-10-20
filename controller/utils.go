@@ -390,6 +390,7 @@ func newReplicaCR(v *longhorn.Volume, e *longhorn.Engine, hardNodeAffinity strin
 			UnmapMarkDiskChainRemovedEnabled: e.Spec.UnmapMarkSnapChainRemovedEnabled,
 			SnapshotMaxCount:                 v.Spec.SnapshotMaxCount,
 			SnapshotMaxSize:                  v.Spec.SnapshotMaxSize,
+			SnapshotRemoveOldest:             v.Spec.SnapshotRemoveOldest,
 		},
 	}
 }

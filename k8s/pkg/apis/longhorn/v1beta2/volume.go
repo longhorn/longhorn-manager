@@ -424,6 +424,8 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// +optional
+	SnapshotRemoveOldest bool `json:"snapshotRemoveOldest"`
 	// Setting that freezes the filesystem on the root partition before a snapshot is created.
 	// +optional
 	FreezeFilesystemForSnapshot FreezeFilesystemForSnapshot `json:"freezeFilesystemForSnapshot"`

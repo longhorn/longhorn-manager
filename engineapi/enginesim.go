@@ -277,6 +277,10 @@ func (e *EngineSimulator) VolumeSnapshotMaxSizeSet(*longhorn.Engine) error {
 	return errors.New(ErrNotImplement)
 }
 
+func (e *EngineSimulator) VolumeSnapshotRemoveOldestSet(*longhorn.Engine) error {
+	return errors.New(ErrNotImplement)
+}
+
 func (e *EngineSimulator) ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error {
 	return errors.New(ErrNotImplement)
 }

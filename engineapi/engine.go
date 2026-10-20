@@ -328,6 +328,16 @@ func (e *EngineBinary) VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error {
 	return nil
 }
 
+// VolumeSnapshotRemoveOldestSet calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeSnapshotRemoveOldestSet(engine *longhorn.Engine) error {
+	cmdline := []string{"snapshot-remove-oldest", strconv.FormatBool(engine.Spec.SnapshotRemoveOldest)}
+	if _, err := e.ExecuteEngineBinary(cmdline...); err != nil {
+		return errors.Wrapf(err, "error setting volume flag SnapshotRemoveOldest to %v", engine.Spec.SnapshotRemoveOldest)
+	}
+	return nil
+}
+
 // ReplicaRebuildVerify calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error {
