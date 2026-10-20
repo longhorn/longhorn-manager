@@ -52,8 +52,8 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
 	}
 
-	if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
-		return werror.NewInvalidError("v2 backing image is not supported", "")
+	if !types.IsDataEngineV1(backingImage.Spec.DataEngine) {
+		return werror.NewInvalidError(fmt.Sprintf("data engine %v is not supported for backing images", backingImage.Spec.DataEngine), "spec.dataEngine")
 	}
 
 	if backingImage.Spec.Secret != "" || backingImage.Spec.SecretNamespace != "" {
@@ -87,9 +87,8 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		if err != nil {
 			return werror.NewInvalidError(fmt.Sprintf("invalid parameter %+v for source type %v", backingImage.Spec.SourceParameters, backingImage.Spec.SourceType), "")
 		}
-		if types.IsDataEngineV2(sourceBackingImage.Spec.DataEngine) {
-			// TODO: support clone from v2 backing image in the future.
-			return werror.NewInvalidError("clone from a v2 backing image is not supported", "")
+		if !types.IsDataEngineV1(sourceBackingImage.Spec.DataEngine) {
+			return werror.NewInvalidError(fmt.Sprintf("clone from a %v backing image is not supported", sourceBackingImage.Spec.DataEngine), "")
 		}
 		return b.validateCloneParameters(sourceBackingImage, backingImage)
 	case longhorn.BackingImageDataSourceTypeDownload:
@@ -105,9 +104,8 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 			return werror.NewInvalidError(fmt.Sprintf("failed to get volume %v before exporting backing image", volumeName), "")
 		}
 
-		if types.IsDataEngineV2(v.Spec.DataEngine) {
-			// TODO: support export backing image from v2 volume in the future.
-			return werror.NewInvalidError("exported from a v2 volume is not supported", "")
+		if !types.IsDataEngineV1(v.Spec.DataEngine) {
+			return werror.NewInvalidError(fmt.Sprintf("export from a %v volume is not supported", v.Spec.DataEngine), "")
 		}
 
 		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
