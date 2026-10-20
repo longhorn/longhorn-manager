@@ -65,6 +65,9 @@ var (
 
 	purgeWaitIntervalInSecond = 24 * 60 * 60
 
+	postRebuildPurgeRetryCount    = 3
+	postRebuildPurgeRetryInterval = 5 * time.Second
+
 	// restoreMaxInterval caps the backoff between restore retries. Most
 	// failures retry until the restore succeeds, for example while a backup
 	// deletion holds the backup lock or a backup target is unreachable, so
@@ -87,6 +90,18 @@ var (
 	// number of consecutive actual size updates allowed during bursts
 	sizeUpdateBurst = 3
 )
+
+var (
+	// errSnapshotPurgeConcurrentLimitReached means the snapshot heavy task concurrent limit is reached.
+	errSnapshotPurgeConcurrentLimitReached = errors.New("snapshot heavy task concurrent limit is reached")
+)
+
+// postRebuildPurgeResult is the outcome of a post-rebuild snapshot purge. The rebuild goroutine
+// stores it in memory and enqueues the engine; syncEngine records it in the engine conditions.
+type postRebuildPurgeResult struct {
+	err      error
+	attempts int
+}
 
 const (
 	ConflictRetryCount = 5
@@ -124,6 +139,11 @@ type EngineController struct {
 	restoringCounterMutex *sync.Mutex
 
 	snapshotConcurrentLimiter *SnapshotConcurrentLimiter
+
+	// postRebuildPurgeResults holds post-rebuild snapshot purge results from rebuild goroutines
+	// until syncEngine records them in the engine status conditions. Key: engine name.
+	postRebuildPurgeResults      map[string]*postRebuildPurgeResult
+	postRebuildPurgeResultsMutex *sync.Mutex
 }
 
 type EngineMonitor struct {
@@ -208,6 +228,9 @@ func NewEngineController(
 		restoringCounterMutex: &sync.Mutex{},
 
 		snapshotConcurrentLimiter: snapshotConcurrentLimiter,
+
+		postRebuildPurgeResults:      map[string]*postRebuildPurgeResult{},
+		postRebuildPurgeResultsMutex: &sync.Mutex{},
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -319,6 +342,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	engine, err := ec.ds.GetEngine(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
+			ec.deletePostRebuildPurgeResult(name)
 			return nil
 		}
 		return errors.Wrapf(err, "failed to get engine")
@@ -334,6 +358,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 	if !isResponsible {
+		ec.deletePostRebuildPurgeResult(name)
 		return nil
 	}
 
@@ -351,6 +376,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.DeletionTimestamp != nil {
+		ec.deletePostRebuildPurgeResult(name)
 		if err := ec.DeleteInstance(engine); err != nil {
 			return errors.Wrapf(err, "failed to clean up the related engine instance before deleting engine %v", engine.Name)
 		}
@@ -358,10 +384,16 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	existingEngine := engine.DeepCopy()
+	// Record a pending post-rebuild purge result from a rebuild goroutine in the engine conditions.
+	// It is kept until the status update below succeeds, so a conflict only requeues the engine.
+	pendingPurgeResult := ec.applyPostRebuildPurgeResult(engine)
 	defer func() {
 		// we're going to update engine assume things changes
 		if err == nil && !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 			_, err = ec.ds.UpdateEngineStatus(engine)
+		}
+		if err == nil && pendingPurgeResult != nil {
+			ec.clearPostRebuildPurgeResult(name, pendingPurgeResult)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -2882,7 +2914,7 @@ func (ec *EngineController) waitForPreRebuildPurge(
 			"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
 		return false
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
+	if err := cleanupProxy.SnapshotPurge(dataEngineObj, true); err != nil {
 		log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 			"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
@@ -2991,36 +3023,114 @@ func (ec *EngineController) handleRebuildFailure(
 }
 
 // startPostRebuildPurge attempts to start a snapshot purge after a successful rebuild.
+// Unlike the pre-rebuild purge, this runs only once and has no reconcile-driven second
+// chance, so every failure to start it (including the concurrency limit) is retried up to
+// postRebuildPurgeRetryCount attempts. The outcome is handed to syncEngine, which records it
+// in the engine's PostRebuildPurgeFailed condition.
 func (ec *EngineController) startPostRebuildPurge(
 	log *logrus.Entry,
 	engine *longhorn.Engine,
 	cleanupProxy engineapi.EngineClientProxy,
 ) {
-	allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(cleanupProxy, engine, ec.ds)
-	if err != nil {
-		log.WithError(err).Error("Failed to check whether can start snapshot purge after rebuilding")
-		return
-	}
-
-	if !allowSnapshotPurge {
-		log.Debug("Cannot start SnapshotPurge for engine after rebuilding because the concurrent limit is reached")
-		return
-	}
-
 	log.Info("Starting snapshot purge after rebuilding")
-	dataEngineObj, err := ec.ds.GetDataEngineObject(engine)
-	if err != nil {
-		log.WithError(err).Error("Failed to get data engine object after rebuilding")
-		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
-		return
+
+	var lastErr error
+	attempts := 0
+	for attempts < postRebuildPurgeRetryCount {
+		attempts++
+		if attempts > 1 {
+			log.WithError(lastErr).Warnf("Failed to start snapshot purge after rebuilding (attempt %d/%d), retrying in %v",
+				attempts-1, postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval)
+			time.Sleep(postRebuildPurgeRetryInterval)
+		}
+
+		dataEngineObj, err := ec.ds.GetDataEngineObject(engine)
+		if err != nil {
+			lastErr = errors.Wrap(err, "failed to get data engine object")
+			continue
+		}
+
+		allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(cleanupProxy, engine, ec.ds)
+		if err != nil {
+			lastErr = errors.Wrap(err, "failed to check whether can start snapshot purge")
+			continue
+		}
+		if !allowSnapshotPurge {
+			lastErr = errSnapshotPurgeConcurrentLimitReached
+			continue
+		}
+
+		// The engine may have been taken over by another node during the rebuild or the retry interval.
+		if !ec.isEngineOwner(log, engine.Name) {
+			log.Warn("Stopped snapshot purge after rebuilding since this node no longer owns the engine")
+			return
+		}
+
+		lastErr = cleanupProxy.SnapshotPurge(dataEngineObj, false)
+		if lastErr == nil {
+			ec.recordPostRebuildPurgeResult(engine, attempts, nil)
+			return
+		}
+		if etypes.IsAlreadyPurgingError(lastErr) {
+			log.WithError(lastErr).Info("A snapshot purge is still in progress, will retry the post-rebuild purge")
+		}
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
-		log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
-		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
-		return
+
+	log.WithError(lastErr).Errorf("Failed to start snapshot purge after rebuilding after %d attempts", attempts)
+	ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+		"Failed to start snapshot purge for engine %v and volume %v after rebuilding (%d attempts): %v",
+		engine.Name, engine.Spec.VolumeName, attempts, lastErr)
+	ec.recordPostRebuildPurgeResult(engine, attempts, lastErr)
+}
+
+// recordPostRebuildPurgeResult keeps the post-rebuild purge result in memory and enqueues the
+// engine, so syncEngine records it in the engine conditions through its normal status update.
+func (ec *EngineController) recordPostRebuildPurgeResult(engine *longhorn.Engine, attempts int, purgeErr error) {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	ec.postRebuildPurgeResults[engine.Name] = &postRebuildPurgeResult{err: purgeErr, attempts: attempts}
+	ec.postRebuildPurgeResultsMutex.Unlock()
+
+	ec.enqueueEngine(engine)
+}
+
+// applyPostRebuildPurgeResult sets the PostRebuildPurgeFailed condition from the pending result of
+// the engine, if any, and returns that result so the caller can clear it after a successful update.
+func (ec *EngineController) applyPostRebuildPurgeResult(engine *longhorn.Engine) *postRebuildPurgeResult {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	result := ec.postRebuildPurgeResults[engine.Name]
+	ec.postRebuildPurgeResultsMutex.Unlock()
+	if result == nil {
+		return nil
 	}
+
+	if result.err != nil {
+		engine.Status.Conditions = types.SetCondition(engine.Status.Conditions,
+			longhorn.EngineConditionTypePostRebuildPurgeFailed, longhorn.ConditionStatusTrue,
+			longhorn.EngineConditionReasonPostRebuildPurgeStartFailed,
+			fmt.Sprintf("Failed to start snapshot purge after rebuilding (%d attempts): %v", result.attempts, result.err))
+	} else {
+		engine.Status.Conditions = types.SetCondition(engine.Status.Conditions,
+			longhorn.EngineConditionTypePostRebuildPurgeFailed, longhorn.ConditionStatusFalse,
+			longhorn.EngineConditionReasonPostRebuildPurgeStarted, "")
+	}
+	return result
+}
+
+// clearPostRebuildPurgeResult drops the recorded result once it is persisted, unless a newer
+// result replaced it in the meantime.
+func (ec *EngineController) clearPostRebuildPurgeResult(engineName string, result *postRebuildPurgeResult) {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	defer ec.postRebuildPurgeResultsMutex.Unlock()
+	if ec.postRebuildPurgeResults[engineName] == result {
+		delete(ec.postRebuildPurgeResults, engineName)
+	}
+}
+
+// deletePostRebuildPurgeResult drops any pending result of an engine that is gone or no longer owned.
+func (ec *EngineController) deletePostRebuildPurgeResult(engineName string) {
+	ec.postRebuildPurgeResultsMutex.Lock()
+	defer ec.postRebuildPurgeResultsMutex.Unlock()
+	delete(ec.postRebuildPurgeResults, engineName)
 }
 
 // getFileLocalSync retrieves details for local file sync between the target replica

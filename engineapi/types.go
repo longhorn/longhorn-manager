@@ -118,7 +118,7 @@ type EngineClient interface {
 	SnapshotGet(obj DataEngineObject, name string) (*longhorn.SnapshotInfo, error)
 	SnapshotDelete(obj DataEngineObject, name string) error
 	SnapshotRevert(obj DataEngineObject, name string) error
-	SnapshotPurge(obj DataEngineObject) error
+	SnapshotPurge(obj DataEngineObject, skipIfInProgress bool) error
 	SnapshotPurgeStatus(obj DataEngineObject) (map[string]*longhorn.PurgeStatus, error)
 	SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential, parameters map[string]string) (string, string, error)
 	SnapshotBackupStatus(obj DataEngineObject, backupName, replicaAddress, replicaName string) (*longhorn.EngineBackupStatus, error)

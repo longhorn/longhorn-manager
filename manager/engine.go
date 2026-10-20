@@ -275,7 +275,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	if err != nil {
 		return err
 	}
-	if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
+	if err := engineClientProxy.SnapshotPurge(dataEngineObj, true); err != nil {
 		return err
 	}
 

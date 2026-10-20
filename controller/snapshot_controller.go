@@ -868,7 +868,7 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 		if err != nil {
 			return err
 		}
-		if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
+		if err := engineClientProxy.SnapshotPurge(dataEngineObj, true); err != nil {
 			return err
 		}
 	}

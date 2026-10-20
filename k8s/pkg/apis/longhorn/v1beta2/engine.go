@@ -10,6 +10,16 @@ const (
 	ReplicaModeERR = ReplicaMode("ERR")
 )
 
+const (
+	// EngineConditionTypePostRebuildPurgeFailed is True when the snapshot purge after a replica
+	// rebuild could not be started after all retries, so system-generated snapshots may remain
+	// until a later purge. It is set to False once a post-rebuild purge starts successfully.
+	EngineConditionTypePostRebuildPurgeFailed = "PostRebuildPurgeFailed"
+
+	EngineConditionReasonPostRebuildPurgeStartFailed = "StartFailed"
+	EngineConditionReasonPostRebuildPurgeStarted     = "Started"
+)
+
 type EngineBackupStatus struct {
 	// +optional
 	Progress int `json:"progress"`
