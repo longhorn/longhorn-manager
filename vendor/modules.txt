@@ -121,11 +121,11 @@ github.com/felixge/httpsnoop
 # github.com/fxamacker/cbor/v2 v2.9.3
 ## explicit; go 1.20
 github.com/fxamacker/cbor/v2
-# github.com/gammazero/deque v1.0.0
-## explicit; go 1.22
+# github.com/gammazero/deque v1.2.1
+## explicit; go 1.24
 github.com/gammazero/deque
-# github.com/gammazero/workerpool v1.1.3
-## explicit; go 1.18
+# github.com/gammazero/workerpool v1.2.1
+## explicit; go 1.24
 github.com/gammazero/workerpool
 # github.com/getsentry/sentry-go v0.46.0
 ## explicit; go 1.25.0
@@ -282,8 +282,8 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
-## explicit; go 1.25.10
+# github.com/longhorn/backupstore v0.0.0-20261020110232-e14d5880bb6f
+## explicit; go 1.26.0
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
 github.com/longhorn/backupstore/common
@@ -291,8 +291,8 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
-## explicit; go 1.25.10
+# github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c
+## explicit; go 1.26.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
 github.com/longhorn/go-common-libs/bitmap
@@ -308,7 +308,7 @@ github.com/longhorn/go-common-libs/sync
 github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
+# github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
 ## explicit; go 1.25.10
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/iscsidev
@@ -324,14 +324,14 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
+# github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261020141215-7c1365134042
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004
+# github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261020153449-d40269a4fdc4
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -342,7 +342,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004
+# github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261020145414-6392878e98bb
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -401,8 +401,8 @@ github.com/munnerz/goautoneg
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/pierrec/lz4/v4 v4.1.29
-## explicit; go 1.17
+# github.com/pierrec/lz4/v4 v4.1.33
+## explicit; go 1.22
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
@@ -590,7 +590,7 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
-# golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a
+# golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297
 ## explicit; go 1.25.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
