@@ -21,6 +21,7 @@ import (
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
@@ -492,6 +493,158 @@ func TestHandleRebuildFailure(t *testing.T) {
 				assert.Equal(longhorn.InstanceStateRunning, updated.Spec.DesireState)
 				assert.Empty(updated.Spec.FailedAt)
 			}
+		})
+	}
+}
+
+// purgeMockProxy wraps EngineSimulator and controls SnapshotPurge results: the first
+// failUntil calls fail (the first one optionally after firstCallDelay to simulate a slow
+// RPC that times out), later calls succeed. All attempts are counted.
+type purgeMockProxy struct {
+	*engineapi.EngineSimulator
+	failUntil      int
+	firstCallDelay time.Duration
+	purgeCalls     int
+}
+
+var _ engineapi.EngineClientProxy = (*purgeMockProxy)(nil)
+
+func (p *purgeMockProxy) Close() {}
+
+func (p *purgeMockProxy) SnapshotPurge(_ engineapi.DataEngineObject) error {
+	p.purgeCalls++
+	if p.purgeCalls == 1 && p.firstCallDelay > 0 {
+		time.Sleep(p.firstCallDelay)
+	}
+	if p.purgeCalls <= p.failUntil {
+		return errors.Newf("transient failure starting purge (call %d)", p.purgeCalls)
+	}
+	return nil
+}
+
+func drainFakeEvents(r *record.FakeRecorder) []string {
+	var events []string
+	for {
+		select {
+		case e := <-r.Events:
+			events = append(events, e)
+		default:
+			return events
+		}
+	}
+}
+
+func TestStartPostRebuildPurge(t *testing.T) {
+	// Use short, test-controlled timings instead of production values.
+	origCount, origInterval := postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval
+	origPollInterval, origPollTimeout := EnginePollInterval, EnginePollTimeout
+	postRebuildPurgeRetryCount = 3
+	postRebuildPurgeRetryInterval = time.Millisecond
+	// Keep the engine poll deadline far shorter than a slow attempt so that a regression back
+	// to a deadline-bounded poll loop would skip the retry and fail the slow-attempt case.
+	EnginePollInterval = time.Millisecond
+	EnginePollTimeout = 10 * time.Millisecond
+	defer func() {
+		postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval = origCount, origInterval
+		EnginePollInterval, EnginePollTimeout = origPollInterval, origPollTimeout
+	}()
+
+	tests := map[string]struct {
+		failUntil       int
+		firstCallDelay  time.Duration
+		engineOwner     string
+		expectCalls     int
+		expectEvent     bool
+		expectEventText string // substring the failure event must contain (the last error)
+	}{
+		"succeeds on first attempt": {
+			failUntil:   0,
+			engineOwner: TestNode1,
+			expectCalls: 1,
+		},
+		// A transient failure must be retried; once it succeeds, no further attempts are made
+		// and no failure event is emitted.
+		"failures followed by success stop retrying": {
+			failUntil:   2,
+			engineOwner: TestNode1,
+			expectCalls: 3,
+		},
+		// Exhausting all attempts reports the last purge error.
+		"persistent failure exhausts attempts and reports last error": {
+			failUntil:       1000,
+			engineOwner:     TestNode1,
+			expectCalls:     3,
+			expectEvent:     true,
+			expectEventText: "(call 3)",
+		},
+		// A slow attempt that fails after a deadline-style budget has elapsed must still be
+		// followed by another attempt (the proxy RPC timeout is independent of any poll deadline).
+		"slow failing attempt is still retried": {
+			failUntil:      1,
+			firstCallDelay: 50 * time.Millisecond,
+			engineOwner:    TestNode1,
+			expectCalls:    2,
+		},
+		// If this node lost ownership of the engine, do not keep retrying on its behalf.
+		"retry stops when engine ownership is lost": {
+			failUntil:   1000,
+			engineOwner: TestNode2,
+			expectCalls: 1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+			datastore.SkipListerCheck = true
+
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+			recorder := record.NewFakeRecorder(100)
+			ec := &EngineController{
+				baseController:            newBaseController("longhorn-engine", logrus.New()),
+				controllerID:              TestNode1,
+				ds:                        datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+				eventRecorder:             recorder,
+				snapshotConcurrentLimiter: NewSnapshotConcurrentLimiter(),
+			}
+
+			// Empty DataEngine means v1: GetDataEngineObject returns the engine itself.
+			engine := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+				},
+				Status: longhorn.EngineStatus{
+					InstanceStatus: longhorn.InstanceStatus{OwnerID: tc.engineOwner},
+				},
+			}
+			eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+			assert.NoError(eIndexer.Add(engine))
+
+			proxy := &purgeMockProxy{
+				EngineSimulator: &engineapi.EngineSimulator{},
+				failUntil:       tc.failUntil,
+				firstCallDelay:  tc.firstCallDelay,
+			}
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			ec.startPostRebuildPurge(logrus.NewEntry(logger), engine, proxy)
+
+			assert.Equal(tc.expectCalls, proxy.purgeCalls, "SnapshotPurge attempt count")
+
+			events := drainFakeEvents(recorder)
+			if !tc.expectEvent {
+				assert.Empty(events, "no FailedStartingSnapshotPurge event expected")
+				return
+			}
+			assert.Len(events, 1, "expected exactly one failure event")
+			assert.Contains(events[0], constant.EventReasonFailedStartingSnapshotPurge)
+			assert.Contains(events[0], tc.expectEventText, "event should report the last purge error")
 		})
 	}
 }

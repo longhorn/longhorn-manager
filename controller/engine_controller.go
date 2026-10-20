@@ -65,6 +65,9 @@ var (
 
 	purgeWaitIntervalInSecond = 24 * 60 * 60
 
+	postRebuildPurgeRetryCount    = 3
+	postRebuildPurgeRetryInterval = 5 * time.Second
+
 	// restoreMaxInterval: deleting the backup of big size volume takes a long time for retain policy and restoring backups would be in backoff period.
 	restoreMaxInterval = 1 * time.Hour
 
@@ -2771,6 +2774,9 @@ func (ec *EngineController) handleRebuildFailure(
 }
 
 // startPostRebuildPurge attempts to start a snapshot purge after a successful rebuild.
+// Unlike the pre-rebuild purge, this runs only once and has no reconcile-driven second
+// chance, so a failed start is retried up to postRebuildPurgeRetryCount attempts to avoid
+// leaving redundant system-generated snapshots un-purged indefinitely.
 func (ec *EngineController) startPostRebuildPurge(
 	log *logrus.Entry,
 	engine *longhorn.Engine,
@@ -2795,12 +2801,32 @@ func (ec *EngineController) startPostRebuildPurge(
 			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
 		return
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
-		log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
-		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
-		return
+
+	var lastErr error
+	for attempt := 1; ; attempt++ {
+		lastErr = cleanupProxy.SnapshotPurge(dataEngineObj)
+		if lastErr == nil {
+			return
+		}
+		if attempt >= postRebuildPurgeRetryCount {
+			break
+		}
+
+		log.WithError(lastErr).Warnf("Failed to start snapshot purge after rebuilding (attempt %d/%d), retrying in %v",
+			attempt, postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval)
+		time.Sleep(postRebuildPurgeRetryInterval)
+
+		// The engine may have been taken over by another node while we were waiting.
+		if !ec.isEngineOwner(log, engine.Name) {
+			log.Warn("Stopped retrying snapshot purge after rebuilding since this node no longer owns the engine")
+			return
+		}
 	}
+
+	log.WithError(lastErr).Errorf("Failed to start snapshot purge after rebuilding after %d attempts", postRebuildPurgeRetryCount)
+	ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+		"Failed to start snapshot purge for engine %v and volume %v after rebuilding (%d attempts): %v",
+		engine.Name, engine.Spec.VolumeName, postRebuildPurgeRetryCount, lastErr)
 }
 
 // getFileLocalSync retrieves details for local file sync between the target replica
