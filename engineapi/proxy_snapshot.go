@@ -60,7 +60,7 @@ func (p *Proxy) SnapshotRevert(obj DataEngineObject, snapshotName string) (err e
 		snapshotName)
 }
 
-func (p *Proxy) SnapshotPurge(obj DataEngineObject) (err error) {
+func (p *Proxy) SnapshotPurge(obj DataEngineObject, skipIfInProgress bool) (err error) {
 	v, err := p.ds.GetVolumeRO(obj.GetVolumeName())
 	if err != nil {
 		return errors.Wrapf(err, "failed to get volume %v before purging snapshots", obj.GetVolumeName())
@@ -71,7 +71,7 @@ func (p *Proxy) SnapshotPurge(obj DataEngineObject) (err error) {
 	}
 
 	return p.grpcClient.SnapshotPurge(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj),
-		true)
+		skipIfInProgress)
 }
 
 func (p *Proxy) SnapshotPurgeStatus(obj DataEngineObject) (status map[string]*longhorn.PurgeStatus, err error) {

@@ -83,8 +83,12 @@ func (e *EngineBinary) SnapshotRevert(obj DataEngineObject, name string) error {
 
 // SnapshotPurge calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) SnapshotPurge(obj DataEngineObject) error {
-	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, "snapshot", "purge", "--skip-if-in-progress"); err != nil {
+func (e *EngineBinary) SnapshotPurge(obj DataEngineObject, skipIfInProgress bool) error {
+	args := []string{"snapshot", "purge"}
+	if skipIfInProgress {
+		args = append(args, "--skip-if-in-progress")
+	}
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, args...); err != nil {
 		return errors.Wrapf(err, "error starting snapshot purge")
 	}
 	logrus.Infof("Volume %v snapshot purge started", e.Name())
