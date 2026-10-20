@@ -1,6 +1,9 @@
 package deque
 
-import "fmt"
+import (
+	"fmt"
+	"iter"
+)
 
 // minCapacity is the smallest capacity that deque may have. Must be power of 2
 // for bitwise modulus: x % n == x & (n - 1).
@@ -27,7 +30,7 @@ const minCapacity = 16
 //
 //	d.Grow(1000)
 //
-// Any values supplied to SetBaseCap and Grow are rounded up to the nearest
+// Any values supplied to [SetBaseCap] and [Grow] are rounded up to the nearest
 // power of 2, since the Deque grows by powers of 2.
 type Deque[T any] struct {
 	buf    []T
@@ -55,8 +58,8 @@ func (q *Deque[T]) Len() int {
 }
 
 // PushBack appends an element to the back of the queue. Implements FIFO when
-// elements are removed with PopFront, and LIFO when elements are removed with
-// PopBack.
+// elements are removed with [PopFront], and LIFO when elements are removed with
+// [PopBack].
 func (q *Deque[T]) PushBack(elem T) {
 	q.growIfFull()
 
@@ -77,7 +80,7 @@ func (q *Deque[T]) PushFront(elem T) {
 }
 
 // PopFront removes and returns the element from the front of the queue.
-// Implements FIFO when used with PushBack. If the queue is empty, the call
+// Implements FIFO when used with [PushBack]. If the queue is empty, the call
 // panics.
 func (q *Deque[T]) PopFront() T {
 	if q.count <= 0 {
@@ -94,8 +97,31 @@ func (q *Deque[T]) PopFront() T {
 	return ret
 }
 
+// IterPopFront returns an iterator that iteratively removes items from the
+// front of the deque. This is more efficient than removing items one at a time
+// because it avoids intermediate resizing. If a resize is necessary, only one
+// is done when iteration ends.
+func (q *Deque[T]) IterPopFront() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		if q.Len() == 0 {
+			return
+		}
+		var zero T
+		for q.count != 0 {
+			ret := q.buf[q.head]
+			q.buf[q.head] = zero
+			q.head = q.next(q.head)
+			q.count--
+			if !yield(ret) {
+				break
+			}
+		}
+		q.shrinkToFit()
+	}
+}
+
 // PopBack removes and returns the element from the back of the queue.
-// Implements LIFO when used with PushBack. If the queue is empty, the call
+// Implements LIFO when used with [PushBack]. If the queue is empty, the call
 // panics.
 func (q *Deque[T]) PopBack() T {
 	if q.count <= 0 {
@@ -115,8 +141,32 @@ func (q *Deque[T]) PopBack() T {
 	return ret
 }
 
+// IterPopBack returns an iterator that iteratively removes items from the back
+// of the deque. This is more efficient than removing items one at a time
+// because it avoids intermediate resizing. If a resize is necessary, only one
+// is done when iteration ends.
+func (q *Deque[T]) IterPopBack() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		if q.Len() == 0 {
+			return
+		}
+		var zero T
+		for q.count != 0 {
+			q.tail = q.prev(q.tail)
+			ret := q.buf[q.tail]
+			q.buf[q.tail] = zero
+			q.count--
+			if !yield(ret) {
+				break
+			}
+		}
+		q.shrinkToFit()
+	}
+}
+
 // Front returns the element at the front of the queue. This is the element
-// that would be returned by PopFront. This call panics if the queue is empty.
+// that would be returned by [PopFront]. This call panics if the queue is
+// empty.
 func (q *Deque[T]) Front() T {
 	if q.count <= 0 {
 		panic("deque: Front() called when empty")
@@ -125,7 +175,7 @@ func (q *Deque[T]) Front() T {
 }
 
 // Back returns the element at the back of the queue. This is the element that
-// would be returned by PopBack. This call panics if the queue is empty.
+// would be returned by [PopBack]. This call panics if the queue is empty.
 func (q *Deque[T]) Back() T {
 	if q.count <= 0 {
 		panic("deque: Back() called when empty")
@@ -135,8 +185,8 @@ func (q *Deque[T]) Back() T {
 
 // At returns the element at index i in the queue without removing the element
 // from the queue. This method accepts only non-negative index values. At(0)
-// refers to the first element and is the same as Front(). At(Len()-1) refers
-// to the last element and is the same as Back(). If the index is invalid, the
+// refers to the first element and is the same as [Front]. At(Len()-1) refers
+// to the last element and is the same as [Back]. If the index is invalid, the
 // call panics.
 //
 // The purpose of At is to allow Deque to serve as a more general purpose
@@ -152,12 +202,52 @@ func (q *Deque[T]) At(i int) T {
 }
 
 // Set assigns the item to index i in the queue. Set indexes the deque the same
-// as At but perform the opposite operation. If the index is invalid, the call
+// as [At] but perform the opposite operation. If the index is invalid, the call
 // panics.
 func (q *Deque[T]) Set(i int, item T) {
 	q.checkRange(i)
 	// bitwise modulus
 	q.buf[(q.head+i)&(len(q.buf)-1)] = item
+}
+
+// Iter returns a go iterator to range over all items in the Deque, yielding
+// each item from front (index 0) to back (index Len()-1). Modification of
+// Deque during iteration panics.
+func (q *Deque[T]) Iter() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		origHead := q.head
+		origTail := q.tail
+		head := origHead
+		for range q.Len() {
+			if q.head != origHead || q.tail != origTail {
+				panic("deque: modified during iteration")
+			}
+			if !yield(q.buf[head]) {
+				return
+			}
+			head = q.next(head)
+		}
+	}
+}
+
+// RIter returns a reverse go iterator to range over all items in the Deque,
+// yielding each item from back (index Len()-1) to front (index 0).
+// Modification of Deque during iteration panics.
+func (q *Deque[T]) RIter() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		origHead := q.head
+		origTail := q.tail
+		tail := origTail
+		for range q.Len() {
+			if q.head != origHead || q.tail != origTail {
+				panic("deque: modified during iteration")
+			}
+			tail = q.prev(tail)
+			if !yield(q.buf[tail]) {
+				return
+			}
+		}
+	}
 }
 
 // Clear removes all elements from the queue, but retains the current capacity.
@@ -166,15 +256,20 @@ func (q *Deque[T]) Set(i int, item T) {
 // only added. Only when items are removed is the queue subject to getting
 // resized smaller.
 func (q *Deque[T]) Clear() {
-	var zero T
-	modBits := len(q.buf) - 1
-	h := q.head
-	for i := 0; i < q.Len(); i++ {
-		q.buf[(h+i)&modBits] = zero
+	if q.Len() == 0 {
+		return
 	}
+	head, tail := q.head, q.tail
+	q.count = 0
 	q.head = 0
 	q.tail = 0
-	q.count = 0
+
+	if head >= tail {
+		// [DEF....ABC]
+		clear(q.buf[head:])
+		head = 0
+	}
+	clear(q.buf[head:tail])
 }
 
 // Grow grows deque's capacity, if necessary, to guarantee space for another n
@@ -206,6 +301,125 @@ func (q *Deque[T]) Grow(n int) {
 	} else {
 		q.resize(c)
 	}
+}
+
+// Copy copies the contents of the given src Deque into this Deque.
+//
+//	n := b.Copy(a)
+//
+// is an efficient shortcut for
+//
+//	b.Clear()
+//	n := a.Len()
+//	b.Grow(n)
+//	for i := 0; i < n; i++ {
+//		b.PushBack(a.At(i))
+//	}
+func (q *Deque[T]) Copy(src Deque[T]) int {
+	q.Clear()
+	q.Grow(src.Len())
+	n := src.CopyOutSlice(q.buf)
+	q.count = n
+	q.tail = n & (len(q.buf) - 1) // bitwise modulus
+	q.head = 0
+	return n
+}
+
+// AppendToSlice appends from the Deque to the given slice. If the slice has
+// insufficient capacity to store all elements in Deque, then allocate a new
+// slice. Returns the resulting slice.
+//
+//	out = q.AppendToSlice(out)
+//
+// is an efficient shortcut for
+//
+//	for i := 0; i < q.Len(); i++ {
+//		x = append(out, q.At(i))
+//	}
+func (q *Deque[T]) AppendToSlice(out []T) []T {
+	if q.count == 0 {
+		return out
+	}
+
+	head, tail := q.head, q.tail
+
+	if head >= tail {
+		// [DEF....ABC]
+		out = append(out, q.buf[head:]...)
+		head = 0
+	}
+	return append(out, q.buf[head:tail]...)
+}
+
+// CopyInSlice replaces the contents of Deque with all the elements from the
+// given slice, in. If len(in) is zero, then this is equivalent to calling
+// [Clear].
+//
+//	q.CopyInSlice(in)
+//
+// is an efficient shortcut for
+//
+//	q.Clear()
+//	for i := range in {
+//		q.PushBack(in[i])
+//	}
+func (q *Deque[T]) CopyInSlice(in []T) {
+	// Allocate new buffer if more space needed.
+	if len(q.buf) < len(in) {
+		newCap := len(q.buf)
+		if newCap == 0 {
+			newCap = minCapacity
+			q.minCap = minCapacity
+		}
+		for newCap < len(in) {
+			newCap <<= 1
+		}
+		q.buf = make([]T, newCap)
+	} else if len(q.buf) > len(in) {
+		q.Clear()
+	}
+	n := copy(q.buf, in)
+	q.count = n
+	q.tail = n & (len(q.buf) - 1) // bitwise modulus
+	q.head = 0
+}
+
+// CopyOutSlice copies elements from the Deque into the given slice, up to the
+// size of the buffer. Returns the number of elements copied, which will be the
+// minimum of q.Len() and len(out).
+//
+//	n := q.CopyOutSlice(out)
+//
+// is an efficient shortcut for
+//
+//	n := min(len(out), q.Len())
+//	for i := 0; i < n; i++ {
+//	 	out[i] = q.At(i)
+//	}
+//
+// This function is preferable to one that returns a copy of the internal
+// buffer because this allows reuse of memory receiving data, for repeated copy
+// operations.
+func (q *Deque[T]) CopyOutSlice(out []T) int {
+	if q.count == 0 || len(out) == 0 {
+		return 0
+	}
+
+	head, tail := q.head, q.tail
+	var n int
+
+	if head >= tail {
+		// [DEF....ABC]
+		n = copy(out, q.buf[head:])
+		out = out[n:]
+		if len(out) == 0 {
+			return n
+		}
+		head = 0
+	}
+	n += copy(out, q.buf[head:tail])
+
+	return n
 }
 
 // Rotate rotates the deque n steps front-to-back. If n is negative, rotates
@@ -274,7 +488,7 @@ func (q *Deque[T]) Index(f func(T) bool) int {
 
 // RIndex is the same as Index, but searches from Back to Front. The index
 // returned is from Front to Back, where index 0 is the index of the item
-// returned by Front().
+// returned by [Front].
 func (q *Deque[T]) RIndex(f func(T) bool) int {
 	if q.Len() > 0 {
 		modBits := len(q.buf) - 1
@@ -308,7 +522,7 @@ func (q *Deque[T]) Insert(at int, item T) {
 	if at*2 < q.count {
 		q.PushFront(item)
 		front := q.head
-		for i := 0; i < at; i++ {
+		for range at {
 			next := q.next(front)
 			q.buf[front], q.buf[next] = q.buf[next], q.buf[front]
 			front = next
@@ -318,7 +532,7 @@ func (q *Deque[T]) Insert(at int, item T) {
 	swaps := q.count - at
 	q.PushBack(item)
 	back := q.prev(q.tail)
-	for i := 0; i < swaps; i++ {
+	for range swaps {
 		prev := q.prev(back)
 		q.buf[back], q.buf[prev] = q.buf[prev], q.buf[back]
 		back = prev
@@ -326,8 +540,8 @@ func (q *Deque[T]) Insert(at int, item T) {
 }
 
 // Remove removes and returns an element from the middle of the queue, at the
-// specified index. Remove(0) is the same as PopFront() and Remove(Len()-1) is
-// the same as PopBack(). Accepts only non-negative index values, and panics if
+// specified index. Remove(0) is the same as [PopFront] and Remove(Len()-1) is
+// the same as [PopBack]. Accepts only non-negative index values, and panics if
 // index is out of range.
 //
 // Important: Deque is optimized for O(1) operations at the ends of the queue,
@@ -338,7 +552,7 @@ func (q *Deque[T]) Remove(at int) T {
 	q.checkRange(at)
 	rm := (q.head + at) & (len(q.buf) - 1)
 	if at*2 < q.count {
-		for i := 0; i < at; i++ {
+		for range at {
 			prev := q.prev(rm)
 			q.buf[prev], q.buf[rm] = q.buf[rm], q.buf[prev]
 			rm = prev
@@ -346,7 +560,7 @@ func (q *Deque[T]) Remove(at int) T {
 		return q.PopFront()
 	}
 	swaps := q.count - at - 1
-	for i := 0; i < swaps; i++ {
+	for range swaps {
 		next := q.next(rm)
 		q.buf[rm], q.buf[next] = q.buf[next], q.buf[rm]
 		rm = next
@@ -416,6 +630,23 @@ func (q *Deque[T]) shrinkIfExcess() {
 	}
 }
 
+func (q *Deque[T]) shrinkToFit() {
+	if len(q.buf) > q.minCap && (q.count<<2) <= len(q.buf) {
+		if q.count == 0 {
+			q.head = 0
+			q.tail = 0
+			q.buf = make([]T, q.minCap)
+			return
+		}
+
+		c := q.minCap
+		for c < q.count {
+			c <<= 1
+		}
+		q.resize(c)
+	}
+}
+
 // resize resizes the deque to fit exactly twice its current contents. This is
 // used to grow the queue when it is full, and also to shrink it when it is
 // only a quarter full.
@@ -429,6 +660,6 @@ func (q *Deque[T]) resize(newSize int) {
 	}
 
 	q.head = 0
-	q.tail = q.count
+	q.tail = q.count & (newSize - 1) // bitwise modulus, in case buffer is exactly full
 	q.buf = newBuf
 }
