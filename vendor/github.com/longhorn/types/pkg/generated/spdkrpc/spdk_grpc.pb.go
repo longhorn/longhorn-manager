@@ -55,14 +55,39 @@ const (
 	SPDKService_ReplicaSnapshotCloneSrcStart_FullMethodName              = "/spdkrpc.SPDKService/ReplicaSnapshotCloneSrcStart"
 	SPDKService_ReplicaSnapshotCloneSrcStatusCheck_FullMethodName        = "/spdkrpc.SPDKService/ReplicaSnapshotCloneSrcStatusCheck"
 	SPDKService_ReplicaSnapshotCloneSrcFinish_FullMethodName             = "/spdkrpc.SPDKService/ReplicaSnapshotCloneSrcFinish"
+	SPDKService_ShardCreate_FullMethodName                               = "/spdkrpc.SPDKService/ShardCreate"
+	SPDKService_ShardDelete_FullMethodName                               = "/spdkrpc.SPDKService/ShardDelete"
+	SPDKService_ShardGet_FullMethodName                                  = "/spdkrpc.SPDKService/ShardGet"
+	SPDKService_ShardList_FullMethodName                                 = "/spdkrpc.SPDKService/ShardList"
+	SPDKService_ShardExpand_FullMethodName                               = "/spdkrpc.SPDKService/ShardExpand"
+	SPDKService_ShardWatch_FullMethodName                                = "/spdkrpc.SPDKService/ShardWatch"
+	SPDKService_ShardGroupCreate_FullMethodName                          = "/spdkrpc.SPDKService/ShardGroupCreate"
+	SPDKService_ShardGroupDelete_FullMethodName                          = "/spdkrpc.SPDKService/ShardGroupDelete"
+	SPDKService_ShardGroupGet_FullMethodName                             = "/spdkrpc.SPDKService/ShardGroupGet"
+	SPDKService_ShardGroupList_FullMethodName                            = "/spdkrpc.SPDKService/ShardGroupList"
+	SPDKService_ShardGroupWatch_FullMethodName                           = "/spdkrpc.SPDKService/ShardGroupWatch"
+	SPDKService_ShardGroupExpand_FullMethodName                          = "/spdkrpc.SPDKService/ShardGroupExpand"
+	SPDKService_ShardGroupExpandPrecheck_FullMethodName                  = "/spdkrpc.SPDKService/ShardGroupExpandPrecheck"
+	SPDKService_ShardGroupShardReplace_FullMethodName                    = "/spdkrpc.SPDKService/ShardGroupShardReplace"
+	SPDKService_ShardGroupShardRebuildStart_FullMethodName               = "/spdkrpc.SPDKService/ShardGroupShardRebuildStart"
+	SPDKService_ShardGroupShardRebuildProgress_FullMethodName            = "/spdkrpc.SPDKService/ShardGroupShardRebuildProgress"
+	SPDKService_ShardGroupShardRebuildStop_FullMethodName                = "/spdkrpc.SPDKService/ShardGroupShardRebuildStop"
+	SPDKService_ShardGroupShardRebuildQosSet_FullMethodName              = "/spdkrpc.SPDKService/ShardGroupShardRebuildQosSet"
+	SPDKService_ShardGroupShardForceFail_FullMethodName                  = "/spdkrpc.SPDKService/ShardGroupShardForceFail"
+	SPDKService_ShardGroupSnapshotCreate_FullMethodName                  = "/spdkrpc.SPDKService/ShardGroupSnapshotCreate"
+	SPDKService_ShardGroupSnapshotDelete_FullMethodName                  = "/spdkrpc.SPDKService/ShardGroupSnapshotDelete"
+	SPDKService_ShardGroupSnapshotRevert_FullMethodName                  = "/spdkrpc.SPDKService/ShardGroupSnapshotRevert"
+	SPDKService_ShardGroupSnapshotPurge_FullMethodName                   = "/spdkrpc.SPDKService/ShardGroupSnapshotPurge"
 	SPDKService_EngineCreate_FullMethodName                              = "/spdkrpc.SPDKService/EngineCreate"
 	SPDKService_EngineDelete_FullMethodName                              = "/spdkrpc.SPDKService/EngineDelete"
 	SPDKService_EngineGet_FullMethodName                                 = "/spdkrpc.SPDKService/EngineGet"
 	SPDKService_EngineSuspend_FullMethodName                             = "/spdkrpc.SPDKService/EngineSuspend"
 	SPDKService_EngineResume_FullMethodName                              = "/spdkrpc.SPDKService/EngineResume"
+	SPDKService_EngineSnapshotMaxCountSet_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotMaxCountSet"
 	SPDKService_EngineExpand_FullMethodName                              = "/spdkrpc.SPDKService/EngineExpand"
-	SPDKService_EngineSwitchOverTarget_FullMethodName                    = "/spdkrpc.SPDKService/EngineSwitchOverTarget"
+	SPDKService_EngineExpandPrecheck_FullMethodName                      = "/spdkrpc.SPDKService/EngineExpandPrecheck"
 	SPDKService_EngineDeleteTarget_FullMethodName                        = "/spdkrpc.SPDKService/EngineDeleteTarget"
+	SPDKService_EngineSetTargetListenerANAState_FullMethodName           = "/spdkrpc.SPDKService/EngineSetTargetListenerANAState"
 	SPDKService_EngineSnapshotCreate_FullMethodName                      = "/spdkrpc.SPDKService/EngineSnapshotCreate"
 	SPDKService_EngineSnapshotDelete_FullMethodName                      = "/spdkrpc.SPDKService/EngineSnapshotDelete"
 	SPDKService_EngineSnapshotRevert_FullMethodName                      = "/spdkrpc.SPDKService/EngineSnapshotRevert"
@@ -82,6 +107,20 @@ const (
 	SPDKService_EngineBackupRestore_FullMethodName                       = "/spdkrpc.SPDKService/EngineBackupRestore"
 	SPDKService_EngineBackupRestoreFinish_FullMethodName                 = "/spdkrpc.SPDKService/EngineBackupRestoreFinish"
 	SPDKService_EngineRestoreStatus_FullMethodName                       = "/spdkrpc.SPDKService/EngineRestoreStatus"
+	SPDKService_EngineFrontendCreate_FullMethodName                      = "/spdkrpc.SPDKService/EngineFrontendCreate"
+	SPDKService_EngineFrontendDelete_FullMethodName                      = "/spdkrpc.SPDKService/EngineFrontendDelete"
+	SPDKService_EngineFrontendGet_FullMethodName                         = "/spdkrpc.SPDKService/EngineFrontendGet"
+	SPDKService_EngineFrontendList_FullMethodName                        = "/spdkrpc.SPDKService/EngineFrontendList"
+	SPDKService_EngineFrontendWatch_FullMethodName                       = "/spdkrpc.SPDKService/EngineFrontendWatch"
+	SPDKService_EngineFrontendSuspend_FullMethodName                     = "/spdkrpc.SPDKService/EngineFrontendSuspend"
+	SPDKService_EngineFrontendResume_FullMethodName                      = "/spdkrpc.SPDKService/EngineFrontendResume"
+	SPDKService_EngineFrontendExpand_FullMethodName                      = "/spdkrpc.SPDKService/EngineFrontendExpand"
+	SPDKService_EngineFrontendSnapshotCreate_FullMethodName              = "/spdkrpc.SPDKService/EngineFrontendSnapshotCreate"
+	SPDKService_EngineFrontendSnapshotDelete_FullMethodName              = "/spdkrpc.SPDKService/EngineFrontendSnapshotDelete"
+	SPDKService_EngineFrontendSnapshotRevert_FullMethodName              = "/spdkrpc.SPDKService/EngineFrontendSnapshotRevert"
+	SPDKService_EngineFrontendSnapshotPurge_FullMethodName               = "/spdkrpc.SPDKService/EngineFrontendSnapshotPurge"
+	SPDKService_EngineFrontendReplicaAdd_FullMethodName                  = "/spdkrpc.SPDKService/EngineFrontendReplicaAdd"
+	SPDKService_EngineFrontendSwitchOver_FullMethodName                  = "/spdkrpc.SPDKService/EngineFrontendSwitchOver"
 	SPDKService_BackingImageCreate_FullMethodName                        = "/spdkrpc.SPDKService/BackingImageCreate"
 	SPDKService_BackingImageDelete_FullMethodName                        = "/spdkrpc.SPDKService/BackingImageDelete"
 	SPDKService_BackingImageGet_FullMethodName                           = "/spdkrpc.SPDKService/BackingImageGet"
@@ -140,14 +179,39 @@ type SPDKServiceClient interface {
 	ReplicaSnapshotCloneSrcStart(ctx context.Context, in *ReplicaSnapshotCloneSrcStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaSnapshotCloneSrcStatusCheck(ctx context.Context, in *ReplicaSnapshotCloneSrcStatusCheckRequest, opts ...grpc.CallOption) (*ReplicaSnapshotCloneSrcStatusCheckResponse, error)
 	ReplicaSnapshotCloneSrcFinish(ctx context.Context, in *ReplicaSnapshotCloneSrcFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardCreate(ctx context.Context, in *ShardCreateRequest, opts ...grpc.CallOption) (*Shard, error)
+	ShardDelete(ctx context.Context, in *ShardDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardGet(ctx context.Context, in *ShardGetRequest, opts ...grpc.CallOption) (*Shard, error)
+	ShardList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ShardListResponse, error)
+	ShardExpand(ctx context.Context, in *ShardExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_ShardWatchClient, error)
+	ShardGroupCreate(ctx context.Context, in *ShardGroupCreateRequest, opts ...grpc.CallOption) (*ShardGroup, error)
+	ShardGroupDelete(ctx context.Context, in *ShardGroupDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardGroupGet(ctx context.Context, in *ShardGroupGetRequest, opts ...grpc.CallOption) (*ShardGroup, error)
+	ShardGroupList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ShardGroupListResponse, error)
+	ShardGroupWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_ShardGroupWatchClient, error)
+	ShardGroupExpand(ctx context.Context, in *ShardGroupExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardGroupExpandPrecheck(ctx context.Context, in *ShardGroupExpandPrecheckRequest, opts ...grpc.CallOption) (*ShardGroupExpandPrecheckResponse, error)
+	ShardGroupShardReplace(ctx context.Context, in *ShardGroupShardReplaceRequest, opts ...grpc.CallOption) (*ShardGroupShardReplaceResponse, error)
+	ShardGroupShardRebuildStart(ctx context.Context, in *ShardGroupShardRebuildStartRequest, opts ...grpc.CallOption) (*ShardGroupShardRebuildStartResponse, error)
+	ShardGroupShardRebuildProgress(ctx context.Context, in *ShardGroupShardRebuildProgressRequest, opts ...grpc.CallOption) (*ShardGroupShardRebuildProgressResponse, error)
+	ShardGroupShardRebuildStop(ctx context.Context, in *ShardGroupShardRebuildStopRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardGroupShardRebuildQosSet(ctx context.Context, in *ShardGroupShardRebuildQosSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardGroupShardForceFail(ctx context.Context, in *ShardGroupShardForceFailRequest, opts ...grpc.CallOption) (*ShardGroupShardForceFailResponse, error)
+	ShardGroupSnapshotCreate(ctx context.Context, in *ShardGroupSnapshotCreateRequest, opts ...grpc.CallOption) (*ShardGroupSnapshotCreateResponse, error)
+	ShardGroupSnapshotDelete(ctx context.Context, in *ShardGroupSnapshotDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardGroupSnapshotRevert(ctx context.Context, in *ShardGroupSnapshotRevertRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ShardGroupSnapshotPurge(ctx context.Context, in *ShardGroupSnapshotPurgeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineCreate(ctx context.Context, in *EngineCreateRequest, opts ...grpc.CallOption) (*Engine, error)
 	EngineDelete(ctx context.Context, in *EngineDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineGet(ctx context.Context, in *EngineGetRequest, opts ...grpc.CallOption) (*Engine, error)
 	EngineSuspend(ctx context.Context, in *EngineSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineResume(ctx context.Context, in *EngineResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineSnapshotMaxCountSet(ctx context.Context, in *EngineSnapshotMaxCountSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineExpand(ctx context.Context, in *EngineExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	EngineSwitchOverTarget(ctx context.Context, in *EngineSwitchOverTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineExpandPrecheck(ctx context.Context, in *EngineExpandPrecheckRequest, opts ...grpc.CallOption) (*EngineExpandPrecheckResponse, error)
 	EngineDeleteTarget(ctx context.Context, in *EngineDeleteTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineSetTargetListenerANAState(ctx context.Context, in *EngineSetTargetListenerANAStateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
 	EngineSnapshotDelete(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -167,6 +231,20 @@ type SPDKServiceClient interface {
 	EngineBackupRestore(ctx context.Context, in *EngineBackupRestoreRequest, opts ...grpc.CallOption) (*EngineBackupRestoreResponse, error)
 	EngineBackupRestoreFinish(ctx context.Context, in *EngineBackupRestoreFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineRestoreStatus(ctx context.Context, in *RestoreStatusRequest, opts ...grpc.CallOption) (*RestoreStatusResponse, error)
+	EngineFrontendCreate(ctx context.Context, in *EngineFrontendCreateRequest, opts ...grpc.CallOption) (*EngineFrontend, error)
+	EngineFrontendDelete(ctx context.Context, in *EngineFrontendDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendGet(ctx context.Context, in *EngineFrontendGetRequest, opts ...grpc.CallOption) (*EngineFrontend, error)
+	EngineFrontendList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EngineFrontendListResponse, error)
+	EngineFrontendWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_EngineFrontendWatchClient, error)
+	EngineFrontendSuspend(ctx context.Context, in *EngineFrontendSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendResume(ctx context.Context, in *EngineFrontendResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendExpand(ctx context.Context, in *EngineFrontendExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
+	EngineFrontendSnapshotDelete(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendSnapshotPurge(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendReplicaAdd(ctx context.Context, in *EngineFrontendReplicaAddRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineFrontendSwitchOver(ctx context.Context, in *EngineFrontendSwitchOverRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	BackingImageCreate(ctx context.Context, in *BackingImageCreateRequest, opts ...grpc.CallOption) (*BackingImage, error)
 	BackingImageDelete(ctx context.Context, in *BackingImageDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	BackingImageGet(ctx context.Context, in *BackingImageGetRequest, opts ...grpc.CallOption) (*BackingImage, error)
@@ -534,6 +612,259 @@ func (c *sPDKServiceClient) ReplicaSnapshotCloneSrcFinish(ctx context.Context, i
 	return out, nil
 }
 
+func (c *sPDKServiceClient) ShardCreate(ctx context.Context, in *ShardCreateRequest, opts ...grpc.CallOption) (*Shard, error) {
+	out := new(Shard)
+	err := c.cc.Invoke(ctx, SPDKService_ShardCreate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardDelete(ctx context.Context, in *ShardDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardDelete_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGet(ctx context.Context, in *ShardGetRequest, opts ...grpc.CallOption) (*Shard, error) {
+	out := new(Shard)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ShardListResponse, error) {
+	out := new(ShardListResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardList_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardExpand(ctx context.Context, in *ShardExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardExpand_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_ShardWatchClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SPDKService_ServiceDesc.Streams[1], SPDKService_ShardWatch_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &sPDKServiceShardWatchClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type SPDKService_ShardWatchClient interface {
+	Recv() (*emptypb.Empty, error)
+	grpc.ClientStream
+}
+
+type sPDKServiceShardWatchClient struct {
+	grpc.ClientStream
+}
+
+func (x *sPDKServiceShardWatchClient) Recv() (*emptypb.Empty, error) {
+	m := new(emptypb.Empty)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupCreate(ctx context.Context, in *ShardGroupCreateRequest, opts ...grpc.CallOption) (*ShardGroup, error) {
+	out := new(ShardGroup)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupCreate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupDelete(ctx context.Context, in *ShardGroupDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupDelete_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupGet(ctx context.Context, in *ShardGroupGetRequest, opts ...grpc.CallOption) (*ShardGroup, error) {
+	out := new(ShardGroup)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ShardGroupListResponse, error) {
+	out := new(ShardGroupListResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupList_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_ShardGroupWatchClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SPDKService_ServiceDesc.Streams[2], SPDKService_ShardGroupWatch_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &sPDKServiceShardGroupWatchClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type SPDKService_ShardGroupWatchClient interface {
+	Recv() (*emptypb.Empty, error)
+	grpc.ClientStream
+}
+
+type sPDKServiceShardGroupWatchClient struct {
+	grpc.ClientStream
+}
+
+func (x *sPDKServiceShardGroupWatchClient) Recv() (*emptypb.Empty, error) {
+	m := new(emptypb.Empty)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupExpand(ctx context.Context, in *ShardGroupExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupExpand_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupExpandPrecheck(ctx context.Context, in *ShardGroupExpandPrecheckRequest, opts ...grpc.CallOption) (*ShardGroupExpandPrecheckResponse, error) {
+	out := new(ShardGroupExpandPrecheckResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupExpandPrecheck_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupShardReplace(ctx context.Context, in *ShardGroupShardReplaceRequest, opts ...grpc.CallOption) (*ShardGroupShardReplaceResponse, error) {
+	out := new(ShardGroupShardReplaceResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupShardReplace_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupShardRebuildStart(ctx context.Context, in *ShardGroupShardRebuildStartRequest, opts ...grpc.CallOption) (*ShardGroupShardRebuildStartResponse, error) {
+	out := new(ShardGroupShardRebuildStartResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupShardRebuildStart_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupShardRebuildProgress(ctx context.Context, in *ShardGroupShardRebuildProgressRequest, opts ...grpc.CallOption) (*ShardGroupShardRebuildProgressResponse, error) {
+	out := new(ShardGroupShardRebuildProgressResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupShardRebuildProgress_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupShardRebuildStop(ctx context.Context, in *ShardGroupShardRebuildStopRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupShardRebuildStop_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupShardRebuildQosSet(ctx context.Context, in *ShardGroupShardRebuildQosSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupShardRebuildQosSet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupShardForceFail(ctx context.Context, in *ShardGroupShardForceFailRequest, opts ...grpc.CallOption) (*ShardGroupShardForceFailResponse, error) {
+	out := new(ShardGroupShardForceFailResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupShardForceFail_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupSnapshotCreate(ctx context.Context, in *ShardGroupSnapshotCreateRequest, opts ...grpc.CallOption) (*ShardGroupSnapshotCreateResponse, error) {
+	out := new(ShardGroupSnapshotCreateResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupSnapshotCreate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupSnapshotDelete(ctx context.Context, in *ShardGroupSnapshotDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupSnapshotDelete_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupSnapshotRevert(ctx context.Context, in *ShardGroupSnapshotRevertRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupSnapshotRevert_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ShardGroupSnapshotPurge(ctx context.Context, in *ShardGroupSnapshotPurgeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ShardGroupSnapshotPurge_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) EngineCreate(ctx context.Context, in *EngineCreateRequest, opts ...grpc.CallOption) (*Engine, error) {
 	out := new(Engine)
 	err := c.cc.Invoke(ctx, SPDKService_EngineCreate_FullMethodName, in, out, opts...)
@@ -579,6 +910,15 @@ func (c *sPDKServiceClient) EngineResume(ctx context.Context, in *EngineResumeRe
 	return out, nil
 }
 
+func (c *sPDKServiceClient) EngineSnapshotMaxCountSet(ctx context.Context, in *EngineSnapshotMaxCountSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineSnapshotMaxCountSet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) EngineExpand(ctx context.Context, in *EngineExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, SPDKService_EngineExpand_FullMethodName, in, out, opts...)
@@ -588,9 +928,9 @@ func (c *sPDKServiceClient) EngineExpand(ctx context.Context, in *EngineExpandRe
 	return out, nil
 }
 
-func (c *sPDKServiceClient) EngineSwitchOverTarget(ctx context.Context, in *EngineSwitchOverTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, SPDKService_EngineSwitchOverTarget_FullMethodName, in, out, opts...)
+func (c *sPDKServiceClient) EngineExpandPrecheck(ctx context.Context, in *EngineExpandPrecheckRequest, opts ...grpc.CallOption) (*EngineExpandPrecheckResponse, error) {
+	out := new(EngineExpandPrecheckResponse)
+	err := c.cc.Invoke(ctx, SPDKService_EngineExpandPrecheck_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -600,6 +940,15 @@ func (c *sPDKServiceClient) EngineSwitchOverTarget(ctx context.Context, in *Engi
 func (c *sPDKServiceClient) EngineDeleteTarget(ctx context.Context, in *EngineDeleteTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, SPDKService_EngineDeleteTarget_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineSetTargetListenerANAState(ctx context.Context, in *EngineSetTargetListenerANAStateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineSetTargetListenerANAState_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -697,7 +1046,7 @@ func (c *sPDKServiceClient) EngineList(ctx context.Context, in *emptypb.Empty, o
 }
 
 func (c *sPDKServiceClient) EngineWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_EngineWatchClient, error) {
-	stream, err := c.cc.NewStream(ctx, &SPDKService_ServiceDesc.Streams[1], SPDKService_EngineWatch_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &SPDKService_ServiceDesc.Streams[3], SPDKService_EngineWatch_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -800,6 +1149,155 @@ func (c *sPDKServiceClient) EngineRestoreStatus(ctx context.Context, in *Restore
 	return out, nil
 }
 
+func (c *sPDKServiceClient) EngineFrontendCreate(ctx context.Context, in *EngineFrontendCreateRequest, opts ...grpc.CallOption) (*EngineFrontend, error) {
+	out := new(EngineFrontend)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendCreate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendDelete(ctx context.Context, in *EngineFrontendDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendDelete_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendGet(ctx context.Context, in *EngineFrontendGetRequest, opts ...grpc.CallOption) (*EngineFrontend, error) {
+	out := new(EngineFrontend)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EngineFrontendListResponse, error) {
+	out := new(EngineFrontendListResponse)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendList_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_EngineFrontendWatchClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SPDKService_ServiceDesc.Streams[4], SPDKService_EngineFrontendWatch_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &sPDKServiceEngineFrontendWatchClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type SPDKService_EngineFrontendWatchClient interface {
+	Recv() (*emptypb.Empty, error)
+	grpc.ClientStream
+}
+
+type sPDKServiceEngineFrontendWatchClient struct {
+	grpc.ClientStream
+}
+
+func (x *sPDKServiceEngineFrontendWatchClient) Recv() (*emptypb.Empty, error) {
+	m := new(emptypb.Empty)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendSuspend(ctx context.Context, in *EngineFrontendSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendSuspend_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendResume(ctx context.Context, in *EngineFrontendResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendResume_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendExpand(ctx context.Context, in *EngineFrontendExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendExpand_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error) {
+	out := new(SnapshotResponse)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendSnapshotCreate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendSnapshotDelete(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendSnapshotDelete_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendSnapshotRevert_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendSnapshotPurge(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendSnapshotPurge_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendReplicaAdd(ctx context.Context, in *EngineFrontendReplicaAddRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendReplicaAdd_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineFrontendSwitchOver(ctx context.Context, in *EngineFrontendSwitchOverRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineFrontendSwitchOver_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) BackingImageCreate(ctx context.Context, in *BackingImageCreateRequest, opts ...grpc.CallOption) (*BackingImage, error) {
 	out := new(BackingImage)
 	err := c.cc.Invoke(ctx, SPDKService_BackingImageCreate_FullMethodName, in, out, opts...)
@@ -837,7 +1335,7 @@ func (c *sPDKServiceClient) BackingImageList(ctx context.Context, in *emptypb.Em
 }
 
 func (c *sPDKServiceClient) BackingImageWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_BackingImageWatchClient, error) {
-	stream, err := c.cc.NewStream(ctx, &SPDKService_ServiceDesc.Streams[2], SPDKService_BackingImageWatch_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &SPDKService_ServiceDesc.Streams[5], SPDKService_BackingImageWatch_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1015,14 +1513,39 @@ type SPDKServiceServer interface {
 	ReplicaSnapshotCloneSrcStart(context.Context, *ReplicaSnapshotCloneSrcStartRequest) (*emptypb.Empty, error)
 	ReplicaSnapshotCloneSrcStatusCheck(context.Context, *ReplicaSnapshotCloneSrcStatusCheckRequest) (*ReplicaSnapshotCloneSrcStatusCheckResponse, error)
 	ReplicaSnapshotCloneSrcFinish(context.Context, *ReplicaSnapshotCloneSrcFinishRequest) (*emptypb.Empty, error)
+	ShardCreate(context.Context, *ShardCreateRequest) (*Shard, error)
+	ShardDelete(context.Context, *ShardDeleteRequest) (*emptypb.Empty, error)
+	ShardGet(context.Context, *ShardGetRequest) (*Shard, error)
+	ShardList(context.Context, *emptypb.Empty) (*ShardListResponse, error)
+	ShardExpand(context.Context, *ShardExpandRequest) (*emptypb.Empty, error)
+	ShardWatch(*emptypb.Empty, SPDKService_ShardWatchServer) error
+	ShardGroupCreate(context.Context, *ShardGroupCreateRequest) (*ShardGroup, error)
+	ShardGroupDelete(context.Context, *ShardGroupDeleteRequest) (*emptypb.Empty, error)
+	ShardGroupGet(context.Context, *ShardGroupGetRequest) (*ShardGroup, error)
+	ShardGroupList(context.Context, *emptypb.Empty) (*ShardGroupListResponse, error)
+	ShardGroupWatch(*emptypb.Empty, SPDKService_ShardGroupWatchServer) error
+	ShardGroupExpand(context.Context, *ShardGroupExpandRequest) (*emptypb.Empty, error)
+	ShardGroupExpandPrecheck(context.Context, *ShardGroupExpandPrecheckRequest) (*ShardGroupExpandPrecheckResponse, error)
+	ShardGroupShardReplace(context.Context, *ShardGroupShardReplaceRequest) (*ShardGroupShardReplaceResponse, error)
+	ShardGroupShardRebuildStart(context.Context, *ShardGroupShardRebuildStartRequest) (*ShardGroupShardRebuildStartResponse, error)
+	ShardGroupShardRebuildProgress(context.Context, *ShardGroupShardRebuildProgressRequest) (*ShardGroupShardRebuildProgressResponse, error)
+	ShardGroupShardRebuildStop(context.Context, *ShardGroupShardRebuildStopRequest) (*emptypb.Empty, error)
+	ShardGroupShardRebuildQosSet(context.Context, *ShardGroupShardRebuildQosSetRequest) (*emptypb.Empty, error)
+	ShardGroupShardForceFail(context.Context, *ShardGroupShardForceFailRequest) (*ShardGroupShardForceFailResponse, error)
+	ShardGroupSnapshotCreate(context.Context, *ShardGroupSnapshotCreateRequest) (*ShardGroupSnapshotCreateResponse, error)
+	ShardGroupSnapshotDelete(context.Context, *ShardGroupSnapshotDeleteRequest) (*emptypb.Empty, error)
+	ShardGroupSnapshotRevert(context.Context, *ShardGroupSnapshotRevertRequest) (*emptypb.Empty, error)
+	ShardGroupSnapshotPurge(context.Context, *ShardGroupSnapshotPurgeRequest) (*emptypb.Empty, error)
 	EngineCreate(context.Context, *EngineCreateRequest) (*Engine, error)
 	EngineDelete(context.Context, *EngineDeleteRequest) (*emptypb.Empty, error)
 	EngineGet(context.Context, *EngineGetRequest) (*Engine, error)
 	EngineSuspend(context.Context, *EngineSuspendRequest) (*emptypb.Empty, error)
 	EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error)
+	EngineSnapshotMaxCountSet(context.Context, *EngineSnapshotMaxCountSetRequest) (*emptypb.Empty, error)
 	EngineExpand(context.Context, *EngineExpandRequest) (*emptypb.Empty, error)
-	EngineSwitchOverTarget(context.Context, *EngineSwitchOverTargetRequest) (*emptypb.Empty, error)
+	EngineExpandPrecheck(context.Context, *EngineExpandPrecheckRequest) (*EngineExpandPrecheckResponse, error)
 	EngineDeleteTarget(context.Context, *EngineDeleteTargetRequest) (*emptypb.Empty, error)
+	EngineSetTargetListenerANAState(context.Context, *EngineSetTargetListenerANAStateRequest) (*emptypb.Empty, error)
 	EngineSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
 	EngineSnapshotDelete(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
 	EngineSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
@@ -1042,6 +1565,20 @@ type SPDKServiceServer interface {
 	EngineBackupRestore(context.Context, *EngineBackupRestoreRequest) (*EngineBackupRestoreResponse, error)
 	EngineBackupRestoreFinish(context.Context, *EngineBackupRestoreFinishRequest) (*emptypb.Empty, error)
 	EngineRestoreStatus(context.Context, *RestoreStatusRequest) (*RestoreStatusResponse, error)
+	EngineFrontendCreate(context.Context, *EngineFrontendCreateRequest) (*EngineFrontend, error)
+	EngineFrontendDelete(context.Context, *EngineFrontendDeleteRequest) (*emptypb.Empty, error)
+	EngineFrontendGet(context.Context, *EngineFrontendGetRequest) (*EngineFrontend, error)
+	EngineFrontendList(context.Context, *emptypb.Empty) (*EngineFrontendListResponse, error)
+	EngineFrontendWatch(*emptypb.Empty, SPDKService_EngineFrontendWatchServer) error
+	EngineFrontendSuspend(context.Context, *EngineFrontendSuspendRequest) (*emptypb.Empty, error)
+	EngineFrontendResume(context.Context, *EngineFrontendResumeRequest) (*emptypb.Empty, error)
+	EngineFrontendExpand(context.Context, *EngineFrontendExpandRequest) (*emptypb.Empty, error)
+	EngineFrontendSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
+	EngineFrontendSnapshotDelete(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
+	EngineFrontendSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
+	EngineFrontendSnapshotPurge(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
+	EngineFrontendReplicaAdd(context.Context, *EngineFrontendReplicaAddRequest) (*emptypb.Empty, error)
+	EngineFrontendSwitchOver(context.Context, *EngineFrontendSwitchOverRequest) (*emptypb.Empty, error)
 	BackingImageCreate(context.Context, *BackingImageCreateRequest) (*BackingImage, error)
 	BackingImageDelete(context.Context, *BackingImageDeleteRequest) (*emptypb.Empty, error)
 	BackingImageGet(context.Context, *BackingImageGetRequest) (*BackingImage, error)
@@ -1173,6 +1710,75 @@ func (UnimplementedSPDKServiceServer) ReplicaSnapshotCloneSrcStatusCheck(context
 func (UnimplementedSPDKServiceServer) ReplicaSnapshotCloneSrcFinish(context.Context, *ReplicaSnapshotCloneSrcFinishRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotCloneSrcFinish not implemented")
 }
+func (UnimplementedSPDKServiceServer) ShardCreate(context.Context, *ShardCreateRequest) (*Shard, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardCreate not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardDelete(context.Context, *ShardDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardDelete not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGet(context.Context, *ShardGetRequest) (*Shard, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGet not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardList(context.Context, *emptypb.Empty) (*ShardListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardList not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardExpand(context.Context, *ShardExpandRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardExpand not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardWatch(*emptypb.Empty, SPDKService_ShardWatchServer) error {
+	return status.Errorf(codes.Unimplemented, "method ShardWatch not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupCreate(context.Context, *ShardGroupCreateRequest) (*ShardGroup, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupCreate not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupDelete(context.Context, *ShardGroupDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupDelete not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupGet(context.Context, *ShardGroupGetRequest) (*ShardGroup, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupGet not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupList(context.Context, *emptypb.Empty) (*ShardGroupListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupList not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupWatch(*emptypb.Empty, SPDKService_ShardGroupWatchServer) error {
+	return status.Errorf(codes.Unimplemented, "method ShardGroupWatch not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupExpand(context.Context, *ShardGroupExpandRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupExpand not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupExpandPrecheck(context.Context, *ShardGroupExpandPrecheckRequest) (*ShardGroupExpandPrecheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupExpandPrecheck not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupShardReplace(context.Context, *ShardGroupShardReplaceRequest) (*ShardGroupShardReplaceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupShardReplace not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupShardRebuildStart(context.Context, *ShardGroupShardRebuildStartRequest) (*ShardGroupShardRebuildStartResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupShardRebuildStart not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupShardRebuildProgress(context.Context, *ShardGroupShardRebuildProgressRequest) (*ShardGroupShardRebuildProgressResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupShardRebuildProgress not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupShardRebuildStop(context.Context, *ShardGroupShardRebuildStopRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupShardRebuildStop not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupShardRebuildQosSet(context.Context, *ShardGroupShardRebuildQosSetRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupShardRebuildQosSet not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupShardForceFail(context.Context, *ShardGroupShardForceFailRequest) (*ShardGroupShardForceFailResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupShardForceFail not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupSnapshotCreate(context.Context, *ShardGroupSnapshotCreateRequest) (*ShardGroupSnapshotCreateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupSnapshotCreate not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupSnapshotDelete(context.Context, *ShardGroupSnapshotDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupSnapshotDelete not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupSnapshotRevert(context.Context, *ShardGroupSnapshotRevertRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupSnapshotRevert not implemented")
+}
+func (UnimplementedSPDKServiceServer) ShardGroupSnapshotPurge(context.Context, *ShardGroupSnapshotPurgeRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShardGroupSnapshotPurge not implemented")
+}
 func (UnimplementedSPDKServiceServer) EngineCreate(context.Context, *EngineCreateRequest) (*Engine, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineCreate not implemented")
 }
@@ -1188,14 +1794,20 @@ func (UnimplementedSPDKServiceServer) EngineSuspend(context.Context, *EngineSusp
 func (UnimplementedSPDKServiceServer) EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineResume not implemented")
 }
+func (UnimplementedSPDKServiceServer) EngineSnapshotMaxCountSet(context.Context, *EngineSnapshotMaxCountSetRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotMaxCountSet not implemented")
+}
 func (UnimplementedSPDKServiceServer) EngineExpand(context.Context, *EngineExpandRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineExpand not implemented")
 }
-func (UnimplementedSPDKServiceServer) EngineSwitchOverTarget(context.Context, *EngineSwitchOverTargetRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method EngineSwitchOverTarget not implemented")
+func (UnimplementedSPDKServiceServer) EngineExpandPrecheck(context.Context, *EngineExpandPrecheckRequest) (*EngineExpandPrecheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineExpandPrecheck not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineDeleteTarget(context.Context, *EngineDeleteTargetRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineDeleteTarget not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineSetTargetListenerANAState(context.Context, *EngineSetTargetListenerANAStateRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineSetTargetListenerANAState not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotCreate not implemented")
@@ -1253,6 +1865,48 @@ func (UnimplementedSPDKServiceServer) EngineBackupRestoreFinish(context.Context,
 }
 func (UnimplementedSPDKServiceServer) EngineRestoreStatus(context.Context, *RestoreStatusRequest) (*RestoreStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineRestoreStatus not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendCreate(context.Context, *EngineFrontendCreateRequest) (*EngineFrontend, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendCreate not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendDelete(context.Context, *EngineFrontendDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendDelete not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendGet(context.Context, *EngineFrontendGetRequest) (*EngineFrontend, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendGet not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendList(context.Context, *emptypb.Empty) (*EngineFrontendListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendList not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendWatch(*emptypb.Empty, SPDKService_EngineFrontendWatchServer) error {
+	return status.Errorf(codes.Unimplemented, "method EngineFrontendWatch not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendSuspend(context.Context, *EngineFrontendSuspendRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendSuspend not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendResume(context.Context, *EngineFrontendResumeRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendResume not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendExpand(context.Context, *EngineFrontendExpandRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendExpand not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendSnapshotCreate not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendSnapshotDelete(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendSnapshotDelete not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendSnapshotRevert not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendSnapshotPurge(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendSnapshotPurge not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendReplicaAdd(context.Context, *EngineFrontendReplicaAddRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendReplicaAdd not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineFrontendSwitchOver(context.Context, *EngineFrontendSwitchOverRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineFrontendSwitchOver not implemented")
 }
 func (UnimplementedSPDKServiceServer) BackingImageCreate(context.Context, *BackingImageCreateRequest) (*BackingImage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BackingImageCreate not implemented")
@@ -1951,6 +2605,426 @@ func _SPDKService_ReplicaSnapshotCloneSrcFinish_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SPDKService_ShardCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardCreate(ctx, req.(*ShardCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardDelete(ctx, req.(*ShardDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGet(ctx, req.(*ShardGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardList(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardExpand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardExpandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardExpand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardExpand_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardExpand(ctx, req.(*ShardExpandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardWatch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SPDKServiceServer).ShardWatch(m, &sPDKServiceShardWatchServer{stream})
+}
+
+type SPDKService_ShardWatchServer interface {
+	Send(*emptypb.Empty) error
+	grpc.ServerStream
+}
+
+type sPDKServiceShardWatchServer struct {
+	grpc.ServerStream
+}
+
+func (x *sPDKServiceShardWatchServer) Send(m *emptypb.Empty) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _SPDKService_ShardGroupCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupCreate(ctx, req.(*ShardGroupCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupDelete(ctx, req.(*ShardGroupDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupGet(ctx, req.(*ShardGroupGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupList(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupWatch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SPDKServiceServer).ShardGroupWatch(m, &sPDKServiceShardGroupWatchServer{stream})
+}
+
+type SPDKService_ShardGroupWatchServer interface {
+	Send(*emptypb.Empty) error
+	grpc.ServerStream
+}
+
+type sPDKServiceShardGroupWatchServer struct {
+	grpc.ServerStream
+}
+
+func (x *sPDKServiceShardGroupWatchServer) Send(m *emptypb.Empty) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _SPDKService_ShardGroupExpand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupExpandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupExpand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupExpand_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupExpand(ctx, req.(*ShardGroupExpandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupExpandPrecheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupExpandPrecheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupExpandPrecheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupExpandPrecheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupExpandPrecheck(ctx, req.(*ShardGroupExpandPrecheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupShardReplace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupShardReplaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupShardReplace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupShardReplace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupShardReplace(ctx, req.(*ShardGroupShardReplaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupShardRebuildStart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupShardRebuildStartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildStart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupShardRebuildStart_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildStart(ctx, req.(*ShardGroupShardRebuildStartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupShardRebuildProgress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupShardRebuildProgressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildProgress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupShardRebuildProgress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildProgress(ctx, req.(*ShardGroupShardRebuildProgressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupShardRebuildStop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupShardRebuildStopRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildStop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupShardRebuildStop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildStop(ctx, req.(*ShardGroupShardRebuildStopRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupShardRebuildQosSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupShardRebuildQosSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildQosSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupShardRebuildQosSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupShardRebuildQosSet(ctx, req.(*ShardGroupShardRebuildQosSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupShardForceFail_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupShardForceFailRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupShardForceFail(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupShardForceFail_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupShardForceFail(ctx, req.(*ShardGroupShardForceFailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupSnapshotCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupSnapshotCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupSnapshotCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotCreate(ctx, req.(*ShardGroupSnapshotCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupSnapshotDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupSnapshotDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupSnapshotDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotDelete(ctx, req.(*ShardGroupSnapshotDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupSnapshotRevert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupSnapshotRevertRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotRevert(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupSnapshotRevert_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotRevert(ctx, req.(*ShardGroupSnapshotRevertRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ShardGroupSnapshotPurge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShardGroupSnapshotPurgeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotPurge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ShardGroupSnapshotPurge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ShardGroupSnapshotPurge(ctx, req.(*ShardGroupSnapshotPurgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SPDKService_EngineCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EngineCreateRequest)
 	if err := dec(in); err != nil {
@@ -2041,6 +3115,24 @@ func _SPDKService_EngineResume_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SPDKService_EngineSnapshotMaxCountSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineSnapshotMaxCountSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineSnapshotMaxCountSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineSnapshotMaxCountSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineSnapshotMaxCountSet(ctx, req.(*EngineSnapshotMaxCountSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SPDKService_EngineExpand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EngineExpandRequest)
 	if err := dec(in); err != nil {
@@ -2059,20 +3151,20 @@ func _SPDKService_EngineExpand_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SPDKService_EngineSwitchOverTarget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EngineSwitchOverTargetRequest)
+func _SPDKService_EngineExpandPrecheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineExpandPrecheckRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SPDKServiceServer).EngineSwitchOverTarget(ctx, in)
+		return srv.(SPDKServiceServer).EngineExpandPrecheck(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SPDKService_EngineSwitchOverTarget_FullMethodName,
+		FullMethod: SPDKService_EngineExpandPrecheck_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SPDKServiceServer).EngineSwitchOverTarget(ctx, req.(*EngineSwitchOverTargetRequest))
+		return srv.(SPDKServiceServer).EngineExpandPrecheck(ctx, req.(*EngineExpandPrecheckRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2091,6 +3183,24 @@ func _SPDKService_EngineDeleteTarget_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).EngineDeleteTarget(ctx, req.(*EngineDeleteTargetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineSetTargetListenerANAState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineSetTargetListenerANAStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineSetTargetListenerANAState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineSetTargetListenerANAState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineSetTargetListenerANAState(ctx, req.(*EngineSetTargetListenerANAStateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2436,6 +3546,261 @@ func _SPDKService_EngineRestoreStatus_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).EngineRestoreStatus(ctx, req.(*RestoreStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendCreate(ctx, req.(*EngineFrontendCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendDelete(ctx, req.(*EngineFrontendDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendGet(ctx, req.(*EngineFrontendGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendList(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendWatch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SPDKServiceServer).EngineFrontendWatch(m, &sPDKServiceEngineFrontendWatchServer{stream})
+}
+
+type SPDKService_EngineFrontendWatchServer interface {
+	Send(*emptypb.Empty) error
+	grpc.ServerStream
+}
+
+type sPDKServiceEngineFrontendWatchServer struct {
+	grpc.ServerStream
+}
+
+func (x *sPDKServiceEngineFrontendWatchServer) Send(m *emptypb.Empty) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _SPDKService_EngineFrontendSuspend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendSuspendRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendSuspend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendSuspend_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendSuspend(ctx, req.(*EngineFrontendSuspendRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendResume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendResumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendResume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendResume_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendResume(ctx, req.(*EngineFrontendResumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendExpand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendExpandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendExpand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendExpand_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendExpand(ctx, req.(*EngineFrontendExpandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendSnapshotCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendSnapshotCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotCreate(ctx, req.(*SnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendSnapshotDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendSnapshotDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotDelete(ctx, req.(*SnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendSnapshotRevert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotRevert(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendSnapshotRevert_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotRevert(ctx, req.(*SnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendSnapshotPurge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotPurge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendSnapshotPurge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendSnapshotPurge(ctx, req.(*SnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendReplicaAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendReplicaAddRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendReplicaAdd(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendReplicaAdd_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendReplicaAdd(ctx, req.(*EngineFrontendReplicaAddRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineFrontendSwitchOver_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineFrontendSwitchOverRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineFrontendSwitchOver(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineFrontendSwitchOver_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineFrontendSwitchOver(ctx, req.(*EngineFrontendSwitchOverRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2893,6 +4258,90 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_ReplicaSnapshotCloneSrcFinish_Handler,
 		},
 		{
+			MethodName: "ShardCreate",
+			Handler:    _SPDKService_ShardCreate_Handler,
+		},
+		{
+			MethodName: "ShardDelete",
+			Handler:    _SPDKService_ShardDelete_Handler,
+		},
+		{
+			MethodName: "ShardGet",
+			Handler:    _SPDKService_ShardGet_Handler,
+		},
+		{
+			MethodName: "ShardList",
+			Handler:    _SPDKService_ShardList_Handler,
+		},
+		{
+			MethodName: "ShardExpand",
+			Handler:    _SPDKService_ShardExpand_Handler,
+		},
+		{
+			MethodName: "ShardGroupCreate",
+			Handler:    _SPDKService_ShardGroupCreate_Handler,
+		},
+		{
+			MethodName: "ShardGroupDelete",
+			Handler:    _SPDKService_ShardGroupDelete_Handler,
+		},
+		{
+			MethodName: "ShardGroupGet",
+			Handler:    _SPDKService_ShardGroupGet_Handler,
+		},
+		{
+			MethodName: "ShardGroupList",
+			Handler:    _SPDKService_ShardGroupList_Handler,
+		},
+		{
+			MethodName: "ShardGroupExpand",
+			Handler:    _SPDKService_ShardGroupExpand_Handler,
+		},
+		{
+			MethodName: "ShardGroupExpandPrecheck",
+			Handler:    _SPDKService_ShardGroupExpandPrecheck_Handler,
+		},
+		{
+			MethodName: "ShardGroupShardReplace",
+			Handler:    _SPDKService_ShardGroupShardReplace_Handler,
+		},
+		{
+			MethodName: "ShardGroupShardRebuildStart",
+			Handler:    _SPDKService_ShardGroupShardRebuildStart_Handler,
+		},
+		{
+			MethodName: "ShardGroupShardRebuildProgress",
+			Handler:    _SPDKService_ShardGroupShardRebuildProgress_Handler,
+		},
+		{
+			MethodName: "ShardGroupShardRebuildStop",
+			Handler:    _SPDKService_ShardGroupShardRebuildStop_Handler,
+		},
+		{
+			MethodName: "ShardGroupShardRebuildQosSet",
+			Handler:    _SPDKService_ShardGroupShardRebuildQosSet_Handler,
+		},
+		{
+			MethodName: "ShardGroupShardForceFail",
+			Handler:    _SPDKService_ShardGroupShardForceFail_Handler,
+		},
+		{
+			MethodName: "ShardGroupSnapshotCreate",
+			Handler:    _SPDKService_ShardGroupSnapshotCreate_Handler,
+		},
+		{
+			MethodName: "ShardGroupSnapshotDelete",
+			Handler:    _SPDKService_ShardGroupSnapshotDelete_Handler,
+		},
+		{
+			MethodName: "ShardGroupSnapshotRevert",
+			Handler:    _SPDKService_ShardGroupSnapshotRevert_Handler,
+		},
+		{
+			MethodName: "ShardGroupSnapshotPurge",
+			Handler:    _SPDKService_ShardGroupSnapshotPurge_Handler,
+		},
+		{
 			MethodName: "EngineCreate",
 			Handler:    _SPDKService_EngineCreate_Handler,
 		},
@@ -2913,16 +4362,24 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_EngineResume_Handler,
 		},
 		{
+			MethodName: "EngineSnapshotMaxCountSet",
+			Handler:    _SPDKService_EngineSnapshotMaxCountSet_Handler,
+		},
+		{
 			MethodName: "EngineExpand",
 			Handler:    _SPDKService_EngineExpand_Handler,
 		},
 		{
-			MethodName: "EngineSwitchOverTarget",
-			Handler:    _SPDKService_EngineSwitchOverTarget_Handler,
+			MethodName: "EngineExpandPrecheck",
+			Handler:    _SPDKService_EngineExpandPrecheck_Handler,
 		},
 		{
 			MethodName: "EngineDeleteTarget",
 			Handler:    _SPDKService_EngineDeleteTarget_Handler,
+		},
+		{
+			MethodName: "EngineSetTargetListenerANAState",
+			Handler:    _SPDKService_EngineSetTargetListenerANAState_Handler,
 		},
 		{
 			MethodName: "EngineSnapshotCreate",
@@ -2997,6 +4454,58 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_EngineRestoreStatus_Handler,
 		},
 		{
+			MethodName: "EngineFrontendCreate",
+			Handler:    _SPDKService_EngineFrontendCreate_Handler,
+		},
+		{
+			MethodName: "EngineFrontendDelete",
+			Handler:    _SPDKService_EngineFrontendDelete_Handler,
+		},
+		{
+			MethodName: "EngineFrontendGet",
+			Handler:    _SPDKService_EngineFrontendGet_Handler,
+		},
+		{
+			MethodName: "EngineFrontendList",
+			Handler:    _SPDKService_EngineFrontendList_Handler,
+		},
+		{
+			MethodName: "EngineFrontendSuspend",
+			Handler:    _SPDKService_EngineFrontendSuspend_Handler,
+		},
+		{
+			MethodName: "EngineFrontendResume",
+			Handler:    _SPDKService_EngineFrontendResume_Handler,
+		},
+		{
+			MethodName: "EngineFrontendExpand",
+			Handler:    _SPDKService_EngineFrontendExpand_Handler,
+		},
+		{
+			MethodName: "EngineFrontendSnapshotCreate",
+			Handler:    _SPDKService_EngineFrontendSnapshotCreate_Handler,
+		},
+		{
+			MethodName: "EngineFrontendSnapshotDelete",
+			Handler:    _SPDKService_EngineFrontendSnapshotDelete_Handler,
+		},
+		{
+			MethodName: "EngineFrontendSnapshotRevert",
+			Handler:    _SPDKService_EngineFrontendSnapshotRevert_Handler,
+		},
+		{
+			MethodName: "EngineFrontendSnapshotPurge",
+			Handler:    _SPDKService_EngineFrontendSnapshotPurge_Handler,
+		},
+		{
+			MethodName: "EngineFrontendReplicaAdd",
+			Handler:    _SPDKService_EngineFrontendReplicaAdd_Handler,
+		},
+		{
+			MethodName: "EngineFrontendSwitchOver",
+			Handler:    _SPDKService_EngineFrontendSwitchOver_Handler,
+		},
+		{
 			MethodName: "BackingImageCreate",
 			Handler:    _SPDKService_BackingImageCreate_Handler,
 		},
@@ -3068,8 +4577,23 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
+			StreamName:    "ShardWatch",
+			Handler:       _SPDKService_ShardWatch_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ShardGroupWatch",
+			Handler:       _SPDKService_ShardGroupWatch_Handler,
+			ServerStreams: true,
+		},
+		{
 			StreamName:    "EngineWatch",
 			Handler:       _SPDKService_EngineWatch_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "EngineFrontendWatch",
+			Handler:       _SPDKService_EngineFrontendWatch_Handler,
 			ServerStreams: true,
 		},
 		{
