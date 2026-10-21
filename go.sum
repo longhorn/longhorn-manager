@@ -166,8 +166,8 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/longhorn/backing-image-manager v1.12.1 h1:ap83VpOun/vc+GaFpG0xE8NKR5xhJWddyyEaMuE97q8=
 github.com/longhorn/backing-image-manager v1.12.1/go.mod h1:nkHw/fmieMGyB9uwgKP62c6OlIYzSEUdqDlz1ELiB+M=
-github.com/longhorn/backupstore v0.0.0-20261020110232-e14d5880bb6f h1:HJQwqlPXURx+1Gvloa2e2Q9dctEpzv4TzhCaAfgfEkI=
-github.com/longhorn/backupstore v0.0.0-20261020110232-e14d5880bb6f/go.mod h1:M5P4QJUON18DI+xXTLmR9fGo1vuH7oNf3DE8Au12QWY=
+github.com/longhorn/backupstore v0.0.0-20261021051900-5b325ff52659 h1:kI0jbLKSvVEgYwXIkLZlIu9JShgqT1A7u81wJfFlCvk=
+github.com/longhorn/backupstore v0.0.0-20261021051900-5b325ff52659/go.mod h1:1EHLbzbQobNVulrFcJgehAPkkQLF4uacQvNqplHkYo0=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
 github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c h1:vUIWJF6wPZf9HIf1XZx4dnFk8WEKrdIc6LIy5E45t14=
@@ -184,8 +184,8 @@ github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260906102010
 github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260906102010-f611adc51225/go.mod h1:ICmRfOTIp84vRnKxEUGn/KziIBhwNZEMEluwBSHimpE=
 github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20261020145444-d14787cb70d6 h1:j1WDJk+znjQ3Tq2VOtZRO659J69CEGyfFjhDp3ybU/A=
 github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20261020145444-d14787cb70d6/go.mod h1:LjJ8YIKzneYDRv5iEzRwrgpoijafcCAPA8kmVlxm5sc=
-github.com/longhorn/types v0.0.0-20260930155107-5849431731c3 h1:U5PUbPnjKEn0UqVU+S39vRkHj0b3G7Y4yoTcYeTazns=
-github.com/longhorn/types v0.0.0-20260930155107-5849431731c3/go.mod h1:t09pWhpJbufsg5yoZWyNif15QWp/5WQrTyEa3mEQfS4=
+github.com/longhorn/types v0.0.0-20261018112857-15c9b187fbd8 h1:O/Y9rfp0PiKuDTlCXJVZPZEMy+KSL+0hD43sGQjVSfc=
+github.com/longhorn/types v0.0.0-20261018112857-15c9b187fbd8/go.mod h1:uev4X4Fvz2SiSr2UMGwFc6peXwimbjeww3XltjvF9ZU=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=
