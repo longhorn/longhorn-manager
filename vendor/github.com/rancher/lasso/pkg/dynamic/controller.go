@@ -97,11 +97,14 @@ func (c *Controller) AddIndexer(name string, matcher GVKMatcher, indexer func(ob
 
 	for gvk, watcher := range c.watchers {
 		if matcher(gvk) {
-			watcher.informer.AddIndexers(cache.Indexers{
+			err := watcher.informer.AddIndexers(cache.Indexers{
 				name: func(obj interface{}) ([]string, error) {
 					return indexer(obj.(runtime.Object))
 				},
 			})
+			if err != nil {
+				log.Errorf("failed to add indexer %s to gvk %s: %v", name, gvk, err)
+			}
 		}
 	}
 }
