@@ -57,7 +57,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.13.0
-	github.com/docker/go-connections v0.8.1
+	github.com/docker/go-connections v0.8.2
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
@@ -67,7 +67,7 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.25.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20261020110232-e14d5880bb6f
+	github.com/longhorn/backupstore v0.0.0-20261021051900-5b325ff52659
 	github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
 	github.com/longhorn/go-spdk-helper v0.11.0
@@ -75,12 +75,12 @@ require (
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261020153449-d40269a4fdc4
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
 	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261020145414-6392878e98bb
-	github.com/longhorn/types v0.0.0-20260930155107-5849431731c3
+	github.com/longhorn/types v0.0.0-20261018112857-15c9b187fbd8
 	github.com/prometheus/client_golang v1.25.0
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
-	github.com/rancher/dynamiclistener v0.9.3
+	github.com/rancher/dynamiclistener v0.9.4
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.7.2
+	github.com/rancher/wrangler/v3 v3.8.0-rc.3
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
@@ -184,7 +184,7 @@ require (
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
-	github.com/rancher/lasso v0.2.9 // indirect
+	github.com/rancher/lasso v0.2.10 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
@@ -213,7 +213,7 @@ require (
 	k8s.io/component-helpers v0.33.0 // indirect
 	k8s.io/controller-manager v0.33.0 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
-	k8s.io/kube-aggregator v0.36.0 // indirect
+	k8s.io/kube-aggregator v0.37.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
