@@ -1709,6 +1709,16 @@ func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
 	return dataEngine == longhorn.DataEngineTypeV2
 }
 
+// IsRDMAVolume returns true if the volume uses the RDMA NVMe-oF transport for its engine<->replica fabric.
+func IsRDMAVolume(v *longhorn.Volume) bool {
+	return v.Spec.DataEngineTransport == longhorn.DataEngineTransportRDMA
+}
+
+// IsNodeRDMACapable returns true if the node reports at least one RDMA device via the RDMACapable condition.
+func IsNodeRDMACapable(node *longhorn.Node) bool {
+	return GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRDMACapable).Status == longhorn.ConditionStatusTrue
+}
+
 func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {
 	result := map[string]string{}
 	for k, v := range baseMap {

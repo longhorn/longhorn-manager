@@ -220,6 +220,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaDiskSoftAntiAffinity:     spec.ReplicaDiskSoftAntiAffinity,
 			DataEngine:                      spec.DataEngine,
 			DataLayout:                      spec.DataLayout,
+			DataEngineTransport:             spec.DataEngineTransport,
 			FreezeFilesystemForSnapshot:     spec.FreezeFilesystemForSnapshot,
 			BackupTargetName:                backupTargetName,
 			OfflineRebuilding:               spec.OfflineRebuilding,
@@ -292,6 +293,12 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 
 	if err := m.validateVolumeHasScheduledReplica(v); err != nil {
 		return nil, err
+	}
+
+	// The engine of an RDMA volume runs on the attached node and connects to the replicas over RDMA.
+	if types.IsRDMAVolume(v) && !types.IsNodeRDMACapable(node) {
+		return nil, fmt.Errorf("volume %v uses data engine transport %v but node %v is not RDMA-capable; check the %v node condition",
+			v.Name, v.Spec.DataEngineTransport, node.Name, longhorn.NodeConditionTypeRDMACapable)
 	}
 
 	if isReady, err := m.ds.IsDataEngineImageReady(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality, v.Spec.DataEngine); !isReady {
