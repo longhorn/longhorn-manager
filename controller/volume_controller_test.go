@@ -3954,3 +3954,163 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 	}
 }
+
+// v2ImageSyncTest is an attached V2 volume with an engine, an engine frontend and
+// three replicas, all on TestInstanceManagerImage. The default instance manager
+// image and the instance manager are already TestExtraInstanceManagerImage.
+type v2ImageSyncTest struct {
+	vc             *VolumeController
+	client         *lhfake.Clientset
+	informers      *util.InformerFactories
+	volume         *longhorn.Volume
+	engine         *longhorn.Engine
+	engineFrontend *longhorn.EngineFrontend
+	replicas       []*longhorn.Replica
+	im             *longhorn.InstanceManager
+	pod            *corev1.Pod
+}
+
+func newV2ImageSyncTest(c *C) *v2ImageSyncTest {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informers := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informers, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 3)
+	v.Namespace = TestNamespace
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Image = TestInstanceManagerImage
+	v.Status.CurrentImage = TestInstanceManagerImage
+	v.Status.State = longhorn.VolumeStateAttached
+
+	im := newInstanceManager("im", longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1,
+		nil, nil, nil, longhorn.DataEngineTypeV2, TestExtraInstanceManagerImage, false)
+	pod := newPod(&corev1.PodStatus{Phase: corev1.PodRunning, PodIP: TestIP1}, im.Name, TestNamespace, TestNode1)
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name: "instance-manager", Image: im.Spec.Image, Ready: true,
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	}}
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = v.Spec.DataEngine
+	e.Spec.Image = TestInstanceManagerImage
+	e.Status.CurrentImage = TestInstanceManagerImage
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "")
+	ef.Spec.Image = TestInstanceManagerImage
+	ef.Status.CurrentImage = TestInstanceManagerImage
+	ef.Status.CurrentState = longhorn.InstanceStateRunning
+
+	f := &v2ImageSyncTest{vc: vc, client: lhClient, informers: informers, volume: v, engine: e, engineFrontend: ef, im: im, pod: pod}
+	for _, node := range []string{TestNode1, TestNode2, "test-node-3"} {
+		r := newReplicaForVolume(v, e, node, TestDiskID1)
+		r.Spec.DataEngine = v.Spec.DataEngine
+		r.Spec.Image = TestInstanceManagerImage
+		r.Status.CurrentImage = TestInstanceManagerImage
+		r.Status.CurrentState = longhorn.InstanceStateRunning
+		f.replicas = append(f.replicas, r)
+	}
+	return f
+}
+
+// seed stores the default instance manager image setting, the volume, the instance
+// manager and its Pod for the controller to read.
+func (f *v2ImageSyncTest) seed(c *C) {
+	lh := f.informers.LhInformerFactory.Longhorn().V1beta2()
+	setting := newSetting(string(types.SettingNameDefaultInstanceManagerImage), TestExtraInstanceManagerImage)
+	c.Assert(lh.Settings().Informer().GetIndexer().Add(setting), IsNil)
+	c.Assert(f.client.Tracker().Add(f.volume.DeepCopy()), IsNil)
+	c.Assert(lh.Volumes().Informer().GetIndexer().Add(f.volume.DeepCopy()), IsNil)
+	c.Assert(lh.InstanceManagers().Informer().GetIndexer().Add(f.im), IsNil)
+	c.Assert(f.informers.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer().Add(f.pod), IsNil)
+}
+
+func (f *v2ImageSyncTest) sync(c *C) bool {
+	es := map[string]*longhorn.Engine{f.engine.Name: f.engine}
+	efs := map[string]*longhorn.EngineFrontend{f.engineFrontend.Name: f.engineFrontend}
+	rs := map[string]*longhorn.Replica{}
+	for _, r := range f.replicas {
+		rs[r.Name] = r
+	}
+	updated, err := f.vc.syncV2VolumeImage(f.volume, es, rs, efs)
+	c.Assert(err, IsNil)
+	return updated
+}
+
+func (s *TestSuite) TestSyncV2VolumeImageUpdatesSpecFirst(c *C) {
+	for name, isEC := range map[string]bool{"V2 volume": false, "EC volume is excluded": true} {
+		c.Log(name)
+		f := newV2ImageSyncTest(c)
+		if isEC {
+			f.volume.Spec.DataLayout.Type = longhorn.VolumeDataLayoutTypeSharded
+		}
+		f.seed(c)
+		c.Assert(f.sync(c), Equals, !isEC)
+
+		// Only volume.spec.image is persisted first, and the rest follows on the next reconciliation.
+		stored, err := f.client.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), f.volume.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		expectedImage := TestExtraInstanceManagerImage
+		if isEC {
+			expectedImage = TestInstanceManagerImage
+		}
+		c.Assert(stored.Spec.Image, Equals, expectedImage)
+		c.Assert(stored.Status.CurrentImage, Equals, TestInstanceManagerImage)
+		c.Assert(f.engine.Spec.Image, Equals, TestInstanceManagerImage)
+	}
+}
+
+func (s *TestSuite) TestSyncV2VolumeImageFollowsRunningImage(c *C) {
+	tests := map[string]struct {
+		mutate       func(f *v2ImageSyncTest)
+		expectStatus string
+	}{
+		"all serving instances run the new image": {
+			expectStatus: TestExtraInstanceManagerImage,
+		},
+		"replica still runs the old image": {
+			mutate:       func(f *v2ImageSyncTest) { f.replicas[2].Status.CurrentImage = TestInstanceManagerImage },
+			expectStatus: TestInstanceManagerImage,
+		},
+		"newly started replica without a confirmed image": {
+			mutate:       func(f *v2ImageSyncTest) { f.replicas[2].Status.CurrentImage = "" },
+			expectStatus: TestInstanceManagerImage,
+		},
+		"detached volume keeps the last running image": {
+			mutate: func(f *v2ImageSyncTest) {
+				f.engine.Status.CurrentState = longhorn.InstanceStateStopped
+				f.engineFrontend.Status.CurrentState = longhorn.InstanceStateStopped
+				for _, r := range f.replicas {
+					r.Status.CurrentState = longhorn.InstanceStateStopped
+				}
+			},
+			expectStatus: TestInstanceManagerImage,
+		},
+	}
+	for name, tt := range tests {
+		c.Log(name)
+		f := newV2ImageSyncTest(c)
+		f.volume.Spec.Image = TestExtraInstanceManagerImage
+		f.engine.Status.CurrentImage = TestExtraInstanceManagerImage
+		f.engineFrontend.Status.CurrentImage = TestExtraInstanceManagerImage
+		for _, r := range f.replicas {
+			r.Status.CurrentImage = TestExtraInstanceManagerImage
+		}
+		if tt.mutate != nil {
+			tt.mutate(f)
+		}
+		f.seed(c)
+		c.Assert(f.sync(c), Equals, false)
+
+		// Instance specs follow volume.spec.image, and volume.status.currentImage follows the instances.
+		c.Assert(f.engine.Spec.Image, Equals, TestExtraInstanceManagerImage)
+		c.Assert(f.engineFrontend.Spec.Image, Equals, TestExtraInstanceManagerImage)
+		for _, r := range f.replicas {
+			c.Assert(r.Spec.Image, Equals, TestExtraInstanceManagerImage)
+		}
+		c.Assert(f.volume.Status.CurrentImage, Equals, tt.expectStatus)
+		c.Assert(isV1VolumeUpgrading(f.volume), Equals, false)
+	}
+}

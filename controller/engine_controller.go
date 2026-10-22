@@ -1010,7 +1010,7 @@ func (m *EngineMonitor) sync() bool {
 		}
 
 		// engine is upgrading
-		if engine.Status.CurrentImage != engine.Spec.Image || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
+		if isV1EngineUpgrading(engine) || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			return false
 		}
 
