@@ -111,6 +111,7 @@ type EngineFrontendCreateRequest struct {
 type ReplicaCreateRequest struct {
 	DiskName         string
 	DiskUUID         string
+	ProvisioningMode string
 	ExposeRequired   bool
 	BackingImageName string
 }
@@ -161,7 +162,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 	driver, ok := rpc.DataEngine_value[getDataEngine(req.DataEngine)]
 	if !ok {
-		return nil, fmt.Errorf("failed to delete instance: invalid data engine %v", req.DataEngine)
+		return nil, fmt.Errorf("failed to create instance: invalid data engine %v", req.DataEngine)
 	}
 
 	client := c.getControllerServiceClient()
@@ -170,12 +171,14 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 	var processInstanceSpec *rpc.ProcessInstanceSpec
 	var spdkInstanceSpec *rpc.SpdkInstanceSpec
-	if rpc.DataEngine(driver) == rpc.DataEngine_DATA_ENGINE_V1 {
+	var localInstanceSpec *rpc.LocalInstanceSpec
+	switch rpc.DataEngine(driver) {
+	case rpc.DataEngine_DATA_ENGINE_V1:
 		processInstanceSpec = &rpc.ProcessInstanceSpec{
 			Binary: req.Binary,
 			Args:   req.BinaryArgs,
 		}
-	} else {
+	case rpc.DataEngine_DATA_ENGINE_V2:
 		switch req.InstanceType {
 		case types.InstanceTypeEngine:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
@@ -224,6 +227,34 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 		default:
 			return nil, fmt.Errorf("failed to create instance: invalid instance type %v", req.InstanceType)
 		}
+	case rpc.DataEngine_DATA_ENGINE_LOCAL:
+		switch req.InstanceType {
+		case types.InstanceTypeReplica:
+			localInstanceSpec = &rpc.LocalInstanceSpec{
+				Size:             req.Size,
+				DiskName:         req.Replica.DiskName,
+				DiskUuid:         req.Replica.DiskUUID,
+				ProvisioningMode: req.Replica.ProvisioningMode,
+			}
+		case types.InstanceTypeEngine:
+			// The local engine attaches to a single replica; the address in the
+			// generic replica address map is meaningless (no data-path port).
+			if len(req.Engine.ReplicaAddressMap) != 1 {
+				return nil, fmt.Errorf("failed to create instance: exactly one replica is required for the local data engine")
+			}
+			replicaName := ""
+			for name := range req.Engine.ReplicaAddressMap {
+				replicaName = name
+			}
+			localInstanceSpec = &rpc.LocalInstanceSpec{
+				Size:        req.Size,
+				ReplicaName: replicaName,
+			}
+		default:
+			return nil, fmt.Errorf("failed to create instance: instance type %v is not supported for the local data engine", req.InstanceType)
+		}
+	default:
+		return nil, fmt.Errorf("failed to create instance: invalid data engine %v", req.DataEngine)
 	}
 
 	p, err := client.InstanceCreate(ctx, &rpc.InstanceCreateRequest{
@@ -239,6 +270,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 			ProcessInstanceSpec: processInstanceSpec,
 			SpdkInstanceSpec:    spdkInstanceSpec,
+			LocalInstanceSpec:   localInstanceSpec,
 
 			UpgradeRequired:  req.Engine.UpgradeRequired,
 			InitiatorAddress: req.Engine.InitiatorAddress,
@@ -412,6 +444,35 @@ func (c *InstanceServiceClient) InstanceReplace(dataEngine, name, instanceType, 
 	return api.RPCToInstance(p), nil
 }
 
+// LocalReplicaInstanceExpand expands a local replica LV in place. Filesystem
+// expansion remains the CSI node service's responsibility.
+func (c *InstanceServiceClient) LocalReplicaInstanceExpand(name, diskName, diskUUID string, size uint64) (*api.Instance, error) {
+	if name == "" || diskName == "" || diskUUID == "" || size == 0 {
+		return nil, fmt.Errorf("failed to expand local replica: missing required parameter")
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	p, err := client.InstanceReplace(ctx, &rpc.InstanceReplaceRequest{
+		Spec: &rpc.InstanceSpec{
+			Name:       name,
+			Type:       types.InstanceTypeReplica,
+			DataEngine: rpc.DataEngine_DATA_ENGINE_LOCAL,
+			LocalInstanceSpec: &rpc.LocalInstanceSpec{
+				Size:     size,
+				DiskName: diskName,
+				DiskUuid: diskUUID,
+			},
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to expand local replica")
+	}
+	return api.RPCToInstance(p), nil
+}
+
 // InstanceSuspend suspends an instance.
 func (c *InstanceServiceClient) InstanceSuspend(dataEngine, name, instanceType string) error {
 	if name == "" {
@@ -557,7 +618,7 @@ func (c *InstanceServiceClient) LogSetLevel(dataEngine, service, level string) e
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	driver, ok := getLogDataEngine(dataEngine)
 	if !ok {
 		return fmt.Errorf("failed to set log level: invalid data engine %v", dataEngine)
 	}
@@ -575,7 +636,7 @@ func (c *InstanceServiceClient) LogSetFlags(dataEngine, service, flags string) e
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	driver, ok := getLogDataEngine(dataEngine)
 	if !ok {
 		return fmt.Errorf("failed to set log flags: invalid data engine %v", dataEngine)
 	}
@@ -593,7 +654,7 @@ func (c *InstanceServiceClient) LogGetLevel(dataEngine, service string) (string,
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	driver, ok := getLogDataEngine(dataEngine)
 	if !ok {
 		return "", fmt.Errorf("failed to get log level: invalid data engine %v", dataEngine)
 	}
@@ -613,7 +674,7 @@ func (c *InstanceServiceClient) LogGetFlags(dataEngine, service string) (string,
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	driver, ok := getLogDataEngine(dataEngine)
 	if !ok {
 		return "", fmt.Errorf("failed to get log flags: invalid data engine %v", dataEngine)
 	}

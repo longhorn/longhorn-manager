@@ -298,6 +298,11 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 	if driver, ok := volOptions["dataEngine"]; ok {
 		vol.DataEngine = driver
 	}
+	if mode, ok := volOptions["provisioningMode"]; ok {
+		vol.ProvisioningMode = mode
+	} else if vol.DataEngine == string(longhorn.DataEngineTypeLocal) {
+		vol.ProvisioningMode = string(longhorn.VolumeProvisioningModeThick)
+	}
 
 	layoutType, hasLayoutType := volOptions[longhorn.DataLayoutParameterType]
 	layoutMode, hasLayoutMode := volOptions[longhorn.DataLayoutParameterMode]

@@ -60,6 +60,12 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
 	}
+	if err := validateLocalVolume(volume); err != nil {
+		return err
+	}
+	if err := v.validateProvisioningMode(volume); err != nil {
+		return err
+	}
 
 	if !util.ValidateName(volume.Name) {
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", volume.Name), "")
@@ -247,6 +253,20 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	newVolume, ok := newObj.(*longhorn.Volume)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("newObj %v is not a longhorn.Volume", newObj), "")
+	}
+
+	if err := validateLocalVolume(newVolume); err != nil {
+		return err
+	}
+	if err := v.validateProvisioningMode(newVolume); err != nil {
+		return err
+	}
+	oldProvisioningMode := oldVolume.Spec.ProvisioningMode
+	if types.IsDataEngineLocal(oldVolume.Spec.DataEngine) && oldProvisioningMode == "" {
+		oldProvisioningMode = longhorn.VolumeProvisioningModeThick
+	}
+	if newVolume.Spec.ProvisioningMode != oldProvisioningMode {
+		return werror.NewInvalidError("provisioning mode is immutable", "spec.provisioningMode")
 	}
 
 	if err := v.validateExpansionSize(oldVolume, newVolume); err != nil {
@@ -743,6 +763,62 @@ func validateDataLocalityUpdate(oldVolume *longhorn.Volume, newVolume *longhorn.
 	return nil
 }
 
+// validateLocalVolume enforces the local data engine constraints: one replica,
+// strict-local placement, and none of the features later phases will add.
+func validateLocalVolume(volume *longhorn.Volume) error {
+	if !types.IsDataEngineLocal(volume.Spec.DataEngine) {
+		if volume.Spec.ProvisioningMode != "" {
+			return werror.NewInvalidError("provisioning mode is only supported by the local data engine", "spec.provisioningMode")
+		}
+		return nil
+	}
+	if volume.Spec.NumberOfReplicas != 1 {
+		return werror.NewInvalidError("local data engine volumes must have exactly one replica", "spec.numberOfReplicas")
+	}
+	if volume.Spec.DataLocality != longhorn.DataLocalityStrictLocal {
+		return werror.NewInvalidError(fmt.Sprintf("local data engine volumes require %v data locality", longhorn.DataLocalityStrictLocal), "spec.dataLocality")
+	}
+	if volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany || volume.Spec.Migratable {
+		return werror.NewInvalidError("local data engine volumes do not support shared access or migration", "spec.accessMode")
+	}
+	if volume.Spec.Encrypted {
+		return werror.NewInvalidError("local data engine volumes do not support encryption yet", "spec.encrypted")
+	}
+	if volume.Spec.BackingImage != "" {
+		return werror.NewInvalidError("local data engine volumes do not support backing images", "spec.backingImage")
+	}
+	if volume.Spec.FromBackup != "" || volume.Spec.DataSource != "" {
+		return werror.NewInvalidError("local data engine volumes do not support restore or clone yet", "spec.dataEngine")
+	}
+	if volume.Spec.Frontend != "" && volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev {
+		return werror.NewInvalidError(fmt.Sprintf("local data engine volumes only support the %v frontend", longhorn.VolumeFrontendBlockDev), "spec.frontend")
+	}
+	return nil
+}
+
+func (v *volumeValidator) validateProvisioningMode(volume *longhorn.Volume) error {
+	if !types.IsDataEngineLocal(volume.Spec.DataEngine) {
+		return nil
+	}
+
+	mode := volume.Spec.ProvisioningMode
+	switch mode {
+	case longhorn.VolumeProvisioningModeThick,
+		longhorn.VolumeProvisioningModeThin:
+	default:
+		return werror.NewInvalidError(fmt.Sprintf("invalid provisioning mode %q", mode), "spec.provisioningMode")
+	}
+
+	configuredMode, err := v.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineProvisioningMode, volume.Spec.DataEngine)
+	if err != nil {
+		return werror.NewInvalidError(errors.Wrapf(err, "failed to get the %v provisioning mode", volume.Spec.DataEngine).Error(), "spec.provisioningMode")
+	}
+	if string(mode) != configuredMode {
+		return werror.NewInvalidError(fmt.Sprintf("provisioning mode %q does not match the %v data engine mode %q", mode, volume.Spec.DataEngine, configuredMode), "spec.provisioningMode")
+	}
+	return nil
+}
+
 func validateReplicaCount(cloneMode longhorn.CloneMode, dataLocality longhorn.DataLocality, replicaCount int) error {
 	if err := types.ValidateReplicaCount(replicaCount); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
@@ -783,8 +859,8 @@ func validateUblkNumberOfQueue(n int) error {
 }
 
 func (v *volumeValidator) canDisableRevisionCounter(image string, dataEngine longhorn.DataEngineType) (bool, error) {
-	if types.IsDataEngineV2(dataEngine) {
-		// v2 volume does not have revision counter
+	if types.IsDataEngineV2(dataEngine) || types.IsDataEngineLocal(dataEngine) {
+		// v2 and local volumes do not have a revision counter
 		return true, nil
 	}
 
