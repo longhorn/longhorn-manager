@@ -394,6 +394,10 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	if err := csi.ReconcileLegacySecretRBAC(kubeClient, namespace, logrus.StandardLogger()); err != nil {
+		return err
+	}
+
 	csiDriverObjectDeployment := csi.NewCSIDriverObject(storageCapacityEnabled)
 	if err := csiDriverObjectDeployment.Deploy(kubeClient); err != nil {
 		return err

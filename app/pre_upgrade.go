@@ -99,7 +99,11 @@ type preUpgrader struct {
 }
 
 func newPreUpgrader(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder) *preUpgrader {
-	return &preUpgrader{namespace, lhClient, eventRecorder}
+	return &preUpgrader{
+		namespace:     namespace,
+		lhClient:      lhClient,
+		eventRecorder: eventRecorder,
+	}
 }
 
 func (u *preUpgrader) Run() error {
