@@ -343,7 +343,12 @@ func (c *BackingImageManagerController) syncBackingImageManager(key string) (err
 		c.backoffMap.Store(bim.Name, backoff)
 	}
 
-	if err := c.syncBackingImageManagerPod(bim, backoff); err != nil {
+	diskReadyAt := ""
+	diskReadyCondition := types.GetCondition(node.Status.DiskStatus[diskName].Conditions, longhorn.DiskConditionTypeReady)
+	if diskReadyCondition.Status == longhorn.ConditionStatusTrue {
+		diskReadyAt = diskReadyCondition.LastTransitionTime
+	}
+	if err := c.syncBackingImageManagerPod(bim, diskReadyAt, backoff); err != nil {
 		return err
 	}
 
@@ -461,7 +466,7 @@ func (c *BackingImageManagerController) updateForUnknownBackingImageManager(bim 
 
 }
 
-func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn.BackingImageManager, backoff *flowcontrol.Backoff) (err error) {
+func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn.BackingImageManager, diskReadyAt string, backoff *flowcontrol.Backoff) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to sync backing image manager pod")
 	}()
@@ -493,6 +498,12 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 		if bim.Status.CurrentState != longhorn.BackingImageManagerStateError {
 			log.Errorf("Pod deletion timestamp is set for backing image manager with state %v, will update to state %v", bim.Status.CurrentState, longhorn.BackingImageManagerStateError)
 			c.eventRecorder.Eventf(bim, corev1.EventTypeWarning, constant.EventReasonUpdate, "Pod deletion timestamp is set for backing image manager with state %v, will update to state %v", bim.Status.CurrentState, longhorn.BackingImageManagerStateError)
+			bim.Status.CurrentState = longhorn.BackingImageManagerStateError
+		}
+	} else if diskReadyAt != "" && pod.Annotations[types.GetLonghornLabelKey(types.BackingImageManagerStartingAtAnnotationKeySuffix)] != diskReadyAt {
+		if bim.Status.CurrentState != longhorn.BackingImageManagerStateError {
+			log.Infof("Pod starting timestamp %v does not match disk Ready transition timestamp %v, will update to state %v", pod.Annotations[types.GetLonghornLabelKey(types.BackingImageManagerStartingAtAnnotationKeySuffix)], diskReadyAt, longhorn.BackingImageManagerStateError)
+			c.eventRecorder.Eventf(bim, corev1.EventTypeNormal, constant.EventReasonUpdate, "Pod starting timestamp does not match disk Ready transition timestamp %v, will update to state %v", diskReadyAt, longhorn.BackingImageManagerStateError)
 			bim.Status.CurrentState = longhorn.BackingImageManagerStateError
 		}
 	} else {
@@ -595,7 +606,7 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 				}
 				log.Infof("Creating pod for backing image manager %s", bim.Name)
 				c.podRecreateBackoff.Next(backoffID, time.Now())
-				if err := c.createBackingImageManagerPod(bim); err != nil {
+				if err := c.createBackingImageManagerPod(bim, diskReadyAt); err != nil {
 					return errors.Wrap(err, "failed to create pod for backing image manager")
 				}
 
@@ -855,7 +866,7 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 	return nil
 }
 
-func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longhorn.BackingImageManager) (err error) {
+func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longhorn.BackingImageManager, diskReadyAt string) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to create backing image manager pod")
 	}()
@@ -874,7 +885,7 @@ func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longho
 	}
 	registrySecret := registrySecretSetting.Value
 
-	podManifest, err := c.generateBackingImageManagerPodManifest(bim, tolerations, registrySecret, nodeSelector)
+	podManifest, err := c.generateBackingImageManagerPodManifest(bim, tolerations, registrySecret, nodeSelector, diskReadyAt)
 	if err != nil {
 		return err
 	}
@@ -886,7 +897,7 @@ func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longho
 	return nil
 }
 
-func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(bim *longhorn.BackingImageManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string) (*corev1.Pod, error) {
+func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(bim *longhorn.BackingImageManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, diskReadyAt string) (*corev1.Pod, error) {
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
 		return nil, err
@@ -909,7 +920,10 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 			Namespace:       c.namespace,
 			OwnerReferences: datastore.GetOwnerReferencesForBackingImageManager(bim),
 			Labels:          types.GetBackingImageManagerLabels(bim.Spec.NodeID, bim.Spec.DiskUUID),
-			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
+			Annotations: map[string]string{
+				types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix):         string(tolerationsByte),
+				types.GetLonghornLabelKey(types.BackingImageManagerStartingAtAnnotationKeySuffix): diskReadyAt,
+			},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
