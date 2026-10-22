@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -168,6 +169,9 @@ func (srv *GroupControllerServer) CreateVolumeGroupSnapshot(ctx context.Context,
 type volumeGroupSnapshotParameters struct {
 	csiSnapshotType string
 	backupMode      longhorn.BackupMode
+	hooks           longhorn.SnapshotGroupHooks
+	hookOperation   longhorn.HookOperation
+	deadlineSeconds int64
 	snapshotLabels  map[string]string
 }
 
@@ -193,12 +197,40 @@ func parseVolumeGroupSnapshotParameters(parameters map[string]string) (*volumeGr
 		return nil, status.Errorf(codes.InvalidArgument, "invalid backup mode: %q. Must be %v or %v", parameters["backupMode"], longhorn.BackupModeIncremental, longhorn.BackupModeFull)
 	}
 
-	// The reserved keys type and backupMode are stripped before parameters
-	// become snapshot labels. This deliberately diverges from the per-volume
-	// path, which forwards raw parameters into snapshot and backup labels.
+	// hooks maps onto spec.hooks. Unset means none, like the spec default.
+	hooks := longhorn.SnapshotGroupHooks(parameters[types.SnapshotGroupCSIParameterHooks])
+	if hooks == "" {
+		hooks = longhorn.SnapshotGroupHooksNone
+	}
+	if hooks != longhorn.SnapshotGroupHooksNone && hooks != longhorn.SnapshotGroupHooksCommand {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid hooks: %q. Must be %v or %v", parameters[types.SnapshotGroupCSIParameterHooks], longhorn.SnapshotGroupHooksNone, longhorn.SnapshotGroupHooksCommand)
+	}
+
+	// Unset leaves the spec at 0 for the mutating webhook to default.
+	// Range-check here to fail fast.
+	var deadlineSeconds int64
+	if raw, ok := parameters[types.SnapshotGroupCSIParameterDeadlineSeconds]; ok {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < types.SnapshotGroupMinDeadlineSeconds || parsed > types.SnapshotGroupMaxDeadlineSeconds {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid deadlineSeconds: %q. Must be an integer between %v and %v", raw, types.SnapshotGroupMinDeadlineSeconds, types.SnapshotGroupMaxDeadlineSeconds)
+		}
+		deadlineSeconds = parsed
+	}
+
+	// The operation stays unset when hooks are none; the webhook rejects an
+	// operation on an unhooked group.
+	var hookOperation longhorn.HookOperation
+	if hooks != longhorn.SnapshotGroupHooksNone {
+		hookOperation = longhorn.HookOperationSnapshot
+		if csiSnapshotType == csiSnapshotTypeLonghornBackup {
+			hookOperation = longhorn.HookOperationBackup
+		}
+	}
+
+	// Keep the reserved keys out of the snapshot labels.
 	snapshotLabels := make(map[string]string)
 	for key, value := range parameters {
-		if key == "type" || key == "backupMode" {
+		if key == "type" || key == "backupMode" || key == types.SnapshotGroupCSIParameterHooks || key == types.SnapshotGroupCSIParameterDeadlineSeconds {
 			continue
 		}
 		snapshotLabels[key] = value
@@ -207,6 +239,9 @@ func parseVolumeGroupSnapshotParameters(parameters map[string]string) (*volumeGr
 	return &volumeGroupSnapshotParameters{
 		csiSnapshotType: csiSnapshotType,
 		backupMode:      backupMode,
+		hooks:           hooks,
+		hookOperation:   hookOperation,
+		deadlineSeconds: deadlineSeconds,
 		snapshotLabels:  snapshotLabels,
 	}, nil
 }
@@ -255,11 +290,14 @@ func (srv *GroupControllerServer) ensureSnapshotGroupExists(ctx context.Context,
 			},
 		},
 		Spec: longhorn.SnapshotGroupSpec{
-			Volumes: volumeNames,
-			Labels:  params.snapshotLabels,
+			Volumes:         volumeNames,
+			Labels:          params.snapshotLabels,
+			Hooks:           params.hooks,
+			HookOperation:   params.hookOperation,
+			DeadlineSeconds: params.deadlineSeconds,
 		},
 	}
-	log.Infof("Creating SnapshotGroup %v for volumes %v", groupName, volumeNames)
+	log.Infof("Creating SnapshotGroup %v for volumes %v (hooks: %v, hookOperation: %v, deadlineSeconds: %v)", groupName, volumeNames, params.hooks, params.hookOperation, params.deadlineSeconds)
 	if _, err := srv.snapshotGroups().Create(ctx, snapshotGroup, metav1.CreateOptions{}); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			return srv.ensureSnapshotGroupExists(ctx, log, groupName, params, volumeNames)
@@ -281,13 +319,28 @@ type recordedSnapshotGroupCSIParameters struct {
 
 // snapshotGroupParametersMismatch compares the requested parameters with the
 // group and names the first difference, or returns empty on a match. The
-// snapshot labels are compared against the immutable spec, so the comparison
-// does not depend on the record; the backup mode is compared against the
-// record stamped at creation, only for bak groups. A bak group without a
-// readable record is incompatible: CSI creation always stamps it.
+// snapshot labels, hooks and deadline are compared against the immutable
+// spec, so the comparison does not depend on the record; the backup mode is
+// compared against the record stamped at creation, only for bak groups. A
+// bak group without a readable record is incompatible: CSI creation always
+// stamps it.
 func snapshotGroupParametersMismatch(snapshotGroup *longhorn.SnapshotGroup, params *volumeGroupSnapshotParameters) string {
 	if !maps.Equal(snapshotGroup.Spec.Labels, params.snapshotLabels) {
 		return fmt.Sprintf("snapshot labels: recorded %v, requested %v", snapshotGroup.Spec.Labels, params.snapshotLabels)
+	}
+	// The mutating webhook defaults an unset spec.hooks to none, so treat an
+	// empty spec value as none to match a none request.
+	existingHooks := snapshotGroup.Spec.Hooks
+	if existingHooks == "" {
+		existingHooks = longhorn.SnapshotGroupHooksNone
+	}
+	if existingHooks != params.hooks {
+		return fmt.Sprintf("hooks: recorded %v, requested %v", existingHooks, params.hooks)
+	}
+	// An unset deadline request accepts whatever default the webhook set on
+	// the spec.
+	if params.deadlineSeconds != 0 && snapshotGroup.Spec.DeadlineSeconds != params.deadlineSeconds {
+		return fmt.Sprintf("deadlineSeconds: recorded %v, requested %v", snapshotGroup.Spec.DeadlineSeconds, params.deadlineSeconds)
 	}
 	if params.csiSnapshotType != csiSnapshotTypeLonghornBackup {
 		return ""

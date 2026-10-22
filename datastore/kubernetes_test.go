@@ -10,11 +10,13 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -144,4 +146,71 @@ func TestLeaseInformerIsNamespaceScoped(t *testing.T) {
 	require.Len(t, cached, 1)
 	assert.Equal(t, longhornNamespace, cached[0].Namespace)
 	assert.Equal(t, shareManagerLease.Name, cached[0].Name)
+}
+
+func TestOutdatedManagerPods(t *testing.T) {
+	daemonSet := &appsv1.DaemonSet{}
+	daemonSet.Spec.Template.Spec.Containers = []corev1.Container{{Name: types.LonghornManagerContainerName, Image: "longhorn-manager:v2"}}
+
+	pod := func(name, image string, phase corev1.PodPhase) *corev1.Pod {
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: types.LonghornManagerContainerName, Image: image}}},
+			Status:     corev1.PodStatus{Phase: phase},
+		}
+	}
+	stray := pod("node-a", "longhorn-manager:v2", corev1.PodRunning)
+	stray.Spec.Containers[0].Name = "sidecar"
+
+	tests := map[string]struct {
+		daemonSet *appsv1.DaemonSet
+		pods      []*corev1.Pod
+		expected  []string
+	}{
+		"pods on the DaemonSet image are current": {
+			daemonSet: daemonSet,
+			pods: []*corev1.Pod{
+				pod("node-a", "longhorn-manager:v2", corev1.PodRunning),
+				pod("node-b", "longhorn-manager:v2", corev1.PodPending),
+			},
+		},
+		"pods on another image are named, sorted": {
+			daemonSet: daemonSet,
+			pods: []*corev1.Pod{
+				pod("node-c", "longhorn-manager:v1", corev1.PodRunning),
+				pod("node-b", "longhorn-manager:v2", corev1.PodRunning),
+				pod("node-a", "longhorn-manager:v1", corev1.PodPending),
+			},
+			expected: []string{"node-a", "node-c"},
+		},
+		"exited pods on the old image do not count": {
+			daemonSet: daemonSet,
+			pods: []*corev1.Pod{
+				pod("node-a", "longhorn-manager:v1", corev1.PodSucceeded),
+				pod("node-b", "longhorn-manager:v1", corev1.PodFailed),
+			},
+		},
+		"a pod without the manager container is outdated": {
+			daemonSet: daemonSet,
+			pods:      []*corev1.Pod{stray},
+			expected:  []string{"node-a"},
+		},
+		"a DaemonSet without the manager container checks nothing": {
+			daemonSet: &appsv1.DaemonSet{},
+			pods: []*corev1.Pod{
+				pod("node-a", "longhorn-manager:v1", corev1.PodRunning),
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, outdatedManagerPods(tc.daemonSet, tc.pods))
+		})
+	}
+}
+
+func TestOutdatedManagerPodsMessage(t *testing.T) {
+	assert.Equal(t, "", OutdatedManagerPodsMessage(nil))
+	assert.Equal(t, "hooks: command is refused until the longhorn-manager rollout completes: pods node-a, node-c still run the previous image and would snapshot without running the hooks", OutdatedManagerPodsMessage([]string{"node-a", "node-c"}))
 }

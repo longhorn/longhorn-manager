@@ -198,6 +198,8 @@ const (
 	SettingNameCSIAllowedTopologyKeys                                   = SettingName("csi-allowed-topology-keys")
 	SettingNameCSIStorageCapacityTracking                               = SettingName("csi-storage-capacity-tracking")
 	SettingNameAllowLiveEngineUpgradeOnSameImageCommit                  = SettingName("allow-live-engine-upgrade-on-same-image-commit")
+	SettingNameHookReleaseAttempts                                      = SettingName("hook-release-attempts")
+	SettingNameHookReleaseTimeout                                       = SettingName("hook-release-timeout")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -334,6 +336,8 @@ var (
 		SettingNameCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking,
 		SettingNameAllowLiveEngineUpgradeOnSameImageCommit,
+		SettingNameHookReleaseAttempts,
+		SettingNameHookReleaseTimeout,
 	}
 )
 
@@ -504,6 +508,8 @@ var (
 		SettingNameCSIAllowedTopologyKeys:                  SettingDefinitionCSIAllowedTopologyKeys,
 		SettingNameCSIStorageCapacityTracking:              SettingDefinitionCSIStorageCapacityTracking,
 		SettingNameAllowLiveEngineUpgradeOnSameImageCommit: SettingDefinitionAllowLiveEngineUpgradeOnSameImageCommit,
+		SettingNameHookReleaseAttempts:                     SettingDefinitionHookReleaseAttempts,
+		SettingNameHookReleaseTimeout:                      SettingDefinitionHookReleaseTimeout,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -2250,6 +2256,38 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "false",
+	}
+
+	SettingDefinitionHookReleaseAttempts = SettingDefinition{
+		DisplayName: "Hook Release Attempts",
+		Description: "The number of times Longhorn retries a failed or timed-out post-hook command in a pod before giving up on that pod. " +
+			"Together with the Hook Release Timeout setting, this limits how long a snapshot group being deleted waits for its hooks to finish.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "3",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 20,
+		},
+	}
+
+	SettingDefinitionHookReleaseTimeout = SettingDefinition{
+		DisplayName: "Hook Release Timeout",
+		Description: "The number of seconds a post-hook command can run before Longhorn cancels the attempt and counts it as timed out. The command itself keeps running in the pod. " +
+			"Together with the Hook Release Attempts setting, this limits how long a snapshot group being deleted waits for its hooks to finish. The wait grows with the number of members that have recorded hook pods.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "60",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 5,
+			ValueIntRangeMaximum: 600,
+		},
 	}
 )
 

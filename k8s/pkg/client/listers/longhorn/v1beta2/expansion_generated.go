@@ -241,3 +241,11 @@ type VolumeAttachmentListerExpansion interface{}
 // VolumeAttachmentNamespaceListerExpansion allows custom methods to be added to
 // VolumeAttachmentNamespaceLister.
 type VolumeAttachmentNamespaceListerExpansion interface{}
+
+// VolumeHookPolicyListerExpansion allows custom methods to be added to
+// VolumeHookPolicyLister.
+type VolumeHookPolicyListerExpansion interface{}
+
+// VolumeHookPolicyNamespaceListerExpansion allows custom methods to be added to
+// VolumeHookPolicyNamespaceLister.
+type VolumeHookPolicyNamespaceListerExpansion interface{}

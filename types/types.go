@@ -233,6 +233,7 @@ const (
 	LonghornLabelManagedBy                       = "managed-by"
 	LonghornLabelSnapshotForCloningVolume        = "for-cloning-volume"
 	LonghornLabelSnapshotGroup                   = "snapshot-group"
+	LonghornLabelSnapshotGroupHooked             = "snapshot-group-hooked"
 	LonghornLabelSnapshotGroupCSIType            = "snapshot-group-csi-type"
 	LonghornLabelSnapshotGroupUID                = "snapshot-group-uid"
 	LonghornLabelBackingImageDataSource          = "backing-image-data-source"
@@ -336,17 +337,46 @@ const (
 	// spec requires.
 	SnapshotGroupAnnotationCSIParameters = "longhorn.io/snapshot-group-csi-parameters"
 
+	// SnapshotGroupCSITypeBackup is the LonghornLabelSnapshotGroupCSIType
+	// value the CSI driver stamps on a group it backs up after the snapshots;
+	// it matches the CSI driver's "bak" snapshot type.
+	SnapshotGroupCSITypeBackup = "bak"
+
+	// SnapshotGroupCSIParameterHooks and SnapshotGroupCSIParameterDeadlineSeconds
+	// are the VolumeGroupSnapshotClass parameter keys the CSI plugin maps to
+	// spec.hooks and spec.deadlineSeconds.
+	SnapshotGroupCSIParameterHooks           = "hooks"
+	SnapshotGroupCSIParameterDeadlineSeconds = "deadlineSeconds"
+
 	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
 	// also keeps the auto-attach of detached member volumes bounded.
 	SnapshotGroupMaxMemberCount = 64
 
-	// SnapshotGroupDefaultDeadlineSeconds is stamped by the mutating webhook
-	// when spec.deadlineSeconds is unset.
+	// SnapshotGroupDefaultDeadlineSeconds is set by the mutating webhook when
+	// spec.deadlineSeconds is omitted or 0. The CRD schema declares no default
+	// because the default depends on whether the group has hooks; this is the
+	// value for groups without hooks.
 	SnapshotGroupDefaultDeadlineSeconds = 300
+	// SnapshotGroupHookedDefaultDeadlineSeconds is the default for a hooked
+	// group. It is shorter than SnapshotGroupDefaultDeadlineSeconds because a
+	// hooked group never waits for auto-attach (admission requires running
+	// pods, so member volumes are already attached), and the deadline also
+	// bounds how long the application stays paused, so failing fast is
+	// preferable to a long freeze.
+	SnapshotGroupHookedDefaultDeadlineSeconds = 60
 	// SnapshotGroupMinDeadlineSeconds and SnapshotGroupMaxDeadlineSeconds
 	// mirror the CRD schema bounds on spec.deadlineSeconds.
 	SnapshotGroupMinDeadlineSeconds = 10
 	SnapshotGroupMaxDeadlineSeconds = 3600
+
+	// Longhorn ships the hook executor's ClusterRole but never binds it. A
+	// namespace admin grants exec access by applying a RoleBinding in the
+	// application namespace that binds the ClusterRole to the executor's
+	// ServiceAccount in the Longhorn namespace. SnapshotGroup admission
+	// checks the grant and prints the manifest when it is missing.
+	HookExecutorClusterRoleName    = "longhorn-hook-executor"
+	HookExecutorRoleBindingName    = "longhorn-hook-executor"
+	HookExecutorServiceAccountName = "longhorn-hook-executor"
 
 	CniNetworkNone           = ""
 	StorageNetworkInterface  = "lhnet1" // Data plane network

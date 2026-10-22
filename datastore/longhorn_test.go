@@ -12,9 +12,13 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeinformers "k8s.io/client-go/informers"
 
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -444,4 +448,203 @@ func TestGetSettingValueExistedByDataEngineAllowsEmptyValue(t *testing.T) {
 	value, err := ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineLogFlags, longhorn.DataEngineTypeV2)
 	require.NoError(t, err)
 	assert.Empty(t, value)
+}
+
+func TestVolumeHookPolicyAccessors(t *testing.T) {
+	newPolicy := func(namespace, name string) *longhorn.VolumeHookPolicy {
+		return &longhorn.VolumeHookPolicy{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name}}
+	}
+	factory := lhinformerfactory.NewSharedInformerFactory(lhfake.NewClientset(), 0)
+	informer := factory.Longhorn().V1beta2().VolumeHookPolicies()
+	for _, policy := range []*longhorn.VolumeHookPolicy{
+		newPolicy("app-a", "mongo"),
+		newPolicy("app-a", "postgres"),
+		newPolicy("app-b", "mongo"),
+	} {
+		require.NoError(t, informer.Informer().GetIndexer().Add(policy))
+	}
+	ds := &DataStore{namespace: "longhorn-system", volumeHookPolicyLister: informer.Lister()}
+
+	getTests := map[string]struct {
+		namespace, name string
+		wantNamespace   string // empty means an error is expected
+		wantNotFound    bool
+	}{
+		"get is scoped to the given namespace": {
+			namespace: "app-b", name: "mongo",
+			wantNamespace: "app-b",
+		},
+		"get does not see other namespaces": {
+			namespace: "app-b", name: "postgres",
+			wantNotFound: true,
+		},
+		"get never falls back to the manager namespace": {
+			namespace: "", name: "mongo",
+		},
+	}
+	for name, tc := range getTests {
+		t.Run(name, func(t *testing.T) {
+			policy, err := ds.GetVolumeHookPolicyRO(tc.namespace, tc.name)
+			if tc.wantNamespace != "" {
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantNamespace, policy.Namespace)
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, tc.wantNotFound, apierrors.IsNotFound(err))
+		})
+	}
+
+	listTests := map[string]struct {
+		namespace string
+		all       bool
+		wantLen   int
+		wantErr   bool
+	}{
+		"list by namespace": {namespace: "app-a", wantLen: 2},
+		"list never falls back to the manager namespace": {namespace: "", wantErr: true},
+		"list all namespaces":                            {all: true, wantLen: 3},
+	}
+	for name, tc := range listTests {
+		t.Run(name, func(t *testing.T) {
+			var policies []*longhorn.VolumeHookPolicy
+			var err error
+			if tc.all {
+				policies, err = ds.ListAllVolumeHookPoliciesRO()
+			} else {
+				policies, err = ds.ListVolumeHookPoliciesRO(tc.namespace)
+			}
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Len(t, policies, tc.wantLen)
+		})
+	}
+}
+
+func TestResolveVolumeHookPolicyForVolume(t *testing.T) {
+	newPolicy := func(namespace, name string, pvcLabels map[string]string) *longhorn.VolumeHookPolicy {
+		return &longhorn.VolumeHookPolicy{
+			ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name, Generation: 3},
+			Spec:       longhorn.VolumeHookPolicySpec{PVCSelector: &metav1.LabelSelector{MatchLabels: pvcLabels}},
+		}
+	}
+	newNamePolicy := func(namespace, name string, pvcNames ...string) *longhorn.VolumeHookPolicy {
+		return &longhorn.VolumeHookPolicy{
+			ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name, Generation: 3},
+			Spec:       longhorn.VolumeHookPolicySpec{PVCNames: pvcNames},
+		}
+	}
+	newPVC := func(namespace, name string, labels map[string]string) *corev1.PersistentVolumeClaim {
+		return &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name, Labels: labels}}
+	}
+	newVolume := func(name, namespace, pvcName string) *longhorn.Volume {
+		return &longhorn.Volume{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "longhorn-system"},
+			Status: longhorn.VolumeStatus{KubernetesStatus: longhorn.KubernetesStatus{
+				Namespace: namespace, PVCName: pvcName,
+			}},
+		}
+	}
+
+	lhFactory := lhinformerfactory.NewSharedInformerFactory(lhfake.NewClientset(), 0)
+	policyInformer := lhFactory.Longhorn().V1beta2().VolumeHookPolicies()
+	for _, policy := range []*longhorn.VolumeHookPolicy{
+		newPolicy("app", "mongo", map[string]string{"app": "mongo"}),
+		newPolicy("app", "postgres", map[string]string{"app": "postgres"}),
+		newPolicy("app", "postgres-dup", map[string]string{"app": "postgres"}),
+		newPolicy("other", "mongo", map[string]string{"app": "mongo"}),
+		newNamePolicy("app", "redis-by-name", "data-redis-0", "data-redis-1"),
+		newNamePolicy("app", "mysql-by-name", "mysql-data"),
+		newNamePolicy("other", "redis-by-name", "data-redis-0"),
+	} {
+		require.NoError(t, policyInformer.Informer().GetIndexer().Add(policy))
+	}
+	kubeFactory := kubeinformers.NewSharedInformerFactory(fake.NewClientset(), 0)
+	pvcInformer := kubeFactory.Core().V1().PersistentVolumeClaims()
+	for _, pvc := range []*corev1.PersistentVolumeClaim{
+		newPVC("app", "mongo-data", map[string]string{"app": "mongo"}),
+		newPVC("app", "postgres-data", map[string]string{"app": "postgres"}),
+		newPVC("app", "unlabeled", nil),
+		newPVC("app", "data-redis-1", nil),
+		newPVC("app", "mysql-data", map[string]string{"app": "mongo"}),
+	} {
+		require.NoError(t, pvcInformer.Informer().GetIndexer().Add(pvc))
+	}
+	ds := &DataStore{
+		namespace:                   "longhorn-system",
+		volumeHookPolicyLister:      policyInformer.Lister(),
+		persistentVolumeClaimLister: pvcInformer.Lister(),
+	}
+	resolutionReason := func(t *testing.T, err error) snapshothook.AdmissionFailureReason {
+		var resolution *snapshothook.PolicyResolutionError
+		require.ErrorAs(t, err, &resolution)
+		return resolution.Reason
+	}
+
+	historical := newVolume("vol-history", "app", "mongo-data")
+	historical.Status.KubernetesStatus.LastPVCRefAt = "2026-01-01T00:00:00Z"
+
+	tests := map[string]struct {
+		volume          *longhorn.Volume
+		wantPolicy      string // namespaced name; empty means an error is expected
+		wantReason      snapshothook.AdmissionFailureReason
+		wantErrContains []string
+	}{
+		"exactly one match in the PVC's namespace": {
+			volume:     newVolume("vol-mongo", "app", "mongo-data"),
+			wantPolicy: "app/mongo",
+		},
+		"pvcNames covers an unlabeled PVC in the policy's namespace": {
+			volume:     newVolume("vol-redis", "app", "data-redis-1"),
+			wantPolicy: "app/redis-by-name",
+		},
+		"no match names the volume and PVC": {
+			volume:          newVolume("vol-plain", "app", "unlabeled"),
+			wantReason:      snapshothook.AdmissionFailureNoPolicy,
+			wantErrContains: []string{"vol-plain", "app/unlabeled"},
+		},
+		"several matches name every policy": {
+			volume:          newVolume("vol-pg", "app", "postgres-data"),
+			wantReason:      snapshothook.AdmissionFailureMultiplePolicies,
+			wantErrContains: []string{"app/postgres, app/postgres-dup"},
+		},
+		"a name policy and a selector policy on the same PVC are two policies": {
+			volume:          newVolume("vol-mysql", "app", "mysql-data"),
+			wantReason:      snapshothook.AdmissionFailureMultiplePolicies,
+			wantErrContains: []string{"app/mongo, app/mysql-by-name"},
+		},
+		"a volume without a PVC cannot be a hooked member": {
+			volume:     newVolume("vol-detached", "", ""),
+			wantReason: snapshothook.AdmissionFailureNoPVC,
+		},
+		"a historical PVC reference does not count as a PVC": {
+			volume:     historical,
+			wantReason: snapshothook.AdmissionFailureNoPVC,
+		},
+		"PVC missing from cache": {
+			volume:          newVolume("vol-gone", "app", "gone"),
+			wantReason:      snapshothook.AdmissionFailureNoPVC,
+			wantErrContains: []string{"does not exist"},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			policy, err := ds.ResolveVolumeHookPolicyForVolume(tc.volume)
+			if tc.wantPolicy != "" {
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantPolicy, snapshothook.PolicyNamespacedName(policy))
+				assert.NotZero(t, policy.Generation, "the resolved policy must carry its metadata")
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, tc.wantReason, resolutionReason(t, err))
+			for _, want := range tc.wantErrContains {
+				assert.Contains(t, err.Error(), want)
+			}
+		})
+	}
 }
