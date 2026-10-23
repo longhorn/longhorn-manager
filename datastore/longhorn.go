@@ -2124,6 +2124,19 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	return obj, nil
 }
 
+// RecordEngineExpansionCancellation records on the engine that its failed
+// expansion is canceled for the given volume generation. The update is based on
+// the resourceVersion of the given engine, so it fails with a conflict if the
+// engine monitor has claimed an expansion retry since the engine was read.
+func (s *DataStore) RecordEngineExpansionCancellation(e *longhorn.Engine, volumeGeneration int64) (*longhorn.Engine, error) {
+	e = e.DeepCopy()
+	if e.Annotations == nil {
+		e.Annotations = map[string]string{}
+	}
+	e.Annotations[types.EngineAnnotationExpansionCanceledVolumeGeneration] = strconv.FormatInt(volumeGeneration, 10)
+	return s.UpdateEngine(e)
+}
+
 // UpdateEngineStatus updates Longhorn Engine status and verifies update
 func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	obj, err := s.lhClient.LonghornV1beta2().Engines(s.namespace).UpdateStatus(context.TODO(), e, metav1.UpdateOptions{})
