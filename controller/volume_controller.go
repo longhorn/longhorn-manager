@@ -55,6 +55,12 @@ var (
 	AutoSalvageTimeLimit = 1 * time.Minute
 
 	UnstableNodeReadyTimeThreshold = 30 * time.Minute
+
+	// AutoBalanceManagerUnavailableTolerance is how long replica auto-balance
+	// waits for the longhorn-manager pod of a node with running replicas to
+	// become ready again, e.g. during a restart or a DaemonSet rollout, before
+	// it rebalances the replicas to other nodes.
+	AutoBalanceManagerUnavailableTolerance = 3 * time.Minute
 )
 
 const (
@@ -3949,6 +3955,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.
 		return 0
 	}
 
+	if c.isReplicaOnNodeWithUnavailableManager(e, rs, log) {
+		return 0
+	}
+
 	var adjustCount int
 	adjustCount, _, err = fnCount(v, e, rs)
 	if err != nil {
@@ -3980,6 +3990,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 		if v.Status.State != longhorn.VolumeStateDetached {
 			log.Warnf("Cannot auto-balance volume in %s state", v.Status.Robustness)
 		}
+		return 0, nil, []string{}
+	}
+
+	if c.isReplicaOnNodeWithUnavailableManager(e, rs, log) {
 		return 0, nil, []string{}
 	}
 
@@ -4436,6 +4450,59 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 	}
 
 	return filteredReadyNodes, nil
+}
+
+// isReplicaOnNodeWithUnavailableManager returns true if a replica of the volume
+// that the engine reports as RW runs on a node that is not ready only because
+// its longhorn-manager pod is down or missing, and not for longer than
+// AutoBalanceManagerUnavailableTolerance. Auto-balance would count such a
+// replica as gone and rebuild it on another node, although it keeps serving
+// the volume. Ref: https://github.com/longhorn/longhorn/issues/13941
+func (c *VolumeController) isReplicaOnNodeWithUnavailableManager(e *longhorn.Engine, rs map[string]*longhorn.Replica, log logrus.FieldLogger) bool {
+	if e == nil {
+		return false
+	}
+
+	now, err := util.ParseTime(c.nowHandler())
+	if err != nil {
+		log.WithError(err).Warn("Failed to parse the current time")
+		return false
+	}
+
+	for _, r := range rs {
+		if r.Status.CurrentState != longhorn.InstanceStateRunning || e.Status.ReplicaModeMap[r.Name] != longhorn.ReplicaModeRW {
+			continue
+		}
+
+		node, err := c.ds.GetNodeRO(r.Spec.NodeID)
+		if err != nil {
+			continue
+		}
+
+		condition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+		if condition.Status == longhorn.ConditionStatusTrue {
+			continue
+		}
+		if condition.Reason != string(longhorn.NodeConditionReasonManagerPodDown) &&
+			condition.Reason != string(longhorn.NodeConditionReasonManagerPodMissing) {
+			continue
+		}
+
+		notReadySince, err := util.ParseTime(condition.LastTransitionTime)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to parse the ready condition transition time of node %v", node.Name)
+			continue
+		}
+		if now.Sub(notReadySince) > AutoBalanceManagerUnavailableTolerance {
+			continue
+		}
+
+		log.Debugf("Skipping replica auto-balance: replica %v runs on node %v, which is not ready since %v because of %v, waiting up to %v",
+			r.Name, node.Name, condition.LastTransitionTime, condition.Reason, AutoBalanceManagerUnavailableTolerance)
+		return true
+	}
+
+	return false
 }
 
 func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
