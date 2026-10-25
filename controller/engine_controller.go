@@ -33,7 +33,9 @@ import (
 
 	"github.com/longhorn/backupstore"
 
+	commonnet "github.com/longhorn/go-common-libs/net"
 	lhtypes "github.com/longhorn/go-common-libs/types"
+	iscsidevtypes "github.com/longhorn/go-iscsi-helper/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -738,6 +740,10 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	preferredIPFamily, err := getPreferredDataEngineIPFamily(ec.ds)
+	if err != nil {
+		return nil, err
+	}
 	ipFamily := im.Status.IPFamily
 
 	instanceManagerPod, err := ec.ds.GetPod(im.Name)
@@ -770,6 +776,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		DataLayoutType:                   dataLayoutType,
 		EngineCLIAPIVersion:              cliAPIVersion,
+		IPFamily:                         preferredIPFamily,
 		UpgradeRequired:                  false,
 		InitiatorAddress:                 instanceManagerStorageIP,
 		TargetAddress:                    instanceManagerStorageIP,
@@ -1056,6 +1063,44 @@ func (m *EngineMonitor) sync() bool {
 	return false
 }
 
+func getPreferredDataEngineIPFamily(ds *datastore.DataStore) (commonnet.IPFamily, error) {
+	setting, err := ds.GetSettingWithAutoFillingRO(types.SettingNamePreferredDataEngineIPFamily)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get preferred data engine IP family")
+	}
+	family := types.NormalizeIPFamily(setting.Value)
+	if family == types.DataEngineIPFamilyDefault {
+		return commonnet.IPFamilyUnspecified, nil
+	}
+	return commonnet.IPFamily(family), nil
+}
+
+func (m *EngineMonitor) getEngineDataEndpoint(engine *longhorn.Engine, frontend, endpoint string) (string, error) {
+	// The V1 frontend stays on the pod network, separate from engine-replica traffic.
+	ip := engine.Status.IP
+	if frontend == iscsidevtypes.FrontendTGTISCSI {
+		family, err := getPreferredDataEngineIPFamily(m.ds)
+		if err != nil {
+			return "", err
+		}
+		if family != commonnet.IPFamilyUnspecified {
+			pod, err := m.ds.GetPod(engine.Status.InstanceManagerName)
+			if err != nil {
+				return "", errors.Wrapf(err, "failed to get pod for instance manager %s to resolve engine %s endpoint", engine.Status.InstanceManagerName, engine.Name)
+			}
+			ip, err = m.ds.GetDataEngineIPFromPodForIPFamily(pod, string(family))
+			if err != nil {
+				return "", errors.Wrapf(err, "failed to resolve pod-network endpoint for engine %s in family %s", engine.Name, family)
+			}
+		}
+	}
+	dataEndpoint, err := engineapi.GetEngineEndpoint(frontend, endpoint, ip)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to resolve data endpoint for engine %s from pod IP %q", engine.Name, ip)
+	}
+	return dataEndpoint, nil
+}
+
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	existingEngine := engine.DeepCopy()
 
@@ -1168,7 +1213,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if volumeInfo == nil {
 			return fmt.Errorf("got nil volume info from engine client proxy")
 		}
-		endpoint, err := engineapi.GetEngineEndpoint(volumeInfo.Frontend, volumeInfo.Endpoint, engine.Status.IP)
+		endpoint, err := m.getEngineDataEndpoint(engine, volumeInfo.Frontend, volumeInfo.Endpoint)
 		if err != nil {
 			return err
 		}
@@ -3217,6 +3262,10 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		return err
 	}
 
+	preferredIPFamily, err := getPreferredDataEngineIPFamily(ec.ds)
+	if err != nil {
+		return err
+	}
 	processBinary, err := c.InstanceGetBinary(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine), "")
 	if err != nil {
 		return errors.Wrapf(err, "failed to get the binary of the current engine instance")
@@ -3234,6 +3283,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
 		DataLocality:                     v.Spec.DataLocality,
 		EngineCLIAPIVersion:              cliAPIVersion,
+		IPFamily:                         preferredIPFamily,
 	})
 	if err != nil {
 		return err

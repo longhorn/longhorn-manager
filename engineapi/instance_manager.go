@@ -11,6 +11,7 @@ import (
 	"go.uber.org/multierr"
 
 	lhlonghorn "github.com/longhorn/go-common-libs/longhorn"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -42,6 +43,9 @@ const (
 	// request when the key is present, which happens on every live upgrade until the engines move
 	// to the new instance manager.
 	MinProxyAPIVersionForBackupSignAcceptEncoding = 8
+
+	// CLIAPIVersionForIPFamily is the first V1 engine CLI that accepts --ip-family.
+	CLIAPIVersionForIPFamily = 13
 
 	DefaultEnginePortCount = 1
 
@@ -450,9 +454,42 @@ type EngineInstanceCreateRequest struct {
 	DataLocality                     longhorn.DataLocality
 	DataLayoutType                   imrpc.DataLayoutType
 	EngineCLIAPIVersion              int
+	IPFamily                         commonnet.IPFamily
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
 	TargetAddress                    string
+}
+
+func getEngineIPFamilyArgs(family commonnet.IPFamily, cliAPIVersion int, image string) ([]string, error) {
+	normalizedFamily := types.NormalizeIPFamily(string(family))
+	switch normalizedFamily {
+	case types.DataEngineIPFamilyDefault:
+		return nil, nil
+	case types.DataEngineIPFamilyIPv4, types.DataEngineIPFamilyIPv6:
+	default:
+		return nil, errors.Errorf("invalid %s value %q", types.SettingNamePreferredDataEngineIPFamily, family)
+	}
+	if cliAPIVersion < CLIAPIVersionForIPFamily {
+		return nil, errors.Errorf("%s=%s requires engine CLI API version %d or later, but engine image %s reports CLI API version %d; upgrade the engine image or set %s to default",
+			types.SettingNamePreferredDataEngineIPFamily, normalizedFamily, CLIAPIVersionForIPFamily, image, cliAPIVersion,
+			types.SettingNamePreferredDataEngineIPFamily)
+	}
+	return []string{"--ip-family", normalizedFamily}, nil
+}
+
+func getBinaryAndArgsForEngineInstanceCreation(req *EngineInstanceCreateRequest, frontend string) (string, []string, error) {
+	if req.Engine.Spec.DataEngine != longhorn.DataEngineTypeV1 {
+		return "", []string{}, nil
+	}
+	familyArgs, err := getEngineIPFamilyArgs(req.IPFamily, req.EngineCLIAPIVersion, req.Engine.Spec.Image)
+	if err != nil {
+		return "", nil, err
+	}
+	binary, args, err := getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion, req.Encrypted)
+	if err != nil {
+		return "", nil, err
+	}
+	return binary, append(args, familyArgs...), nil
 }
 
 // EngineInstanceCreate creates a new engine instance
@@ -461,8 +498,6 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		return nil, err
 	}
 
-	binary := ""
-	args := []string{}
 	portArgs := []string{DefaultPortArg}
 	replicaAddresses := map[string]string{}
 
@@ -473,13 +508,12 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		return nil, err
 	}
 
+	binary, args, err := getBinaryAndArgsForEngineInstanceCreation(req, frontend)
+	if err != nil {
+		return nil, err
+	}
 	volumeSize := req.Engine.Spec.VolumeSize
 	switch req.Engine.Spec.DataEngine {
-	case longhorn.DataEngineTypeV1:
-		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion, req.Encrypted)
-		if err != nil {
-			return nil, err
-		}
 	case longhorn.DataEngineTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 		// v2 target doesn't need frontend - it will be set by initiator (EngineFrontend)
@@ -932,6 +966,7 @@ type EngineInstanceUpgradeRequest struct {
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
 	EngineCLIAPIVersion              int
+	IPFamily                         commonnet.IPFamily
 }
 
 // EngineInstanceUpgrade upgrades the engine process
@@ -948,14 +983,14 @@ func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 }
 
-func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
-		return nil, err
+func getBinaryAndArgsForEngineProcessUpgrade(req *EngineInstanceUpgradeRequest) (string, []string, error) {
+	familyArgs, err := getEngineIPFamilyArgs(req.IPFamily, req.EngineCLIAPIVersion, req.Engine.Spec.Image)
+	if err != nil {
+		return "", nil, err
 	}
-
 	frontend, err := GetEngineInstanceFrontend(req.Engine.Spec.DataEngine, req.VolumeFrontend)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	args := []string{"controller", req.Engine.Spec.VolumeName, "--frontend", frontend, "--upgrade"}
 	for _, addr := range req.Engine.Spec.UpgradedReplicaAddressMap {
@@ -972,7 +1007,7 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 		if req.Encrypted {
 			is16MiBHeaderPkgVersion, err := util.IsCryptsetupVerWithFixed16MiBHeaderSize()
 			if err != nil {
-				return nil, err
+				return "", nil, err
 			}
 			if is16MiBHeaderPkgVersion {
 				requestSize = lhtypes.GetBackendSize(req.Engine.Spec.VolumeSize, req.Encrypted, req.EngineCLIAPIVersion)
@@ -1004,6 +1039,18 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(req.Engine.Spec.Image), types.EngineBinaryName)
+	return binary, append(args, familyArgs...), nil
+}
+
+func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	binary, args, err := getBinaryAndArgsForEngineProcessUpgrade(req)
+	if err != nil {
+		return nil, err
+	}
 	portArgs := []string{DefaultPortArg}
 
 	if c.GetAPIVersion() < 4 {
