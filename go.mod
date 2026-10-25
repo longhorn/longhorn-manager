@@ -67,15 +67,15 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.25.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20261021051900-5b325ff52659
-	github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c
+	github.com/longhorn/backupstore v0.0.0-20261023052728-3d3f7521be06
+	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
 	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
 	github.com/longhorn/go-spdk-helper v0.11.0
 	github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261020141215-7c1365134042
 	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261020153449-d40269a4fdc4
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
 	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261020145414-6392878e98bb
-	github.com/longhorn/types v0.0.0-20261018112857-15c9b187fbd8
+	github.com/longhorn/types v0.0.0-20261023101212-edea52fc05df
 	github.com/prometheus/client_golang v1.25.0
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.9.4
@@ -103,7 +103,7 @@ require (
 	k8s.io/kubernetes v1.37.1
 	k8s.io/metrics v0.37.1
 	k8s.io/mount-utils v0.37.1
-	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
+	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
 )
@@ -199,11 +199,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
-	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
-	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
