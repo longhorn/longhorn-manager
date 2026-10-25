@@ -174,8 +174,8 @@ github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c h1:vUIWJF6
 github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c/go.mod h1:jhyUe7xn1ZnTC1WVCcZSNRe02U/zj0ayTYxY1Xipn1c=
 github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac h1:OtddAH5PD1ts3SdtMNgQWAfOMgg5xE9TQ+twe0/DDEw=
 github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac/go.mod h1:tx8IHeQXisTCpcg9gB4S+P8rPifC1D98qpWcDwI19tU=
-github.com/longhorn/go-spdk-helper v0.11.0 h1:SDEpBnnL2yFmhTFgg9K8tSJYuluPhSsmH3n+xyCAKfU=
-github.com/longhorn/go-spdk-helper v0.11.0/go.mod h1:+Rv4u2k9uiDJGBT4IqtOSQ2XSOHsKIgQUz4dFqXmiCQ=
+github.com/longhorn/go-spdk-helper v0.12.0 h1:3GHk9TDw6g3rCvHjvITQG7h/M1Tul7uHx0nT5aDdRcg=
+github.com/longhorn/go-spdk-helper v0.12.0/go.mod h1:KxXzHI40G+6YPVBwVTVAQSvX8pohnQFIM0ALgCQYh7c=
 github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20261020124941-aa47a9ec65d5 h1:0rbrcuxCpXLUViKn6jSVauhYUhspCLRFPkSS/rxJN+I=
 github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20261020124941-aa47a9ec65d5/go.mod h1:fmL6xhEHjXigguUAQDyU1SjUKaNbQwCtRNaU/3V6eEc=
 github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20261020153404-77c022836d4d h1:p3LJd3Rry5pOvYOX61LyF0F5S2M2+cD2yX6rJMwnT+Y=
