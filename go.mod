@@ -66,15 +66,15 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.1
-	github.com/longhorn/backupstore v0.0.0-20261021051900-5b325ff52659
-	github.com/longhorn/go-common-libs v0.0.0-20261020101655-9488a43de04c
+	github.com/longhorn/backupstore v0.0.0-20261023052728-3d3f7521be06
+	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
 	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
 	github.com/longhorn/go-spdk-helper v0.12.0
 	github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20261020124941-aa47a9ec65d5
 	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20261020153404-77c022836d4d
 	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260906102010-f611adc51225
 	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20261020145444-d14787cb70d6
-	github.com/longhorn/types v0.0.0-20261018112857-15c9b187fbd8
+	github.com/longhorn/types v0.0.0-20261023101212-edea52fc05df
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.8.2
@@ -85,7 +85,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sys v0.49.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.84.0
@@ -99,7 +99,7 @@ require (
 	k8s.io/kubernetes v1.36.4
 	k8s.io/metrics v0.36.4
 	k8s.io/mount-utils v0.36.4
-	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
+	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
 )
@@ -205,11 +205,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.23.0
-	golang.org/x/term v0.46.0 // indirect
-	golang.org/x/text v0.42.0
+	golang.org/x/sync v0.24.0
+	golang.org/x/term v0.47.0 // indirect
+	golang.org/x/text v0.43.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.36.4 // indirect
