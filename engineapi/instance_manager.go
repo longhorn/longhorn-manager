@@ -16,6 +16,7 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	"github.com/longhorn/types/pkg/generated/enginerpc"
 	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -449,7 +450,7 @@ type EngineInstanceCreateRequest struct {
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
 	DataLayoutType                   imrpc.DataLayoutType
-	DataEngineTransport              imrpc.TransportType
+	DataEngineTransport              enginerpc.TransportType
 	EngineCLIAPIVersion              int
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
@@ -540,7 +541,7 @@ type ReplicaInstanceCreateRequest struct {
 	DataPath                      string
 	BackingImagePath              string
 	DataLocality                  longhorn.DataLocality
-	DataEngineTransport           imrpc.TransportType
+	DataEngineTransport           enginerpc.TransportType
 	EngineCLIAPIVersion           int
 	Encrypted                     bool
 	ExtraLUKS2HeaderSpaceRequired bool
