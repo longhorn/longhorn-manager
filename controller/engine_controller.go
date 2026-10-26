@@ -38,6 +38,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	"github.com/longhorn/types/pkg/generated/enginerpc"
 	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -756,11 +757,11 @@ func toIMRPCDataLayoutType(t longhorn.VolumeDataLayoutType) imrpc.DataLayoutType
 
 // toIMRPCDataEngineTransport maps the volume's data engine transport to the
 // instance-manager RPC enum. Empty or unknown values default to TCP.
-func toIMRPCDataEngineTransport(t longhorn.DataEngineTransport) imrpc.TransportType {
+func toIMRPCDataEngineTransport(t longhorn.DataEngineTransport) enginerpc.TransportType {
 	if t == longhorn.DataEngineTransportRDMA {
-		return imrpc.TransportType_TRANSPORT_TYPE_RDMA
+		return enginerpc.TransportType_TRANSPORT_TYPE_RDMA
 	}
-	return imrpc.TransportType_TRANSPORT_TYPE_TCP
+	return enginerpc.TransportType_TRANSPORT_TYPE_TCP
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
