@@ -390,17 +390,24 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 
 		// Delete the backup volume attachment ticket after the backup status is set to the final state.
-		if bc.backupInFinalState(existingBackup) && (!existingBackup.Status.LastSyncedAt.IsZero() || existingBackup.Spec.SnapshotName == "") {
+		if engineapi.BackupInFinalState(existingBackup.Status.State) && (!existingBackup.Status.LastSyncedAt.IsZero() || existingBackup.Spec.SnapshotName == "") {
 			err = bc.handleAttachmentTicketDeletion(backup, canonicalBackupVolumeName)
 		}
-		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
-			return
+		if !reflect.DeepEqual(existingBackup.Status, backup.Status) {
+			if _, updateErr := bc.ds.UpdateBackupStatus(backup); updateErr != nil {
+				if apierrors.IsConflict(errors.Cause(updateErr)) {
+					log.WithError(updateErr).Debugf("Requeue %v due to conflict", backupName)
+					bc.enqueueBackup(backup)
+				} else {
+					err = errors.Join(err, updateErr)
+				}
+				// Keep the monitor: it holds the final state that is not persisted yet.
+				return
+			}
 		}
-		if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Debugf("Requeue %v due to conflict", backupName)
-			bc.enqueueBackup(backup)
-			err = nil // nolint: ineffassign
-			return
+		// The final state is persisted, by this or an earlier reconcile; the monitor is done.
+		if engineapi.BackupInFinalState(backup.Status.State) {
+			bc.disableBackupMonitor(backup.Name)
 		}
 		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
 			if err := bc.syncBackupVolume(backupTargetName, canonicalBackupVolumeName); err != nil {
@@ -421,7 +428,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	// Otherwise, the Backup CR is created by the backup volume controller, which means the backup already
 	// exists in the remote backup target before the CR creation.
 	// What the controller needs to do for this case is retrieve the info from the remote backup target.
-	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && !bc.backupInFinalState(backup) {
+	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && !engineapi.BackupInFinalState(backup.Status.State) {
 		volume, err := bc.ds.GetVolume(canonicalBackupVolumeName)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
@@ -470,11 +477,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		switch backup.Status.State {
 		case longhorn.BackupStateNew, longhorn.BackupStatePending, longhorn.BackupStateInProgress:
 			return nil
-		case longhorn.BackupStateCompleted:
-			bc.disableBackupMonitor(backup.Name)
 		case longhorn.BackupStateError, longhorn.BackupStateUnknown:
 			backup.Status.LastSyncedAt = syncTime
-			bc.disableBackupMonitor(backup.Name)
 			return nil
 		}
 	}
@@ -702,7 +706,7 @@ func (bc *BackupController) backupRequiresInstanceManager(b *longhorn.Backup) bo
 	if !b.DeletionTimestamp.IsZero() {
 		return false
 	}
-	return b.Spec.SnapshotName != "" && b.Status.LastSyncedAt.IsZero() && !bc.backupInFinalState(b)
+	return b.Spec.SnapshotName != "" && b.Status.LastSyncedAt.IsZero() && !engineapi.BackupInFinalState(b.Status.State)
 }
 
 func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.BackupTarget, error) {
@@ -1029,7 +1033,7 @@ func (bc *BackupController) syncBackupVolume(backupTargetName, volumeName string
 		if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 			bc.logger.WithError(err).Warnf("Failed to update backup volume %v spec", volumeName)
 		}
-	} else if err != nil && apierrors.IsNotFound(err) {
+	} else if apierrors.IsNotFound(err) {
 		// Request backup_target_controller to reconcile BackupTarget immediately.
 		backupTarget, err := bc.ds.GetBackupTarget(backupTargetName)
 		if err != nil {
@@ -1120,13 +1124,6 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 	}
 
 	backup.Status.SnapshotCreatedAt = snap.Created
-}
-
-func (bc *BackupController) backupInFinalState(backup *longhorn.Backup) bool {
-	return backup.Status.State == longhorn.BackupStateCompleted ||
-		backup.Status.State == longhorn.BackupStateError ||
-		backup.Status.State == longhorn.BackupStateUnknown ||
-		backup.Status.State == longhorn.BackupStateDeleting
 }
 
 func (bc *BackupController) startDeletingBackupInBackupStore(backupURL string, backupTargetClient *engineapi.BackupTargetClient) {
