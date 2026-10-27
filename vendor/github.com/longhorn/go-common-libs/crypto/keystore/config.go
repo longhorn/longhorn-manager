@@ -99,6 +99,8 @@ func parseVaultConfig(secrets map[string]string) (*vaultConfig, error) {
 	}
 	if _, ok := secrets[VaultKVPrefix]; !ok {
 		cfg.KVPrefix = defaultKVPrefix
+	} else if cfg.KVPrefix != "" && !strings.HasSuffix(cfg.KVPrefix, "/") {
+		cfg.KVPrefix += "/"
 	}
 
 	if pem := strings.TrimSpace(secrets[VaultCACert]); pem != "" {

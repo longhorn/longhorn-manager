@@ -60,9 +60,20 @@ func newVaultProvider(cfg *vaultConfig) (*vaultProvider, error) {
 	transport.DisableKeepAlives = true
 	return &vaultProvider{
 		cfg:    cfg,
-		client: &http.Client{Transport: transport, Timeout: vaultRequestTimeout},
+		client: &http.Client{Transport: transport, Timeout: vaultRequestTimeout, CheckRedirect: refuseDowngrade},
 		log:    logrus.WithFields(logrus.Fields{"component": "keystore", "provider": "vault", "vaultAddr": cfg.Addr}),
 	}, nil
+}
+
+// refuseDowngrade keeps a redirect from sending the token or a passphrase in plaintext.
+func refuseDowngrade(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return errors.Errorf("refusing redirect from %v to %v", via[0].URL.Host, req.URL)
+	}
+	return nil
 }
 
 func (p *vaultProvider) Name() lhtypes.EncryptionKeyProvider {

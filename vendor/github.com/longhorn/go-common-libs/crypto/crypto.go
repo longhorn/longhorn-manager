@@ -173,8 +173,7 @@ func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) e
 		return err
 	}
 	if !isEncrypted {
-		logrus.Warnf("Attempted to encrypt device %s with LUKS, but it is not encrypted", devicePath)
-		return nil
+		return fmt.Errorf("device %s is not encrypted after luksFormat", devicePath)
 	}
 
 	logrus.Infof("Device %s is encrypted with LUKS", devicePath)

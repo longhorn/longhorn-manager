@@ -10,6 +10,7 @@ import (
 	"github.com/longhorn/backupstore"
 
 	lhkeystore "github.com/longhorn/go-common-libs/crypto/keystore"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -36,7 +37,16 @@ func encryptionKeyProvider(ds *datastore.DataStore, namespace, secretName string
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to read the encryption secret %v/%v", namespace, secretName)
 	}
-	return lhkeystore.NewProvider(lhkeystore.SecretData(secret.Data))
+	provider, err := lhkeystore.NewProvider(lhkeystore.SecretData(secret.Data))
+	if err != nil {
+		return nil, err
+	}
+	// The Secret is mutable; only a vault provider actually stores and deletes keys.
+	if provider.Name() != lhtypes.EncryptionKeyProviderVault {
+		return nil, errors.Errorf("the encryption secret %v/%v selects the %v key provider, not %v",
+			namespace, secretName, provider.Name(), lhtypes.EncryptionKeyProviderVault)
+	}
+	return provider, nil
 }
 
 // createVolumeKey stores the passphrase of a new vault volume and returns its
@@ -68,9 +78,10 @@ func createVolumeKey(ctx context.Context, provider lhkeystore.KeyProvider, volum
 // own entry for a restore, the source volume's version at snapshot time for a
 // clone, nothing (keyName empty) for a blank volume.
 type derivedVolumeKeySource struct {
-	keyName string
-	version int  // 0 reads the current version
-	pending bool // the clone's snapshot or its key version is not known yet
+	keyName    string
+	version    int    // 0 reads the current version
+	pending    bool   // the clone's snapshot or its key version is not known yet
+	secretName string // the Secret of the store holding keyName; empty is the volume's own
 }
 
 // volumeKeySource reads the same spec fields the volume's data comes from.
@@ -108,9 +119,14 @@ func volumeKeySource(ds *datastore.DataStore, v *longhorn.Volume) (derivedVolume
 		// The snapshot controller stamps the version when the snapshot appears.
 		return derivedVolumeKeySource{pending: true}, nil
 	}
+	source, err := ds.GetVolumeRO(sourceVolume)
+	if err != nil {
+		return derivedVolumeKeySource{}, errors.Wrapf(err, "failed to read source volume %v for the key of volume %v", sourceVolume, v.Name)
+	}
 	return derivedVolumeKeySource{
-		keyName: lhkeystore.VolumeKey(sourceVolume),
-		version: snapshot.Status.EncryptionKeyVersion,
+		keyName:    lhkeystore.VolumeKey(sourceVolume),
+		version:    snapshot.Status.EncryptionKeyVersion,
+		secretName: source.Spec.Encryption.SecretName,
 	}, nil
 }
 
@@ -160,10 +176,18 @@ func (c *VolumeController) reconcileEncryptionKey(v *longhorn.Volume) error {
 			return nil
 		}
 	} else {
+		// A clone may keep its key in another store than its source: read there, write here.
+		sourceProvider := provider
+		if source.secretName != "" && source.secretName != v.Spec.Encryption.SecretName {
+			if sourceProvider, err = encryptionKeyProvider(c.ds, c.namespace, source.secretName); err != nil {
+				setCondition(longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonEncryptionKeyUnavailable, err.Error())
+				return nil
+			}
+		}
 		if source.version > 0 {
-			passphrase, err = provider.GetVersion(ctx, source.keyName, source.version)
+			passphrase, err = sourceProvider.GetVersion(ctx, source.keyName, source.version)
 		} else {
-			passphrase, _, err = provider.Get(ctx, source.keyName)
+			passphrase, _, err = sourceProvider.Get(ctx, source.keyName)
 		}
 		if err != nil {
 			reason := longhorn.VolumeConditionReasonEncryptionKeyUnavailable
@@ -215,8 +239,11 @@ func (c *VolumeController) destroyEncryptionKey(v *longhorn.Volume) (done bool, 
 		c.encryptionKeyDeleteDeadlines.Store(v.Name, deadline)
 	}
 	if time.Now().Before(deadline.(time.Time)) {
-		return false, errors.Wrapf(err, "failed to destroy the encryption key of volume %v, retrying until %v",
-			v.Name, deadline.(time.Time).Format(time.RFC3339))
+		// Not returned: handleErr gives up after a few fast retries, well before the deadline.
+		log.WithError(err).Warnf("Failed to destroy the encryption key of the volume, retrying until %v",
+			deadline.(time.Time).Format(time.RFC3339))
+		c.enqueueVolumeAfter(v, encryptionKeyRetryInterval)
+		return false, nil
 	}
 	c.encryptionKeyDeleteDeadlines.Delete(v.Name)
 	log.WithError(err).Errorf("Giving up on destroying the encryption key of the volume after %v; the entry stays in the key store",

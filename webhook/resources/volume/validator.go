@@ -259,6 +259,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.size")
 	}
 
+	if err := validateEncryptionUpdate(oldVolume, newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.encryption")
+	}
+
 	if err := validateDataLocalityUpdate(oldVolume, newVolume); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.dataLocality")
 	}
@@ -923,6 +927,17 @@ func (v *volumeValidator) validateEncryptionCreate(volume *longhorn.Volume) erro
 	return nil
 }
 
+// validateEncryptionUpdate keeps the resolved provider and Secret fixed: the
+// CRD's oldSelf rules do not see a field being added or removed.
+func validateEncryptionUpdate(oldVolume, newVolume *longhorn.Volume) error {
+	oldEncryption, _ := types.ResolveVolumeEncryption(&oldVolume.Spec)
+	newEncryption, err := types.ResolveVolumeEncryption(&newVolume.Spec)
+	if err != nil {
+		return err
+	}
+	return validateImmutable(".spec.encryption", oldEncryption, newEncryption)
+}
+
 func validateImmutable(field string, oldVal, newVal any) error {
 	if !apiequality.Semantic.DeepEqual(oldVal, newVal) {
 		return fmt.Errorf("%s is immutable (old=%+v, new=%+v)", field, oldVal, newVal)
@@ -1118,6 +1133,15 @@ func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error
 		return werror.NewInvalidError(fmt.Sprintf(
 			"failed to clone volume %v to volume %v because encryption settings must match (source: %v, destination: %v)",
 			srcVol.Name, vol.Name, srcVol.Spec.Encrypted, vol.Spec.Encrypted), "spec.encrypted")
+	}
+	// The copied header opens only with the source's key, which a clone gets only
+	// from a provider of the same kind; a vault clone may still use another Secret.
+	srcEncryption, _ := types.ResolveVolumeEncryption(&srcVol.Spec)
+	dstEncryption, _ := types.ResolveVolumeEncryption(&vol.Spec)
+	if srcEncryption.Provider != dstEncryption.Provider {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"failed to clone volume %v to volume %v because the encryption key providers must match (source: %v, destination: %v)",
+			srcVol.Name, vol.Name, srcEncryption.Provider, dstEncryption.Provider), "spec.encryption.provider")
 	}
 
 	// If the source volume is itself a linked-clone, it must have completed cloning

@@ -1008,10 +1008,14 @@ func (ns *NodeServer) keyProviderForVolume(ctx context.Context, volume *longhorn
 	}
 	// A Secret selecting another provider than the volume was created with is a
 	// misconfiguration; never open the device with a key the controller did not manage.
-	if volumeCR == nil && provider.Name() != lhtypes.EncryptionKeyProviderSecret {
+	want := lhtypes.EncryptionKeyProviderSecret
+	if volumeCR != nil {
+		want = lhtypes.EncryptionKeyProviderVault
+	}
+	if provider.Name() != want {
 		return nil, nil, nil, status.Errorf(codes.InvalidArgument,
 			"volume %v was created with the %v key provider but its secret selects %v",
-			volumeID, longhorn.EncryptionKeyProviderSecret, provider.Name())
+			volumeID, want, provider.Name())
 	}
 	return provider, secrets, volumeCR, nil
 }

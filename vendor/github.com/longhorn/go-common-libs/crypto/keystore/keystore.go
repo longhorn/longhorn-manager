@@ -130,7 +130,8 @@ const (
 
 // DeviceState is what the opener observed before deciding.
 type DeviceState struct {
-	// IsLUKS is true when blkid reports crypto_LUKS on the device.
+	// IsLUKS is true when blkid reports crypto_LUKS on the device. Otherwise the
+	// device must be blank: callers refuse any other format before deciding.
 	IsLUKS bool
 	// HasKey is true when the store holds a key for the volume.
 	HasKey bool

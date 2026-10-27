@@ -313,7 +313,10 @@ func TestVerifyVolumeDataSourceEncryption(t *testing.T) {
 		dataSource    longhorn.VolumeDataSource
 		srcEncrypted  bool
 		destEncrypted bool
+		srcSecret     string
+		destSecret    string
 		wantErr       bool
+		wantField     string
 	}{
 		{
 			name:          "plain to plain is allowed",
@@ -358,6 +361,40 @@ func TestVerifyVolumeDataSourceEncryption(t *testing.T) {
 			wantErr:       true,
 		},
 		{
+			name:          "vault source to vault with the same secret is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			srcSecret:     "vault-a",
+			destSecret:    "vault-a",
+		},
+		{
+			name:          "vault source to vault with another secret is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			srcSecret:     "vault-a",
+			destSecret:    "vault-b",
+		},
+		{
+			name:          "secret source to vault is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			destSecret:    "vault-a",
+			wantErr:       true,
+			wantField:     "spec.encryption.provider",
+		},
+		{
+			name:          "vault source to secret is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			srcSecret:     "vault-a",
+			wantErr:       true,
+			wantField:     "spec.encryption.provider",
+		},
+		{
 			name:          "snapshot source encrypted to plain is rejected",
 			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
 			srcEncrypted:  true,
@@ -372,6 +409,7 @@ func TestVerifyVolumeDataSourceEncryption(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: srcVolName, Namespace: linkedCloneTestNamespace},
 				Spec: longhorn.VolumeSpec{
 					Encrypted:  tc.srcEncrypted,
+					Encryption: vaultEncryption(tc.srcSecret),
 					DataEngine: longhorn.DataEngineTypeV1,
 				},
 			}
@@ -380,6 +418,7 @@ func TestVerifyVolumeDataSourceEncryption(t *testing.T) {
 				Spec: longhorn.VolumeSpec{
 					DataSource: tc.dataSource,
 					Encrypted:  tc.destEncrypted,
+					Encryption: vaultEncryption(tc.destSecret),
 					DataEngine: longhorn.DataEngineTypeV1,
 				},
 			}
@@ -396,7 +435,38 @@ func TestVerifyVolumeDataSourceEncryption(t *testing.T) {
 			assert.Equal(t, metav1.StatusReasonInvalid, status.Reason)
 			require.NotNil(t, status.Details)
 			require.Len(t, status.Details.Causes, 1)
-			assert.Equal(t, "spec.encrypted", status.Details.Causes[0].Field)
+			wantField := tc.wantField
+			if wantField == "" {
+				wantField = "spec.encrypted"
+			}
+			assert.Equal(t, wantField, status.Details.Causes[0].Field)
 		})
 	}
+}
+
+// vaultEncryption is a vault volume's encryption spec, or the default secret provider for "".
+func vaultEncryption(secretName string) longhorn.VolumeEncryptionSpec {
+	if secretName == "" {
+		return longhorn.VolumeEncryptionSpec{}
+	}
+	return longhorn.VolumeEncryptionSpec{Provider: longhorn.EncryptionKeyProviderVault, SecretName: secretName}
+}
+
+func TestValidateEncryptionUpdate(t *testing.T) {
+	encrypted := func(encryption longhorn.VolumeEncryptionSpec) *longhorn.Volume {
+		return &longhorn.Volume{Spec: longhorn.VolumeSpec{Encrypted: true, Encryption: encryption}}
+	}
+	vault := func(secretName string) longhorn.VolumeEncryptionSpec {
+		return longhorn.VolumeEncryptionSpec{Provider: longhorn.EncryptionKeyProviderVault, SecretName: secretName}
+	}
+	secret := longhorn.VolumeEncryptionSpec{Provider: longhorn.EncryptionKeyProviderSecret}
+
+	assert.NoError(t, validateEncryptionUpdate(encrypted(vault("vault-a")), encrypted(vault("vault-a"))))
+	assert.NoError(t, validateEncryptionUpdate(encrypted(longhorn.VolumeEncryptionSpec{}), encrypted(secret)),
+		"an empty provider is the secret provider")
+	assert.Error(t, validateEncryptionUpdate(encrypted(vault("vault-a")), encrypted(longhorn.VolumeEncryptionSpec{})),
+		"removing the encryption settings")
+	assert.Error(t, validateEncryptionUpdate(encrypted(longhorn.VolumeEncryptionSpec{}), encrypted(vault("vault-a"))),
+		"adding a vault provider")
+	assert.Error(t, validateEncryptionUpdate(encrypted(vault("vault-a")), encrypted(vault("vault-b"))))
 }
