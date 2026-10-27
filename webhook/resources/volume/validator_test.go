@@ -11,6 +11,8 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/backupstore"
+
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -179,7 +181,7 @@ const linkedCloneTestNamespace = "longhorn-system"
 
 // newLinkedCloneTestDataStore returns a datastore whose volume and snapshot
 // listers serve the given objects, as if the informers had already delivered them.
-func newLinkedCloneTestDataStore(t *testing.T, volumes []*longhorn.Volume, snapshots []*longhorn.Snapshot) *datastore.DataStore {
+func newLinkedCloneTestDataStore(t *testing.T, volumes []*longhorn.Volume, snapshots []*longhorn.Snapshot, backups ...*longhorn.Backup) *datastore.DataStore {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
@@ -194,6 +196,10 @@ func newLinkedCloneTestDataStore(t *testing.T, volumes []*longhorn.Volume, snaps
 	snapshotIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
 	for _, snapshot := range snapshots {
 		require.NoError(t, snapshotIndexer.Add(snapshot))
+	}
+	backupIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Backups().Informer().GetIndexer()
+	for _, backup := range backups {
+		require.NoError(t, backupIndexer.Add(backup))
 	}
 	return ds
 }
@@ -469,4 +475,54 @@ func TestValidateEncryptionUpdate(t *testing.T) {
 	assert.Error(t, validateEncryptionUpdate(encrypted(longhorn.VolumeEncryptionSpec{}), encrypted(vault("vault-a"))),
 		"adding a vault provider")
 	assert.Error(t, validateEncryptionUpdate(encrypted(vault("vault-a")), encrypted(vault("vault-b"))))
+}
+
+func TestValidateEncryptionRestore(t *testing.T) {
+	const backupName = "backup-1"
+	fromBackup := backupstore.EncodeBackupURL(backupName, "src-vol", "s3://bucket@us-east-1/")
+
+	testCases := []struct {
+		name         string
+		backupLabels map[string]string
+		encrypted    bool
+		secretName   string
+		wantErr      bool
+	}{
+		{name: "plain backup to plain volume is allowed"},
+		{name: "vault backup to vault volume is allowed",
+			backupLabels: map[string]string{types.LonghornLabelVolumeEncryptionProvider: "vault"},
+			encrypted:    true, secretName: "vault-b"},
+		{name: "vault backup to plain volume is rejected",
+			backupLabels: map[string]string{types.LonghornLabelVolumeEncryptionProvider: "vault"},
+			wantErr:      true},
+		{name: "vault backup to secret volume is rejected",
+			backupLabels: map[string]string{types.LonghornLabelVolumeEncryptionProvider: "vault"},
+			encrypted:    true, wantErr: true},
+		{name: "legacy encrypted backup to secret volume is allowed",
+			backupLabels: map[string]string{types.LonghornLabelVolumeEncrypted: types.LonghornLabelValueEnabled},
+			encrypted:    true},
+		{name: "legacy encrypted backup to vault volume is rejected",
+			backupLabels: map[string]string{types.LonghornLabelVolumeEncrypted: types.LonghornLabelValueEnabled},
+			encrypted:    true, secretName: "vault-a", wantErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ds := newLinkedCloneTestDataStore(t, nil, nil, &longhorn.Backup{
+				ObjectMeta: metav1.ObjectMeta{Name: backupName, Namespace: linkedCloneTestNamespace},
+				Status:     longhorn.BackupStatus{Labels: tc.backupLabels},
+			})
+			v := &volumeValidator{ds: ds}
+			err := v.validateEncryptionRestore(&longhorn.Volume{Spec: longhorn.VolumeSpec{
+				FromBackup: fromBackup,
+				Encrypted:  tc.encrypted,
+				Encryption: vaultEncryption(tc.secretName),
+			}})
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
 }

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/pkg/errors"
@@ -16,7 +17,7 @@ import (
 
 // storeBackupEncryptionKey gives a completed backup its own key entry, because
 // a backup outlives its volume and the volume's entry goes with it. The write is
-// create-only, so repeating it is harmless.
+// create-only and an existing entry must hold the same key, so repeating it is harmless.
 func storeBackupEncryptionKey(ds *datastore.DataStore, namespace string, log logrus.FieldLogger, backup *longhorn.Backup, volumeName string) error {
 	volume, err := ds.GetVolumeRO(volumeName)
 	if err != nil {
@@ -53,25 +54,34 @@ func storeBackupEncryptionKey(ds *datastore.DataStore, namespace string, log log
 	defer lhkeystore.Zero(passphrase)
 
 	if _, err := provider.Put(ctx, lhkeystore.BackupKey(backup.Name), passphrase, 0); err != nil {
-		if errors.Is(err, lhkeystore.ErrKeyConflict) {
-			// Already written by an earlier pass.
-			return nil
+		if !errors.Is(err, lhkeystore.ErrKeyConflict) {
+			return errors.Wrapf(err, "failed to store the encryption key of backup %v", backup.Name)
 		}
-		return errors.Wrapf(err, "failed to store the encryption key of backup %v", backup.Name)
+		// Written by an earlier pass, or left over from an earlier backup of this name.
+		stored, _, err := provider.Get(ctx, lhkeystore.BackupKey(backup.Name))
+		if err != nil {
+			return errors.Wrapf(err, "failed to read back the existing encryption key of backup %v", backup.Name)
+		}
+		defer lhkeystore.Zero(stored)
+		if !bytes.Equal(stored, passphrase) {
+			return errors.Errorf("the key store holds a key for backup %v that is not the one its data was encrypted with; it is left over from an earlier backup of this name and has to be removed", backup.Name)
+		}
+		return nil
 	}
 	log.Infof("Stored the encryption key of backup %v, taken from version %v of volume %v", backup.Name, version, volumeName)
 	return nil
 }
 
-// destroyBackupEncryptionKey removes a backup's entry along with its data.
-func destroyBackupEncryptionKey(ds *datastore.DataStore, namespace string, log logrus.FieldLogger, backup *longhorn.Backup, volumeName string) {
-	volume, err := ds.GetVolumeRO(volumeName)
-	if err != nil || !types.IsVaultEncrypted(&volume.Spec) {
-		// Without the volume nothing names the vault; leave the entry.
+// destroyBackupEncryptionKey removes a backup's entry along with its data, from
+// the store the backup records, so it does not depend on its volume still existing.
+func destroyBackupEncryptionKey(ds *datastore.DataStore, namespace string, log logrus.FieldLogger, backup *longhorn.Backup) {
+	secretName := backup.Status.Labels[types.LonghornLabelVolumeEncryptionSecret]
+	if secretName == "" {
+		// Not a vault backup.
 		return
 	}
 
-	provider, err := encryptionKeyProvider(ds, namespace, volume.Spec.Encryption.SecretName)
+	provider, err := encryptionKeyProvider(ds, namespace, secretName)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to reach the key store to destroy the encryption key of backup %v", backup.Name)
 		return

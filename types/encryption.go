@@ -39,6 +39,19 @@ func ResolveVolumeEncryption(spec *longhorn.VolumeSpec) (longhorn.VolumeEncrypti
 	return encryption, nil
 }
 
+// BackupEncryptionProvider is the key provider a backup's data was encrypted
+// with, from its labels; empty for a backup that is not known to be encrypted.
+// An encrypted backup without a provider label predates the vault provider.
+func BackupEncryptionProvider(labels map[string]string) longhorn.EncryptionKeyProvider {
+	if provider := labels[LonghornLabelVolumeEncryptionProvider]; provider != "" {
+		return longhorn.EncryptionKeyProvider(provider)
+	}
+	if labels[LonghornLabelVolumeEncrypted] == LonghornLabelValueEnabled {
+		return longhorn.EncryptionKeyProviderSecret
+	}
+	return ""
+}
+
 // IsVaultEncrypted is true for the only kind of volume whose key the controller manages.
 func IsVaultEncrypted(spec *longhorn.VolumeSpec) bool {
 	return spec.Encrypted && spec.Encryption.Provider == longhorn.EncryptionKeyProviderVault

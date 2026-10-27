@@ -357,7 +357,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		if needsCleanupRemoteData {
 			// Kept remote data still needs its key.
-			destroyBackupEncryptionKey(bc.ds, bc.namespace, log, backup, canonicalBackupVolumeName)
+			destroyBackupEncryptionKey(bc.ds, bc.namespace, log, backup)
 		}
 
 		// Disable monitor regardless of backup state
@@ -385,13 +385,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			}
 		}
 		return bc.ds.RemoveFinalizerForBackup(backup)
-	}
-
-	// On every reconcile, not only the transition, so an unreachable key store is retried.
-	if backup.Status.State == longhorn.BackupStateCompleted {
-		if err := storeBackupEncryptionKey(bc.ds, bc.namespace, log, backup, canonicalBackupVolumeName); err != nil {
-			return errors.Wrap(err, "failed to store the encryption key of the completed backup")
-		}
 	}
 
 	syncTime := metav1.Time{Time: time.Now().UTC()}
@@ -484,6 +477,16 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		case longhorn.BackupStateNew, longhorn.BackupStatePending, longhorn.BackupStateInProgress:
 			return nil
 		case longhorn.BackupStateCompleted:
+			// Not published as Completed until the backup has its own key, as the
+			// volume's goes with the volume; the monitor keeps reporting Completed.
+			if err := storeBackupEncryptionKey(bc.ds, bc.namespace, log, backup, canonicalBackupVolumeName); err != nil {
+				log.WithError(err).Warn("Failed to store the encryption key of the backup, retrying")
+				backup.Status = existingBackup.Status
+				if key, err := controller.KeyFunc(backup); err == nil {
+					bc.queue.AddAfter(key, encryptionKeyRetryInterval)
+				}
+				return nil
+			}
 			bc.disableBackupMonitor(backup.Name)
 		case longhorn.BackupStateError, longhorn.BackupStateUnknown:
 			backup.Status.LastSyncedAt = syncTime

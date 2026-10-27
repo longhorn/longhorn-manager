@@ -16,6 +16,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 
+	"github.com/longhorn/backupstore"
+
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 
@@ -76,6 +78,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if err := v.validateEncryptionCreate(volume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.encryption")
+	}
+
+	if err := v.validateEncryptionRestore(volume); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.encryption")
 	}
 
@@ -923,6 +929,41 @@ func (v *volumeValidator) validateEncryptionCreate(volume *longhorn.Volume) erro
 	if got := lhkeystore.ProviderName(data); string(got) != string(encryption.Provider) {
 		return fmt.Errorf("encryption secret %q selects the %v key provider but the volume was created with %v",
 			encryption.SecretName, got, encryption.Provider)
+	}
+	return nil
+}
+
+// validateEncryptionRestore keeps a restore on the key provider of its backup:
+// the restored blocks start with the backup's LUKS header, which only a volume
+// of the same provider can be given the key to.
+func (v *volumeValidator) validateEncryptionRestore(volume *longhorn.Volume) error {
+	if volume.Spec.FromBackup == "" {
+		return nil
+	}
+	backupName, _, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
+	if err != nil {
+		return err
+	}
+	backup, err := v.ds.GetBackupRO(backupName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	backupProvider := types.BackupEncryptionProvider(backup.Status.Labels)
+	if backupProvider == "" {
+		return nil
+	}
+	if !volume.Spec.Encrypted {
+		return fmt.Errorf("backup %v is encrypted with the %v key provider, so the restored volume must be encrypted", backupName, backupProvider)
+	}
+	encryption, err := types.ResolveVolumeEncryption(&volume.Spec)
+	if err != nil {
+		return err
+	}
+	if encryption.Provider != backupProvider {
+		return fmt.Errorf("backup %v is encrypted with the %v key provider but the restored volume selects %v", backupName, backupProvider, encryption.Provider)
 	}
 	return nil
 }

@@ -225,6 +225,8 @@ const (
 	LonghornLabelInstanceManagerImage            = "instance-manager-image"
 	LonghornLabelVolume                          = "longhornvolume"
 	LonghornLabelVolumeEncrypted                 = "volume-encrypted"
+	LonghornLabelVolumeEncryptionProvider        = "volume-encryption-provider"
+	LonghornLabelVolumeEncryptionSecret          = "volume-encryption-secret"
 	LonghornLabelV2EncryptedVolumeWithLuksHeader = "v2-encrypted-volume-with-luks-header"
 	LonghornLabelShardGroup                      = "shardgroup"
 	LonghornLabelShareManager                    = "share-manager"

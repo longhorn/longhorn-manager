@@ -91,7 +91,11 @@ func volumeKeySource(ds *datastore.DataStore, v *longhorn.Volume) (derivedVolume
 		if err != nil {
 			return derivedVolumeKeySource{}, errors.Wrapf(err, "failed to read the backup name of volume %v from %v", v.Name, v.Spec.FromBackup)
 		}
-		return derivedVolumeKeySource{keyName: lhkeystore.BackupKey(backupName)}, nil
+		source := derivedVolumeKeySource{keyName: lhkeystore.BackupKey(backupName)}
+		if backup, err := ds.GetBackupRO(backupName); err == nil {
+			source.secretName = backup.Status.Labels[types.LonghornLabelVolumeEncryptionSecret]
+		}
+		return source, nil
 	}
 
 	if v.Spec.DataSource == "" || !types.IsDataFromVolume(v.Spec.DataSource) {
@@ -176,20 +180,7 @@ func (c *VolumeController) reconcileEncryptionKey(v *longhorn.Volume) error {
 			return nil
 		}
 	} else {
-		// A clone may keep its key in another store than its source: read there, write here.
-		sourceProvider := provider
-		if source.secretName != "" && source.secretName != v.Spec.Encryption.SecretName {
-			if sourceProvider, err = encryptionKeyProvider(c.ds, c.namespace, source.secretName); err != nil {
-				setCondition(longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonEncryptionKeyUnavailable, err.Error())
-				return nil
-			}
-		}
-		if source.version > 0 {
-			passphrase, err = sourceProvider.GetVersion(ctx, source.keyName, source.version)
-		} else {
-			passphrase, _, err = sourceProvider.Get(ctx, source.keyName)
-		}
-		if err != nil {
+		if passphrase, err = c.readSourceKey(ctx, provider, v, source); err != nil {
 			reason := longhorn.VolumeConditionReasonEncryptionKeyUnavailable
 			if errors.Is(err, lhkeystore.ErrKeyNotFound) {
 				reason = longhorn.VolumeConditionReasonEncryptionKeyMissing
@@ -211,6 +202,27 @@ func (c *VolumeController) reconcileEncryptionKey(v *longhorn.Volume) error {
 	setCondition(longhorn.ConditionStatusTrue, "", "")
 	log.Infof("Stored the encryption key of the volume at version %v, the engine can start", version)
 	return nil
+}
+
+// readSourceKey reads the key a derived volume's data was encrypted with from
+// the store its source names. There is no fallback to the volume's own store: a
+// key found anywhere else is not known to be the one the data was encrypted with.
+func (c *VolumeController) readSourceKey(ctx context.Context, own lhkeystore.KeyProvider, v *longhorn.Volume, source derivedVolumeKeySource) ([]byte, error) {
+	read := func(p lhkeystore.KeyProvider) ([]byte, error) {
+		if source.version > 0 {
+			return p.GetVersion(ctx, source.keyName, source.version)
+		}
+		passphrase, _, err := p.Get(ctx, source.keyName)
+		return passphrase, err
+	}
+	if source.secretName == "" || source.secretName == v.Spec.Encryption.SecretName {
+		return read(own)
+	}
+	sourceProvider, err := encryptionKeyProvider(c.ds, c.namespace, source.secretName)
+	if err != nil {
+		return nil, err
+	}
+	return read(sourceProvider)
 }
 
 // destroyEncryptionKey removes a vault volume's key and reports whether the
