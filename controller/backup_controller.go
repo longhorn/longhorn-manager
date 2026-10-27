@@ -394,14 +394,21 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		if bc.backupInFinalState(existingBackup) && (!existingBackup.Status.LastSyncedAt.IsZero() || existingBackup.Spec.SnapshotName == "") {
 			err = bc.handleAttachmentTicketDeletion(backup, canonicalBackupVolumeName)
 		}
-		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
-			return
+		if !reflect.DeepEqual(existingBackup.Status, backup.Status) {
+			if _, updateErr := bc.ds.UpdateBackupStatus(backup); updateErr != nil {
+				if apierrors.IsConflict(errors.Cause(updateErr)) {
+					log.WithError(updateErr).Debugf("Requeue %v due to conflict", backupName)
+					bc.enqueueBackup(backup)
+				} else {
+					err = errors.Join(err, updateErr)
+				}
+				// Keep the monitor: it holds the final state that is not persisted yet.
+				return
+			}
 		}
-		if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Debugf("Requeue %v due to conflict", backupName)
-			bc.enqueueBackup(backup)
-			err = nil // nolint: ineffassign
-			return
+		// The final state is persisted, by this or an earlier reconcile; the monitor is done.
+		if bc.backupInFinalState(backup) {
+			bc.disableBackupMonitor(backup.Name)
 		}
 		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
 			if err := bc.syncBackupVolume(backupTargetName, canonicalBackupVolumeName); err != nil {
@@ -471,11 +478,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		switch backup.Status.State {
 		case longhorn.BackupStateNew, longhorn.BackupStatePending, longhorn.BackupStateInProgress:
 			return nil
-		case longhorn.BackupStateCompleted:
-			bc.disableBackupMonitor(backup.Name)
 		case longhorn.BackupStateError, longhorn.BackupStateUnknown:
 			backup.Status.LastSyncedAt = syncTime
-			bc.disableBackupMonitor(backup.Name)
 			return nil
 		}
 	}

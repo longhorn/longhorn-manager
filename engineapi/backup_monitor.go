@@ -64,6 +64,10 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 		backupName:   backup.Name,
 		snapshotName: backup.Spec.SnapshotName,
 
+		// Start from the last known status so a monitor re-created for an in-progress
+		// backup does not publish an empty status before its first poll.
+		backupStatus: *backup.Status.DeepCopy(),
+
 		engine:            engine,
 		engineClientProxy: engineClientProxy,
 
@@ -220,7 +224,9 @@ func (m *BackupMonitor) linerTimer() {
 			currentBackupStatus.Error = err.Error()
 		}
 		m.syncCallBack(currentBackupStatus)
-		return false, nil
+		// Stop polling after a final state. The backup controller keeps this monitor until
+		// the state is persisted, and a later poll error must not replace it.
+		return isBackupFinalState(currentBackupStatus.State), nil
 	}); err != nil {
 		if errors.Is(err, context.Canceled) {
 			m.logger.WithError(err).Warn("Sync backup status canceled")
@@ -341,6 +347,12 @@ func (m *BackupMonitor) GetBackupStatus() longhorn.BackupStatus {
 func (m *BackupMonitor) Close() {
 	m.engineClientProxy.Close()
 	m.quit()
+}
+
+func isBackupFinalState(state longhorn.BackupState) bool {
+	return state == longhorn.BackupStateCompleted ||
+		state == longhorn.BackupStateError ||
+		state == longhorn.BackupStateUnknown
 }
 
 func getBackupParameters(backup *longhorn.Backup) map[string]string {
