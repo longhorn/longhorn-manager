@@ -1512,6 +1512,8 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 
 	// If there is no non-evicting healthy replica,
 	// Longhorn should retain one evicting healthy replica.
+	// Retaining the replica with the lexicographically smallest name keeps the
+	// choice stable across passes while the cache catches up with earlier deletions.
 	hasNonEvictingHealthyReplica := false
 	evictingHealthyReplica := ""
 	for _, r := range deletableRs {
@@ -1522,11 +1524,25 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 			hasNonEvictingHealthyReplica = true
 			break
 		}
-		evictingHealthyReplica = r.Name
+		if evictingHealthyReplica == "" || r.Name < evictingHealthyReplica {
+			evictingHealthyReplica = r.Name
+		}
 	}
 
-	for _, r := range deletableRs {
+	// Name order keeps deletion retries on the same replica while the cache
+	// catches up, preventing another replica from being deleted prematurely.
+	rNames, err := util.SortKeys(deletableRs)
+	if err != nil {
+		return false, err
+	}
+	for _, rName := range rNames {
+		r := deletableRs[rName]
 		if !r.Spec.EvictionRequested {
+			continue
+		}
+		// Skipping terminating replicas lets eviction proceed because each pass
+		// returns after one successful deletion request.
+		if !r.DeletionTimestamp.IsZero() {
 			continue
 		}
 		if !hasNonEvictingHealthyReplica && r.Name == evictingHealthyReplica {
