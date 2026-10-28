@@ -204,16 +204,17 @@ const (
 )
 
 const (
-	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
-	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
-	VolumeConditionReasonShardSchedulingFailure          = "ShardSchedulingFailure"
-	VolumeConditionReasonRestoreInProgress               = "RestoreInProgress"
-	VolumeConditionReasonRestoreFailure                  = "RestoreFailure"
-	VolumeConditionReasonTooManySnapshots                = "TooManySnapshots"
-	VolumeConditionReasonWaitForBackingImageFailed       = "GetBackingImageFailed"
-	VolumeConditionReasonWaitForBackingImageWaiting      = "Waiting"
-	VolumeConditionReasonBackingImageVirtualSizeTooLarge = "BackingImageVirtualSizeTooLarge"
-	VolumeConditionReasonOfflineRebuildingInProgress     = "OfflineRebuildingInProgress"
+	VolumeConditionReasonReplicaSchedulingFailure            = "ReplicaSchedulingFailure"
+	VolumeConditionReasonLocalReplicaSchedulingFailure       = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonWaitingForVolumeAntiAffinityFromPod = "WaitingForVolumeAntiAffinityFromPod"
+	VolumeConditionReasonShardSchedulingFailure              = "ShardSchedulingFailure"
+	VolumeConditionReasonRestoreInProgress                   = "RestoreInProgress"
+	VolumeConditionReasonRestoreFailure                      = "RestoreFailure"
+	VolumeConditionReasonTooManySnapshots                    = "TooManySnapshots"
+	VolumeConditionReasonWaitForBackingImageFailed           = "GetBackingImageFailed"
+	VolumeConditionReasonWaitForBackingImageWaiting          = "Waiting"
+	VolumeConditionReasonBackingImageVirtualSizeTooLarge     = "BackingImageVirtualSizeTooLarge"
+	VolumeConditionReasonOfflineRebuildingInProgress         = "OfflineRebuildingInProgress"
 )
 
 type SnapshotDataIntegrity string
@@ -270,6 +271,14 @@ const (
 	FreezeFilesystemForSnapshotDisabled = FreezeFilesystemForSnapshot("disabled")
 )
 
+// +kubebuilder:validation:Enum="";enabled;disabled
+type VolumeAntiAffinity string
+
+const (
+	VolumeAntiAffinityEnabled  = VolumeAntiAffinity("enabled")
+	VolumeAntiAffinityDisabled = VolumeAntiAffinity("disabled")
+)
+
 type DataEngineType string
 
 const (
@@ -317,6 +326,37 @@ type VolumeTopologyTerm struct {
 	Zone string `json:"zone"`
 	// +optional
 	Region string `json:"region"`
+}
+
+// VolumeAntiAffinityTerm is a node-level spreading rule inherited from a pod.
+// Volumes of different pods that carry the same term are related.
+type VolumeAntiAffinityTerm struct {
+	// Namespaces the rule applies to, sorted.
+	// +optional
+	Namespaces []string `json:"namespaces,omitempty"`
+	// LabelSelector of the rule, with matchLabelKeys and mismatchLabelKeys
+	// merged.
+	// +optional
+	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
+}
+
+// VolumeAntiAffinityFromPod holds the terms inherited from the pod that uses
+// the volume. Longhorn maintains it and replaces it as a whole.
+type VolumeAntiAffinityFromPod struct {
+	// Pod is the namespace/name of the pod the terms are inherited from.
+	// +optional
+	Pod string `json:"pod,omitempty"`
+	// RequiredTerms exclude the nodes that hold a replica of a related volume.
+	// +optional
+	RequiredTerms []VolumeAntiAffinityTerm `json:"requiredTerms,omitempty"`
+	// PreferredTerms rank first the nodes that hold the fewest replicas of
+	// related volumes.
+	// +optional
+	PreferredTerms []VolumeAntiAffinityTerm `json:"preferredTerms,omitempty"`
+	// PendingInheritance holds replica scheduling until the terms are
+	// inherited from the pod. The CSI driver sets it at creation.
+	// +optional
+	PendingInheritance bool `json:"pendingInheritance,omitempty"`
 }
 
 // VolumeSpec defines the desired state of the Longhorn volume
@@ -377,6 +417,16 @@ type VolumeSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="TopologyRequirement is immutable"
 	TopologyRequirement []VolumeTopologyTerm `json:"topologyRequirement"`
+	// VolumeAntiAffinity keeps the replicas of this volume off the nodes that
+	// hold replicas of related volumes, using the terms inherited from the pod.
+	// Empty means disabled.
+	// +optional
+	VolumeAntiAffinity VolumeAntiAffinity `json:"volumeAntiAffinity"`
+	// VolumeAntiAffinityFromPod is maintained by Longhorn, which replaces any
+	// value written by users.
+	// +optional
+	// +nullable
+	VolumeAntiAffinityFromPod *VolumeAntiAffinityFromPod `json:"volumeAntiAffinityFromPod,omitempty"`
 	// +optional
 	DisableFrontend bool `json:"disableFrontend"`
 	// +optional

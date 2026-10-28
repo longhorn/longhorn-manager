@@ -57,6 +57,10 @@ const (
 	EventReasonRemount              = "Remount"
 	EventReasonAutoSalvaged         = "AutoSalvaged"
 
+	EventReasonVolumeAntiAffinityNotInherited = "VolumeAntiAffinityNotInherited"
+	EventReasonVolumeAntiAffinityMultiplePods = "VolumeAntiAffinityMultiplePods"
+	EventReasonReplicaEvictionBlocked         = "ReplicaEvictionBlocked"
+
 	EventReasonFetching = "Fetching"
 	EventReasonFetched  = "Fetched"
 

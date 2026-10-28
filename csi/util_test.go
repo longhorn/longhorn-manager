@@ -97,6 +97,40 @@ func TestGetVolumeOptions(t *testing.T) {
 			},
 			expectedError: true,
 		},
+		"volume anti-affinity enabled": {
+			volumeID: "test-vol-volume-anti-affinity",
+			volumeOptions: map[string]string{
+				"volumeAntiAffinity": "enabled",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:       defaultStaleReplicaTimeout,
+				AccessMode:                string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:                string(longhorn.DataEngineTypeV1),
+				RevisionCounterDisabled:   true,
+				VolumeAntiAffinity:        string(longhorn.VolumeAntiAffinityEnabled),
+				VolumeAntiAffinityFromPod: &longhornclient.VolumeAntiAffinityFromPod{PendingInheritance: true},
+			},
+		},
+		"volume anti-affinity disabled": {
+			volumeID: "test-vol-volume-anti-affinity-disabled",
+			volumeOptions: map[string]string{
+				"volumeAntiAffinity": "disabled",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:              string(longhorn.DataEngineTypeV1),
+				RevisionCounterDisabled: true,
+				VolumeAntiAffinity:      string(longhorn.VolumeAntiAffinityDisabled),
+			},
+		},
+		"invalid volume anti-affinity": {
+			volumeID: "test-vol-volume-anti-affinity-invalid",
+			volumeOptions: map[string]string{
+				"volumeAntiAffinity": "required",
+			},
+			expectedError: true,
+		},
 		"dataEngine override to v2": {
 			volumeID: "test-vol-dataengine-v2",
 			volumeOptions: map[string]string{
