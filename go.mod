@@ -71,9 +71,9 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
 	github.com/longhorn/go-spdk-helper v0.13.0
 	github.com/longhorn/longhorn-engine v1.13.0-dev-20260503.0.20261022031020-51a6a5d56812
-	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503.0.20261028141124-b59000123ed3
+	github.com/longhorn/longhorn-instance-manager v1.13.0-dev-20260503
 	github.com/longhorn/longhorn-share-manager v1.13.0-dev-20260503.0.20260906102010-f611adc51225
-	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20261028131902-83fc61e86e00
+	github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260503.0.20261027023619-01b0180901c6
 	github.com/longhorn/types v0.0.0-20261023101212-edea52fc05df
 	github.com/prometheus/client_golang v1.24.1
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0

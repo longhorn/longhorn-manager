@@ -58,7 +58,6 @@ func (c *ProxyClient) Close() error {
 
 type ProxyClient struct {
 	ServiceURL string
-	tlsConfig  *tls.Config
 	ServiceContext
 
 	Version int
@@ -88,7 +87,6 @@ func NewProxyClient(ctx context.Context, ctxCancel context.CancelFunc, address s
 
 	return &ProxyClient{
 		ServiceURL:     serviceURL,
-		tlsConfig:      tlsConfig,
 		ServiceContext: serviceCtx,
 		Version:        meta.InstanceManagerProxyAPIVersion,
 	}, nil

@@ -140,15 +140,11 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 // to ModeERR and cleans up SPDK resources - without notifying EF.
 //
 // The frontendSuspendResumeWrapper (buildGRPCReplicaAddFrontendSuspendResumeWrapper) handles EF-unreachable
-// and suspend failures:
-//   - Snapshot step: the EF must be suspended. If it cannot be reached or
-//     suspended (e.g. it is switching over its target), the replica add fails
-//     before the rebuild snapshot, and longhorn-manager retries it: an SPDK
-//     snapshot taken while writes allocate clusters in a replica head can abort
-//     spdk_tgt or corrupt the lvstore metadata. Only a frontend type that cannot
-//     be suspended at all proceeds without suspension.
-//   - Finish step: proceed without suspension, as the data has already been
-//     copied and not running the step would leak SPDK resources.
+// scenarios gracefully:
+//   - EF node down / pod deleted (GetServiceClient fails) -> proceed with
+//     the operation without suspension (no active I/O = suspension unnecessary).
+//   - Suspend fails -> proceed without suspension (data integrity is not
+//     compromised; not proceeding would block the rebuild).
 //   - Resume fails -> log error but do not override the operation result;
 //     longhorn-manager will detect the stuck-suspended EF and recover.
 func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.EngineFrontendReplicaAddRequest) (ret *emptypb.Empty, err error) {

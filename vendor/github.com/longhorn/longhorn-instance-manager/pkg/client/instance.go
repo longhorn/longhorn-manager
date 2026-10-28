@@ -96,14 +96,12 @@ type EngineCreateRequest struct {
 	TargetAddress     string
 	UpgradeRequired   bool
 	SalvageRequested  bool
-	SnapshotMaxCount  int
 }
 
 type EngineFrontendCreateRequest struct {
 	Frontend          string
 	UblkQueueDepth    int
 	UblkNumberOfQueue int
-	NvmeTcpNrIoQueues int
 	TargetAddress     string
 	EngineName        string
 }
@@ -113,21 +111,6 @@ type ReplicaCreateRequest struct {
 	DiskUUID         string
 	ExposeRequired   bool
 	BackingImageName string
-}
-
-type ShardCreateRequest struct {
-	LvsName   string
-	LvsUUID   string
-	SlotIndex uint32
-}
-
-// ShardGroupCreateRequest carries the EC creation parameters for a ShardGroup instance.
-type ShardGroupCreateRequest struct {
-	DataChunks       uint32
-	ParityChunks     uint32
-	StripSizeKb      uint32
-	Shards           map[string]*rpc.ShardEndpoint
-	SalvageRequested bool
 }
 
 type InstanceCreateRequest struct {
@@ -145,9 +128,6 @@ type InstanceCreateRequest struct {
 	Engine         EngineCreateRequest
 	EngineFrontend EngineFrontendCreateRequest
 	Replica        ReplicaCreateRequest
-	Shard          ShardCreateRequest
-	ShardGroup     ShardGroupCreateRequest
-	DataLayoutType rpc.DataLayoutType
 
 	// Deprecated: replaced by DataEngine.
 	BackendStoreDriver string
@@ -183,7 +163,6 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				ReplicaAddressMap: req.Engine.ReplicaAddressMap,
 				Frontend:          req.Engine.Frontend,
 				SalvageRequested:  req.Engine.SalvageRequested,
-				SnapshotMaxCount:  int32(req.Engine.SnapshotMaxCount),
 				UblkQueueDepth:    int32(req.Engine.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.Engine.UblkNumberOfQueue),
 			}
@@ -193,7 +172,6 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				Frontend:          req.EngineFrontend.Frontend,
 				UblkQueueDepth:    int32(req.EngineFrontend.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.EngineFrontend.UblkNumberOfQueue),
-				NvmeTcpNrIoQueues: int32(req.EngineFrontend.NvmeTcpNrIoQueues),
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
@@ -202,24 +180,6 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				DiskUuid:         req.Replica.DiskUUID,
 				ExposeRequired:   req.Replica.ExposeRequired,
 				BackingImageName: req.Replica.BackingImageName,
-			}
-		case types.InstanceTypeShard:
-			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
-				Size:      req.Size,
-				LvsName:   req.Shard.LvsName,
-				LvsUuid:   req.Shard.LvsUUID,
-				SlotIndex: req.Shard.SlotIndex,
-			}
-		case types.InstanceTypeShardGroup:
-			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
-				Size: req.Size,
-				ShardGroupSpec: &rpc.ShardGroupSpec{
-					DataChunks:       req.ShardGroup.DataChunks,
-					ParityChunks:     req.ShardGroup.ParityChunks,
-					StripSizeKb:      req.ShardGroup.StripSizeKb,
-					Shards:           req.ShardGroup.Shards,
-					SalvageRequested: req.ShardGroup.SalvageRequested,
-				},
 			}
 		default:
 			return nil, fmt.Errorf("failed to create instance: invalid instance type %v", req.InstanceType)
@@ -255,7 +215,6 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				return ""
 			}(),
 		},
-		DataLayoutType: req.DataLayoutType,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create instance")

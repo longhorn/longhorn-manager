@@ -1108,12 +1108,6 @@ func (ef *EngineFrontend) createUblkFrontend(spdkClient *spdkclient.Client) (err
 		}
 	}()
 
-	// StartUblkInitiator creates the ublk target with an empty CPU mask if it does not exist yet,
-	// so create it here first to keep the ublk pollers off the SPDK admin reactor core.
-	if err = createUblkTarget(spdkClient); err != nil {
-		return errors.Wrapf(err, "failed to create ublk target for engine %v", ef.Name)
-	}
-
 	dmDeviceIsBusy, err = i.StartUblkInitiator(spdkClient, true)
 	if err != nil {
 		return errors.Wrapf(err, "failed to start initiator for engine %v", ef.Name)
