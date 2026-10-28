@@ -21,16 +21,9 @@ package v1beta2
 // V2DataEngineSpecApplyConfiguration represents a declarative configuration of the V2DataEngineSpec type for use
 // with apply.
 type V2DataEngineSpecApplyConfiguration struct {
+	// Deprecated. Ignored in favor of Node.Spec.DataEngineResources.V2.CPUMask.
 	CPUMask *string `json:"cpuMask,omitempty"`
-	// CPUIsolationEnabled overrides the cluster-wide
-	// data-engine-cpu-isolation-enabled setting for this instance manager.
-	// "true"  -> pass --enable-irq-affinity and --enable-workqueue-affinity
-	// to start-spdk-tgt (steer host IRQs and unbound kernel
-	// workqueues away from the SPDK reactor CPUs).
-	// "false" -> do not pass the flags.
-	// ""      -> inherit the global setting value.
-	// This field is ignored when interrupt mode is enabled, since the SPDK
-	// reactors no longer busy-poll and CPU isolation is always disabled.
+	// Deprecated. Ignored in favor of Node.Spec.DataEngineResources.V2.CPUIsolationEnabled.
 	CPUIsolationEnabled *string `json:"cpuIsolationEnabled,omitempty"`
 }
 
