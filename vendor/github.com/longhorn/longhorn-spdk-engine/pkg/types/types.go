@@ -11,6 +11,11 @@ const (
 	MetadataDir = "/metadata"
 )
 
+// EnvSPDKPollerCPUMask names the environment variable that the instance manager launcher sets to the
+// CPU mask of the SPDK cores that run the pollers: every core of the SPDK CPU mask except the first
+// one, which hosts the SPDK admin reactor. It is unset when the mask has a single core.
+const EnvSPDKPollerCPUMask = "SPDK_POLLER_CPUMASK"
+
 type Mode string
 
 const (
