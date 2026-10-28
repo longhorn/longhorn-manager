@@ -773,6 +773,11 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	err = imc.syncLogSettingsToInstanceManagerPod(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
+	}
+
 	instanceManagerUpgradeInProgress, err := imc.syncInPlaceUpgradedInstanceManagerPod(im, imu)
 	if err != nil {
 		return err
@@ -790,11 +795,6 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 	err = imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
-	}
-
-	err = imc.syncLogSettingsToInstanceManagerPod(im)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
 	}
 
 	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskCoreNumberApplied(im)
