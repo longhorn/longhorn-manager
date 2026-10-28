@@ -238,6 +238,19 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.ReplicaSoftAntiAffinity = replicaSoftAntiAffinity
 	}
 
+	if volumeAntiAffinity, ok := volOptions[types.StorageClassParameterVolumeAntiAffinity]; ok {
+		if err := types.ValidateVolumeAntiAffinity(longhorn.VolumeAntiAffinity(volumeAntiAffinity)); err != nil {
+			return nil, errors.Wrapf(err, "invalid parameter %v", types.StorageClassParameterVolumeAntiAffinity)
+		}
+		vol.VolumeAntiAffinity = volumeAntiAffinity
+		if longhorn.VolumeAntiAffinity(volumeAntiAffinity) == longhorn.VolumeAntiAffinityEnabled {
+			// Longhorn inherits the terms from the pod once the PV is bound.
+			// Replica scheduling waits for them, so that the first placement
+			// already follows them.
+			vol.VolumeAntiAffinityFromPod = &longhornclient.VolumeAntiAffinityFromPod{PendingInheritance: true}
+		}
+	}
+
 	if replicaZoneSoftAntiAffinity, ok := volOptions["replicaZoneSoftAntiAffinity"]; ok {
 		if err := types.ValidateReplicaZoneSoftAntiAffinity(longhorn.ReplicaZoneSoftAntiAffinity(replicaZoneSoftAntiAffinity)); err != nil {
 			return nil, errors.Wrap(err, "invalid parameter replicaZoneSoftAntiAffinity")

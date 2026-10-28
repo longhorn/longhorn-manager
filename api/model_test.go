@@ -185,6 +185,25 @@ func TestRecurringJobSchemaAllowsSettingRetainAge(t *testing.T) {
 	}
 }
 
+// Clients that build requests from the schema drop the fields that are not creatable.
+func TestVolumeSchemaAllowsSettingVolumeAntiAffinity(t *testing.T) {
+	schemas := NewSchema()
+	volume, ok := schemas.CheckSchema("volume")
+	if !ok {
+		t.Fatalf("expected volume schema to be registered")
+	}
+
+	for _, name := range []string{"volumeAntiAffinity", "volumeAntiAffinityFromPod"} {
+		field, ok := volume.CheckField(name)
+		if !ok {
+			t.Fatalf("expected volume schema to have a %v field", name)
+		}
+		if !field.Create {
+			t.Fatalf("expected %v to be creatable", name)
+		}
+	}
+}
+
 // The Go client carries retainAge as a string while the manager stores it as a
 // metav1.Duration. A caller setting RetainAge must end up with that exact
 // window on the spec, otherwise the recurring job would clean up on the wrong
