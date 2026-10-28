@@ -127,7 +127,8 @@ func DisconnectController(nqn, ip, port string, executor *commonns.Executor) err
 	return nil
 }
 
-// GetDevices returns all devices
+// GetDevices returns all devices. It reads them from sysfs, so a stalled device elsewhere
+// on the host cannot stall it.
 func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []Device, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to get devices for address %s:%s and nqn %s", ip, port, nqn)
@@ -136,12 +137,12 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 	devices = []Device{}
 	skippedDevices := 0
 
-	nvmeDevices, err := listRecognizedNvmeDevices(executor)
+	nvmeDevices, err := listRecognizedNvmeDevicesFromSysfs(sysfsRoot)
 	if err != nil {
 		return nil, err
 	}
 	for _, d := range nvmeDevices {
-		subsystems, err := listSubsystems(d.DevicePath, executor)
+		subsystems, err := listSubsystemsFromSysfs(sysfsRoot, d.DevicePath)
 		if err != nil {
 			// Backup/snapshot flows may create a temporary NVMe/TCP device and tear
 			// it down shortly after use. To avoid falsely treating the live frontend
@@ -249,7 +250,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 		// primary matching loop above cannot find the new controller. Here we
 		// query ALL subsystems without a device path filter to discover every
 		// controller, then map back to the existing namespace block device.
-		subsystems, err := listSubsystems("", executor)
+		subsystems, err := listSubsystemsFromSysfs(sysfsRoot, "")
 		if err != nil {
 			return nil, err
 		}
@@ -317,7 +318,7 @@ func GetDevices(ip, port, nqn string, executor *commonns.Executor) (devices []De
 			}).Warn("Requested NVMe target was not found after skipping transient devices during scan")
 		}
 
-		subsystems, err := listSubsystems("", executor)
+		subsystems, err := listSubsystemsFromSysfs(sysfsRoot, "")
 		if err != nil {
 			return nil, err
 		}

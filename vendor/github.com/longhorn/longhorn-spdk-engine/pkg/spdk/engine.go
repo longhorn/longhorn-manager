@@ -315,7 +315,7 @@ func (e *Engine) Create(spdkClient *spdkclient.Client, replicaAddressMap map[str
 		}
 	case types.FrontendUBLK:
 		e.log.Infof("Creating UBLK target for engine %v", e.Name)
-		if err := spdkClient.UblkCreateTarget("", true); err != nil {
+		if err := createUblkTarget(spdkClient); err != nil {
 			return nil, err
 		}
 	}
@@ -781,7 +781,10 @@ func (e *Engine) SetSnapshotMaxCount(count int32) {
 	}
 }
 
-type replicaAddFrontendSuspendResumeWrapper func(work func() error) error
+// replicaAddFrontendSuspendResumeWrapper suspends the frontend I/O around work.
+// If suspendRequired is set, work does not run unless the frontend is
+// suspended, or cannot be suspended at all (e.g. a ublk frontend).
+type replicaAddFrontendSuspendResumeWrapper func(work func() error, suspendRequired bool) error
 
 // ReplicaAdd performs the full replica-add flow consisting of three phases:
 //
@@ -789,7 +792,11 @@ type replicaAddFrontendSuspendResumeWrapper func(work func() error) error
 //  1. Validate engine state is Running, dst replica doesn't exist, no other WO replica.
 //  2. Obtain replica gRPC clients for all existing replicas, plus src/dst rebuild clients.
 //  3. Pick an RW replica as the rebuild source.
-//  4. Call replicaAddStart (optionally wrapped by frontendSuspendResumeWrapper for EF suspend/resume):
+//  4. Call replicaAddStart (optionally wrapped by frontendSuspendResumeWrapper for EF suspend/resume).
+//     The suspension is required: an SPDK snapshot taken while writes allocate
+//     clusters in a replica head can abort spdk_tgt or corrupt the lvstore
+//     metadata (spdk/spdk#3113). If the frontend cannot be suspended, the replica
+//     add fails, and longhorn-manager retries it:
 //     a. Create rebuild snapshot across all replicas.
 //     b. Get rebuilding snapshot list from src replica.
 //     c. ReplicaRebuildingSrcStart: src replica exposes snapshot as NVMe-oF target.
@@ -949,7 +956,7 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 	}
 
 	if frontendSuspendResumeWrapper != nil {
-		if wrapErr := frontendSuspendResumeWrapper(startFn); wrapErr != nil {
+		if wrapErr := frontendSuspendResumeWrapper(startFn, true); wrapErr != nil {
 			// startFn captures fatal engine errors in engineErr. The wrapper
 			// returns the work error, so keep setup failures replica-scoped.
 			setupErr = wrapErr
@@ -1154,7 +1161,7 @@ func (e *Engine) replicaAddCleanupOrFinish(
 
 	var finishErr error
 	if frontendSuspendResumeWrapper != nil {
-		finishErr = frontendSuspendResumeWrapper(finishFn)
+		finishErr = frontendSuspendResumeWrapper(finishFn, false)
 	} else {
 		finishErr = finishFn()
 	}
