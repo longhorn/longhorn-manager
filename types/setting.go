@@ -1863,9 +1863,10 @@ var (
 			"It is necessary that the effective V2 Instance Manager pod CPU request reserves at least the same number of CPU cores configured here, based on the node's allocatable CPU capacity. " +
 			"If the InstanceManagerCPURequest field is set on the node, it overrides the global Guaranteed Instance Manager CPU setting. " +
 			"If the effective CPU request is lower than the assigned CPU cores, the V2 Instance Manager may experience CPU contention and become unstable under heavy workloads. \n\n" +
-			"A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. " +
-			"With only a single core, heavy I/O workloads can delay RPC processing, causing increased latency, timeout events, and operational instability. " +
-			"Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and storage stability. \n\n" +
+			"A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model. The first (lowest-numbered) core of the mask runs only the admin (main) reactor, which handles management RPCs, " +
+			"and the other cores run the I/O pollers (the NVMe-oF target poll groups and the ublk target). " +
+			"With only a single core, the admin reactor and the I/O pollers share that core, so heavy I/O workloads can delay RPC processing, causing increased latency, timeout events, and operational instability. " +
+			"Assigning 2 or more cores allows I/O and management tasks to run on separate cores, improving responsiveness and storage stability. \n\n" +
 			"Accepts either hexadecimal CPU masks (for example, 0x3 or 0xff) or CPU list format (for example, 0-1,2,5). " +
 			"CPU lists are automatically converted to hexadecimal masks. The default value is 0x3.",
 		Category:           SettingCategoryDangerZone,
@@ -1879,7 +1880,7 @@ var (
 	SettingDefinitionDataEngineNumberOfCPUCores = SettingDefinition{
 		DisplayName: "Data Engine Number of CPU Cores",
 		Description: "Applies only to the V2 Data Engine. It can be applied only when the kubelet CPU policy is set to static. It has higher priority than the Data Engine CPU Mask setting. Therefore, when specified, the CPU Mask setting will be ignored. " +
-			"Specifies the number of CPU cores allocated to the Storage Performance Development Kit (SPDK) target daemon. The daemon is deployed in each Instance Manager pod. When this setting is specified, Longhorn automatically raises the V2 instance manager pod CPU request to at least the configured number of CPU cores. If the field `InstanceManagerCPURequest` on the node or the Guaranteed Instance Manager CPU setting already results in a higher CPU request, the higher value is used. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model where the master reactor handles both I/O polling and management RPCs. When only a single core is assigned, heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate reactors, improving responsiveness and operational stability.",
+			"Specifies the number of CPU cores allocated to the Storage Performance Development Kit (SPDK) target daemon. The daemon is deployed in each Instance Manager pod. When this setting is specified, Longhorn automatically raises the V2 instance manager pod CPU request to at least the configured number of CPU cores. If the field `InstanceManagerCPURequest` on the node or the Guaranteed Instance Manager CPU setting already results in a higher CPU request, the higher value is used. A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model. The first (lowest-numbered) assigned core runs only the admin (main) reactor, which handles management RPCs, and the other cores run the I/O pollers (the NVMe-oF target poll groups and the ublk target). When only a single core is assigned, the admin reactor and the I/O pollers share that core, so heavy I/O workloads can delay or starve RPC processing, resulting in increased latency, timeout events, and operational instability. Assigning 2 or more cores allows I/O and management tasks to run on separate cores, improving responsiveness and operational stability.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
