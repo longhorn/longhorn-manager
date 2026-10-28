@@ -2724,6 +2724,17 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 		if r.Spec.NodeID != "" {
 			continue
 		}
+		if types.IsVolumeAntiAffinityPending(v) {
+			// The terms are inherited from the pod once the PV is bound.
+			// Placing the replica before that would ignore them.
+			aggregatedScheduledErrs.Append(longhorn.ErrorReplicaScheduleVolumeAntiAffinityPending,
+				fmt.Errorf("volume %v waits for its volume anti-affinity terms", v.Name))
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+				longhorn.VolumeConditionReasonWaitingForVolumeAntiAffinityFromPod, "")
+			scheduled = false
+			continue
+		}
 		switch v.Spec.DataLocality {
 		case longhorn.DataLocalityStrictLocal:
 			if v.Spec.NodeID == "" {

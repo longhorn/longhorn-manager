@@ -50,6 +50,8 @@ type RancherClient struct {
 	VolumeRecurringJob                         VolumeRecurringJobOperations
 	VolumeRecurringJobInput                    VolumeRecurringJobInputOperations
 	VolumeTopologyTerm                         VolumeTopologyTermOperations
+	VolumeAntiAffinityTerm                     VolumeAntiAffinityTermOperations
+	VolumeAntiAffinityFromPod                  VolumeAntiAffinityFromPodOperations
 	PVCreateInput                              PVCreateInputOperations
 	PVCCreateInput                             PVCCreateInputOperations
 	SettingDefinition                          SettingDefinitionOperations
@@ -142,6 +144,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.VolumeRecurringJob = newVolumeRecurringJobClient(client)
 	client.VolumeRecurringJobInput = newVolumeRecurringJobInputClient(client)
 	client.VolumeTopologyTerm = newVolumeTopologyTermClient(client)
+	client.VolumeAntiAffinityTerm = newVolumeAntiAffinityTermClient(client)
+	client.VolumeAntiAffinityFromPod = newVolumeAntiAffinityFromPodClient(client)
 	client.PVCreateInput = newPVCreateInputClient(client)
 	client.PVCCreateInput = newPVCCreateInputClient(client)
 	client.SettingDefinition = newSettingDefinitionClient(client)

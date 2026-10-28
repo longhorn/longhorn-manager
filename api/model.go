@@ -71,10 +71,12 @@ type Volume struct {
 	BackupTargetName                string                                 `json:"backupTargetName"`
 	DataLayout                      longhorn.VolumeDataLayout              `json:"dataLayout"`
 
-	DiskSelector         []string                      `json:"diskSelector"`
-	NodeSelector         []string                      `json:"nodeSelector"`
-	TopologyRequirement  []longhorn.VolumeTopologyTerm `json:"topologyRequirement"`
-	RecurringJobSelector []longhorn.VolumeRecurringJob `json:"recurringJobSelector"`
+	DiskSelector              []string                            `json:"diskSelector"`
+	NodeSelector              []string                            `json:"nodeSelector"`
+	TopologyRequirement       []longhorn.VolumeTopologyTerm       `json:"topologyRequirement"`
+	VolumeAntiAffinity        longhorn.VolumeAntiAffinity         `json:"volumeAntiAffinity"`
+	VolumeAntiAffinityFromPod *longhorn.VolumeAntiAffinityFromPod `json:"volumeAntiAffinityFromPod"`
+	RecurringJobSelector      []longhorn.VolumeRecurringJob       `json:"recurringJobSelector"`
 
 	NumberOfReplicas           int                         `json:"numberOfReplicas"`
 	ReplicaAutoBalance         longhorn.ReplicaAutoBalance `json:"replicaAutoBalance"`
@@ -862,6 +864,8 @@ func NewSchema() *client.Schemas {
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
 	schemas.AddType("labelSelectorRequirement", metav1.LabelSelectorRequirement{})
 	labelSelectorSchema(schemas.AddType("labelSelector", metav1.LabelSelector{}))
+	volumeAntiAffinityTermSchema(schemas.AddType("volumeAntiAffinityTerm", longhorn.VolumeAntiAffinityTerm{}))
+	volumeAntiAffinityFromPodSchema(schemas.AddType("volumeAntiAffinityFromPod", longhorn.VolumeAntiAffinityFromPod{}))
 	snapshotGroupPreviewInputSchema(schemas.AddType("snapshotGroupPreviewInput", SnapshotGroupPreviewInput{}))
 	schemas.AddType("snapshotGroupPreviewMember", SnapshotGroupPreviewMember{})
 	snapshotGroupPreviewOutputSchema(schemas.AddType("snapshotGroupPreviewOutput", SnapshotGroupPreviewOutput{}))
@@ -1131,6 +1135,24 @@ func labelSelectorSchema(labelSelector *client.Schema) {
 	labelSelector.ResourceFields["matchExpressions"] = matchExpressions
 }
 
+func volumeAntiAffinityTermSchema(term *client.Schema) {
+	// The schema reflector drops pointer fields, so the type must be set here
+	// for the field to appear in the published schema at all.
+	labelSelector := term.ResourceFields["labelSelector"]
+	labelSelector.Type = "labelSelector"
+	labelSelector.Nullable = true
+	labelSelector.Create = true
+	term.ResourceFields["labelSelector"] = labelSelector
+}
+
+func volumeAntiAffinityFromPodSchema(fromPod *client.Schema) {
+	for _, name := range []string{"requiredTerms", "preferredTerms"} {
+		terms := fromPod.ResourceFields[name]
+		terms.Type = "array[volumeAntiAffinityTerm]"
+		fromPod.ResourceFields[name] = terms
+	}
+}
+
 func kubernetesStatusSchema(status *client.Schema) {
 	workloadsStatus := status.ResourceFields["workloadsStatus"]
 	workloadsStatus.Type = "array[workloadStatus]"
@@ -1223,6 +1245,13 @@ func settingSchema(setting *client.Schema) {
 func volumeSchema(volume *client.Schema) {
 	volume.CollectionMethods = []string{"GET", "POST"}
 	volume.ResourceMethods = []string{"GET", "DELETE"}
+
+	volumeAntiAffinityFromPod := volume.ResourceFields["volumeAntiAffinityFromPod"]
+	volumeAntiAffinityFromPod.Type = "volumeAntiAffinityFromPod"
+	volumeAntiAffinityFromPod.Nullable = true
+	volumeAntiAffinityFromPod.Create = true
+	volume.ResourceFields["volumeAntiAffinityFromPod"] = volumeAntiAffinityFromPod
+
 	volume.ResourceActions = map[string]client.Action{
 		"attach": {
 			Input:  "attachInput",
@@ -1925,6 +1954,8 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		DiskSelector:                    v.Spec.DiskSelector,
 		NodeSelector:                    v.Spec.NodeSelector,
 		TopologyRequirement:             v.Spec.TopologyRequirement,
+		VolumeAntiAffinity:              v.Spec.VolumeAntiAffinity,
+		VolumeAntiAffinityFromPod:       v.Spec.VolumeAntiAffinityFromPod,
 		RestoreVolumeRecurringJob:       v.Spec.RestoreVolumeRecurringJob,
 		FreezeFilesystemForSnapshot:     v.Spec.FreezeFilesystemForSnapshot,
 		BackupTargetName:                v.Spec.BackupTargetName,

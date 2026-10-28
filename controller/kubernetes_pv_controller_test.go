@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -19,6 +20,7 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -39,6 +41,9 @@ type KubernetesTestCase struct {
 	pods   []*corev1.Pod
 
 	expectVolume *longhorn.Volume
+	// expectEvents are the reasons of the events the sync records, in order.
+	// Nil skips the check.
+	expectEvents []string
 }
 
 func generateKubernetesTestCaseTemplate() *KubernetesTestCase {
@@ -518,10 +523,24 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 			c.Assert(err, IsNil)
 		}
 
+		if tc.expectEvents != nil {
+			reasons := []string{}
+			for done := false; !done; {
+				select {
+				case event := <-kc.eventRecorder.(*record.FakeRecorder).Events:
+					// The fake recorder formats an event as "<type> <reason> <message>".
+					reasons = append(reasons, strings.Fields(event)[1])
+				default:
+					done = true
+				}
+			}
+			c.Assert(reasons, DeepEquals, tc.expectEvents, Commentf("case %v", name))
+		}
+
 		if v != nil {
 			retV, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), v.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
-			c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
+			c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec, Commentf("case %v", name))
 			sort.Slice(retV.Status.KubernetesStatus.WorkloadsStatus, func(i, j int) bool {
 				return retV.Status.KubernetesStatus.WorkloadsStatus[i].PodName < retV.Status.KubernetesStatus.WorkloadsStatus[j].PodName
 			})
@@ -663,4 +682,162 @@ func (s *TestSuite) TestSyncKubernetesStatusIsIdempotent(c *C) {
 	c.Assert(err, IsNil)
 
 	c.Assert(second.Status.KubernetesStatus, DeepEquals, first.Status.KubernetesStatus)
+}
+
+func newSpreadingPodWithPVC(podName string, terms ...corev1.PodAffinityTerm) *corev1.Pod {
+	pod := newPodWithPVC(podName)
+	pod.Labels = map[string]string{"app": "kafka"}
+	pod.Spec.Affinity = &corev1.Affinity{PodAntiAffinity: &corev1.PodAntiAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: terms,
+	}}
+	return pod
+}
+
+func podAntiAffinityTerm(topologyKey, app string) corev1.PodAffinityTerm {
+	return corev1.PodAffinityTerm{
+		TopologyKey:   topologyKey,
+		LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": app}},
+	}
+}
+
+func kafkaFromPod(podName string, pending bool) *longhorn.VolumeAntiAffinityFromPod {
+	return &longhorn.VolumeAntiAffinityFromPod{
+		Pod: TestNamespace + "/" + podName,
+		RequiredTerms: []longhorn.VolumeAntiAffinityTerm{{
+			Namespaces:    []string{TestNamespace},
+			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "kafka"}},
+		}},
+		PendingInheritance: pending,
+	}
+}
+
+func boundKubernetesStatus(pods ...*corev1.Pod) longhorn.KubernetesStatus {
+	workloads := []longhorn.WorkloadStatus{}
+	for _, p := range pods {
+		workloads = append(workloads, longhorn.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		})
+	}
+	return longhorn.KubernetesStatus{
+		PVName:          TestPVName,
+		PVStatus:        string(corev1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+	}
+}
+
+// newVolumeAntiAffinityTestCase returns a case for a volume with the feature
+// enabled and the given inherited terms, bound to a PV and used by the pods.
+func newVolumeAntiAffinityTestCase(fromPod *longhorn.VolumeAntiAffinityFromPod, pods ...*corev1.Pod) *KubernetesTestCase {
+	tc := generateKubernetesTestCaseTemplate()
+	tc.volume.Spec.NumberOfReplicas = 1
+	tc.volume.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityEnabled
+	tc.volume.Spec.VolumeAntiAffinityFromPod = fromPod
+	// Already in use by the PV, so the sync records no event of its own.
+	tc.volume.Status.KubernetesStatus.PVName = TestPVName
+	tc.pods = pods
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.KubernetesStatus = boundKubernetesStatus(pods...)
+	if len(pods) == 0 {
+		tc.expectVolume.Status.KubernetesStatus.WorkloadsStatus = nil
+	}
+	tc.expectEvents = []string{}
+	return tc
+}
+
+func (s *TestSuite) TestSyncVolumeAntiAffinityFromPod(c *C) {
+	testCases := map[string]*KubernetesTestCase{}
+	pending := &longhorn.VolumeAntiAffinityFromPod{PendingInheritance: true}
+	spread := podAntiAffinityTerm(corev1.LabelHostname, "kafka")
+
+	tc := newVolumeAntiAffinityTestCase(pending.DeepCopy(), newSpreadingPodWithPVC(TestPod1, spread))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = kafkaFromPod(TestPod1, false)
+	testCases["terms are inherited and the hold is released in one update"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(), newPodWithPVC(TestPod1))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	testCases["the hold is released when the pod has no rule"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(),
+		newSpreadingPodWithPVC(TestPod1, podAntiAffinityTerm(types.KubernetesTopologyZoneLabelKey, "kafka")))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityNotInherited}
+	testCases["a rule that is not inherited is reported"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(),
+		newSpreadingPodWithPVC(TestPod1, spread, podAntiAffinityTerm(corev1.LabelHostname, "zookeeper")))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = kafkaFromPod(TestPod1, false)
+	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityNotInherited}
+	testCases["the inherited rules are kept and the others are reported"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy())
+	testCases["the hold stays until the pod is visible"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(),
+		newSpreadingPodWithPVC(TestPod1, spread), newSpreadingPodWithPVC(TestPod2, spread))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityMultiplePods}
+	testCases["the hold is released without terms when several pods use the PVC"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false),
+		newSpreadingPodWithPVC(TestPod1), newSpreadingPodWithPVC(TestPod2))
+	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityMultiplePods}
+	testCases["the terms are kept when several pods use the PVC"] = tc
+
+	deleting := newSpreadingPodWithPVC(TestPod1)
+	now := metav1.Now()
+	deleting.DeletionTimestamp = &now
+	completed := newSpreadingPodWithPVC(TestPod2)
+	completed.Status.Phase = corev1.PodSucceeded
+	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(), deleting, completed, newSpreadingPodWithPVC("test-pod-name-3", spread))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = kafkaFromPod("test-pod-name-3", false)
+	testCases["pods that are being deleted or have completed are not sources"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false),
+		newSpreadingPodWithPVC(TestPod1, podAntiAffinityTerm(corev1.LabelHostname, "kafka"), func() corev1.PodAffinityTerm {
+			term := podAntiAffinityTerm(corev1.LabelHostname, "kafka")
+			term.Namespaces = []string{TestNamespace, "stg"}
+			return term
+		}()))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod.RequiredTerms = append(tc.expectVolume.Spec.VolumeAntiAffinityFromPod.RequiredTerms,
+		longhorn.VolumeAntiAffinityTerm{
+			Namespaces:    []string{TestNamespace, "stg"},
+			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "kafka"}},
+		})
+	testCases["changed rules replace the terms"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false), newPodWithPVC(TestPod1))
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	testCases["the terms go away with the rules"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false))
+	testCases["the terms stay while no pod uses the volume"] = tc
+
+	sameTerm := kafkaFromPod(TestPod1, false)
+	sameTerm.RequiredTerms[0].LabelSelector = &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+		{Key: "app", Operator: metav1.LabelSelectorOpIn, Values: []string{"kafka"}},
+	}}
+	tc = newVolumeAntiAffinityTestCase(sameTerm, newSpreadingPodWithPVC(TestPod1, spread))
+	testCases["the same terms written differently are not rewritten"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false), newSpreadingPodWithPVC(TestPod1, spread))
+	tc.volume.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityDisabled
+	tc.expectVolume.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityDisabled
+	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	testCases["disabling the feature removes the terms"] = tc
+
+	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(), newSpreadingPodWithPVC(TestPod1, spread))
+	tc.pv.Status.Phase = corev1.VolumeAvailable
+	tc.pv.Spec.ClaimRef = nil
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{
+		PVName:   TestPVName,
+		PVStatus: string(corev1.VolumeAvailable),
+	}
+	testCases["the hold stays until the PV is bound"] = tc
+
+	s.runKubernetesTestCases(c, testCases)
 }
