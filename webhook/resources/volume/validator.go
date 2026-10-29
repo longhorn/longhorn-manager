@@ -555,6 +555,9 @@ func validateShardedConstraints(volume *longhorn.Volume) error {
 	if volume.Spec.Migratable {
 		return werror.NewInvalidError("spec.migratable is not supported for EC (sharded) volumes", "spec.migratable")
 	}
+	if volume.Spec.VolumeAntiAffinity == longhorn.VolumeAntiAffinityEnabled {
+		return werror.NewInvalidError("spec.volumeAntiAffinity is not supported for EC (sharded) volumes", "spec.volumeAntiAffinity")
+	}
 
 	return nil
 }
