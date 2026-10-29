@@ -23,6 +23,7 @@ func (p *Proxy) SnapshotList(obj DataEngineObject) (snapshots map[string]*longho
 	for k, v := range recv {
 		snapshots[k] = (*longhorn.SnapshotInfo)(v)
 	}
+	markSystemGeneratedSnapshots(snapshots)
 	return snapshots, nil
 }
 
