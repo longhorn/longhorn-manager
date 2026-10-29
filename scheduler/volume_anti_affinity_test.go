@@ -266,15 +266,16 @@ func (s *TestSuite) TestVolumeAntiAffinityRelation(c *C) {
 		c.Assert(antiAffinity.requiredNodes.Has(TestNode1), Equals, tc.required, Commentf("case %v", name))
 	}
 
-	// The strength of the term in the scheduled volume decides: a term that is
-	// preferred here only ranks the node of a sibling that requires it.
+	// A term that either volume requires keeps the volumes apart, whichever is
+	// placed first: a term that is preferred here still excludes the node of a
+	// sibling that requires it.
 	f := newAntiAffinityFixture(c)
 	f.addVolume("kafka-0", requiredFromPod("kafka-0", appTerm("kafka")), TestNode1)
 	v, _ := f.addVolume("kafka-1", preferredFromPod("kafka-1", appTerm("kafka")))
 	antiAffinity, err := f.rcs.getVolumeAntiAffinity(newReplicaForVolume(v), v)
 	c.Assert(err, IsNil)
-	c.Assert(antiAffinity.requiredNodes.Len(), Equals, 0)
-	c.Assert(antiAffinity.preferredReplicas, DeepEquals, map[string]int{TestNode1: 1})
+	c.Assert(antiAffinity.requiredNodes.UnsortedList(), DeepEquals, []string{TestNode1})
+	c.Assert(antiAffinity.preferredReplicas, HasLen, 0)
 }
 
 func (s *TestSuite) TestVolumeAntiAffinityOccupancy(c *C) {
