@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"fmt"
-	"slices"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -14,8 +13,8 @@ import (
 // volumeAntiAffinity holds the nodes occupied by the replicas of the volumes
 // related to the volume being scheduled, as observed in the cache at the time.
 type volumeAntiAffinity struct {
-	// requiredNodes hold a replica of a volume related through a term in the
-	// required terms of the scheduled volume.
+	// requiredNodes hold a replica of a volume related through a term that the
+	// scheduled volume or the related volume requires.
 	requiredNodes sets.Set[string]
 	// preferredReplicas counts the replicas on each node of the volumes related
 	// only through a preferred term.
@@ -52,7 +51,10 @@ func (rcs *ReplicaScheduler) getVolumeAntiAffinity(replica *longhorn.Replica, vo
 	if err != nil {
 		return nil, err
 	}
-	// The value is true for a volume related through a required term.
+	// The value is true for a volume related through a term that either volume
+	// requires, so that the placement order does not decide whether the volumes
+	// stay apart. kube-scheduler also keeps a pod away from the existing pods
+	// whose required anti-affinity selects it.
 	related := map[string]bool{}
 	for _, v := range volumes {
 		other := v.Spec.VolumeAntiAffinityFromPod
@@ -60,13 +62,15 @@ func (rcs *ReplicaScheduler) getVolumeAntiAffinity(replica *longhorn.Replica, vo
 		if v.Name == volume.Name || !types.IsVolumeAntiAffinityEnabled(v) || other == nil || other.Pod == fromPod.Pod {
 			continue
 		}
-		for _, term := range slices.Concat(other.RequiredTerms, other.PreferredTerms) {
-			key := types.VolumeAntiAffinityTermKey(term)
-			if required.Has(key) {
+		for _, term := range other.RequiredTerms {
+			if key := types.VolumeAntiAffinityTermKey(term); required.Has(key) || preferred.Has(key) {
 				related[v.Name] = true
-				break
 			}
-			if preferred.Has(key) {
+		}
+		for _, term := range other.PreferredTerms {
+			if key := types.VolumeAntiAffinityTermKey(term); required.Has(key) {
+				related[v.Name] = true
+			} else if preferred.Has(key) && !related[v.Name] {
 				related[v.Name] = false
 			}
 		}
