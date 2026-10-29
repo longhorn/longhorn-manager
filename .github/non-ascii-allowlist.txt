@@ -1,0 +1,2 @@
+# Glob patterns of paths allowed to contain harmless non-ASCII characters.
+# BiDi control and zero-width characters are rejected even in these paths.

@@ -1,0 +1,28 @@
+name: Check Non-ASCII Characters
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-non-ascii:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        shell: bash
+        run: |
+          git fetch origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - name: Check added lines for non-ASCII characters
+        shell: bash
+        run: |
+          python3 .github/scripts/check_non_ascii.py "origin/${{ github.base_ref }}"
