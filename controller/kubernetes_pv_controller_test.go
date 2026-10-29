@@ -784,6 +784,16 @@ func (s *TestSuite) TestSyncVolumeAntiAffinityFromPod(c *C) {
 	tc.expectSpecUpdates = 1
 	testCases["the inherited rules are kept and the others are reported"] = tc
 
+	zoneRule := podAntiAffinityTerm(types.KubernetesTopologyZoneLabelKey, "kafka")
+	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false), newSpreadingPodWithPVC(TestPod1, spread, zoneRule))
+	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityNotInherited}
+	testCases["a rule added to a recreated pod is reported although the terms stay"] = tc
+
+	recreated := newSpreadingPodWithPVC(TestPod1, spread, zoneRule)
+	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false), recreated)
+	tc.volume.Status.KubernetesStatus = boundKubernetesStatus(recreated)
+	testCases["a resync with the same pods reports nothing again"] = tc
+
 	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy())
 	testCases["the hold stays until the pod is visible"] = tc
 
