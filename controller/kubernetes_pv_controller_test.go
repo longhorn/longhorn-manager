@@ -47,6 +47,10 @@ type KubernetesTestCase struct {
 	// expectEvents are the reasons of the events the sync records, in order.
 	// Nil skips the check.
 	expectEvents []string
+	// expectSpecUpdates is the number of volume spec updates the sync makes.
+	// The spec changes only with the inherited terms, and the terms and the
+	// hold change in the same update.
+	expectSpecUpdates int
 }
 
 func generateKubernetesTestCaseTemplate() *KubernetesTestCase {
@@ -522,8 +526,10 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		}
 
 		if pv != nil {
+			lhClient.ClearActions()
 			err = kc.syncKubernetesStatus(getKey(pv, c))
 			c.Assert(err, IsNil)
+			c.Assert(countVolumeSpecUpdates(lhClient), Equals, tc.expectSpecUpdates, Commentf("case %v", name))
 		}
 
 		if tc.expectEvents != nil {
@@ -759,22 +765,26 @@ func (s *TestSuite) TestSyncVolumeAntiAffinityFromPod(c *C) {
 
 	tc := newVolumeAntiAffinityTestCase(pending.DeepCopy(), newSpreadingPodWithPVC(TestPod1, spread))
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = kafkaFromPod(TestPod1, false)
+	tc.expectSpecUpdates = 1
 	testCases["terms are inherited and the hold is released in one update"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(), newPodWithPVC(TestPod1))
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	tc.expectSpecUpdates = 1
 	testCases["the hold is released when the pod has no rule"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(),
 		newSpreadingPodWithPVC(TestPod1, podAntiAffinityTerm(types.KubernetesTopologyZoneLabelKey, "kafka")))
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
 	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityNotInherited}
+	tc.expectSpecUpdates = 1
 	testCases["a rule that is not inherited is reported"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(),
 		newSpreadingPodWithPVC(TestPod1, spread, podAntiAffinityTerm(corev1.LabelHostname, "zookeeper")))
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = kafkaFromPod(TestPod1, false)
 	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityNotInherited}
+	tc.expectSpecUpdates = 1
 	testCases["the inherited rules are kept and the others are reported"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy())
@@ -784,6 +794,7 @@ func (s *TestSuite) TestSyncVolumeAntiAffinityFromPod(c *C) {
 		newSpreadingPodWithPVC(TestPod1, spread), newSpreadingPodWithPVC(TestPod2, spread))
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
 	tc.expectEvents = []string{constant.EventReasonVolumeAntiAffinityMultiplePods}
+	tc.expectSpecUpdates = 1
 	testCases["the hold is released without terms when several pods use the PVC"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false),
@@ -798,6 +809,7 @@ func (s *TestSuite) TestSyncVolumeAntiAffinityFromPod(c *C) {
 	completed.Status.Phase = corev1.PodSucceeded
 	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(), deleting, completed, newSpreadingPodWithPVC("test-pod-name-3", spread))
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = kafkaFromPod("test-pod-name-3", false)
+	tc.expectSpecUpdates = 1
 	testCases["pods that are being deleted or have completed are not sources"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false),
@@ -811,10 +823,12 @@ func (s *TestSuite) TestSyncVolumeAntiAffinityFromPod(c *C) {
 			Namespaces:    []string{TestNamespace, "stg"},
 			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "kafka"}},
 		})
+	tc.expectSpecUpdates = 1
 	testCases["changed rules replace the terms"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false), newPodWithPVC(TestPod1))
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	tc.expectSpecUpdates = 1
 	testCases["the terms go away with the rules"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(kafkaFromPod(TestPod1, false))
@@ -831,6 +845,7 @@ func (s *TestSuite) TestSyncVolumeAntiAffinityFromPod(c *C) {
 	tc.volume.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityDisabled
 	tc.expectVolume.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityDisabled
 	tc.expectVolume.Spec.VolumeAntiAffinityFromPod = nil
+	tc.expectSpecUpdates = 1
 	testCases["disabling the feature removes the terms"] = tc
 
 	tc = newVolumeAntiAffinityTestCase(pending.DeepCopy(), newSpreadingPodWithPVC(TestPod1, spread))
@@ -894,3 +909,12 @@ func (s *TestSuite) TestSyncVolumeAntiAffinityFromPodRequeuesOnConflict(c *C) {
 	kc.queue.Done(item)
 }
 
+func countVolumeSpecUpdates(lhClient *lhfake.Clientset) int {
+	count := 0
+	for _, action := range lhClient.Actions() {
+		if action.Matches("update", "volumes") && action.GetSubresource() == "" {
+			count++
+		}
+	}
+	return count
+}

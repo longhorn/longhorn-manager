@@ -387,3 +387,30 @@ func (s *TestSuite) TestVolumeAntiAffinityDiskEviction(c *C) {
 	c.Assert(r.Spec.NodeID, Equals, TestNode1)
 	c.Assert(r.Spec.DiskID, Equals, getDiskID(TestNode1, "2"))
 }
+
+func (s *TestSuite) TestVolumeAntiAffinityWithinVolumeTopology(c *C) {
+	// The topology requirement narrows the nodes before volume anti-affinity
+	// filters them, so a related replica never moves a volume out of its zone.
+	f := newAntiAffinityFixture(c)
+	obj, exists, err := f.nIndexer.GetByKey(TestNamespace + "/" + TestNode3)
+	c.Assert(err, IsNil)
+	c.Assert(exists, Equals, true)
+	node := obj.(*longhorn.Node).DeepCopy()
+	node.Status.Zone = TestZone2
+	c.Assert(f.nIndexer.Update(node), IsNil)
+	zonal := []longhorn.VolumeTopologyTerm{{Zone: TestZone1}}
+
+	f.addVolume("kafka-0", requiredFromPod("kafka-0", appTerm("kafka")), TestNode1)
+	v, _ := f.addVolume("kafka-1", requiredFromPod("kafka-1", appTerm("kafka")))
+	v.Spec.TopologyRequirement = zonal
+	c.Assert(f.scheduledNode(v), Equals, TestNode2)
+
+	// Related volumes occupy every node of the zone, and the node of the other
+	// zone is not a candidate.
+	f.addVolume("kafka-1-placed", requiredFromPod("kafka-1", appTerm("kafka")), TestNode2)
+	v, _ = f.addVolume("kafka-2", requiredFromPod("kafka-2", appTerm("kafka")))
+	v.Spec.TopologyRequirement = zonal
+	r, errs := f.schedule(v, nil)
+	c.Assert(r, IsNil)
+	c.Assert(errs.ErrorByReason(longhorn.ErrorReplicaScheduleVolumeAntiAffinityNotSatisfied), Not(Equals), "")
+}
