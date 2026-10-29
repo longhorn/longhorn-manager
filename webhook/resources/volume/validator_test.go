@@ -208,6 +208,16 @@ func TestValidateVolumeAntiAffinity(t *testing.T) {
 
 	assert.Error(t, validateVolumeAntiAffinity(newVolume("required", 1, nil)))
 	assert.Error(t, validateVolumeAntiAffinity(newVolume(longhorn.VolumeAntiAffinityEnabled, 1, fromPod("Between"))))
+
+	// EC volumes place shards instead of replicas.
+	ec := newVolume(longhorn.VolumeAntiAffinityEnabled, 1, nil)
+	ec.Spec.DataLayout.Type = longhorn.VolumeDataLayoutTypeSharded
+	ec.Spec.DataLocality = longhorn.DataLocalityDisabled
+	err = validateShardedConstraints(ec)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "spec.volumeAntiAffinity is not supported")
+	ec.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityDisabled
+	assert.NoError(t, validateShardedConstraints(ec))
 }
 
 const linkedCloneTestNamespace = "longhorn-system"

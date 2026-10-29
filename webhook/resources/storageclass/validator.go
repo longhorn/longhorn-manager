@@ -80,6 +80,7 @@ func (v *storageClassValidator) Create(request *admission.Request, newObj runtim
 // be provisioned for a scheduled pod. Only volumes with one replica are
 // supported, and an omitted replica count would take the default replica count
 // setting, which the volume webhook rejects only when the PVC is provisioned.
+// EC volumes place shards instead of replicas, so the terms would not apply.
 func validateVolumeAntiAffinity(sc *storagev1.StorageClass) field.ErrorList {
 	errors := field.ErrorList{}
 	fp := field.NewPath("parameters")
@@ -108,6 +109,10 @@ func validateVolumeAntiAffinity(sc *storagev1.StorageClass) field.ErrorList {
 	} else if replicas != "1" {
 		errors = append(errors, field.Invalid(fp.Key("numberOfReplicas"), replicas,
 			fmt.Sprintf("must be \"1\" when %v is %v", types.StorageClassParameterVolumeAntiAffinity, longhorn.VolumeAntiAffinityEnabled)))
+	}
+	if sc.Parameters[longhorn.DataLayoutParameterType] == string(longhorn.VolumeDataLayoutTypeSharded) {
+		errors = append(errors, field.Forbidden(fp.Key(types.StorageClassParameterVolumeAntiAffinity),
+			fmt.Sprintf("not supported with %v %v", longhorn.DataLayoutParameterType, longhorn.VolumeDataLayoutTypeSharded)))
 	}
 	return errors
 }

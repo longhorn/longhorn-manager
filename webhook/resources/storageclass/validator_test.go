@@ -191,6 +191,17 @@ func TestValidateVolumeAntiAffinity(t *testing.T) {
 			bindingMode:   nil,
 			invalidFields: []string{"volumeBindingMode", "parameters[numberOfReplicas]"},
 		},
+		{
+			name:          "enabled with EC data layout",
+			params:        map[string]string{"volumeAntiAffinity": "enabled", "numberOfReplicas": "1", "dataLayout.type": "sharded"},
+			bindingMode:   &waitForFirstConsumer,
+			invalidFields: []string{"parameters[volumeAntiAffinity]"},
+		},
+		{
+			name:        "disabled with EC data layout",
+			params:      map[string]string{"volumeAntiAffinity": "disabled", "numberOfReplicas": "1", "dataLayout.type": "sharded"},
+			bindingMode: &waitForFirstConsumer,
+		},
 	}
 
 	for _, tc := range tests {
