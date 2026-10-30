@@ -4,13 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 
+	"github.com/longhorn/longhorn-manager/hookexecutor"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -140,6 +144,48 @@ func (s *DataStore) GetLonghornNamespace() (*corev1.Namespace, error) {
 // For example, support bundle creation
 func (s *DataStore) GetNamespace(name string) (*corev1.Namespace, error) {
 	return s.kubeClient.CoreV1().Namespaces().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// GetWorkloadPod returns a pod from an application namespace directly from
+// the API server; the pod informer watches only the Longhorn namespace, so
+// workload pods are never in cache. Use only for one-shot reads, such as
+// the snapshot group preview describing a member's pods.
+func (s *DataStore) GetWorkloadPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
+	return s.kubeClient.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
+// IsServiceAccountAllowed asks the API server, through a SubjectAccessReview,
+// whether the named ServiceAccount in the Longhorn namespace can perform the
+// action described by attributes (verb, resource, and namespace). The review
+// includes the ServiceAccount's groups, so a RoleBinding whose subject is a
+// group the account belongs to, rather than the account itself, also counts.
+func (s *DataStore) IsServiceAccountAllowed(serviceAccount string, attributes authorizationv1.ResourceAttributes) (bool, error) {
+	review := &authorizationv1.SubjectAccessReview{
+		Spec: authorizationv1.SubjectAccessReviewSpec{
+			User: fmt.Sprintf("system:serviceaccount:%s:%s", s.namespace, serviceAccount),
+			Groups: []string{
+				"system:serviceaccounts",
+				"system:serviceaccounts:" + s.namespace,
+				"system:authenticated",
+			},
+			ResourceAttributes: &attributes,
+		},
+	}
+	result, err := s.kubeClient.AuthorizationV1().SubjectAccessReviews().Create(context.TODO(), review, metav1.CreateOptions{})
+	if err != nil {
+		return false, err
+	}
+	return result.Status.Allowed && !result.Status.Denied, nil
+}
+
+// VerifyHookExecutorAccess checks that the hook executor has every grant it
+// needs in namespace. It returns a denial naming the missing grant and the
+// RoleBinding that fixes it, nil when all grants are in place, or an error
+// when a check could not complete.
+func (s *DataStore) VerifyHookExecutorAccess(namespace string) (*hookexecutor.AccessDenial, error) {
+	return snapshothook.VerifyExecutorAccess(namespace, s.namespace, func(attributes authorizationv1.ResourceAttributes) (bool, error) {
+		return s.IsServiceAccountAllowed(types.HookExecutorServiceAccountName, attributes)
+	})
 }
 
 // GetAllEventsList returns an uncached list of events for the given namespace
@@ -401,6 +447,13 @@ func (s *DataStore) GetConfigMapWithoutCache(namespace, name string) (*corev1.Co
 // situations in which it is necessary.
 func (s *DataStore) GetLonghornSnapshotUncached(name string) (*longhorn.Snapshot, error) {
 	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// GetSnapshotGroupUncached returns the SnapshotGroup directly from the API
+// server, for decisions that must see the executor's latest writes rather
+// than the lister's copy.
+func (s *DataStore) GetSnapshotGroupUncached(name string) (*longhorn.SnapshotGroup, error) {
+	return s.lhClient.LonghornV1beta2().SnapshotGroups(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 // GetAllBackingImages returns an uncached list of BackingImage in Longhorn

@@ -26,6 +26,10 @@ package v1beta2
 type SnapshotGroupMemberApplyConfiguration struct {
 	VolumeName   *string `json:"volumeName,omitempty"`
 	SnapshotName *string `json:"snapshotName,omitempty"`
+	// HookPolicyRef is the VolumeHookPolicy that applies to this member. The
+	// mutating webhook sets it at admission for a hooked group. It is unset
+	// when Hooks is none.
+	HookPolicyRef *VolumeHookPolicyRefApplyConfiguration `json:"hookPolicyRef,omitempty"`
 }
 
 // SnapshotGroupMemberApplyConfiguration constructs a declarative configuration of the SnapshotGroupMember type for use with
@@ -47,5 +51,13 @@ func (b *SnapshotGroupMemberApplyConfiguration) WithVolumeName(value string) *Sn
 // If called multiple times, the SnapshotName field is set to the value of the last call.
 func (b *SnapshotGroupMemberApplyConfiguration) WithSnapshotName(value string) *SnapshotGroupMemberApplyConfiguration {
 	b.SnapshotName = &value
+	return b
+}
+
+// WithHookPolicyRef sets the HookPolicyRef field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HookPolicyRef field is set to the value of the last call.
+func (b *SnapshotGroupMemberApplyConfiguration) WithHookPolicyRef(value *VolumeHookPolicyRefApplyConfiguration) *SnapshotGroupMemberApplyConfiguration {
+	b.HookPolicyRef = value
 	return b
 }
