@@ -489,6 +489,16 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 
 			if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName, string(phase)); err != nil {
 				efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureSwitch, targetAddress, err)
+				if phase == longhorn.EngineFrontendSwitchoverPhasePromoting && shouldRestartSwitchoverAfterPromotingFailure(err) {
+					// The failed promoting phase rolled back the switchover, so restart
+					// from preparing, e.g. to reconnect a target recreated on a new port.
+					// Persist explicitly since the defer skips updates on error.
+					log.WithError(err).Warn("Promoting phase failed and rolled back, resetting switchover phase to restart from preparing")
+					ef.Status.SwitchoverPhase = longhorn.EngineFrontendSwitchoverPhaseNone
+					if _, updateErr := efc.ds.UpdateEngineFrontendStatus(ef); updateErr != nil {
+						log.WithError(updateErr).Warn("Failed to reset switchover phase after promoting failure")
+					}
+				}
 				return errors.Wrapf(err, "failed to execute switchover phase %v for engine frontend %v", phase, ef.Name)
 			}
 
@@ -1290,4 +1300,26 @@ const v2ExpansionInProgressMsg = "expansion is in progress"
 
 func isV2ExpansionInProgressError(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), v2ExpansionInProgressMsg)
+}
+
+// Promoting failures that rolled back the switchover, matched by message since
+// errors.Is is unavailable across gRPC boundaries.
+const (
+	// SPDK engine's ErrSwitchOverRestartRequired.
+	v2SwitchoverRestartRequiredMsg = "switchover restart required"
+	// Returned by older SPDK engines (e.g. v1.12.x IMs during live upgrade).
+	v2SwitchoverPromotingReloadFailedMsg = "failed to reload nvme device info during promoting phase"
+)
+
+// shouldRestartSwitchoverAfterPromotingFailure returns true when the promoting
+// phase failed and rolled back the switchover. Retrying promoting would skip
+// the rolled-back switching phase, so the switchover restarts from preparing,
+// e.g. to reconnect a new target that was recreated on a new port.
+func shouldRestartSwitchoverAfterPromotingFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, v2SwitchoverRestartRequiredMsg) ||
+		strings.Contains(msg, v2SwitchoverPromotingReloadFailedMsg)
 }
