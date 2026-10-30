@@ -3,6 +3,7 @@ package datastore
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -221,7 +222,7 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 			Name:      testVolumeName,
 			Namespace: testNamespace,
 		},
-	}) // nolint: staticcheck
+	})
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
@@ -444,4 +445,140 @@ func TestGetSettingValueExistedByDataEngineAllowsEmptyValue(t *testing.T) {
 	value, err := ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineLogFlags, longhorn.DataEngineTypeV2)
 	require.NoError(t, err)
 	assert.Empty(t, value)
+}
+
+func TestValidateRecurringJob(t *testing.T) {
+	testRJ := func(jobType longhorn.RecurringJobType, labels map[string]string) longhorn.RecurringJobSpec {
+		return longhorn.RecurringJobSpec{
+			Name:            "test-rj",
+			Task:            jobType,
+			Cron:            "0 2 * * *",
+			Groups:          []string{"test"},
+			Labels:          labels,
+			RetentionPolicy: longhorn.RecurringJobRetentionPolicyAgeBased,
+		}
+	}
+
+	tests := []struct {
+		name           string
+		jobSpec        longhorn.RecurringJobSpec
+		expectedErr    bool
+		expectedErrStr string
+	}{
+		{
+			name: "invalid job spec",
+			jobSpec: longhorn.RecurringJobSpec{
+				Name:   "test-rj",
+				Task:   "",
+				Groups: []string{"test"},
+			},
+			expectedErr:    true,
+			expectedErrStr: "invalid job",
+		},
+		{
+			name: "missing name",
+			jobSpec: longhorn.RecurringJobSpec{
+				Task: longhorn.RecurringJobTypeSnapshot,
+				Cron: "0 2 * * *",
+			},
+			expectedErr:    true,
+			expectedErrStr: "invalid job",
+		},
+		{
+			name: "invalid cron format",
+			jobSpec: func() longhorn.RecurringJobSpec {
+				s := testRJ(longhorn.RecurringJobTypeSnapshot, nil)
+				s.Cron = "not a cron"
+				return s
+			}(),
+			expectedErr:    true,
+			expectedErrStr: "invalid cron format",
+		},
+		{
+			name: "job name too long",
+			jobSpec: func() longhorn.RecurringJobSpec {
+				s := testRJ(longhorn.RecurringJobTypeSnapshot, nil)
+				s.Name = strings.Repeat("a", NameMaximumLength+1)
+				return s
+			}(),
+			expectedErr:    true,
+			expectedErrStr: "characters or less",
+		},
+		{
+			name:           "invalid task",
+			jobSpec:        testRJ("invalid-task", map[string]string{}),
+			expectedErr:    true,
+			expectedErrStr: "recurring job task invalid-task is not valid",
+		},
+		{
+			name: "unknown retention policy value",
+			jobSpec: func() longhorn.RecurringJobSpec {
+				s := testRJ(longhorn.RecurringJobTypeSnapshot, nil)
+				s.RetentionPolicy = "not-a-policy"
+				return s
+			}(),
+			expectedErr:    true,
+			expectedErrStr: "retention policy not-a-policy is not valid",
+		},
+		{
+			name:        "valid snapshot job",
+			jobSpec:     testRJ(longhorn.RecurringJobTypeSnapshot, map[string]string{}),
+			expectedErr: false,
+		},
+		{
+			name:        "snapshot job with reserved label key is still accepted",
+			jobSpec:     testRJ(longhorn.RecurringJobTypeSnapshot, map[string]string{"RecurringJob": "abc"}),
+			expectedErr: false,
+		},
+		{
+			name:        "valid snapshot-group job",
+			jobSpec:     testRJ(longhorn.RecurringJobTypeSnapshotGroup, map[string]string{"random": "label"}),
+			expectedErr: false,
+		},
+		{
+			name:           "snapshot-group job with reserved label key is rejected",
+			jobSpec:        testRJ(longhorn.RecurringJobTypeSnapshotGroup, map[string]string{"RecurringJob": "abc"}),
+			expectedErr:    true,
+			expectedErrStr: "invalid label key: RecurringJob is reserved and cannot be set on 'snapshot-group' recurring jobs",
+		},
+		{
+			name: "snapshot-group job with reserved label among other labels is rejected",
+			jobSpec: testRJ(longhorn.RecurringJobTypeSnapshotGroup,
+				map[string]string{"env": "prod", types.RecurringJobLabel: "abc"}),
+			expectedErr:    true,
+			expectedErrStr: "is reserved",
+		},
+		{
+			name: "backup job with reserved label key is still accepted",
+			jobSpec: testRJ(longhorn.RecurringJobTypeBackup,
+				map[string]string{types.RecurringJobLabel: "abc"}),
+			expectedErr: false,
+		},
+		{
+			name: "any job with = is rejected",
+			jobSpec: testRJ(longhorn.RecurringJobTypeBackup,
+				map[string]string{types.RecurringJobLabel: "a=bc"}),
+			expectedErr:    true,
+			expectedErrStr: "labels cannot contain '='",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateRecurringJob(tc.jobSpec)
+			if !tc.expectedErr {
+				if err != nil {
+					t.Fatalf("expected no error, got: %v", err)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.expectedErrStr)
+			}
+			if !strings.Contains(err.Error(), tc.expectedErrStr) {
+				t.Fatalf("expected error containing %q, got: %v", tc.expectedErrStr, err)
+			}
+		})
+	}
 }
