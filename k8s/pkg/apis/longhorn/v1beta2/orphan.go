@@ -18,6 +18,7 @@ const (
 	OrphanConditionTypeInstanceExist = "InstanceExist"
 
 	OrphanConditionTypeDataCleanableReasonNodeUnavailable = "NodeUnavailable"
+	OrphanConditionTypeDataCleanableReasonNodeDeleted     = "NodeDeleted"
 	OrphanConditionTypeDataCleanableReasonNodeEvicted     = "NodeEvicted"
 	OrphanConditionTypeDataCleanableReasonDiskInvalid     = "DiskInvalid"
 	OrphanConditionTypeDataCleanableReasonDiskEvicted     = "DiskEvicted"
