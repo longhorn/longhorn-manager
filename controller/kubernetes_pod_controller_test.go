@@ -109,6 +109,13 @@ func (s *TestSuite) TestHandlePodDeletionForRWXVolumeRemountScenarios(c *C) {
 			expectPodDeletion:       true,
 			description:             "Replacement share-manager is ready to serve I/O",
 		},
+		"failover: share-manager pod starts in the same second as remount request, delete workload pod": {
+			shareManagerPodExists:   true,
+			shareManagerPodStartsAt: 0,
+			shareManagerServing:     true,
+			expectPodDeletion:       true,
+			description:             "Timestamps have one-second resolution, so equal values must not skip the remount",
+		},
 		"failover in progress: share-manager pod not found, skip deletion": {
 			shareManagerPodExists: false,
 			expectPodDeletion:     false,
@@ -257,7 +264,7 @@ func (s *TestSuite) TestHandlePodDeletionForRWXVolumeRemountScenarios(c *C) {
 		c.Assert(err, IsNil)
 
 		var stopFakeHealthServer func()
-		if tc.shareManagerPodExists && !tc.shareManagerPodNoStartTime && !tc.endpointNetworkRWX && tc.shareManagerPodStartsAt > 0 && !tc.shareManagerCheckErr {
+		if tc.shareManagerPodExists && !tc.shareManagerPodNoStartTime && !tc.endpointNetworkRWX && tc.shareManagerPodStartsAt >= 0 && !tc.shareManagerCheckErr {
 			status := healthpb.HealthCheckResponse_NOT_SERVING
 			if tc.shareManagerServing {
 				status = healthpb.HealthCheckResponse_SERVING
@@ -281,7 +288,7 @@ func (s *TestSuite) TestHandlePodDeletionForRWXVolumeRemountScenarios(c *C) {
 				},
 			}
 			if !tc.shareManagerPodNoStartTime {
-				smPodStartTime := metav1.NewTime(initialRemountRequestedAtTime.Add(tc.shareManagerPodStartsAt))
+				smPodStartTime := metav1.NewTime(initialRemountRequestedAtTime.Add(tc.shareManagerPodStartsAt).Truncate(time.Second))
 				smPod.Status.StartTime = &smPodStartTime
 			}
 
