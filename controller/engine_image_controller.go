@@ -531,7 +531,7 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 	inProgress = make(map[string][]*longhorn.Volume)
 
 	for _, v := range volumes {
-		if v.Spec.Image != v.Status.CurrentImage {
+		if isV1VolumeUpgrading(v) {
 			inProgress[v.Status.OwnerID] = append(inProgress[v.Status.OwnerID], v)
 			continue
 		}
