@@ -11,16 +11,20 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clienttesting "k8s.io/client-go/testing"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
@@ -491,6 +495,316 @@ func TestHandleRebuildFailure(t *testing.T) {
 			} else {
 				assert.Equal(longhorn.InstanceStateRunning, updated.Spec.DesireState)
 				assert.Empty(updated.Spec.FailedAt)
+			}
+		})
+	}
+}
+
+// purgeMockProxy wraps EngineSimulator and controls SnapshotPurge results: the first
+// failUntil calls fail (the first one optionally after firstCallDelay to simulate a slow
+// RPC that times out), later calls succeed. All attempts are counted.
+type purgeMockProxy struct {
+	*engineapi.EngineSimulator
+	failUntil      int
+	firstCallDelay time.Duration
+	purgeCalls     int
+}
+
+var _ engineapi.EngineClientProxy = (*purgeMockProxy)(nil)
+
+func (p *purgeMockProxy) Close() {}
+
+func (p *purgeMockProxy) SnapshotPurge(_ engineapi.DataEngineObject) error {
+	p.purgeCalls++
+	if p.purgeCalls == 1 && p.firstCallDelay > 0 {
+		time.Sleep(p.firstCallDelay)
+	}
+	if p.purgeCalls <= p.failUntil {
+		return errors.Newf("transient failure starting purge (call %d)", p.purgeCalls)
+	}
+	return nil
+}
+
+func drainFakeEvents(r *record.FakeRecorder) []string {
+	var events []string
+	for {
+		select {
+		case e := <-r.Events:
+			events = append(events, e)
+		default:
+			return events
+		}
+	}
+}
+
+func TestStartPostRebuildPurge(t *testing.T) {
+	// Use short, test-controlled timings instead of production values.
+	origCount, origInterval := postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval
+	origPollInterval, origPollTimeout := EnginePollInterval, EnginePollTimeout
+	postRebuildPurgeRetryCount = 3
+	postRebuildPurgeRetryInterval = time.Millisecond
+	// Keep the engine poll deadline far shorter than a slow attempt so that a regression back
+	// to a deadline-bounded poll loop would skip the retry and fail the slow-attempt case.
+	EnginePollInterval = time.Millisecond
+	EnginePollTimeout = 10 * time.Millisecond
+	defer func() {
+		postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval = origCount, origInterval
+		EnginePollInterval, EnginePollTimeout = origPollInterval, origPollTimeout
+	}()
+
+	tests := map[string]struct {
+		failUntil       int
+		firstCallDelay  time.Duration
+		engineOwner     string
+		prevPurgeError  string // engine.Status.PostRebuildPurgeError before the call
+		expectCalls     int
+		expectEvent     bool
+		expectErrorText string // substring expected in the event and engine status; "" means status must be empty
+	}{
+		"succeeds on first attempt": {
+			failUntil:   0,
+			engineOwner: TestNode1,
+			expectCalls: 1,
+		},
+		// A transient failure must be retried; once it succeeds, no further attempts are made
+		// and nothing is recorded.
+		"failures followed by success stop retrying": {
+			failUntil:   2,
+			engineOwner: TestNode1,
+			expectCalls: 3,
+		},
+		// Exhausting all attempts reports the last purge error in the event and engine status.
+		"persistent failure exhausts attempts and records error": {
+			failUntil:       1000,
+			engineOwner:     TestNode1,
+			expectCalls:     3,
+			expectEvent:     true,
+			expectErrorText: "(call 3)",
+		},
+		// A slow attempt that fails after a deadline-style budget has elapsed must still be
+		// followed by another attempt (the proxy RPC timeout is independent of any poll deadline).
+		"slow failing attempt is still retried": {
+			failUntil:      1,
+			firstCallDelay: 50 * time.Millisecond,
+			engineOwner:    TestNode1,
+			expectCalls:    2,
+		},
+		// Ownership is checked before every attempt: a node that no longer owns the engine
+		// must not purge or record anything on its behalf.
+		"no attempt when engine ownership is lost": {
+			failUntil:   1000,
+			engineOwner: TestNode2,
+			expectCalls: 0,
+		},
+		// A later successful purge start clears a previously recorded failure.
+		"success clears a previous error": {
+			failUntil:      0,
+			engineOwner:    TestNode1,
+			prevPurgeError: "previous failure",
+			expectCalls:    1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+			datastore.SkipListerCheck = true
+
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+			recorder := record.NewFakeRecorder(100)
+			ec := &EngineController{
+				baseController:            newBaseController("longhorn-engine", logrus.New()),
+				controllerID:              TestNode1,
+				ds:                        datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+				eventRecorder:             recorder,
+				snapshotConcurrentLimiter: NewSnapshotConcurrentLimiter(),
+			}
+
+			// Empty DataEngine means v1: GetDataEngineObject returns the engine itself.
+			engine := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+				},
+				Status: longhorn.EngineStatus{
+					InstanceStatus:        longhorn.InstanceStatus{OwnerID: tc.engineOwner},
+					PostRebuildPurgeError: tc.prevPurgeError,
+				},
+			}
+			// The engine must exist in the API (for UpdateEngineStatus) and in the lister (for GetEngine).
+			created, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), engine, metav1.CreateOptions{})
+			assert.NoError(err)
+			eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+			assert.NoError(eIndexer.Add(created))
+
+			proxy := &purgeMockProxy{
+				EngineSimulator: &engineapi.EngineSimulator{},
+				failUntil:       tc.failUntil,
+				firstCallDelay:  tc.firstCallDelay,
+			}
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			ec.startPostRebuildPurge(logrus.NewEntry(logger), created, proxy)
+
+			assert.Equal(tc.expectCalls, proxy.purgeCalls, "SnapshotPurge attempt count")
+
+			// Event
+			events := drainFakeEvents(recorder)
+			if tc.expectEvent {
+				assert.Len(events, 1, "expected exactly one failure event")
+				assert.Contains(events[0], constant.EventReasonFailedStartingSnapshotPurge)
+				assert.Contains(events[0], tc.expectErrorText, "event should report the last purge error")
+			} else {
+				assert.Empty(events, "no FailedStartingSnapshotPurge event expected")
+			}
+
+			// Engine status
+			updated, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), TestEngineName, metav1.GetOptions{})
+			assert.NoError(err)
+			switch {
+			case tc.expectErrorText != "":
+				assert.Contains(updated.Status.PostRebuildPurgeError, tc.expectErrorText, "engine status should report the last purge error")
+				assert.Contains(updated.Status.PostRebuildPurgeError, "(3 attempts)")
+			case tc.engineOwner != TestNode1:
+				// Not the owner: status must be left untouched.
+				assert.Equal(tc.prevPurgeError, updated.Status.PostRebuildPurgeError)
+			default:
+				assert.Empty(updated.Status.PostRebuildPurgeError, "engine status should be clear after a successful purge start")
+			}
+			// PurgeStatus is engine-reported per replica and must never be written by this path.
+			assert.Empty(updated.Status.PurgeStatus, "PurgeStatus must not be touched")
+		})
+	}
+}
+
+// setPostRebuildPurgeError runs once per rebuild, so a conflict must not drop the result.
+// The informer cache can lag behind the API server; retries must read the latest object
+// instead of resubmitting the stale cached resourceVersion, and the ownership and equality
+// checks must use that latest object too.
+func TestSetPostRebuildPurgeErrorUsesFreshEngine(t *testing.T) {
+	// The lister is intentionally stale in this test and never catches up, so keep the
+	// datastore's post-update verification short.
+	origVerifyCounts := datastore.VerificationRetryCounts
+	datastore.VerificationRetryCounts = 1
+	defer func() { datastore.VerificationRetryCounts = origVerifyCounts }()
+
+	engineGVR := longhorn.SchemeGroupVersion.WithResource("engines")
+
+	tests := map[string]struct {
+		apiOwner       string // owner in the newer API object (the lister always says TestNode1)
+		apiPrevError   string // PostRebuildPurgeError in the newer API object (the lister says "")
+		purgeErr       error
+		expectValue    string // expected PostRebuildPurgeError in the API after the call
+		expectNoUpdate bool
+	}{
+		// Old behavior: every retry resubmits resourceVersion "1" from the lister and conflicts,
+		// so the failure is never recorded.
+		"records failure against a newer API object": {
+			apiOwner:    TestNode1,
+			purgeErr:    errors.New("injected purge failure"),
+			expectValue: "failed to start snapshot purge after rebuilding (3 attempts): injected purge failure",
+		},
+		// Old behavior: the stale lister already shows "" so the clear is skipped entirely.
+		"clears a previous error that only the API object has": {
+			apiOwner:     TestNode1,
+			apiPrevError: "previous failure",
+			purgeErr:     nil,
+			expectValue:  "",
+		},
+		// The lister still says this node owns the engine, but the API says otherwise.
+		"does not write when the latest owner is another node": {
+			apiOwner:       TestNode2,
+			purgeErr:       errors.New("injected purge failure"),
+			expectValue:    "",
+			expectNoUpdate: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+			datastore.SkipListerCheck = true
+
+			origCount := postRebuildPurgeRetryCount
+			postRebuildPurgeRetryCount = 3
+			defer func() { postRebuildPurgeRetryCount = origCount }()
+
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+			ec := &EngineController{
+				baseController: newBaseController("longhorn-engine", logrus.New()),
+				controllerID:   TestNode1,
+				ds:             datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+				eventRecorder:  record.NewFakeRecorder(100),
+			}
+
+			// Stale copy: in the lister at resourceVersion "1", owned by this node, no error.
+			stale := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace, ResourceVersion: "1"},
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+				},
+				Status: longhorn.EngineStatus{
+					InstanceStatus: longhorn.InstanceStatus{OwnerID: TestNode1},
+				},
+			}
+			_, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), stale.DeepCopy(), metav1.CreateOptions{})
+			assert.NoError(err)
+			eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+			assert.NoError(eIndexer.Add(stale.DeepCopy()))
+
+			// A concurrent writer (e.g. the engine monitor) moved the API object to resourceVersion "2".
+			latest := stale.DeepCopy()
+			latest.ResourceVersion = "2"
+			latest.Status.OwnerID = tc.apiOwner
+			latest.Status.PostRebuildPurgeError = tc.apiPrevError
+			latest.Status.CurrentState = longhorn.InstanceStateRunning // must be preserved by our update
+			assert.NoError(lhClient.Tracker().Update(engineGVR, latest, TestNamespace))
+
+			// Emulate API server optimistic concurrency: reject status updates with a stale resourceVersion.
+			statusUpdates := 0
+			lhClient.PrependReactor("update", "engines", func(action clienttesting.Action) (bool, runtime.Object, error) {
+				update, ok := action.(clienttesting.UpdateAction)
+				if !ok || update.GetSubresource() != "status" {
+					return false, nil, nil
+				}
+				statusUpdates++
+				submitted, ok := update.GetObject().(*longhorn.Engine)
+				if !ok {
+					return false, nil, nil
+				}
+				current, err := lhClient.Tracker().Get(engineGVR, TestNamespace, submitted.Name)
+				if err != nil {
+					return true, nil, err
+				}
+				currentEngine, ok := current.(*longhorn.Engine)
+				if !ok || submitted.ResourceVersion != currentEngine.ResourceVersion {
+					return true, nil, apierrors.NewConflict(longhorn.Resource("engines"), submitted.Name,
+						errors.Newf("stale resourceVersion %q", submitted.ResourceVersion))
+				}
+				return false, nil, nil
+			})
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			ec.setPostRebuildPurgeError(logrus.NewEntry(logger), TestEngineName, tc.purgeErr)
+
+			updated, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Get(context.TODO(), TestEngineName, metav1.GetOptions{})
+			assert.NoError(err)
+			assert.Equal(tc.expectValue, updated.Status.PostRebuildPurgeError, "PostRebuildPurgeError in the API object")
+			assert.Equal(longhorn.InstanceStateRunning, updated.Status.CurrentState, "concurrent writer's status must be preserved")
+			if tc.expectNoUpdate {
+				assert.Zero(statusUpdates, "a non-owner must not update engine status")
+			} else {
+				assert.Equal(1, statusUpdates, "the first attempt should already use the latest resourceVersion")
 			}
 		})
 	}

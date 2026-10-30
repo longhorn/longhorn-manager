@@ -39,6 +39,7 @@ type EngineStatusApplyConfiguration struct {
 	BackupStatus                     map[string]*longhornv1beta2.EngineBackupStatus  `json:"backupStatus,omitempty"`
 	RestoreStatus                    map[string]*longhornv1beta2.RestoreStatus       `json:"restoreStatus,omitempty"`
 	PurgeStatus                      map[string]*longhornv1beta2.PurgeStatus         `json:"purgeStatus,omitempty"`
+	PostRebuildPurgeError            *string                                         `json:"postRebuildPurgeError,omitempty"`
 	RebuildStatus                    map[string]*longhornv1beta2.RebuildStatus       `json:"rebuildStatus,omitempty"`
 	CloneStatus                      map[string]*longhornv1beta2.SnapshotCloneStatus `json:"cloneStatus,omitempty"`
 	Snapshots                        map[string]*longhornv1beta2.SnapshotInfo        `json:"snapshots,omitempty"`
@@ -166,6 +167,14 @@ func (b *EngineStatusApplyConfiguration) WithPurgeStatus(entries map[string]*lon
 	for k, v := range entries {
 		b.PurgeStatus[k] = v
 	}
+	return b
+}
+
+// WithPostRebuildPurgeError sets the PostRebuildPurgeError field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PostRebuildPurgeError field is set to the value of the last call.
+func (b *EngineStatusApplyConfiguration) WithPostRebuildPurgeError(value string) *EngineStatusApplyConfiguration {
+	b.PostRebuildPurgeError = &value
 	return b
 }
 

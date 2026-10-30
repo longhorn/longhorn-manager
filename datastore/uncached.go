@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -419,4 +420,11 @@ func (s *DataStore) GetAllLonghornBackingImages() (runtime.Object, error) {
 // Direct retrieval from the API server should only be used for one-shot tasks.
 func (s *DataStore) GetAllLonghornBackupTargets() (runtime.Object, error) {
 	return s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).List(context.TODO(), metav1.ListOptions{})
+}
+
+// GetEngineUncached returns the Engine read directly from the API server.
+// Use it only for one-shot read-modify-write paths whose conflict retries must
+// observe the latest resourceVersion instead of a possibly stale informer cache.
+func (s *DataStore) GetEngineUncached(name string) (*longhorn.Engine, error) {
+	return s.lhClient.LonghornV1beta2().Engines(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
