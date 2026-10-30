@@ -4,6 +4,24 @@ BUILD_DOCKER_ARGS :=
 ifdef LONGHORN_TWO_MINOR_UPGRADE_DISTROS
 BUILD_DOCKER_ARGS += --build-arg LONGHORN_TWO_MINOR_UPGRADE_DISTROS=$(LONGHORN_TWO_MINOR_UPGRADE_DISTROS)
 endif
+
+# Resolve git metadata on the host and pass it into the build. Inside the build
+# container `git` does not work when the checkout is a git worktree (or a jj
+# workspace), because .git is a file pointing to a path outside the build context.
+# scripts/version falls back to running git itself when these are not provided.
+GIT_COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
+GIT_COMMIT_SHORT := $(shell git rev-parse --short HEAD 2>/dev/null)
+GIT_DIRTY := $(shell test -n "$$(git status --porcelain --untracked-files=no 2>/dev/null)" && echo -dirty)
+GIT_TAG := $(shell git tag -l --contains HEAD 2>/dev/null | head -n 1)
+COMMIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+COMMIT_TAG := $(shell git tag --points-at HEAD 2>/dev/null | head -n 1)
+BUILD_DOCKER_ARGS += --build-arg GIT_COMMIT=$(GIT_COMMIT)
+BUILD_DOCKER_ARGS += --build-arg GIT_COMMIT_SHORT=$(GIT_COMMIT_SHORT)
+BUILD_DOCKER_ARGS += --build-arg GIT_DIRTY=$(GIT_DIRTY)
+BUILD_DOCKER_ARGS += --build-arg GIT_TAG=$(GIT_TAG)
+BUILD_DOCKER_ARGS += --build-arg COMMIT_BRANCH=$(COMMIT_BRANCH)
+BUILD_DOCKER_ARGS += --build-arg COMMIT_TAG=$(COMMIT_TAG)
+
 # Define the target platforms that can be used across the ecosystem.
 # Note that what would actually be used for a given project will be
 # defined in TARGET_PLATFORMS, and must be a subset of the below:
