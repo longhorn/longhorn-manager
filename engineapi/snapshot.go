@@ -10,6 +10,8 @@ import (
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/types"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -44,7 +46,20 @@ func (e *EngineBinary) SnapshotList(DataEngineObject) (map[string]*longhorn.Snap
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing snapshot list")
 	}
+	markSystemGeneratedSnapshots(data)
 	return data, nil
+}
+
+func markSystemGeneratedSnapshots(snapshots map[string]*longhorn.SnapshotInfo) {
+	exportLabelKey := types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage)
+	for _, snapshot := range snapshots {
+		if snapshot == nil {
+			continue
+		}
+		if _, ok := snapshot.Labels[exportLabelKey]; ok {
+			snapshot.UserCreated = false
+		}
+	}
 }
 
 // SnapshotGet calls engine binary
