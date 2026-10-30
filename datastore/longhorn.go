@@ -2353,6 +2353,12 @@ func (s *DataStore) ListEngineFrontendsByVolumeRO(volumeName string) ([]*longhor
 	return s.listEngineFrontendsRO(selector)
 }
 
+// ListEngineFrontendsRO returns all EngineFrontends from the informer cache.
+// The list contains direct references to the internal cache objects and should not be mutated.
+func (s *DataStore) ListEngineFrontendsRO() ([]*longhorn.EngineFrontend, error) {
+	return s.engineFrontendLister.EngineFrontends(s.namespace).List(labels.Everything())
+}
+
 func (s *DataStore) listEngineFrontendsRO(selector labels.Selector) ([]*longhorn.EngineFrontend, error) {
 	list, err := s.lhClient.LonghornV1beta2().EngineFrontends(s.namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: selector.String(),
