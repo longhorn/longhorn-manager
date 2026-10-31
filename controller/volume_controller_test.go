@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -4021,4 +4022,377 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			}
 		}
 	}
+}
+
+// delayRecordingQueue records the items added with a delay instead of adding them.
+type delayRecordingQueue struct {
+	workqueue.TypedRateLimitingInterface[any]
+	delayed map[any]time.Duration
+}
+
+func (q *delayRecordingQueue) AddAfter(item any, duration time.Duration) {
+	q.delayed[item] = duration
+}
+
+func (s *TestSuite) TestReplicaAutoBalanceWithUnavailableManager(c *C) {
+	const testNode3 = "test-node-name-3"
+
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	now, err := util.ParseTime(TestTimeNow)
+	c.Assert(err, IsNil)
+	recently := now.Add(-30 * time.Second).Format(time.RFC3339)
+	atTolerance := now.Add(-AutoBalanceManagerUnavailableTolerance).Format(time.RFC3339)
+	longAgo := now.Add(-AutoBalanceManagerUnavailableTolerance - time.Second).Format(time.RFC3339)
+
+	testCases := []struct {
+		name            string
+		autoBalance     longhorn.ReplicaAutoBalance
+		readyStatus     longhorn.ConditionStatus
+		readyReason     string
+		transitionTime  string
+		replicaMode     longhorn.ReplicaMode
+		replicaFailed   bool
+		expectedReplica int
+		expectedRequeue bool
+	}{
+		{
+			name:            "all nodes ready, replicas are balanced",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusTrue,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 0,
+		},
+		{
+			name:            "auto-balance disabled, the manager pod was down recently",
+			autoBalance:     longhorn.ReplicaAutoBalanceDisabled,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 0,
+		},
+		{
+			name:            "least-effort waits while the manager pod was down recently",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 0,
+			expectedRequeue: true,
+		},
+		{
+			name:            "best-effort waits while the manager pod was down recently",
+			autoBalance:     longhorn.ReplicaAutoBalanceBestEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 0,
+			expectedRequeue: true,
+		},
+		{
+			name:            "best-effort resumes auto-balance when the manager pod is down for longer than the tolerance",
+			autoBalance:     longhorn.ReplicaAutoBalanceBestEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  longAgo,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 1,
+		},
+		{
+			name:            "waits while the manager pod was missing recently",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodMissing),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 0,
+			expectedRequeue: true,
+		},
+		{
+			name:            "waits while the manager pod is down for exactly the tolerance",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  atTolerance,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 0,
+			expectedRequeue: true,
+		},
+		{
+			name:            "rebalances when the manager pod is down for longer than the tolerance",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  longAgo,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 1,
+		},
+		{
+			name:            "rebalances when the Kubernetes node is not ready",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonKubernetesNodeNotReady),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 1,
+		},
+		{
+			name:            "rebalances when the Kubernetes node has pressure",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonKubernetesNodePressure),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 1,
+		},
+		{
+			name:            "rebalances when the engine does not report the replica as RW",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeWO,
+			expectedReplica: 1,
+		},
+		{
+			name:            "replenishes a failed replica while the manager pod is down",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  recently,
+			replicaMode:     longhorn.ReplicaModeERR,
+			replicaFailed:   true,
+			expectedReplica: 1,
+		},
+		{
+			name:            "rebalances when the transition time cannot be parsed",
+			autoBalance:     longhorn.ReplicaAutoBalanceLeastEffort,
+			readyStatus:     longhorn.ConditionStatusFalse,
+			readyReason:     string(longhorn.NodeConditionReasonManagerPodDown),
+			transitionTime:  "",
+			replicaMode:     longhorn.ReplicaModeRW,
+			expectedReplica: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		fmt.Printf("testing %v\n", tc.name)
+
+		volume := newVolume(TestVolumeName, 2)
+		volume.Spec.ReplicaAutoBalance = tc.autoBalance
+		volume.Status.State = longhorn.VolumeStateAttached
+		volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+		volume.Status.CurrentImage = TestEngineImage
+
+		engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+		engineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true, TestNode2: true, testNode3: true}
+
+		engine := newEngineForVolume(volume)
+		engine.Spec.NodeID = TestNode1
+		engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+
+		replicas := map[string]*longhorn.Replica{}
+		for _, nodeID := range []string{TestNode1, TestNode2} {
+			replica := newReplicaForVolume(volume, engine, nodeID, TestDiskID1)
+			replica.Spec.HealthyAt = TestTimeNow
+			replica.Status.CurrentState = longhorn.InstanceStateRunning
+			replicas[replica.Name] = replica
+			engine.Status.ReplicaModeMap[replica.Name] = longhorn.ReplicaModeRW
+			if nodeID == TestNode2 {
+				engine.Status.ReplicaModeMap[replica.Name] = tc.replicaMode
+				if tc.replicaFailed {
+					replica.Spec.FailedAt = TestTimeNow
+				}
+			}
+		}
+
+		node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		node2.Status.Conditions = types.SetCondition(node2.Status.Conditions, longhorn.NodeConditionTypeReady, tc.readyStatus, tc.readyReason, "")
+		for i := range node2.Status.Conditions {
+			if node2.Status.Conditions[i].Type == longhorn.NodeConditionTypeReady {
+				node2.Status.Conditions[i].LastTransitionTime = tc.transitionTime
+			}
+		}
+		longhornNodes := []*longhorn.Node{
+			newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+			node2,
+			newNode(testNode3, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		}
+		kubeNodes := []*corev1.Node{
+			newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+			newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+			newKubernetesNode(testNode3, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+		}
+
+		lhObjects := []runtime.Object{volume, engine, engineImage}
+		for _, node := range longhornNodes {
+			lhObjects = append(lhObjects, node)
+		}
+		for _, replica := range replicas {
+			lhObjects = append(lhObjects, replica)
+		}
+		kubeObjects := []runtime.Object{}
+		for _, node := range kubeNodes {
+			kubeObjects = append(kubeObjects, node)
+		}
+
+		lhClient := lhfake.NewSimpleClientset(lhObjects...) // nolint: staticcheck
+		kubeClient := fake.NewSimpleClientset(kubeObjects...)
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		for _, node := range longhornNodes {
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+		}
+		for _, node := range kubeNodes {
+			c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
+		}
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer().Add(engineImage), IsNil)
+
+		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+		queue := &delayRecordingQueue{
+			TypedRateLimitingInterface: workqueue.NewTypedRateLimitingQueue[any](workqueue.DefaultTypedControllerRateLimiter[any]()),
+			delayed:                    map[any]time.Duration{},
+		}
+		vc := &VolumeController{
+			baseController: newBaseControllerWithQueue("test-volume", logrus.StandardLogger(), queue),
+			ds:             ds,
+			eventRecorder:  record.NewFakeRecorder(10),
+			scheduler:      scheduler.NewReplicaScheduler(ds),
+			nowHandler:     getTestNow,
+		}
+
+		count, _ := vc.getReplenishReplicasCount(volume, replicas, engine)
+		queue.ShutDown()
+		c.Assert(count, Equals, tc.expectedReplica, Commentf("%v", tc.name))
+		if tc.expectedRequeue {
+			key, err := controller.KeyFunc(volume)
+			c.Assert(err, IsNil)
+			c.Assert(queue.delayed, DeepEquals, map[any]time.Duration{key: 30 * time.Second}, Commentf("%v", tc.name))
+		} else {
+			c.Assert(queue.delayed, HasLen, 0, Commentf("%v", tc.name))
+		}
+	}
+}
+
+func (s *TestSuite) TestCleanupAutoBalancedReplicasWithUnavailableManager(c *C) {
+	const (
+		testNode3   = "test-node-name-3"
+		testDiskID2 = "test-disk-id-2"
+		testDiskID3 = "test-disk-id-3"
+	)
+
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	now, err := util.ParseTime(TestTimeNow)
+	c.Assert(err, IsNil)
+
+	// Node 1 has the most replicas, so best-effort picks the extra replica
+	// from it. Node 2 has two replicas on the same disk, which the fallback
+	// getPreferredReplicaCandidatesForDeletion would pick instead. The manager
+	// pod of node 3 is down within the tolerance, which must not change the
+	// deletion candidate.
+	volume := newVolume(TestVolumeName, 5)
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Spec.ReplicaAutoBalance = longhorn.ReplicaAutoBalanceBestEffort
+	volume.Status.State = longhorn.VolumeStateAttached
+	volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+
+	engine := newEngineForVolume(volume)
+	engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+
+	replicas := map[string]*longhorn.Replica{}
+	for _, placement := range []struct{ nodeID, diskID string }{
+		{TestNode1, TestDiskID1}, {TestNode1, testDiskID2}, {TestNode1, testDiskID3},
+		{TestNode2, TestDiskID1}, {TestNode2, TestDiskID1},
+		{testNode3, TestDiskID1},
+	} {
+		replica := newReplicaForVolume(volume, engine, placement.nodeID, placement.diskID)
+		replica.Namespace = TestNamespace
+		replica.Spec.HealthyAt = TestTimeNow
+		replica.Spec.LastHealthyAt = TestTimeNow
+		replica.Status.CurrentState = longhorn.InstanceStateRunning
+		replicas[replica.Name] = replica
+		engine.Status.ReplicaModeMap[replica.Name] = longhorn.ReplicaModeRW
+	}
+
+	node3 := newNode(testNode3, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node3.Status.Conditions = types.SetCondition(node3.Status.Conditions, longhorn.NodeConditionTypeReady,
+		longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonManagerPodDown), "")
+	for i := range node3.Status.Conditions {
+		if node3.Status.Conditions[i].Type == longhorn.NodeConditionTypeReady {
+			node3.Status.Conditions[i].LastTransitionTime = now.Add(-30 * time.Second).Format(time.RFC3339)
+		}
+	}
+	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	for _, diskID := range []string{testDiskID2, testDiskID3} {
+		node1.Spec.Disks[diskID] = node1.Spec.Disks[TestDiskID1]
+		diskStatus := *node1.Status.DiskStatus[TestDiskID1]
+		diskStatus.DiskUUID = diskID
+		node1.Status.DiskStatus[diskID] = &diskStatus
+	}
+	longhornNodes := []*longhorn.Node{
+		node1,
+		newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		node3,
+	}
+
+	kubeNodes := []*corev1.Node{}
+	for _, name := range []string{TestNode1, TestNode2, testNode3} {
+		node := newKubernetesNode(name, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		node.Status.Conditions[0].LastTransitionTime = metav1.NewTime(now.Add(-24 * time.Hour))
+		kubeNodes = append(kubeNodes, node)
+	}
+
+	lhObjects := []runtime.Object{volume, engine}
+	for _, node := range longhornNodes {
+		lhObjects = append(lhObjects, node)
+	}
+	for _, replica := range replicas {
+		lhObjects = append(lhObjects, replica)
+	}
+	kubeObjects := []runtime.Object{}
+	for _, node := range kubeNodes {
+		kubeObjects = append(kubeObjects, node)
+	}
+
+	lhClient := lhfake.NewSimpleClientset(lhObjects...) // nolint: staticcheck
+	kubeClient := fake.NewSimpleClientset(kubeObjects...)
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	for _, node := range longhornNodes {
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+	}
+	for _, node := range kubeNodes {
+		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
+	}
+
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		ds:             ds,
+		eventRecorder:  record.NewFakeRecorder(10),
+		scheduler:      scheduler.NewReplicaScheduler(ds),
+		nowHandler:     getTestNow,
+	}
+
+	cleaned, err := vc.cleanupAutoBalancedReplicas(volume, engine, replicas, replicas)
+	c.Assert(err, IsNil)
+	c.Assert(cleaned, Equals, true)
+
+	counts := map[string]int{}
+	for _, replica := range replicas {
+		counts[replica.Spec.NodeID]++
+	}
+	c.Assert(counts[TestNode1], Equals, 2)
+	c.Assert(counts[TestNode2], Equals, 2)
+	c.Assert(counts[testNode3], Equals, 1)
 }
