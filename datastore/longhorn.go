@@ -31,10 +31,10 @@ import (
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 
+	lhcrypto "github.com/longhorn/go-common-libs/crypto"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	lhutils "github.com/longhorn/go-common-libs/utils"
 
-	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -1387,7 +1387,7 @@ func CheckVolume(v *longhorn.Volume) error {
 		return fmt.Errorf("BUG: missing required field %+v", v)
 	}
 
-	if v.Spec.Encrypted && size <= crypto.Luks2MinimalVolumeSize {
+	if v.Spec.Encrypted && size <= lhcrypto.Luks2MinimalVolumeSize {
 		return fmt.Errorf("invalid volume size %v, need to be bigger than 16MiB, default LUKS2 header size for encryption", v.Spec.Size)
 	}
 

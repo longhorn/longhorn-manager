@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	lhkeystore "github.com/longhorn/go-common-libs/crypto/keystore"
 	lhns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/longhorn-manager/util"
@@ -223,6 +225,8 @@ const (
 	LonghornLabelInstanceManagerImage            = "instance-manager-image"
 	LonghornLabelVolume                          = "longhornvolume"
 	LonghornLabelVolumeEncrypted                 = "volume-encrypted"
+	LonghornLabelVolumeEncryptionProvider        = "volume-encryption-provider"
+	LonghornLabelVolumeEncryptionSecret          = "volume-encryption-secret"
 	LonghornLabelV2EncryptedVolumeWithLuksHeader = "v2-encrypted-volume-with-luks-header"
 	LonghornLabelShardGroup                      = "shardgroup"
 	LonghornLabelShareManager                    = "share-manager"
@@ -423,6 +427,19 @@ const (
 
 	ImageChecksumNameLength             = 8
 	InstanceManagerSuffixChecksumLength = 32
+)
+
+// The vault key provider logs in with a projected token whose audience is Vault,
+// mounted where the library reads it.
+var (
+	VaultTokenDir      = path.Dir(lhkeystore.TokenFile)
+	VaultTokenFileName = path.Base(lhkeystore.TokenFile)
+)
+
+const (
+	VaultTokenAudience          = lhkeystore.TokenAudience
+	VaultTokenVolumeName        = "vault-token"
+	VaultTokenExpirationSeconds = int64(600)
 )
 
 // SettingsRelatedToVolume should match the items in datastore.GetLabelsForVolumesFollowsGlobalSettings

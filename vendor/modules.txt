@@ -296,6 +296,8 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
 github.com/longhorn/go-common-libs/bitmap
+github.com/longhorn/go-common-libs/crypto
+github.com/longhorn/go-common-libs/crypto/keystore
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
 github.com/longhorn/go-common-libs/longhorn

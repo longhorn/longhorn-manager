@@ -22,13 +22,16 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	utilexec "k8s.io/utils/exec"
 
+	"github.com/longhorn/go-common-libs/crypto/keystore"
+
+	lhcrypto "github.com/longhorn/go-common-libs/crypto"
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
-	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -583,47 +586,34 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	if volume.Encrypted {
 		secrets := req.GetSecrets()
-		keyProvider := secrets[lhtypes.CryptoKeyProvider]
-		passphrase := secrets[lhtypes.CryptoKeyValue]
-		if keyProvider != "" && keyProvider != "secret" {
-			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
-		}
-
-		if len(passphrase) == 0 {
-			return nil, status.Errorf(codes.InvalidArgument, "missing passphrase for encrypted volume %v", volumeID)
-		}
 
 		if diskFormat != "" && diskFormat != "crypto_LUKS" {
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
 		}
 
-		cryptoParams := crypto.NewEncryptParams(keyProvider,
-			secrets[lhtypes.CryptoKeyCipher], secrets[lhtypes.CryptoKeyHash], secrets[lhtypes.CryptoKeySize],
-			secrets[lhtypes.CryptoPBKDF], secrets[lhtypes.CryptoPBKDFForceIterations], secrets[lhtypes.CryptoPBKDFMemory])
-
-		// initial setup of longhorn device for crypto
-		if diskFormat == "" {
-			if err := crypto.EncryptVolume(devicePath, passphrase, cryptoParams); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
+		passphraseBytes, err := ns.prepareEncryptedDevice(ctx, volume, secrets, devicePath, diskFormat == "crypto_LUKS")
+		if err != nil {
+			return nil, err
 		}
+		defer keystore.Zero(passphraseBytes)
+		passphrase := string(passphraseBytes)
 
-		cryptoDevice := crypto.VolumeMapper(volumeID, dataEngine)
+		cryptoDevice := lhcrypto.VolumeMapper(volumeID, dataEngine)
 		log.Infof("Volume %s requires crypto device %s", volumeID, cryptoDevice)
 
 		// check if the crypto device is open at the null path.
 		// this will happen if the crypto device is not closed properly and a new attaching request is made on the same node.
 		// reference issue: https://github.com/longhorn/longhorn/issues/9385
-		if mappedToNullPath, err := crypto.IsDeviceMappedToNullPath(cryptoDevice); err != nil {
+		if mappedToNullPath, err := lhcrypto.IsDeviceMappedToNullPath(cryptoDevice); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to check if the crypto device %s for volume %s is mapped to the null path: %v", cryptoDevice, volumeID, err.Error())
 		} else if mappedToNullPath {
 			log.Warnf("Closing active crypto device %s for volume %s since the volume is not closed properly before", cryptoDevice, volumeID)
-			if err := crypto.CloseVolume(volumeID, dataEngine); err != nil {
+			if err := lhcrypto.CloseVolume(volumeID, dataEngine); err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to close active crypto device %s for volume %s: %v ", cryptoDevice, volumeID, err.Error())
 			}
 		}
 
-		if err := crypto.OpenVolume(volumeID, dataEngine, devicePath, passphrase); err != nil {
+		if err := lhcrypto.OpenVolume(volumeID, dataEngine, devicePath, passphrase); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
@@ -729,12 +719,12 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	sharedAccess := requiresSharedAccess(volume, nil)
 	cleanupCryptoDevice := !sharedAccess || (sharedAccess && volume.Migratable)
 	if cleanupCryptoDevice {
-		cryptoDevice := crypto.VolumeMapper(volumeID, dataEngine)
-		if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
+		cryptoDevice := lhcrypto.VolumeMapper(volumeID, dataEngine)
+		if isOpen, err := lhcrypto.IsDeviceOpen(cryptoDevice); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		} else if isOpen {
 			log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
-			if err := crypto.CloseVolume(volumeID, dataEngine); err != nil {
+			if err := lhcrypto.CloseVolume(volumeID, dataEngine); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
 		}
@@ -964,42 +954,148 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 // expandEncryptedVolume handles the expansion of encrypted volumes and
 // returns updated device path, and error if any.
 func (ns *NodeServer) expandEncryptedVolume(req *csi.NodeExpandVolumeRequest, volume *longhornclient.Volume, volumeID string) (string, error) {
+	ctx := context.TODO()
 	log := ns.log.WithFields(logrus.Fields{"function": "expandEncryptedVolume"})
 	dataEngine := volume.DataEngine
-	encryptedDevicePath := crypto.VolumeMapper(volumeID, dataEngine)
+	encryptedDevicePath := lhcrypto.VolumeMapper(volumeID, dataEngine)
 
 	// Need to enable feature gate in v1.25:
 	// https://github.com/kubernetes/enhancements/issues/3107
 	// https://kubernetes.io/blog/2022/09/21/kubernetes-1-25-use-secrets-while-expanding-csi-volumes-on-node-alpha/
+	// A vault volume has no CSI secret; its passphrase comes from the store.
 	secrets := req.GetSecrets()
-	if len(secrets) == 0 {
+	if len(secrets) == 0 && volume.EncryptionProvider != string(longhorn.EncryptionKeyProviderVault) {
 		log.Infof("Skip encrypted device resizing for volume %v node expansion since the secret is empty, maybe the related feature gate is not enabled", volumeID)
 		return encryptedDevicePath, nil
 	}
-	passphrase, err := ns.getEncryptionPassphrase(secrets, volumeID)
+	passphrase, err := ns.getEncryptionPassphrase(ctx, secrets, volume)
 	if err != nil {
 		return encryptedDevicePath, err
 	}
 
 	// blindly resize the crypto device
-	if err := crypto.ResizeEncryptoDevice(volumeID, dataEngine, passphrase); err != nil {
+	if err := lhcrypto.ResizeEncryptoDevice(volumeID, dataEngine, passphrase); err != nil {
 		return encryptedDevicePath, fmt.Errorf("failed to resize crypto device %v for volume %v node expansion: %v", encryptedDevicePath, volumeID, err)
 	}
 
 	return encryptedDevicePath, nil
 }
 
-// getEncryptionPassphrase checks the encryption secrets and returns the passphrase if valid
-func (ns *NodeServer) getEncryptionPassphrase(secrets map[string]string, volumeID string) (string, error) {
-	keyProvider := secrets[lhtypes.CryptoKeyProvider]
-	passphrase := secrets[lhtypes.CryptoKeyValue]
-	if keyProvider != "" && keyProvider != "secret" {
-		return "", fmt.Errorf("unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
+// keyProviderForVolume builds the key provider of an encrypted volume and
+// returns the Secret data it came from, which also holds the LUKS parameters.
+// A secret volume uses the Secret of the CSI request, as before; a vault volume
+// has no CSI secret references, so its Secret is the one its CR names, and the
+// CR is returned too.
+func (ns *NodeServer) keyProviderForVolume(ctx context.Context, volume *longhornclient.Volume, secrets map[string]string) (keystore.KeyProvider, map[string]string, *longhorn.Volume, error) {
+	volumeID := volume.Name
+	var volumeCR *longhorn.Volume
+	if volume.EncryptionProvider == string(longhorn.EncryptionKeyProviderVault) {
+		var err error
+		if volumeCR, err = ns.lhClient.LonghornV1beta2().Volumes(ns.lhNamespace).Get(ctx, volumeID, metav1.GetOptions{}); err != nil {
+			return nil, nil, nil, status.Errorf(codes.Internal, "failed to read volume %v: %v", volumeID, err)
+		}
+		name := volumeCR.Spec.Encryption.SecretName
+		secret, err := ns.kubeClient.CoreV1().Secrets(ns.lhNamespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return nil, nil, nil, status.Errorf(codes.Internal, "failed to read the encryption secret %v/%v of volume %v: %v",
+				ns.lhNamespace, name, volumeID, err)
+		}
+		secrets = keystore.SecretData(secret.Data)
 	}
-	if len(passphrase) == 0 {
-		return "", fmt.Errorf("missing passphrase for encrypted volume %v", volumeID)
+	provider, err := keystore.NewProvider(secrets)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.InvalidArgument, "invalid encryption secret for volume %v: %v", volumeID, err)
+	}
+	// A Secret selecting another provider than the volume was created with is a
+	// misconfiguration; never open the device with a key the controller did not manage.
+	want := lhtypes.EncryptionKeyProviderSecret
+	if volumeCR != nil {
+		want = lhtypes.EncryptionKeyProviderVault
+	}
+	if provider.Name() != want {
+		return nil, nil, nil, status.Errorf(codes.InvalidArgument,
+			"volume %v was created with the %v key provider but its secret selects %v",
+			volumeID, want, provider.Name())
+	}
+	return provider, secrets, volumeCR, nil
+}
+
+// getEncryptionPassphrase resolves the passphrase of an already formatted
+// volume, which is what a node expansion needs for luksResize.
+func (ns *NodeServer) getEncryptionPassphrase(ctx context.Context, secrets map[string]string, volume *longhornclient.Volume) (string, error) {
+	provider, _, _, err := ns.keyProviderForVolume(ctx, volume, secrets)
+	if err != nil {
+		return "", err
+	}
+	passphrase, _, err := provider.Get(ctx, keystore.VolumeKey(volume.Name))
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to get the passphrase of encrypted volume %v from the %v key provider", volume.Name, provider.Name())
+	}
+	return string(passphrase), nil
+}
+
+// prepareEncryptedDevice returns the passphrase that opens the volume's device
+// and formats the device when it is blank. For a vault volume the fail-closed
+// matrix refuses rather than formatting over data whose key has been lost.
+func (ns *NodeServer) prepareEncryptedDevice(ctx context.Context, volume *longhornclient.Volume, secrets map[string]string, devicePath string, isLUKS bool) ([]byte, error) {
+	volumeID := volume.Name
+	log := ns.log.WithFields(logrus.Fields{"function": "prepareEncryptedDevice", "volume": volumeID})
+
+	provider, secrets, volumeCR, err := ns.keyProviderForVolume(ctx, volume, secrets)
+	if err != nil {
+		return nil, err
+	}
+	cryptoParams := lhcrypto.NewEncryptParams(secrets[lhtypes.CryptoKeyProvider],
+		secrets[lhtypes.CryptoKeyCipher], secrets[lhtypes.CryptoKeyHash], secrets[lhtypes.CryptoKeySize],
+		secrets[lhtypes.CryptoPBKDF], secrets[lhtypes.CryptoPBKDFForceIterations], secrets[lhtypes.CryptoPBKDFMemory])
+
+	passphrase, _, err := provider.Get(ctx, keystore.VolumeKey(volumeID))
+	if volumeCR == nil {
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "missing passphrase for encrypted volume %v: %v", volumeID, err)
+		}
+		if !isLUKS {
+			if err := lhcrypto.EncryptVolume(devicePath, string(passphrase), cryptoParams); err != nil {
+				keystore.Zero(passphrase)
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+		}
+		return passphrase, nil
 	}
 
+	hasKey := err == nil
+	if err != nil && !errors.Is(err, keystore.ErrKeyNotFound) {
+		if errors.Is(err, keystore.ErrUnavailable) {
+			// Unavailable keeps kubelet retrying with the data intact.
+			return nil, status.Errorf(codes.Unavailable, "key store unavailable for encrypted volume %v: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.Internal, "key store error for encrypted volume %v: %v", volumeID, err)
+	}
+
+	initialized := volumeCR.Status.Encryption.Initialized
+	action, err := keystore.Decide(keystore.DeviceState{IsLUKS: isLUKS, HasKey: hasKey, Initialized: initialized})
+	if err != nil {
+		keystore.Zero(passphrase)
+		return nil, status.Errorf(codes.FailedPrecondition, "refusing to stage encrypted volume %v: %v", volumeID, err)
+	}
+	log.Infof("Encrypted volume device %v: LUKS=%v key=%v initialized=%v, action %v", devicePath, isLUKS, hasKey, initialized, action)
+
+	if action == keystore.ActionFormat {
+		if err := lhcrypto.EncryptVolume(devicePath, string(passphrase), cryptoParams); err != nil {
+			keystore.Zero(passphrase)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	// A derived volume opens its inherited LUKS header without formatting, so
+	// this is also where it learns it is initialized; without that the matrix
+	// would later format a blank-reading device over data it could decrypt.
+	if !initialized {
+		patch := []byte(`{"status":{"encryption":{"initialized":true}}}`)
+		if _, err := ns.lhClient.LonghornV1beta2().Volumes(ns.lhNamespace).Patch(ctx, volumeID, k8stypes.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
+			keystore.Zero(passphrase)
+			return nil, status.Errorf(codes.Internal, "failed to update the encryption status of volume %v: %v", volumeID, err)
+		}
+	}
 	return passphrase, nil
 }
 

@@ -346,6 +346,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol.TopologyRequirement = topologyTerms
 
+	if vol.Encrypted {
+		// The encryptionSecret parameter selects vault; the webhook checks a source's provider.
+		vol.EncryptionProvider = string(longhorn.EncryptionKeyProviderSecret)
+		if vol.EncryptionSecretName != "" {
+			vol.EncryptionProvider = string(longhorn.EncryptionKeyProviderVault)
+		}
+	}
+
 	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters, vol.DataEngine); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
