@@ -2961,6 +2961,74 @@ func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensB
 	c.Assert(counts[testNode3], Equals, 2)
 }
 
+func (s *TestSuite) TestCleanupReplicaInNotReadyEnvSkipsReplicaWithoutInstanceManager(c *C) {
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	volume := newVolume(TestVolumeName, 3)
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV1
+	volume.Status.State = longhorn.VolumeStateAttached
+
+	engine := newEngineForVolume(volume)
+
+	im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+		TestNode1, TestNode1, TestIP1, nil, nil, nil, longhorn.DataEngineTypeV1, TestInstanceManagerImage, false)
+
+	replicas := map[string]*longhorn.Replica{}
+	for i := 0; i < 2; i++ {
+		replica := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+		replica.Namespace = TestNamespace
+		replica.Spec.HealthyAt = TestTimeNow
+		replica.Status.CurrentState = longhorn.InstanceStateRunning
+		replica.Status.InstanceManagerName = im.Name
+		replicas[replica.Name] = replica
+	}
+	stoppedReplica := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+	stoppedReplica.Namespace = TestNamespace
+	stoppedReplica.Spec.FailedAt = TestTimeNow
+	stoppedReplica.Status.CurrentState = longhorn.InstanceStateStopped
+	stoppedReplica.Status.InstanceManagerName = ""
+	replicas[stoppedReplica.Name] = stoppedReplica
+
+	longhornNodes := []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+	}
+
+	lhObjects := []runtime.Object{volume, engine, im}
+	for _, node := range longhornNodes {
+		lhObjects = append(lhObjects, node)
+	}
+	for _, replica := range replicas {
+		lhObjects = append(lhObjects, replica)
+	}
+
+	lhClient := lhfake.NewSimpleClientset(lhObjects...) // nolint: staticcheck
+	kubeClient := fake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	for _, node := range longhornNodes {
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+	}
+	c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
+
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		ds:             ds,
+		eventRecorder:  record.NewFakeRecorder(10),
+		nowHandler:     getTestNow,
+	}
+
+	cleaned, err := vc.cleanupReplicaInNotReadyEnv(volume, replicas)
+	c.Assert(err, IsNil)
+	c.Assert(cleaned, Equals, false)
+	c.Assert(replicas, HasLen, 3)
+}
+
 func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {
 	testCases := []struct {
 		name     string
