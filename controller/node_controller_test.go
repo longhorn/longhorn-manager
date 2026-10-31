@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
 
 	. "gopkg.in/check.v1"
 
@@ -26,6 +28,7 @@ import (
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -2815,7 +2818,7 @@ func newCloneReplica(name, volumeName, nodeID, diskID, srcName string) *longhorn
 
 func (s *NodeControllerSuite) TestLinkedCloneEviction(c *C) {
 	// ----------------------------------------------------------------
-	// Test 1 — Manual disk eviction: both evicted
+	// Test 1 - Manual disk eviction: both evicted
 	//
 	// Disk EvictionRequested=true triggers shouldEvictReplica for every
 	// replica on that disk regardless of drain policy or node cordoning.
@@ -2864,7 +2867,7 @@ func (s *NodeControllerSuite) TestLinkedCloneEviction(c *C) {
 	}
 
 	// ----------------------------------------------------------------
-	// Test 2 — block-for-eviction + cordoned: both evicted
+	// Test 2 - block-for-eviction + cordoned: both evicted
 	//
 	// NodeDrainPolicy=block-for-eviction and node is cordoned: every replica
 	// including src and clone on the node is unconditionally evicted.
@@ -2911,12 +2914,12 @@ func (s *NodeControllerSuite) TestLinkedCloneEviction(c *C) {
 	}
 
 	// ----------------------------------------------------------------
-	// Test 3 — block-for-eviction-if-contains-last-replica + cordoned
+	// Test 3 - block-for-eviction-if-contains-last-replica + cordoned
 	//          (both last): both evicted
 	//
 	// No IM/PDB objects are registered in the fixture, so
 	// ListVolumePDBProtectedHealthyReplicasRO returns empty for every
-	// volume → hasPDBOnAnotherNode=false → shouldEvictReplica=true.
+	// volume -> hasPDBOnAnotherNode=false -> shouldEvictReplica=true.
 	// Both src and clone are in ScheduledReplica and are treated as
 	// "last healthy replica", so both are evicted by the main loop.
 	// ----------------------------------------------------------------
@@ -3581,4 +3584,73 @@ func (s *NodeControllerSuite) TestMarkAllDisksNotReadyKeepsDiskUUID(c *C) {
 	diskStatus := node.Status.DiskStatus[TestDiskID1]
 	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusFalse)
 	c.Assert(diskStatus.DiskUUID, Equals, TestDiskID1)
+}
+
+func TestNodeDiskRecoveryDoesNotUpdateBackingImageManagers(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		recordedUUID bool
+		ready        longhorn.ConditionStatus
+		reason       string
+		collected    *monitor.CollectedDiskInfo
+		readyAfter   longhorn.ConditionStatus
+	}{
+		{name: "filesystem drift recovery", recordedUUID: true, ready: longhorn.ConditionStatusFalse, reason: string(longhorn.DiskConditionReasonDiskFilesystemChanged), readyAfter: longhorn.ConditionStatusTrue},
+		{name: "node recovery", recordedUUID: true, ready: longhorn.ConditionStatusFalse, reason: string(longhorn.DiskConditionReasonNodeNotReady), readyAfter: longhorn.ConditionStatusTrue},
+		{name: "unknown readiness recovery", recordedUUID: true, ready: longhorn.ConditionStatusUnknown, readyAfter: longhorn.ConditionStatusTrue},
+		{name: "already ready", recordedUUID: true, ready: longhorn.ConditionStatusTrue, readyAfter: longhorn.ConditionStatusTrue},
+		{name: "first initialization", ready: longhorn.ConditionStatusFalse, readyAfter: longhorn.ConditionStatusTrue},
+		{name: "still unavailable", recordedUUID: true, ready: longhorn.ConditionStatusFalse, readyAfter: longhorn.ConditionStatusFalse,
+			collected: monitor.NewDiskInfo(TestDiskID1, TestDiskID1, TestDefaultDataPath, longhorn.DiskDriverNone, false, nil,
+				map[string]string{}, TestInstanceManagerName, string(longhorn.DiskConditionReasonDiskFilesystemChanged), "disk config missing")},
+		{name: "replacement UUID rejected", recordedUUID: true, ready: longhorn.ConditionStatusFalse, readyAfter: longhorn.ConditionStatusFalse,
+			collected: monitor.NewDiskInfo(TestDiskID1, "replacement-uuid", TestDefaultDataPath, longhorn.DiskDriverNone, false,
+				&lhtypes.DiskStat{DiskID: "test-fsid", StorageMaximum: 100 << 30, StorageAvailable: 90 << 30, Type: "ext4"},
+				map[string]string{}, TestInstanceManagerName, "", "")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newStartingAtFixture(t)
+			nc := &NodeController{
+				baseController: newBaseController("test-node-disk-recovery", logrus.StandardLogger()),
+				ds:             f.ds,
+				eventRecorder:  record.NewFakeRecorder(100),
+				scheduler:      scheduler.NewReplicaScheduler(f.ds),
+			}
+			t.Cleanup(nc.queue.ShutDown)
+			node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+			node.Spec.Disks = map[string]longhorn.DiskSpec{
+				TestDiskID1: {Type: longhorn.DiskTypeFilesystem, Path: TestDefaultDataPath, AllowScheduling: true},
+			}
+			node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+				TestDiskID1: {
+					Type: longhorn.DiskTypeFilesystem, DiskUUID: TestDiskID1, DiskPath: TestDefaultDataPath,
+					Conditions: []longhorn.Condition{
+						{Type: longhorn.DiskConditionTypeReady, Status: tc.ready, Reason: tc.reason},
+					},
+				},
+			}
+			if !tc.recordedUUID {
+				node.Status.DiskStatus[TestDiskID1].DiskUUID = ""
+			}
+			bims := f.factories.LhInformerFactory.Longhorn().V1beta2().BackingImageManagers().Informer().GetIndexer()
+			bim := &longhorn.BackingImageManager{
+				Name: TestDiskID1, Namespace: TestNamespace,
+				Labels: types.GetBackingImageManagerLabels(TestNode1, TestDiskID1),
+				Spec:   longhorn.BackingImageManagerSpec{NodeID: TestNode1, DiskUUID: TestDiskID1, DiskPath: TestDefaultDataPath},
+			}
+			require.NoError(t, f.lh.Tracker().Add(bim))
+			require.NoError(t, bims.Add(bim.DeepCopy()))
+			collected := tc.collected
+			if collected == nil {
+				collected = monitor.NewDiskInfo(TestDiskID1, TestDiskID1, TestDefaultDataPath, longhorn.DiskDriverNone, false,
+					&lhtypes.DiskStat{DiskID: "test-fsid", StorageMaximum: 100 << 30, StorageAvailable: 90 << 30, Type: "ext4"}, map[string]string{}, TestInstanceManagerName, "", "")
+			}
+
+			require.NoError(t, nc.syncDiskStatus(node, map[string]*monitor.CollectedDiskInfo{TestDiskID1: collected}))
+			require.Equal(t, tc.readyAfter, types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeReady).Status)
+			require.Equal(t, TestDiskID1, node.Status.DiskStatus[TestDiskID1].DiskUUID)
+			require.Empty(t, f.lh.Actions(), "the node controller must not write backing image managers on disk recovery")
+			require.Empty(t, f.kube.Actions(), "the node controller must not recreate pods")
+		})
+	}
 }
