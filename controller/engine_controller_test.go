@@ -37,6 +37,23 @@ type mockEngineClientProxy struct {
 	removeCalled []string // replica names passed to ReplicaRemove
 }
 
+func TestGetBinaryClientForEngineSkipsNonV1Engines(t *testing.T) {
+	for _, dataEngine := range []longhorn.DataEngineType{
+		longhorn.DataEngineTypeV2,
+		longhorn.DataEngineTypeLocal,
+	} {
+		t.Run(string(dataEngine), func(t *testing.T) {
+			client, err := GetBinaryClientForEngine(&longhorn.Engine{
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{DataEngine: dataEngine},
+				},
+			}, nil, "")
+			require.NoError(t, err)
+			require.Nil(t, client)
+		})
+	}
+}
+
 var _ engineapi.EngineClientProxy = (*mockEngineClientProxy)(nil)
 
 func (m *mockEngineClientProxy) Close() {}

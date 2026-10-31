@@ -86,6 +86,8 @@ const (
 	DiskTypeFilesystem = DiskType("filesystem")
 	// DiskTypeBlock is the disk type for storing v2 replica logical volumes
 	DiskTypeBlock = DiskType("block")
+	// DiskTypeLVM is the disk type for storing local data engine logical volumes
+	DiskTypeLVM = DiskType("lvm")
 )
 
 type DiskDriver string
@@ -163,9 +165,13 @@ type HealthAttribute struct {
 }
 
 type DiskSpec struct {
-	// +kubebuilder:validation:Enum=filesystem;block
+	// +kubebuilder:validation:Enum=filesystem;block;lvm
 	// +optional
 	Type DiskType `json:"diskType"`
+	// Path is the mount point of a filesystem disk, the block device of a
+	// block disk, or, for an lvm disk, the block devices to make a volume
+	// group from (separated by ";") or the name of an existing empty volume
+	// group. The path of an lvm disk cannot change once set.
 	// +optional
 	Path string `json:"path"`
 	// +kubebuilder:validation:Enum="";auto;aio;nvme

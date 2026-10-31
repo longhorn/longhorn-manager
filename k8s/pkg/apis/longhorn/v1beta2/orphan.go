@@ -46,9 +46,9 @@ type OrphanSpec struct {
 	// +optional
 	Type OrphanType `json:"orphanType"`
 	// The type of data engine for instance orphan.
-	// Can be "v1", "v2".
+	// Can be "v1", "v2", "local".
 	// +optional
-	// +kubebuilder:validation:Enum=v1;v2
+	// +kubebuilder:validation:Enum=v1;v2;local
 	DataEngine DataEngineType `json:"dataEngine,omitempty"`
 
 	// The parameters of the orphaned data

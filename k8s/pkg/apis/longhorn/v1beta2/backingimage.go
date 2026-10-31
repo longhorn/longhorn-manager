@@ -30,7 +30,7 @@ const (
 
 type BackingImageDiskFileStatus struct {
 	// +optional
-	// +kubebuilder:validation:Enum=v1;v2
+	// +kubebuilder:validation:Enum=v1;v2;local
 	DataEngine DataEngineType `json:"dataEngine"`
 	// +optional
 	State BackingImageState `json:"state"`
@@ -46,7 +46,7 @@ type BackingImageDiskFileSpec struct {
 	// +optional
 	EvictionRequested bool `json:"evictionRequested"`
 	// +optional
-	// +kubebuilder:validation:Enum=v1;v2
+	// +kubebuilder:validation:Enum=v1;v2;local
 	DataEngine DataEngineType `json:"dataEngine"`
 }
 
@@ -73,7 +73,7 @@ type BackingImageSpec struct {
 	Secret string `json:"secret"`
 	// +optional
 	SecretNamespace string `json:"secretNamespace"`
-	// +kubebuilder:validation:Enum=v1;v2
+	// +kubebuilder:validation:Enum=v1;v2;local
 	// +optional
 	// +kubebuilder:default:=v1
 	DataEngine DataEngineType `json:"dataEngine"`

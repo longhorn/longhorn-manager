@@ -109,6 +109,33 @@ func TestGetVolumeOptions(t *testing.T) {
 				RevisionCounterDisabled: true,
 			},
 		},
+		"local data engine defaults to thick provisioning": {
+			volumeID: "test-vol-local-thick",
+			volumeOptions: map[string]string{
+				"dataEngine": "local",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:              string(longhorn.DataEngineTypeLocal),
+				ProvisioningMode:        string(longhorn.VolumeProvisioningModeThick),
+				RevisionCounterDisabled: true,
+			},
+		},
+		"provisioning mode override": {
+			volumeID: "test-vol-local-thin",
+			volumeOptions: map[string]string{
+				"dataEngine":       "local",
+				"provisioningMode": "thin",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:              string(longhorn.DataEngineTypeLocal),
+				ProvisioningMode:        string(longhorn.VolumeProvisioningModeThin),
+				RevisionCounterDisabled: true,
+			},
+		},
 	}
 
 	for name, tc := range tests {

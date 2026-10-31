@@ -150,6 +150,8 @@ const (
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
 	MetadataDirectoryInContainer     = "/metadata/"
 	MetadataDirectoryOnHost          = "/var/lib/longhorn/metadata/"
+	LVMDevicesDirectoryInContainer   = "/etc/lvm/devices/"
+	LVMDevicesDirectoryOnHost        = "/var/lib/longhorn/lvm/devices/"
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
@@ -440,6 +442,11 @@ type NotFoundError struct {
 
 func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("cannot find %v", e.Name)
+}
+
+func (e *NotFoundError) Is(target error) bool {
+	_, ok := target.(*NotFoundError)
+	return ok
 }
 
 type ErrorInvalidState struct {
@@ -1701,12 +1708,18 @@ func GetIMNameFromPDBName(pdbName string) string {
 
 // IsDataEngineV1 returns true if the given dataEngine is v1
 func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
-	return dataEngine != longhorn.DataEngineTypeV2
+	// An unset data engine is v1 for objects created before the field existed.
+	return dataEngine == longhorn.DataEngineTypeV1 || dataEngine == ""
 }
 
 // IsDataEngineV2 returns true if the given dataEngine is v2
 func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
 	return dataEngine == longhorn.DataEngineTypeV2
+}
+
+// IsDataEngineLocal returns true if the given dataEngine is local.
+func IsDataEngineLocal(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine == longhorn.DataEngineTypeLocal
 }
 
 func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {
@@ -1796,4 +1809,20 @@ func IsInstanceManagerUpgradeAuthorizedByControl(imu *longhorn.InstanceManagerUp
 	nodeInfo, ok := control.Status.Nodes[imu.Spec.NodeID]
 	return ok && control.Status.CurrentNode == imu.Spec.NodeID &&
 		nodeInfo.State == longhorn.NodeUpgradeStateInProgress && nodeInfo.IMUName == imu.Name
+}
+
+// lvmDiskPathSeparator separates the block devices of a local data engine
+// disk path: `dev[;dev...]`, or a volume group name on its own.
+const lvmDiskPathSeparator = ";"
+
+// SplitLVMDiskPath returns the cleaned, non-empty elements of a local data
+// engine disk path: its block devices, or the single volume group name.
+func SplitLVMDiskPath(diskPath string) []string {
+	var elements []string
+	for _, element := range strings.Split(diskPath, lvmDiskPathSeparator) {
+		if element = strings.TrimSpace(element); element != "" {
+			elements = append(elements, filepath.Clean(element))
+		}
+	}
+	return elements
 }
