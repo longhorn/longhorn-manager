@@ -38,7 +38,7 @@ func SystemRolloutCmd() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if err := systemRollout(cmd); err != nil {
+			if err := systemRollout(ctx, cmd); err != nil {
 				logrus.Fatalln(err)
 			}
 			return nil
@@ -46,7 +46,7 @@ func SystemRolloutCmd() *cli.Command {
 	}
 }
 
-func systemRollout(cmd *cli.Command) error {
+func systemRollout(ctx context.Context, cmd *cli.Command) error {
 	mode, err := types.ParseDataEngineMode(cmd.String(FlagDataEngineMode))
 	if err != nil {
 		return err
@@ -94,6 +94,9 @@ func systemRollout(cmd *cli.Command) error {
 
 	informerFactories := util.NewInformerFactories(namespace, kubeClient, lhClient, 30*time.Second)
 	ds := datastore.NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories, mode)
+	if err := ds.ValidateDataEngineModeState(ctx); err != nil {
+		return errors.Wrap(err, "data engine capability is not ready for system rollout")
+	}
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)

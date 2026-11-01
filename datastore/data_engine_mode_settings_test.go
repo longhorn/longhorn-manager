@@ -1,16 +1,63 @@
 package datastore
 
 import (
+	"context"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+func TestV2OnlyStartupBindsRawConfigMapAcrossBootstrapInventory(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		lh, kube := bootstrapClients()
+		factories := util.NewInformerFactories("longhorn-system", kube, lh, 0)
+		store := NewDataStoreForNodeLocal("longhorn-system", lh, kube, nil, factories, types.DataEngineModeV2Only)
+		configMap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: types.DefaultDefaultSettingConfigMapName, Namespace: "longhorn-system", UID: "config-uid", ResourceVersion: "1"},
+			Data:       map[string]string{types.DefaultSettingYAMLFileName: "v1-data-engine: 'false'\nv2-data-engine: 'true'"},
+		}
+		if err := kube.Tracker().Add(configMap); err != nil {
+			t.Fatal(err)
+		}
+		if replace {
+			kube.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+				changed := configMap.DeepCopy()
+				changed.ResourceVersion = "2"
+				if err := kube.Tracker().Update(corev1.SchemeGroupVersion.WithResource("configmaps"), changed, changed.Namespace); err != nil {
+					t.Fatal(err)
+				}
+				return false, nil, nil
+			})
+		}
+		err := store.ValidateDataEngineModeStartup(t.Context())
+		if (err == nil) == replace {
+			t.Fatalf("startup intent continuity: replaced=%t err=%v", replace, err)
+		}
+		for _, action := range lh.Actions() {
+			if action.GetVerb() != "get" && action.GetVerb() != "list" {
+				t.Fatal("startup preflight mutated engine state")
+			}
+		}
+	}
+}
+
+func TestDefaultStartupPreservesNoAdditionalAPIChecks(t *testing.T) {
+	for _, mode := range []types.DataEngineMode{"", types.DataEngineModeV1Capable} {
+		store := &DataStore{dataEngineMode: mode}
+		if err := store.ValidateDataEngineModeStartup(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 func TestV2OnlySettingValidationRejectsUnchangedContradictions(t *testing.T) {
 	lh, kube := modeStateClients()

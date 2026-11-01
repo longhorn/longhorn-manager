@@ -302,7 +302,7 @@ func startManager(cmd *cli.Command) error {
 	}
 	kubeconfigPath := cmd.String(FlagKubeConfig)
 
-	if err := environmentCheck(); err != nil {
+	if err := environmentCheck(mode); err != nil {
 		return errors.Wrap(err, "failed to check environment, please make sure you have iscsiadm/open-iscsi installed on the host")
 	}
 
@@ -324,6 +324,9 @@ func startManager(cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	if err := clients.Datastore.ValidateDataEngineModeStartup(ctx); err != nil {
+		return err
+	}
 
 	// Leader-elected periodic webhook cert rotation; only the leader writes.
 	go webhookcert.RotateLoop(ctx, clients.K8s, clients.Namespace, currentNodeID)
@@ -338,6 +341,26 @@ func startManager(cmd *cli.Command) error {
 
 	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage, cmd.Bool(FlagUpgradeVersionCheck)); err != nil {
 		return err
+	}
+	if err := clients.Datastore.ValidateDataEngineModeStartup(ctx); err != nil {
+		return err
+	}
+	if err := clients.Datastore.InitializeDataEngineModeSettings(ctx); err != nil {
+		return err
+	}
+	defaultImageSettings := map[types.SettingName]string{
+		types.SettingNameDefaultEngineImage:              engineImage,
+		types.SettingNameDefaultInstanceManagerImage:     instanceManagerImage,
+		types.SettingNameDefaultBackingImageManagerImage: backingImageManagerImage,
+		types.SettingNameSupportBundleManagerImage:       supportBundleManagerImage,
+	}
+	if mode == types.DataEngineModeV2Only {
+		if err := clients.Datastore.UpdateCustomizedSettings(defaultImageSettings); err != nil {
+			return err
+		}
+		if err := clients.Datastore.ValidateDataEngineModeState(ctx); err != nil {
+			return err
+		}
 	}
 
 	proxyConnCounter := util.NewAtomicCounter()
@@ -357,14 +380,10 @@ func startManager(cmd *cli.Command) error {
 
 	metricscollector.InitMetricsCollectorSystem(logger, currentNodeID, clients.Datastore, kubeconfigPath, proxyConnCounter)
 
-	defaultImageSettings := map[types.SettingName]string{
-		types.SettingNameDefaultEngineImage:              engineImage,
-		types.SettingNameDefaultInstanceManagerImage:     instanceManagerImage,
-		types.SettingNameDefaultBackingImageManagerImage: backingImageManagerImage,
-		types.SettingNameSupportBundleManagerImage:       supportBundleManagerImage,
-	}
-	if err := clients.Datastore.UpdateCustomizedSettings(defaultImageSettings); err != nil {
-		return err
+	if mode != types.DataEngineModeV2Only {
+		if err := clients.Datastore.UpdateCustomizedSettings(defaultImageSettings); err != nil {
+			return err
+		}
 	}
 
 	if err := clients.Datastore.CreateOrUpdateDefaultBackupTarget(); err != nil {
@@ -410,7 +429,11 @@ func startManager(cmd *cli.Command) error {
 	return nil
 }
 
-func environmentCheck() error {
+func environmentCheck(mode types.DataEngineMode) error {
+	return checkISCSIForDataEngineMode(mode, checkISCSIInitiator)
+}
+
+func checkISCSIInitiator() error {
 	// Here we only check if the necessary tool the iscsiadm is installed when Longhorn starts up.
 	// Others tools and settings like kernel versions, multipathd, nfs client, etc. are checked in the node controller (every 30 sec).
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}

@@ -13,8 +13,10 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
+	kubeclientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/constant"
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
 	apputil "github.com/longhorn/longhorn-manager/app/util"
@@ -47,7 +49,7 @@ func PreUpgradeCmd() *cli.Command {
 			logrus.Info("Running pre-upgrade...")
 			defer logrus.Info("Completed pre-upgrade.")
 
-			if err := preUpgrade(cmd); err != nil {
+			if err := preUpgrade(ctx, cmd); err != nil {
 				logrus.WithError(err).Fatalf("Failed to run pre-upgrade")
 			}
 			return nil
@@ -55,7 +57,11 @@ func PreUpgradeCmd() *cli.Command {
 	}
 }
 
-func preUpgrade(cmd *cli.Command) error {
+func preUpgrade(ctx context.Context, cmd *cli.Command) error {
+	mode, err := types.ParseDataEngineMode(cmd.String(FlagDataEngineMode))
+	if err != nil {
+		return err
+	}
 	namespace := cmd.String(FlagNamespace)
 
 	config, err := clientcmd.BuildConfigFromFlags("", cmd.String(FlagKubeConfig))
@@ -85,7 +91,11 @@ func preUpgrade(cmd *cli.Command) error {
 		return errors.Wrap(err, "failed to get clientset")
 	}
 
-	err = newPreUpgrader(namespace, lhClient, eventRecorder).Run()
+	kubeClient, err := kubeclientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "failed to get Kubernetes clientset")
+	}
+	err = newPreUpgrader(namespace, lhClient, kubeClient, eventRecorder, mode).Run(ctx)
 	if err != nil {
 		logrus.Warnf("Done with Run() ... err is %v", err)
 	}
@@ -94,16 +104,18 @@ func preUpgrade(cmd *cli.Command) error {
 }
 
 type preUpgrader struct {
-	namespace     string
-	lhClient      lhclientset.Interface
-	eventRecorder record.EventRecorder
+	namespace      string
+	lhClient       lhclientset.Interface
+	kubeClient     kubeclientset.Interface
+	eventRecorder  record.EventRecorder
+	dataEngineMode types.DataEngineMode
 }
 
-func newPreUpgrader(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder) *preUpgrader {
-	return &preUpgrader{namespace, lhClient, eventRecorder}
+func newPreUpgrader(namespace string, lhClient lhclientset.Interface, kubeClient kubeclientset.Interface, eventRecorder record.EventRecorder, mode types.DataEngineMode) *preUpgrader {
+	return &preUpgrader{namespace: namespace, lhClient: lhClient, kubeClient: kubeClient, eventRecorder: eventRecorder, dataEngineMode: mode}
 }
 
-func (u *preUpgrader) Run() error {
+func (u *preUpgrader) Run(ctx context.Context) error {
 	var err error
 	defer func() {
 		if err != nil {
@@ -115,11 +127,14 @@ func (u *preUpgrader) Run() error {
 		}
 	}()
 
+	if err = datastore.ValidateDataEngineModeBootstrapState(ctx, u.dataEngineMode, u.namespace, u.lhClient, u.kubeClient); err != nil {
+		return err
+	}
 	if err = upgradeutil.CheckUpgradePath(u.namespace, u.lhClient, u.eventRecorder, true); err != nil {
 		return err
 	}
 
-	if err = environmentCheck(); err != nil {
+	if err = environmentCheck(u.dataEngineMode); err != nil {
 		err = errors.Wrap(err, "failed to check environment, please make sure you have iscsiadm/open-iscsi installed on the host")
 		return err
 	}

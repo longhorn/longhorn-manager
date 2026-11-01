@@ -2,12 +2,40 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/urfave/cli/v3"
+
+	"github.com/longhorn/longhorn-manager/types"
 )
+
+func TestDataEngineModeSkipsOnlyTheISCSIHostCheck(t *testing.T) {
+	sentinel := errors.New("initiator unavailable")
+	for _, mode := range []types.DataEngineMode{"", types.DataEngineModeV1Capable, types.DataEngineModeV2Only, "unknown"} {
+		called := 0
+		err := checkISCSIForDataEngineMode(mode, func() error {
+			called++
+			return sentinel
+		})
+		switch mode {
+		case types.DataEngineModeV2Only:
+			if err != nil || called != 0 {
+				t.Fatalf("V2-only required an iSCSI host executor: calls=%d err=%v", called, err)
+			}
+		case "unknown":
+			if err == nil || called != 0 || !strings.Contains(err.Error(), "unsupported data engine mode") {
+				t.Fatalf("unknown mode reached the host executor: calls=%d err=%v", called, err)
+			}
+		default:
+			if !errors.Is(err, sentinel) || called != 1 {
+				t.Fatalf("default mode lost the host prerequisite or its error: calls=%d err=%v", called, err)
+			}
+		}
+	}
+}
 
 func TestDataEngineModeFlagAtEveryEntrypoint(t *testing.T) {
 	for _, constructor := range []func() *cli.Command{DaemonCmd, GlobalCmd, PreUpgradeCmd, SystemRolloutCmd} {

@@ -107,6 +107,11 @@ func startGlobalManager(cmd *cli.Command) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to build longhorn clients")
 	}
+	// The daemon bootstraps compatible engine Settings. A global replica must
+	// pass the uncached gate before it can acquire leadership and start workers.
+	if err := clients.Datastore.ValidateDataEngineModeState(electionCtx); err != nil {
+		return errors.Wrap(err, "data engine capability is not ready for global controllers")
+	}
 
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
