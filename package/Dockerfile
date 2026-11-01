@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.28.0@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
-FROM registry.suse.com/bci/golang:1.27@sha256:634cd6f1e373bcde01a1f8df6d1c3a9784142353a0842b5371d6385b4e9d2abb AS builder
+FROM registry.suse.com/bci/golang:1.27@sha256:604ffddf9bbc49b086f0b060adf0d973fcfd2aec640883438c862955eae03600 AS builder
 
 ARG LONGHORN_TWO_MINOR_UPGRADE_DISTROS
 ENV LONGHORN_TWO_MINOR_UPGRADE_DISTROS=${LONGHORN_TWO_MINOR_UPGRADE_DISTROS}
@@ -15,7 +15,7 @@ RUN chmod +x /app/scripts/build
 # Run the build script
 RUN /app/scripts/build
 
-FROM registry.suse.com/bci/bci-base:15.7@sha256:927140d8ede708eed63e8ce3c789801288403c23ac53a40ced59164abc938103 AS release
+FROM registry.suse.com/bci/bci-base:15.7@sha256:79595412dc8da75bac1a5f9cc75c7d579523dbeeb6fc594d10b22967819760c3 AS release
 
 ARG TARGETPLATFORM
 RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
