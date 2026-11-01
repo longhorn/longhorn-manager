@@ -24,7 +24,7 @@ func modeStateClients(objects ...runtime.Object) (*lhfake.Clientset, *kubefake.C
 	for name, value := range map[types.SettingName]string{types.SettingNameV1DataEngine: "false", types.SettingNameV2DataEngine: "true"} {
 		settings = append(settings, &longhorn.Setting{ObjectMeta: metav1.ObjectMeta{Name: string(name), Namespace: "longhorn-system", UID: k8stypes.UID(name), ResourceVersion: "1"}, Value: value})
 	}
-	return lhfake.NewSimpleClientset(append(settings, objects...)...), kubefake.NewSimpleClientset()
+	return lhfake.NewClientset(append(settings, objects...)...), kubefake.NewClientset()
 }
 
 func TestV2OnlyStateChecksUncachedStorageWithoutNodes(t *testing.T) {
