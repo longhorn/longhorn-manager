@@ -60,6 +60,16 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 	if err != nil {
 		return err
 	}
+	if err := s.validateDataEngineModeCustomizedSettings(defaultSettingCM); err != nil {
+		return err
+	}
+	if s.dataEngineMode == types.DataEngineModeV2Only {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.ValidateDataEngineModeState(ctx); err != nil {
+			return err
+		}
+	}
 
 	customizedDefaultSettings, err := types.GetCustomizedDefaultSettings(defaultSettingCM)
 	if err != nil {
@@ -105,6 +115,9 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 
 func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
+		if s.dataEngineMode == types.DataEngineModeV2Only && isDataEngineSetting(sName) {
+			continue
+		}
 		if _, err := s.GetSettingExactRO(sName); err != nil && apierrors.IsNotFound(err) {
 			definition, ok := types.GetSettingDefinition(sName)
 			if !ok {
@@ -132,6 +145,9 @@ func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings ma
 	availableCustomizedDefaultSettings := make(map[string]string)
 
 	for name, value := range customizedDefaultSettings {
+		if s.dataEngineMode == types.DataEngineModeV2Only && isDataEngineSetting(types.SettingName(name)) {
+			continue
+		}
 		if !s.shouldApplyCustomizedSettingValue(types.SettingName(name), value, defaultSettingCMResourceVersion) {
 			continue
 		}
@@ -525,6 +541,9 @@ func convertDataEngineValuesToJSONString(values map[longhorn.DataEngineType]any)
 
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
+		if s.dataEngineMode == types.DataEngineModeV2Only && isDataEngineSetting(sName) {
+			continue
+		}
 		definition, ok := types.GetSettingDefinition(sName)
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
@@ -625,6 +644,9 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}()
 
 	if err := types.ValidateSetting(name, value); err != nil {
+		return err
+	}
+	if err := s.validateDataEngineModeSetting(types.SettingName(name), value); err != nil {
 		return err
 	}
 
