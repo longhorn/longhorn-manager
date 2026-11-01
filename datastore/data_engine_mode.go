@@ -8,6 +8,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 
@@ -17,11 +18,59 @@ import (
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
+type dataEngineSettingIdentity struct {
+	uid             k8stypes.UID
+	resourceVersion string
+}
+
+func v2OnlyEngineSettingValue(name types.SettingName) string {
+	if name == types.SettingNameV2DataEngine {
+		return "true"
+	}
+	return "false"
+}
+
+func dataEngineModeSettingIdentity(setting *longhorn.Setting, name types.SettingName, namespace string) (dataEngineSettingIdentity, error) {
+	if setting == nil || setting.Name != string(name) || setting.Namespace != namespace || setting.UID == "" || setting.ResourceVersion == "" || setting.DeletionTimestamp != nil || setting.Value != v2OnlyEngineSettingValue(name) {
+		return dataEngineSettingIdentity{}, errors.New("v2-only mode requires explicit v1-data-engine=false and v2-data-engine=true Settings")
+	}
+	return dataEngineSettingIdentity{setting.UID, setting.ResourceVersion}, nil
+}
+
+func readDataEngineModeSettings(ctx context.Context, namespace string, lhClient lhclientset.Interface, allowMissing bool) ([2]dataEngineSettingIdentity, error) {
+	var result [2]dataEngineSettingIdentity
+	for index, name := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+		setting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(ctx, string(name), metav1.GetOptions{})
+		if allowMissing && apierrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return result, errors.Wrapf(err, "failed to read explicit %s setting for v2-only validation", name)
+		}
+		identity, err := dataEngineModeSettingIdentity(setting, name, namespace)
+		if err != nil {
+			return result, err
+		}
+		result[index] = identity
+	}
+	return result, nil
+}
+
 // ValidateDataEngineModeState uses uncached clients so retained storage and
 // orphan runtime cannot disappear behind an empty or node-scoped informer.
 // Compatible Settings must already exist; admission/bootstrap is a separate
 // phase. This check neither changes Settings nor removes legacy resources.
 func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode, namespace string, lhClient lhclientset.Interface, kubeClient kubernetes.Interface) error {
+	return validateDataEngineModeState(ctx, mode, namespace, lhClient, kubeClient, false)
+}
+
+// ValidateDataEngineModeBootstrapState permits absent engine Settings only
+// before storage or instance-manager runtime exists. It never creates Settings.
+func ValidateDataEngineModeBootstrapState(ctx context.Context, mode types.DataEngineMode, namespace string, lhClient lhclientset.Interface, kubeClient kubernetes.Interface) error {
+	return validateDataEngineModeState(ctx, mode, namespace, lhClient, kubeClient, true)
+}
+
+func validateDataEngineModeState(ctx context.Context, mode types.DataEngineMode, namespace string, lhClient lhclientset.Interface, kubeClient kubernetes.Interface, allowMissing bool) error {
 	parsed, err := types.ParseDataEngineMode(string(mode))
 	if err != nil {
 		return err
@@ -35,29 +84,7 @@ func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	type settingIdentity struct {
-		uid             k8stypes.UID
-		resourceVersion string
-	}
-	readSettings := func() ([2]settingIdentity, error) {
-		var result [2]settingIdentity
-		for index, name := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
-			setting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(ctx, string(name), metav1.GetOptions{})
-			if err != nil {
-				return result, errors.Wrapf(err, "failed to read explicit %s setting for v2-only validation", name)
-			}
-			want := "false"
-			if name == types.SettingNameV2DataEngine {
-				want = "true"
-			}
-			if setting == nil || setting.Name != string(name) || setting.Namespace != namespace || setting.UID == "" || setting.ResourceVersion == "" || setting.DeletionTimestamp != nil || setting.Value != want {
-				return result, errors.New("v2-only mode requires explicit v1-data-engine=false and v2-data-engine=true Settings")
-			}
-			result[index] = settingIdentity{setting.UID, setting.ResourceVersion}
-		}
-		return result, nil
-	}
-	before, err := readSettings()
+	before, err := readDataEngineModeSettings(ctx, namespace, lhClient, allowMissing)
 	if err != nil {
 		return err
 	}
@@ -83,6 +110,7 @@ func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode,
 	if err := checkList("volumes", volumes.Continue, nil); err != nil {
 		return err
 	}
+	storagePresent := len(volumes.Items) != 0
 	for _, volume := range volumes.Items {
 		if err := checkEngine("volume", volume.Name, volume.Spec.DataEngine); err != nil {
 			return err
@@ -95,6 +123,7 @@ func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode,
 	if err := checkList("engines", engines.Continue, nil); err != nil {
 		return err
 	}
+	storagePresent = storagePresent || len(engines.Items) != 0
 	for _, engine := range engines.Items {
 		if err := checkEngine("engine", engine.Name, engine.Spec.DataEngine); err != nil {
 			return err
@@ -107,6 +136,7 @@ func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode,
 	if err := checkList("replicas", replicas.Continue, nil); err != nil {
 		return err
 	}
+	storagePresent = storagePresent || len(replicas.Items) != 0
 	for _, replica := range replicas.Items {
 		if err := checkEngine("replica", replica.Name, replica.Spec.DataEngine); err != nil {
 			return err
@@ -119,6 +149,7 @@ func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode,
 	if err := checkList("instance managers", managers.Continue, nil); err != nil {
 		return err
 	}
+	storagePresent = storagePresent || len(managers.Items) != 0
 	names := map[string]longhorn.InstanceManager{}
 	for _, manager := range managers.Items {
 		if err := checkEngine("instance manager", manager.Name, manager.Spec.DataEngine); err != nil {
@@ -147,6 +178,7 @@ func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode,
 			instanceManager = instanceManager || owner.Kind == "InstanceManager"
 		}
 		if instanceManager {
+			storagePresent = true
 			if err := checkEngine("instance-manager pod", pod.Name, longhorn.DataEngineType(pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelDataEngine)])); err != nil {
 				return err
 			}
@@ -174,12 +206,15 @@ func ValidateDataEngineModeState(ctx context.Context, mode types.DataEngineMode,
 			}
 		}
 	}
-	after, err := readSettings()
+	after, err := readDataEngineModeSettings(ctx, namespace, lhClient, allowMissing)
 	if err != nil {
 		return err
 	}
 	if before != after {
 		return errors.New("data engine Settings changed during v2-only validation")
+	}
+	if storagePresent && (before[0].uid == "" || before[1].uid == "") {
+		return errors.New("cannot bootstrap missing engine Settings while storage or instance-manager runtime exists")
 	}
 	return ctx.Err()
 }
