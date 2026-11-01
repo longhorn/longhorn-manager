@@ -12,6 +12,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	"github.com/longhorn/longhorn-manager/webhook/common"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -42,8 +43,11 @@ func (i *instanceManagerMutator) Resource() admission.Resource {
 
 func (i *instanceManagerMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	im, ok := newObj.(*longhorn.InstanceManager)
-	if !ok {
+	if !ok || im == nil {
 		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
+	}
+	if err := common.ValidateDataEngineCapability(i.ds, im.Spec.DataEngine); err != nil {
+		return nil, err
 	}
 
 	patchOps := mutate(im)
@@ -78,6 +82,13 @@ func (i *instanceManagerMutator) Create(request *admission.Request, newObj runti
 }
 
 func (i *instanceManagerMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	cleanup, err := common.ValidateDataEngineCapabilityUpdate(i.ds, oldObj, newObj)
+	if err != nil {
+		return nil, err
+	}
+	if cleanup {
+		return nil, nil
+	}
 	newIm, ok := newObj.(*longhorn.InstanceManager)
 	if !ok {
 		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")

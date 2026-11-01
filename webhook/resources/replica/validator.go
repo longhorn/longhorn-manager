@@ -45,7 +45,7 @@ func (r *replicaValidator) Resource() admission.Resource {
 
 func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	replica, ok := newObj.(*longhorn.Replica)
-	if !ok {
+	if !ok || replica == nil {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
 	}
 
@@ -58,6 +58,13 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 }
 
 func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	cleanup, err := wcommon.ValidateDataEngineCapabilityUpdate(r.ds, oldObj, newObj)
+	if err != nil {
+		return err
+	}
+	if cleanup {
+		return nil
+	}
 	oldReplica, ok := oldObj.(*longhorn.Replica)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", oldObj), "")
