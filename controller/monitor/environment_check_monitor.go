@@ -62,6 +62,12 @@ type CollectedEnvironmentCheckInfo struct {
 	conditions []longhorn.Condition
 }
 
+type environmentPackageExecutor interface {
+	Execute([]string, string, []string, time.Duration) (string, error)
+}
+
+type environmentPackageExecutorFactory func(string, string, []lhtypes.Namespace) (environmentPackageExecutor, error)
+
 func NewEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*EnvironmentCheckMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 
@@ -163,11 +169,7 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 	m.syncMultipathd(namespaces, collectedData)
 	m.syncNFSClientVersion(kubeNode, collectedData)
 
-	isV2DataEngine, err := m.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
-	if err != nil {
-		m.logger.WithError(err).Debug("Failed to fetch v2-data-engine setting")
-		isV2DataEngine = false
-	}
+	isV2DataEngine := m.requiresV2EnvironmentChecks()
 
 	m.checkKernelModulesLoaded(kubeNode, isV2DataEngine, collectedData)
 
@@ -180,49 +182,12 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 
 func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
 	osImage := strings.ToLower(kubeNode.Status.NodeInfo.OSImage)
-
-	packageProbeExecutables := make(map[string]string)
-
-	switch {
-	case strings.Contains(osImage, "talos"):
+	if strings.Contains(osImage, "talos") {
 		m.syncPackagesInstalledTalosLinux(namespaces, collectedData)
 		return
-	case strings.Contains(osImage, "ubuntu"):
-		fallthrough
-	case strings.Contains(osImage, "debian"):
-		packageProbeExecutables["nfs-common"] = "mount.nfs"
-		packageProbeExecutables["open-iscsi"] = "iscsiadm"
-		packageProbeExecutables["cryptsetup"] = "cryptsetup"
-		packageProbeExecutables["dmsetup"] = "dmsetup"
-	case strings.Contains(osImage, "centos"):
-		fallthrough
-	case strings.Contains(osImage, "fedora"):
-		fallthrough
-	case strings.Contains(osImage, "red hat"):
-		fallthrough
-	case strings.Contains(osImage, "rocky"):
-		fallthrough
-	case strings.Contains(osImage, "ol"):
-		packageProbeExecutables["nfs-utils"] = "mount.nfs"
-		packageProbeExecutables["iscsi-initiator-utils"] = "iscsiadm"
-		packageProbeExecutables["cryptsetup"] = "cryptsetup"
-		packageProbeExecutables["device-mapper"] = "dmsetup"
-	case strings.Contains(osImage, "suse"):
-		packageProbeExecutables["nfs-client"] = "mount.nfs"
-		packageProbeExecutables["open-iscsi"] = "iscsiadm"
-		packageProbeExecutables["cryptsetup"] = "cryptsetup"
-		packageProbeExecutables["device-mapper"] = "dmsetup"
-	case strings.Contains(osImage, "arch"):
-		packageProbeExecutables["nfs-utils"] = "mount.nfs"
-		packageProbeExecutables["open-iscsi"] = "iscsiadm"
-		packageProbeExecutables["cryptsetup"] = "cryptsetup"
-		packageProbeExecutables["device-mapper"] = "dmsetup"
-	case strings.Contains(osImage, "gentoo"):
-		packageProbeExecutables["net-fs/nfs-utils"] = "mount.nfs"
-		packageProbeExecutables["sys-block/open-iscsi"] = "iscsiadm"
-		packageProbeExecutables["sys-fs/cryptsetup"] = "cryptsetup"
-		packageProbeExecutables["sys-fs/lvm2"] = "dmsetup"
-	default:
+	}
+	packageProbeExecutables := requiredPackageProbeExecutables(osImage, m.ds.DataEngineMode())
+	if packageProbeExecutables == nil {
 		// Skip environment check condition when
 		// 1.The OS is unknown to Longhorn
 		// 2.The OS that already has all packages installed such as Harvester
@@ -249,6 +214,12 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 }
 
 func (m *EnvironmentCheckMonitor) syncPackagesInstalledTalosLinux(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
+	m.syncPackagesInstalledTalosLinuxWithExecutor(namespaces, collectedData, func(process, directory string, namespaces []lhtypes.Namespace) (environmentPackageExecutor, error) {
+		return lhns.NewNamespaceExecutor(process, directory, namespaces)
+	})
+}
+
+func (m *EnvironmentCheckMonitor) syncPackagesInstalledTalosLinuxWithExecutor(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo, newExecutor environmentPackageExecutorFactory) {
 	type validateCommand struct {
 		binary string
 		args   []string
@@ -259,7 +230,7 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalledTalosLinux(namespaces []l
 	// Helper function to validate packages within a namespace and update node
 	// status if there is an error.
 	validatePackages := func(process string, binaryToValidateCommand map[string]validateCommand) (ok bool) {
-		nsexec, err := lhns.NewNamespaceExecutor(process, lhtypes.HostProcDirectory, namespaces)
+		nsexec, err := newExecutor(process, lhtypes.HostProcDirectory, namespaces)
 		if err != nil {
 			collectedData.conditions = types.SetCondition(
 				collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
@@ -292,10 +263,12 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalledTalosLinux(namespaces []l
 		"iscsiadm": {binary: "iscsiadm", args: []string{"--version"}},
 	}
 
-	// Check each set of packagesl return immediately if there is an error.
+	// Stop before probing another namespace if its executor is unavailable.
 	if !validatePackages(lhtypes.ProcessNone, hostPackageToValidateCmd) ||
-		!validatePackages(lhns.GetDefaultProcessName(), kubeletPackageToValidateCmd) ||
-		!validatePackages(iscsiutil.ISCSIdProcess, iscsiPackageToValidateCmd) {
+		!validatePackages(lhns.GetDefaultProcessName(), kubeletPackageToValidateCmd) {
+		return
+	}
+	if m.ds.DataEngineMode().RequiresISCSI() && !validatePackages(iscsiutil.ISCSIdProcess, iscsiPackageToValidateCmd) {
 		return
 	}
 
