@@ -1,8 +1,12 @@
 package datastore
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
+
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -46,6 +50,21 @@ func TestV2OnlyStartupBindsRawConfigMapAcrossBootstrapInventory(t *testing.T) {
 			if action.GetVerb() != "get" && action.GetVerb() != "list" {
 				t.Fatal("startup preflight mutated engine state")
 			}
+		}
+	}
+}
+
+func TestV2OnlyRawDefaultsRejectAmbiguityWithoutLoggingPayload(t *testing.T) {
+	previous := logrus.StandardLogger().Out
+	var output bytes.Buffer
+	logrus.SetOutput(&output)
+	defer logrus.SetOutput(previous)
+	store := &DataStore{namespace: "longhorn-system", dataEngineMode: types.DataEngineModeV2Only}
+	for _, raw := range []string{"v1-data-engine: [sentinel-secret", "v1-data-engine: 'false'\nv1-data-engine: 'true'", "v1-data-engine: 'false'\n---\nv1-data-engine: 'true'\n"} {
+		configMap := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: types.DefaultDefaultSettingConfigMapName, Namespace: "longhorn-system", UID: "uid", ResourceVersion: "1"}, Data: map[string]string{types.DefaultSettingYAMLFileName: raw}}
+		err := store.validateDataEngineModeCustomizedSettings(configMap)
+		if err == nil || strings.Contains(err.Error(), "sentinel-secret") || strings.Contains(output.String(), "sentinel-secret") {
+			t.Fatal("ambiguous raw engine defaults cleared validation or leaked the payload")
 		}
 	}
 }

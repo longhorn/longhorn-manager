@@ -1,6 +1,8 @@
 package datastore
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -60,6 +62,67 @@ func TestV2OnlyRestoreCRDsRequireCompleteCurrentCompatibleSchemas(t *testing.T) 
 			for _, action := range client.Actions() {
 				if action.GetVerb() != "list" && action.GetVerb() != "get" {
 					t.Fatal("CRD validation wrote to the cluster")
+				}
+			}
+		})
+	}
+}
+
+func TestV2OnlyRestoreCRDUpdateBindsDeadlineSchemaAndReadback(t *testing.T) {
+	for _, scenario := range []string{"compatible", "expired", "schema-drift", "update-error", "readback-error", "readback-identity-drift", "stripped-receipt"} {
+		t.Run(scenario, func(t *testing.T) {
+			crd := &apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: "volumes.longhorn.io", UID: "uid", ResourceVersion: "1", Annotations: map[string]string{"restore-receipt": "expected"}}, Spec: apiextensionsv1.CustomResourceDefinitionSpec{Group: "longhorn.io"}}
+			live := crd.DeepCopy()
+			if scenario == "schema-drift" {
+				live.Spec.Group = "changed.io"
+			}
+			client := extensionsfake.NewClientset(live)
+			gets := 0
+			client.PrependReactor("get", "customresourcedefinitions", func(k8stesting.Action) (bool, runtime.Object, error) {
+				gets++
+				if gets == 2 && scenario == "readback-error" {
+					return true, nil, errors.New("unavailable")
+				}
+				if gets == 2 && scenario == "readback-identity-drift" {
+					changed := crd.DeepCopy()
+					changed.UID = "replacement"
+					return true, changed, nil
+				}
+				return false, nil, nil
+			})
+			if scenario == "update-error" {
+				client.PrependReactor("update", "customresourcedefinitions", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("conflict")
+				})
+			}
+			if scenario == "stripped-receipt" {
+				client.PrependReactor("update", "customresourcedefinitions", func(action k8stesting.Action) (bool, runtime.Object, error) {
+					changed := action.(k8stesting.UpdateAction).GetObject().(*apiextensionsv1.CustomResourceDefinition).DeepCopy()
+					changed.Annotations = nil
+					if err := client.Tracker().Update(action.GetResource(), changed, ""); err != nil {
+						t.Fatal(err)
+					}
+					return true, changed, nil
+				})
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if scenario == "expired" {
+				cancel()
+			}
+			ds := &DataStore{dataEngineMode: types.DataEngineModeV2Only, extensionsClient: client}
+			_, err := ds.UpdateDataEngineModeRestoreCRD(ctx, crd)
+			if (err == nil) != (scenario == "compatible") {
+				t.Fatalf("unexpected bounded CRD update result: %v", err)
+			}
+			if scenario == "expired" && len(client.Actions()) != 0 {
+				t.Fatal("expired CRD update contacted the API")
+			}
+			if scenario == "schema-drift" {
+				for _, action := range client.Actions() {
+					if action.GetVerb() == "update" {
+						t.Fatal("schema drift permitted a CRD write")
+					}
 				}
 			}
 		})

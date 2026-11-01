@@ -2,15 +2,17 @@ package datastore
 
 import (
 	"context"
+	"io"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"gopkg.in/yaml.v3"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
 )
 
 // ValidateDataEngineModeStartup checks raw chart intent and uncached storage
@@ -86,9 +88,17 @@ func (s *DataStore) validateDataEngineModeCustomizedSettings(configMap *corev1.C
 	if configMap == nil || configMap.Name != types.DefaultDefaultSettingConfigMapName || configMap.Namespace != s.namespace || configMap.UID == "" || configMap.ResourceVersion == "" || configMap.DeletionTimestamp != nil {
 		return errors.New("v2-only mode requires an identified default Settings ConfigMap")
 	}
-	raw, err := util.GetDataContentFromYAML([]byte(configMap.Data[types.DefaultSettingYAMLFileName]))
-	if err != nil {
-		return err
+	// The general default-Settings parser logs malformed input. Validate this
+	// capability boundary without echoing an archived or live ConfigMap body,
+	// and reject a second document rather than silently reading only the first.
+	raw := map[string]string{}
+	decoder := yaml.NewDecoder(strings.NewReader(configMap.Data[types.DefaultSettingYAMLFileName]))
+	if err := decoder.Decode(&raw); err != nil && err != io.EOF {
+		return errors.New("invalid raw default Settings document for v2-only mode")
+	}
+	var extra interface{}
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return errors.New("multiple or invalid raw default Settings documents for v2-only mode")
 	}
 	for _, name := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
 		if value, present := raw[string(name)]; present {

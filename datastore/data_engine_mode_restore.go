@@ -58,6 +58,9 @@ func (s *DataStore) GetDataEngineModeRestoreCRD(ctx context.Context, archive *ap
 	if ctx == nil || s.extensionsClient == nil || archive == nil {
 		return nil, fmt.Errorf("missing v2-only restore CRD binding")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	live, err := s.extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, archive.Name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("cannot rebind current CRD for v2-only restore")
@@ -73,4 +76,35 @@ func validateV2OnlyRestoreCRD(live, archive *apiextensionsv1.CustomResourceDefin
 		return fmt.Errorf("archived CRD is missing or incompatible with the current V2 schema")
 	}
 	return nil
+}
+
+func (s *DataStore) UpdateDataEngineModeRestoreCRD(ctx context.Context, crd *apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
+	if ctx == nil || s.dataEngineMode != types.DataEngineModeV2Only || s.extensionsClient == nil || crd == nil {
+		return nil, fmt.Errorf("missing bounded v2-only CRD update identity")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	live, err := s.GetDataEngineModeRestoreCRD(ctx, crd)
+	if err != nil {
+		return nil, err
+	}
+	if live.UID != crd.UID || live.ResourceVersion != crd.ResourceVersion {
+		return nil, fmt.Errorf("current CRD identity changed before v2-only restore update")
+	}
+	updated, err := s.extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Update(ctx, crd, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot update the bound CRD during v2-only restore")
+	}
+	if err := validateV2OnlyRestoreCRD(updated, crd); err != nil || updated.UID != live.UID || !reflect.DeepEqual(updated.Annotations, crd.Annotations) {
+		return nil, fmt.Errorf("v2-only CRD update response is unresolved")
+	}
+	observed, err := s.GetDataEngineModeRestoreCRD(ctx, crd)
+	if err != nil {
+		return nil, err
+	}
+	if observed.UID != updated.UID || observed.ResourceVersion != updated.ResourceVersion || !reflect.DeepEqual(observed.Annotations, updated.Annotations) {
+		return nil, fmt.Errorf("v2-only CRD update readback changed")
+	}
+	return observed, ctx.Err()
 }

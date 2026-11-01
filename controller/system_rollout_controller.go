@@ -1129,12 +1129,18 @@ func (c *SystemRolloutController) restoreCustomResourceDefinitions() (err error)
 			if !ok {
 				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.APIExtensionsKindCustomResourceDefinition)
 			}
+			if c.ds.DataEngineMode() == types.DataEngineModeV2Only {
+				return c.ds.UpdateDataEngineModeRestoreCRD(restoreContext, obj)
+			}
 			return c.ds.UpdateCustomResourceDefinition(obj)
 		}
 		_, err = c.rolloutResource(updateExist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
+	}
+	if restoreContext != nil {
+		return restoreContext.Err()
 	}
 
 	return nil
