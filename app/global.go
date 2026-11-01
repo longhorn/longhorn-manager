@@ -37,6 +37,7 @@ func GlobalCmd() *cli.Command {
 		Name:  "global",
 		Usage: "Run the longhorn-global-manager workload (leader-elected).",
 		Flags: []cli.Flag{
+			dataEngineModeFlag(),
 			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
@@ -52,6 +53,10 @@ func GlobalCmd() *cli.Command {
 }
 
 func startGlobalManager(cmd *cli.Command) error {
+	mode, err := types.ParseDataEngineMode(cmd.String(FlagDataEngineMode))
+	if err != nil {
+		return err
+	}
 	kubeconfigPath := cmd.String(FlagKubeConfig)
 
 	podName, err := util.GetRequiredEnv(types.EnvPodName)
@@ -98,7 +103,7 @@ func startGlobalManager(cmd *cli.Command) error {
 
 	// Build clients/informers before leader election so every replica keeps a
 	// warm cache; a new leader starts against a synced cache (no fresh LIST).
-	clients, err := client.NewClients(kubeconfigPath, true, electionCtx.Done())
+	clients, err := client.NewClients(kubeconfigPath, true, mode, electionCtx.Done())
 	if err != nil {
 		return errors.Wrap(err, "failed to build longhorn clients")
 	}

@@ -69,6 +69,7 @@ func DaemonCmd() *cli.Command {
 	return &cli.Command{
 		Name: "daemon",
 		Flags: []cli.Flag{
+			dataEngineModeFlag(),
 			&cli.StringFlag{
 				Name:  FlagEngineImage,
 				Usage: "Specify Longhorn engine image",
@@ -128,7 +129,7 @@ func DaemonCmd() *cli.Command {
 // - ctx: The context used to manage the webhook servers lifecycle.
 // - kubeconfigPath: The path to the kubeconfig file.
 // - currentNodeID: The ID of the current node attempting to acquire the leadership.
-func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentNodeID string) (*client.Clients, error) {
+func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentNodeID string, mode types.DataEngineMode) (*client.Clients, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get client config")
@@ -170,7 +171,7 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			// The services in the longhorn-manager can then start to receive the requests.
 			// Conversion webhook does not use datastore, since it is a prerequisite for
 			// datastore operation.
-			clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
+			clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, mode, ctx.Done())
 			if err != nil {
 				return err
 			}
@@ -199,7 +200,7 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 		var err error
 		// Neither the admission webhook (longhorn-system Pods only, AWS-IAM secret path) nor the
 		// node-local controllers read workload Pods, so this process stays off a cluster-wide Pod watch.
-		clients, err = client.NewClientsForNodeLocal(kubeconfigPath, ctx.Done())
+		clients, err = client.NewClientsForNodeLocal(kubeconfigPath, mode, ctx.Done())
 		if err != nil {
 			return err
 		}
@@ -266,9 +267,10 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 }
 
 func startManager(cmd *cli.Command) error {
-	var (
-		err error
-	)
+	mode, err := types.ParseDataEngineMode(cmd.String(FlagDataEngineMode))
+	if err != nil {
+		return err
+	}
 
 	engineImage := cmd.String(FlagEngineImage)
 	if engineImage == "" {
@@ -318,7 +320,7 @@ func startManager(cmd *cli.Command) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
-	clients, err := startWebhooksByLeaderElection(ctx, kubeconfigPath, currentNodeID)
+	clients, err := startWebhooksByLeaderElection(ctx, kubeconfigPath, currentNodeID, mode)
 	if err != nil {
 		return err
 	}

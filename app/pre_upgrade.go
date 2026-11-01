@@ -31,6 +31,7 @@ func PreUpgradeCmd() *cli.Command {
 	return &cli.Command{
 		Name: "pre-upgrade",
 		Flags: []cli.Flag{
+			dataEngineModeFlag(),
 			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",

@@ -39,18 +39,23 @@ type Clients struct {
 
 // NewClients constructs a Clients whose datastore, when needDataStore is
 // true, uses the cluster-wide Pod informer.
-func NewClients(kubeconfigPath string, needDataStore bool, stopCh <-chan struct{}) (*Clients, error) {
-	return newClients(kubeconfigPath, needDataStore, false, stopCh)
+func NewClients(kubeconfigPath string, needDataStore bool, mode types.DataEngineMode, stopCh <-chan struct{}) (*Clients, error) {
+	return newClients(kubeconfigPath, needDataStore, false, mode, stopCh)
 }
 
 // NewClientsForNodeLocal constructs a Clients whose datastore uses the
 // namespace-filtered (longhorn-system) Pod informer; the cluster-wide Pod
 // watch lives only in the longhorn-global-manager Deployment.
-func NewClientsForNodeLocal(kubeconfigPath string, stopCh <-chan struct{}) (*Clients, error) {
-	return newClients(kubeconfigPath, true, true, stopCh)
+func NewClientsForNodeLocal(kubeconfigPath string, mode types.DataEngineMode, stopCh <-chan struct{}) (*Clients, error) {
+	return newClients(kubeconfigPath, true, true, mode, stopCh)
 }
 
-func newClients(kubeconfigPath string, needDataStore, nodeLocalOnly bool, stopCh <-chan struct{}) (*Clients, error) {
+func newClients(kubeconfigPath string, needDataStore, nodeLocalOnly bool, mode types.DataEngineMode, stopCh <-chan struct{}) (*Clients, error) {
+	mode, err := types.ParseDataEngineMode(string(mode))
+	if err != nil {
+		return nil, err
+	}
+
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, using default namespace", types.EnvPodNamespace)
@@ -110,9 +115,9 @@ func newClients(kubeconfigPath string, needDataStore, nodeLocalOnly bool, stopCh
 		//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
 		informerFactories := util.NewInformerFactories(namespace, clients.K8s, lhClient, 30*time.Second)
 		if nodeLocalOnly {
-			ds = datastore.NewDataStoreForNodeLocal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
+			ds = datastore.NewDataStoreForNodeLocal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories, mode)
 		} else {
-			ds = datastore.NewDataStoreForGlobal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
+			ds = datastore.NewDataStoreForGlobal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories, mode)
 		}
 
 		informerFactories.Start(stopCh)

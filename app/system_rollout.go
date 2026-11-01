@@ -27,6 +27,7 @@ func SystemRolloutCmd() *cli.Command {
 	return &cli.Command{
 		Name: "system-rollout",
 		Flags: []cli.Flag{
+			dataEngineModeFlag(),
 			&cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
@@ -46,6 +47,10 @@ func SystemRolloutCmd() *cli.Command {
 }
 
 func systemRollout(cmd *cli.Command) error {
+	mode, err := types.ParseDataEngineMode(cmd.String(FlagDataEngineMode))
+	if err != nil {
+		return err
+	}
 	if cmd.NArg() != 1 {
 		return errors.New("require SystemRestore name")
 	}
@@ -88,7 +93,7 @@ func systemRollout(cmd *cli.Command) error {
 	}
 
 	informerFactories := util.NewInformerFactories(namespace, kubeClient, lhClient, 30*time.Second)
-	ds := datastore.NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
+	ds := datastore.NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories, mode)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
