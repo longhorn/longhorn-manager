@@ -7533,8 +7533,11 @@ func IsSupportedVolumeSize(dataEngine longhorn.DataEngineType, fsType string, vo
 	return true
 }
 
-// IsDataEngineEnabled returns true if the given dataEngine is enabled
+// IsDataEngineEnabled applies the process capability before mutable enablement.
 func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (bool, error) {
+	if !s.dataEngineMode.AllowsDataEngine(dataEngine) {
+		return false, nil
+	}
 	dataEngineSetting := types.SettingNameV1DataEngine
 	if types.IsDataEngineV2(dataEngine) {
 		dataEngineSetting = types.SettingNameV2DataEngine
@@ -7542,7 +7545,7 @@ func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (boo
 
 	enabled, err := s.GetSettingAsBool(dataEngineSetting)
 	if err != nil {
-		return true, errors.Wrapf(err, "failed to get %v setting", dataEngineSetting)
+		return s.dataEngineMode != types.DataEngineModeV2Only, errors.Wrapf(err, "failed to get %v setting", dataEngineSetting)
 	}
 
 	return enabled, nil
@@ -7552,18 +7555,20 @@ func (s *DataStore) GetDataEngines() map[longhorn.DataEngineType]struct{} {
 	dataEngines := map[longhorn.DataEngineType]struct{}{}
 
 	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+		dataEngine := longhorn.DataEngineTypeV1
+		if setting == types.SettingNameV2DataEngine {
+			dataEngine = longhorn.DataEngineTypeV2
+		}
+		if !s.dataEngineMode.AllowsDataEngine(dataEngine) {
+			continue
+		}
 		dataEngineEnabled, err := s.GetSettingAsBool(setting)
 		if err != nil {
 			logrus.WithError(err).Warnf("Failed to get setting %v", setting)
 			continue
 		}
 		if dataEngineEnabled {
-			switch setting {
-			case types.SettingNameV1DataEngine:
-				dataEngines[longhorn.DataEngineTypeV1] = struct{}{}
-			case types.SettingNameV2DataEngine:
-				dataEngines[longhorn.DataEngineTypeV2] = struct{}{}
-			}
+			dataEngines[dataEngine] = struct{}{}
 		}
 	}
 

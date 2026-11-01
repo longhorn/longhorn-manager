@@ -182,7 +182,7 @@ func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
 
 func newTestInstanceManagerController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*InstanceManagerController, error) {
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	logger := logrus.StandardLogger()
 

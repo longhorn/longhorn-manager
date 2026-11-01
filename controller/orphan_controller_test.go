@@ -21,6 +21,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	longhorntypes "github.com/longhorn/longhorn-manager/types"
 )
 
 // OrphanControllerSuite holds the fake clients and indexers needed for testing
@@ -58,7 +59,7 @@ func (s *OrphanControllerSuite) SetUpTest(c *C) {
 func newTestOrphanController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*OrphanController, error) {
 
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable)
 
 	logger := logrus.StandardLogger()
 	oc, err := NewOrphanController(logger, ds, scheme.Scheme, kubeClient, controllerID, TestNamespace)

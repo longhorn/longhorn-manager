@@ -57,7 +57,7 @@ func newInstanceManagerUpgrade(name, nodeID, targetImage string, state longhorn.
 
 func newTestInstanceManagerUpgradeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*InstanceManagerUpgradeController, error) {
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	imuc, err := NewInstanceManagerUpgradeController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, util.NewAtomicCounter())
 	if err != nil {
@@ -73,7 +73,7 @@ func newTestInstanceManagerUpgradeController(lhClient *lhfake.Clientset, kubeCli
 
 func newTestInstanceManagerUpgradeControlController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*InstanceManagerUpgradeControlController, error) {
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	imuc, err := NewInstanceManagerUpgradeControlController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
 	if err != nil {
@@ -96,7 +96,7 @@ func (s *TestSuite) TestGetNodeV2InstanceManager(c *C) {
 
 	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	nodeIM := newInstanceManager("im-node", longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1, nil, nil, nil, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
 	otherNodeIM := newInstanceManager("im-other-node", longhorn.InstanceManagerStateRunning, TestNode2, TestNode2, TestIP2, nil, nil, nil, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
@@ -171,7 +171,7 @@ func (s *TestSuite) TestGetNodeV2InstanceManagerPrefersRunningSourceIM(c *C) {
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 30*time.Second)
 
 	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	sourceIM := newInstanceManager("im-source", longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1, nil, nil, nil, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
 	newDefaultIM := newInstanceManager("im-new-default", longhorn.InstanceManagerStateUpgrading, TestNode1, TestNode1, "", nil, nil, nil, longhorn.DataEngineTypeV2, TestExtraInstanceManagerImage, false)

@@ -58,7 +58,7 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 
 func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*VolumeController, error) {
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	proxyConnCounter := util.NewAtomicCounter()
 
@@ -2939,7 +2939,7 @@ func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensB
 		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
 	}
 
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 	vc := &VolumeController{
 		baseController: newBaseController("test-volume", logrus.StandardLogger()),
 		ds:             ds,
@@ -3015,7 +3015,7 @@ func (s *TestSuite) TestCleanupReplicaInNotReadyEnvSkipsReplicaWithoutInstanceMa
 	}
 	c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
 
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 	vc := &VolumeController{
 		baseController: newBaseController("test-volume", logrus.StandardLogger()),
 		ds:             ds,

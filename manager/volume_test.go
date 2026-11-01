@@ -15,6 +15,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	longhorntypes "github.com/longhorn/longhorn-manager/types"
 )
 
 // TestCreatePreservesSpecFields guards the Create spec rebuild: fields plumbed
@@ -26,7 +27,7 @@ func TestCreatePreservesSpecFields(t *testing.T) {
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories("default", kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
-	ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable)
 
 	// Start the informers so the datastore's create-then-verify lister sees
 	// objects created through the fake clientset.
@@ -100,7 +101,7 @@ func TestExpandDefersAffectedV2VolumeDuringLiveUpgrade(t *testing.T) {
 				t.Fatalf("failed to create instance manager upgrade: %v", err)
 			}
 
-			ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories)
+			ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable)
 			stop := make(chan struct{})
 			defer close(stop)
 			informerFactories.LhInformerFactory.Start(stop)
@@ -160,7 +161,7 @@ func TestV2VolumeExpansionIgnoresTerminalLiveUpgrade(t *testing.T) {
 		}
 	}
 
-	ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal("default", lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable)
 	stop := make(chan struct{})
 	defer close(stop)
 	informerFactories.LhInformerFactory.Start(stop)

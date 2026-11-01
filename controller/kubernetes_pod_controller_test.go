@@ -36,7 +36,7 @@ import (
 func newTestKubernetesPodController(
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories) (*KubernetesPodController, error) {
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	kc, err := NewKubernetesPodController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient)
 	if err != nil {

@@ -192,7 +192,7 @@ func TestKubernetesConfigMapControllerRecordsReconcileMetrics(t *testing.T) {
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-	ds := datastore.NewDataStoreForNodeLocal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForNodeLocal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	kc, err := NewKubernetesConfigMapController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestNode1, TestNamespace)
 	require.NoError(t, err)

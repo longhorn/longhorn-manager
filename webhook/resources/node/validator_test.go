@@ -16,6 +16,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	longhorntypes "github.com/longhorn/longhorn-manager/types"
 	managerutil "github.com/longhorn/longhorn-manager/util"
 )
 
@@ -221,7 +222,7 @@ func newNodeValidatorForTest(kubeClient *kubefake.Clientset) *nodeValidator {
 	lhClient := lhfake.NewClientset()
 	extensionsClient := apiextensionsfake.NewSimpleClientset()
 	informerFactories := managerutil.NewInformerFactories(nodeValidatorTestNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStoreForGlobal(nodeValidatorTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(nodeValidatorTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable)
 	return &nodeValidator{ds: ds}
 }
 

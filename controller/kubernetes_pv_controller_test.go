@@ -169,7 +169,7 @@ func newPodWithPVC(podName string) *corev1.Pod {
 }
 
 func newTestKubernetesPVController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) (*KubernetesPVController, error) {
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	logger := logrus.StandardLogger()
 	kc, err := NewKubernetesPVController(logger, ds, scheme.Scheme, kubeClient)

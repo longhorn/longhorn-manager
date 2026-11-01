@@ -666,7 +666,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 }
 
 func newTestInstanceHandler(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) *InstanceHandler {
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 	fakeRecorder := record.NewFakeRecorder(100)
 	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
 }

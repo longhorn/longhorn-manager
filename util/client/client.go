@@ -110,9 +110,9 @@ func newClients(kubeconfigPath string, needDataStore, nodeLocalOnly bool, stopCh
 		//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
 		informerFactories := util.NewInformerFactories(namespace, clients.K8s, lhClient, 30*time.Second)
 		if nodeLocalOnly {
-			ds = datastore.NewDataStoreForNodeLocal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
+			ds = datastore.NewDataStoreForNodeLocal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 		} else {
-			ds = datastore.NewDataStoreForGlobal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
+			ds = datastore.NewDataStoreForGlobal(namespace, lhClient, clients.K8s, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 		}
 
 		informerFactories.Start(stopCh)
