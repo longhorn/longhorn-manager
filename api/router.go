@@ -45,8 +45,11 @@ func writeErr(rw http.ResponseWriter, req *http.Request, err error, statusCode i
 	}
 }
 
-func NewRouter(s *Server) *mux.Router {
-	schemas := NewSchema()
+func NewRouter(s *Server) (*mux.Router, error) {
+	schemas, err := NewSchemaForDataEngineMode(s.m.GetDataEngineMode())
+	if err != nil {
+		return nil, err
+	}
 	r := mux.NewRouter().StrictSlash(true)
 	f := HandleError
 
@@ -330,5 +333,5 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/volumeattachments").Handler(f(schemas, volumeAttachmentListStream))
 	r.Path("/v1/ws/{period}/volumeattachments").Handler(f(schemas, volumeAttachmentListStream))
 
-	return r
+	return r, nil
 }

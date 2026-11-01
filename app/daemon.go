@@ -403,7 +403,11 @@ func startManager(cmd *cli.Command) error {
 	}
 
 	server := api.NewServer(m, wsc)
-	router := http.Handler(api.NewRouter(server))
+	apiRouter, err := api.NewRouter(server)
+	if err != nil {
+		return err
+	}
+	router := http.Handler(apiRouter)
 	router = util.FilteredLoggingHandler(os.Stdout, router)
 	router = handlers.ProxyHeaders(router)
 
