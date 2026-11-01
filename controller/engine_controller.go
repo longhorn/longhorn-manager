@@ -2938,6 +2938,9 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 }
 
 func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logrus.Entry) error {
+	if !ec.ds.DataEngineMode().AllowsDataEngine(e.Spec.DataEngine) {
+		return fmt.Errorf("data engine %q is outside the %q installation capability", e.Spec.DataEngine, ec.ds.DataEngineMode())
+	}
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
 		frontend = longhorn.VolumeFrontendEmpty

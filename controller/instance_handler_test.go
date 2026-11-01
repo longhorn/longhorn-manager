@@ -710,6 +710,7 @@ func (s *TestSuite) TestReconcileInstanceStateClearsStaleV2InstanceManager(c *C)
 func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
 	fakeRecorder := record.NewFakeRecorder(5)
 	h := &InstanceHandler{
+		ds: newRuntimeCapabilityTestStore(types.DataEngineModeV1Capable),
 		instanceManagerHandler: &failingCreateInstanceManagerHandler{
 			createErr: fmt.Errorf("engine frontend create failed"),
 		},
@@ -861,6 +862,7 @@ func (s *TestSuite) TestCreateInstanceReapsStaleStoppedV1Record(c *C) {
 			getErr:      tc.getErr,
 		}
 		h := &InstanceHandler{
+			ds:                     newRuntimeCapabilityTestStore(types.DataEngineModeV1Capable),
 			instanceManagerHandler: stub,
 			eventRecorder:          record.NewFakeRecorder(10),
 		}
@@ -929,6 +931,7 @@ func (s *TestSuite) TestCreateInstanceRecoversFromStaleStoppedV1Record(c *C) {
 		instance: &longhorn.InstanceProcess{Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateStopped}},
 	}
 	h := &InstanceHandler{
+		ds:                     newRuntimeCapabilityTestStore(types.DataEngineModeV1Capable),
 		instanceManagerHandler: stub,
 		eventRecorder:          record.NewFakeRecorder(10),
 	}
