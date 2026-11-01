@@ -243,7 +243,10 @@ func TestV2OnlyRestorePreparationRevalidatesArchiveAndLiveState(t *testing.T) {
 	}
 	for _, client := range []interface{ Actions() []k8stesting.Action }{lh, kube, extensions} {
 		for _, action := range client.Actions() {
-			if action.GetVerb() != "list" && action.GetVerb() != "get" && !(action.GetResource().Resource == "systemrestores" && action.GetSubresource() == "status") {
+			if action.GetVerb() == "list" || action.GetVerb() == "get" {
+				continue
+			}
+			if action.GetVerb() != "update" || action.GetResource().Resource != "systemrestores" || action.GetSubresource() != "status" {
 				t.Fatal("schema drift allowed a later archived resource write")
 			}
 		}
