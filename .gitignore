@@ -37,3 +37,38 @@ validate.done
 # editors
 .idea
 
+# Local credentials, environment files, and infrastructure state
+# Keep sanitized example files available for documentation.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.example.tfvars
+!*.example.tfvars.json
+*.tfplan
+tfplan
+.terraform/
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.aws/
+.kube/
+kubeconfig
+kubeconfig.*
+credentials.json
+service-account*.json
+.DS_Store
+
+# Allow sanitized templates after all sensitive-file patterns.
+!.env.example
+!.env.sample
+!.env.template
+!*.example.tfvars
+!*.example.tfvars.json
