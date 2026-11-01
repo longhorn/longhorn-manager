@@ -1179,15 +1179,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.CurrentSize = volumeInfo.Size
 		engine.Status.IsExpanding = volumeInfo.IsExpanding
 
-		if types.IsDataEngineV1(engine.Spec.DataEngine) {
-			// For v1, the engine owns and starts its frontend directly.
-			// For v2, frontend lifecycle is managed by EngineFrontendController.
-			if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
-				m.logger.Infof("Starting frontend %v", engine.Spec.Frontend)
-				if err := engineClientProxy.VolumeFrontendStart(engine); err != nil {
-					return errors.Wrapf(err, "failed to start frontend %v", engine.Spec.Frontend)
-				}
-			}
+		if err := m.startFrontend(engine, engineClientProxy); err != nil {
+			return err
 		}
 
 		// The rebuild failure will be handled by ec.startRebuilding()
@@ -2283,6 +2276,9 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 	defer func() {
 		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replicaName, e.Name)
 	}()
+	if err := validateEngineActivationCapability(ec.ds.DataEngineMode(), e.Spec.DataEngine); err != nil {
+		return err
+	}
 
 	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name, "replica": replicaName, "address": addr})
 
@@ -2556,6 +2552,10 @@ func (ec *EngineController) runRebuild(rc *rebuildContext, rebuildingEngineName 
 	if rc.cleanupProxy != rc.rebuildProxy {
 		defer rc.cleanupProxy.Close()
 	}
+	if err := ec.validateRebuildCapability(rc); err != nil {
+		rc.log.WithError(err).Warn("Cannot activate a rebuild outside the installation capability")
+		return
+	}
 
 	if rc.autoCleanup {
 		allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(rc.cleanupProxy, rc.currentEngine, ec.ds)
@@ -2587,7 +2587,7 @@ func (ec *EngineController) runRebuild(rc *rebuildContext, rebuildingEngineName 
 		// TODO: Before calling ReplicaAdd for the v2 frontend path, fetch the
 		// latest size/currentSize from currentEngine and pass them through once
 		// the proxy API consumes those fields for EngineFrontend-based rebuild.
-		replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, nil, 0, rc.grpcTimeoutSeconds, rc.linkedCloneSource)
+		replicaAddErr = ec.addReplicaForRebuild(rc, false, nil, 0, rc.grpcTimeoutSeconds)
 		switch {
 		case replicaAddErr == nil:
 			// ok
@@ -2608,12 +2608,12 @@ func (ec *EngineController) runRebuild(rc *rebuildContext, rebuildingEngineName 
 			if rc.engine.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-				replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, true, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, 0, rc.linkedCloneSource)
+				replicaAddErr = ec.addReplicaForRebuild(rc, true, localSync, rc.fileSyncHTTPClientTO, 0)
 			}
 		} else {
 			ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-			replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds, rc.linkedCloneSource)
+			replicaAddErr = ec.addReplicaForRebuild(rc, false, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds)
 		}
 	}
 
