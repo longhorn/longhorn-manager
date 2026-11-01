@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -145,8 +146,9 @@ type SystemRolloutController struct {
 	systemRestoredAt  string
 	systemRestoredURL string
 
-	downloadPath string
-	engineImage  string
+	downloadPath        string
+	engineImage         string
+	archiveManagerImage string
 
 	extractedResources
 
@@ -431,7 +433,25 @@ func (c *SystemRolloutController) systemRollout() error {
 		)
 
 	case longhorn.SystemRestoreStateRestoring:
-		c.restore(types.APIExtensionsKindCustomResourceDefinitionList, c.restoreCustomResourceDefinitions, log)
+		err = c.prepareV2OnlySystemRestore()
+		if err != nil {
+			return errors.Wrap(err, "system restore capability validation failed before archived resource writes")
+		}
+		if c.ds.DataEngineMode() == types.DataEngineModeV2Only {
+			// Schema compatibility is a prerequisite for every later write.
+			// Fail the explicit V2-only operation immediately on drift rather
+			// than waiting through the legacy 24-hour per-kind retry loop.
+			err = c.restoreCustomResourceDefinitions()
+			c.postRestoreHandle(types.APIExtensionsKindCustomResourceDefinitionList, err)
+			if err != nil || len(c.cacheErrors) != 0 {
+				if err == nil {
+					err = errors.New("system restore prerequisite state is unresolved")
+				}
+				return errors.Wrap(err, "current schema binding changed during v2-only restore")
+			}
+		} else {
+			c.restore(types.APIExtensionsKindCustomResourceDefinitionList, c.restoreCustomResourceDefinitions, log)
+		}
 		c.restore(types.KubernetesKindDaemonSetList, c.restoreDaemonSets, log)
 		c.restore(types.LonghornKindEngineImageList, c.restoreEngineImages, log)
 		c.restore(types.LonghornKindSettingList, c.restoreSettings, log)
@@ -562,6 +582,7 @@ func (c *SystemRolloutController) syncController() error {
 	c.backupTargetCredential = backupTargetClient.Credential
 	c.backupTargetURL = backupTargetClient.URL
 	c.engineImage = systemBackupCfg.EngineImage
+	c.archiveManagerImage = systemBackupCfg.ManagerImage
 
 	c.cacheErrors = multierr.NewMultiError()
 
@@ -732,6 +753,12 @@ func (c *SystemRolloutController) Unpack(log logrus.FieldLogger) error {
 	cmd.Dir = filepath.Dir(c.downloadPath)
 	if err := cmd.Run(); err != nil {
 		return errors.Wrapf(err, "failed to unzip %v", c.downloadPath)
+	}
+	if mode, err := types.ParseDataEngineMode(string(c.ds.DataEngineMode())); err != nil || mode == types.DataEngineModeV2Only {
+		if err != nil {
+			return err
+		}
+		return c.prepareV2OnlySystemRestore()
 	}
 
 	if err := c.cacheKubernetesResources(); err != nil {
@@ -1015,11 +1042,23 @@ func (c *SystemRolloutController) restoreCustomResourceDefinitions() (err error)
 	if c.customResourceDefinitionList == nil {
 		return nil
 	}
+	var restoreContext context.Context
+	if c.ds.DataEngineMode() == types.DataEngineModeV2Only {
+		var cancel context.CancelFunc
+		restoreContext, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+	}
 
 	for _, restore := range c.customResourceDefinitionList.Items {
 		log := c.logger.WithField(types.APIExtensionsKindCustomResourceDefinition, restore.Name)
 
-		exist, err := c.ds.GetCustomResourceDefinition(restore.Name)
+		var exist *apiextensionsv1.CustomResourceDefinition
+		var err error
+		if c.ds.DataEngineMode() == types.DataEngineModeV2Only {
+			exist, err = c.ds.GetDataEngineModeRestoreCRD(restoreContext, &restore)
+		} else {
+			exist, err = c.ds.GetCustomResourceDefinition(restore.Name)
+		}
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
 				return err
