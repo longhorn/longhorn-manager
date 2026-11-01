@@ -203,14 +203,14 @@ func TestV2OnlyBootstrapBindsCreatedSettingResponseToReadback(t *testing.T) {
 
 func TestDefaultBootstrapPreservesNoAPIChecks(t *testing.T) {
 	for _, mode := range []types.DataEngineMode{"", types.DataEngineModeV1Capable} {
-		if err := InitializeDataEngineModeSettings(nil, mode, "", nil, nil); err != nil {
+		if err := InitializeDataEngineModeSettings(t.Context(), mode, "", nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateDataEngineModeBootstrapState(nil, mode, "", nil, nil); err != nil {
+		if err := ValidateDataEngineModeBootstrapState(t.Context(), mode, "", nil, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := InitializeDataEngineModeSettings(nil, "unknown", "", nil, nil); err == nil {
+	if err := InitializeDataEngineModeSettings(t.Context(), "unknown", "", nil, nil); err == nil {
 		t.Fatal("unknown installation mode cleared initialization")
 	}
 }
