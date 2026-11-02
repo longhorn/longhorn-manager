@@ -4607,7 +4607,8 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 		var nCandidates []string
 		adjustCount, _, nCandidates := c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode)
 		if adjustCount == 0 {
-			adjustCount, _, zCandidates := c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
+			var zCandidates []string
+			adjustCount, _, zCandidates = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
 			if adjustCount != 0 {
 				nCandidates = c.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
 			}
