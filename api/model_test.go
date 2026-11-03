@@ -347,3 +347,11 @@ func TestToRecurringJobResourceIncludesRetentionPolicy(t *testing.T) {
 		t.Fatalf("expected retentionPolicy %v, got %v", longhorn.RecurringJobRetentionPolicyAgeBased, resource.RetentionPolicy)
 	}
 }
+
+func TestVolumeSchemaAllowsProvisioningModeOnCreate(t *testing.T) {
+	volumeSchema := NewSchema().Schema("volume")
+	field := volumeSchema.Field("provisioningMode")
+	if !field.Create {
+		t.Fatal("expected provisioningMode to be accepted when creating a volume")
+	}
+}

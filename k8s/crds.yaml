@@ -341,6 +341,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               diskFileSpecMap:
                 additionalProperties:
@@ -349,6 +350,7 @@ spec:
                       enum:
                       - v1
                       - v2
+                      - local
                       type: string
                     evictionRequested:
                       type: boolean
@@ -400,6 +402,7 @@ spec:
                       enum:
                       - v1
                       - v2
+                      - local
                       type: string
                     lastStateTransitionTime:
                       type: string
@@ -1160,6 +1163,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               desireState:
                 type: string
@@ -1557,6 +1561,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               desireState:
                 type: string
@@ -2820,10 +2825,16 @@ spec:
                       enum:
                       - filesystem
                       - block
+                      - lvm
                       type: string
                     evictionRequested:
                       type: boolean
                     path:
+                      description: |-
+                        Path is the mount point of a filesystem disk, the block device of a
+                        block disk, or, for an lvm disk, the block devices to make a volume
+                        group from (separated by ";") or the name of an existing empty volume
+                        group. The path of an lvm disk cannot change once set.
                       type: string
                     storageReserved:
                       format: int64
@@ -3082,10 +3093,11 @@ spec:
               dataEngine:
                 description: |-
                   The type of data engine for instance orphan.
-                  Can be "v1", "v2".
+                  Can be "v1", "v2", "local".
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               nodeID:
                 description: The node ID on which the controller is responsible to
@@ -3430,6 +3442,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               desireState:
                 type: string
@@ -5219,6 +5232,7 @@ spec:
                 enum:
                 - v1
                 - v2
+                - local
                 type: string
               dataLayout:
                 description: |-
@@ -5343,6 +5357,14 @@ spec:
                 - ignored
                 - disabled
                 - enabled
+                type: string
+              provisioningMode:
+                description: |-
+                  ProvisioningMode records the immutable allocation mode of the volume's storage. Only the local data engine uses it today, where it selects a thick or thin LVM logical volume.
+                  It is empty for v1 and v2 volumes.
+                enum:
+                - thick
+                - thin
                 type: string
               rebuildConcurrentSyncLimit:
                 description: |-

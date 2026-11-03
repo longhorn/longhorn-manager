@@ -48,9 +48,8 @@ func (bbi *backupBackingImageValidator) Create(request *admission.Request, newOb
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return werror.NewInvalidError(fmt.Sprintf("failed to get the backing image %v for backup: %v", backingImageName, err), "")
 	}
-	// TODO: support backup for v2 data engine in the future
-	if backingImage != nil && types.IsDataEngineV2(backingImage.Spec.DataEngine) {
-		return werror.NewInvalidError(fmt.Sprintf("backing image %v uses v2 data engine which doesn't support backup operations", backingImageName), "")
+	if backingImage != nil && !types.IsDataEngineV1(backingImage.Spec.DataEngine) {
+		return werror.NewInvalidError(fmt.Sprintf("backing image %v uses %v data engine which doesn't support backup operations", backingImageName, backingImage.Spec.DataEngine), "")
 	}
 
 	backupBackingImages, err := bbi.ds.ListBackupBackingImagesRO()

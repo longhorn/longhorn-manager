@@ -186,6 +186,46 @@ func TestNodeValidatorUpdateLostKubernetesNode(t *testing.T) {
 				newNode.Annotations["example.com/test-annotation"] = "updated-value"
 			},
 		},
+		{
+			name:           "adding LVM disk when local data engine is disabled is rejected",
+			kubeNodeExists: true,
+			disksSynced:    true,
+			mutate: func(_, newNode *longhorn.Node) {
+				newNode.Spec.Disks["disk-2"] = longhorn.DiskSpec{
+					Path:            "/dev/sdb",
+					Type:            longhorn.DiskTypeLVM,
+					AllowScheduling: true,
+				}
+			},
+			expectedErrorMsg: "is an LVM disk, but the local data engine is not enabled",
+		},
+		{
+			name:           "modifying LVM disk when local data engine is disabled is rejected",
+			kubeNodeExists: true,
+			disksSynced:    true,
+			mutate: func(oldNode, newNode *longhorn.Node) {
+				lvmDisk := oldNode.Spec.Disks["disk-1"]
+				lvmDisk.Type = longhorn.DiskTypeLVM
+				oldNode.Spec.Disks["disk-1"] = lvmDisk
+
+				lvmDisk.Tags = []string{"changed"}
+				newNode.Spec.Disks["disk-1"] = lvmDisk
+			},
+			expectedErrorMsg: "is an LVM disk, but the local data engine is not enabled",
+		},
+		{
+			name:           "disabling scheduling on node with LVM disk remaining unchanged (local disabled) is allowed",
+			kubeNodeExists: true,
+			disksSynced:    true,
+			mutate: func(oldNode, newNode *longhorn.Node) {
+				lvmDisk := oldNode.Spec.Disks["disk-1"]
+				lvmDisk.Type = longhorn.DiskTypeLVM
+
+				oldNode.Spec.Disks["disk-1"] = lvmDisk
+				newNode.Spec.Disks["disk-1"] = lvmDisk
+				newNode.Spec.AllowScheduling = false
+			},
+		},
 	}
 
 	for _, tc := range testCases {

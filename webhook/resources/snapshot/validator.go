@@ -62,7 +62,25 @@ func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Ob
 		return werror.NewInvalidError("cannot create snapshots for legacy linked-clone volumes", "spec.volume")
 	}
 
+	volume, err := o.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to get volume %v: %v", snapshot.Spec.Volume, err), "spec.volume")
+	}
+	if err := validateLocalVolumeSnapshot(volume); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// validateLocalVolumeSnapshot rejects snapshots of local data engine volumes
+// until the engine implements them; otherwise the Snapshot CR would be created
+// and retry against an instance manager that answers Unimplemented.
+func validateLocalVolumeSnapshot(volume *longhorn.Volume) error {
+	if !types.IsDataEngineLocal(volume.Spec.DataEngine) {
+		return nil
+	}
+	return werror.NewInvalidError(fmt.Sprintf("snapshots are not supported for local data engine volume %v yet", volume.Name), "spec.volume")
 }
 
 func (o *snapshotValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {

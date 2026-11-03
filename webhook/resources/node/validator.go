@@ -62,11 +62,20 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 		err = errors.Wrapf(err, "failed to get spdk setting")
 		return werror.NewInvalidError(err.Error(), "")
 	}
+	localDataEngineEnabled, err := n.ds.GetSettingAsBool(types.SettingNameLocalDataEngine)
+	if err != nil {
+		return werror.NewInvalidError(errors.Wrapf(err, "failed to get local data engine setting").Error(), "")
+	}
 
 	for name, disk := range node.Spec.Disks {
 		if !v2DataEngineEnabled {
 			if disk.Type == longhorn.DiskTypeBlock {
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since v2 data engine is disabled", name, disk.Type), "")
+			}
+		}
+		if disk.Type == longhorn.DiskTypeLVM {
+			if !localDataEngineEnabled {
+				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since the local data engine is disabled", name, disk.Type), "")
 			}
 		}
 
@@ -82,6 +91,29 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := validateLVMDiskDevices(node.Spec.Disks); err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("create node %v error: %v", node.Name, err), "")
+	}
+
+	return nil
+}
+
+// validateLVMDiskDevices rejects a block device listed by more than one LVM
+// disk, or twice by one: a device belongs to exactly one volume group.
+func validateLVMDiskDevices(disks map[string]longhorn.DiskSpec) error {
+	owners := map[string]string{}
+	for _, name := range util.GetSortedKeysFromMap(disks) {
+		disk := disks[name]
+		if disk.Type != longhorn.DiskTypeLVM {
+			continue
+		}
+		for _, device := range types.SplitLVMDiskPath(disk.Path) {
+			if owner, listed := owners[device]; listed {
+				return fmt.Errorf("device %v is listed by LVM disks %v and %v; a device belongs to one volume group", device, owner, name)
+			}
+			owners[device] = name
+		}
+	}
 	return nil
 }
 
@@ -193,6 +225,10 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		err = errors.Wrapf(err, "failed to get spdk setting")
 		return werror.NewInvalidError(err.Error(), "")
 	}
+	localDataEngineEnabled, err := n.ds.GetSettingAsBool(types.SettingNameLocalDataEngine)
+	if err != nil {
+		return werror.NewInvalidError(errors.Wrapf(err, "failed to get local data engine setting").Error(), "")
+	}
 
 	// Validate Disks StorageReserved, Tags and Type
 	for name, disk := range newNode.Spec.Disks {
@@ -213,6 +249,15 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 					newNode.Name, name, disk.Path), "")
 			}
 		}
+		// Reject only new or modified LVM disks when the local data engine is disabled, so
+		// that nodes keeping their existing LVM disks can still be updated and drained.
+		if !localDataEngineEnabled && disk.Type == longhorn.DiskTypeLVM {
+			oldDisk, existed := oldNode.Spec.Disks[name]
+			if !existed || !reflect.DeepEqual(oldDisk, disk) {
+				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: disk %v(%v) is an LVM disk, but the local data engine is not enabled",
+					newNode.Name, name, disk.Path), "")
+			}
+		}
 		if disk.Type != longhorn.DiskTypeBlock {
 			if disk.DiskDriver != longhorn.DiskDriverNone {
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to specify disk driver", name, disk.Type), "")
@@ -223,6 +268,9 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	// Validate no duplicate disk paths
 	if err := validateNodeDiskPaths(newNode.Name, newNode.Spec.Disks); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
+	}
+	if err := validateLVMDiskDevices(newNode.Spec.Disks); err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("update node %v error: %v", newNode.Name, err), "")
 	}
 
 	// Validate delete disks
@@ -235,11 +283,15 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		}
 	}
 
-	// Validate disk type change, the disk type is not allow to change
+	// Validate immutable disk fields: the type of every disk, and the path of
+	// an LVM disk, which names the volume group it was registered from
 	for name, disk := range oldNode.Spec.Disks {
 		if newDisk, ok := newNode.Spec.Disks[name]; ok {
 			if disk.Type != "" && disk.Type != newDisk.Type {
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) type is not allow to change", newNode.Name, name, disk.Path), "")
+			}
+			if disk.Type == longhorn.DiskTypeLVM && newDisk.Path != disk.Path {
+				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: the path of LVM disk %v cannot change", newNode.Name, name), "")
 			}
 		}
 	}

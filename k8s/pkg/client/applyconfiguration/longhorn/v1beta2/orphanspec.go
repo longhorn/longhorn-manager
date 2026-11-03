@@ -33,7 +33,7 @@ type OrphanSpecApplyConfiguration struct {
 	// Can be "replica".
 	Type *longhornv1beta2.OrphanType `json:"orphanType,omitempty"`
 	// The type of data engine for instance orphan.
-	// Can be "v1", "v2".
+	// Can be "v1", "v2", "local".
 	DataEngine *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
 	// The parameters of the orphaned data
 	Parameters map[string]string `json:"parameters,omitempty"`

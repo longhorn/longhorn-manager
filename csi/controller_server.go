@@ -798,6 +798,16 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	if dataEngineType, ok := scParameters["dataEngine"]; ok {
 		dataEngine = longhorn.DataEngineType(dataEngineType)
 	}
+	if types.IsDataEngineLocal(dataEngine) {
+		// Thick mode does not support over-provisioning, so it is capped at 100%.
+		provisioningMode := longhorn.VolumeProvisioningModeThick
+		if mode, ok := scParameters["provisioningMode"]; ok && mode != "" {
+			provisioningMode = longhorn.VolumeProvisioningMode(mode)
+		}
+		if provisioningMode == longhorn.VolumeProvisioningModeThick && overProvisioningPercentage > 100 {
+			overProvisioningPercentage = 100
+		}
+	}
 	storageCapacityMode := types.CSIStorageCapacityTrackingModeNode
 	if storageCapacityModeRaw, ok := scParameters["storageCapacityMode"]; ok {
 		storageCapacityMode = types.CSIStorageCapacityTrackingMode(storageCapacityModeRaw)
@@ -837,7 +847,8 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 			storageSchedulable := overProvisionLimit - diskStatus.StorageScheduled
 			storageSchedulable = max(storageSchedulable, 0)
 			validDisk := (dataEngine == longhorn.DataEngineTypeV1 && diskStatus.Type == longhorn.DiskTypeFilesystem) ||
-				(dataEngine == longhorn.DataEngineTypeV2 && diskStatus.Type == longhorn.DiskTypeBlock)
+				(dataEngine == longhorn.DataEngineTypeV2 && diskStatus.Type == longhorn.DiskTypeBlock) ||
+				(dataEngine == longhorn.DataEngineTypeLocal && diskStatus.Type == longhorn.DiskTypeLVM)
 
 			if validDisk {
 				maximumVolumeSize = max(maximumVolumeSize, storageSchedulable)

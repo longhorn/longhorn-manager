@@ -188,17 +188,21 @@ func (dc *DiskCollector) Collect(ch chan<- prometheus.Metric) {
 	dc.collectDiskStorage(ch)
 }
 
-func (dc *DiskCollector) getDiskServiceClient() (diskServiceClient *engineapi.DiskService, err error) {
-	v2DataEngineEnabled, err := dc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+func (dc *DiskCollector) getDiskServiceClient(dataEngine longhorn.DataEngineType) (diskServiceClient *engineapi.DiskService, err error) {
+	settingName := types.SettingNameV2DataEngine
+	if types.IsDataEngineLocal(dataEngine) {
+		settingName = types.SettingNameLocalDataEngine
+	}
+	dataEngineEnabled, err := dc.ds.GetSettingAsBool(settingName)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get setting %v for disk collector", types.SettingNameV2DataEngine)
+		return nil, errors.Wrapf(err, "failed to get setting %v for disk collector", settingName)
 	}
 
-	if !v2DataEngineEnabled {
+	if !dataEngineEnabled {
 		return nil, nil
 	}
 
-	im, err := dc.ds.GetRunningInstanceManagerByNodeRO(dc.currentNodeID, longhorn.DataEngineTypeV2)
+	im, err := dc.ds.GetRunningInstanceManagerByNodeRO(dc.currentNodeID, dataEngine)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get running instance manager for node %v", dc.currentNodeID)
 	}
@@ -224,14 +228,15 @@ func (dc *DiskCollector) collectDiskStorage(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	diskServiceClient, err := dc.getDiskServiceClient()
-	if err != nil {
-		dc.logger.WithError(err).Warn("Failed to get disk service client")
-	} else if diskServiceClient != nil {
-		defer diskServiceClient.Close()
-	}
-
 	disks := getDiskListFromNode(node)
+	diskServiceClients := map[longhorn.DiskType]*engineapi.DiskService{}
+	defer func() {
+		for _, client := range diskServiceClients {
+			if client != nil {
+				client.Close()
+			}
+		}
+	}()
 
 	for diskName, disk := range disks {
 		diskPath := disk.Status.DiskPath
@@ -244,20 +249,34 @@ func (dc *DiskCollector) collectDiskStorage(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(dc.usageMetric.Desc, dc.usageMetric.Type, float64(storageUsage), dc.currentNodeID, diskName)
 		ch <- prometheus.MustNewConstMetric(dc.reservationMetric.Desc, dc.reservationMetric.Type, float64(storageReservation), dc.currentNodeID, diskName)
 
-		if diskServiceClient != nil && disk.Spec.Type == longhorn.DiskTypeBlock {
-			diskMetrics, err := diskServiceClient.MetricsGet(string(disk.Spec.Type), diskName, diskPath, diskDriver)
-			if err == nil {
-				// Collect disk performance metrics if available
-				if diskMetrics != nil {
-					ch <- prometheus.MustNewConstMetric(dc.readThroughputMetric.Desc, dc.readThroughputMetric.Type, float64(diskMetrics.ReadThroughput), dc.currentNodeID, diskName, diskPath)
-					ch <- prometheus.MustNewConstMetric(dc.writeThroughputMetric.Desc, dc.writeThroughputMetric.Type, float64(diskMetrics.WriteThroughput), dc.currentNodeID, diskName, diskPath)
-					ch <- prometheus.MustNewConstMetric(dc.readIOPSMetric.Desc, dc.readIOPSMetric.Type, float64(diskMetrics.ReadIOPS), dc.currentNodeID, diskName, diskPath)
-					ch <- prometheus.MustNewConstMetric(dc.writeIOPSMetric.Desc, dc.writeIOPSMetric.Type, float64(diskMetrics.WriteIOPS), dc.currentNodeID, diskName, diskPath)
-					ch <- prometheus.MustNewConstMetric(dc.readLatencyMetric.Desc, dc.readLatencyMetric.Type, float64(diskMetrics.ReadLatency), dc.currentNodeID, diskName, diskPath)
-					ch <- prometheus.MustNewConstMetric(dc.writeLatencyMetric.Desc, dc.writeLatencyMetric.Type, float64(diskMetrics.WriteLatency), dc.currentNodeID, diskName, diskPath)
+		if disk.Spec.Type == longhorn.DiskTypeBlock || disk.Spec.Type == longhorn.DiskTypeLVM {
+			diskServiceClient, initialized := diskServiceClients[disk.Spec.Type]
+			if !initialized {
+				dataEngine := longhorn.DataEngineTypeV2
+				if disk.Spec.Type == longhorn.DiskTypeLVM {
+					dataEngine = longhorn.DataEngineTypeLocal
 				}
-			} else {
-				dc.logger.WithError(err).WithField("disk", diskName).Warn("Failed to get disk metrics")
+				diskServiceClient, err = dc.getDiskServiceClient(dataEngine)
+				if err != nil {
+					dc.logger.WithError(err).WithField("dataEngine", dataEngine).Warn("Failed to get disk service client")
+				}
+				diskServiceClients[disk.Spec.Type] = diskServiceClient
+			}
+			if diskServiceClient != nil {
+				diskMetrics, err := diskServiceClient.MetricsGet(string(disk.Spec.Type), diskName, diskPath, diskDriver)
+				if err == nil {
+					// Collect disk performance metrics if available
+					if diskMetrics != nil {
+						ch <- prometheus.MustNewConstMetric(dc.readThroughputMetric.Desc, dc.readThroughputMetric.Type, float64(diskMetrics.ReadThroughput), dc.currentNodeID, diskName, diskPath)
+						ch <- prometheus.MustNewConstMetric(dc.writeThroughputMetric.Desc, dc.writeThroughputMetric.Type, float64(diskMetrics.WriteThroughput), dc.currentNodeID, diskName, diskPath)
+						ch <- prometheus.MustNewConstMetric(dc.readIOPSMetric.Desc, dc.readIOPSMetric.Type, float64(diskMetrics.ReadIOPS), dc.currentNodeID, diskName, diskPath)
+						ch <- prometheus.MustNewConstMetric(dc.writeIOPSMetric.Desc, dc.writeIOPSMetric.Type, float64(diskMetrics.WriteIOPS), dc.currentNodeID, diskName, diskPath)
+						ch <- prometheus.MustNewConstMetric(dc.readLatencyMetric.Desc, dc.readLatencyMetric.Type, float64(diskMetrics.ReadLatency), dc.currentNodeID, diskName, diskPath)
+						ch <- prometheus.MustNewConstMetric(dc.writeLatencyMetric.Desc, dc.writeLatencyMetric.Type, float64(diskMetrics.WriteLatency), dc.currentNodeID, diskName, diskPath)
+					}
+				} else {
+					dc.logger.WithError(err).WithField("disk", diskName).Warn("Failed to get disk metrics")
+				}
 			}
 		}
 
