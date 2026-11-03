@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -41,7 +43,8 @@ const (
 // SnapshotGroupController reconciles SnapshotGroups: it fans the fixed member
 // set out into ordinary Snapshot CRs through the existing per-volume path,
 // mirrors member status, and drives the phase InProgress -> Ready | Failed
-// within the deadline. It calls no engine code.
+// within the deadline. A hooked group first passes through RunningPreHooks,
+// where the hook executor pauses the application.
 type SnapshotGroupController struct {
 	*baseController
 
@@ -264,28 +267,41 @@ func (ctrl *SnapshotGroupController) reconcile(name string) (err error) {
 	ctrl.restoreTerminalPhaseFromAnnotation(snapshotGroup)
 
 	// First reconcile: initialize the member entries from the spec (already
-	// resolved at admission) and enter InProgress. There is no Pending phase -
-	// it would carry no information a watcher could act on.
+	// resolved at admission) and enter InProgress, or RunningPreHooks for a
+	// hooked group. There is no Pending phase - it would carry no information
+	// a watcher could act on.
 	if snapshotGroup.Status.Phase == "" {
 		ctrl.initializeMemberStatuses(snapshotGroup)
-		snapshotGroup.Status.Phase = longhorn.SnapshotGroupPhaseInProgress
-		ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeNormal, constant.EventReasonStart,
-			"Snapshot group started taking %v member snapshots with deadline %vs", len(snapshotGroup.Spec.Members), snapshotGroup.Spec.DeadlineSeconds)
+		if snapshothook.IsHooked(snapshotGroup) {
+			snapshotGroup.Status.Phase = longhorn.SnapshotGroupPhaseRunningPreHooks
+			ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeNormal, constant.EventReasonStart,
+				"Snapshot group started running pre-hooks on %v members with deadline %vs", len(snapshotGroup.Spec.Members), snapshotGroup.Spec.DeadlineSeconds)
+		} else {
+			snapshotGroup.Status.Phase = longhorn.SnapshotGroupPhaseInProgress
+			ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeNormal, constant.EventReasonStart,
+				"Snapshot group started taking %v member snapshots with deadline %vs", len(snapshotGroup.Spec.Members), snapshotGroup.Spec.DeadlineSeconds)
+		}
 	}
 
-	if snapshotGroup.Status.Phase == longhorn.SnapshotGroupPhaseInProgress {
+	switch snapshotGroup.Status.Phase {
+	case longhorn.SnapshotGroupPhaseRunningPreHooks:
+		return ctrl.reconcileRunningPreHooks(snapshotGroup)
+	case longhorn.SnapshotGroupPhaseInProgress:
 		return ctrl.reconcileInProgress(snapshotGroup)
+	default:
+		return ctrl.reconcileTerminal(snapshotGroup)
 	}
-	return ctrl.reconcileTerminal(snapshotGroup)
 }
 
 // restoreTerminalPhaseFromAnnotation applies the terminal-phase annotation
 // when the status does not show the recorded outcome: an empty phase is a
-// restored copy of a finished group, and an InProgress phase is a crash
+// restored copy of a finished group, and a non-terminal phase is a crash
 // between the annotation write and the status persist. Either way no members
-// are created.
+// are created and no pause is started.
 func (ctrl *SnapshotGroupController) restoreTerminalPhaseFromAnnotation(snapshotGroup *longhorn.SnapshotGroup) {
-	if snapshotGroup.Status.Phase != "" && snapshotGroup.Status.Phase != longhorn.SnapshotGroupPhaseInProgress {
+	switch snapshotGroup.Status.Phase {
+	case "", longhorn.SnapshotGroupPhaseRunningPreHooks, longhorn.SnapshotGroupPhaseInProgress:
+	default:
 		return
 	}
 	annotatedPhase, recorded := types.GetSnapshotGroupTerminalPhase(snapshotGroup)
@@ -318,21 +334,119 @@ func (ctrl *SnapshotGroupController) initializeMemberStatuses(snapshotGroup *lon
 	snapshotGroup.Status.Members = members
 }
 
+// scheduleDeadlineReconcile queues a reconcile for right after the deadline.
+// It runs before any phase work: an error return later in the phase would
+// skip a schedule placed at the end, leaving only the retry backoff, which
+// can grow past the deadline. Rescheduling on every reconcile is safe: the
+// workqueue deduplicates by key, so a group has at most one pending wake-up.
+func (ctrl *SnapshotGroupController) scheduleDeadlineReconcile(snapshotGroup *longhorn.SnapshotGroup, deadline time.Time) {
+	if now := ctrl.nowHandler(); !now.After(deadline) {
+		ctrl.enqueueSnapshotGroupAfter(snapshotGroup, deadline.Sub(now)+time.Second)
+	}
+}
+
+// reconcileRunningPreHooks waits for the hook executor to pause every
+// member's application; the executor owns status.hooks and this function
+// only reads it. A recorded pre-hook failure or a passed deadline fails the
+// group. Once preHooksDone is set, the member snapshots are taken in the
+// same pass to minimize the pause. Any failure changes the phase, which
+// wakes the executor to run the release.
+func (ctrl *SnapshotGroupController) reconcileRunningPreHooks(snapshotGroup *longhorn.SnapshotGroup) error {
+	deadline := snapshothook.GroupDeadline(snapshotGroup)
+	ctrl.scheduleDeadlineReconcile(snapshotGroup, deadline)
+
+	if message := preHookFailureMessage(snapshotGroup); message != "" {
+		return ctrl.transitionToFailed(snapshotGroup, message)
+	}
+
+	if snapshotGroup.Status.PreHooksDone {
+		snapshotGroup.Status.Phase = longhorn.SnapshotGroupPhaseInProgress
+		ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeNormal, constant.EventReasonStart,
+			"Pre-hooks done on all %v members; taking member snapshots", len(snapshotGroup.Spec.Members))
+		return ctrl.reconcileInProgress(snapshotGroup)
+	}
+
+	if ctrl.nowHandler().After(deadline) {
+		message := preHookDeadlineExceededError(snapshotGroup)
+		ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonHookDeadlineExceeded,
+			"Snapshot group missed its %vs deadline before the pre-hooks finished: %v", snapshotGroup.Spec.DeadlineSeconds, message)
+		return ctrl.transitionToFailed(snapshotGroup, message)
+	}
+	return nil
+}
+
+// preHookFailureMessage builds the group failure reason from the executor's
+// record, or returns "" when no pre-hook has failed. A pod-level failure
+// names the pod the command ran in; a member-level failure has no pod
+// entries, meaning no command ran.
+func preHookFailureMessage(snapshotGroup *longhorn.SnapshotGroup) string {
+	var failures []string
+	for _, hook := range snapshotGroup.Status.Hooks {
+		if hook.Phase != longhorn.HookPhasePreFailed {
+			continue
+		}
+		member := fmt.Sprintf("member %v (%v)", hook.SnapshotName, memberHookPolicyKey(snapshotGroup, hook.SnapshotName))
+		failedPods := 0
+		for _, pod := range hook.Pods {
+			if pod.Phase != longhorn.HookPhasePreFailed {
+				continue
+			}
+			failedPods++
+			failures = append(failures, fmt.Sprintf("pre-hook failed on %v in pod %v/%v: %v", member, pod.Namespace, pod.Name, snapshothook.FailureMessage(pod.Reason, pod.ExitCode)))
+		}
+		if failedPods == 0 {
+			failures = append(failures, fmt.Sprintf("pre-hook failed on %v: %v", member, hook.Reason))
+		}
+	}
+	return strings.Join(failures, "; ")
+}
+
+// memberHookPolicyKey returns the hook policy recorded on the member with
+// the given snapshot name, for use in the group failure message.
+func memberHookPolicyKey(snapshotGroup *longhorn.SnapshotGroup, snapshotName string) string {
+	if member := snapshothook.FindMember(snapshotGroup, snapshotName); member != nil {
+		return snapshothook.PolicyRefNamespacedName(member.HookPolicyRef)
+	}
+	return ""
+}
+
+// preHookDeadlineExceededError builds the failure reason for a deadline
+// that passed in RunningPreHooks. An unset hooksStartedAt means the
+// executor never started on the group and nothing was paused.
+func preHookDeadlineExceededError(snapshotGroup *longhorn.SnapshotGroup) string {
+	if snapshotGroup.Status.HooksStartedAt == nil {
+		return "deadline passed while queued: paused nothing " + snapshothook.QueuedPastDeadlineMarker
+	}
+	done := 0
+	for _, hook := range snapshotGroup.Status.Hooks {
+		if hook.Phase == longhorn.HookPhasePreDone {
+			done++
+		}
+	}
+	return fmt.Sprintf("deadline passed while running pre-hooks: %v/%v members done", done, len(snapshotGroup.Spec.Members))
+}
+
 // reconcileInProgress creates missing member Snapshots, mirrors member state,
 // and drives the phase to Ready or Failed. Once the deadline has passed,
 // nothing is created anymore - a snapshot would auto-attach a detached member
 // volume - and a creation error can no longer hold off the Failed transition;
 // the group only settles on its outcome.
 func (ctrl *SnapshotGroupController) reconcileInProgress(snapshotGroup *longhorn.SnapshotGroup) error {
-	deadline := snapshotGroup.CreationTimestamp.Add(time.Duration(snapshotGroup.Spec.DeadlineSeconds) * time.Second)
-
-	// Schedule a reconcile at the deadline before doing any work: the error
-	// returns below would skip a schedule placed at the end, leaving only
-	// the retry backoff, which can grow past the deadline. The queue keeps
-	// one timer per group, so scheduling again on every reconcile is free.
-	if now := ctrl.nowHandler(); !now.After(deadline) {
-		ctrl.enqueueSnapshotGroupAfter(snapshotGroup, deadline.Sub(now)+time.Second)
+	// A hooked group reaches InProgress only after the executor records the
+	// pre-hooks done. A group arriving without that record skipped the pause,
+	// for example driven by an older longhorn-manager; fail it before
+	// creating any member snapshot.
+	if snapshothook.IsHooked(snapshotGroup) && !snapshotGroup.Status.PreHooksDone {
+		return ctrl.transitionToFailed(snapshotGroup,
+			"group entered InProgress before the pre-hooks were done "+snapshothook.PreHooksSkippedMarker)
 	}
+
+	if snapshothook.IsHooked(snapshotGroup) && snapshothook.ReleaseStarted(snapshotGroup) {
+		return ctrl.transitionToFailed(snapshotGroup, snapshothook.ReleasedBeforeReadyMessage(snapshotGroup))
+	}
+
+	deadline := snapshothook.GroupDeadline(snapshotGroup)
+	ctrl.scheduleDeadlineReconcile(snapshotGroup, deadline)
 
 	memberSnapshots := make(map[string]*longhorn.Snapshot, len(snapshotGroup.Spec.Members))
 	for _, member := range snapshotGroup.Spec.Members {
@@ -362,31 +476,107 @@ func (ctrl *SnapshotGroupController) reconcileInProgress(snapshotGroup *longhorn
 			return ctrl.transitionToFailed(snapshotGroup,
 				fmt.Sprintf("member snapshot name %v for volume %v collides with an existing foreign snapshot", member.SnapshotName, member.VolumeName))
 		}
+		// Member snapshots of a hooked group are labeled with the hooked
+		// marker at creation. A member without the marker was taken outside
+		// the pause, for example by an older longhorn-manager, so it is not
+		// application-consistent. The snapshot still belongs to the group,
+		// so deleting the group cleans it up.
+		if snapshothook.IsHooked(snapshotGroup) && !hasHookedMarker(snapshot) {
+			return ctrl.transitionToFailed(snapshotGroup,
+				fmt.Sprintf("member snapshot %v for volume %v was taken before the application was paused, by a longhorn-manager that predates hooks %v", member.SnapshotName, member.VolumeName, snapshothook.PreHooksSkippedMarker))
+		}
 		memberSnapshots[member.SnapshotName] = snapshot
 	}
 
 	ctrl.mirrorMemberStatuses(snapshotGroup, memberSnapshots)
 
-	if allCreated, latestCreationTime := allMembersCreatedByDeadline(snapshotGroup.Status.Members, snapshotGroup.CreationTimestamp.Time, deadline); allCreated {
+	// The pause time, preHooksDoneAt, is deliberately not used as lowerBound:
+	// comparing it against snapshot creation times means comparing timestamps
+	// from two different clocks, and a clock running a few seconds ahead of
+	// the other could wrongly fail a valid group.
+	lowerBound := snapshotGroup.CreationTimestamp.Time
+	if allCreated, latestCreationTime := allMembersCreatedByDeadline(snapshotGroup.Status.Members, lowerBound, deadline); allCreated {
+		if snapshothook.IsHooked(snapshotGroup) {
+			change, err := ctrl.hookPodChangeMessage(snapshotGroup)
+			if err != nil {
+				return err
+			}
+			if change != "" {
+				return ctrl.transitionToFailed(snapshotGroup, change)
+			}
+		}
 		return ctrl.transitionToReady(snapshotGroup, latestCreationTime)
 	}
 
 	// Read the clock after the loop, not before: the creates can overrun the
 	// deadline, and a pre-loop sample would defer the failure by the overrun.
 	if ctrl.nowHandler().After(deadline) {
-		return ctrl.transitionToFailed(snapshotGroup, deadlineExceededError(snapshotGroup.Status.Members, snapshotGroup.CreationTimestamp.Time, deadline))
+		message := deadlineExceededError(snapshotGroup.Status.Members, lowerBound, deadline)
+		if snapshothook.IsHooked(snapshotGroup) {
+			ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonHookDeadlineExceeded,
+				"Snapshot group missed its %vs deadline before every member snapshot was taken: %v", snapshotGroup.Spec.DeadlineSeconds, message)
+		}
+		return ctrl.transitionToFailed(snapshotGroup, message)
 	}
 
 	return nil
 }
 
+// hookPodChangeMessage compares the pods recorded at pause time with the
+// pods consuming the claims now, listed live from the API server. A pod
+// gone or replaced, a restarted container, a new pod, or a terminating pod
+// means a writer may have run outside the pause. It returns "" when every
+// member still matches.
+func (ctrl *SnapshotGroupController) hookPodChangeMessage(snapshotGroup *longhorn.SnapshotGroup) (string, error) {
+	podsByNamespace := map[string][]corev1.Pod{}
+	for _, member := range snapshotGroup.Spec.Members {
+		hook := snapshothook.FindHookStatus(snapshotGroup, member.SnapshotName)
+		if hook == nil || hook.PVCRef == nil {
+			return snapshothook.PodChangedMessage(member, "no pause record to verify the pods against"), nil
+		}
+		namespace, pvcName := hook.PVCRef.Namespace, hook.PVCRef.Name
+		pods, listed := podsByNamespace[namespace]
+		if !listed {
+			podList, err := ctrl.kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				return "", errors.Wrapf(err, "failed to list pods in namespace %v to check the paused pods of snapshot group %v", namespace, snapshotGroup.Name)
+			}
+			pods = podList.Items
+			podsByNamespace[namespace] = pods
+		}
+		// A terminating pod keeps writing until its containers stop, so it
+		// may write outside the pause whether recorded or not.
+		if terminating := snapshothook.TerminatingPodsUsingPVC(pods, pvcName); len(terminating) > 0 {
+			return snapshothook.PodChangedMessage(member,
+				fmt.Sprintf("pod %v/%v mounting the claim is terminating and may write outside the pause", terminating[0].Namespace, terminating[0].Name)), nil
+		}
+		if change := snapshothook.PodIdentityChange(hook.Pods, snapshothook.ConsumerPodsUsingPVC(pods, pvcName)); change != "" {
+			return snapshothook.PodChangedMessage(member, change), nil
+		}
+		// A short-lived pod, such as a Job, can start, write, and finish
+		// within the hook window without ever being paused.
+		for _, pod := range snapshothook.TerminalPodsUsingPVC(pods, pvcName) {
+			if pod.CreationTimestamp.After(snapshotGroup.CreationTimestamp.Time) {
+				return snapshothook.PodChangedMessage(member,
+					fmt.Sprintf("pod %v/%v mounted the claim and finished during the hook window", pod.Namespace, pod.Name)), nil
+			}
+		}
+	}
+	return "", nil
+}
+
 func (ctrl *SnapshotGroupController) createMemberSnapshot(snapshotGroup *longhorn.SnapshotGroup, member longhorn.SnapshotGroupMember) error {
+	labels := map[string]string{
+		types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup): snapshotGroup.Name,
+	}
+	// The marker records that the snapshot was taken after the pause.
+	if snapshothook.IsHooked(snapshotGroup) {
+		labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupHooked)] = "true"
+	}
 	snapshot := &longhorn.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: member.SnapshotName,
-			Labels: map[string]string{
-				types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup): snapshotGroup.Name,
-			},
+			Name:   member.SnapshotName,
+			Labels: labels,
 		},
 		Spec: longhorn.SnapshotSpec{
 			Volume:         member.VolumeName,
@@ -410,6 +600,12 @@ func (ctrl *SnapshotGroupController) createMemberSnapshot(snapshotGroup *longhor
 func (ctrl *SnapshotGroupController) isOwnMemberSnapshot(snapshotGroup *longhorn.SnapshotGroup, volumeName string, snapshot *longhorn.Snapshot) bool {
 	return snapshot.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)] == snapshotGroup.Name &&
 		snapshot.Spec.Volume == volumeName
+}
+
+// hasHookedMarker reports whether the member snapshot was created by a
+// longhorn-manager that knows spec.hooks, and so after the pre-hooks.
+func hasHookedMarker(snapshot *longhorn.Snapshot) bool {
+	return snapshot.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupHooked)] == "true"
 }
 
 // mirrorMemberStatuses copies every member Snapshot's readyToUse, creation
@@ -440,15 +636,16 @@ func (ctrl *SnapshotGroupController) mirrorMemberStatuses(snapshotGroup *longhor
 }
 
 // allMembersCreatedByDeadline reports whether every member snapshot is ready
-// and was created between groupCreationTime and deadline, and returns the
-// latest creation time. It reads the recorded creation times, not the clock.
-// A zero groupCreationTime accepts members older than the group; the restore
-// recovery needs this, because a restored group is created after its members.
-func allMembersCreatedByDeadline(members []longhorn.SnapshotGroupMemberStatus, groupCreationTime, deadline time.Time) (bool, string) {
+// and was created between windowStart and deadline, and returns the latest
+// creation time. It reads the recorded creation times, not the clock. Pass a
+// zero windowStart to accept members created before the group; the restore
+// recovery needs this, because a restored group is recreated after its member
+// snapshots already exist.
+func allMembersCreatedByDeadline(members []longhorn.SnapshotGroupMemberStatus, windowStart, deadline time.Time) (bool, string) {
 	var latest time.Time
 	latestCreationTime := ""
 	for _, member := range members {
-		if memberFailureReason(member, groupCreationTime, deadline) != "" {
+		if memberFailureReason(member, windowStart, deadline) != "" {
 			return false, ""
 		}
 		// An empty reason guarantees the creation time parses.
@@ -464,10 +661,10 @@ func allMembersCreatedByDeadline(members []longhorn.SnapshotGroupMemberStatus, g
 // deadlineExceededError builds the group failure message for an expired
 // deadline: it names every member that kept the group from becoming Ready,
 // each with the reason.
-func deadlineExceededError(members []longhorn.SnapshotGroupMemberStatus, groupCreationTime, deadline time.Time) string {
+func deadlineExceededError(members []longhorn.SnapshotGroupMemberStatus, windowStart, deadline time.Time) string {
 	var failed []string
 	for _, member := range members {
-		reason := memberFailureReason(member, groupCreationTime, deadline)
+		reason := memberFailureReason(member, windowStart, deadline)
 		if reason == "" {
 			continue
 		}
@@ -476,11 +673,11 @@ func deadlineExceededError(members []longhorn.SnapshotGroupMemberStatus, groupCr
 	return fmt.Sprintf("deadline exceeded before every member snapshot was taken; failed members: %v", strings.Join(failed, "; "))
 }
 
-// memberFailureReason returns why the member kept the group from
-// becoming Ready, or empty when it did not. The creation time must fall
-// between the group's creation and the deadline: an earlier time belongs
-// to a survivor of an earlier group with the same name.
-func memberFailureReason(member longhorn.SnapshotGroupMemberStatus, groupCreationTime, deadline time.Time) string {
+// memberFailureReason returns why the member kept the group from becoming
+// Ready, or empty when it did not. windowStart is normally the group's
+// creation time: a member created earlier is a leftover from an earlier
+// group with the same name, not one of ours.
+func memberFailureReason(member longhorn.SnapshotGroupMemberStatus, windowStart, deadline time.Time) string {
 	if !member.ReadyToUse || member.CreationTime == "" {
 		reason := "not taken"
 		if member.Error != "" {
@@ -492,8 +689,8 @@ func memberFailureReason(member longhorn.SnapshotGroupMemberStatus, groupCreatio
 	if err != nil {
 		return fmt.Sprintf("invalid creation time %v", member.CreationTime)
 	}
-	if creationTime.Before(groupCreationTime) {
-		return fmt.Sprintf("taken at %v, before the group was requested", member.CreationTime)
+	if creationTime.Before(windowStart) {
+		return fmt.Sprintf("taken at %v, before the group's window opened at %v", member.CreationTime, windowStart.UTC().Format(time.RFC3339))
 	}
 	if creationTime.After(deadline) {
 		return fmt.Sprintf("taken at %v, after the deadline", member.CreationTime)
@@ -503,25 +700,67 @@ func memberFailureReason(member longhorn.SnapshotGroupMemberStatus, groupCreatio
 
 func (ctrl *SnapshotGroupController) transitionToReady(snapshotGroup *longhorn.SnapshotGroup, latestCreationTime string) error {
 	// The annotation is persisted here, before the deferred status update.
-	// Either crash order recovers: an annotation without status is restored by
-	// the terminal-annotation guard, and status without an annotation is
-	// re-stamped by reconcileTerminal.
+	// Either crash order recovers: an annotation without status is restored
+	// on the next reconcile, and status without an annotation is re-stamped
+	// once the group is terminal.
+	//
+	// The group is re-read live because this is the last chance to catch a
+	// release the executor started since the readiness evaluation: once the
+	// annotation is written, the next reconcile restores Ready from it
+	// without further checks.
+	latest, err := ctrl.ds.GetSnapshotGroupUncached(snapshotGroup.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to read snapshot group %v before marking it Ready", snapshotGroup.Name)
+	}
+	if snapshothook.IsHooked(snapshotGroup) && snapshothook.ReleaseStarted(latest) {
+		return ctrl.transitionToFailed(snapshotGroup, snapshothook.ReleasedBeforeReadyMessage(latest))
+	}
+
 	snapshotGroup.Status.Phase = longhorn.SnapshotGroupPhaseReady
 	snapshotGroup.Status.ReadyToUse = true
 	snapshotGroup.Status.CreationTime = latestCreationTime
-	if err := ctrl.stampTerminalPhaseAnnotation(snapshotGroup); err != nil {
+	if err := ctrl.stampTerminalPhaseAnnotationOn(snapshotGroup, latest); err != nil {
 		return err
 	}
 	ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeNormal, constant.EventReasonReady,
 		"Snapshot group is ready: all %v member snapshots taken within the deadline", len(snapshotGroup.Spec.Members))
+	ctrl.warnIfHookDeadlineNearlyExceeded(snapshotGroup, latestCreationTime)
 	return nil
+}
+
+// hookDeadlineWarningFraction is how much of its deadline a Ready hooked
+// group may use before the controller warns that the next run may miss it.
+const hookDeadlineWarningFraction = 0.8
+
+// warnIfHookDeadlineNearlyExceeded records a HookDeadlineNearlyExceeded
+// warning event when a Ready hooked group used over 80% of its deadline.
+func (ctrl *SnapshotGroupController) warnIfHookDeadlineNearlyExceeded(snapshotGroup *longhorn.SnapshotGroup, latestCreationTime string) {
+	if !snapshothook.IsHooked(snapshotGroup) || snapshotGroup.Status.HooksStartedAt == nil || snapshotGroup.Status.PreHooksDoneAt == nil {
+		return
+	}
+	latest, err := time.Parse(time.RFC3339, latestCreationTime)
+	if err != nil {
+		return
+	}
+	start := snapshotGroup.CreationTimestamp.Time
+	used := latest.Sub(start)
+	budget := time.Duration(snapshotGroup.Spec.DeadlineSeconds) * time.Second
+	if float64(used) <= hookDeadlineWarningFraction*float64(budget) {
+		return
+	}
+	queued := snapshotGroup.Status.HooksStartedAt.Sub(start)
+	preHooks := snapshotGroup.Status.PreHooksDoneAt.Sub(snapshotGroup.Status.HooksStartedAt.Time)
+	snapshots := latest.Sub(snapshotGroup.Status.PreHooksDoneAt.Time)
+	ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonHookDeadlineNearlyExceeded,
+		"Snapshot group used %.0fs of its %ds deadline (queued %.0fs, pre-hooks %.0fs, snapshots %.0fs); raise the deadline or shorten the pre-command before the next run misses it",
+		used.Seconds(), snapshotGroup.Spec.DeadlineSeconds, queued.Seconds(), preHooks.Seconds(), snapshots.Seconds())
 }
 
 func (ctrl *SnapshotGroupController) transitionToFailed(snapshotGroup *longhorn.SnapshotGroup, message string) error {
 	snapshotGroup.Status.Phase = longhorn.SnapshotGroupPhaseFailed
 	snapshotGroup.Status.ReadyToUse = false
 	snapshotGroup.Status.Error = message
-	if err := ctrl.stampTerminalPhaseAnnotation(snapshotGroup); err != nil {
+	if err := ctrl.ensureTerminalPhaseAnnotation(snapshotGroup); err != nil {
 		return err
 	}
 	ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonFailed,
@@ -529,11 +768,11 @@ func (ctrl *SnapshotGroupController) transitionToFailed(snapshotGroup *longhorn.
 	return nil
 }
 
-// stampTerminalPhaseAnnotation records the outcome into the
+// ensureTerminalPhaseAnnotation records the outcome into the
 // longhorn.io/snapshot-group-terminal-phase annotation - the restore guard:
 // a restored or crash-interrupted group regains the recorded outcome instead
 // of taking snapshots again.
-func (ctrl *SnapshotGroupController) stampTerminalPhaseAnnotation(snapshotGroup *longhorn.SnapshotGroup) error {
+func (ctrl *SnapshotGroupController) ensureTerminalPhaseAnnotation(snapshotGroup *longhorn.SnapshotGroup) error {
 	phase := string(snapshotGroup.Status.Phase)
 	if snapshotGroup.Annotations[types.SnapshotGroupAnnotationTerminalPhase] == phase {
 		return nil
@@ -542,6 +781,15 @@ func (ctrl *SnapshotGroupController) stampTerminalPhaseAnnotation(snapshotGroup 
 	if err != nil {
 		return err
 	}
+	return ctrl.stampTerminalPhaseAnnotationOn(snapshotGroup, updated)
+}
+
+// stampTerminalPhaseAnnotationOn writes snapshotGroup's phase as the
+// terminal-phase annotation onto updated, a fresh copy of the same group,
+// then carries the new resourceVersion and the executor-owned status back
+// into snapshotGroup.
+func (ctrl *SnapshotGroupController) stampTerminalPhaseAnnotationOn(snapshotGroup, updated *longhorn.SnapshotGroup) error {
+	phase := string(snapshotGroup.Status.Phase)
 	if updated.Annotations == nil {
 		updated.Annotations = map[string]string{}
 	}
@@ -554,8 +802,13 @@ func (ctrl *SnapshotGroupController) stampTerminalPhaseAnnotation(snapshotGroup 
 		snapshotGroup.Annotations = map[string]string{}
 	}
 	snapshotGroup.Annotations[types.SnapshotGroupAnnotationTerminalPhase] = phase
-	// Adopt the new resourceVersion so the caller's pending status update does
-	// not conflict with the annotation write above.
+	// Adopt the new resourceVersion so the caller's pending status update
+	// does not conflict with the annotation write above. That update writes
+	// the whole status object, so carry over the executor-owned fields too;
+	// otherwise it would silently revert a hook record written since this
+	// reconcile started, and the deletion hold could release a group whose
+	// pods are still paused.
+	snapshothook.AdoptExecutorStatus(&snapshotGroup.Status, &result.Status)
 	snapshotGroup.ResourceVersion = result.ResourceVersion
 	return nil
 }
@@ -565,7 +818,7 @@ func (ctrl *SnapshotGroupController) stampTerminalPhaseAnnotation(snapshotGroup 
 // losses, maintains the Degraded condition, and keeps ReadyToUse in step
 // with member readiness. It never creates another member snapshot.
 func (ctrl *SnapshotGroupController) reconcileTerminal(snapshotGroup *longhorn.SnapshotGroup) error {
-	if err := ctrl.stampTerminalPhaseAnnotation(snapshotGroup); err != nil {
+	if err := ctrl.ensureTerminalPhaseAnnotation(snapshotGroup); err != nil {
 		return err
 	}
 
@@ -575,7 +828,8 @@ func (ctrl *SnapshotGroupController) reconcileTerminal(snapshotGroup *longhorn.S
 		return nil
 	}
 
-	if err := ctrl.mirrorMemberStatusesAfterReady(snapshotGroup); err != nil {
+	memberSnapshots, err := ctrl.mirrorMemberStatusesAfterReady(snapshotGroup)
+	if err != nil {
 		return err
 	}
 
@@ -589,6 +843,7 @@ func (ctrl *SnapshotGroupController) reconcileTerminal(snapshotGroup *longhorn.S
 		}
 	}
 
+	ctrl.warnIfPreHooksSkipped(snapshotGroup, memberSnapshots)
 	ctrl.updateDegradedCondition(snapshotGroup)
 
 	// Group readiness is the AND of member readiness: a group with a lost or
@@ -605,20 +860,43 @@ func (ctrl *SnapshotGroupController) reconcileTerminal(snapshotGroup *longhorn.S
 	return nil
 }
 
+// warnIfPreHooksSkipped warns when a Ready hooked group has a member
+// snapshot without the hooked marker, meaning it was taken outside the
+// pause, for example by an older longhorn-manager. A terminal phase is never
+// rewritten; instead, a warning event tells the user that the snapshots are
+// not application-consistent and the group should be deleted and recreated.
+func (ctrl *SnapshotGroupController) warnIfPreHooksSkipped(snapshotGroup *longhorn.SnapshotGroup, memberSnapshots map[string]*longhorn.Snapshot) {
+	if !snapshothook.IsHooked(snapshotGroup) || snapshotGroup.Status.PreHooksDone {
+		return
+	}
+	for _, snapshot := range memberSnapshots {
+		if !hasHookedMarker(snapshot) {
+			ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonPreHooksSkipped,
+				"Member snapshot %v was taken before the application was paused, by a longhorn-manager that predates hooks; the group is not application-consistent, delete it and create a new one", snapshot.Name)
+			return
+		}
+	}
+}
+
 // mirrorMemberStatusesAfterReady refreshes the member entries of a Ready
-// group. Mirroring goes both ways: a healthy member is mirrored back to true,
+// group and returns the member snapshots that are present and the group's
+// own. Mirroring goes both ways: a healthy member is mirrored back to true,
 // so a restored Ready group recovers its member state on its own.
-func (ctrl *SnapshotGroupController) mirrorMemberStatusesAfterReady(snapshotGroup *longhorn.SnapshotGroup) error {
+func (ctrl *SnapshotGroupController) mirrorMemberStatusesAfterReady(snapshotGroup *longhorn.SnapshotGroup) (map[string]*longhorn.Snapshot, error) {
+	memberSnapshots := make(map[string]*longhorn.Snapshot, len(snapshotGroup.Status.Members))
 	for i := range snapshotGroup.Status.Members {
 		member := &snapshotGroup.Status.Members[i]
 		snapshot, err := ctrl.ds.GetSnapshotRO(member.SnapshotName)
 		if err != nil && !apierrors.IsNotFound(err) {
-			return err
+			return nil, err
 		}
 		lost := apierrors.IsNotFound(err) || !snapshot.DeletionTimestamp.IsZero()
 		// An unrelated snapshot reusing a lost member's name must not be
 		// mirrored into the group as the member.
 		replaced := !lost && !ctrl.isOwnMemberSnapshot(snapshotGroup, member.VolumeName, snapshot)
+		if !lost && !replaced {
+			memberSnapshots[member.SnapshotName] = snapshot
+		}
 
 		switch {
 		case lost:
@@ -639,7 +917,7 @@ func (ctrl *SnapshotGroupController) mirrorMemberStatusesAfterReady(snapshotGrou
 			member.Error = ""
 		}
 	}
-	return nil
+	return memberSnapshots, nil
 }
 
 // updateDegradedCondition sets Degraded from the member entries and emits an
@@ -676,11 +954,16 @@ func (ctrl *SnapshotGroupController) updateDegradedCondition(snapshotGroup *long
 
 // handleDeletion deletes the member Snapshots through the existing per-volume
 // deletion path, then removes the finalizer once every member deletion has
-// been requested. Waiting for the DeletionTimestamp instead of the CR
-// disappearing matches the per-volume CSI DeleteSnapshot semantics: once
-// deletion is requested it is irrevocable, and the snapshot controller owns
-// the deferred purge.
+// been requested. A hooked group waits first: its paused pods must be
+// released by the executor, or the release time bound must pass.
 func (ctrl *SnapshotGroupController) handleDeletion(snapshotGroup *longhorn.SnapshotGroup) error {
+	if snapshothook.IsHooked(snapshotGroup) {
+		released, err := ctrl.waitForHookRelease(snapshotGroup)
+		if err != nil || !released {
+			return err
+		}
+	}
+
 	allDeletionsRequested := true
 	for _, member := range snapshotGroup.Spec.Members {
 		snapshot, err := ctrl.ds.GetSnapshotRO(member.SnapshotName)
@@ -718,4 +1001,42 @@ func (ctrl *SnapshotGroupController) handleDeletion(snapshotGroup *longhorn.Snap
 		return nil
 	}
 	return ctrl.ds.RemoveFinalizerForSnapshotGroup(snapshotGroup)
+}
+
+// waitForHookRelease reports whether deletion may proceed: true once every
+// recorded pod is released, or once the release has run past its time bound.
+// False with a nil error means wait.
+//
+// The bound ignores executor state: a deletion should not hang on an
+// executor that cannot reach a kubelet.
+func (ctrl *SnapshotGroupController) waitForHookRelease(snapshotGroup *longhorn.SnapshotGroup) (bool, error) {
+	unreleased := snapshothook.UnreleasedHookPods(snapshotGroup)
+	if len(unreleased) == 0 {
+		return true, nil
+	}
+
+	attempts, err := ctrl.ds.GetSettingAsInt(types.SettingNameHookReleaseAttempts)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to read setting %v", types.SettingNameHookReleaseAttempts)
+	}
+	timeoutSeconds, err := ctrl.ds.GetSettingAsInt(types.SettingNameHookReleaseTimeout)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to read setting %v", types.SettingNameHookReleaseTimeout)
+	}
+	bound := snapshothook.ReleaseAbandonTime(snapshothook.GroupDeadline(snapshotGroup), snapshotGroup.DeletionTimestamp.Time,
+		int(attempts), snapshothook.CountMembersWithHookPods(snapshotGroup), time.Duration(timeoutSeconds)*time.Second)
+
+	if now := ctrl.nowHandler(); !now.After(bound) {
+		ctrl.enqueueSnapshotGroupAfter(snapshotGroup, bound.Sub(now)+time.Second)
+		return false, nil
+	}
+
+	pods := make([]string, 0, len(unreleased))
+	for _, pod := range unreleased {
+		pods = append(pods, pod.Namespace+"/"+pod.Name)
+	}
+	ctrl.logger.WithField("snapshotGroup", snapshotGroup.Name).Warnf("Giving up on the hook release of pods %v, not released by %v", pods, bound.UTC().Format(time.RFC3339))
+	ctrl.eventRecorder.Eventf(snapshotGroup, corev1.EventTypeWarning, constant.EventReasonHookReleaseAbandoned,
+		"Snapshot group deleted with %v paused pods that were never released: %v; run the post-command in each pod by hand to resume the application", len(pods), strings.Join(pods, ", "))
+	return true, nil
 }

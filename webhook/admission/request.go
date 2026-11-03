@@ -12,12 +12,27 @@ import (
 
 type Request struct {
 	*webhook.Request
+
+	warnings []string
 }
 
 func NewRequest(webhookRequest *webhook.Request) *Request {
 	return &Request{
 		Request: webhookRequest,
 	}
+}
+
+// AddWarning records a warning to return with the admission response.
+// It does not affect whether the operation is allowed; kubectl prints the
+// warning either way. This lets an admitter allow a request while still
+// pointing out a condition the user should know about.
+func (r *Request) AddWarning(warning string) {
+	r.warnings = append(r.warnings, warning)
+}
+
+// Warnings returns the warnings recorded so far, in order.
+func (r *Request) Warnings() []string {
+	return r.warnings
 }
 
 func (r *Request) Username() string {

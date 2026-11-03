@@ -73,3 +73,5 @@ type SystemRestoreExpansion interface{}
 type VolumeExpansion interface{}
 
 type VolumeAttachmentExpansion interface{}
+
+type VolumeHookPolicyExpansion interface{}

@@ -3,6 +3,7 @@ package snapshotgroup
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -11,6 +12,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
@@ -79,8 +81,173 @@ func (v *snapshotGroupValidator) Create(request *admission.Request, newObj runti
 	if _, exists := snapshotGroup.Spec.Labels[types.RecurringJobLabel]; exists {
 		return werror.NewInvalidError(fmt.Sprintf("label key %v is reserved for recurring jobs", types.RecurringJobLabel), "spec.labels")
 	}
+	if err := validateCSIReservedLabelKeys(snapshotGroup); err != nil {
+		return err
+	}
 
-	return validateMembers(snapshotGroup)
+	if err := validateMembers(snapshotGroup); err != nil {
+		return err
+	}
+	return v.validateMembersHooks(request, snapshotGroup)
+}
+
+// validateMembersHooks checks the hook fields of the member set. Format
+// checks always run. Cluster-state checks run only when the group will run
+// hooks and pause applications; a restored group CR already finished, no
+// hook will run, so they are skipped.
+func (v *snapshotGroupValidator) validateMembersHooks(request *admission.Request, snapshotGroup *longhorn.SnapshotGroup) error {
+	if !snapshothook.IsHooked(snapshotGroup) {
+		return validateUnhookedHookFields(snapshotGroup)
+	}
+	if err := validateHookReferences(snapshotGroup); err != nil {
+		return err
+	}
+	if _, terminal := types.GetSnapshotGroupTerminalPhase(snapshotGroup); terminal {
+		return nil
+	}
+	return v.validateHookClusterState(request, snapshotGroup)
+}
+
+// A CSI plugin that does not consume the hooks and deadlineSeconds class
+// parameters (e.g. not yet updated during an upgrade) forwards them as
+// snapshot labels, silently dropping the hooks.
+func validateCSIReservedLabelKeys(snapshotGroup *longhorn.SnapshotGroup) error {
+	if snapshotGroup.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupCSIType)] == "" {
+		return nil
+	}
+	for _, key := range []string{types.SnapshotGroupCSIParameterHooks, types.SnapshotGroupCSIParameterDeadlineSeconds} {
+		if _, exists := snapshotGroup.Spec.Labels[key]; exists {
+			return werror.NewInvalidError(fmt.Sprintf("label key %v is a CSI class parameter this longhorn-manager consumes, but the CSI plugin that created this group predates it; the create is rejected until the plugin rollout completes", key), "spec.labels")
+		}
+	}
+	return nil
+}
+
+// validateUnhookedHookFields rejects hook fields on a group whose spec.hooks
+// is none.
+func validateUnhookedHookFields(snapshotGroup *longhorn.SnapshotGroup) error {
+	if snapshotGroup.Spec.HookOperation != "" {
+		return werror.NewInvalidError(fmt.Sprintf("hookOperation %q is set but spec.hooks is none; no hook runs, so there is no operation to pause for", snapshotGroup.Spec.HookOperation), "spec.hookOperation")
+	}
+	for _, member := range snapshotGroup.Spec.Members {
+		if member.HookPolicyRef != nil {
+			return werror.NewInvalidError(fmt.Sprintf("member %v carries a hook policy but spec.hooks is none", member.VolumeName), "spec.members")
+		}
+	}
+	return nil
+}
+
+// validateHookReferences checks that the hook fields on a hooked group are
+// valid: a known hookOperation, and a complete hookPolicyRef on every member.
+// It reads nothing from the cluster.
+//
+// The CRD schema enforces the same rules, so these checks fire only when the
+// webhook runs ahead of the CRD, as during an upgrade.
+func validateHookReferences(snapshotGroup *longhorn.SnapshotGroup) error {
+	switch snapshotGroup.Spec.HookOperation {
+	case longhorn.HookOperationSnapshot, longhorn.HookOperationBackup:
+	case "":
+		return werror.NewInvalidError("hookOperation is required when spec.hooks is command; the mutating webhook defaults it to snapshot", "spec.hookOperation")
+	default:
+		return werror.NewInvalidError(fmt.Sprintf("hookOperation %q is not one of %q, %q", snapshotGroup.Spec.HookOperation, longhorn.HookOperationSnapshot, longhorn.HookOperationBackup), "spec.hookOperation")
+	}
+
+	for _, member := range snapshotGroup.Spec.Members {
+		ref := member.HookPolicyRef
+		if ref == nil {
+			return werror.NewInvalidError(fmt.Sprintf("member %v has no hookPolicyRef", member.VolumeName), "spec.members")
+		}
+		if ref.Namespace == "" || ref.Name == "" {
+			return werror.NewInvalidError(fmt.Sprintf("member %v hookPolicyRef needs both namespace and name", member.VolumeName), "spec.members")
+		}
+		if ref.Generation <= 0 {
+			return werror.NewInvalidError(fmt.Sprintf("member %v hookPolicyRef has no generation", member.VolumeName), "spec.members")
+		}
+	}
+	return nil
+}
+
+// validateHookClusterState checks that the cluster is ready to run the
+// group's hooks: the manager rollout is complete, every member has a running
+// pod outside the Longhorn namespace, no other hooked group still holds a
+// member, and the executor has access in every member namespace.
+func (v *snapshotGroupValidator) validateHookClusterState(request *admission.Request, snapshotGroup *longhorn.SnapshotGroup) error {
+	// During an upgrade, manager pods on different images may handle the
+	// group differently. So a group with hooks is refused until every
+	// manager pod runs the new image.
+	outdated, err := v.ds.ListOutdatedManagerPods()
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to check the longhorn-manager rollout: %v; retry the create", err))
+	}
+	if len(outdated) > 0 {
+		return werror.NewInvalidError(datastore.OutdatedManagerPodsMessage(outdated), "spec.hooks")
+	}
+
+	// This is a warning, not a rejection, because the user may still back
+	// up the snapshots themselves.
+	if snapshotGroup.Spec.HookOperation == longhorn.HookOperationBackup &&
+		snapshotGroup.Labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupCSIType)] != types.SnapshotGroupCSITypeBackup {
+		request.AddWarning(fmt.Sprintf("hookOperation is %v but the group was not created by a CSI VolumeGroupSnapshot of type %v; Longhorn will not back up the member snapshots, so the backup hooks only matter if you back them up yourself", longhorn.HookOperationBackup, types.SnapshotGroupCSITypeBackup))
+	}
+
+	groups, err := v.ds.ListSnapshotGroupsRO()
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list snapshot groups: %v", err))
+	}
+	otherGroups := make([]*longhorn.SnapshotGroup, 0, len(groups))
+	for _, other := range groups {
+		if other.Name != snapshotGroup.Name {
+			otherGroups = append(otherGroups, other)
+		}
+	}
+
+	// Concurrent creates cannot see each other in the group list, so two
+	// groups sharing a member can both pass the conflict check here. The
+	// executor re-checks for conflicts before pausing a member.
+	execNamespaces := map[string]bool{}
+	for _, member := range snapshotGroup.Spec.Members {
+		volume, err := v.ds.GetVolumeRO(member.VolumeName)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				return werror.NewInvalidError(fmt.Sprintf("member volume %v does not exist", member.VolumeName), "spec.members")
+			}
+			return werror.NewInternalError(fmt.Sprintf("failed to get member volume %v: %v", member.VolumeName, err))
+		}
+		failure, warnings := snapshothook.CheckMemberClusterState(volume, snapshothook.PolicyRefNamespacedName(member.HookPolicyRef), otherGroups, v.ds.Namespace())
+		if failure != nil {
+			return werror.NewInvalidError(failure.Message, "spec.members")
+		}
+		for _, warning := range warnings {
+			request.AddWarning(warning)
+		}
+		execNamespaces[volume.Status.KubernetesStatus.Namespace] = true
+	}
+
+	return v.verifyExecutorAccess(execNamespaces)
+}
+
+// verifyExecutorAccess asks the API server whether the executor's
+// ServiceAccount has every permission it needs in every namespace the group
+// will pause pods in. A denial is for the namespace admin to fix, so the
+// rejection includes the RoleBinding manifest. A review that fails to
+// complete is rejected as an internal error, to be retried.
+func (v *snapshotGroupValidator) verifyExecutorAccess(namespaces map[string]bool) error {
+	sorted := make([]string, 0, len(namespaces))
+	for namespace := range namespaces {
+		sorted = append(sorted, namespace)
+	}
+	sort.Strings(sorted)
+
+	for _, namespace := range sorted {
+		denial, err := v.ds.VerifyHookExecutorAccess(namespace)
+		if err != nil {
+			return werror.NewInternalError(fmt.Sprintf("%v; retry the create", err))
+		}
+		if denial != nil {
+			return werror.NewInvalidError(denial.Message(), "spec.hooks")
+		}
+	}
+	return nil
 }
 
 // validateMembers re-checks the stamped member set without re-resolving,

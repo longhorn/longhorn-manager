@@ -6,17 +6,23 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -322,4 +328,181 @@ func (s *TestSuite) TestSyncSnapshotWithSnapshotInfo_PreservesExistingRequestedT
 	c.Assert(err, IsNil)
 	// Must not be overwritten.
 	c.Assert(snap.Status.RequestedTime, Equals, "2010-01-01T00:00:00Z")
+}
+
+// hookPolicyBypassFixture holds a datastore with one PVC for each
+// policy-resolution outcome, for the hook policy bypass warning tests.
+type hookPolicyBypassFixture struct {
+	ds            *datastore.DataStore
+	volumeIndexer cache.Indexer
+	recorder      *record.FakeRecorder
+	sc            *SnapshotController
+	bc            *BackupController
+}
+
+func newHookPolicyBypassFixture(t *testing.T) *hookPolicyBypassFixture {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+	for _, pvc := range []*corev1.PersistentVolumeClaim{
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "mongo-data", Labels: map[string]string{"app": "mongo"}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "cache-data", Labels: map[string]string{"app": "cache"}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "plain-data"}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "shared-data", Labels: map[string]string{"app": "mongo", "tier": "shared"}}},
+	} {
+		require.NoError(t, pvcIndexer.Add(pvc))
+	}
+
+	policyIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeHookPolicies().Informer().GetIndexer()
+	for _, policy := range []*longhorn.VolumeHookPolicy{
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "mongo"},
+			Spec: longhorn.VolumeHookPolicySpec{
+				PVCSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "mongo"}},
+				Hooks:       []longhorn.VolumeHookPolicyHook{{}},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "cache"},
+			Spec: longhorn.VolumeHookPolicySpec{
+				PVCSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "cache"}},
+				Hooks:       []longhorn.VolumeHookPolicyHook{{Operations: []longhorn.HookOperation{longhorn.HookOperationBackup}}},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "shared"},
+			Spec: longhorn.VolumeHookPolicySpec{
+				PVCSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"tier": "shared"}},
+				Hooks:       []longhorn.VolumeHookPolicyHook{{}},
+			},
+		},
+	} {
+		require.NoError(t, policyIndexer.Add(policy))
+	}
+
+	recorder := record.NewFakeRecorder(10)
+	sc, err := NewSnapshotController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestNamespace, TestOwnerID1, nil, util.NewAtomicCounter(), NewSnapshotConcurrentLimiter())
+	require.NoError(t, err)
+	sc.eventRecorder = recorder
+	bc, err := NewBackupController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace, util.NewAtomicCounter())
+	require.NoError(t, err)
+	bc.eventRecorder = recorder
+
+	return &hookPolicyBypassFixture{
+		ds:            ds,
+		volumeIndexer: informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer(),
+		recorder:      recorder,
+		sc:            sc,
+		bc:            bc,
+	}
+}
+
+// volumeBoundTo returns a volume whose PVC is namespace app / pvcName.
+func volumeBoundTo(pvcName string) *longhorn.Volume {
+	return &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{Name: "vol-" + pvcName, Namespace: TestNamespace},
+		Status: longhorn.VolumeStatus{KubernetesStatus: longhorn.KubernetesStatus{
+			Namespace: "app", PVCName: pvcName,
+		}},
+	}
+}
+
+// events drains the recorder and returns what was recorded.
+func (f *hookPolicyBypassFixture) events() []string {
+	var events []string
+	for {
+		select {
+		case event := <-f.recorder.Events:
+			events = append(events, event)
+		default:
+			return events
+		}
+	}
+}
+
+// bypassWarning resolves the volume hook policy and reports the bypass
+// warning, as the controllers do.
+func bypassWarning(ds *datastore.DataStore, volume *longhorn.Volume, operation longhorn.HookOperation) (string, error) {
+	policy, resolveErr := ds.ResolveVolumeHookPolicyForVolume(volume)
+	return snapshothook.BypassWarning(policy, resolveErr, volume.Name, operation)
+}
+
+func TestHookPolicyBypassWarning(t *testing.T) {
+	f := newHookPolicyBypassFixture(t)
+
+	t.Run("policy covering the operation names the policy and operation", func(t *testing.T) {
+		message, err := bypassWarning(f.ds, volumeBoundTo("mongo-data"), longhorn.HookOperationSnapshot)
+		require.NoError(t, err)
+		assert.Contains(t, message, "app/mongo")
+		assert.Contains(t, message, "this snapshot was taken outside a SnapshotGroup")
+	})
+
+	t.Run("policy whose hooks skip the operation is silent", func(t *testing.T) {
+		message, err := bypassWarning(f.ds, volumeBoundTo("cache-data"), longhorn.HookOperationSnapshot)
+		require.NoError(t, err)
+		assert.Empty(t, message)
+
+		message, err = bypassWarning(f.ds, volumeBoundTo("cache-data"), longhorn.HookOperationBackup)
+		require.NoError(t, err)
+		assert.Contains(t, message, "app/cache")
+	})
+
+	t.Run("no matching policy is silent", func(t *testing.T) {
+		message, err := bypassWarning(f.ds, volumeBoundTo("plain-data"), longhorn.HookOperationSnapshot)
+		require.NoError(t, err)
+		assert.Empty(t, message)
+	})
+
+	t.Run("several matching policies warn, naming every policy", func(t *testing.T) {
+		message, err := bypassWarning(f.ds, volumeBoundTo("shared-data"), longhorn.HookOperationSnapshot)
+		require.NoError(t, err)
+		assert.Contains(t, message, "app/mongo, app/shared")
+		assert.Contains(t, message, "this snapshot was taken outside a SnapshotGroup")
+		assert.Contains(t, message, "exactly one")
+	})
+
+	t.Run("volume without a PVC is silent", func(t *testing.T) {
+		message, err := bypassWarning(f.ds, &longhorn.Volume{ObjectMeta: metav1.ObjectMeta{Name: "detached"}}, longhorn.HookOperationSnapshot)
+		require.NoError(t, err)
+		assert.Empty(t, message)
+	})
+}
+
+func TestSnapshotControllerWarnIfHookPolicyBypassed(t *testing.T) {
+	f := newHookPolicyBypassFixture(t)
+	volume := volumeBoundTo("mongo-data")
+	require.NoError(t, f.volumeIndexer.Add(volume))
+
+	snapshot := &longhorn.Snapshot{
+		ObjectMeta: metav1.ObjectMeta{Name: "snap", Namespace: TestNamespace},
+		Spec:       longhorn.SnapshotSpec{Volume: volume.Name, CreateSnapshot: true},
+	}
+
+	t.Run("per-volume snapshot on a covered volume warns once", func(t *testing.T) {
+		f.sc.warnIfHookPolicyBypassed(snapshot)
+		events := f.events()
+		require.Len(t, events, 1)
+		assert.Contains(t, events[0], corev1.EventTypeWarning+" "+constant.EventReasonHookPolicyBypassed)
+		assert.Contains(t, events[0], "app/mongo")
+	})
+
+	t.Run("snapshot group member is silent", func(t *testing.T) {
+		member := snapshot.DeepCopy()
+		member.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup): "group"}
+		f.sc.warnIfHookPolicyBypassed(member)
+		assert.Empty(t, f.events())
+	})
+
+	t.Run("volume missing from the cache is silent", func(t *testing.T) {
+		orphan := snapshot.DeepCopy()
+		orphan.Spec.Volume = "gone"
+		f.sc.warnIfHookPolicyBypassed(orphan)
+		assert.Empty(t, f.events())
+	})
 }

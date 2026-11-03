@@ -80,6 +80,8 @@ type Interface interface {
 	Volumes() VolumeInformer
 	// VolumeAttachments returns a VolumeAttachmentInformer.
 	VolumeAttachments() VolumeAttachmentInformer
+	// VolumeHookPolicies returns a VolumeHookPolicyInformer.
+	VolumeHookPolicies() VolumeHookPolicyInformer
 }
 
 type version struct {
@@ -231,4 +233,9 @@ func (v *version) Volumes() VolumeInformer {
 // VolumeAttachments returns a VolumeAttachmentInformer.
 func (v *version) VolumeAttachments() VolumeAttachmentInformer {
 	return &volumeAttachmentInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// VolumeHookPolicies returns a VolumeHookPolicyInformer.
+func (v *version) VolumeHookPolicies() VolumeHookPolicyInformer {
+	return &volumeHookPolicyInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

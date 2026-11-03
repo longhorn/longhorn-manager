@@ -396,9 +396,142 @@ func TestPreferredMemberBackup(t *testing.T) {
 	}
 }
 
+// TestParseVolumeGroupSnapshotParametersHooks verifies the reserved hooks
+// key: it maps onto the spec, defaults to none, rejects other values, and is
+// stripped from the snapshot labels.
+func TestParseVolumeGroupSnapshotParametersHooks(t *testing.T) {
+	testCases := []struct {
+		name          string
+		hooks         string
+		expectedHooks longhorn.SnapshotGroupHooks
+		expectError   bool
+	}{
+		{name: "unset defaults to none", hooks: "", expectedHooks: longhorn.SnapshotGroupHooksNone},
+		{name: "none", hooks: "none", expectedHooks: longhorn.SnapshotGroupHooksNone},
+		{name: "command", hooks: "command", expectedHooks: longhorn.SnapshotGroupHooksCommand},
+		{name: "unknown value is rejected", hooks: "maybe", expectError: true},
+		{name: "case sensitive", hooks: "Command", expectError: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			parameters := map[string]string{"type": csiSnapshotTypeLonghornSnapshot, "team": "db"}
+			if tc.hooks != "" {
+				parameters["hooks"] = tc.hooks
+			}
+			params, err := parseVolumeGroupSnapshotParameters(parameters)
+			if tc.expectError {
+				if err == nil {
+					t.Fatalf("expected an InvalidArgument error for hooks %q", tc.hooks)
+				}
+				if !strings.Contains(err.Error(), "InvalidArgument") {
+					t.Errorf("expected InvalidArgument, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if params.hooks != tc.expectedHooks {
+				t.Errorf("hooks = %q, want %q", params.hooks, tc.expectedHooks)
+			}
+			if _, forwarded := params.snapshotLabels["hooks"]; forwarded {
+				t.Errorf("hooks must not be forwarded as a snapshot label: %v", params.snapshotLabels)
+			}
+			if params.snapshotLabels["team"] != "db" {
+				t.Errorf("non-reserved labels must be forwarded: %v", params.snapshotLabels)
+			}
+		})
+	}
+}
+
+// TestParseVolumeGroupSnapshotParametersDeadlineSeconds verifies the
+// reserved deadlineSeconds key: unset leaves 0 for the webhook default, a set
+// value must be an integer within the spec bounds, and the key is stripped
+// from the snapshot labels.
+func TestParseVolumeGroupSnapshotParametersDeadlineSeconds(t *testing.T) {
+	testCases := []struct {
+		name            string
+		deadlineSeconds string
+		expected        int64
+		expectError     bool
+	}{
+		{name: "unset leaves the webhook default", deadlineSeconds: "", expected: 0},
+		{name: "minimum", deadlineSeconds: "10", expected: 10},
+		{name: "maximum", deadlineSeconds: "3600", expected: 3600},
+		{name: "in range", deadlineSeconds: "120", expected: 120},
+		{name: "below minimum is rejected", deadlineSeconds: "9", expectError: true},
+		{name: "above maximum is rejected", deadlineSeconds: "3601", expectError: true},
+		{name: "zero is rejected", deadlineSeconds: "0", expectError: true},
+		{name: "non-integer is rejected", deadlineSeconds: "60s", expectError: true},
+		{name: "empty string is rejected", deadlineSeconds: " ", expectError: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			parameters := map[string]string{"type": csiSnapshotTypeLonghornSnapshot, "team": "db"}
+			if tc.deadlineSeconds != "" {
+				parameters["deadlineSeconds"] = tc.deadlineSeconds
+			}
+			params, err := parseVolumeGroupSnapshotParameters(parameters)
+			if tc.expectError {
+				if err == nil {
+					t.Fatalf("expected an InvalidArgument error for deadlineSeconds %q", tc.deadlineSeconds)
+				}
+				if !strings.Contains(err.Error(), "InvalidArgument") {
+					t.Errorf("expected InvalidArgument, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if params.deadlineSeconds != tc.expected {
+				t.Errorf("deadlineSeconds = %v, want %v", params.deadlineSeconds, tc.expected)
+			}
+			if _, forwarded := params.snapshotLabels["deadlineSeconds"]; forwarded {
+				t.Errorf("deadlineSeconds must not be forwarded as a snapshot label: %v", params.snapshotLabels)
+			}
+			if params.snapshotLabels["team"] != "db" {
+				t.Errorf("non-reserved labels must be forwarded: %v", params.snapshotLabels)
+			}
+		})
+	}
+}
+
+// TestParseVolumeGroupSnapshotParametersHookOperation verifies that the
+// class type picks the operation a hooked group pauses for, and that an
+// unhooked group carries none.
+func TestParseVolumeGroupSnapshotParametersHookOperation(t *testing.T) {
+	testCases := []struct {
+		name              string
+		csiSnapshotType   string
+		hooks             string
+		expectedOperation longhorn.HookOperation
+	}{
+		{name: "snap with hooks pauses for snapshot", csiSnapshotType: csiSnapshotTypeLonghornSnapshot, hooks: "command", expectedOperation: longhorn.HookOperationSnapshot},
+		{name: "bak with hooks pauses for backup", csiSnapshotType: csiSnapshotTypeLonghornBackup, hooks: "command", expectedOperation: longhorn.HookOperationBackup},
+		{name: "snap without hooks has no operation", csiSnapshotType: csiSnapshotTypeLonghornSnapshot, hooks: "none", expectedOperation: ""},
+		{name: "bak without hooks has no operation", csiSnapshotType: csiSnapshotTypeLonghornBackup, hooks: "", expectedOperation: ""},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			parameters := map[string]string{"type": tc.csiSnapshotType}
+			if tc.hooks != "" {
+				parameters["hooks"] = tc.hooks
+			}
+			params, err := parseVolumeGroupSnapshotParameters(parameters)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if params.hookOperation != tc.expectedOperation {
+				t.Errorf("hookOperation = %q, want %q", params.hookOperation, tc.expectedOperation)
+			}
+		})
+	}
+}
+
 // TestSnapshotGroupParametersMismatch verifies the create-retry comparison:
-// snapshot labels against the immutable spec, backup mode against the record
-// stamped at creation.
+// snapshot labels, hooks and deadline against the immutable spec, backup
+// mode against the record stamped at creation.
 func TestSnapshotGroupParametersMismatch(t *testing.T) {
 	newGroup := func(record string, specLabels map[string]string) *longhorn.SnapshotGroup {
 		group := &longhorn.SnapshotGroup{
@@ -412,11 +545,13 @@ func TestSnapshotGroupParametersMismatch(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name             string
-		record           string
-		specLabels       map[string]string
-		params           *volumeGroupSnapshotParameters
-		expectedMismatch string
+		name                string
+		record              string
+		specLabels          map[string]string
+		specHooks           longhorn.SnapshotGroupHooks
+		specDeadlineSeconds int64
+		params              *volumeGroupSnapshotParameters
+		expectedMismatch    string
 	}{
 		{
 			name:             "matching parameters",
@@ -468,10 +603,58 @@ func TestSnapshotGroupParametersMismatch(t *testing.T) {
 			params:           &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornBackup, backupMode: longhorn.BackupModeIncremental, snapshotLabels: map[string]string{}},
 			expectedMismatch: "",
 		},
+		{
+			name:             "hooked request against an unhooked group",
+			specHooks:        longhorn.SnapshotGroupHooksNone,
+			params:           &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornSnapshot, hooks: longhorn.SnapshotGroupHooksCommand},
+			expectedMismatch: "hooks",
+		},
+		{
+			name:             "unhooked request against a hooked group",
+			specHooks:        longhorn.SnapshotGroupHooksCommand,
+			params:           &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornSnapshot, hooks: longhorn.SnapshotGroupHooksNone},
+			expectedMismatch: "hooks",
+		},
+		{
+			name:             "unset spec hooks equals none",
+			specHooks:        "",
+			params:           &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornSnapshot, hooks: longhorn.SnapshotGroupHooksNone},
+			expectedMismatch: "",
+		},
+		{
+			name:             "matching hooked request",
+			specHooks:        longhorn.SnapshotGroupHooksCommand,
+			params:           &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornSnapshot, hooks: longhorn.SnapshotGroupHooksCommand},
+			expectedMismatch: "",
+		},
+		{
+			name:                "unset deadline request accepts the webhook default",
+			specDeadlineSeconds: types.SnapshotGroupDefaultDeadlineSeconds,
+			params:              &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornSnapshot},
+			expectedMismatch:    "",
+		},
+		{
+			name:                "matching explicit deadline",
+			specDeadlineSeconds: 120,
+			params:              &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornSnapshot, deadlineSeconds: 120},
+			expectedMismatch:    "",
+		},
+		{
+			name:                "different explicit deadline",
+			specDeadlineSeconds: 120,
+			params:              &volumeGroupSnapshotParameters{csiSnapshotType: csiSnapshotTypeLonghornSnapshot, deadlineSeconds: 300},
+			expectedMismatch:    "deadlineSeconds",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mismatch := snapshotGroupParametersMismatch(newGroup(tc.record, tc.specLabels), tc.params)
+			group := newGroup(tc.record, tc.specLabels)
+			group.Spec.Hooks = tc.specHooks
+			group.Spec.DeadlineSeconds = tc.specDeadlineSeconds
+			if tc.params.hooks == "" {
+				tc.params.hooks = longhorn.SnapshotGroupHooksNone
+			}
+			mismatch := snapshotGroupParametersMismatch(group, tc.params)
 			if tc.expectedMismatch == "" && mismatch != "" {
 				t.Errorf("expected a match, got mismatch %q", mismatch)
 			}

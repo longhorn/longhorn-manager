@@ -126,6 +126,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.HealthAttributeApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("HealthData"):
 		return &longhornv1beta2.HealthDataApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("HookPodStatus"):
+		return &longhornv1beta2.HookPodStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("HookStatus"):
+		return &longhornv1beta2.HookStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("InstanceManager"):
 		return &longhornv1beta2.InstanceManagerApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerSpec"):
@@ -174,6 +178,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.PlannedDetachedReplicaApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("PurgeStatus"):
 		return &longhornv1beta2.PurgeStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("PVCRef"):
+		return &longhornv1beta2.PVCRefApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("RebuildStatus"):
 		return &longhornv1beta2.RebuildStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("RecurringJob"):
@@ -266,6 +272,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.VolumeCloneStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeDataLayout"):
 		return &longhornv1beta2.VolumeDataLayoutApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeHookPolicy"):
+		return &longhornv1beta2.VolumeHookPolicyApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeHookPolicyExec"):
+		return &longhornv1beta2.VolumeHookPolicyExecApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeHookPolicyHook"):
+		return &longhornv1beta2.VolumeHookPolicyHookApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeHookPolicyRef"):
+		return &longhornv1beta2.VolumeHookPolicyRefApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeHookPolicySpec"):
+		return &longhornv1beta2.VolumeHookPolicySpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeSpec"):
 		return &longhornv1beta2.VolumeSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeStatus"):

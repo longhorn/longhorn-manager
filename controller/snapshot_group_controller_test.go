@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -16,12 +18,16 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -33,6 +39,11 @@ const (
 	testSnapshotGroupName            = "test-snapshot-group"
 	testSnapshotGroupDeadlineSeconds = int64(300)
 )
+
+// testVolumeHookPolicyRef renders as app/policy in failure reasons.
+func testVolumeHookPolicyRef() *longhorn.VolumeHookPolicyRef {
+	return &longhorn.VolumeHookPolicyRef{Namespace: "app", Name: "policy", Generation: 1}
+}
 
 // testSnapshotGroupBaseTime is the group's creationTimestamp in every test;
 // deadlines and creation times are expressed relative to it.
@@ -48,7 +59,8 @@ func creationTimeAt(offset time.Duration) string {
 type snapshotGroupControllerFixture struct {
 	controller *SnapshotGroupController
 
-	lhClient *lhfake.Clientset
+	lhClient   *lhfake.Clientset
+	kubeClient *fake.Clientset
 
 	snapshotGroupIndexer cache.Indexer
 	snapshotIndexer      cache.Indexer
@@ -77,6 +89,7 @@ func newSnapshotGroupControllerFixture(c *C) *snapshotGroupControllerFixture {
 	return &snapshotGroupControllerFixture{
 		controller:           ctrl,
 		lhClient:             lhClient,
+		kubeClient:           kubeClient,
 		snapshotGroupIndexer: lhFactory.SnapshotGroups().Informer().GetIndexer(),
 		snapshotIndexer:      lhFactory.Snapshots().Informer().GetIndexer(),
 	}
@@ -105,6 +118,128 @@ func newTestSnapshotGroup(volumes ...string) *longhorn.SnapshotGroup {
 	}
 }
 
+// newTestHookedSnapshotGroup builds a hooks: command group as admission
+// stamps it: every member carries its policy and generation.
+func newTestHookedSnapshotGroup(volumes ...string) *longhorn.SnapshotGroup {
+	group := newTestSnapshotGroup(volumes...)
+	group.Spec.Hooks = longhorn.SnapshotGroupHooksCommand
+	for i := range group.Spec.Members {
+		group.Spec.Members[i].HookPolicyRef = testVolumeHookPolicyRef()
+	}
+	return group
+}
+
+// initializedMemberStatuses returns the member entries the first reconcile
+// creates, for tests that start a group mid-flight.
+func initializedMemberStatuses(group *longhorn.SnapshotGroup) []longhorn.SnapshotGroupMemberStatus {
+	members := make([]longhorn.SnapshotGroupMemberStatus, 0, len(group.Spec.Members))
+	for _, member := range group.Spec.Members {
+		members = append(members, longhorn.SnapshotGroupMemberStatus{VolumeName: member.VolumeName, SnapshotName: member.SnapshotName})
+	}
+	return members
+}
+
+const (
+	testHookPodNamespace = "app"
+	testHookPVCName      = "data"
+	testHookPodName      = "mongo-0"
+	testHookPodUID       = "pod-uid-1"
+	testHookContainerID  = "containerd://c1"
+)
+
+// testHookedGroupPausedAt is when the executor reports the pre-hooks done in
+// the paused-group tests: 20s into a 300s budget.
+const testHookedGroupPausedAt = 20 * time.Second
+
+// newTestPausedSnapshotGroup builds a one-member hooked group as it looks
+// after the executor paused it and the controller moved it to InProgress:
+// the record names the running pod, its UID, and its container.
+func newTestPausedSnapshotGroup() *longhorn.SnapshotGroup {
+	group := newTestHookedSnapshotGroup("vol-1")
+	startedAt := metav1.NewTime(testSnapshotGroupBaseTime.Add(5 * time.Second))
+	pausedAt := metav1.NewTime(testSnapshotGroupBaseTime.Add(testHookedGroupPausedAt))
+	group.Status = longhorn.SnapshotGroupStatus{
+		OwnerID:        TestOwnerID1,
+		Phase:          longhorn.SnapshotGroupPhaseInProgress,
+		Members:        initializedMemberStatuses(group),
+		PreHooksDone:   true,
+		HooksStartedAt: &startedAt,
+		PreHooksDoneAt: &pausedAt,
+		Hooks: []longhorn.HookStatus{{
+			SnapshotName: group.Spec.Members[0].SnapshotName,
+			Phase:        longhorn.HookPhasePreDone,
+			PVCRef:       &longhorn.PVCRef{Namespace: testHookPodNamespace, Name: testHookPVCName},
+			Pods: []longhorn.HookPodStatus{{
+				Namespace: testHookPodNamespace, Name: testHookPodName, UID: testHookPodUID,
+				ContainerIDs: []string{testHookContainerID}, HookName: "default", Phase: longhorn.HookPhasePreDone,
+			}},
+		}},
+	}
+	return group
+}
+
+// registerRunningPod puts a Running pod mounting the test PVC into the fake
+// kube client, where the identity gate's live LIST finds it.
+func (f *snapshotGroupControllerFixture) registerRunningPod(c *C, name, uid string, containerIDs ...string) {
+	f.registerPod(c, name, uid, nil, containerIDs...)
+}
+
+func (f *snapshotGroupControllerFixture) registerTerminatingPod(c *C, name, uid string, containerIDs ...string) {
+	now := metav1.Now()
+	f.registerPod(c, name, uid, &now, containerIDs...)
+}
+
+// registerFinishedPod puts a retained Succeeded pod mounting the test PVC
+// into the fake kube client, created at the given time, like a completed
+// Job pod kept for log inspection.
+func (f *snapshotGroupControllerFixture) registerFinishedPod(c *C, name, uid string, createdAt time.Time, containerIDs ...string) {
+	pod := newTestHookPod(name, uid, nil, containerIDs...)
+	pod.CreationTimestamp = metav1.NewTime(createdAt)
+	pod.Status.Phase = corev1.PodSucceeded
+	f.createPod(c, pod)
+}
+
+func (f *snapshotGroupControllerFixture) registerPod(c *C, name, uid string, deletedAt *metav1.Time, containerIDs ...string) {
+	f.createPod(c, newTestHookPod(name, uid, deletedAt, containerIDs...))
+}
+
+func newTestHookPod(name, uid string, deletedAt *metav1.Time, containerIDs ...string) *corev1.Pod {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testHookPodNamespace, UID: k8stypes.UID(uid), DeletionTimestamp: deletedAt},
+		Spec: corev1.PodSpec{Volumes: []corev1.Volume{{
+			Name: "data",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: testHookPVCName},
+			},
+		}}},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	for _, id := range containerIDs {
+		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, corev1.ContainerStatus{ContainerID: id})
+	}
+	return pod
+}
+
+func (f *snapshotGroupControllerFixture) createPod(c *C, pod *corev1.Pod) {
+	_, err := f.kubeClient.CoreV1().Pods(testHookPodNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+}
+
+// recordedEvents drains the fake recorder and returns every event emitted
+// so far.
+func (f *snapshotGroupControllerFixture) recordedEvents() []string {
+	recorder := f.controller.eventRecorder.(*record.FakeRecorder)
+	var events []string
+	for {
+		select {
+		case event := <-recorder.Events:
+			events = append(events, event)
+		default:
+			return events
+		}
+	}
+}
+
 // annotateTerminalPhase stamps the terminal-phase annotation, as the
 // controller records it when a group reaches Ready or Failed.
 func annotateTerminalPhase(group *longhorn.SnapshotGroup, phase longhorn.SnapshotGroupPhase) {
@@ -122,16 +257,34 @@ func (f *snapshotGroupControllerFixture) registerSnapshotGroup(c *C, snapshotGro
 	c.Assert(f.snapshotGroupIndexer.Add(created), IsNil)
 }
 
-// registerMemberSnapshot persists a member Snapshot with the group label set,
-// as the controller creates it.
+// registerMemberSnapshot persists a member Snapshot with the labels the
+// controller stamps at create: the group label, and the hooked marker when
+// the registered group runs hooks.
 func (f *snapshotGroupControllerFixture) registerMemberSnapshot(c *C, member longhorn.SnapshotGroupMember, readyToUse bool, creationTime string) {
+	labels := map[string]string{
+		types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup): testSnapshotGroupName,
+	}
+	if obj, exists, err := f.snapshotGroupIndexer.GetByKey(TestNamespace + "/" + testSnapshotGroupName); err == nil && exists && snapshothook.IsHooked(obj.(*longhorn.SnapshotGroup)) {
+		labels[types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupHooked)] = "true"
+	}
+	f.registerMemberSnapshotWithLabels(c, member, readyToUse, creationTime, labels)
+}
+
+// registerUnhookedMemberSnapshot persists a member Snapshot as a manager
+// that does not know spec.hooks creates it: group label only, no hooked
+// marker.
+func (f *snapshotGroupControllerFixture) registerUnhookedMemberSnapshot(c *C, member longhorn.SnapshotGroupMember, readyToUse bool, creationTime string) {
+	f.registerMemberSnapshotWithLabels(c, member, readyToUse, creationTime, map[string]string{
+		types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup): testSnapshotGroupName,
+	})
+}
+
+func (f *snapshotGroupControllerFixture) registerMemberSnapshotWithLabels(c *C, member longhorn.SnapshotGroupMember, readyToUse bool, creationTime string, labels map[string]string) {
 	snapshot := &longhorn.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      member.SnapshotName,
 			Namespace: TestNamespace,
-			Labels: map[string]string{
-				types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup): testSnapshotGroupName,
-			},
+			Labels:    labels,
 		},
 		Spec: longhorn.SnapshotSpec{
 			Volume:         member.VolumeName,
@@ -315,6 +468,9 @@ func (s *SnapshotGroupControllerSuite) TestFailedWhenMemberNotReadyByDeadline(c 
 	c.Assert(updated.Status.ReadyToUse, Equals, false)
 	c.Assert(updated.Status.Error, Matches, ".*deadline exceeded.*vol-2.*")
 	c.Assert(updated.Annotations[types.SnapshotGroupAnnotationTerminalPhase], Equals, string(longhorn.SnapshotGroupPhaseFailed))
+	for _, event := range f.recordedEvents() {
+		c.Assert(event, Not(Matches), ".*HookDeadlineExceeded.*")
+	}
 }
 
 // TestFailedWhenMemberTakenAfterDeadline verifies that a member snapshot taken after the
@@ -463,7 +619,7 @@ func (s *SnapshotGroupControllerSuite) TestFailedWhenAdoptedMemberPredatesGroup(
 
 	updated := f.getGroup(c)
 	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
-	c.Assert(updated.Status.Error, Matches, ".*before the group was requested.*")
+	c.Assert(updated.Status.Error, Matches, ".*before the group's window opened.*")
 }
 
 // TestFailedOnForeignSnapshotCollision verifies that an unrelated snapshot
@@ -759,5 +915,685 @@ func (s *SnapshotGroupControllerSuite) TestDeletionRemovesOwnMembersThenFinalize
 	f.markMemberSnapshotTerminating(c, group.Spec.Members[0].SnapshotName)
 
 	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+	c.Assert(f.getGroup(c).Finalizers, HasLen, 0)
+}
+
+// TestHookedGroupEntersRunningPreHooksWithoutTakingSnapshots verifies the
+// first reconcile of a hooked group: the phase is RunningPreHooks and no
+// member snapshot exists until the executor reports the pause.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupEntersRunningPreHooksWithoutTakingSnapshots(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	f.registerSnapshotGroup(c, newTestHookedSnapshotGroup("vol-1", "vol-2"))
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseRunningPreHooks)
+	c.Assert(updated.Status.Members, HasLen, 2)
+	f.assertSnapshotCount(c, 0)
+
+	// A second reconcile with nothing reported keeps waiting.
+	f.syncGroupFromClient(c)
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+	c.Assert(f.getGroup(c).Status.Phase, Equals, longhorn.SnapshotGroupPhaseRunningPreHooks)
+	f.assertSnapshotCount(c, 0)
+}
+
+// TestHookedGroupTakesSnapshotsOncePreHooksDone verifies that preHooksDone
+// moves the group to InProgress and creates the member snapshots in the
+// same pass, so the pause is not held for an extra reconcile.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupTakesSnapshotsOncePreHooksDone(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestHookedSnapshotGroup("vol-1", "vol-2")
+	preHooksDoneAt := metav1.NewTime(testSnapshotGroupBaseTime.Add(20 * time.Second))
+	group.Status = longhorn.SnapshotGroupStatus{
+		OwnerID:        TestOwnerID1,
+		Phase:          longhorn.SnapshotGroupPhaseRunningPreHooks,
+		Members:        initializedMemberStatuses(group),
+		PreHooksDone:   true,
+		HooksStartedAt: &preHooksDoneAt,
+		PreHooksDoneAt: &preHooksDoneAt,
+	}
+	f.registerSnapshotGroup(c, group)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseInProgress)
+	// The executor's fields round-trip through the controller's status write.
+	c.Assert(updated.Status.PreHooksDone, Equals, true)
+	c.Assert(updated.Status.PreHooksDoneAt, NotNil)
+	f.assertSnapshotCount(c, 2)
+}
+
+// TestHookedGroupFailsOnPreHookFailure verifies that a PreFailed member in
+// the executor's record fails the group, with status.error composed from
+// the member policy and the recorded reason: at the pod level with the exit
+// code, or at the member level when no command could run.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupFailsOnPreHookFailure(c *C) {
+	exitCode := int32(1)
+	cases := []struct {
+		hook          longhorn.HookStatus
+		expectedError string
+	}{
+		{
+			hook: longhorn.HookStatus{
+				Phase: longhorn.HookPhasePreFailed,
+				Pods: []longhorn.HookPodStatus{{
+					Namespace: "app", Name: "mongo-0", Phase: longhorn.HookPhasePreFailed,
+					Reason: longhorn.HookReasonExitNonZero, ExitCode: &exitCode,
+				}},
+			},
+			expectedError: "pre-hook failed on member .* \\(app/policy\\) in pod app/mongo-0: ExitNonZero \\(exit 1\\)",
+		},
+		{
+			hook: longhorn.HookStatus{
+				Phase:  longhorn.HookPhasePreFailed,
+				Reason: longhorn.HookReasonVolumeConflict,
+			},
+			expectedError: "pre-hook failed on member .* \\(app/policy\\): VolumeConflict",
+		},
+	}
+	for _, tc := range cases {
+		f := newSnapshotGroupControllerFixture(c)
+		group := newTestHookedSnapshotGroup("vol-1")
+		startedAt := metav1.NewTime(testSnapshotGroupBaseTime.Add(5 * time.Second))
+		tc.hook.SnapshotName = group.Spec.Members[0].SnapshotName
+		group.Status = longhorn.SnapshotGroupStatus{
+			OwnerID:        TestOwnerID1,
+			Phase:          longhorn.SnapshotGroupPhaseRunningPreHooks,
+			Members:        initializedMemberStatuses(group),
+			HooksStartedAt: &startedAt,
+			Hooks:          []longhorn.HookStatus{tc.hook},
+		}
+		f.registerSnapshotGroup(c, group)
+
+		c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+		updated := f.getGroup(c)
+		c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+		c.Assert(updated.Status.Error, Matches, tc.expectedError)
+		c.Assert(updated.Annotations[types.SnapshotGroupAnnotationTerminalPhase], Equals, string(longhorn.SnapshotGroupPhaseFailed))
+		f.assertSnapshotCount(c, 0)
+	}
+}
+
+// TestHookedGroupFailsAtDeadlineWhileRunningPreHooks verifies the deadline
+// rule in RunningPreHooks: the error tells a group the executor never
+// claimed apart from one whose pre-hooks were still running, with the
+// member count, and no snapshot is ever created.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupFailsAtDeadlineWhileRunningPreHooks(c *C) {
+	startedAt := metav1.NewTime(testSnapshotGroupBaseTime.Add(5 * time.Second))
+	cases := []struct {
+		hooksStartedAt *metav1.Time
+		preDoneMembers int
+		expectedError  string
+		expectedMarker string
+	}{
+		{hooksStartedAt: nil, expectedError: "deadline passed while queued: paused nothing .*", expectedMarker: snapshothook.QueuedPastDeadlineMarker},
+		{hooksStartedAt: &startedAt, preDoneMembers: 1, expectedError: "deadline passed while running pre-hooks: 1/2 members done"},
+	}
+	for _, tc := range cases {
+		f := newSnapshotGroupControllerFixture(c)
+		group := newTestHookedSnapshotGroup("vol-1", "vol-2")
+		group.Status = longhorn.SnapshotGroupStatus{
+			OwnerID:        TestOwnerID1,
+			Phase:          longhorn.SnapshotGroupPhaseRunningPreHooks,
+			Members:        initializedMemberStatuses(group),
+			HooksStartedAt: tc.hooksStartedAt,
+		}
+		for i := 0; i < tc.preDoneMembers; i++ {
+			group.Status.Hooks = append(group.Status.Hooks, longhorn.HookStatus{
+				SnapshotName: group.Spec.Members[i].SnapshotName,
+				Phase:        longhorn.HookPhasePreDone,
+			})
+		}
+		f.registerSnapshotGroup(c, group)
+
+		f.controller.nowHandler = func() time.Time {
+			return testSnapshotGroupBaseTime.Add(time.Duration(testSnapshotGroupDeadlineSeconds+1) * time.Second)
+		}
+		c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+		updated := f.getGroup(c)
+		c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+		c.Assert(updated.Status.Error, Matches, tc.expectedError)
+		if tc.expectedMarker != "" {
+			c.Assert(strings.HasSuffix(updated.Status.Error, tc.expectedMarker), Equals, true)
+		}
+		f.assertSnapshotCount(c, 0)
+		f.assertHookDeadlineExceededEvent(c)
+	}
+}
+
+// TestHookedGroupInProgressWithoutPreHooksDoneFails verifies the check for a
+// hooked group that a longhorn-manager predating hooks moved straight to
+// InProgress. The new controller fails it with the pre-hooks-skipped marker
+// and creates no member snapshot, even though every other condition for
+// Ready would hold.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupInProgressWithoutPreHooksDoneFails(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestHookedSnapshotGroup("vol-1")
+	group.Status = longhorn.SnapshotGroupStatus{
+		OwnerID: TestOwnerID1,
+		Phase:   longhorn.SnapshotGroupPhaseInProgress,
+		Members: initializedMemberStatuses(group),
+	}
+	f.registerSnapshotGroup(c, group)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	c.Assert(updated.Status.Error, Matches, ".*before the pre-hooks were done.*")
+	c.Assert(strings.HasSuffix(updated.Status.Error, snapshothook.PreHooksSkippedMarker), Equals, true)
+	c.Assert(updated.Annotations[types.SnapshotGroupAnnotationTerminalPhase], Equals, string(longhorn.SnapshotGroupPhaseFailed))
+	f.assertSnapshotCount(c, 0)
+}
+
+// TestHookedGroupFailsOnMemberWithoutHookedMarker verifies the second check
+// against a longhorn-manager that predates hooks. Such a manager creates
+// member snapshots before its refused status write, and those carry no
+// hooked marker. The new controller fails the paused group instead of
+// calling the unpaused snapshot consistent, and the snapshot stays the
+// group's own so deletion still removes it.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupFailsOnMemberWithoutHookedMarker(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	f.registerSnapshotGroup(c, group)
+	f.registerUnhookedMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(testHookedGroupPausedAt+10*time.Second))
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	c.Assert(updated.Status.Error, Matches, "member snapshot .* was taken before the application was paused.*")
+	c.Assert(strings.HasSuffix(updated.Status.Error, snapshothook.PreHooksSkippedMarker), Equals, true)
+	f.assertSnapshotCount(c, 1)
+
+	snapshot, err := f.lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), group.Spec.Members[0].SnapshotName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(f.controller.isOwnMemberSnapshot(updated, group.Spec.Members[0].VolumeName, snapshot), Equals, true)
+}
+
+// TestHookedGroupStampsHookedMarkerOnMembers verifies that the member
+// snapshots a hooked group creates carry the hooked marker, and that an
+// unhooked group's do not.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupStampsHookedMarkerOnMembers(c *C) {
+	marker := types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroupHooked)
+	cases := []struct {
+		name         string
+		hooked       bool
+		expectMarker bool
+	}{
+		{name: "hooked group stamps the marker", hooked: true, expectMarker: true},
+		{name: "unhooked group does not", hooked: false, expectMarker: false},
+	}
+	for _, tc := range cases {
+		f := newSnapshotGroupControllerFixture(c)
+		var group *longhorn.SnapshotGroup
+		if tc.hooked {
+			group = newTestHookedSnapshotGroup("vol-1")
+			group.Status = longhorn.SnapshotGroupStatus{
+				OwnerID:      TestOwnerID1,
+				Phase:        longhorn.SnapshotGroupPhaseRunningPreHooks,
+				Members:      initializedMemberStatuses(group),
+				PreHooksDone: true,
+			}
+		} else {
+			group = newTestSnapshotGroup("vol-1")
+		}
+		f.registerSnapshotGroup(c, group)
+
+		c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil, Commentf(tc.name))
+
+		snapshots, err := f.lhClient.LonghornV1beta2().Snapshots(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(snapshots.Items, HasLen, 1, Commentf(tc.name))
+		value, hasMarker := snapshots.Items[0].Labels[marker]
+		c.Assert(hasMarker, Equals, tc.expectMarker, Commentf(tc.name))
+		if tc.expectMarker {
+			c.Assert(value, Equals, "true", Commentf(tc.name))
+		}
+	}
+}
+
+// TestReadyHookedGroupWithoutPreHooksWarns verifies the companion to the
+// InProgress check. A hooked group that a longhorn-manager predating hooks
+// already drove to Ready gets a PreHooksSkipped warning and keeps its phase,
+// while a restored Ready group, whose members carry the hooked marker, does
+// not.
+func (s *SnapshotGroupControllerSuite) TestReadyHookedGroupWithoutPreHooksWarns(c *C) {
+	cases := []struct {
+		name       string
+		hooked     bool
+		expectWarn bool
+	}{
+		{name: "member taken by a manager that predates hooks, no marker", hooked: false, expectWarn: true},
+		{name: "restored: member carries the marker", hooked: true, expectWarn: false},
+	}
+	creationTime := testSnapshotGroupBaseTime.Add(10 * time.Second).UTC().Format(time.RFC3339)
+	for _, tc := range cases {
+		f := newSnapshotGroupControllerFixture(c)
+		group := newTestHookedSnapshotGroup("vol-1")
+		annotateTerminalPhase(group, longhorn.SnapshotGroupPhaseReady)
+		group.Status = longhorn.SnapshotGroupStatus{
+			OwnerID:    TestOwnerID1,
+			Phase:      longhorn.SnapshotGroupPhaseReady,
+			ReadyToUse: true,
+			Members:    initializedMemberStatuses(group),
+		}
+		f.registerSnapshotGroup(c, group)
+		if tc.hooked {
+			f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTime)
+		} else {
+			f.registerUnhookedMemberSnapshot(c, group.Spec.Members[0], true, creationTime)
+		}
+
+		c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil, Commentf(tc.name))
+
+		updated := f.getGroup(c)
+		c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseReady, Commentf(tc.name))
+		warned := false
+		for _, event := range f.recordedEvents() {
+			if strings.Contains(event, constant.EventReasonPreHooksSkipped) {
+				warned = true
+			}
+		}
+		c.Assert(warned, Equals, tc.expectWarn, Commentf(tc.name))
+	}
+}
+
+// TestTerminalWriteKeepsExecutorHookRecord verifies that the controller's
+// terminal status write does not revert a hook record the executor wrote
+// after this reconcile read the group. The annotation stamp returns the
+// server copy, which carries the executor's paused-pod record; the deferred
+// whole-status write must carry it too, or the deletion hold would see no
+// unreleased pods and let the group go while the application is paused.
+func (s *SnapshotGroupControllerSuite) TestTerminalWriteKeepsExecutorHookRecord(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestHookedSnapshotGroup("vol-1")
+	group.Status = longhorn.SnapshotGroupStatus{
+		OwnerID: TestOwnerID1,
+		Phase:   longhorn.SnapshotGroupPhaseRunningPreHooks,
+		Members: initializedMemberStatuses(group),
+	}
+	f.registerSnapshotGroup(c, group)
+
+	paused := newTestPausedSnapshotGroup().Status
+	f.lhClient.PrependReactor("update", "snapshotgroups", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "" {
+			return false, nil, nil
+		}
+		// The executor claimed the member and paused its pod between the
+		// controller's lister read and this annotation write; the server
+		// copy the write returns carries that record.
+		stored := action.(k8stesting.UpdateAction).GetObject().(*longhorn.SnapshotGroup)
+		stored.Status.HooksStartedAt = paused.HooksStartedAt
+		stored.Status.Hooks = paused.Hooks
+		return false, nil, nil
+	})
+
+	f.controller.nowHandler = func() time.Time {
+		return testSnapshotGroupBaseTime.Add(time.Duration(testSnapshotGroupDeadlineSeconds+1) * time.Second)
+	}
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	c.Assert(updated.Status.HooksStartedAt, DeepEquals, paused.HooksStartedAt)
+	c.Assert(updated.Status.Hooks, DeepEquals, paused.Hooks)
+	c.Assert(snapshothook.UnreleasedHookPods(updated), HasLen, 1)
+}
+
+// TestHookedGroupFailsAtDeadlineWhileInProgress verifies that a hooked group
+// whose deadline passes after the pre-hooks succeeded but before every member
+// snapshot was taken fails with the HookDeadlineExceeded event, the same as a
+// deadline missed during the pre-hooks: both ends of the hook window report
+// under one reason.
+func (s *SnapshotGroupControllerSuite) TestHookedGroupFailsAtDeadlineWhileInProgress(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	f.registerSnapshotGroup(c, group)
+
+	f.controller.nowHandler = func() time.Time {
+		return testSnapshotGroupBaseTime.Add(time.Duration(testSnapshotGroupDeadlineSeconds+1) * time.Second)
+	}
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	c.Assert(updated.Status.Error, Matches, "deadline exceeded before every member snapshot was taken; failed members: volume vol-1 .*")
+	f.assertSnapshotCount(c, 0)
+	f.assertHookDeadlineExceededEvent(c)
+}
+
+// assertHookDeadlineExceededEvent drains the recorder and asserts that the
+// hook-specific deadline event was emitted alongside the terminal Failed one.
+func (f *snapshotGroupControllerFixture) assertHookDeadlineExceededEvent(c *C) {
+	var hookDeadline, failed bool
+	for _, event := range f.recordedEvents() {
+		switch {
+		case strings.Contains(event, constant.EventReasonHookDeadlineExceeded):
+			hookDeadline = true
+		case strings.Contains(event, " "+constant.EventReasonFailed+" "):
+			failed = true
+		}
+	}
+	c.Assert(hookDeadline, Equals, true)
+	c.Assert(failed, Equals, true)
+}
+
+// TestRestoreGuardCoversRunningPreHooks verifies that a hooked group crashed
+// between the terminal annotation write and the status persist regains the
+// recorded outcome from RunningPreHooks and starts no pause: no snapshot is
+// created and the phase is terminal on the first reconcile.
+func (s *SnapshotGroupControllerSuite) TestRestoreGuardCoversRunningPreHooks(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestHookedSnapshotGroup("vol-1")
+	annotateTerminalPhase(group, longhorn.SnapshotGroupPhaseFailed)
+	group.Status = longhorn.SnapshotGroupStatus{OwnerID: TestOwnerID1, Phase: longhorn.SnapshotGroupPhaseRunningPreHooks, Members: initializedMemberStatuses(group), PreHooksDone: true}
+	f.registerSnapshotGroup(c, group)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	c.Assert(f.getGroup(c).Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	f.assertSnapshotCount(c, 0)
+}
+
+// TestPausedGroupReadyWhenRecordedPodsUnchanged verifies the identity gate
+// passes when the live running pods match the pause record exactly: the
+// group becomes Ready and the member taken under the pause is accepted.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupReadyWhenRecordedPodsUnchanged(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(testHookedGroupPausedAt+10*time.Second))
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseReady)
+	c.Assert(updated.Status.ReadyToUse, Equals, true)
+	for _, event := range f.recordedEvents() {
+		c.Assert(event, Not(Matches), ".*HookDeadlineNearlyExceeded.*")
+	}
+}
+
+// TestPausedGroupFailsWhenRecordedPodChanged verifies the identity gate
+// fails the group, naming the member and pod, when the live set differs from
+// the pause record: a restarted container, a replaced pod, a gone pod, or a
+// new pod that arrived mid-window. Every snapshot was taken, yet the group
+// is never Ready.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupFailsWhenRecordedPodChanged(c *C) {
+	cases := []struct {
+		name     string
+		livePods func(f *snapshotGroupControllerFixture, c *C)
+		expected string
+	}{
+		{
+			name: "container restarted",
+			livePods: func(f *snapshotGroupControllerFixture, c *C) {
+				f.registerRunningPod(c, testHookPodName, testHookPodUID, "containerd://c2")
+			},
+			expected: "mongo-0 restarted a container",
+		},
+		{
+			name: "pod replaced",
+			livePods: func(f *snapshotGroupControllerFixture, c *C) {
+				f.registerRunningPod(c, testHookPodName, "pod-uid-2", testHookContainerID)
+			},
+			expected: "mongo-0 was replaced",
+		},
+		{
+			name:     "pod gone",
+			livePods: func(f *snapshotGroupControllerFixture, c *C) {},
+			expected: "mongo-0 recorded at pause time is no longer running",
+		},
+		{
+			name: "new pod arrived",
+			livePods: func(f *snapshotGroupControllerFixture, c *C) {
+				f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+				f.registerRunningPod(c, "mongo-1", "pod-uid-9", "containerd://c9")
+			},
+			expected: "mongo-1 started during the hook window",
+		},
+		{
+			name: "new terminating pod",
+			livePods: func(f *snapshotGroupControllerFixture, c *C) {
+				f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+				f.registerTerminatingPod(c, "mongo-1", "pod-uid-9", "containerd://c9")
+			},
+			expected: "mongo-1 mounting the claim is terminating",
+		},
+		{
+			// A Job pod that mounted the claim, wrote, and completed inside
+			// the hook window is retained as Succeeded: the gate must see it
+			// even though it can no longer be listed as a consumer.
+			name: "finished pod retained",
+			livePods: func(f *snapshotGroupControllerFixture, c *C) {
+				f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+				f.registerFinishedPod(c, "job-1", "pod-uid-7", testSnapshotGroupBaseTime.Add(10*time.Second), "containerd://c7")
+			},
+			expected: "job-1 mounted the claim and finished during the hook window",
+		},
+	}
+	for _, tc := range cases {
+		f := newSnapshotGroupControllerFixture(c)
+		group := newTestPausedSnapshotGroup()
+		f.registerSnapshotGroup(c, group)
+		f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(testHookedGroupPausedAt+10*time.Second))
+		tc.livePods(f, c)
+
+		c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil, Commentf(tc.name))
+
+		updated := f.getGroup(c)
+		c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed, Commentf(tc.name))
+		c.Assert(updated.Status.Error, Matches, "pod changed during the hook window on member .* \\(app/policy\\): .*"+tc.expected+".* "+regexp.QuoteMeta(snapshothook.PodChangedMarker), Commentf(tc.name))
+	}
+}
+
+// TestPausedGroupReadyDespiteFinishedPodFromBeforeTheGroup verifies the
+// retained-pod check scopes itself to the hook window: a Succeeded pod
+// created before the group existed, such as an old completed Job, does not
+// fail the gate.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupReadyDespiteFinishedPodFromBeforeTheGroup(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(testHookedGroupPausedAt+10*time.Second))
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+	f.registerFinishedPod(c, "old-job", "pod-uid-8", testSnapshotGroupBaseTime.Add(-time.Hour), "containerd://c8")
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseReady)
+	c.Assert(updated.Status.ReadyToUse, Equals, true)
+}
+
+// TestPausedGroupFailsWhenPauseRecordIsUnusable verifies the gate refuses
+// to pass a member it cannot verify: a hook record without a PVC is a
+// pod-changed failure even though the live pods are untouched. That is
+// executor-side corruption that should not happen; the gate fails closed
+// on it.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupFailsWhenPauseRecordIsUnusable(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	group.Status.Hooks[0].PVCRef = nil
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(testHookedGroupPausedAt+10*time.Second))
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	c.Assert(updated.Status.Error, Matches, "pod changed during the hook window on member .* \\(app/policy\\): no pause record to verify the pods against "+regexp.QuoteMeta(snapshothook.PodChangedMarker))
+}
+
+// TestPausedGroupFailsWhenReleaseStartedBeforeSnapshots verifies the early
+// exit: the executor already recorded a pod PostRunning - its deadline
+// clock ran ahead of the controller's - so no member snapshot is created
+// and the group fails naming the released pod, even though the controller
+// still sees time left.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupFailsWhenReleaseStartedBeforeSnapshots(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	group.Status.Hooks[0].Pods[0].Phase = longhorn.HookPhasePostRunning
+	f.registerSnapshotGroup(c, group)
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	c.Assert(updated.Status.Error, Matches, "the hook executor released pod app/mongo-0 of member .* before every member snapshot was taken.* "+regexp.QuoteMeta(snapshothook.ReleasedBeforeReadyMarker))
+	f.assertSnapshotCount(c, 0)
+}
+
+// TestPausedGroupFailsWhenReleaseStartsBeforeReadyStamp verifies the live
+// read at the Ready stamp: the lister still shows the pod paused and every
+// snapshot is in, but the executor's PostRunning write has landed on the
+// API server since the reconcile read the group. The stamp must see it and
+// fail the group rather than persist Ready beside a released pod.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupFailsWhenReleaseStartsBeforeReadyStamp(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(testHookedGroupPausedAt+10*time.Second))
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+
+	// The executor's write reaches the API server but not the lister.
+	released := f.getGroup(c)
+	released.Status.Hooks[0].Pods[0].Phase = longhorn.HookPhasePostRunning
+	_, err := f.lhClient.LonghornV1beta2().SnapshotGroups(TestNamespace).UpdateStatus(context.TODO(), released, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	updated := f.getGroup(c)
+	c.Assert(updated.Status.Phase, Equals, longhorn.SnapshotGroupPhaseFailed)
+	c.Assert(updated.Status.Error, Matches, ".* "+regexp.QuoteMeta(snapshothook.ReleasedBeforeReadyMarker))
+	c.Assert(updated.Annotations[types.SnapshotGroupAnnotationTerminalPhase], Equals, string(longhorn.SnapshotGroupPhaseFailed))
+}
+
+// TestPausedGroupWarnsWhenDeadlineNearlyExceeded verifies that a Ready
+// hooked group that used over 80% of its budget gets the warning with the
+// consumption split into queue, pre-hook, and snapshot time.
+func (s *SnapshotGroupControllerSuite) TestPausedGroupWarnsWhenDeadlineNearlyExceeded(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	f.registerSnapshotGroup(c, group)
+	// Deadline 300s: queued 5s, pre-hooks 15s, snapshots up to 250s = 83%.
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(250*time.Second))
+	f.registerRunningPod(c, testHookPodName, testHookPodUID, testHookContainerID)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	c.Assert(f.getGroup(c).Status.Phase, Equals, longhorn.SnapshotGroupPhaseReady)
+	warned := false
+	for _, event := range f.recordedEvents() {
+		if strings.Contains(event, "HookDeadlineNearlyExceeded") && strings.Contains(event, "used 250s of its 300s deadline (queued 5s, pre-hooks 15s, snapshots 230s)") {
+			warned = true
+		}
+	}
+	c.Assert(warned, Equals, true)
+}
+
+// TestDeletionOfPausedGroupWaitsForRelease verifies the finalizer of a
+// hooked group stays while a recorded pod is still paused, proceeds once the
+// executor reports it released, and never touches the member snapshot in
+// between.
+func (s *SnapshotGroupControllerSuite) TestDeletionOfPausedGroupWaitsForRelease(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	deletionTime := metav1.NewTime(testSnapshotGroupBaseTime.Add(time.Minute))
+	group.DeletionTimestamp = &deletionTime
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(30*time.Second))
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	c.Assert(f.getGroup(c).Finalizers, HasLen, 1)
+	f.assertSnapshotCount(c, 1)
+
+	// The executor releases the pod; deletion proceeds.
+	released := f.getGroup(c)
+	released.Status.Hooks[0].Pods[0].Phase = longhorn.HookPhasePostDone
+	_, err := f.lhClient.LonghornV1beta2().SnapshotGroups(TestNamespace).UpdateStatus(context.TODO(), released, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	f.syncGroupFromClient(c)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+	f.assertSnapshotCount(c, 0)
+}
+
+// TestDeletionOfPausedGroupAbandonsReleaseAfterBound verifies the escape:
+// past max(deadline, deletion) plus the worst case of the release attempts
+// over every paused member, the finalizer stops waiting,
+// HookReleaseAbandoned names the never-released pods, and the member
+// snapshots are deleted. Two members: the release runs them one at a time,
+// so the bound must leave room for both, or the second member's remaining
+// attempts would be cut off while its pods are still paused.
+func (s *SnapshotGroupControllerSuite) TestDeletionOfPausedGroupAbandonsReleaseAfterBound(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestPausedSnapshotGroup()
+	group.Spec.Volumes = append(group.Spec.Volumes, "vol-2")
+	group.Spec.Members = append(group.Spec.Members, longhorn.SnapshotGroupMember{
+		VolumeName: "vol-2", SnapshotName: testSnapshotGroupName + "-vol-2", HookPolicyRef: testVolumeHookPolicyRef(),
+	})
+	group.Status.Members = initializedMemberStatuses(group)
+	group.Status.Hooks = append(group.Status.Hooks, longhorn.HookStatus{
+		SnapshotName: group.Spec.Members[1].SnapshotName,
+		Phase:        longhorn.HookPhasePreDone,
+		PVCRef:       &longhorn.PVCRef{Namespace: testHookPodNamespace, Name: "data-2"},
+		Pods: []longhorn.HookPodStatus{{
+			Namespace: testHookPodNamespace, Name: "mongo-1", UID: "pod-uid-2",
+			ContainerIDs: []string{"containerd://c2"}, HookName: "default", Phase: longhorn.HookPhasePreDone,
+		}},
+	})
+	deletionTime := metav1.NewTime(testSnapshotGroupBaseTime.Add(time.Minute))
+	group.DeletionTimestamp = &deletionTime
+	f.registerSnapshotGroup(c, group)
+	f.registerMemberSnapshot(c, group.Spec.Members[0], true, creationTimeAt(30*time.Second))
+	f.registerMemberSnapshot(c, group.Spec.Members[1], true, creationTimeAt(30*time.Second))
+
+	// Defaults: 3 attempts x 2 members x 60s + 2 x 32s backoff cap past the
+	// 300s deadline.
+	bound := testSnapshotGroupBaseTime.Add(time.Duration(testSnapshotGroupDeadlineSeconds)*time.Second + 3*2*60*time.Second + 2*32*time.Second)
+	f.controller.nowHandler = func() time.Time { return bound.Add(-time.Second) }
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+	c.Assert(f.getGroup(c).Finalizers, HasLen, 1)
+	f.recordedEvents()
+
+	f.controller.nowHandler = func() time.Time { return bound.Add(time.Second) }
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
+	f.assertSnapshotCount(c, 0)
+	abandoned := false
+	for _, event := range f.recordedEvents() {
+		if strings.Contains(event, "HookReleaseAbandoned") && strings.Contains(event, "app/mongo-0") && strings.Contains(event, "app/mongo-1") {
+			abandoned = true
+		}
+	}
+	c.Assert(abandoned, Equals, true)
+}
+
+// TestDeletionOfUnclaimedHookedGroupProceeds verifies a hooked group deleted
+// before the executor recorded any pod waits for nothing: there is no pause
+// to release.
+func (s *SnapshotGroupControllerSuite) TestDeletionOfUnclaimedHookedGroupProceeds(c *C) {
+	f := newSnapshotGroupControllerFixture(c)
+	group := newTestHookedSnapshotGroup("vol-1")
+	deletionTime := metav1.NewTime(testSnapshotGroupBaseTime.Add(time.Minute))
+	group.DeletionTimestamp = &deletionTime
+	group.Status = longhorn.SnapshotGroupStatus{OwnerID: TestOwnerID1, Phase: longhorn.SnapshotGroupPhaseRunningPreHooks, Members: initializedMemberStatuses(group)}
+	f.registerSnapshotGroup(c, group)
+
+	c.Assert(f.controller.reconcile(testSnapshotGroupName), IsNil)
+
 	c.Assert(f.getGroup(c).Finalizers, HasLen, 0)
 }

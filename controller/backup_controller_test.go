@@ -6,13 +6,17 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -164,4 +168,28 @@ func TestBackupControllerGetBackupTargetName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBackupControllerWarnIfHookPolicyBypassed(t *testing.T) {
+	f := newHookPolicyBypassFixture(t)
+	backup := &longhorn.Backup{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: TestNamespace},
+		Spec:       longhorn.BackupSpec{SnapshotName: "snap"},
+	}
+
+	t.Run("per-volume backup on a backup-covered volume warns on the volume", func(t *testing.T) {
+		f.bc.warnIfHookPolicyBypassed(backup, volumeBoundTo("cache-data"))
+		events := f.events()
+		require.Len(t, events, 1)
+		assert.Contains(t, events[0], corev1.EventTypeWarning+" "+constant.EventReasonHookPolicyBypassed)
+		assert.Contains(t, events[0], "backup backup")
+		assert.Contains(t, events[0], "app/cache")
+	})
+
+	t.Run("snapshot group member backup is silent", func(t *testing.T) {
+		member := backup.DeepCopy()
+		member.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup): "group"}
+		f.bc.warnIfHookPolicyBypassed(member, volumeBoundTo("cache-data"))
+		assert.Empty(t, f.events())
+	})
 }

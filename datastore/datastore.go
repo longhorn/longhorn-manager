@@ -92,6 +92,8 @@ type DataStore struct {
 	SnapshotInformer                      cache.SharedInformer
 	snapshotGroupLister                   lhlisters.SnapshotGroupLister
 	SnapshotGroupInformer                 cache.SharedInformer
+	volumeHookPolicyLister                lhlisters.VolumeHookPolicyLister
+	VolumeHookPolicyInformer              cache.SharedInformer
 	supportBundleLister                   lhlisters.SupportBundleLister
 	SupportBundleInformer                 cache.SharedInformer
 	systemBackupLister                    lhlisters.SystemBackupLister
@@ -222,6 +224,8 @@ func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeCl
 	cacheSyncs = append(cacheSyncs, snapshotInformer.Informer().HasSynced)
 	snapshotGroupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SnapshotGroups()
 	cacheSyncs = append(cacheSyncs, snapshotGroupInformer.Informer().HasSynced)
+	volumeHookPolicyInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeHookPolicies()
+	cacheSyncs = append(cacheSyncs, volumeHookPolicyInformer.Informer().HasSynced)
 	supportBundleInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SupportBundles()
 	cacheSyncs = append(cacheSyncs, supportBundleInformer.Informer().HasSynced)
 	systemBackupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SystemBackups()
@@ -321,6 +325,8 @@ func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeCl
 		SnapshotInformer:                      snapshotInformer.Informer(),
 		snapshotGroupLister:                   snapshotGroupInformer.Lister(),
 		SnapshotGroupInformer:                 snapshotGroupInformer.Informer(),
+		volumeHookPolicyLister:                volumeHookPolicyInformer.Lister(),
+		VolumeHookPolicyInformer:              volumeHookPolicyInformer.Informer(),
 		supportBundleLister:                   supportBundleInformer.Lister(),
 		SupportBundleInformer:                 supportBundleInformer.Informer(),
 		systemBackupLister:                    systemBackupInformer.Lister(),
@@ -377,6 +383,11 @@ func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeCl
 // Sync returns WaitForCacheSync for Longhorn DataStore
 func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 	return cache.WaitForNamedCacheSync("longhorn datastore", stopCh, s.cacheSyncs...)
+}
+
+// Namespace returns the Longhorn namespace this DataStore serves.
+func (s *DataStore) Namespace() string {
+	return s.namespace
 }
 
 // ErrorIsNotFound checks if given error match

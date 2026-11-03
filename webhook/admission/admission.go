@@ -94,6 +94,8 @@ func (v *Handler) admit(response *webhook.Response, req *Request) {
 		err = fmt.Errorf("unsupported operation %s", req.Operation)
 	}
 
+	response.Warnings = req.Warnings()
+
 	if err != nil {
 		var admitErr werror.AdmitError
 		if e, ok := err.(werror.AdmitError); ok {

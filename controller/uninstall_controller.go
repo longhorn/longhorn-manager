@@ -23,6 +23,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
@@ -472,6 +473,7 @@ func (c *UninstallController) deleteStorageClass() error {
 func (c *UninstallController) deleteLease() error {
 	for _, leaseName := range []string{upgrade.LeaseLockName,
 		types.LonghornGlobalManagerName,
+		types.LonghornHookExecutorName,
 		"driver-longhorn-io",
 		"external-attacher-leader-driver-longhorn-io",
 		"external-resizer-driver-longhorn-io",
@@ -915,6 +917,15 @@ func (c *UninstallController) deleteSnapshotGroups(snapshotGroups map[string]*lo
 			}
 		} else if snapshotGroup.DeletionTimestamp.Before(&timeout) {
 			log.Warn("SnapshotGroup deletion did not finish within timeout, removing finalizer forcibly")
+			// After uninstall nothing else records the pods the hooks paused,
+			// so name them before forcing the finalizer off.
+			for _, pod := range snapshothook.UnreleasedHookPods(snapshotGroup) {
+				log.WithFields(logrus.Fields{
+					"pod":      pod.Namespace + "/" + pod.Name,
+					"hook":     pod.HookName,
+					"podPhase": pod.Phase,
+				}).Warn("Pod may still be paused by its snapshot hook; run the hook's postCommand by hand with kubectl exec to resume it")
+			}
 			if errRemove := c.ds.RemoveFinalizerForSnapshotGroup(snapshotGroup); errRemove != nil {
 				if datastore.ErrorIsNotFound(errRemove) {
 					log.Info("SnapshotGroup is not found")
@@ -1551,11 +1562,17 @@ func (c *UninstallController) deleteManager() (bool, error) {
 	// The cluster-wide Pod controllers run in the longhorn-global-manager
 	// Deployment; stop it together with the DaemonSet so no controller keeps
 	// reconciling while the remaining resources are deleted.
-	waitForDeployment, err := c.deleteGlobalManagerDeployment()
+	waitForGlobalManager, err := c.deleteDeployment(types.LonghornGlobalManagerName)
 	if err != nil {
 		return true, err
 	}
-	return waitForDaemonSet || waitForDeployment, nil
+	// The hook executor must still be running while the CRs are deleted, so
+	// SnapshotGroup finalizers can release the pods their hooks paused.
+	waitForHookExecutor, err := c.deleteDeployment(types.LonghornHookExecutorName)
+	if err != nil {
+		return true, err
+	}
+	return waitForDaemonSet || waitForGlobalManager || waitForHookExecutor, nil
 }
 
 func (c *UninstallController) deleteManagerDaemonSet() (bool, error) {
@@ -1578,16 +1595,16 @@ func (c *UninstallController) deleteManagerDaemonSet() (bool, error) {
 	return true, nil
 }
 
-func (c *UninstallController) deleteGlobalManagerDeployment() (bool, error) {
-	log := getLoggerForUninstallDeployment(c.logger, types.LonghornGlobalManagerName)
+func (c *UninstallController) deleteDeployment(name string) (bool, error) {
+	log := getLoggerForUninstallDeployment(c.logger, name)
 
-	if deployment, err := c.ds.GetDeployment(types.LonghornGlobalManagerName); err != nil {
+	if deployment, err := c.ds.GetDeployment(name); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
 		return true, err
 	} else if deployment.DeletionTimestamp == nil {
-		if err := c.ds.DeleteDeployment(types.LonghornGlobalManagerName); err != nil {
+		if err := c.ds.DeleteDeployment(name); err != nil {
 			log.Warn("Failed to mark for deletion")
 			return true, err
 		}
