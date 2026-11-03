@@ -538,7 +538,9 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		if !efc.isMonitoring(ef) {
 			efc.startMonitoring(ef)
 		}
-	} else if efc.isMonitoring(ef) {
+	} else if efc.isMonitoring(ef) && ef.Status.CurrentState != longhorn.InstanceStateSuspended {
+		// A suspended frontend keeps its device, so keep its status and
+		// monitor. The monitor skips polling until it is running again.
 		efc.resetAndStopMonitoring(ef)
 	}
 
@@ -990,14 +992,24 @@ func (m *EngineFrontendMonitor) sync() bool {
 func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error) {
 	existingEF := ef.DeepCopy()
 
-	defer func() {
-		if err != nil {
-			return
+	// persistStatus writes the status changes made so far, so they are visible
+	// before the calls that can fail or block.
+	persistStatus := func() error {
+		if reflect.DeepEqual(existingEF.Status, ef.Status) {
+			return nil
 		}
-		if !reflect.DeepEqual(existingEF.Status, ef.Status) {
-			if _, updateErr := m.ds.UpdateEngineFrontendStatus(ef); updateErr != nil {
-				err = updateErr
-			}
+		updatedEF, err := m.ds.UpdateEngineFrontendStatus(ef)
+		if err != nil {
+			return err
+		}
+		ef = updatedEF
+		existingEF = ef.DeepCopy()
+		return nil
+	}
+
+	defer func() {
+		if err == nil {
+			err = persistStatus()
 		}
 	}()
 
@@ -1049,11 +1061,8 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 	// and EF are on different nodes, and the deferred update skips writes on
 	// error. Flushing here ensures the volume controller can see the endpoint
 	// and complete the attach flow.
-	if !reflect.DeepEqual(existingEF.Status, ef.Status) {
-		if _, err := m.ds.UpdateEngineFrontendStatus(ef); err != nil {
-			return err
-		}
-		existingEF = ef.DeepCopy()
+	if err := persistStatus(); err != nil {
+		return err
 	}
 
 	volume, err := m.ds.GetVolumeRO(ef.Spec.VolumeName)
@@ -1111,6 +1120,13 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 				if err != nil {
 					return errors.Wrapf(err, "failed to get actual backend size for engine frontend %v", ef.Name)
 				}
+			}
+			// VolumeExpand blocks until the frontend device is resized, while the
+			// backend engine reports the new size earlier. Persist the current
+			// frontend size first so the API does not expose the new size in the
+			// meantime.
+			if err := persistStatus(); err != nil {
+				return err
 			}
 			if err := engineClientProxy.VolumeExpand(ef, expectedExpansionSize); err != nil {
 				if isV2ExpansionInProgressError(err) {
