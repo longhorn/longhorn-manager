@@ -261,6 +261,7 @@ func (c *VolumeController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -281,7 +282,7 @@ func (c *VolumeController) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncVolume(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncVolume(key.(string)) })
 	c.handleErr(err, key)
 
 	return true
@@ -1566,7 +1567,9 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 			chosenReplica = rs[r.Name]
 			break
 		}
-		if types.IsDataEngineV2(v.Spec.DataEngine) && r.Status.InstanceManagerName == "" {
+		// A replica without an instance manager (e.g. a stopped or failed replica) cannot be
+		// checked here. Skip it instead of failing the whole reconcile.
+		if r.Status.InstanceManagerName == "" {
 			continue
 		}
 		im, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)

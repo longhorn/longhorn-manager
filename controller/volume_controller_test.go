@@ -2961,6 +2961,74 @@ func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensB
 	c.Assert(counts[testNode3], Equals, 2)
 }
 
+func (s *TestSuite) TestCleanupReplicaInNotReadyEnvSkipsReplicaWithoutInstanceManager(c *C) {
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	volume := newVolume(TestVolumeName, 3)
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV1
+	volume.Status.State = longhorn.VolumeStateAttached
+
+	engine := newEngineForVolume(volume)
+
+	im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+		TestNode1, TestNode1, TestIP1, nil, nil, nil, longhorn.DataEngineTypeV1, TestInstanceManagerImage, false)
+
+	replicas := map[string]*longhorn.Replica{}
+	for i := 0; i < 2; i++ {
+		replica := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+		replica.Namespace = TestNamespace
+		replica.Spec.HealthyAt = TestTimeNow
+		replica.Status.CurrentState = longhorn.InstanceStateRunning
+		replica.Status.InstanceManagerName = im.Name
+		replicas[replica.Name] = replica
+	}
+	stoppedReplica := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+	stoppedReplica.Namespace = TestNamespace
+	stoppedReplica.Spec.FailedAt = TestTimeNow
+	stoppedReplica.Status.CurrentState = longhorn.InstanceStateStopped
+	stoppedReplica.Status.InstanceManagerName = ""
+	replicas[stoppedReplica.Name] = stoppedReplica
+
+	longhornNodes := []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+	}
+
+	lhObjects := []runtime.Object{volume, engine, im}
+	for _, node := range longhornNodes {
+		lhObjects = append(lhObjects, node)
+	}
+	for _, replica := range replicas {
+		lhObjects = append(lhObjects, replica)
+	}
+
+	lhClient := lhfake.NewSimpleClientset(lhObjects...) // nolint: staticcheck
+	kubeClient := fake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	for _, node := range longhornNodes {
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+	}
+	c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
+
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		ds:             ds,
+		eventRecorder:  record.NewFakeRecorder(10),
+		nowHandler:     getTestNow,
+	}
+
+	cleaned, err := vc.cleanupReplicaInNotReadyEnv(volume, replicas)
+	c.Assert(err, IsNil)
+	c.Assert(cleaned, Equals, false)
+	c.Assert(replicas, HasLen, 3)
+}
+
 func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {
 	testCases := []struct {
 		name     string
@@ -3397,6 +3465,63 @@ func (s *TestSuite) TestEngineSwitchoverTransitionWindowDoesNotRejectMismatch(c 
 
 	c.Assert(switchoverInProgress, Equals, true)
 	c.Assert(shouldRejectEngineNodeMismatch(v, e, switchoverInProgress), Equals, false)
+}
+
+func (s *TestSuite) TestCheckReplicaDiskPressuredSchedulableCandidatesSkipUnhealthyDisk(c *C) {
+	testCases := map[string]struct {
+		targetDiskState longhorn.HealthDataHealthStatus
+		expectCandidate bool
+	}{
+		"healthy target disk is a candidate": {
+			targetDiskState: longhorn.HealthDataStatusPassed,
+			expectCandidate: true,
+		},
+		"unhealthy target disk is skipped": {
+			targetDiskState: longhorn.HealthDataStatusFailed,
+			expectCandidate: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+		vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		c.Assert(err, IsNil)
+
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(),
+			initSettingsNameValue(string(types.SettingNameReplicaAutoBalanceDiskPressurePercentage), "90"), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(sIndexer.Add(setting), IsNil)
+
+		v := newVolume(TestVolumeName, 1)
+		r := newReplicaForVolume(v, newEngineForVolume(v), TestNode1, TestDiskID1)
+
+		node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		node.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{r.Name: v.Spec.Size}
+		node.Spec.Disks[TestDiskID2] = node.Spec.Disks[TestDiskID1]
+		targetDiskStatus := node.Status.DiskStatus[TestDiskID1].DeepCopy()
+		targetDiskStatus.DiskUUID = TestDiskID2
+		targetDiskStatus.ScheduledReplica = map[string]int64{}
+		targetDiskStatus.HealthData = map[string]longhorn.HealthData{
+			"sda": {Source: longhorn.HealthDataSourceSMART, HealthStatus: tc.targetDiskState},
+		}
+		node.Status.DiskStatus[TestDiskID2] = targetDiskStatus
+		c.Assert(nIndexer.Add(node), IsNil)
+
+		err = vc.checkReplicaDiskPressuredSchedulableCandidates(v, r)
+		if tc.expectCandidate {
+			c.Assert(err, IsNil, Commentf("scenario: %s", name))
+		} else {
+			c.Assert(err, ErrorMatches, "no reschedulable candidates found for replica in disk pressure", Commentf("scenario: %s", name))
+		}
+	}
 }
 
 func newVolume(name string, replicaCount int) *longhorn.Volume {

@@ -234,6 +234,7 @@ func (vcc *VolumeCloneController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	vcc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(vcc.worker, time.Second, stopCh)
 	}
@@ -252,7 +253,7 @@ func (vcc *VolumeCloneController) processNextWorkItem() bool {
 		return false
 	}
 	defer vcc.queue.Done(key)
-	err := vcc.syncHandler(key.(string))
+	err := vcc.syncWithMetrics(func() error { return vcc.syncHandler(key.(string)) })
 	vcc.handleErr(err, key)
 	return true
 }

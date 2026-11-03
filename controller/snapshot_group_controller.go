@@ -167,6 +167,7 @@ func (ctrl *SnapshotGroupController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	ctrl.initReconcileMetrics(workers)
 	for range workers {
 		go wait.Until(ctrl.worker, time.Second, stopCh)
 	}
@@ -184,7 +185,7 @@ func (ctrl *SnapshotGroupController) processNextWorkItem() bool {
 		return false
 	}
 	defer ctrl.queue.Done(key)
-	err := ctrl.syncHandler(key.(string))
+	err := ctrl.syncWithMetrics(func() error { return ctrl.syncHandler(key.(string)) })
 	ctrl.handleErr(err, key)
 	return true
 }

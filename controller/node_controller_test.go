@@ -23,6 +23,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	fake "k8s.io/client-go/kubernetes/fake"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -2038,6 +2040,122 @@ func (s *NodeControllerSuite) TestNodeControllerIsResponsibleForSystemManagedCom
 	c.Assert(s.controller.isResponsibleForSetting(setting), Equals, true)
 }
 
+func (s *NodeControllerSuite) TestNodeControllerIsResponsibleForNodeDiskHealthMonitoringSetting(c *C) {
+	setting := newSetting(string(types.SettingNameNodeDiskHealthMonitoring), "false")
+	c.Assert(s.controller.isResponsibleForSetting(setting), Equals, true)
+}
+
+func (s *NodeControllerSuite) TestClearDiskHealthDataWhenNodeDiskHealthMonitoringDisabled(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {
+			Type:                longhorn.DiskTypeFilesystem,
+			FSType:              TestDiskPathFSType,
+			DiskPath:            TestDefaultDataPath,
+			DiskName:            TestDiskID1,
+			DiskUUID:            TestDiskID1,
+			InstanceManagerName: TestInstanceManagerName,
+			HealthData: map[string]longhorn.HealthData{
+				"smart": {Source: longhorn.HealthDataSourceSMART, HealthStatus: longhorn.HealthDataStatusFailed},
+			},
+			HealthDataLastCollectedAt: metav1.Now(),
+			Conditions: types.SetCondition(nil, longhorn.DiskConditionTypeHealthDataCollected, longhorn.ConditionStatusFalse,
+				longhorn.DiskConditionReasonHealthDataCollectionFailed, "failed to collect health data"),
+		},
+	}
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{TestNode1: node},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+			string(types.SettingNameNodeDiskHealthMonitoring):    newSetting(string(types.SettingNameNodeDiskHealthMonitoring), "false"),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue),
+		},
+	}
+	s.initTest(c, fixture)
+
+	c.Assert(s.controller.diskMonitor.RunOnce(), IsNil)
+	c.Assert(s.controller.environmentCheckMonitor.RunOnce(), IsNil)
+	c.Assert(s.controller.cpuPolicyCheckMonitor.RunOnce(), IsNil)
+	c.Assert(s.controller.syncNode(getKey(node, c)), IsNil)
+
+	n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	diskStatus := n.Status.DiskStatus[TestDiskID1]
+	c.Assert(diskStatus, NotNil)
+	c.Assert(diskStatus.HealthData, IsNil)
+	c.Assert(diskStatus.HealthDataLastCollectedAt.IsZero(), Equals, true)
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeHealthDataCollected).Status, Equals, longhorn.ConditionStatusUnknown)
+}
+
+func (s *NodeControllerSuite) TestUpdateDiskHealthDataCollectedCondition(c *C) {
+	newTestNode := func() *longhorn.Node {
+		node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+			TestDiskID1: {
+				Type:     longhorn.DiskTypeFilesystem,
+				DiskPath: TestDefaultDataPath,
+				DiskName: TestDiskID1,
+				DiskUUID: TestDiskID1,
+			},
+		}
+		return node
+	}
+	newTestDiskInfo := func(condition *longhorn.Condition) map[string]*monitor.CollectedDiskInfo {
+		info := monitor.NewDiskInfo(TestDiskID1, TestDiskID1, TestDefaultDataPath, longhorn.DiskDriverNone, false,
+			&lhtypes.DiskStat{StorageMaximum: TestDiskSize, StorageAvailable: TestDiskAvailableSize}, nil, TestInstanceManagerName, "", "")
+		info.HealthDataCondition = condition
+		return map[string]*monitor.CollectedDiskInfo{TestDiskID1: info}
+	}
+	failedCondition := &longhorn.Condition{
+		Type:    longhorn.DiskConditionTypeHealthDataCollected,
+		Status:  longhorn.ConditionStatusFalse,
+		Reason:  longhorn.DiskConditionReasonHealthDataCollectionFailed,
+		Message: "failed to collect health data",
+	}
+
+	s.initTest(c, &NodeControllerFixture{})
+
+	// The collection failure is recorded in the disk condition.
+	node := newTestNode()
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(failedCondition), true)
+	condition := types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(condition.Reason, Equals, longhorn.DiskConditionReasonHealthDataCollectionFailed)
+	c.Assert(condition.Message, Equals, failedCondition.Message)
+
+	// No collection attempted in this round keeps the recorded condition.
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(nil), true)
+	condition = types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusFalse)
+
+	// A successful collection flips the condition.
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(&longhorn.Condition{
+		Type:   longhorn.DiskConditionTypeHealthDataCollected,
+		Status: longhorn.ConditionStatusTrue,
+	}), true)
+	condition = types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusTrue)
+	c.Assert(condition.Reason, Equals, "")
+
+	// The condition is not set when disk health monitoring is disabled.
+	node = newTestNode()
+	s.controller.updateReadyDiskStatusReadyCondition(node, newTestDiskInfo(failedCondition), false)
+	condition = types.GetCondition(node.Status.DiskStatus[TestDiskID1].Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+	c.Assert(condition.Status, Equals, longhorn.ConditionStatusUnknown)
+}
+
 func (s *NodeControllerSuite) syncInstanceManagersNodeSelectorCase(c *C, selectorValue string, kubeNodeLabels map[string]string, existingIMs map[string]*longhorn.InstanceManager) map[string]bool {
 	datastore.SkipListerCheck = true
 	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
@@ -3416,4 +3534,51 @@ func (s *NodeControllerSuite) TestSyncInstanceManagersKeepsV2IMOnOtherNodeDuring
 	c.Assert(err, IsNil)
 	c.Assert(instanceManagers.Items, HasLen, 1)
 	c.Assert(instanceManagers.Items[0].Name, Equals, oldIM.Name)
+}
+
+// TestSyncDiskStatusKeepsUnmountedDiskUUID covers longhorn/longhorn#14102: after a node reboot the disk may not be
+// mounted yet. The disk must keep its recorded UUID, so only Ready reports the problem and the disk is recognized as
+// the same disk once it is mounted.
+func (s *NodeControllerSuite) TestSyncDiskStatusKeepsUnmountedDiskUUID(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	node.Spec.Disks = map[string]longhorn.DiskSpec{
+		TestDiskID1: {Type: longhorn.DiskTypeFilesystem, Path: TestDefaultDataPath, AllowScheduling: true},
+	}
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {Type: longhorn.DiskTypeFilesystem, DiskUUID: TestDiskID1, DiskPath: TestDefaultDataPath},
+	}
+	collected := map[string]*monitor.CollectedDiskInfo{
+		TestDiskID1: monitor.NewDiskInfo(TestDiskID1, TestDiskID1, TestDefaultDataPath, longhorn.DiskDriverNone, false, nil,
+			map[string]string{}, TestInstanceManagerName, string(longhorn.DiskConditionReasonDiskFilesystemChanged), "disk config file not found"),
+	}
+
+	err := s.controller.syncDiskStatus(node, collected)
+	c.Assert(err, IsNil)
+
+	diskStatus := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(diskStatus.DiskUUID, Equals, TestDiskID1)
+	ready := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady)
+	c.Assert(ready.Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(ready.Reason, Equals, string(longhorn.DiskConditionReasonDiskFilesystemChanged))
+}
+
+// TestMarkAllDisksNotReadyKeepsDiskUUID covers longhorn/longhorn#14102: a node going down must only flip Ready and
+// Schedulable. The recorded disk UUID identifies the disk and a reboot does not change it.
+func (s *NodeControllerSuite) TestMarkAllDisksNotReadyKeepsDiskUUID(c *C) {
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonKubernetesNodeNotReady))
+	node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		TestDiskID1: {
+			DiskUUID: TestDiskID1,
+			DiskPath: TestDefaultDataPath,
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+			},
+		},
+	}
+
+	s.controller.markAllDisksNotReadyWhenNodeNotReady(node)
+
+	diskStatus := node.Status.DiskStatus[TestDiskID1]
+	c.Assert(types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status, Equals, longhorn.ConditionStatusFalse)
+	c.Assert(diskStatus.DiskUUID, Equals, TestDiskID1)
 }

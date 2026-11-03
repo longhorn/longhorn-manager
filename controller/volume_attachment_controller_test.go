@@ -27,6 +27,7 @@ type volumeAttachmentTestCase struct {
 	volAttachment *longhorn.VolumeAttachment
 	vol           *longhorn.Volume
 	nodes         []*longhorn.Node
+	engines       []*longhorn.Engine
 
 	expectedVolAttachment *longhorn.VolumeAttachment
 	expectedVol           *longhorn.Volume
@@ -546,6 +547,14 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 		c.Assert(err, IsNil)
 	}
 
+	engineIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+	for _, e := range tc.engines {
+		createdEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), e, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = engineIndexer.Add(createdEngine)
+		c.Assert(err, IsNil)
+	}
+
 	////////////////////////////////////
 	// main test func
 	err = vac.syncHandler(getKey(volAttachment, c))
@@ -594,6 +603,12 @@ func (s *TestSuite) TestVolumeMigrationStartNodeReadiness(c *C) {
 				Parameters: map[string]string{},
 			},
 		}
+		// healthy current engine on TestNode1 (no replicas pending, no purge), required by the migration start gate
+		source := newEngineForVolume(tc.vol)
+		source.Spec.NodeID = TestNode1
+		source.Spec.DesireState = longhorn.InstanceStateRunning
+		source.Status.CurrentState = longhorn.InstanceStateRunning
+		tc.engines = []*longhorn.Engine{source}
 		return tc
 	}
 
@@ -686,6 +701,160 @@ func (s *TestSuite) TestVolumeMigrationStartNodeReadiness(c *C) {
 	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = expectedTicketStatuses()
 	testCases["migration proceeds: target node Ready=True"] = tc
 	///////////////////////////////////////////////////////////////////
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+		s.runVolumeAttachmentTestCase(c, tc)
+	}
+}
+
+// newMigrationTestCase builds a migratable volume attached to TestNode1 with CSI tickets for TestNode1 and TestNode2.
+// The active (source) engine on TestNode1 has three replicas in its spec; modes and purge status are set by the caller.
+func newMigrationTestCase(modes map[string]longhorn.ReplicaMode, purging bool) *volumeAttachmentTestCase {
+	tc := generateVolumeAttachmentTestCaseTemplate(TestVolumeName)
+	tc.vol.Spec.Migratable = true
+	tc.vol.Spec.AccessMode = longhorn.AccessModeReadWriteMany
+	tc.vol.Spec.NodeID = TestNode1
+	tc.vol.Status.State = longhorn.VolumeStateAttached
+	tc.vol.Status.CurrentNodeID = TestNode1
+	tc.volAttachment.Spec.AttachmentTickets = map[string]*longhorn.AttachmentTicket{
+		"csi-node1": {ID: "csi-node1", Type: longhorn.AttacherTypeCSIAttacher, NodeID: TestNode1, Parameters: map[string]string{}},
+		"csi-node2": {ID: "csi-node2", Type: longhorn.AttacherTypeCSIAttacher, NodeID: TestNode2, Parameters: map[string]string{}},
+	}
+	tc.nodes = []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+	}
+
+	source := newEngineForVolume(tc.vol)
+	source.Spec.NodeID = TestNode1
+	source.Spec.DesireState = longhorn.InstanceStateRunning
+	source.Status.CurrentState = longhorn.InstanceStateRunning
+	source.Spec.ReplicaAddressMap = map[string]string{
+		"replica-1": "10.0.0.1:10000",
+		"replica-2": "10.0.0.2:10000",
+		"replica-3": "10.0.0.3:10000",
+	}
+	source.Status.ReplicaModeMap = modes
+	if purging {
+		source.Status.PurgeStatus = map[string]*longhorn.PurgeStatus{"tcp://10.0.0.1:10000": {IsPurging: true}}
+	}
+	tc.engines = []*longhorn.Engine{source}
+	return tc
+}
+
+func allRWReplicaModes() map[string]longhorn.ReplicaMode {
+	return map[string]longhorn.ReplicaMode{
+		"replica-1": longhorn.ReplicaModeRW,
+		"replica-2": longhorn.ReplicaModeRW,
+		"replica-3": longhorn.ReplicaModeRW,
+	}
+}
+
+// pendingReplicaModes returns modes where replica-3 is in the engine spec but has no mode yet (the state in #14153).
+func pendingReplicaModes() map[string]longhorn.ReplicaMode {
+	return map[string]longhorn.ReplicaMode{
+		"replica-1": longhorn.ReplicaModeRW,
+		"replica-2": longhorn.ReplicaModeRW,
+	}
+}
+
+func migrationTicketStatus(id string, satisfied bool, reason, message string) *longhorn.AttachmentTicketStatus {
+	conditionStatus := longhorn.ConditionStatusFalse
+	if satisfied {
+		conditionStatus = longhorn.ConditionStatusTrue
+	}
+	return &longhorn.AttachmentTicketStatus{
+		ID:        id,
+		Satisfied: satisfied,
+		Conditions: types.SetConditionWithoutTimestamp([]longhorn.Condition{},
+			longhorn.AttachmentStatusConditionTypeSatisfied, conditionStatus, reason, message),
+	}
+}
+
+func sourceTicketSatisfied() *longhorn.AttachmentTicketStatus {
+	return migrationTicketStatus("csi-node1", true, "", "")
+}
+
+// TestVolumeMigrationBlockedByActiveEngine verifies that a live migration does not start while the active engine has
+// replicas pending or in rebuilding, or a snapshot purge in progress, and that the target ticket reports why.
+func (s *TestSuite) TestVolumeMigrationBlockedByActiveEngine(c *C) {
+	testCases := map[string]*volumeAttachmentTestCase{}
+
+	rebuildingMsg := func(engineName string) string {
+		return fmt.Sprintf("waiting to migrate the volume to node %v: replicas [replica-3] of engine %v are pending or in rebuilding", TestNode2, engineName)
+	}
+
+	// Replica in the engine spec without a mode -> deferred
+	tc := newMigrationTestCase(pendingReplicaModes(), false)
+	tc.copyCurrentToExpect()
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{
+		"csi-node1": sourceTicketSatisfied(),
+		"csi-node2": migrationTicketStatus("csi-node2", false, longhorn.AttachmentStatusConditionReasonMigrationPending, rebuildingMsg(tc.engines[0].Name)),
+	}
+	testCases["deferred: replica in engine spec without mode"] = tc
+
+	// Replica WO -> deferred
+	modes := allRWReplicaModes()
+	modes["replica-3"] = longhorn.ReplicaModeWO
+	tc = newMigrationTestCase(modes, false)
+	tc.copyCurrentToExpect()
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{
+		"csi-node1": sourceTicketSatisfied(),
+		"csi-node2": migrationTicketStatus("csi-node2", false, longhorn.AttachmentStatusConditionReasonMigrationPending, rebuildingMsg(tc.engines[0].Name)),
+	}
+	testCases["deferred: replica WO"] = tc
+
+	// All RW but a snapshot purge is in progress (e.g., right after a rebuild) -> deferred
+	tc = newMigrationTestCase(allRWReplicaModes(), true)
+	tc.copyCurrentToExpect()
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{
+		"csi-node1": sourceTicketSatisfied(),
+		"csi-node2": migrationTicketStatus("csi-node2", false, longhorn.AttachmentStatusConditionReasonMigrationPending,
+			fmt.Sprintf("waiting to migrate the volume to node %v: snapshot purge is in progress for engine %v", TestNode2, tc.engines[0].Name)),
+	}
+	testCases["deferred: snapshot purge in progress"] = tc
+
+	// All RW and no purge -> migration starts
+	tc = newMigrationTestCase(allRWReplicaModes(), false)
+	tc.copyCurrentToExpect()
+	tc.expectedVol.Spec.MigrationNodeID = TestNode2
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{
+		"csi-node1": sourceTicketSatisfied(),
+		"csi-node2": migrationTicketStatus("csi-node2", false, "", fmt.Sprintf("the volume is currently attached to different node %v ", TestNode1)),
+	}
+	testCases["starts: all replicas RW and no purge"] = tc
+
+	// Current engine temporarily has Spec.Active=false but matches the volume node -> still selected and deferred
+	tc = newMigrationTestCase(pendingReplicaModes(), false)
+	tc.engines[0].Spec.Active = false
+	tc.copyCurrentToExpect()
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{
+		"csi-node1": sourceTicketSatisfied(),
+		"csi-node2": migrationTicketStatus("csi-node2", false, longhorn.AttachmentStatusConditionReasonMigrationPending, rebuildingMsg(tc.engines[0].Name)),
+	}
+	testCases["deferred: inactive but node-matched current engine with replica without mode"] = tc
+
+	// No usable current engine -> error, migration not started (requeued), generic message
+	tc = newMigrationTestCase(allRWReplicaModes(), false)
+	tc.engines = nil
+	tc.copyCurrentToExpect()
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{
+		"csi-node1": sourceTicketSatisfied(),
+		"csi-node2": migrationTicketStatus("csi-node2", false, "", fmt.Sprintf("the volume is currently attached to different node %v ", TestNode1)),
+	}
+	testCases["not started: no current engine"] = tc
+
+	// Migration already in progress, target not ready -> existing "waiting for volume to migrate" condition is kept
+	tc = newMigrationTestCase(allRWReplicaModes(), false)
+	tc.vol.Spec.MigrationNodeID = TestNode2
+	tc.vol.Status.CurrentMigrationNodeID = TestNode2
+	tc.copyCurrentToExpect()
+	tc.expectedVolAttachment.Status.AttachmentTicketStatuses = map[string]*longhorn.AttachmentTicketStatus{
+		"csi-node1": sourceTicketSatisfied(),
+		"csi-node2": migrationTicketStatus("csi-node2", false, "", fmt.Sprintf("waiting for volume to migrate to node %v", TestNode2)),
+	}
+	testCases["in progress: target not ready keeps waiting-for-migration message"] = tc
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)

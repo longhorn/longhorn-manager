@@ -321,6 +321,12 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.13.1") < 0 {
+		logrus.Info("Walking through the resource status upgrade path v1.13.0 to v1.13.1")
+		if err := v1130to1131.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.14.0") < 0 {
 		logrus.Info("Walking through the resource status upgrade path v1.13.x to v1.14.0")
 		if err := v113xto1140.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {

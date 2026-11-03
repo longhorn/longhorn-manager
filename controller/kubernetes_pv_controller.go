@@ -31,6 +31,8 @@ import (
 )
 
 // KubernetesPVController is hosted by the longhorn-global-manager Deployment.
+// TODO: Enable reconcile metrics when longhorn-global-manager exposes the
+// Longhorn metrics registry.
 type KubernetesPVController struct {
 	*baseController
 
@@ -130,7 +132,6 @@ func (kc *KubernetesPVController) processNextWorkItem() bool {
 
 	err := kc.syncKubernetesStatus(key.(string))
 	kc.handleErr(err, key)
-
 	return true
 }
 

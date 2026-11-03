@@ -467,6 +467,7 @@ func (s *Shard) validateAndSyncLvstore(spdkClient *spdkclient.Client) error {
 // shard serves one target, so it always uses one port and does not use the
 // request's port_count.
 func (s *Shard) prepareIPAndPort(superiorPortAllocator *commonbitmap.Bitmap) error {
+	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
 	podIP, err := commonnet.GetIPForPod()
 	if err != nil {
 		return err

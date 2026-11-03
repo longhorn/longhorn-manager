@@ -3,6 +3,8 @@ package controller
 import (
 	. "gopkg.in/check.v1"
 
+	"github.com/longhorn/longhorn-manager/types"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -81,4 +83,37 @@ func (s *TestSuite) TestShouldAdoptBackingImageDataSourceRecovery(c *C) {
 	for _, tc := range cases {
 		c.Assert(shouldAdoptBackingImageDataSourceRecovery(tc.bids), Equals, tc.expected, Commentf(tc.name))
 	}
+}
+
+func (s *TestSuite) TestSyncBackingImageDataSourceCondition(c *C) {
+	bi := &longhorn.BackingImage{}
+	bids := &longhorn.BackingImageDataSource{
+		Status: longhorn.BackingImageDataSourceStatus{
+			CurrentState: longhorn.BackingImageStateFailed,
+			Message:      "download failed",
+		},
+	}
+	syncBackingImageDataSourceCondition(bi, bids)
+	cond := types.GetCondition(bi.Status.Conditions, longhorn.BackingImageConditionTypeFailed)
+	c.Assert(cond.Status, Equals, longhorn.ConditionStatusTrue)
+	c.Assert(cond.Reason, Equals, longhorn.BackingImageConditionReasonDataSource)
+
+	bids.Spec.FileTransferred = true
+	syncBackingImageDataSourceCondition(bi, bids)
+	cond = types.GetCondition(bi.Status.Conditions, longhorn.BackingImageConditionTypeFailed)
+	c.Assert(cond.Status, Equals, longhorn.ConditionStatusFalse)
+}
+
+func (s *TestSuite) TestBackingImageDataSourceRetryStateHasNoCap(c *C) {
+	bids := &longhorn.BackingImageDataSource{
+		Spec: longhorn.BackingImageDataSourceSpec{
+			SourceType:        longhorn.BackingImageDataSourceTypeDownload,
+			RecoveryRequested: true,
+		},
+		Status: longhorn.BackingImageDataSourceStatus{RetryCount: 100},
+	}
+	isRetry, isCappedRetry, retryExhausted := backingImageDataSourceRetryState(bids, false)
+	c.Assert(isRetry, Equals, true)
+	c.Assert(isCappedRetry, Equals, false)
+	c.Assert(retryExhausted, Equals, false)
 }

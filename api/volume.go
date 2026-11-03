@@ -61,8 +61,9 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 		if err != nil {
 			return nil, err
 		}
+		// There is a race condition where the volume CRs might be removed when listing backups, so we ignore not found errors
 		backups, err := s.m.ListBackupsForVolumeSorted(v.Name)
-		if err != nil {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return nil, err
 		}
 		volumeAttachment, err := s.m.GetVolumeAttachment(v.Name)

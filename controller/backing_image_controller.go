@@ -155,6 +155,7 @@ func (bic *BackingImageController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	bic.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(bic.worker, time.Second, stopCh)
 	}
@@ -175,7 +176,7 @@ func (bic *BackingImageController) processNextWorkItem() bool {
 	}
 	defer bic.queue.Done(key)
 
-	err := bic.syncBackingImage(key.(string))
+	err := bic.syncWithMetrics(func() error { return bic.syncBackingImage(key.(string)) })
 	bic.handleErr(err, key)
 
 	return true
@@ -1214,6 +1215,8 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		}
 	}
 
+	syncBackingImageDataSourceCondition(bi, bids)
+
 	if !reflect.DeepEqual(bids, existingBIDS) {
 		if _, err := bic.ds.UpdateBackingImageDataSource(bids); err != nil {
 			return err
@@ -1823,4 +1826,26 @@ func (bic *BackingImageController) deleteUnknownV2Copy(bi *longhorn.BackingImage
 		return false, errors.Wrapf(err, "failed to delete the v2 copy on diskUUID %v", v2DiskUUID)
 	}
 	return true, nil
+}
+
+func syncBackingImageDataSourceCondition(bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource) {
+	if bids == nil || bids.Spec.FileTransferred ||
+		bids.Status.CurrentState == longhorn.BackingImageStateReady ||
+		bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer ||
+		bids.Status.CurrentState == longhorn.BackingImageStateStarting ||
+		bids.Status.CurrentState == longhorn.BackingImageStatePending ||
+		bids.Status.CurrentState == "" ||
+		bids.Status.CurrentState == longhorn.BackingImageStateInProgress {
+		bi.Status.Conditions = types.SetCondition(bi.Status.Conditions,
+			longhorn.BackingImageConditionTypeFailed, longhorn.ConditionStatusFalse, "", "")
+		return
+	}
+
+	msg := bids.Status.Message
+	if msg == "" {
+		msg = fmt.Sprintf("backing image data source is %v", bids.Status.CurrentState)
+	}
+	bi.Status.Conditions = types.SetCondition(bi.Status.Conditions,
+		longhorn.BackingImageConditionTypeFailed, longhorn.ConditionStatusTrue,
+		longhorn.BackingImageConditionReasonDataSource, msg)
 }

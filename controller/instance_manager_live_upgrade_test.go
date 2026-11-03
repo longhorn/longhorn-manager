@@ -3,9 +3,16 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	. "gopkg.in/check.v1"
 
@@ -21,7 +28,10 @@ import (
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
 
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
+
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -1659,6 +1669,122 @@ func (s *TestSuite) TestHandlePodRecreatesMissingPodDuringLiveUpgrade(c *C) {
 	pod, err := kubeClient.CoreV1().Pods(TestNamespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 	c.Assert(err, IsNil)
 	c.Assert(pod.Spec.Containers[0].Name, Equals, "instance-manager")
+}
+
+type fakeInstanceServiceLogServer struct {
+	imrpc.UnimplementedInstanceServiceServer
+	healthpb.UnimplementedHealthServer
+
+	lock   sync.Mutex
+	levels []string
+	flags  []string
+}
+
+func (f *fakeInstanceServiceLogServer) Check(context.Context, *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+}
+
+func (f *fakeInstanceServiceLogServer) VersionGet(context.Context, *emptypb.Empty) (*imrpc.VersionResponse, error) {
+	return &imrpc.VersionResponse{
+		InstanceManagerAPIMinVersion: engineapi.MinInstanceManagerAPIVersion,
+		InstanceManagerAPIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
+	}, nil
+}
+
+func (f *fakeInstanceServiceLogServer) LogSetLevel(_ context.Context, req *imrpc.LogSetLevelRequest) (*emptypb.Empty, error) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.levels = append(f.levels, req.DataEngine.String()+"/"+req.Level)
+	return &emptypb.Empty{}, nil
+}
+
+func (f *fakeInstanceServiceLogServer) LogSetFlags(_ context.Context, req *imrpc.LogSetFlagsRequest) (*emptypb.Empty, error) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flags = append(f.flags, req.DataEngine.String()+"/"+req.Flags)
+	return &emptypb.Empty{}, nil
+}
+
+func (s *TestSuite) TestHandlePodSyncsLogSettingsDuringLiveUpgrade(c *C) {
+	// The instance manager client dials the fixed instance service port, so serve a fake one on loopback.
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", engineapi.InstanceManagerInstanceServiceDefaultPort))
+	if err != nil {
+		c.Skip(fmt.Sprintf("instance service port is unavailable: %v", err))
+	}
+	server := grpc.NewServer()
+	logServer := &fakeInstanceServiceLogServer{}
+	imrpc.RegisterInstanceServiceServer(server, logServer)
+	healthpb.RegisterHealthServer(server, logServer)
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Stop()
+
+	for _, state := range []longhorn.InstanceManagerUpgradeState{
+		longhorn.InstanceManagerUpgradeStatePending,
+		longhorn.InstanceManagerUpgradeStateWaitingForHealthyVolumes,
+	} {
+		logServer.lock.Lock()
+		logServer.levels, logServer.flags = nil, nil
+		logServer.lock.Unlock()
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		for name, value := range map[types.SettingName]string{
+			types.SettingNameLogLevel:           "Info",
+			types.SettingNameDataEngineLogLevel: `{"v2":"Notice"}`,
+			types.SettingNameDataEngineLogFlags: `{"v2":""}`,
+		} {
+			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), newSetting(string(name), value), metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
+
+		im := newInstanceManager("im-upgrade", longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, "127.0.0.1", nil, nil, nil, longhorn.DataEngineTypeV2, TestExtraInstanceManagerImage, false)
+		im.Status.APIMinVersion = engineapi.MinInstanceManagerAPIVersion
+		im.Status.APIVersion = engineapi.CurrentInstanceManagerAPIVersion
+		imu := newInstanceManagerUpgrade("imu-test", TestNode1, TestExtraInstanceManagerImage, state)
+		pod := newPod(&corev1.PodStatus{PodIP: "127.0.0.1", Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
+
+		_, err = lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+
+		_, err = lhClient.LonghornV1beta2().InstanceManagerUpgrades(TestNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = imuIndexer.Add(imu)
+		c.Assert(err, IsNil)
+
+		_, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = pIndexer.Add(pod)
+		c.Assert(err, IsNil)
+
+		err = imc.handlePod(im)
+		c.Assert(err, IsNil)
+
+		logServer.lock.Lock()
+		levels, flags := logServer.levels, logServer.flags
+		logServer.lock.Unlock()
+		c.Assert(levels, DeepEquals, []string{"DATA_ENGINE_V1/Info", "DATA_ENGINE_V2/Notice"}, Commentf("upgrade state %v", state))
+		c.Assert(flags, DeepEquals, []string{"DATA_ENGINE_V2/"}, Commentf("upgrade state %v", state))
+
+		_, err = kubeClient.CoreV1().Pods(TestNamespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil, Commentf("upgrade state %v: pod should be kept during upgrade", state))
+	}
 }
 
 func (s *TestSuite) TestSyncStatusWithPodSetsUpgradingWhenPodDeletingDuringLiveUpgrade(c *C) {

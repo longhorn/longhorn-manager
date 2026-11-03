@@ -124,6 +124,7 @@ func (vec *VolumeEvictionController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	vec.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(vec.worker, time.Second, stopCh)
 	}
@@ -142,7 +143,7 @@ func (vec *VolumeEvictionController) processNextWorkItem() bool {
 		return false
 	}
 	defer vec.queue.Done(key)
-	err := vec.syncHandler(key.(string))
+	err := vec.syncWithMetrics(func() error { return vec.syncHandler(key.(string)) })
 	vec.handleErr(err, key)
 	return true
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -1392,7 +1393,36 @@ func (rcs *ReplicaScheduler) IsDiskEligibleForVolume(diskSpec longhorn.DiskSpec,
 		}
 	}
 
+	if failedHealthData := getFailedDiskHealthDataNames(diskStatus); len(failedHealthData) > 0 {
+		details := make([]string, 0, len(failedHealthData))
+		for _, name := range failedHealthData {
+			healthData := diskStatus.HealthData[name]
+			details = append(details, fmt.Sprintf("%v (source: %v, serial: %v)", name, healthData.Source, healthData.SerialNumber))
+		}
+		return false, longhorn.ErrorReplicaScheduleDiskUnhealthy,
+			fmt.Sprintf("disk is unhealthy because disk health data %v reports %v, so replicas cannot be scheduled to it",
+				details, longhorn.HealthDataStatusFailed)
+	}
+
 	return true, "", ""
+}
+
+// getFailedDiskHealthDataNames returns the sorted names of the disk health data
+// entries reporting a failed health status. A disk is considered unhealthy when
+// any of its health data entries reports a failed health status.
+func getFailedDiskHealthDataNames(diskStatus *longhorn.DiskStatus) []string {
+	if diskStatus == nil {
+		return nil
+	}
+
+	var names []string
+	for name, healthData := range diskStatus.HealthData {
+		if healthData.HealthStatus == longhorn.HealthDataStatusFailed {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 func (rcs *ReplicaScheduler) IsSchedulableToDiskConsiderDiskPressure(diskPressurePercentage, size, requiredStorage int64, info *DiskSchedulingInfo) bool {
