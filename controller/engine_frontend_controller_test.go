@@ -464,8 +464,10 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 				CurrentState:        longhorn.InstanceStateSuspended,
 				Started:             true,
 			},
-			TargetIP:   TestIP2,
-			TargetPort: 0,
+			TargetIP:    TestIP2,
+			TargetPort:  0,
+			Endpoint:    "/dev/longhorn/" + volume.Name,
+			CurrentSize: volume.Spec.Size,
 		},
 	}
 
@@ -502,6 +504,9 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 	c.Assert(err, IsNil)
 	c.Assert(efIndexer.Add(createdEF), IsNil)
 
+	// The frontend was being monitored before it was suspended.
+	efc.engineFrontendMonitorMap[ef.Name] = make(chan struct{})
+
 	err = efc.syncEngineFrontend(TestNamespace + "/" + ef.Name)
 	c.Assert(err, IsNil)
 
@@ -510,8 +515,10 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 	c.Assert(updatedEF.Status.TargetIP, Equals, ef.Spec.TargetIP)
 	c.Assert(updatedEF.Status.TargetPort, Equals, ef.Spec.TargetPort)
 	c.Assert(updatedEF.Status.CurrentState, Equals, longhorn.InstanceStateSuspended)
+	c.Assert(updatedEF.Status.Endpoint, Equals, ef.Status.Endpoint)
+	c.Assert(updatedEF.Status.CurrentSize, Equals, volume.Spec.Size)
 	_, exists := efc.engineFrontendMonitorMap[ef.Name]
-	c.Assert(exists, Equals, false)
+	c.Assert(exists, Equals, true)
 }
 
 func (s *TestSuite) TestSyncEngineFrontendDeletesStaleRunningInstance(c *C) {
