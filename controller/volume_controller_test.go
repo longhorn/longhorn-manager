@@ -1867,6 +1867,37 @@ func (s *TestSuite) TestReconcileVolumeSizeV1ReassertsExpansionRequiredWhenEngin
 	c.Assert(v.Status.ExpansionRequired, Equals, true)
 }
 
+func (s *TestSuite) TestReconcileVolumeSizeV1CanceledExpansionRemovesCancellationAnnotation(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV1
+	v.Spec.Size = TestVolumeSize
+	v.Status.ExpansionRequired = true
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV1
+	e.Spec.VolumeSize = TestVolumeSize * 2
+	e.Status.CurrentSize = TestVolumeSize
+	e.Annotations = map[string]string{
+		types.EngineAnnotationExpansionCanceledVolumeGeneration: strconv.FormatInt(v.Generation, 10),
+	}
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = e.Spec.VolumeSize
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	err := vc.reconcileVolumeSize(v, e, map[string]*longhorn.Replica{r.Name: r}, nil)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.ExpansionRequired, Equals, false)
+	c.Assert(e.Spec.VolumeSize, Equals, int64(TestVolumeSize))
+	c.Assert(r.Spec.VolumeSize, Equals, int64(TestVolumeSize))
+	_, exists := e.Annotations[types.EngineAnnotationExpansionCanceledVolumeGeneration]
+	c.Assert(exists, Equals, false)
+}
+
 func (s *TestSuite) TestReconcileVolumeSizeV2DoesNotReassertExpansionRequiredWhenDetachedFrontendCurrentSizeIsZero(c *C) {
 	v := newVolume(TestVolumeName, 1)
 	v.Spec.DataEngine = longhorn.DataEngineTypeV2
