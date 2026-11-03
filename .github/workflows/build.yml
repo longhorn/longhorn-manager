@@ -19,7 +19,7 @@ jobs:
   build:
     timeout-minutes: 60
     name: Build binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version_major: ${{ steps.build_info.outputs.version_major }}
       version_minor: ${{ steps.build_info.outputs.version_minor }}
@@ -72,7 +72,7 @@ jobs:
   build_push_image:
     timeout-minutes: 60
     name: Build and push image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: build
     if: ${{ startsWith(github.ref, 'refs/heads/') || startsWith(github.ref, 'refs/tags/') }}
     steps:
