@@ -4,8 +4,12 @@ on:
     branches:
       - master
       - "v*.*.*"
+permissions:
+  contents: read
+
 jobs:
   diff:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo

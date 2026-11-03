@@ -8,8 +8,16 @@ on:
     - v*
   pull_request:
   workflow_dispatch:
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    timeout-minutes: 60
     name: Build binaries
     runs-on: ubuntu-latest
     outputs:
@@ -62,6 +70,7 @@ jobs:
       run: make test
 
   build_push_image:
+    timeout-minutes: 60
     name: Build and push image
     runs-on: ubuntu-latest
     needs: build

@@ -19,8 +19,12 @@ on:
         default: 'master'
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   create-pull-request:
+    timeout-minutes: 60
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:

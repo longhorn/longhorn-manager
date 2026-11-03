@@ -7,6 +7,13 @@ on:
       - master
       - "v*"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   call-workflow:
     uses: longhorn/longhorn/.github/workflows/backport-pr.yml@f349c091c50700cb6cb8a4df8aaa29ea214bdd48 # v1.12.1
