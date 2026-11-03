@@ -1731,8 +1731,15 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			// For an attached volume, also use the frontend size as a source
 			// of truth. If the frontend lags the backend engine, keep
 			// returning the older size until the frontend catches up.
+			// The endpoint is cleared while the frontend is suspended and stays
+			// empty after it resumes until the monitor polls again. The
+			// frontend keeps its device and size in the meantime.
+			isFrontendAlive := !ef.Spec.DisableFrontend &&
+				ef.Spec.Frontend != longhorn.VolumeFrontendEmpty &&
+				(ef.Status.CurrentState == longhorn.InstanceStateRunning ||
+					ef.Status.CurrentState == longhorn.InstanceStateSuspended)
 			if v.Status.State == longhorn.VolumeStateAttached &&
-				ef.Status.Endpoint != "" &&
+				(ef.Status.Endpoint != "" || isFrontendAlive) &&
 				ef.Status.CurrentSize > 0 &&
 				ef.Status.CurrentSize < controllerSize {
 				controllerSize = ef.Status.CurrentSize

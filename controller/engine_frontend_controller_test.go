@@ -464,8 +464,9 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 				CurrentState:        longhorn.InstanceStateSuspended,
 				Started:             true,
 			},
-			TargetIP:   TestIP2,
-			TargetPort: 0,
+			TargetIP:    TestIP2,
+			TargetPort:  0,
+			CurrentSize: volume.Spec.Size,
 		},
 	}
 
@@ -510,8 +511,50 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 	c.Assert(updatedEF.Status.TargetIP, Equals, ef.Spec.TargetIP)
 	c.Assert(updatedEF.Status.TargetPort, Equals, ef.Spec.TargetPort)
 	c.Assert(updatedEF.Status.CurrentState, Equals, longhorn.InstanceStateSuspended)
+	c.Assert(updatedEF.Status.CurrentSize, Equals, volume.Spec.Size)
 	_, exists := efc.engineFrontendMonitorMap[ef.Name]
 	c.Assert(exists, Equals, false)
+}
+
+func (s *TestSuite) TestResetAndStopMonitoringKeepsSizeOnlyWhenSuspended(c *C) {
+	datastore.SkipListerCheck = true
+
+	testCases := map[longhorn.InstanceState]int64{
+		longhorn.InstanceStateSuspended: TestVolumeSize,
+		longhorn.InstanceStateStopped:   0,
+	}
+	for state, expectedSize := range testCases {
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+		efc, err := newTestEngineFrontendController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		c.Assert(err, IsNil)
+
+		ef := &longhorn.EngineFrontend{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-engine-frontend",
+				Namespace: TestNamespace,
+			},
+			Status: longhorn.EngineFrontendStatus{
+				InstanceStatus: longhorn.InstanceStatus{
+					CurrentState: state,
+				},
+				Endpoint:    "/dev/longhorn/" + TestVolumeName,
+				CurrentSize: TestVolumeSize,
+			},
+		}
+		createdEF, err := lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Create(context.TODO(), ef, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		efc.resetAndStopMonitoring(createdEF)
+
+		updatedEF, err := lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Get(context.TODO(), ef.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(updatedEF.Status.Endpoint, Equals, "", Commentf("state %v", state))
+		c.Assert(updatedEF.Status.CurrentSize, Equals, expectedSize, Commentf("state %v", state))
+	}
 }
 
 func (s *TestSuite) TestSyncEngineFrontendDeletesStaleRunningInstance(c *C) {
