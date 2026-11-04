@@ -78,10 +78,12 @@ func DetectAddressFamily(ip string) spdktypes.NvmeAddressFamily {
 }
 
 // StartExposeBdev exposes the bdev with the given nqn, bdevName, nguid, ip, and port.
-func (c *Client) StartExposeBdev(nqn, bdevName, nguid, ip, port string) error {
+// If allowedHostNQNs is not empty, only those hosts can connect and the subsystem is
+// hidden from other hosts' discovery log pages.
+func (c *Client) StartExposeBdev(nqn, bdevName, nguid, ip, port string, allowedHostNQNs ...string) error {
 	ip = spdkutil.NormalizeNvmeAddr(ip)
 
-	logrus.Infof("Exposing bdev with nqn %v, bdevName %v, nguid %v, ip %v, port %v", nqn, bdevName, nguid, ip, port)
+	logrus.Infof("Exposing bdev with nqn %v, bdevName %v, nguid %v, ip %v, port %v, allowedHostNQNs %v", nqn, bdevName, nguid, ip, port, allowedHostNQNs)
 
 	nvmfTransportList, err := c.NvmfGetTransports("", "")
 	if err != nil {
@@ -95,8 +97,15 @@ func (c *Client) StartExposeBdev(nqn, bdevName, nguid, ip, port string) error {
 	}
 
 	logrus.Infof("Creating subsystem with nqn %v", nqn)
-	if _, err := c.NvmfCreateSubsystem(nqn); err != nil {
+	if _, err := c.NvmfCreateSubsystem(nqn, len(allowedHostNQNs) == 0); err != nil {
 		return err
+	}
+
+	for _, hostNQN := range allowedHostNQNs {
+		logrus.Infof("Adding allowed host %v to subsystem with nqn %v", hostNQN, nqn)
+		if _, err := c.NvmfSubsystemAddHost(nqn, hostNQN); err != nil {
+			return err
+		}
 	}
 
 	logrus.Infof("Adding NVMe namespace with bdev name %v and nguid %v to subsystem with nqn %v", bdevName, nguid, nqn)
