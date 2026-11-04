@@ -38,6 +38,18 @@ fi
 [[ ${TARGET_PLATFORMS} ]] && BUILDX_ARGS+=('--platform' "${TARGET_PLATFORMS}")
 [[ ${LONGHORN_TWO_MINOR_UPGRADE_DISTROS+x} ]] && BUILDX_ARGS+=('--build-arg' "LONGHORN_TWO_MINOR_UPGRADE_DISTROS=${LONGHORN_TWO_MINOR_UPGRADE_DISTROS}")
 
+# Pass the git metadata resolved by scripts/version on the host. package/Dockerfile runs
+# scripts/build in a container, where git does not work for git worktrees.
+BUILDX_ARGS+=(
+    '--build-arg' 'GIT_METADATA_FROM_HOST=true'
+    '--build-arg' "GIT_COMMIT=${GIT_COMMIT}"
+    '--build-arg' "GIT_COMMIT_SHORT=${GIT_COMMIT_SHORT}"
+    '--build-arg' "GIT_DIRTY=${GIT_DIRTY}"
+    '--build-arg' "GIT_TAG=${GIT_TAG}"
+    '--build-arg' "COMMIT_BRANCH=${COMMIT_BRANCH}"
+    '--build-arg' "COMMIT_TAG=${COMMIT_TAG}"
+)
+
 # update base IMAGE to get latest changes
 grep 'FROM.*/' package/Dockerfile | awk '{print $2}' | while read -r BASE_IMAGE
 do

@@ -4,8 +4,13 @@ set -e
 cd $(dirname $0)/..
 
 echo Checking crds.yaml is up to date
+# Compare file contents instead of using `git diff`, which does not work inside the
+# build container when the checkout is a git worktree or a jj workspace.
+CRDS_SNAPSHOT=$(mktemp)
+trap 'rm -f "$CRDS_SNAPSHOT"' EXIT
+cp k8s/crds.yaml "$CRDS_SNAPSHOT"
 bash k8s/generate_code.sh
-if ! git diff --exit-code k8s/crds.yaml; then
+if ! diff -u "$CRDS_SNAPSHOT" k8s/crds.yaml; then
   echo "crds.yaml is not up to date. Please run 'make generate' and commit the changes."
   exit 1
 fi
