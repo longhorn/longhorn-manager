@@ -626,12 +626,17 @@ func (s *TestSuite) TestCleanupForceDeletedPodResourcesAfterPodDeletion(c *C) {
 	testCases := map[string]struct {
 		gracePeriod     int64
 		tombstone       bool
+		staleRead       bool
 		replacementPod  bool
 		replacementNode string
 		expectVADelete  bool
 		expectStateKept bool
 	}{
 		"force-deleted pod": {
+			expectVADelete: true,
+		},
+		"force-deleted pod read from the cache before its deletion": {
+			staleRead:      true,
 			expectVADelete: true,
 		},
 		"force-deleted pod in DeletedFinalStateUnknown": {
@@ -711,7 +716,14 @@ func (s *TestSuite) TestCleanupForceDeletedPodResourcesAfterPodDeletion(c *C) {
 		kc.enqueuePodChange(pod)
 
 		// Delete event before the worker picks up the key.
-		c.Assert(pIndexer.Delete(pod), IsNil)
+		if tc.staleRead {
+			// The worker read the pod before the force deletion, the stored state is newer.
+			stalePod := pod.DeepCopy()
+			stalePod.DeletionGracePeriodSeconds = ptrTo(int64(30))
+			c.Assert(pIndexer.Update(stalePod), IsNil)
+		} else {
+			c.Assert(pIndexer.Delete(pod), IsNil)
+		}
 		var newPod *corev1.Pod
 		if tc.replacementPod {
 			newPod = newPodWithPVC(TestPod1)
@@ -824,4 +836,151 @@ func (s *TestSuite) TestHandleErrKeepsNewerForceDeletedPodState(c *C) {
 	obj, found := kc.forceDeletedPods.Load(key)
 	c.Assert(found, Equals, true)
 	c.Assert(obj, Equals, newerPod)
+}
+
+// TestSyncSkipsReplacementPodWithoutLonghornVolume verifies that a replacement pod
+// without a Longhorn volume, enqueued only because of a stored force-deleted pod
+// state, does not reach the handlers for Longhorn workload pods.
+func (s *TestSuite) TestSyncSkipsReplacementPodWithoutLonghornVolume(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+	kc, err := newTestKubernetesPodController(lhClient, kubeClient, extensionsClient, informerFactories)
+	c.Assert(err, IsNil)
+
+	// The node-down policy would force-delete a terminating StatefulSet pod on TestNode2,
+	// which has no Longhorn node and counts as down.
+	setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(),
+		newSetting(string(types.SettingNameNodeDownPodDeletionPolicy), string(types.NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod)),
+		metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(sIndexer.Add(setting), IsNil)
+
+	isController := true
+	deletionTime := metav1.NewTime(time.Now().Add(-60 * time.Second))
+	deletedPod := newPodWithPVC(TestPod1)
+	deletedPod.UID = "old-pod-uid"
+	deletedPod.Spec.NodeName = TestNode1
+	deletedPod.DeletionTimestamp = &deletionTime
+	deletedPod.DeletionGracePeriodSeconds = ptrTo(int64(0))
+	kc.enqueuePodDeletion(deletedPod)
+
+	newPod := newPodWithPVC(TestPod1)
+	newPod.UID = "new-pod-uid"
+	newPod.OwnerReferences[0].Controller = &isController
+	newPod.Spec.NodeName = TestNode2
+	newPod.Spec.Volumes = nil
+	newPod.DeletionTimestamp = &deletionTime
+	newPod.DeletionGracePeriodSeconds = ptrTo(int64(30))
+	podObj, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), newPod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pIndexer.Add(podObj), IsNil)
+	kc.enqueuePodChange(podObj)
+
+	c.Assert(kc.queue.Len(), Equals, 1)
+	c.Assert(kc.processNextWorkItem(), Equals, true)
+
+	_, found := kc.forceDeletedPods.Load(TestNamespace + "/" + TestPod1)
+	c.Assert(found, Equals, false)
+	_, err = kubeClient.CoreV1().Pods(TestNamespace).Get(context.TODO(), TestPod1, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+}
+
+// TestCleanupForceDeletedPodResourcesRetriesFailedEventLookup verifies that a failed
+// event lookup keeps the force-deleted pod state and the next sync cleans up.
+func (s *TestSuite) TestCleanupForceDeletedPodResourcesRetriesFailedEventLookup(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	pvIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
+	pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	vaIndexer := informerFactories.KubeInformerFactory.Storage().V1().VolumeAttachments().Informer().GetIndexer()
+
+	kc, err := newTestKubernetesPodController(lhClient, kubeClient, extensionsClient, informerFactories)
+	c.Assert(err, IsNil)
+
+	// PV bound to the claim, so the cleanup has to find a conflicting pod.
+	pvObj, err := kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), newPV(), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvIndexer.Add(pvObj), IsNil)
+
+	pvcObj, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), newPVC(), metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pvcIndexer.Add(pvcObj), IsNil)
+
+	// Pending pod on TestNode2 that waits for the volume of the force-deleted pod.
+	newPod := newPodWithPVC(TestPod2)
+	newPod.Spec.NodeName = TestNode2
+	newPod.Status.Phase = corev1.PodPending
+	newPodObj, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), newPod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(pIndexer.Add(newPodObj), IsNil)
+
+	_, err = kubeClient.CoreV1().Events(TestNamespace).Create(context.TODO(), &corev1.Event{
+		ObjectMeta: metav1.ObjectMeta{Name: TestPod2 + ".failedattach", Namespace: TestNamespace},
+		InvolvedObject: corev1.ObjectReference{
+			Kind:      "Pod",
+			Name:      TestPod2,
+			Namespace: TestNamespace,
+		},
+		Reason:  "FailedAttachVolume",
+		Type:    corev1.EventTypeWarning,
+		Message: `Waiting for detach for volume "` + TestPVName + `" Volume is already used by pod(s) ` + TestPod1,
+	}, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	pvName := TestPVName
+	va := &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: "csi-attach-abcde"},
+		Spec: storagev1.VolumeAttachmentSpec{
+			Attacher: types.LonghornDriverName,
+			NodeName: TestNode1,
+			Source:   storagev1.VolumeAttachmentSource{PersistentVolumeName: &pvName},
+		},
+		Status: storagev1.VolumeAttachmentStatus{Attached: true},
+	}
+	vaObj, err := kubeClient.StorageV1().VolumeAttachments().Create(context.TODO(), va, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(vaIndexer.Add(vaObj), IsNil)
+
+	// The first event lookup fails.
+	eventListCalls := 0
+	kubeClient.PrependReactor("list", "events", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+		eventListCalls++
+		if eventListCalls == 1 {
+			return true, nil, fmt.Errorf("list events failed")
+		}
+		return false, nil, nil
+	})
+
+	deletionTime := metav1.Now()
+	oldPod := newPodWithPVC(TestPod1)
+	oldPod.UID = "old-pod-uid"
+	oldPod.Spec.NodeName = TestNode1
+	oldPod.DeletionTimestamp = &deletionTime
+	oldPod.DeletionGracePeriodSeconds = ptrTo(int64(0))
+	kc.enqueuePodDeletion(oldPod)
+	key := TestNamespace + "/" + TestPod1
+
+	c.Assert(kc.processNextWorkItem(), Equals, true)
+	_, err = kubeClient.StorageV1().VolumeAttachments().Get(context.TODO(), va.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	_, found := kc.forceDeletedPods.Load(key)
+	c.Assert(found, Equals, true)
+
+	// The key comes back rate-limited, the retry deletes the attachment.
+	c.Assert(kc.processNextWorkItem(), Equals, true)
+	_, err = kubeClient.StorageV1().VolumeAttachments().Get(context.TODO(), va.Name, metav1.GetOptions{})
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+	_, found = kc.forceDeletedPods.Load(key)
+	c.Assert(found, Equals, false)
+	c.Assert(eventListCalls, Equals, 2)
 }
