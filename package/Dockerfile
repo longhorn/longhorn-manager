@@ -12,6 +12,16 @@ COPY . /app
 # Make the build script executable
 RUN chmod +x /app/scripts/build
 
+# Git metadata is resolved on the host by scripts/package, because git does not
+# work inside the container for git worktrees.
+ARG GIT_METADATA_FROM_HOST
+ARG GIT_COMMIT
+ARG GIT_COMMIT_SHORT
+ARG GIT_DIRTY
+ARG GIT_TAG
+ARG COMMIT_BRANCH
+ARG COMMIT_TAG
+
 # Run the build script
 RUN /app/scripts/build
 
