@@ -90,6 +90,13 @@ func TestGetVolumeOptions(t *testing.T) {
 				Migratable:              true,
 			},
 		},
+		"negative numberOfReplicas": {
+			volumeID: "test-vol-negative-replicas",
+			volumeOptions: map[string]string{
+				"numberOfReplicas": "-1",
+			},
+			expectedError: true,
+		},
 		"dataEngine override to v2": {
 			volumeID: "test-vol-dataengine-v2",
 			volumeOptions: map[string]string{

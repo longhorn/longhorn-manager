@@ -354,40 +354,47 @@ func (s *DataStore) syncSettingEndpointNetworkForRWXVolume() error {
 }
 
 func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, defaultSettingCMResourceVersion string) error {
-	setting, err := s.GetSettingExact(name)
-	if err != nil {
-		if !ErrorIsNotFound(err) {
-			return err
-		}
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Startup and the ConfigMap controller can synchronize settings concurrently.
+		// Read from the API on each attempt so retries do not reuse a stale cached resource version.
+		setting, err := s.lhClient.LonghornV1beta2().Settings(s.namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+		if err != nil {
+			if !ErrorIsNotFound(err) {
+				return err
+			}
 
-		setting = &longhorn.Setting{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        string(name),
-				Annotations: map[string]string{types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey): defaultSettingCMResourceVersion},
-			},
-			Value: value,
-		}
+			setting = &longhorn.Setting{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        string(name),
+					Annotations: map[string]string{types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey): defaultSettingCMResourceVersion},
+				},
+				Value: value,
+			}
 
-		if _, err = s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		return nil
-	}
-
-	if setting.Annotations == nil {
-		setting.Annotations = map[string]string{}
-	}
-
-	if existingSettingCMResourceVersion, isExist := setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]; isExist {
-		if existingSettingCMResourceVersion == defaultSettingCMResourceVersion && setting.Value == value {
+			if _, err = s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
+				return err
+			}
 			return nil
 		}
-	}
-	setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)] = defaultSettingCMResourceVersion
-	setting.Value = value
 
-	_, err = s.UpdateSetting(setting)
-	return err
+		if setting.Annotations == nil {
+			setting.Annotations = map[string]string{}
+		}
+
+		if existingSettingCMResourceVersion, isExist := setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]; isExist {
+			if existingSettingCMResourceVersion == defaultSettingCMResourceVersion && setting.Value == value {
+				// A previous attempt may have updated the value but failed to remove the temporary annotation.
+				if _, pendingCleanup := setting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)]; !pendingCleanup {
+					return nil
+				}
+			}
+		}
+		setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)] = defaultSettingCMResourceVersion
+		setting.Value = value
+
+		_, err = s.UpdateSetting(setting)
+		return err
+	})
 }
 
 func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaultSettings map[string]string) error {

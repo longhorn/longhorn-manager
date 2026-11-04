@@ -19,6 +19,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 const tib = int64(1) << 40
@@ -296,6 +297,106 @@ func TestValidateLinkedCloneSize(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestVerifyVolumeDataSourceEncryption(t *testing.T) {
+	const (
+		srcVolName  = "src-vol"
+		destVolName = "dest-vol"
+		snapName    = "snap-0"
+	)
+
+	testCases := []struct {
+		name          string
+		dataSource    longhorn.VolumeDataSource
+		srcEncrypted  bool
+		destEncrypted bool
+		wantErr       bool
+	}{
+		{
+			name:          "plain to plain is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  false,
+			destEncrypted: false,
+			wantErr:       false,
+		},
+		{
+			name:          "encrypted to encrypted is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			wantErr:       false,
+		},
+		{
+			name:          "plain to encrypted is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  false,
+			destEncrypted: true,
+			wantErr:       true,
+		},
+		{
+			name:          "encrypted to plain is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  true,
+			destEncrypted: false,
+			wantErr:       true,
+		},
+		{
+			name:          "snapshot source with matching encryption is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			wantErr:       false,
+		},
+		{
+			name:          "snapshot source plain to encrypted is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  false,
+			destEncrypted: true,
+			wantErr:       true,
+		},
+		{
+			name:          "snapshot source encrypted to plain is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  true,
+			destEncrypted: false,
+			wantErr:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			srcVol := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: srcVolName, Namespace: linkedCloneTestNamespace},
+				Spec: longhorn.VolumeSpec{
+					Encrypted:  tc.srcEncrypted,
+					DataEngine: longhorn.DataEngineTypeV1,
+				},
+			}
+			destVol := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: destVolName, Namespace: linkedCloneTestNamespace},
+				Spec: longhorn.VolumeSpec{
+					DataSource: tc.dataSource,
+					Encrypted:  tc.destEncrypted,
+					DataEngine: longhorn.DataEngineTypeV1,
+				},
+			}
+			ds := newLinkedCloneTestDataStore(t, []*longhorn.Volume{srcVol}, nil)
+
+			err := verifyVolumeDataSource(ds, destVol)
+			if !tc.wantErr {
+				assert.NoError(t, err)
+				return
+			}
+			var admitErr werror.AdmitError
+			require.ErrorAs(t, err, &admitErr)
+			status := admitErr.AsResult()
+			assert.Equal(t, metav1.StatusReasonInvalid, status.Reason)
+			require.NotNil(t, status.Details)
+			require.Len(t, status.Details.Causes, 1)
+			assert.Equal(t, "spec.encrypted", status.Details.Causes[0].Field)
 		})
 	}
 }

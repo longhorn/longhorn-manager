@@ -261,6 +261,7 @@ func (vac *VolumeAttachmentController) Run(workers int, stopCh <-chan struct{}) 
 		return
 	}
 
+	vac.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(vac.worker, time.Second, stopCh)
 	}
@@ -279,7 +280,7 @@ func (vac *VolumeAttachmentController) processNextWorkItem() bool {
 		return false
 	}
 	defer vac.queue.Done(key)
-	err := vac.syncHandler(key.(string))
+	err := vac.syncWithMetrics(func() error { return vac.syncHandler(key.(string)) })
 	vac.handleErr(err, key)
 	return true
 }
@@ -474,6 +475,18 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 		if readyCond.Status != longhorn.ConditionStatusTrue {
 			log.Infof("Pending migration attachment ticket %v: target node %v not ready (reason: %v)", attachmentTicket.ID, attachmentTicket.NodeID, readyCond.Reason)
 			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
+			return
+		}
+
+		// Do not start migration while the current engine is rebuilding replicas or purging snapshots.
+		blocked, reason, err := vac.isMigrationBlockedByActiveEngine(vol)
+		if err != nil {
+			log.WithError(err).Warn("Failed to check the current engine before starting migration")
+			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
+			return
+		}
+		if blocked {
+			log.Infof("Pending migration attachment ticket %v: %v", attachmentTicket.ID, reason)
 			return
 		}
 
@@ -892,12 +905,21 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 
 	if attachmentTicket.NodeID != vol.Status.CurrentNodeID {
 		attachmentTicketStatus.Satisfied = false
+
+		reason, message, err := vac.migrationWaitCondition(attachmentTicket, vol)
+		if err != nil {
+			log.WithError(err).Warn("Failed to check the current engine for the migration attachment ticket")
+		}
+		if message == "" {
+			message = fmt.Sprintf("the volume is currently attached to different node %v ", vol.Status.CurrentNodeID)
+		}
+
 		attachmentTicketStatus.Conditions = types.SetCondition(
 			attachmentTicketStatus.Conditions,
 			longhorn.AttachmentStatusConditionTypeSatisfied,
 			longhorn.ConditionStatusFalse,
-			"",
-			fmt.Sprintf("the volume is currently attached to different node %v ", vol.Status.CurrentNodeID),
+			reason,
+			message,
 		)
 		return
 	}
@@ -1079,4 +1101,42 @@ func getCSIAttachmentTicketNotRequestingNode(nodeID string, va *longhorn.VolumeA
 		}
 	}
 	return nil
+}
+
+// isMigrationBlockedByActiveEngine checks whether a live migration of the volume is blocked by its active engine, and
+// returns the reason. The migration engine is never active before the migration is confirmed, so only the source
+// engine is checked.
+func (vac *VolumeAttachmentController) isMigrationBlockedByActiveEngine(vol *longhorn.Volume) (blocked bool, reason string, err error) {
+	es, err := vac.ds.ListVolumeEnginesRO(vol.Name)
+	if err != nil {
+		return false, "", err
+	}
+
+	currentEngine, _, err := datastore.GetCurrentEngineAndExtras(vol, es)
+	if err != nil {
+		return false, "", err
+	}
+
+	blocked, reason = isMigrationBlockedByEngine(currentEngine)
+	return blocked, reason, nil
+}
+
+// migrationWaitCondition returns the MigrationPending reason and message for a CSI ticket of a migratable volume that
+// is waiting for a migration that has not started yet because the current engine is blocked. It returns empty values
+// when the ticket is not such a ticket or the migration is not blocked.
+func (vac *VolumeAttachmentController) migrationWaitCondition(attachmentTicket *longhorn.AttachmentTicket, vol *longhorn.Volume) (reason, message string, err error) {
+	if !isCSIAttacherTicket(attachmentTicket) || !verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
+		return "", "", nil
+	}
+	if !util.IsMigratableVolume(vol) || util.IsVolumeMigrating(vol) {
+		return "", "", nil
+	}
+
+	blocked, blockingReason, err := vac.isMigrationBlockedByActiveEngine(vol)
+	if err != nil || !blocked {
+		return "", "", err
+	}
+
+	message = fmt.Sprintf("waiting to migrate the volume to node %v: %v", attachmentTicket.NodeID, blockingReason)
+	return longhorn.AttachmentStatusConditionReasonMigrationPending, message, nil
 }

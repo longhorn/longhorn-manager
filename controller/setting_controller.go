@@ -89,11 +89,8 @@ type Version struct {
 type CheckUpgradeRequest struct {
 	AppVersion string `json:"appVersion"`
 
-	ExtraTagInfo   CheckUpgradeExtraInfo `json:"extraTagInfo"`
-	ExtraFieldInfo CheckUpgradeExtraInfo `json:"extraFieldInfo"`
-}
-
-type CheckUpgradeExtraInfo interface {
+	ExtraTagInfo   map[string]any `json:"extraTagInfo"`
+	ExtraFieldInfo map[string]any `json:"extraFieldInfo"`
 }
 
 type CheckUpgradeResponse struct {
@@ -161,6 +158,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 		return
 	}
 
+	sc.initReconcileMetrics(1)
 	// must remain single threaded since backup store timer is not thread-safe now
 	go wait.Until(sc.worker, time.Second, stopCh)
 
@@ -180,7 +178,7 @@ func (sc *SettingController) processNextWorkItem() bool {
 	}
 	defer sc.queue.Done(key)
 
-	err := sc.syncSetting(key.(string))
+	err := sc.syncWithMetrics(func() error { return sc.syncSetting(key.(string)) })
 	sc.handleErr(err, key)
 
 	return true
@@ -1508,7 +1506,7 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 	return nil
 }
 
-func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (extraTagInfo CheckUpgradeExtraInfo, extraFieldInfo CheckUpgradeExtraInfo, err error) {
+func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (map[string]any, map[string]any, error) {
 	clusterInfo := &ClusterInfo{
 		logger:        sc.logger,
 		ds:            sc.ds,
@@ -1522,40 +1520,36 @@ func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (extraTagInfo Che
 		namespace:    sc.namespace,
 	}
 
-	defer func() {
-		extraTagInfo = clusterInfo.structFields.tags.NewStruct()
-		extraFieldInfo = clusterInfo.structFields.fields.NewStruct()
-	}()
+	result := func(err error) (map[string]any, map[string]any, error) {
+		return clusterInfo.structFields.tags.ToMap(), clusterInfo.structFields.fields.ToMap(), err
+	}
 
 	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
 	if err != nil {
-		err = errors.Wrap(err, "failed to get Kubernetes server version")
-		return
+		return result(errors.Wrap(err, "failed to get Kubernetes server version"))
 	}
 	clusterInfo.structFields.tags.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
 
 	allowCollectingUsage, err := sc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
 	if err != nil {
 		sc.logger.WithError(err).Warnf("Failed to get Setting %v for extra info collection", types.SettingNameAllowCollectingLonghornUsage)
-		return nil, nil, nil
+		return result(nil)
 	}
 
-	if !allowCollectingUsage {
-		return
+	if allowCollectingUsage {
+		clusterInfo.collectNodeScope()
+
+		responsibleNodeID, err := getResponsibleNodeID(sc.ds)
+		if err != nil {
+			sc.logger.WithError(err).Warn("Failed to get responsible Node for extra info collection")
+			return result(nil)
+		}
+		if responsibleNodeID == sc.controllerID {
+			clusterInfo.collectClusterScope()
+		}
 	}
 
-	clusterInfo.collectNodeScope()
-
-	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
-	if err != nil {
-		sc.logger.WithError(err).Warn("Failed to get responsible Node for extra info collection")
-		return nil, nil, nil
-	}
-	if responsibleNodeID == sc.controllerID {
-		clusterInfo.collectClusterScope()
-	}
-
-	return
+	return result(nil)
 }
 
 // Cluster Scope Info: will be sent from one of the Longhorn cluster nodes
@@ -1576,9 +1570,14 @@ const (
 
 	ClusterInfoVolumeSizeCountFmt = "LonghornVolumeSize%sCount"
 
-	ClusterInfoV2DataEngineCPUCores        = util.StructName("LonghornV2DataEngineCpuCores")
-	ClusterInfoV2DataEngineHugepageSize    = util.StructName("LonghornV2DataEngineHugepageSize")
-	ClusterInfoV2DataEngineHugepageEnabled = util.StructName("LonghornV2DataEngineHugepageEnabled")
+	ClusterInfoV2DataEngineCPUCores             = util.StructName("LonghornV2DataEngineCpuCores")
+	ClusterInfoV2DataEngineHugepageSize         = util.StructName("LonghornV2DataEngineHugepageSize")
+	ClusterInfoV2DataEngineHugepageEnabled      = util.StructName("LonghornV2DataEngineHugepageEnabled")
+	ClusterInfoV2DataEngineInterruptModeEnabled = util.StructName("LonghornV2DataEngineInterruptModeEnabled")
+	ClusterInfoV2DataEngineCPUIsolationEnabled  = util.StructName("LonghornV2DataEngineCPUIsolationEnabled")
+	ClusterInfoV2DataEngineIobufSmallPoolSize   = util.StructName("LonghornV2DataEngineIobufSmallPoolSize")
+	ClusterInfoV2DataEngineIobufLargePoolSize   = util.StructName("LonghornV2DataEngineIobufLargePoolSize")
+	ClusterInfoV2DataEngineNumberOfCPUCores     = util.StructName("LonghornV2DataEngineNumberOfCPUCores")
 
 	ClusterInfoBackupTargetSchemeCountFmt                            = "LonghornBackupTarget%sCount"
 	ClusterInfoPodAvgCPUUsageFmt                                     = "Longhorn%sAverageCpuUsageMilliCores"
@@ -2287,6 +2286,41 @@ func (info *ClusterInfo) collectV2DataEngineInfo() error {
 		info.logger.WithError(err).Warn("Failed to get V2 data engine hugepage enabled setting")
 	} else {
 		info.structFields.tags.Append(ClusterInfoV2DataEngineHugepageEnabled, fmt.Sprint(hugepageEnabled))
+	}
+
+	interruptModeEnabled, err := info.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine interrupt mode enabled setting")
+	} else {
+		info.structFields.tags.Append(ClusterInfoV2DataEngineInterruptModeEnabled, fmt.Sprint(interruptModeEnabled))
+	}
+
+	cpuIsolationEnabled, err := info.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine CPU isolation enabled setting")
+	} else {
+		info.structFields.tags.Append(ClusterInfoV2DataEngineCPUIsolationEnabled, fmt.Sprint(cpuIsolationEnabled))
+	}
+
+	iobufSmallPoolSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer small pool size setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufSmallPoolSize, int(iobufSmallPoolSize))
+	}
+
+	iobufLargePoolSize, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufLargePoolSize, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine IO buffer large pool size setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineIobufLargePoolSize, int(iobufLargePoolSize))
+	}
+
+	numberOfCPUCores, err := info.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineNumberOfCPUCores, longhorn.DataEngineTypeV2)
+	if err != nil {
+		info.logger.WithError(err).Warn("Failed to get V2 data engine number of CPU cores setting")
+	} else {
+		info.structFields.fields.Append(ClusterInfoV2DataEngineNumberOfCPUCores, int(numberOfCPUCores))
 	}
 
 	return nil

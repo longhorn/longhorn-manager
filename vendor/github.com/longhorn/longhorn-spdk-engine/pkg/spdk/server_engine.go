@@ -729,7 +729,12 @@ func (s *Server) EngineBackupRestore(ctx context.Context, req *spdkrpc.EngineBac
 		"specSize":       e.SpecSize,
 	}).Info("Creating temporary engine frontend for backup restore request")
 
-	return tempEF.BackupRestore(e, spdkClient, req.BackupUrl, req.Credential, req.ConcurrentLimit, portAllocator)
+	resp, err := tempEF.BackupRestore(e, spdkClient, req.BackupUrl, req.Credential, req.ConcurrentLimit, portAllocator)
+	if err != nil && resp != nil && len(resp.Errors) > 0 {
+		// The client turns per-replica errors into a TaskError so the caller can classify them like v1.
+		return resp, nil
+	}
+	return resp, err
 }
 
 func (s *Server) EngineRestoreStatus(ctx context.Context, req *spdkrpc.RestoreStatusRequest) (*spdkrpc.RestoreStatusResponse, error) {

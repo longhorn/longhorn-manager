@@ -286,6 +286,7 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	imc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(imc.worker, time.Second, stopCh)
 	}
@@ -306,7 +307,7 @@ func (imc *InstanceManagerController) processNextWorkItem() bool {
 	}
 	defer imc.queue.Done(key)
 
-	err := imc.syncInstanceManager(key.(string))
+	err := imc.syncWithMetrics(func() error { return imc.syncInstanceManager(key.(string)) })
 	imc.handleErr(err, key)
 
 	return true
@@ -409,7 +410,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		log.WithError(err).Warn("Failed to clean up stale engine frontend crypto devices after retries, continuing to sync the instance manager")
 	}
 	deferPodRecreation := imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, im.Name, cleanupPending)
-	if deferPodRecreation {
+	if cleanupPending {
 		imc.queue.AddAfter(key, staleCryptoCleanupRecheckInterval)
 	}
 
@@ -797,6 +798,11 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	err = imc.syncLogSettingsToInstanceManagerPod(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
+	}
+
 	instanceManagerUpgradeInProgress, err := imc.syncInPlaceUpgradedInstanceManagerPod(im, imu)
 	if err != nil {
 		return err
@@ -814,11 +820,6 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 	err = imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
-	}
-
-	err = imc.syncLogSettingsToInstanceManagerPod(im)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
 	}
 
 	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskCoreNumberApplied(im)

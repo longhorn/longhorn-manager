@@ -155,6 +155,7 @@ func (bic *BackingImageController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	bic.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(bic.worker, time.Second, stopCh)
 	}
@@ -175,7 +176,7 @@ func (bic *BackingImageController) processNextWorkItem() bool {
 	}
 	defer bic.queue.Done(key)
 
-	err := bic.syncBackingImage(key.(string))
+	err := bic.syncWithMetrics(func() error { return bic.syncBackingImage(key.(string)) })
 	bic.handleErr(err, key)
 
 	return true

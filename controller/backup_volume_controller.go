@@ -114,6 +114,7 @@ func (bvc *BackupVolumeController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(bvc.name, stopCh, bvc.cacheSyncs...) {
 		return
 	}
+	bvc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(bvc.worker, time.Second, stopCh)
 	}
@@ -131,7 +132,7 @@ func (bvc *BackupVolumeController) processNextWorkItem() bool {
 		return false
 	}
 	defer bvc.queue.Done(key)
-	err := bvc.syncHandler(key.(string))
+	err := bvc.syncWithMetrics(func() error { return bvc.syncHandler(key.(string)) })
 	bvc.handleErr(err, key)
 	return true
 }

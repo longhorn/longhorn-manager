@@ -145,6 +145,7 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	ic.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(ic.worker, time.Second, stopCh)
 	}
@@ -165,7 +166,7 @@ func (ic *EngineImageController) processNextWorkItem() bool {
 	}
 	defer ic.queue.Done(key)
 
-	err := ic.syncEngineImage(key.(string))
+	err := ic.syncWithMetrics(func() error { return ic.syncEngineImage(key.(string)) })
 	ic.handleErr(err, key)
 
 	return true
@@ -914,11 +915,14 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 	cmd := []string{
 		"/bin/bash",
 	}
+	// bash 4.4 as PID 1 cannot terminate itself on SIGTERM after running the EXIT trap,
+	// so exit explicitly from a TERM trap while waiting on a background sleep.
 	args := []string{
 		"-c",
 		"diff /usr/local/bin/longhorn /data/longhorn > /dev/null 2>&1; " +
 			"if [ $? -ne 0 ]; then cp -p /usr/local/bin/longhorn /data/ && echo installed; fi && " +
-			"trap 'rm /data/longhorn* && echo cleaned up' EXIT && sleep infinity",
+			"trap 'rm /data/longhorn* && echo cleaned up' EXIT && " +
+			"trap 'exit 0' TERM && { sleep infinity & wait; }",
 	}
 	maxUnavailable := intstr.FromString(`100%`)
 	privileged := true

@@ -169,6 +169,7 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.cacheSyncs...) {
 		return
 	}
+	bc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(bc.worker, time.Second, stopCh)
 	}
@@ -187,7 +188,7 @@ func (bc *BackupController) processNextWorkItem() bool {
 		return false
 	}
 	defer bc.queue.Done(key)
-	err := bc.syncHandler(key.(string))
+	err := bc.syncWithMetrics(func() error { return bc.syncHandler(key.(string)) })
 	bc.handleErr(err, key)
 	return true
 }
@@ -722,8 +723,20 @@ func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.
 }
 
 func (bc *BackupController) getBackupTargetName(backup *longhorn.Backup) (string, error) {
-	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
-	if !ok {
+	backupTargetName := backup.Labels[types.LonghornLabelBackupTarget]
+	if backupTargetName == "" {
+		// The backup target name in the status is synced from the backup store and
+		// cannot be modified from the client side. Once the label is unexpectedly
+		// lost (e.g. kubectl apply drift on a pulled Backup CR), it is a more
+		// reliable fallback than the snapshot lookup below, and it also works for
+		// backups pulled from the backup target, whose spec.snapshotName is empty
+		// by design.
+		if backup.Status.BackupTargetName != "" {
+			return backup.Status.BackupTargetName, nil
+		}
+		if backup.Spec.SnapshotName == "" {
+			return "", fmt.Errorf("cannot resolve the backup target for backup %v: no %v label, no synced status backup target, and no snapshot name to look up", backup.Name, types.LonghornLabelBackupTarget)
+		}
 		snapshot, err := bc.ds.GetSnapshot(backup.Spec.SnapshotName)
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to get the snapshot %v of the backup %v", backup.Spec.SnapshotName, backup.Name)
@@ -976,7 +989,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
 		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
 	if err != nil {
-		backup.Status.Error = err.Error()
+		backup.Status.Error = util.SanitizeVolatileErrorContent(err.Error())
 		backup.Status.State = longhorn.BackupStateError
 		backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err
@@ -998,7 +1011,7 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 	backupStatus := monitor.GetBackupStatus()
 	backup.Status.Progress = backupStatus.Progress
 	backup.Status.URL = backupStatus.URL
-	backup.Status.Error = backupStatus.Error
+	backup.Status.Error = util.SanitizeVolatileErrorContent(backupStatus.Error)
 	backup.Status.SnapshotName = backupStatus.SnapshotName
 	backup.Status.ReplicaAddress = backupStatus.ReplicaAddress
 	backup.Status.State = backupStatus.State

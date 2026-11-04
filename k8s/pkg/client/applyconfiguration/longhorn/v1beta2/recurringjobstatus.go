@@ -27,6 +27,8 @@ type RecurringJobStatusApplyConfiguration struct {
 	OwnerID *string `json:"ownerID,omitempty"`
 	// The number of jobs that have been triggered.
 	ExecutionCount *int `json:"executionCount,omitempty"`
+	// Records the outcome of the latest run of the recurring job.
+	Conditions []ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
 // RecurringJobStatusApplyConfiguration constructs a declarative configuration of the RecurringJobStatus type for use with
@@ -48,5 +50,18 @@ func (b *RecurringJobStatusApplyConfiguration) WithOwnerID(value string) *Recurr
 // If called multiple times, the ExecutionCount field is set to the value of the last call.
 func (b *RecurringJobStatusApplyConfiguration) WithExecutionCount(value int) *RecurringJobStatusApplyConfiguration {
 	b.ExecutionCount = &value
+	return b
+}
+
+// WithConditions adds the given value to the Conditions field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Conditions field.
+func (b *RecurringJobStatusApplyConfiguration) WithConditions(values ...*ConditionApplyConfiguration) *RecurringJobStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithConditions")
+		}
+		b.Conditions = append(b.Conditions, *values[i])
+	}
 	return b
 }

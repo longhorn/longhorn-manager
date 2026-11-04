@@ -1,20 +1,27 @@
 package monitor
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	logrustest "github.com/sirupsen/logrus/hooks/test"
+
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -22,11 +29,14 @@ import (
 )
 
 const (
-	testNamespace     = "longhorn-system"
-	testNodeName      = "test-node"
-	testBlockDiskName = "block-disk"
-	testBlockDiskPath = "0000:05:00.0"
-	testBlockDiskUUID = "block-disk-uuid"
+	testNamespace          = "longhorn-system"
+	testNodeName           = "test-node"
+	testBlockDiskName      = "block-disk"
+	testBlockDiskPath      = "0000:05:00.0"
+	testBlockDiskUUID      = "block-disk-uuid"
+	testFilesystemDiskName = "filesystem-disk"
+	testFilesystemDiskPath = "/mnt/disk"
+	testFilesystemDiskUUID = "filesystem-disk-uuid"
 )
 
 func TestTruncateDiskMessage(t *testing.T) {
@@ -224,4 +234,304 @@ func TestCollectDiskDataToleratesNilDiskStatus(t *testing.T) {
 	assert.NotPanics(func() {
 		m.collectDiskData(node)
 	})
+}
+
+func getReadyBlockDiskConfig(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+	return &util.DiskConfig{
+		DiskName:   diskName,
+		DiskUUID:   testBlockDiskUUID,
+		DiskDriver: longhorn.DiskDriverNvme,
+		State:      string(spdkdisk.DiskStateReady),
+	}, nil
+}
+
+func countWarnLogs(hook *logrustest.Hook, substr string) int {
+	count := 0
+	for _, entry := range hook.AllEntries() {
+		if entry.Level == logrus.WarnLevel && strings.Contains(entry.Message, substr) {
+			count++
+		}
+	}
+	return count
+}
+
+// TestCollectDiskDataReportsHealthDataCollectionFailure covers longhorn/longhorn#12353:
+// a failed disk health collection is recorded in the HealthDataCollected condition and
+// only the first failure is logged as a warning.
+func TestCollectDiskDataReportsHealthDataCollectionFailure(t *testing.T) {
+	assert := require.New(t)
+
+	m := newTestDiskMonitor(t, getReadyBlockDiskConfig,
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
+		},
+	)
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.TraceLevel)
+	m.logger = logger
+
+	healthErr := fmt.Errorf("smartctl is not available")
+	m.getDiskHealthHandler = func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+		return nil, time.Now().Truncate(time.Second), healthErr
+	}
+
+	// First failure: no condition recorded yet, so a warning is logged.
+	node := newTestBlockDiskNode()
+	diskInfo := m.collectDiskData(node)[testBlockDiskName]
+	assert.NotNil(diskInfo)
+	assert.NotNil(diskInfo.HealthDataCondition)
+	assert.Equal(longhorn.DiskConditionTypeHealthDataCollected, diskInfo.HealthDataCondition.Type)
+	assert.Equal(longhorn.ConditionStatusFalse, diskInfo.HealthDataCondition.Status)
+	assert.Equal(longhorn.DiskConditionReasonHealthDataCollectionFailed, diskInfo.HealthDataCondition.Reason)
+	assert.Contains(diskInfo.HealthDataCondition.Message, healthErr.Error())
+	assert.Equal(1, countWarnLogs(hook, "Failed to get disk health"))
+
+	// Repeated failure: the failure is already recorded in the disk status, so no
+	// further warning is logged.
+	node.Status.DiskStatus[testBlockDiskName].Conditions = types.SetCondition(nil,
+		longhorn.DiskConditionTypeHealthDataCollected, longhorn.ConditionStatusFalse,
+		longhorn.DiskConditionReasonHealthDataCollectionFailed, diskInfo.HealthDataCondition.Message)
+	diskInfo = m.collectDiskData(node)[testBlockDiskName]
+	assert.NotNil(diskInfo.HealthDataCondition)
+	assert.Equal(longhorn.ConditionStatusFalse, diskInfo.HealthDataCondition.Status)
+	assert.Equal(1, countWarnLogs(hook, "Failed to get disk health"))
+
+	// Recovered collection is reported as collected.
+	m.getDiskHealthHandler = func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+		return map[string]longhorn.HealthData{}, lastCollectedAt.Add(HealthDataUpdateInterval), nil
+	}
+	diskInfo = m.collectDiskData(node)[testBlockDiskName]
+	assert.NotNil(diskInfo.HealthDataCondition)
+	assert.Equal(longhorn.ConditionStatusTrue, diskInfo.HealthDataCondition.Status)
+
+	// A failure after a recovery is warned again.
+	node.Status.DiskStatus[testBlockDiskName].Conditions = types.SetCondition(node.Status.DiskStatus[testBlockDiskName].Conditions,
+		longhorn.DiskConditionTypeHealthDataCollected, longhorn.ConditionStatusTrue, "", diskInfo.HealthDataCondition.Message)
+	m.getDiskHealthHandler = func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+		return nil, time.Now().Truncate(time.Second), healthErr
+	}
+	diskInfo = m.collectDiskData(node)[testBlockDiskName]
+	assert.Equal(longhorn.ConditionStatusFalse, diskInfo.HealthDataCondition.Status)
+	assert.Equal(2, countWarnLogs(hook, "Failed to get disk health"))
+}
+
+type failingDiskHealthClient struct {
+	err error
+}
+
+func (c *failingDiskHealthClient) DiskHealthGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskHealth, error) {
+	return nil, c.err
+}
+
+func TestCollectDiskDataSuppressesRepeatedNVMeHealthWarnings(t *testing.T) {
+	assert := require.New(t)
+	m := newTestDiskMonitor(t, getReadyBlockDiskConfig,
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
+		},
+	)
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.DebugLevel)
+	m.logger = logger
+	healthErr := fmt.Errorf("NVMe controller health request failed")
+	m.getDiskHealthHandler = func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+		health, err := getHealthDataFromControllerHealthInfo(diskName, diskPath, &failingDiskHealthClient{err: healthErr}, logger)
+		assert.ErrorIs(err, healthErr)
+		return health, time.Now().Truncate(time.Second), err
+	}
+
+	node := newTestBlockDiskNode()
+	for attempt := 0; attempt < 3; attempt++ {
+		info := m.collectDiskData(node)[testBlockDiskName]
+		assert.NotNil(info)
+		assert.NotNil(info.HealthDataCondition)
+		assert.Equal(longhorn.ConditionStatusFalse, info.HealthDataCondition.Status)
+		assert.Contains(info.HealthDataCondition.Message, healthErr.Error())
+		assert.Equal(1, countWarnLogs(hook, ""))
+		assert.Equal(1, countWarnLogs(hook, "Failed to get disk health"))
+		node.Status.DiskStatus[testBlockDiskName].Conditions = types.SetCondition(nil,
+			info.HealthDataCondition.Type, info.HealthDataCondition.Status,
+			info.HealthDataCondition.Reason, info.HealthDataCondition.Message)
+	}
+	helperDebugLogs := 0
+	for _, entry := range hook.AllEntries() {
+		if entry.Level == logrus.DebugLevel && entry.Message == "Failed to get controller health info" {
+			helperDebugLogs++
+		}
+	}
+	assert.Equal(3, helperDebugLogs)
+}
+
+// TestCollectDiskDataSkippedHealthDataCollection makes sure a skipped health data
+// collection keeps the recorded HealthDataCollected condition as is.
+func TestCollectDiskDataSkippedHealthDataCollection(t *testing.T) {
+	assert := require.New(t)
+
+	m := newTestDiskMonitor(t, getReadyBlockDiskConfig,
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
+		},
+	)
+
+	node := newTestBlockDiskNode()
+	diskInfo := m.collectDiskData(node)[testBlockDiskName]
+	assert.NotNil(diskInfo)
+	assert.Nil(diskInfo.HealthDataCondition)
+
+	failureMessage := "failed to collect health data"
+	node.Status.DiskStatus[testBlockDiskName].Conditions = types.SetCondition(nil,
+		longhorn.DiskConditionTypeHealthDataCollected, longhorn.ConditionStatusFalse,
+		longhorn.DiskConditionReasonHealthDataCollectionFailed, failureMessage)
+	diskInfo = m.collectDiskData(node)[testBlockDiskName]
+	assert.NotNil(diskInfo.HealthDataCondition)
+	assert.Equal(longhorn.ConditionStatusFalse, diskInfo.HealthDataCondition.Status)
+	assert.Equal(failureMessage, diskInfo.HealthDataCondition.Message)
+}
+
+func TestCollectDiskDataSkippedHealthDataCollectionIgnoresConditionTimestamps(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failed=%v", failed), func(t *testing.T) {
+			assert := require.New(t)
+			m := newTestDiskMonitor(t, getReadyBlockDiskConfig,
+				func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+					return &util.DiskConfig{State: string(spdkdisk.DiskStateCreating)}, nil
+				},
+			)
+			collectedAt := time.Now().Truncate(time.Second)
+			m.getDiskHealthHandler = func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+				if failed {
+					return nil, collectedAt, fmt.Errorf("health collection failed")
+				}
+				return map[string]longhorn.HealthData{}, collectedAt, nil
+			}
+
+			node := newTestBlockDiskNode()
+			collectedData := m.collectDiskData(node)
+			info := collectedData[testBlockDiskName]
+			assert.NotNil(info)
+			assert.NotNil(info.HealthDataCondition)
+
+			// Simulate the controller persisting health data and condition timestamps.
+			diskStatus := node.Status.DiskStatus[testBlockDiskName]
+			diskStatus.HealthData = info.HealthData
+			diskStatus.HealthDataLastCollectedAt = metav1.NewTime(info.HealthDataLastCollectedAt)
+			condition := info.HealthDataCondition
+			diskStatus.Conditions = types.SetCondition(nil, condition.Type, condition.Status, condition.Reason, condition.Message)
+			diskStatus.Conditions[0].LastProbeTime = collectedAt.Format(time.RFC3339)
+			persistedCondition := diskStatus.Conditions[0]
+			assert.NotEmpty(persistedCondition.LastTransitionTime)
+			originalNode := node.DeepCopy()
+
+			m.getDiskHealthHandler = func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+				return nil, lastCollectedAt, nil
+			}
+			for poll := 0; poll < 2; poll++ {
+				skippedData := m.collectDiskData(node)
+				assert.Equal(collectedData, skippedData, "skipped polls must not trigger a node reconciliation")
+				assert.Equal(originalNode, node, "persisted condition timestamps must remain unchanged")
+			}
+		})
+	}
+}
+
+func newTestFilesystemDiskNode(recordedDiskUUID string) *longhorn.Node {
+	return &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName, Namespace: testNamespace},
+		Spec: longhorn.NodeSpec{
+			Disks: map[string]longhorn.DiskSpec{
+				testFilesystemDiskName: {
+					Type: longhorn.DiskTypeFilesystem,
+					Path: testFilesystemDiskPath,
+				},
+			},
+		},
+		Status: longhorn.NodeStatus{
+			DiskStatus: map[string]*longhorn.DiskStatus{
+				testFilesystemDiskName: {
+					Type:     longhorn.DiskTypeFilesystem,
+					DiskUUID: recordedDiskUUID,
+					DiskPath: testFilesystemDiskPath,
+				},
+			},
+		},
+	}
+}
+
+// getMissingDiskConfig returns the error the host returns when longhorn-disk.cfg is absent at the data path.
+func getMissingDiskConfig(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+	return nil, errors.New("failed to read host disk config file longhorn-disk.cfg: cannot find file /mnt/disk/longhorn-disk.cfg")
+}
+
+// TestCollectDiskDataDoesNotGenerateConfigForInitializedFilesystemDisk covers longhorn/longhorn#14102: after a
+// node reboot the manager can come up before the disk is mounted, so the data path is an empty directory on the
+// root filesystem. Generating a config there writes longhorn-disk.cfg and replicas/ to the root filesystem under a
+// new UUID, so the monitor must report the disk as not mounted instead.
+func TestCollectDiskDataDoesNotGenerateConfigForInitializedFilesystemDisk(t *testing.T) {
+	assert := require.New(t)
+
+	generateCalls := 0
+	m := newTestDiskMonitor(t, getMissingDiskConfig,
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			generateCalls++
+			return &util.DiskConfig{DiskName: diskName, DiskUUID: "new-uuid", State: string(spdkdisk.DiskStateReady)}, nil
+		},
+	)
+
+	diskInfoMap := m.collectDiskData(newTestFilesystemDiskNode(testFilesystemDiskUUID))
+
+	assert.Equal(0, generateCalls)
+	diskInfo, ok := diskInfoMap[testFilesystemDiskName]
+	assert.True(ok)
+	assert.NotNil(diskInfo.Condition)
+	assert.Equal(string(longhorn.DiskConditionReasonDiskFilesystemChanged), diskInfo.Condition.Reason)
+	// The recorded UUID is kept, so the disk is recognized as the same disk once it is mounted.
+	assert.Equal(testFilesystemDiskUUID, diskInfo.DiskUUID)
+}
+
+// TestCollectDiskDataGeneratesConfigForUninitializedFilesystemDisk makes sure a newly added disk, which has no
+// recorded UUID yet, is still initialized by generating its disk config.
+func TestCollectDiskDataGeneratesConfigForUninitializedFilesystemDisk(t *testing.T) {
+	assert := require.New(t)
+
+	generateCalls := 0
+	m := newTestDiskMonitor(t, getMissingDiskConfig,
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			generateCalls++
+			return &util.DiskConfig{DiskName: diskName, DiskUUID: "new-uuid", State: string(spdkdisk.DiskStateReady)}, nil
+		},
+	)
+
+	diskInfoMap := m.collectDiskData(newTestFilesystemDiskNode(""))
+
+	assert.Equal(1, generateCalls)
+	diskInfo, ok := diskInfoMap[testFilesystemDiskName]
+	assert.True(ok)
+	if diskInfo.Condition != nil {
+		assert.NotEqual(string(longhorn.DiskConditionReasonDiskFilesystemChanged), diskInfo.Condition.Reason)
+	}
+}
+
+// TestCollectDiskDataRecreatesInitializedBlockDisk guards the v2 recovery path from the filesystem-only gate: after
+// an instance manager restart the disk service no longer knows the lvstore, and the monitor has to re-create it with
+// the recorded UUID so the existing lvstore is loaded instead of a new one.
+func TestCollectDiskDataRecreatesInitializedBlockDisk(t *testing.T) {
+	assert := require.New(t)
+
+	generateCalls := 0
+	generatedUUID := ""
+	m := newTestDiskMonitor(t,
+		func(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
+			return nil, errors.New("cannot find disk info")
+		},
+		func(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
+			generateCalls++
+			generatedUUID = diskUUID
+			return &util.DiskConfig{DiskName: diskName, DiskUUID: diskUUID, State: string(spdkdisk.DiskStateReady)}, nil
+		},
+	)
+
+	m.collectDiskData(newTestBlockDiskNode())
+
+	assert.Equal(1, generateCalls)
+	assert.Equal(testBlockDiskUUID, generatedUUID)
 }
