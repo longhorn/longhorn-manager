@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -144,7 +145,7 @@ func newInstanceManagerPodLivenessProbeTimeoutSetting() *longhorn.Setting {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: string(types.SettingNameInstanceManagerPodLivenessProbeTimeout),
 		},
-		Value: "0",
+		Value: "10",
 	}
 }
 
@@ -572,6 +573,17 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			pod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(pod.Spec.Containers[0].Name, Equals, "instance-manager")
+			startupProbe := pod.Spec.Containers[0].StartupProbe
+			livenessProbe := pod.Spec.Containers[0].LivenessProbe
+			c.Assert(startupProbe, NotNil)
+			c.Assert(startupProbe.Exec, NotNil)
+			c.Assert(strings.HasPrefix(startupProbe.Exec.Command[2], livenessProbeScript), Equals, true)
+			c.Assert(startupProbe.PeriodSeconds, Equals, int32(datastore.IMPodStartupProbePeriodSeconds))
+			// A timed out attempt must fit in the period, so the startup window in
+			// seconds is not shorter nor much longer than the liveness tolerance.
+			c.Assert(startupProbe.TimeoutSeconds <= startupProbe.PeriodSeconds, Equals, true)
+			c.Assert(startupProbe.FailureThreshold*startupProbe.PeriodSeconds, Equals,
+				livenessProbe.InitialDelaySeconds+livenessProbe.FailureThreshold*livenessProbe.PeriodSeconds)
 		}
 
 		// Skip checking imc.instanceManagerMonitorMap since the monitor doesn't work in the unit test.

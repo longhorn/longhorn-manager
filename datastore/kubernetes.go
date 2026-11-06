@@ -48,6 +48,8 @@ const (
 
 	IMPodProbeInitialDelay             = 3
 	IMPodLivenessProbeFailureThreshold = 6
+	IMPodStartupProbePeriodSeconds     = 1
+	IMPodStartupProbeTimeoutSeconds    = 1
 )
 
 func labelMapToLabelSelector(labels map[string]string) (labels.Selector, error) {

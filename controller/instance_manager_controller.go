@@ -586,7 +586,7 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 		}
 	case corev1.PodRunning:
 		isReady := true
-		// Make sure readiness probe has passed.
+		// Make sure the startup probe has passed.
 		for _, st := range pod.Status.ContainerStatuses {
 			isReady = isReady && st.Ready
 		}
@@ -2296,6 +2296,25 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		TimeoutSeconds:      int32(podProbeTimeout),
 		PeriodSeconds:       int32(podProbeTimeout + 1),
 		FailureThreshold:    datastore.IMPodLivenessProbeFailureThreshold,
+	}
+	// Keep the pod not ready until the instance manager services listen, so the
+	// controller does not dial them too early. Unlike a readiness probe, a startup
+	// probe stops after its first success and cannot fail running instances later.
+	// Each attempt fits in the period, so the startup window lasts as long as the
+	// liveness probe tolerance.
+	podSpec.Spec.Containers[0].StartupProbe = &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			Exec: &corev1.ExecAction{
+				Command: []string{
+					"/bin/sh",
+					"-c",
+					getLivenessProbeCommand(dataEngine, datastore.IMPodStartupProbeTimeoutSeconds),
+				},
+			},
+		},
+		TimeoutSeconds:   datastore.IMPodStartupProbeTimeoutSeconds,
+		PeriodSeconds:    datastore.IMPodStartupProbePeriodSeconds,
+		FailureThreshold: int32(datastore.IMPodProbeInitialDelay + datastore.IMPodLivenessProbeFailureThreshold*(podProbeTimeout+1)),
 	}
 
 	// Set environment variables
