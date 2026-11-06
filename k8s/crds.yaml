@@ -1721,6 +1721,8 @@ spec:
                 type: string
               port:
                 type: integer
+              postRebuildPurgeError:
+                type: string
               purgeStatus:
                 additionalProperties:
                   properties:
