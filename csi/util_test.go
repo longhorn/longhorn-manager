@@ -1,11 +1,16 @@
 package csi
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"k8s.io/mount-utils"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -253,4 +258,25 @@ func TestRequiresSharedAccess(t *testing.T) {
 			assert.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+func TestHostNamespaceMounterUnmountWithForce(t *testing.T) {
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "nsmounter-calls")
+	fakeNsmounter := filepath.Join(dir, "nsmounter")
+	// A plain umount hangs like one on an unreachable NFS server, umount -f returns
+	script := "#!/bin/sh\necho \"$@\" >> " + calls + "\n[ \"$2\" = \"-f\" ] || sleep 30\n"
+	require.NoError(t, os.WriteFile(fakeNsmounter, []byte(script), 0755))
+	oldNsmounterPath := nsmounterPath
+	nsmounterPath = fakeNsmounter
+	t.Cleanup(func() { nsmounterPath = oldNsmounterPath })
+
+	start := time.Now()
+	err := newHostNamespaceMounter().(mount.MounterForceUnmounter).UnmountWithForce("/staging", 100*time.Millisecond)
+
+	require.NoError(t, err)
+	assert.Less(t, time.Since(start), 10*time.Second)
+	got, err := os.ReadFile(calls)
+	require.NoError(t, err)
+	assert.Equal(t, "umount /staging\numount -f /staging\n", string(got))
 }

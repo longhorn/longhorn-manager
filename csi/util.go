@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -38,6 +39,45 @@ const (
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
 )
+
+var nsmounterPath = "/usr/local/sbin/nsmounter"
+
+// hostNamespaceMounter mounts and unmounts in the host mount namespace through nsmounter.
+// mount-utils always runs umount in the current namespace, ignoring the mounter path,
+// which leaves the host's /run/mount/utab entry of the mount behind.
+type hostNamespaceMounter struct {
+	mount.Interface
+}
+
+func newHostNamespaceMounter() mount.Interface {
+	return &hostNamespaceMounter{Interface: mount.New(nsmounterPath)}
+}
+
+func (m *hostNamespaceMounter) Unmount(target string) error {
+	return hostNamespaceUmount(context.Background(), target)
+}
+
+func (m *hostNamespaceMounter) UnmountWithForce(target string, umountTimeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), umountTimeout)
+	defer cancel()
+	err := hostNamespaceUmount(ctx, target)
+	if ctx.Err() != nil {
+		logrus.Infof("Timed out waiting for unmount of %v in the host mount namespace, trying with -f", target)
+		return hostNamespaceUmount(context.Background(), "-f", target)
+	}
+	return err
+}
+
+func hostNamespaceUmount(ctx context.Context, args ...string) error {
+	cmd := exec.CommandContext(ctx, nsmounterPath, append([]string{"umount"}, args...)...)
+	// nsmounter runs umount as a child, which can keep the output pipe open after the timeout kills nsmounter
+	cmd.WaitDelay = time.Second
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmount %v in the host mount namespace, output: %s", args, output)
+	}
+	return nil
+}
 
 func logCSIRequest(log *logrus.Entry, function string, req any) {
 	log.Infof("%s is called with req %+v", function, protosanitizer.StripSecrets(req))
