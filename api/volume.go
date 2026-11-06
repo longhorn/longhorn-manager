@@ -199,6 +199,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		AccessMode:                      volume.AccessMode,
 		Migratable:                      volume.Migratable,
 		Encrypted:                       volume.Encrypted,
+		Encryption:                      longhorn.VolumeEncryptionSpec{Provider: volume.EncryptionProvider, SecretName: volume.EncryptionSecretName},
 		Frontend:                        volume.Frontend,
 		FromBackup:                      volume.FromBackup,
 		RestoreVolumeRecurringJob:       volume.RestoreVolumeRecurringJob,

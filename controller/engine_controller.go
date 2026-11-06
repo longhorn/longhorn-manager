@@ -33,15 +33,16 @@ import (
 
 	"github.com/longhorn/backupstore"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
+	lhcrypto "github.com/longhorn/go-common-libs/crypto"
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/constant"
-	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -530,7 +531,7 @@ func (ec *EngineController) resizeEncryptDevFor16MiBHeader(v *longhorn.Volume) e
 		return nil
 	}
 
-	err = crypto.ResizeEncryptoDevice(v.Name, string(v.Spec.DataEngine), passphrase)
+	err = lhcrypto.ResizeEncryptoDevice(v.Name, string(v.Spec.DataEngine), passphrase)
 	if err != nil {
 		return err
 	}

@@ -99,6 +99,17 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 			if cliAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize || types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
 				backup.Spec.Labels[types.LonghornLabelVolumeEncrypted] = types.LonghornLabelValueEnabled
 			}
+
+			// Stored with the backup on the target, since its volume may be gone by the
+			// time the backup is restored or deleted.
+			encryption, err := types.ResolveVolumeEncryption(&volume.Spec)
+			if err != nil {
+				return nil, err
+			}
+			backup.Spec.Labels[types.LonghornLabelVolumeEncryptionProvider] = string(encryption.Provider)
+			if encryption.SecretName != "" {
+				backup.Spec.Labels[types.LonghornLabelVolumeEncryptionSecret] = encryption.SecretName
+			}
 		}
 		_, replicaAddress, err := engineClientProxy.SnapshotBackup(engine, backup.Spec.SnapshotName, backup.Name,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum, string(compressionMethod), concurrentLimit, storageClassName,

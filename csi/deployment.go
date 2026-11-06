@@ -533,10 +533,32 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									MountPath: "/lib/modules",
 									ReadOnly:  true,
 								},
+								{
+									// Always mounted: a vault volume can be staged on any node.
+									Name:      types.VaultTokenVolumeName,
+									MountPath: types.VaultTokenDir,
+									ReadOnly:  true,
+								},
 							},
 						},
 					},
 					Volumes: []corev1.Volume{
+						{
+							Name: types.VaultTokenVolumeName,
+							VolumeSource: corev1.VolumeSource{
+								Projected: &corev1.ProjectedVolumeSource{
+									Sources: []corev1.VolumeProjection{
+										{
+											ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+												Audience:          types.VaultTokenAudience,
+												ExpirationSeconds: ptr.To(types.VaultTokenExpirationSeconds),
+												Path:              types.VaultTokenFileName,
+											},
+										},
+									},
+								},
+							},
+						},
 						{
 							Name: "kubernetes-csi-dir",
 							VolumeSource: corev1.VolumeSource{

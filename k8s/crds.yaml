@@ -4548,6 +4548,13 @@ spec:
                 type: object
               creationTime:
                 type: string
+              encryptionKeyVersion:
+                description: |-
+                  EncryptionKeyVersion is the store version of the volume's passphrase when the
+                  snapshot was taken. A volume cloned from this snapshot carries the LUKS header
+                  of that moment, so that is the version whose key opens it. Empty for anything
+                  but a vault volume.
+                type: integer
               error:
                 type: string
               labels:
@@ -5285,6 +5292,31 @@ spec:
                 x-kubernetes-validations:
                 - message: Encrypted is immutable
                   rule: self == oldSelf
+              encryption:
+                description: Encryption holds the key management settings of an encrypted
+                  volume.
+                properties:
+                  provider:
+                    description: Provider is the key provider of the volume, set once
+                      at creation.
+                    enum:
+                    - ""
+                    - secret
+                    - vault
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Encryption provider is immutable
+                      rule: self == oldSelf
+                  secretName:
+                    description: |-
+                      SecretName is the Secret holding this volume's provider configuration, in the
+                      namespace Longhorn runs in. Required by the vault provider; the secret provider
+                      may leave it empty and keep using the StorageClass's node-stage reference.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Encryption secret name is immutable
+                      rule: self == oldSelf
+                type: object
               engineNodeID:
                 description: |-
                   engineNodeID defines the node where the backend engine (target) runs.
@@ -5520,6 +5552,22 @@ spec:
                 type: string
               currentNodeID:
                 type: string
+              encryption:
+                description: Encryption reports the key management state of an encrypted
+                  volume.
+                properties:
+                  initialized:
+                    description: |-
+                      Initialized is set once the device has been formatted with LUKS by the opener.
+                      It separates "key stored, format pending" from "formatted, device misreporting".
+                    type: boolean
+                  keyVersion:
+                    description: |-
+                      KeyVersion is the store version of the passphrase currently in use. It is set
+                      by the volume controller once the key is stored, and it is what releases the
+                      engine: a vault volume with no key version never starts and so is never opened.
+                    type: integer
+                type: object
               expansionRequired:
                 type: boolean
               frontendDisabled:

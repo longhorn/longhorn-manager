@@ -39,6 +39,11 @@ type SnapshotStatusApplyConfiguration struct {
 	// ChecksumCalculatedAt is the RFC3339 timestamp indicating when the checksum
 	// for this snapshot was last calculated or updated.
 	ChecksumCalculatedAt *string `json:"checksumCalculatedAt,omitempty"`
+	// EncryptionKeyVersion is the store version of the volume's passphrase when the
+	// snapshot was taken. A volume cloned from this snapshot carries the LUKS header
+	// of that moment, so that is the version whose key opens it. Empty for anything
+	// but a vault volume.
+	EncryptionKeyVersion *int `json:"encryptionKeyVersion,omitempty"`
 }
 
 // SnapshotStatusApplyConfiguration constructs a declarative configuration of the SnapshotStatus type for use with
@@ -160,6 +165,14 @@ func (b *SnapshotStatusApplyConfiguration) WithReadyToUse(value bool) *SnapshotS
 // If called multiple times, the Checksum field is set to the value of the last call.
 func (b *SnapshotStatusApplyConfiguration) WithChecksum(value string) *SnapshotStatusApplyConfiguration {
 	b.Checksum = &value
+	return b
+}
+
+// WithEncryptionKeyVersion sets the EncryptionKeyVersion field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the EncryptionKeyVersion field is set to the value of the last call.
+func (b *SnapshotStatusApplyConfiguration) WithEncryptionKeyVersion(value int) *SnapshotStatusApplyConfiguration {
+	b.EncryptionKeyVersion = &value
 	return b
 }
 

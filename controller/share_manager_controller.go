@@ -7,6 +7,7 @@ import (
 	"io"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/ptr"
 
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -30,9 +32,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/go-common-libs/crypto/keystore"
+
+	lhcrypto "github.com/longhorn/go-common-libs/crypto"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
-	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -1055,6 +1059,32 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		sm.Status.State = longhorn.ShareManagerStateError
 	}
 
+	if sm.Status.State == longhorn.ShareManagerStateRunning {
+		return c.syncVolumeEncryptionState(sm)
+	}
+	return nil
+}
+
+// syncVolumeEncryptionState marks a vault volume's encryption initialized once
+// its share manager runs: the pod is ready only after it opened the LUKS device,
+// and it has no Longhorn client to record that itself.
+func (c *ShareManagerController) syncVolumeEncryptionState(sm *longhorn.ShareManager) error {
+	volume, err := c.ds.GetVolumeRO(sm.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !types.IsVaultEncrypted(&volume.Spec) || volume.Status.Encryption.Initialized {
+		return nil
+	}
+
+	volume = volume.DeepCopy()
+	volume.Status.Encryption.Initialized = true
+	if _, err := c.ds.UpdateVolumeStatus(volume); err != nil {
+		return errors.Wrapf(err, "failed to mark the encryption of volume %v initialized", volume.Name)
+	}
 	return nil
 }
 
@@ -1388,32 +1418,25 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	fsType := pv.Spec.CSI.FSType
 	mountOptions := pv.Spec.MountOptions
 
-	var cryptoKey string
-	var cryptoParams *crypto.EncryptParams
+	var encryptionEnv []corev1.EnvVar
+	vaultEncrypted := types.IsVaultEncrypted(&volume.Spec)
 	if volume.Spec.Encrypted {
-		secretRef := pv.Spec.CSI.NodePublishSecretRef
-		secret, err := c.ds.GetSecretRO(secretRef.Namespace, secretRef.Name)
-		if err != nil {
+		var secretData map[string]string
+		if !vaultEncrypted {
+			secretRef := pv.Spec.CSI.NodePublishSecretRef
+			secret, err := c.ds.GetSecretRO(secretRef.Namespace, secretRef.Name)
+			if err != nil {
+				return nil, err
+			}
+			secretData = keystore.SecretData(secret.Data)
+		}
+		if encryptionEnv, err = shareManagerEncryptionEnv(volume, secretData); err != nil {
 			return nil, err
 		}
-
-		cryptoKey = string(secret.Data[lhtypes.CryptoKeyValue])
-		if len(cryptoKey) == 0 {
-			return nil, fmt.Errorf("missing %v in secret for encrypted RWX volume %v", lhtypes.CryptoKeyValue, volume.Name)
-		}
-		cryptoParams = crypto.NewEncryptParams(
-			string(secret.Data[lhtypes.CryptoKeyProvider]),
-			string(secret.Data[lhtypes.CryptoKeyCipher]),
-			string(secret.Data[lhtypes.CryptoKeyHash]),
-			string(secret.Data[lhtypes.CryptoKeySize]),
-			string(secret.Data[lhtypes.CryptoPBKDF]),
-			string(secret.Data[lhtypes.CryptoPBKDFForceIterations]),
-			string(secret.Data[lhtypes.CryptoPBKDFMemory]),
-		)
 	}
 
 	manifest := c.createPodManifest(sm, volume.Spec.DataEngine, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
-		priorityClass, nodeSelector, fsType, formatOptions, mountOptions, cryptoKey, cryptoParams, nfsConfig)
+		priorityClass, nodeSelector, fsType, formatOptions, mountOptions, encryptionEnv, vaultEncrypted, nfsConfig)
 
 	if err = c.updateShareManagerPodManifestCNINetwork(manifest); err != nil {
 		return nil, err
@@ -1555,7 +1578,7 @@ func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) 
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, dataEngine longhorn.DataEngineType, annotations map[string]string, tolerations []corev1.Toleration,
 	affinity *corev1.Affinity, pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
-	nodeSelector map[string]string, fsType string, formatOptions []string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams,
+	nodeSelector map[string]string, fsType string, formatOptions []string, mountOptions []string, encryptionEnv []corev1.EnvVar, vaultEncrypted bool,
 	nfsConfig *nfsServerConfig) *corev1.Pod {
 
 	// command args for the share-manager
@@ -1643,43 +1666,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, da
 		}...)
 	}
 
-	// this is an encrypted volume the cryptoKey is base64 encoded
-	if len(cryptoKey) > 0 {
-		podSpec.Spec.Containers[0].Env = append(podSpec.Spec.Containers[0].Env, []corev1.EnvVar{
-			{
-				Name:  "ENCRYPTED",
-				Value: "True",
-			},
-			{
-				Name:  "PASSPHRASE",
-				Value: string(cryptoKey),
-			},
-			{
-				Name:  "CRYPTOKEYCIPHER",
-				Value: string(cryptoParams.GetKeyCipher()),
-			},
-			{
-				Name:  "CRYPTOKEYHASH",
-				Value: string(cryptoParams.GetKeyHash()),
-			},
-			{
-				Name:  "CRYPTOKEYSIZE",
-				Value: string(cryptoParams.GetKeySize()),
-			},
-			{
-				Name:  "CRYPTOPBKDF",
-				Value: string(cryptoParams.GetPBKDF()),
-			},
-			{
-				Name:  "CRYPTOPBKDFFORCEITERATIONS",
-				Value: string(cryptoParams.GetPBKDFForceIterations()),
-			},
-			{
-				Name:  "CRYPTOPBKDFMEMORY",
-				Value: string(cryptoParams.GetPBKDFMemory()),
-			},
-		}...)
-	}
+	podSpec.Spec.Containers[0].Env = append(podSpec.Spec.Containers[0].Env, encryptionEnv...)
 
 	podSpec.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
 		{
@@ -1699,6 +1686,15 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, da
 			MountPath: "/lib/modules",
 			ReadOnly:  true,
 		},
+	}
+
+	if vaultEncrypted {
+		// The share manager logs in to Vault itself with this projected token.
+		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      types.VaultTokenVolumeName,
+			MountPath: types.VaultTokenDir,
+			ReadOnly:  true,
+		})
 	}
 
 	podSpec.Spec.Volumes = []corev1.Volume{
@@ -1748,6 +1744,23 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, da
 		podSpec.Spec.Containers[0].Resources = *resourceReq
 	}
 	types.AddGoCoverDirToPod(podSpec)
+
+	if vaultEncrypted {
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, corev1.Volume{
+			Name: types.VaultTokenVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{{
+						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+							Audience:          types.VaultTokenAudience,
+							ExpirationSeconds: ptr.To(types.VaultTokenExpirationSeconds),
+							Path:              types.VaultTokenFileName,
+						},
+					}},
+				},
+			},
+		})
+	}
 
 	return podSpec
 }
@@ -1862,4 +1875,36 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 	}
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+// shareManagerEncryptionEnv is what the share manager pod needs to open an
+// encrypted volume. A vault volume gets only the name of its encryption Secret,
+// which the pod reads itself; the secret provider keeps handing over the passphrase.
+func shareManagerEncryptionEnv(volume *longhorn.Volume, secret map[string]string) ([]corev1.EnvVar, error) {
+	env := []corev1.EnvVar{{Name: "ENCRYPTED", Value: "True"}}
+	if types.IsVaultEncrypted(&volume.Spec) {
+		return append(env,
+			corev1.EnvVar{Name: "CRYPTOKEYPROVIDER", Value: string(longhorn.EncryptionKeyProviderVault)},
+			corev1.EnvVar{Name: "ENCRYPTION_SECRET_NAME", Value: volume.Spec.Encryption.SecretName},
+			corev1.EnvVar{Name: "ENCRYPTION_INITIALIZED", Value: strconv.FormatBool(volume.Status.Encryption.Initialized)},
+		), nil
+	}
+
+	passphrase := secret[lhtypes.CryptoKeyValue]
+	if passphrase == "" {
+		return nil, fmt.Errorf("missing %v in the encryption secret of RWX volume %v", lhtypes.CryptoKeyValue, volume.Name)
+	}
+	params := lhcrypto.NewEncryptParams(secret[lhtypes.CryptoKeyProvider], secret[lhtypes.CryptoKeyCipher],
+		secret[lhtypes.CryptoKeyHash], secret[lhtypes.CryptoKeySize], secret[lhtypes.CryptoPBKDF],
+		secret[lhtypes.CryptoPBKDFForceIterations], secret[lhtypes.CryptoPBKDFMemory])
+	return append(env,
+		corev1.EnvVar{Name: "CRYPTOKEYPROVIDER", Value: string(longhorn.EncryptionKeyProviderSecret)},
+		corev1.EnvVar{Name: "CRYPTOKEYCIPHER", Value: params.GetKeyCipher()},
+		corev1.EnvVar{Name: "CRYPTOKEYHASH", Value: params.GetKeyHash()},
+		corev1.EnvVar{Name: "CRYPTOKEYSIZE", Value: params.GetKeySize()},
+		corev1.EnvVar{Name: "CRYPTOPBKDF", Value: params.GetPBKDF()},
+		corev1.EnvVar{Name: "CRYPTOPBKDFFORCEITERATIONS", Value: params.GetPBKDFForceIterations()},
+		corev1.EnvVar{Name: "CRYPTOPBKDFMEMORY", Value: params.GetPBKDFMemory()},
+		corev1.EnvVar{Name: "PASSPHRASE", Value: passphrase},
+	), nil
 }

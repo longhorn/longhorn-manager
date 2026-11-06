@@ -181,6 +181,42 @@ const (
 	VolumeSwitchoverStateReverting     = VolumeSwitchoverState("reverting")
 )
 
+// EncryptionKeyProvider names where the LUKS passphrase of an encrypted volume comes from.
+type EncryptionKeyProvider string
+
+const (
+	// EncryptionKeyProviderSecret reads the literal passphrase from the StorageClass Secret.
+	EncryptionKeyProviderSecret = EncryptionKeyProvider("secret")
+	// EncryptionKeyProviderVault generates a per-volume passphrase and keeps it in Vault KV v2.
+	EncryptionKeyProviderVault = EncryptionKeyProvider("vault")
+)
+
+type VolumeEncryptionSpec struct {
+	// Provider is the key provider of the volume, set once at creation.
+	// +kubebuilder:validation:Enum="";secret;vault
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Encryption provider is immutable"
+	// +optional
+	Provider EncryptionKeyProvider `json:"provider"`
+	// SecretName is the Secret holding this volume's provider configuration, in the
+	// namespace Longhorn runs in. Required by the vault provider; the secret provider
+	// may leave it empty and keep using the StorageClass's node-stage reference.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Encryption secret name is immutable"
+	// +optional
+	SecretName string `json:"secretName"`
+}
+
+type VolumeEncryptionStatus struct {
+	// Initialized is set once the device has been formatted with LUKS by the opener.
+	// It separates "key stored, format pending" from "formatted, device misreporting".
+	// +optional
+	Initialized bool `json:"initialized"`
+	// KeyVersion is the store version of the passphrase currently in use. It is set
+	// by the volume controller once the key is stored, and it is what releases the
+	// engine: a vault volume with no key version never starts and so is never opened.
+	// +optional
+	KeyVersion int `json:"keyVersion"`
+}
+
 type VolumeCloneStatus struct {
 	// +optional
 	SourceVolume string `json:"sourceVolume"`
@@ -201,9 +237,13 @@ const (
 	VolumeConditionTypeWaitForBackingImage      = "WaitForBackingImage"
 	VolumeConditionTypeBackingImageIncompatible = "BackingImageIncompatible"
 	VolumeConditionTypeOfflineRebuilding        = "OfflineRebuilding"
+	VolumeConditionTypeEncryptionKey            = "EncryptionKey"
 )
 
 const (
+	VolumeConditionReasonEncryptionKeyUnavailable        = "KeyStoreUnavailable"
+	VolumeConditionReasonEncryptionKeyMissing            = "KeyMissing"
+	VolumeConditionReasonEncryptionKeySourcePending      = "KeySourcePending"
 	VolumeConditionReasonReplicaSchedulingFailure        = "ReplicaSchedulingFailure"
 	VolumeConditionReasonLocalReplicaSchedulingFailure   = "LocalReplicaSchedulingFailure"
 	VolumeConditionReasonShardSchedulingFailure          = "ShardSchedulingFailure"
@@ -401,6 +441,9 @@ type VolumeSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Encrypted is immutable"
 	Encrypted bool `json:"encrypted"`
+	// Encryption holds the key management settings of an encrypted volume.
+	// +optional
+	Encryption VolumeEncryptionSpec `json:"encryption"`
 	// +optional
 	NumberOfReplicas int `json:"numberOfReplicas"`
 	// +optional
@@ -525,6 +568,9 @@ type VolumeStatus struct {
 	// Empty when no switchover is in progress.
 	// +optional
 	SwitchoverState VolumeSwitchoverState `json:"switchoverState"`
+	// Encryption reports the key management state of an encrypted volume.
+	// +optional
+	Encryption VolumeEncryptionStatus `json:"encryption"`
 }
 
 // +genclient

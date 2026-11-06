@@ -16,8 +16,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 
+	"github.com/longhorn/backupstore"
+
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
+
+	lhkeystore "github.com/longhorn/go-common-libs/crypto/keystore"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -71,6 +75,14 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	if err := types.ValidateAccessMode(volume.Spec.AccessMode); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.accessMode")
+	}
+
+	if err := v.validateEncryptionCreate(volume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.encryption")
+	}
+
+	if err := v.validateEncryptionRestore(volume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.encryption")
 	}
 
 	if err := validateReplicaCount(volume.Spec.CloneMode, volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
@@ -251,6 +263,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := v.validateExpansionSize(oldVolume, newVolume); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.size")
+	}
+
+	if err := validateEncryptionUpdate(oldVolume, newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.encryption")
 	}
 
 	if err := validateDataLocalityUpdate(oldVolume, newVolume); err != nil {
@@ -892,6 +908,77 @@ func validateTopologyZonePin(volume *longhorn.Volume) error {
 	return nil
 }
 
+// validateEncryptionCreate refuses a vault volume whose encryption Secret is
+// missing or malformed here, rather than as a mount failure on some node.
+func (v *volumeValidator) validateEncryptionCreate(volume *longhorn.Volume) error {
+	encryption, err := types.ResolveVolumeEncryption(&volume.Spec)
+	if err != nil || encryption.Provider != longhorn.EncryptionKeyProviderVault {
+		return err
+	}
+	secret, err := v.ds.GetSecretRO(volume.Namespace, encryption.SecretName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return fmt.Errorf("spec.encryption.secretName %q names no Secret in %v", encryption.SecretName, volume.Namespace)
+		}
+		return err
+	}
+	data := lhkeystore.SecretData(secret.Data)
+	if err := lhkeystore.Validate(data); err != nil {
+		return fmt.Errorf("encryption secret %q: %v", encryption.SecretName, err)
+	}
+	if got := lhkeystore.ProviderName(data); string(got) != string(encryption.Provider) {
+		return fmt.Errorf("encryption secret %q selects the %v key provider but the volume was created with %v",
+			encryption.SecretName, got, encryption.Provider)
+	}
+	return nil
+}
+
+// validateEncryptionRestore keeps a restore on the key provider of its backup:
+// the restored blocks start with the backup's LUKS header, which only a volume
+// of the same provider can be given the key to.
+func (v *volumeValidator) validateEncryptionRestore(volume *longhorn.Volume) error {
+	if volume.Spec.FromBackup == "" {
+		return nil
+	}
+	backupName, _, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
+	if err != nil {
+		return err
+	}
+	backup, err := v.ds.GetBackupRO(backupName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	backupProvider := types.BackupEncryptionProvider(backup.Status.Labels)
+	if backupProvider == "" {
+		return nil
+	}
+	if !volume.Spec.Encrypted {
+		return fmt.Errorf("backup %v is encrypted with the %v key provider, so the restored volume must be encrypted", backupName, backupProvider)
+	}
+	encryption, err := types.ResolveVolumeEncryption(&volume.Spec)
+	if err != nil {
+		return err
+	}
+	if encryption.Provider != backupProvider {
+		return fmt.Errorf("backup %v is encrypted with the %v key provider but the restored volume selects %v", backupName, backupProvider, encryption.Provider)
+	}
+	return nil
+}
+
+// validateEncryptionUpdate keeps the resolved provider and Secret fixed: the
+// CRD's oldSelf rules do not see a field being added or removed.
+func validateEncryptionUpdate(oldVolume, newVolume *longhorn.Volume) error {
+	oldEncryption, _ := types.ResolveVolumeEncryption(&oldVolume.Spec)
+	newEncryption, err := types.ResolveVolumeEncryption(&newVolume.Spec)
+	if err != nil {
+		return err
+	}
+	return validateImmutable(".spec.encryption", oldEncryption, newEncryption)
+}
+
 func validateImmutable(field string, oldVal, newVal any) error {
 	if !apiequality.Semantic.DeepEqual(oldVal, newVal) {
 		return fmt.Errorf("%s is immutable (old=%+v, new=%+v)", field, oldVal, newVal)
@@ -1087,6 +1174,15 @@ func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error
 		return werror.NewInvalidError(fmt.Sprintf(
 			"failed to clone volume %v to volume %v because encryption settings must match (source: %v, destination: %v)",
 			srcVol.Name, vol.Name, srcVol.Spec.Encrypted, vol.Spec.Encrypted), "spec.encrypted")
+	}
+	// The copied header opens only with the source's key, which a clone gets only
+	// from a provider of the same kind; a vault clone may still use another Secret.
+	srcEncryption, _ := types.ResolveVolumeEncryption(&srcVol.Spec)
+	dstEncryption, _ := types.ResolveVolumeEncryption(&vol.Spec)
+	if srcEncryption.Provider != dstEncryption.Provider {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"failed to clone volume %v to volume %v because the encryption key providers must match (source: %v, destination: %v)",
+			srcVol.Name, vol.Name, srcEncryption.Provider, dstEncryption.Provider), "spec.encryption.provider")
 	}
 
 	// If the source volume is itself a linked-clone, it must have completed cloning

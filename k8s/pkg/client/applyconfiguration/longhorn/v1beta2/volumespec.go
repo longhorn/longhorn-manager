@@ -73,10 +73,12 @@ type VolumeSpecApplyConfiguration struct {
 	AccessMode                  *longhornv1beta2.AccessMode                  `json:"accessMode,omitempty"`
 	Migratable                  *bool                                        `json:"migratable,omitempty"`
 	Encrypted                   *bool                                        `json:"encrypted,omitempty"`
-	NumberOfReplicas            *int                                         `json:"numberOfReplicas,omitempty"`
-	ReplicaAutoBalance          *longhornv1beta2.ReplicaAutoBalance          `json:"replicaAutoBalance,omitempty"`
-	SnapshotDataIntegrity       *longhornv1beta2.SnapshotDataIntegrity       `json:"snapshotDataIntegrity,omitempty"`
-	BackupCompressionMethod     *longhornv1beta2.BackupCompressionMethod     `json:"backupCompressionMethod,omitempty"`
+	// Encryption holds the key management settings of an encrypted volume.
+	Encryption              *VolumeEncryptionSpecApplyConfiguration  `json:"encryption,omitempty"`
+	NumberOfReplicas        *int                                     `json:"numberOfReplicas,omitempty"`
+	ReplicaAutoBalance      *longhornv1beta2.ReplicaAutoBalance      `json:"replicaAutoBalance,omitempty"`
+	SnapshotDataIntegrity   *longhornv1beta2.SnapshotDataIntegrity   `json:"snapshotDataIntegrity,omitempty"`
+	BackupCompressionMethod *longhornv1beta2.BackupCompressionMethod `json:"backupCompressionMethod,omitempty"`
 	// BackupBlockSize indicate the block size to create backups. The block size is immutable.
 	BackupBlockSize  *int64                          `json:"backupBlockSize,omitempty"`
 	DataEngine       *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
@@ -361,6 +363,14 @@ func (b *VolumeSpecApplyConfiguration) WithMigratable(value bool) *VolumeSpecApp
 // If called multiple times, the Encrypted field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithEncrypted(value bool) *VolumeSpecApplyConfiguration {
 	b.Encrypted = &value
+	return b
+}
+
+// WithEncryption sets the Encryption field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Encryption field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithEncryption(value *VolumeEncryptionSpecApplyConfiguration) *VolumeSpecApplyConfiguration {
+	b.Encryption = value
 	return b
 }
 
