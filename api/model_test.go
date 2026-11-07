@@ -132,6 +132,47 @@ func TestToVolumeResourceUsesEngineSizeWhenFrontendIsNotLive(t *testing.T) {
 	}
 }
 
+func TestToVolumeResourceUsesOldSizeWhileFrontendHasNoEndpoint(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
+	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
+	if err != nil {
+		t.Fatalf("failed to create API url builder: %v", err)
+	}
+
+	volume := &longhorn.Volume{}
+	volume.Name = "test-volume"
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Spec.Size = 20
+	volume.Spec.NumberOfReplicas = 1
+	volume.Status.State = longhorn.VolumeStateAttached
+
+	engine := &longhorn.Engine{}
+	engine.Name = "test-volume-e-0"
+	engine.Spec.VolumeName = volume.Name
+	engine.Spec.NodeID = "engine-node"
+	engine.Spec.Image = "ei-test"
+	engine.Status.CurrentState = longhorn.InstanceStateRunning
+	engine.Status.CurrentSize = 20
+	engine.Status.IP = "10.0.0.2"
+
+	// The endpoint is empty while suspended and right after resuming.
+	for _, state := range []longhorn.InstanceState{longhorn.InstanceStateSuspended, longhorn.InstanceStateRunning} {
+		frontend := &longhorn.EngineFrontend{}
+		frontend.Name = "test-volume-ef-0"
+		frontend.Spec.EngineName = engine.Name
+		frontend.Spec.NodeID = "frontend-node"
+		frontend.Spec.Frontend = longhorn.VolumeFrontendBlockDev
+		frontend.Status.CurrentState = state
+		frontend.Status.Endpoint = ""
+		frontend.Status.CurrentSize = 10
+
+		resource := toVolumeResource(volume, []*longhorn.EngineFrontend{frontend}, []*longhorn.Engine{engine}, nil, nil, nil, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+		if got := resource.Controllers[0].Size; got != "10" {
+			t.Fatalf("expected controller size to stay at %v frontend size, got %q", state, got)
+		}
+	}
+}
+
 func TestToVolumeResourcePropagatesReadyMessage(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
 	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})

@@ -2299,9 +2299,12 @@ func (s *DataStore) UpdateEngineFrontendStatus(ef *longhorn.EngineFrontend) (*lo
 	return obj, nil
 }
 
-// ResetMonitoringEngineFrontendStatus cleans and updates EngineFrontend status
-func (s *DataStore) ResetMonitoringEngineFrontendStatus(ef *longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
-	ef.Status.CurrentSize = 0
+// ResetMonitoringEngineFrontendStatus cleans and updates EngineFrontend status.
+// CurrentSize is kept if keepCurrentSize is true.
+func (s *DataStore) ResetMonitoringEngineFrontendStatus(ef *longhorn.EngineFrontend, keepCurrentSize bool) (*longhorn.EngineFrontend, error) {
+	if !keepCurrentSize {
+		ef.Status.CurrentSize = 0
+	}
 	ef.Status.Endpoint = ""
 	ef.Status.TargetIP = ""
 	ef.Status.TargetPort = 0
