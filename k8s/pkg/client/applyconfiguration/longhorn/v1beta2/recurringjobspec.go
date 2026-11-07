@@ -55,6 +55,12 @@ type RecurringJobSpecApplyConfiguration struct {
 	RetentionPolicy *longhornv1beta2.RecurringJobRetentionPolicy `json:"retentionPolicy,omitempty"`
 	// The concurrency of taking the snapshot/backup.
 	Concurrency *int `json:"concurrency,omitempty"`
+	// The maximum duration in seconds the recurring job may run before Kubernetes
+	// terminates it, propagated to the generated Job's activeDeadlineSeconds.
+	// A job that exceeds it is marked failed, which surfaces in the Job status and
+	// releases the concurrencyPolicy=Forbid slot for the next scheduled run.
+	// When 0 (the default) the job has no deadline and can run indefinitely.
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 	// The label of the snapshot/backup.
 	Labels map[string]string `json:"labels,omitempty"`
 	// The parameters of the snapshot/backup.
@@ -131,6 +137,14 @@ func (b *RecurringJobSpecApplyConfiguration) WithRetentionPolicy(value longhornv
 // If called multiple times, the Concurrency field is set to the value of the last call.
 func (b *RecurringJobSpecApplyConfiguration) WithConcurrency(value int) *RecurringJobSpecApplyConfiguration {
 	b.Concurrency = &value
+	return b
+}
+
+// WithActiveDeadlineSeconds sets the ActiveDeadlineSeconds field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ActiveDeadlineSeconds field is set to the value of the last call.
+func (b *RecurringJobSpecApplyConfiguration) WithActiveDeadlineSeconds(value int64) *RecurringJobSpecApplyConfiguration {
+	b.ActiveDeadlineSeconds = &value
 	return b
 }
 
