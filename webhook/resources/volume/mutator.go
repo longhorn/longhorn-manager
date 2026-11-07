@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/longhorn/backupstore"
 
@@ -373,7 +374,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(newObj, nil, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -436,7 +437,7 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(newObj, oldVolume, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -446,7 +447,8 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 // mutate contains functionality shared by Create and Update.
 // Unlike mutate for other resources, this mutate takes a moreLabels map, as Create may want to add some.
-func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
+// oldVolume is the existing volume on Update and nil on Create.
+func (v *volumeMutator) mutate(newObj runtime.Object, oldVolume *longhorn.Volume, moreLabels map[string]string) (admission.PatchOps, error) {
 	volume := newObj.(*longhorn.Volume)
 	var patchOps admission.PatchOps
 
@@ -517,11 +519,18 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("failed to get backup name from backup URL %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
 		}
+		// The source backup of an existing DR volume can be deleted before the volume is activated.
+		// Keep the block size the volume already has, otherwise every update of the volume is rejected,
+		// including removing its finalizer on deletion
 		backup, err := v.ds.GetBackupRO(bName)
-		if err != nil {
+		switch {
+		case err == nil:
+			backupBlockSize = backup.Spec.BackupBlockSize
+		case apierrors.IsNotFound(err) && oldVolume != nil:
+			backupBlockSize = oldVolume.Spec.BackupBlockSize
+		default:
 			return nil, werror.NewInvalidError(fmt.Sprintf("failed to inspect the backup config %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
 		}
-		backupBlockSize = backup.Spec.BackupBlockSize
 		if backupBlockSize == 0 {
 			// fall back to legacy default 2 MiB
 			backupBlockSize = types.BackupBlockSize2Mi
