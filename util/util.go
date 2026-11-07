@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/handlers"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
@@ -1015,6 +1016,46 @@ func isIgnorableDMRemoveError(err error) bool {
 	return strings.Contains(errMsg, "no such device or address") ||
 		strings.Contains(errMsg, "not found") ||
 		strings.Contains(errMsg, "no such file or directory")
+}
+
+func GetDMCryptBackingDevice(dmDeviceName string) (backingDevice string, isCrypt bool, err error) {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return "", false, err
+	}
+
+	table, err := nsexec.Execute(nil, "dmsetup", []string{"table", dmDeviceName}, lhtypes.ExecuteDefaultTimeout)
+	if err != nil {
+		return "", false, errors.Wrapf(err, "failed to get the table of dm device %v", dmDeviceName)
+	}
+
+	backingDevice, isCrypt = parseDMCryptTable(table)
+	return backingDevice, isCrypt, nil
+}
+
+func parseDMCryptTable(table string) (backingDevice string, isCrypt bool) {
+	lines := strings.Split(strings.TrimSpace(table), "\n")
+	if len(lines) != 1 {
+		return "", false
+	}
+	fields := strings.Fields(lines[0])
+	if len(fields) < 8 || fields[2] != "crypt" {
+		return "", false
+	}
+	return fields[6], true
+}
+
+func GetBlockDeviceNumber(fi os.FileInfo) (deviceNumber string, ok bool) {
+	if fi.Mode()&os.ModeDevice == 0 || fi.Mode()&os.ModeCharDevice != 0 {
+		return "", false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", false
+	}
+	rdev := uint64(st.Rdev) // nolint: unconvert
+	return fmt.Sprintf("%d:%d", unix.Major(rdev), unix.Minor(rdev)), true
 }
 
 // requestIDPattern matches the volatile, per-attempt identifiers that
