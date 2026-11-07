@@ -61,12 +61,21 @@ github.com/evanphx/json-patch v5.9.11+incompatible h1:ixHHqfcGvxhWkniF1tWxBHA0yb
 github.com/evanphx/json-patch v5.9.11+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
 github.com/felixge/httpsnoop v1.1.0 h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeORc=
 github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
+<<<<<<< HEAD
 github.com/fxamacker/cbor/v2 v2.9.1 h1:2rWm8B193Ll4VdjsJY28jxs70IdDsHRWgQYAI80+rMQ=
 github.com/fxamacker/cbor/v2 v2.9.1/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gammazero/deque v1.2.1 h1:9fnQVFCCZ9/NOc7ccTNqzoKd1tCWOqeI05/lPqFPMGQ=
 github.com/gammazero/deque v1.2.1/go.mod h1:5nSFkzVm+afG9+gy0VIowlqVAW4N8zNcMne+CMQVD2g=
 github.com/gammazero/workerpool v1.2.1 h1:MEDvUJsNYGuCvl1RwIXNKu2YtQtHqCSF9XWF04N7lqs=
 github.com/gammazero/workerpool v1.2.1/go.mod h1:E32GVRUanF4d6QtRmdss3AScgaDkIyrvPtgRQUWgmx4=
+=======
+github.com/fxamacker/cbor/v2 v2.9.3 h1:oQBnFATpNdY8gJHTndDDv5Xl4QqNaz51G5LLEPhng3Q=
+github.com/fxamacker/cbor/v2 v2.9.3/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
+github.com/gammazero/deque v1.2.2 h1:zD+4g/JzU5MdHWiPzMeG7OeFW5plbhYKqHfSNDnQ3E8=
+github.com/gammazero/deque v1.2.2/go.mod h1:b0Hd32YGkBkCvq+lAX5i2bKhsBc9AJNZvv4vqNqsvJc=
+github.com/gammazero/workerpool v1.2.2 h1:ThLMsRsi5tFu5A+yWQcDVUjAijYQUmv9sjmE/AtksVY=
+github.com/gammazero/workerpool v1.2.2/go.mod h1:nbtgxeEYc+vZWZdZjYpHOyVwqXlStlplhfOf1bQu27s=
+>>>>>>> 8b80fdb (chore(vendor): update dependencies)
 github.com/getsentry/sentry-go v0.46.0 h1:mbdDaarbUdOt9X+dx6kDdntkShLEX3/+KyOsVDTPDj0=
 github.com/getsentry/sentry-go v0.46.0/go.mod h1:evVbw2qotNUdYG8KxXbAdjOQWWvWIwKxpjdZZIvcIPw=
 github.com/gliderlabs/ssh v0.3.8 h1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=
@@ -165,16 +174,24 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
+<<<<<<< HEAD
 github.com/longhorn/backing-image-manager v1.13.0 h1:7zixHRrJi35jLTN93aKOQgcsYwlCW4+j692sFdC/X98=
 github.com/longhorn/backing-image-manager v1.13.0/go.mod h1:x5jZvaXnsCRqMIMKJQeIP83ExDrgkbhVoXootzuDGQ8=
 github.com/longhorn/backupstore v0.0.0-20261023052728-3d3f7521be06 h1:bfAmHxo33BxTGoJ1LfrbOnVFOVP8HO/5Mha21wI6Fvs=
 github.com/longhorn/backupstore v0.0.0-20261023052728-3d3f7521be06/go.mod h1:c9IJkd5rbv3XUCyCSG8U4k2KLerdtW8/KTTUHwoW4UI=
+=======
+github.com/longhorn/backing-image-manager v1.12.0-dev-20260503 h1:DXBaexlHBBolM2P0XoAE7uSpQNOm2T4lBOij0dhQ6EQ=
+github.com/longhorn/backing-image-manager v1.12.0-dev-20260503/go.mod h1:IrtVcTO1AklziMcAqAhpQjLD9nZSqVQ53ymuMXhKfYg=
+github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085 h1:tYVn2BxfDOHnsNAh2BY2ZKrSiquOkxQZVttN2k/E0Gs=
+github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085/go.mod h1:5f43cRHjlgz+qzR0d9pVUNeW0vMY3ZzF+bq4l9Ndwrw=
+>>>>>>> 8b80fdb (chore(vendor): update dependencies)
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d h1:Fu1U1CyaxN42AItajvTu4iKdyjOJitKIu0NtQc1jye8=
 github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d/go.mod h1:369q8Fv+iqznDYF3++boASEe1+fKS8Q4vdSb8isEI1c=
 github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9 h1:aN4oUNvsC4vXLzKFwPIrtqABvDwxcrzrpkFFLbb4L7o=
 github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9/go.mod h1:jhyUe7xn1ZnTC1WVCcZSNRe02U/zj0ayTYxY1Xipn1c=
 github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac h1:OtddAH5PD1ts3SdtMNgQWAfOMgg5xE9TQ+twe0/DDEw=
 github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac/go.mod h1:tx8IHeQXisTCpcg9gB4S+P8rPifC1D98qpWcDwI19tU=
+<<<<<<< HEAD
 github.com/longhorn/go-spdk-helper v0.13.0 h1:bgnR4R2N7hrgz8jBBlDCNJEDyHqbkxb8kt1VWotTKYg=
 github.com/longhorn/go-spdk-helper v0.13.0/go.mod h1:Q91JPmaAOi9p+y7Mj5j7qC+hSXxkcY4vMwWQ9N0PhYE=
 github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261022032333-9d9ec498d885 h1:XyPXnEYe+4lNaDY21qVjRVgpzSSnLp79bSNtNJpRnwY=
@@ -187,6 +204,20 @@ github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20261028090605-6
 github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20261028090605-69ce68f87f06/go.mod h1:KdMtnPWlIq4snJ40DNS4A5a8jWifcVlJBN0NcA0fkow=
 github.com/longhorn/types v0.0.0-20261023101212-edea52fc05df h1:cNg59HHjR3r9rGBffU26wCigsN+Bw7QhwwPiTbr2PoM=
 github.com/longhorn/types v0.0.0-20261023101212-edea52fc05df/go.mod h1:BK7TFo75ZRJ6uhtE0uk78i/yHYKc+C6xcK3IdZ6PjSY=
+=======
+github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71 h1:cWi4kOT2uM8P95hCv9H3YVucrK+ip836Wuc30XkgXYo=
+github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71/go.mod h1:Q91JPmaAOi9p+y7Mj5j7qC+hSXxkcY4vMwWQ9N0PhYE=
+github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00 h1:IGWJGbRX9LcsFk+vJhlDMsWH+eutW1jnEWw1D7Vu9rQ=
+github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00/go.mod h1:6DxplsNSGqYYUA9px6dAlfROYLblFzbKXnj44BvsaXU=
+github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623 h1:WgIi3+KJK8AIb1j+qNjkcdqFRY9ZnXKQ23GBg2YSpiI=
+github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623/go.mod h1:p8smgtyvC5lo+Bq3Tj+ldUpGyf9E9dUPT9poMHkOGhI=
+github.com/longhorn/longhorn-share-manager v1.13.0-rc2 h1:Itz5C+srwGJn3DiLJ/CEDoh4rhfnTQ+TEb9ovhRLiCs=
+github.com/longhorn/longhorn-share-manager v1.13.0-rc2/go.mod h1:puc8OIzvERoJiOCQ1+ZpwLHMhRg7+fw06GGUr27W8I0=
+github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261106064302-40b61a7ef9f8 h1:t9PwVeUEV285n/ZqR41cv8yxHIPRP2rUPSzV7sZLYXM=
+github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261106064302-40b61a7ef9f8/go.mod h1:RfG8S9pLOxS4iK9uHQpveRVLL3a/Z7fK1IQqPl/KE5M=
+github.com/longhorn/types v0.0.0-20261030035820-c6ac902022cf h1:yY4WuDKME+/QCn2YL+k32A+z0jQl0GClYQUOdGH5NZk=
+github.com/longhorn/types v0.0.0-20261030035820-c6ac902022cf/go.mod h1:/B7OfEhPyhWGNjtfuJr7/zUT9GUArLzIo2u8SvM/pIg=
+>>>>>>> 8b80fdb (chore(vendor): update dependencies)
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=
