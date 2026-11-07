@@ -19,6 +19,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	longhorntypes "github.com/longhorn/longhorn-manager/types"
 )
 
 func TestNewPVCManifestForVolume(t *testing.T) {
@@ -130,7 +131,7 @@ func TestLeaseInformerIsNamespaceScoped(t *testing.T) {
 	extensionsClient := apiextensionsfake.NewSimpleClientset()              // nolint: staticcheck
 
 	informerFactories := util.NewInformerFactories(longhornNamespace, kubeClient, lhClient, 0)
-	ds := NewDataStoreForGlobal(longhornNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := NewDataStoreForGlobal(longhornNamespace, lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable)
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)

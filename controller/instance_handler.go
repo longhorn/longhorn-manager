@@ -605,6 +605,12 @@ func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhor
 	if !types.ErrorIsNotFound(err) && !isStoppedV2Engine {
 		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
 	}
+	if h.ds == nil {
+		return fmt.Errorf("instance creation requires a datastore capability")
+	}
+	if !h.ds.DataEngineMode().AllowsDataEngine(dataEngine) {
+		return fmt.Errorf("data engine %q is outside the %q installation capability", dataEngine, h.ds.DataEngineMode())
+	}
 
 	logrus.Infof("Creating instance %v", instanceName)
 	if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {

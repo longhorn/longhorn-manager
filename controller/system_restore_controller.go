@@ -402,6 +402,9 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.Sy
 	cmd := []string{
 		"longhorn-manager", "system-rollout", systemRestore.Name,
 	}
+	if c.ds.DataEngineMode() == types.DataEngineModeV2Only {
+		cmd = []string{"longhorn-manager", "system-rollout", "--data-engine-mode", string(types.DataEngineModeV2Only), systemRestore.Name}
+	}
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{

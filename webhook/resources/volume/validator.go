@@ -57,8 +57,11 @@ func (v *volumeValidator) Resource() admission.Resource {
 
 func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	volume, ok := newObj.(*longhorn.Volume)
-	if !ok {
+	if !ok || volume == nil {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
+	}
+	if err := wcommon.ValidateDataEngineCapability(v.ds, volume.Spec.DataEngine); err != nil {
+		return err
 	}
 
 	if !util.ValidateName(volume.Name) {
@@ -240,6 +243,13 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	cleanup, err := wcommon.ValidateDataEngineCapabilityUpdate(v.ds, oldObj, newObj)
+	if err != nil {
+		return err
+	}
+	if cleanup {
+		return nil
+	}
 	oldVolume, ok := oldObj.(*longhorn.Volume)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("oldObj %v is not a longhorn.Volume", oldObj), "")

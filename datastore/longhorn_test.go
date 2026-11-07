@@ -226,7 +226,7 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -364,7 +364,7 @@ func TestValidateSettingBlocksV2IMUpgradeStartTimeWhenActiveIMUExistsWithoutIMUC
 			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
 			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
 
-			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 			imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
 
 			imu := &longhorn.InstanceManagerUpgrade{
@@ -397,7 +397,7 @@ func TestValidateSettingRejectsUnsupportedV2InstanceManagerLiveUpgrade(t *testin
 	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
 	currentVersion := &longhorn.Setting{
@@ -428,7 +428,7 @@ func TestGetSettingValueExistedByDataEngineAllowsEmptyValue(t *testing.T) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
 	setting := &longhorn.Setting{

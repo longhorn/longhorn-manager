@@ -62,7 +62,7 @@ func newSnapshotGroupControllerFixture(c *C) *snapshotGroupControllerFixture {
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	ctrl, err := NewSnapshotGroupController(logrus.StandardLogger(), ds, scheme.Scheme, kubeClient, TestNamespace, TestOwnerID1)
 	c.Assert(err, IsNil)

@@ -1,6 +1,7 @@
 package datastore
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -43,7 +44,8 @@ var (
 
 // DataStore object
 type DataStore struct {
-	namespace string
+	namespace      string
+	dataEngineMode types.DataEngineMode
 
 	cacheSyncs []cache.InformerSynced
 
@@ -144,11 +146,19 @@ type DataStore struct {
 	extensionsClient apiextensionsclientset.Interface
 }
 
+func (s *DataStore) DataEngineMode() types.DataEngineMode {
+	return s.dataEngineMode
+}
+
+func (s *DataStore) ValidateDataEngineModeState(ctx context.Context) error {
+	return ValidateDataEngineModeState(ctx, s.dataEngineMode, s.namespace, s.lhClient, s.kubeClient)
+}
+
 // NewDataStoreForGlobal creates a DataStore whose Pod informer watches
 // cluster-wide. It is used by the longhorn-global-manager process and by the
 // uninstall and system-rollout entry points.
-func NewDataStoreForGlobal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
-	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+func NewDataStoreForGlobal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories, mode types.DataEngineMode) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories, mode)
 	pi := informerFactories.KubeInformerFactory.Core().V1().Pods()
 	attachPodInformer(ds, pi.Lister(), pi.Informer())
 	return ds
@@ -157,8 +167,8 @@ func NewDataStoreForGlobal(namespace string, lhClient lhclientset.Interface, kub
 // NewDataStoreForNodeLocal creates a DataStore whose Pod informer is
 // namespace-filtered (longhorn-system), which suffices for every Pod consumer
 // in the longhorn-manager DaemonSet.
-func NewDataStoreForNodeLocal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
-	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+func NewDataStoreForNodeLocal(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories, mode types.DataEngineMode) *DataStore {
+	ds := newDataStoreCommon(namespace, lhClient, kubeClient, extensionsClient, informerFactories, mode)
 	pi := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Pods()
 	attachPodInformer(ds, pi.Lister(), pi.Informer())
 	return ds
@@ -174,7 +184,7 @@ func attachPodInformer(ds *DataStore, podLister corelisters.PodLister, podShared
 
 // newDataStoreCommon builds the DataStore with every informer except
 // PodInformer, which the public wrappers attach afterward.
-func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
+func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories, mode types.DataEngineMode) *DataStore {
 	cacheSyncs := []cache.InformerSynced{}
 
 	// Longhorn Informers
@@ -272,7 +282,8 @@ func newDataStoreCommon(namespace string, lhClient lhclientset.Interface, kubeCl
 	cacheSyncs = append(cacheSyncs, leaseInformer.Informer().HasSynced)
 
 	return &DataStore{
-		namespace: namespace,
+		namespace:      namespace,
+		dataEngineMode: mode,
 
 		cacheSyncs: cacheSyncs,
 

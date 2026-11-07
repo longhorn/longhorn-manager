@@ -61,6 +61,16 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 	if err != nil {
 		return err
 	}
+	if err := s.validateDataEngineModeCustomizedSettings(defaultSettingCM); err != nil {
+		return err
+	}
+	if s.dataEngineMode == types.DataEngineModeV2Only {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.ValidateDataEngineModeState(ctx); err != nil {
+			return err
+		}
+	}
 
 	customizedDefaultSettings, err := types.GetCustomizedDefaultSettings(defaultSettingCM)
 	if err != nil {
@@ -106,6 +116,9 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 
 func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
+		if s.dataEngineMode == types.DataEngineModeV2Only && isDataEngineSetting(sName) {
+			continue
+		}
 		if _, err := s.GetSettingExactRO(sName); err != nil && apierrors.IsNotFound(err) {
 			definition, ok := types.GetSettingDefinition(sName)
 			if !ok {
@@ -133,6 +146,9 @@ func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings ma
 	availableCustomizedDefaultSettings := make(map[string]string)
 
 	for name, value := range customizedDefaultSettings {
+		if s.dataEngineMode == types.DataEngineModeV2Only && isDataEngineSetting(types.SettingName(name)) {
+			continue
+		}
 		if !s.shouldApplyCustomizedSettingValue(types.SettingName(name), value, defaultSettingCMResourceVersion) {
 			continue
 		}
@@ -526,6 +542,9 @@ func convertDataEngineValuesToJSONString(values map[longhorn.DataEngineType]any)
 
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
+		if s.dataEngineMode == types.DataEngineModeV2Only && isDataEngineSetting(sName) {
+			continue
+		}
 		definition, ok := types.GetSettingDefinition(sName)
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
@@ -626,6 +645,9 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}()
 
 	if err := types.ValidateSetting(name, value); err != nil {
+		return err
+	}
+	if err := s.validateDataEngineModeSetting(types.SettingName(name), value); err != nil {
 		return err
 	}
 
@@ -7574,8 +7596,11 @@ func IsSupportedVolumeSize(dataEngine longhorn.DataEngineType, fsType string, vo
 	return true
 }
 
-// IsDataEngineEnabled returns true if the given dataEngine is enabled
+// IsDataEngineEnabled applies the process capability before mutable enablement.
 func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (bool, error) {
+	if !s.dataEngineMode.AllowsDataEngine(dataEngine) {
+		return false, nil
+	}
 	dataEngineSetting := types.SettingNameV1DataEngine
 	if types.IsDataEngineV2(dataEngine) {
 		dataEngineSetting = types.SettingNameV2DataEngine
@@ -7583,7 +7608,7 @@ func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (boo
 
 	enabled, err := s.GetSettingAsBool(dataEngineSetting)
 	if err != nil {
-		return true, errors.Wrapf(err, "failed to get %v setting", dataEngineSetting)
+		return s.dataEngineMode != types.DataEngineModeV2Only, errors.Wrapf(err, "failed to get %v setting", dataEngineSetting)
 	}
 
 	return enabled, nil
@@ -7593,18 +7618,20 @@ func (s *DataStore) GetDataEngines() map[longhorn.DataEngineType]struct{} {
 	dataEngines := map[longhorn.DataEngineType]struct{}{}
 
 	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+		dataEngine := longhorn.DataEngineTypeV1
+		if setting == types.SettingNameV2DataEngine {
+			dataEngine = longhorn.DataEngineTypeV2
+		}
+		if !s.dataEngineMode.AllowsDataEngine(dataEngine) {
+			continue
+		}
 		dataEngineEnabled, err := s.GetSettingAsBool(setting)
 		if err != nil {
 			logrus.WithError(err).Warnf("Failed to get setting %v", setting)
 			continue
 		}
 		if dataEngineEnabled {
-			switch setting {
-			case types.SettingNameV1DataEngine:
-				dataEngines[longhorn.DataEngineTypeV1] = struct{}{}
-			case types.SettingNameV2DataEngine:
-				dataEngines[longhorn.DataEngineTypeV2] = struct{}{}
-			}
+			dataEngines[dataEngine] = struct{}{}
 		}
 	}
 

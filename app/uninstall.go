@@ -18,6 +18,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	longhorntypes "github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -80,7 +81,7 @@ func uninstall(cmd *cli.Command) error {
 	}
 
 	informerFactories := util.NewInformerFactories(namespace, kubeClient, lhClient, 30*time.Second)
-	ds := datastore.NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(namespace, lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable)
 
 	logger := logrus.StandardLogger()
 

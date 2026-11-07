@@ -185,7 +185,7 @@ func newLinkedCloneTestDataStore(t *testing.T, volumes []*longhorn.Volume, snaps
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 	informerFactories := util.NewInformerFactories(linkedCloneTestNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStoreForGlobal(linkedCloneTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(linkedCloneTestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 	for _, volume := range volumes {

@@ -30,7 +30,7 @@ func newTestDataStore(t *testing.T, volumes ...*longhorn.Volume) *datastore.Data
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 	for _, volume := range volumes {

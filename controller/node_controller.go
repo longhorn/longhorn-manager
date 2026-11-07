@@ -1097,7 +1097,11 @@ func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn
 	}
 
 	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
-		enabled, err := nc.ds.GetSettingAsBool(setting)
+		dataEngine := longhorn.DataEngineTypeV1
+		if setting == types.SettingNameV2DataEngine {
+			dataEngine = longhorn.DataEngineTypeV2
+		}
+		enabled, err := nc.ds.IsDataEngineEnabled(dataEngine)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to get %v setting", setting)
 			continue
@@ -1388,6 +1392,9 @@ func shouldPreserveV2InstanceManagerDuringOfflineUpgrade(im *longhorn.InstanceMa
 }
 
 func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+	if !nc.ds.DataEngineMode().AllowsDataEngine(dataEngine) {
+		return nil, fmt.Errorf("data engine %q is outside the %q installation capability", dataEngine, nc.ds.DataEngineMode())
+	}
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: imName,

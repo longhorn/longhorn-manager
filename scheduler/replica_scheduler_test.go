@@ -71,7 +71,7 @@ func newReplicaScheduler(lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	informerFactories *util.InformerFactories) *ReplicaScheduler {
 	fmt.Printf("testing NewReplicaScheduler\n")
 
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 
 	rcs := NewReplicaScheduler(ds)
 	rcs.nowHandler = getTestNow

@@ -213,7 +213,7 @@ func TestUpdateEngineImagePodLivenessProbes(t *testing.T) {
 	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 	daemonSetIndexer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
 
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories, types.DataEngineModeV1Capable)
 	sc := &SettingController{
 		baseController: newBaseController("longhorn-setting", logrus.StandardLogger()),
 		ds:             ds,
@@ -283,7 +283,7 @@ func TestUpdateEngineImagePodLivenessProbesUsesDefaultValuesOnSettingError(t *te
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 	daemonSetIndexer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
 
-	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories, types.DataEngineModeV1Capable)
 	sc := &SettingController{
 		baseController: newBaseController("longhorn-setting", logrus.StandardLogger()),
 		ds:             ds,
@@ -410,7 +410,7 @@ func TestGetCheckUpgradeRequestExtraInfo(t *testing.T) {
 			fd.FakedServerVersion = &version.Info{GitVersion: fakeGitVersion}
 
 			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories)
+			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories, types.DataEngineModeV1Capable)
 
 			logger, hook := test.NewNullLogger()
 			sc := &SettingController{
