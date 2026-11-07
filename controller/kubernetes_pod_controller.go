@@ -707,7 +707,9 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 			}
 
 			smPodStartTime := smPod.Status.StartTime.Time
-			if !smPodStartTime.After(remountRequestedAt) {
+			// Both timestamps have one-second resolution, so a replacement share-manager pod that starts in the
+			// same second as the remount request compares equal. Only skip if it started strictly before the request.
+			if smPodStartTime.Before(remountRequestedAt) {
 				continue
 			}
 
