@@ -40,6 +40,8 @@ import (
 
 const (
 	BackingImageDataSourcePodContainerName = "backing-image-data-source"
+	backingImageDataSourceBackoffInit      = time.Minute
+	backingImageDataSourceBackoffMax       = time.Hour
 )
 
 type BackingImageDataSourceController struct {
@@ -103,7 +105,7 @@ func NewBackingImageDataSourceController(
 
 		ds: ds,
 
-		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
+		backoff: flowcontrol.NewBackOff(backingImageDataSourceBackoffInit, backingImageDataSourceBackoffMax),
 
 		lock:       &sync.RWMutex{},
 		monitorMap: map[string]chan struct{}{},
@@ -330,6 +332,12 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 		return err
 	}
 
+	if shouldResetBackingImageDataSourceRetryCount(bids) {
+		bids.Status.RetryCount = 0
+	}
+
+	syncBackingImageDataSourceFileEverTransferred(bids)
+
 	if bids.Spec.FileTransferred {
 		bids.Status.CurrentState = longhorn.BackingImageStateReady
 		return c.cleanup(bids)
@@ -537,35 +545,36 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		}
 	}
 	if pod == nil {
-		// To avoid restarting backing image data source pod (for file preparation) too quickly or too frequently,
-		// Longhorn will leave failed backing image data source alone if it is still in the backoff period.
-		// If the backoff period pass, Longhorn will recreate the pod and increase the Backoff period for the next possible failure.
-		isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
-		isInBackoffWindow := true
-		if !newBackingImageDataSource && isValidTypeForRetry {
-			if !c.backoff.IsInBackOffSinceUpdate(bids.Name, time.Now()) {
-				isInBackoffWindow = false
-				log.Infof("Preparing to recreate pod for image data source %v since the backoff window is already passed", bids.Name)
-			} else {
-				log.Debugf("Failed backing image data source %v is still in the backoff window, Longhorn cannot recreate pod for it", bids.Name)
-			}
+		isRetry, _, _ := backingImageDataSourceRetryState(bids, newBackingImageDataSource)
+		isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload ||
+			bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
+
+		if isRetry && c.backoff.IsInBackOffSinceUpdate(bids.Name, time.Now()) {
+			delay := c.backoff.Get(bids.Name)
+			log.Debugf("Failed backing image data source %v is still in the backoff window %v, skip recreating the pod", bids.Name, delay)
+			return enqueueAfterDelay(c.queue, bids, delay)
 		}
 
-		if newBackingImageDataSource ||
-			(isValidTypeForRetry && !isInBackoffWindow) {
+		isInitialPrepare := newBackingImageDataSource && !bids.Spec.RecoveryRequested
+		if isInitialPrepare || isValidTypeForRetry {
+			if isRetry {
+				log.Infof("Preparing to recreate pod for backing image data source %v after backoff", bids.Name)
+			}
 			if err := c.handleAttachmentTicketCreation(bids); err != nil {
 				return err
 			}
-			// For recovering the backing image exported from volumes, the controller needs to update the state regardless of the pod being created immediately.
-			// Otherwise, the backing image data source will stay in state failed/unknown then the volume controller won't do auto attachment.
 			bids.Status.CurrentState = ""
 			bids.Status.Message = ""
 			bids.Status.Progress = 0
 			bids.Status.Checksum = ""
-			if err := c.createBackingImageDataSourcePod(bids); err != nil {
+
+			created, err := c.createBackingImageDataSourcePod(bids)
+			if err != nil {
 				return err
 			}
-			// The backoff entry will be cleaned up when the monitor finds the file becoming ready.
+			if isRetry && created {
+				bids.Status.RetryCount++
+			}
 			c.backoff.Next(bids.Name, time.Now())
 		}
 	}
@@ -637,7 +646,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 	return nil
 }
 
-func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (err error) {
+func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (created bool, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to create backing image data source pod")
 	}()
@@ -648,13 +657,16 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 
 	podManifest, err := c.generateBackingImageDataSourcePodManifest(bids)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if _, err := c.ds.CreatePod(podManifest); err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
+	if _, err = c.ds.CreatePod(podManifest); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return false, nil
+		}
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*corev1.Pod, error) {
@@ -1253,6 +1265,10 @@ func (m *BackingImageDataSourceMonitor) sync() {
 	bids.Status.Progress = fileInfo.Progress
 	bids.Status.Checksum = fileInfo.CurrentChecksum
 	bids.Status.Message = fileInfo.Message
+	if bids.Status.CurrentState == longhorn.BackingImageStateReady || bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer {
+		// The file is prepared, so a future failure deserves a new round of retries.
+		bids.Status.RetryCount = 0
+	}
 	if !reflect.DeepEqual(bids.Status, existingBIDS.Status) {
 		if _, err := m.ds.UpdateBackingImageDataSourceStatus(bids); err != nil {
 			syncErr = errors.Wrapf(err, "failed to get %v info from backing image data source server", m.Name)
@@ -1278,4 +1294,21 @@ func isEncryptionRequire(bi *longhorn.BackingImage) bool {
 func secretExists(bids *longhorn.BackingImageDataSource) bool {
 	return bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecretNamespace] != "" &&
 		bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecret] != ""
+}
+
+func backingImageDataSourceRetryState(bids *longhorn.BackingImageDataSource, isNew bool) (isRetry, isCappedRetry, retryExhausted bool) {
+	isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload ||
+		bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
+	isRetry = (!isNew || bids.Spec.RecoveryRequested) && isValidTypeForRetry
+	return
+}
+
+func shouldResetBackingImageDataSourceRetryCount(bids *longhorn.BackingImageDataSource) bool {
+	return !bids.Spec.RecoveryRequested && bids.Status.RetryCount != 0
+}
+
+func syncBackingImageDataSourceFileEverTransferred(bids *longhorn.BackingImageDataSource) {
+	if bids.Spec.FileTransferred {
+		bids.Status.FileEverTransferred = true
+	}
 }

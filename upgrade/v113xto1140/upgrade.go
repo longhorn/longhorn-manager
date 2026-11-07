@@ -110,6 +110,28 @@ func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, k
 		return err
 	}
 
+	return upgradeBackingImageDataSourcesStatus(namespace, lhClient, resourceMaps)
+}
+
+func upgradeBackingImageDataSourcesStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backing image data sources failed")
+	}()
+
+	bidsMap, err := upgradeutil.ListAndUpdateBackingImageDataSourcesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn backing image data sources during the backing image data source status upgrade")
+	}
+
+	for _, bids := range bidsMap {
+		if bids.Spec.FileTransferred {
+			bids.Status.FileEverTransferred = true
+		}
+	}
+
 	return nil
 }
 
