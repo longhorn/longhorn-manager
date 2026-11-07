@@ -658,11 +658,6 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 }
 
 func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*corev1.Pod, error) {
-	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
-	if err != nil {
-		return nil, err
-	}
-
 	tolerations, err := c.ds.GetSettingTaintToleration()
 	if err != nil {
 		return nil, err
@@ -776,7 +771,6 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		Spec: corev1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
-			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass.Value,
 			Containers: []corev1.Container{
 				{
