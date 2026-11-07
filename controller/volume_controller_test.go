@@ -257,6 +257,26 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonReplicaSchedulingFailure, longhorn.ErrorReplicaScheduleNodeUnavailable)
 	testCases["volume create - replica scheduling failure"] = tc
 
+	// replica scheduling waits for the volume anti-affinity terms of the pod
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityEnabled
+	tc.volume.Spec.VolumeAntiAffinityFromPod = &longhorn.VolumeAntiAffinityFromPod{PendingInheritance: true}
+	tc.copyCurrentToExpect()
+	tc.engines = nil
+	for _, r := range tc.expectReplicas {
+		r.Spec.NodeID = ""
+		r.Spec.DiskID = ""
+		r.Spec.DiskPath = ""
+		r.Spec.DataDirectoryName = ""
+	}
+	tc.replicas = tc.expectReplicas
+	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
+		longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+		longhorn.VolumeConditionReasonWaitingForVolumeAntiAffinityFromPod, longhorn.ErrorReplicaScheduleVolumeAntiAffinityPending)
+	testCases["volume create - replica scheduling waits for volume anti-affinity terms"] = tc
+
 	// detaching after creation
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Status.State = longhorn.VolumeStateCreating

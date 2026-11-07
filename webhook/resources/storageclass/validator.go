@@ -69,7 +69,52 @@ func (v *storageClassValidator) Create(request *admission.Request, newObj runtim
 	if errs := validateDataLayout(sc.Parameters); len(errs) > 0 {
 		return werror.NewInvalidError(errs.ToAggregate().Error(), "parameters")
 	}
+	if errs := validateVolumeAntiAffinity(sc); len(errs) > 0 {
+		return werror.NewInvalidError(errs.ToAggregate().Error(), "")
+	}
 	return nil
+}
+
+// validateVolumeAntiAffinity requires what volume anti-affinity depends on.
+// The terms are inherited from the pod when the PV is bound, so the volume must
+// be provisioned for a scheduled pod. Only volumes with one replica are
+// supported, and an omitted replica count would take the default replica count
+// setting, which the volume webhook rejects only when the PVC is provisioned.
+// EC volumes place shards instead of replicas, so the terms would not apply.
+func validateVolumeAntiAffinity(sc *storagev1.StorageClass) field.ErrorList {
+	errors := field.ErrorList{}
+	fp := field.NewPath("parameters")
+
+	value, ok := sc.Parameters[types.StorageClassParameterVolumeAntiAffinity]
+	if !ok {
+		return errors
+	}
+	switch longhorn.VolumeAntiAffinity(value) {
+	case longhorn.VolumeAntiAffinityDisabled:
+		return errors
+	case longhorn.VolumeAntiAffinityEnabled:
+	default:
+		return append(errors, field.NotSupported(fp.Key(types.StorageClassParameterVolumeAntiAffinity), value,
+			[]string{string(longhorn.VolumeAntiAffinityEnabled), string(longhorn.VolumeAntiAffinityDisabled)}))
+	}
+
+	if sc.VolumeBindingMode == nil || *sc.VolumeBindingMode != storagev1.VolumeBindingWaitForFirstConsumer {
+		errors = append(errors, field.Invalid(field.NewPath("volumeBindingMode"), sc.VolumeBindingMode,
+			fmt.Sprintf("must be %v when %v is %v", storagev1.VolumeBindingWaitForFirstConsumer,
+				types.StorageClassParameterVolumeAntiAffinity, longhorn.VolumeAntiAffinityEnabled)))
+	}
+	if replicas, ok := sc.Parameters["numberOfReplicas"]; !ok {
+		errors = append(errors, field.Required(fp.Key("numberOfReplicas"),
+			fmt.Sprintf("must be \"1\" when %v is %v", types.StorageClassParameterVolumeAntiAffinity, longhorn.VolumeAntiAffinityEnabled)))
+	} else if replicas != "1" {
+		errors = append(errors, field.Invalid(fp.Key("numberOfReplicas"), replicas,
+			fmt.Sprintf("must be \"1\" when %v is %v", types.StorageClassParameterVolumeAntiAffinity, longhorn.VolumeAntiAffinityEnabled)))
+	}
+	if sc.Parameters[longhorn.DataLayoutParameterType] == string(longhorn.VolumeDataLayoutTypeSharded) {
+		errors = append(errors, field.Forbidden(fp.Key(types.StorageClassParameterVolumeAntiAffinity),
+			fmt.Sprintf("not supported with %v %v", longhorn.DataLayoutParameterType, longhorn.VolumeDataLayoutTypeSharded)))
+	}
+	return errors
 }
 
 func validateDataLayout(params map[string]string) field.ErrorList {

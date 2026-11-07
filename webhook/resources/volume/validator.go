@@ -92,6 +92,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.dataLocality and spec.numberOfReplicas")
 	}
 
+	if err := validateVolumeAntiAffinity(volume); err != nil {
+		return err
+	}
+
 	if err := types.ValidateDataLocalityAndAccessMode(volume.Spec.DataLocality, volume.Spec.Migratable, volume.Spec.AccessMode); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.dataLocality and spec.migratable and spec.accessMode")
 	}
@@ -259,6 +263,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := validateReplicaCount(newVolume.Spec.CloneMode, newVolume.Spec.DataLocality, newVolume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
+	}
+
+	if err := validateVolumeAntiAffinity(newVolume); err != nil {
+		return err
 	}
 
 	// spec.numberOfReplicas and spec.dataLocality stay mutable after create, so
@@ -547,6 +555,9 @@ func validateShardedConstraints(volume *longhorn.Volume) error {
 	if volume.Spec.Migratable {
 		return werror.NewInvalidError("spec.migratable is not supported for EC (sharded) volumes", "spec.migratable")
 	}
+	if volume.Spec.VolumeAntiAffinity == longhorn.VolumeAntiAffinityEnabled {
+		return werror.NewInvalidError("spec.volumeAntiAffinity is not supported for EC (sharded) volumes", "spec.volumeAntiAffinity")
+	}
 
 	return nil
 }
@@ -724,6 +735,21 @@ func (v *volumeValidator) hasLocalReplicaOnSameNodeAsStrictLocalVolume(volume *l
 	}
 
 	return false, fmt.Errorf("moving a %v volume %v to another node is not supported", longhorn.DataLocalityStrictLocal, volume.Name)
+}
+
+func validateVolumeAntiAffinity(volume *longhorn.Volume) error {
+	if err := types.ValidateVolumeAntiAffinity(volume.Spec.VolumeAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.volumeAntiAffinity")
+	}
+	// Also checked on update, so the replica count of an enabled volume cannot
+	// be changed until the feature is disabled on it.
+	if err := types.ValidateVolumeAntiAffinityAndReplicaCount(volume.Spec.VolumeAntiAffinity, volume.Spec.NumberOfReplicas); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.volumeAntiAffinity and spec.numberOfReplicas")
+	}
+	if err := types.ValidateVolumeAntiAffinityFromPod(volume.Spec.VolumeAntiAffinityFromPod); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.volumeAntiAffinityFromPod")
+	}
+	return nil
 }
 
 func validateDataLocalityUpdate(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {

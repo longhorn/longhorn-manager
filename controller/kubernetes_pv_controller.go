@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -192,7 +193,19 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	}
 
 	existingVolume := volume.DeepCopy()
+	notInheritedMessage := ""
 	defer func() {
+		// The inherited volume anti-affinity terms are in the spec.
+		if err == nil && !reflect.DeepEqual(existingVolume.Spec, volume.Spec) {
+			var updated *longhorn.Volume
+			if updated, err = kc.ds.UpdateVolume(volume); err == nil {
+				updated.Status = volume.Status
+				volume = updated
+			}
+		}
+		if err == nil && notInheritedMessage != "" {
+			kc.eventRecorder.Event(volume, corev1.EventTypeNormal, constant.EventReasonVolumeAntiAffinityNotInherited, notInheritedMessage)
+		}
 		// we're going to update volume assume things changes
 		if err == nil && !reflect.DeepEqual(existingVolume.Status, volume.Status) {
 			_, err = kc.ds.UpdateVolumeStatus(volume)
@@ -251,7 +264,57 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	}
 	kc.setWorkloads(ks, pods)
 
+	podsChanged := !reflect.DeepEqual(existingVolume.Status.KubernetesStatus.WorkloadsStatus, ks.WorkloadsStatus)
+	notInheritedMessage = kc.syncVolumeAntiAffinityFromPod(volume, pods, podsChanged)
+
 	return nil
+}
+
+// syncVolumeAntiAffinityFromPod inherits the volume anti-affinity terms from
+// the pod that uses the volume, which also releases the hold on the first
+// replica placement. When the inherited terms or the pods change, it returns
+// the event message for the rules of the pod that are not inherited, so that
+// a rule added to a recreated pod is reported but a resync repeats nothing.
+func (kc *KubernetesPVController) syncVolumeAntiAffinityFromPod(volume *longhorn.Volume, pods []*corev1.Pod, podsChanged bool) string {
+	if !types.IsVolumeAntiAffinityEnabled(volume) {
+		volume.Spec.VolumeAntiAffinityFromPod = nil
+		return ""
+	}
+	ks := volume.Status.KubernetesStatus
+	if ks.PVStatus != string(corev1.VolumeBound) {
+		return ""
+	}
+
+	pods = filterPods(pods, func(pod *corev1.Pod) bool {
+		return pod.DeletionTimestamp == nil && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed
+	})
+	switch {
+	case len(pods) == 0:
+		// The terms stay while no pod uses the volume, because its data stays
+		// on the node. The hold stays until the pod is visible, which takes a
+		// moment as the PV and pod informers are not ordered.
+		return ""
+	case len(pods) > 1:
+		kc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonVolumeAntiAffinityMultiplePods,
+			"Volume anti-affinity terms are not updated because %d pods use PVC %v/%v", len(pods), ks.Namespace, ks.PVCName)
+		if types.IsVolumeAntiAffinityPending(volume) {
+			volume.Spec.VolumeAntiAffinityFromPod = nil
+		}
+		return ""
+	}
+
+	pod := pods[0]
+	fromPod, notInherited := types.InheritVolumeAntiAffinityFromPod(pod, volume.Spec.TopologyRequirement)
+	termsChanged := !types.VolumeAntiAffinityFromPodEqual(volume.Spec.VolumeAntiAffinityFromPod, fromPod)
+	if termsChanged {
+		// Writing the terms also clears the hold, so that the first placement
+		// cannot happen between the two.
+		volume.Spec.VolumeAntiAffinityFromPod = fromPod
+	}
+	if len(notInherited) == 0 || (!termsChanged && !podsChanged) {
+		return ""
+	}
+	return fmt.Sprintf("Spreading rules of pod %v/%v not inherited: %v", pod.Namespace, pod.Name, strings.Join(notInherited, "; "))
 }
 
 func (kc *KubernetesPVController) getCSIVolumeHandleFromPV(pv *corev1.PersistentVolume) string {
