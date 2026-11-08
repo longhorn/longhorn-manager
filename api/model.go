@@ -773,6 +773,27 @@ type SnapshotCRListOutput struct {
 	Type string       `json:"type"`
 }
 
+func NewSchemaForDataEngineMode(mode types.DataEngineMode) (*client.Schemas, error) {
+	parsed, err := types.ParseDataEngineMode(string(mode))
+	if err != nil {
+		return nil, err
+	}
+	schemas := NewSchema()
+	if parsed == types.DataEngineModeV2Only {
+		volume, ok := schemas.CheckSchema("volume")
+		if !ok {
+			return nil, fmt.Errorf("missing volume schema for installation capability")
+		}
+		field, ok := volume.CheckField("dataEngine")
+		if !ok {
+			return nil, fmt.Errorf("missing volume data engine field for installation capability")
+		}
+		field.Default = longhorn.DataEngineTypeV2
+		volume.ResourceFields["dataEngine"] = field
+	}
+	return schemas, nil
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 

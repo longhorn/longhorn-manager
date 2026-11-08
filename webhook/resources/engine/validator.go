@@ -43,8 +43,11 @@ func (e *engineValidator) Resource() admission.Resource {
 
 func (e *engineValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	engine, ok := newObj.(*longhorn.Engine)
-	if !ok {
+	if !ok || engine == nil {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", newObj), "")
+	}
+	if err := wcommon.ValidateDataEngineCapability(e.ds, engine.Spec.DataEngine); err != nil {
+		return err
 	}
 
 	volume, err := e.ds.GetVolume(engine.Spec.VolumeName)
@@ -65,6 +68,13 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	cleanup, err := wcommon.ValidateDataEngineCapabilityUpdate(e.ds, oldObj, newObj)
+	if err != nil {
+		return err
+	}
+	if cleanup {
+		return nil
+	}
 	oldEngine, ok := oldObj.(*longhorn.Engine)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", oldObj), "")

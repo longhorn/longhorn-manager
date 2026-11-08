@@ -18,6 +18,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	longhorntypes "github.com/longhorn/longhorn-manager/types"
 )
 
 // TestSyncDirectory covers longhorn/longhorn#14102: the disk config file must be durable before its UUID is
@@ -55,7 +56,7 @@ func TestGenerateFilesystemTypeDiskConfigKeepsReplicas(t *testing.T) {
 	kubeClient := kubefake.NewSimpleClientset()
 	lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := datastore.NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, apiextensionsfake.NewSimpleClientset(), informerFactories)
+	ds := datastore.NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, apiextensionsfake.NewSimpleClientset(), informerFactories, longhorntypes.DataEngineModeV1Capable)
 
 	diskPath := t.TempDir()
 	replicaData := filepath.Join(diskPath, util.ReplicaDirectory, "vol-1-6b63f803", "volume-head-000.img")

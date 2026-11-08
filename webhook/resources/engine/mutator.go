@@ -41,10 +41,24 @@ func (e *engineMutator) Resource() admission.Resource {
 }
 
 func (e *engineMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+	engine, ok := newObj.(*longhorn.Engine)
+	if !ok || engine == nil {
+		return nil, werror.NewInvalidError("expected a non-nil Longhorn Engine", "")
+	}
+	if err := common.ValidateDataEngineCapability(e.ds, engine.Spec.DataEngine); err != nil {
+		return nil, err
+	}
 	return mutate(newObj)
 }
 
 func (e *engineMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	cleanup, err := common.ValidateDataEngineCapabilityUpdate(e.ds, oldObj, newObj)
+	if err != nil {
+		return nil, err
+	}
+	if cleanup {
+		return nil, nil
+	}
 	return mutate(newObj)
 }
 

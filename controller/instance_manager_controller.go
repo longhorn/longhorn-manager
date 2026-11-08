@@ -1919,6 +1919,9 @@ func (imc *InstanceManagerController) cleanupInstanceManagerPod(imName string) e
 }
 
 func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.InstanceManager) error {
+	if !imc.ds.DataEngineMode().AllowsDataEngine(im.Spec.DataEngine) {
+		return fmt.Errorf("data engine %q is outside the %q installation capability", im.Spec.DataEngine, imc.ds.DataEngineMode())
+	}
 	log := getLoggerForInstanceManager(imc.logger, im)
 
 	tolerations, err := imc.ds.GetSettingTaintToleration()

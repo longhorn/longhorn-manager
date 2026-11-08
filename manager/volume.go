@@ -51,6 +51,10 @@ func (m *VolumeManager) GetCurrentNodeID() string {
 	return m.currentNodeID
 }
 
+func (m *VolumeManager) GetDataEngineMode() types.DataEngineMode {
+	return m.ds.DataEngineMode()
+}
+
 func (m *VolumeManager) Node2APIAddress(nodeID string) (string, error) {
 	nodeIPMap, err := m.ds.GetManagerNodeIPMap()
 	if err != nil {
@@ -154,6 +158,22 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			logrus.Errorf("manager: unable to create volume %v: %+v: %v", name, spec, err)
 		}
 	}()
+	if spec == nil || m.ds == nil {
+		return nil, fmt.Errorf("volume creation requires a specification and datastore capability")
+	}
+	mode, err := types.ParseDataEngineMode(string(m.ds.DataEngineMode()))
+	if err != nil {
+		return nil, err
+	}
+	if mode == types.DataEngineModeV2Only {
+		spec = spec.DeepCopy()
+		if spec.DataEngine == "" {
+			spec.DataEngine = longhorn.DataEngineTypeV2
+		}
+		if !mode.AllowsDataEngine(spec.DataEngine) {
+			return nil, fmt.Errorf("data engine %q is outside the v2-only installation capability", spec.DataEngine)
+		}
+	}
 
 	labels := map[string]string{}
 	for _, job := range recurringJobSelector {

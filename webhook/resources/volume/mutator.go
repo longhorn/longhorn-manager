@@ -87,10 +87,18 @@ func (v *volumeMutator) getActiveInstanceManagerImage(defaultInstanceManagerImag
 
 func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	volume, ok := newObj.(*longhorn.Volume)
-	if !ok {
+	if !ok || volume == nil {
 		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
 	}
 	var patchOps admission.PatchOps
+	if v.ds != nil && v.ds.DataEngineMode() == types.DataEngineModeV2Only && volume.Spec.DataEngine == "" {
+		volume = volume.DeepCopy()
+		volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+		patchOps = append(patchOps, `{"op": "add", "path": "/spec/dataEngine", "value": "v2"}`)
+	}
+	if err := common.ValidateDataEngineCapability(v.ds, volume.Spec.DataEngine); err != nil {
+		return nil, err
+	}
 
 	name := util.AutoCorrectName(volume.Name, datastore.NameMaximumLength)
 	if name != volume.Name {
@@ -373,7 +381,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(volume, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -382,6 +390,13 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 }
 
 func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	cleanup, capabilityErr := common.ValidateDataEngineCapabilityUpdate(v.ds, oldObj, newObj)
+	if capabilityErr != nil {
+		return nil, capabilityErr
+	}
+	if cleanup {
+		return nil, nil
+	}
 	oldVolume, ok := oldObj.(*longhorn.Volume)
 	if !ok {
 		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", oldObj), "")

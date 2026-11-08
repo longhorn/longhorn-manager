@@ -27,6 +27,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	longhorntypes "github.com/longhorn/longhorn-manager/types"
 )
 
 // mockEngineClientProxy wraps EngineSimulator and overrides ReplicaRebuildVerify for test control.
@@ -701,7 +702,7 @@ func TestHandleRebuildFailure(t *testing.T) {
 			ec := &EngineController{
 				baseController: newBaseController("longhorn-engine", logrus.New()),
 				controllerID:   TestNode1,
-				ds:             datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+				ds:             datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, longhorntypes.DataEngineModeV1Capable),
 				eventRecorder:  record.NewFakeRecorder(100),
 				backoff:        flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
 			}

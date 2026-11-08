@@ -1012,7 +1012,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutVolumes(tc.backupVolumes, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutBackingImages(tc.backupBackingImages, c, informerFactories.LhInformerFactory, lhClient)
 
-		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories, types.DataEngineModeV1Capable)
 		doneCh := make(chan struct{})
 		if tc.expectState != longhorn.SystemRestoreStateCompleted && tc.expectState != longhorn.SystemRestoreStateError {
 			doneChs = append(doneChs, doneCh)
