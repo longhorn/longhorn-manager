@@ -49,6 +49,16 @@ const (
 
 	MaxSnapshotCloneWaitTime         = 72 * time.Hour
 	SnapshotCloneStatusCheckInterval = 3 * time.Second
+
+	// sharedBlockMaxFrontends is the number of controller IDs a shared block
+	// engine target accepts, so up to this many hosts can connect at the same
+	// time. It matches SPDK_NVMF_MAX_NUM_REGISTRANTS, the maximum number of NVMe
+	// reservation registrants per namespace.
+	sharedBlockMaxFrontends = 16
+
+	// reservationPtplSubDir is the directory under the metadata directory that
+	// holds the NVMe reservation ptpl files of shared block engine targets.
+	reservationPtplSubDir = "reservations"
 )
 
 const (
@@ -553,4 +563,20 @@ func getTargetCntlid(ip string, port int32) uint16 {
 	h := fnv.New32a()
 	_, _ = fmt.Fprintf(h, "%s:%d", ip, port)
 	return uint16(h.Sum32()%maxValidCntlid) + 1
+}
+
+// getTargetCntlidRange returns the controller ID range of an engine target.
+// Without shared block, the range is the single ID from getTargetCntlid, so
+// the target accepts one host. With shared block, it is a range of
+// sharedBlockMaxFrontends IDs derived from the address in the same way.
+func getTargetCntlidRange(ip string, port int32, sharedBlock bool) (minCntlid, maxCntlid uint16) {
+	if !sharedBlock {
+		cntlid := getTargetCntlid(ip, port)
+		return cntlid, cntlid
+	}
+
+	h := fnv.New32a()
+	_, _ = fmt.Fprintf(h, "%s:%d", ip, port)
+	minCntlid = uint16(h.Sum32()%(maxValidCntlid-sharedBlockMaxFrontends+1)) + 1
+	return minCntlid, minCntlid + sharedBlockMaxFrontends - 1
 }

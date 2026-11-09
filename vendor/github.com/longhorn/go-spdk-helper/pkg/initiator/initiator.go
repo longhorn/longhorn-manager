@@ -224,6 +224,11 @@ func (i *Initiator) ConnectNVMeTCPTarget(ip, port, nqn string) (string, error) {
 	return ConnectTargetWithNrIoQueues(ip, port, nqn, i.nrIoQueues(), i.executor)
 }
 
+// GetHostNQN returns the NVMe host NQN the initiator connects to targets with.
+func (i *Initiator) GetHostNQN() (string, error) {
+	return showHostNQN(i.executor)
+}
+
 func (i *Initiator) nrIoQueues() int32 {
 	if i.NVMeTCPInfo == nil {
 		return 0

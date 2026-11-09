@@ -1452,6 +1452,11 @@ func (r *Replica) Create(spdkClient *spdkclient.Client, portCount int32, superio
 		return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "invalid state %s for replica %s creation", r.State, r.Name)
 	}
 
+	// A stopped replica keeps the clone error of its last run. This new run must not report it.
+	if staleErr, cleared := r.clearStaleSnapshotCloneDstError(); cleared {
+		r.log.Infof("Cleared the snapshot clone error left by an earlier attempt: %v", staleErr)
+	}
+
 	defer func() {
 		if err != nil {
 			r.log.WithError(err).Errorf("Failed to create replica %s", r.Name)
@@ -1769,16 +1774,8 @@ func (r *Replica) Expand(spdkClient *spdkclient.Client, size uint64) error {
 		return nil
 	}
 
-	// If the bdev is exposed, we must stop exposing it before the resize.
-	reExposeBdev := false
-	if r.IsExposed {
-		if err := spdkClient.StopExposeBdev(helpertypes.GetNQN(r.Name)); err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-			return errors.Wrapf(err, "failed to stop expose replica %v before expansion", r.Name)
-		}
-		r.IsExposed = false
-		reExposeBdev = true
-	}
-
+	// The lvol grows while it stays exposed: the NVMe-oF target notifies the engine of the
+	// new namespace size, so the engine NVMe bdev in the RAID bdev keeps serving I/O.
 	resized, err := spdkClient.BdevLvolResize(r.Alias, util.BytesToMiB(size))
 	if !resized || err != nil {
 		r.log.Warn("Failed to expand replica or returned false; verifying lvol size")
@@ -1804,15 +1801,6 @@ func (r *Replica) Expand(spdkClient *spdkclient.Client, size uint64) error {
 		}
 
 		r.log.Info("Replica expansion succeeded despite earlier error")
-	}
-
-	// If we had previously exposed the bdev, we must re-expose it after the resize.
-	if reExposeBdev {
-		if err := spdkClient.StartExposeBdev(helpertypes.GetNQN(r.Name), r.Head.UUID, generateNGUID(r.Name), r.IP, strconv.Itoa(int(r.PortStart)),
-			helpertypes.InternalHostNQN); err != nil {
-			return errors.Wrapf(err, "failed to start expose replica %v after expansion", r.Name)
-		}
-		r.IsExposed = true
 	}
 
 	// Blindly clean up then update the caches for the head
@@ -2867,6 +2855,22 @@ func (r *Replica) doCleanupForSnapshotCloneDst(spdkClient *spdkclient.Client, cl
 	}
 
 	return util.CombineErrors(aggregatedErrors...)
+}
+
+// clearStaleSnapshotCloneDstError drops the error left by a finished clone attempt and returns it.
+// Otherwise longhorn-manager reads this error as the result of the next attempt and never starts it.
+// A "complete" state is kept so a finished clone is not run again. The caller must hold the replica lock.
+func (r *Replica) clearStaleSnapshotCloneDstError() (staleErr string, cleared bool) {
+	if r.isSnapshotCloning || r.snapshotCloningDstCache.cloningState != types.ProgressStateError {
+		return "", false
+	}
+
+	staleErr = r.snapshotCloningDstCache.cloningError
+	r.snapshotCloningDstCache.processedClusters = 0
+	r.snapshotCloningDstCache.totalClusters = 0
+	r.snapshotCloningDstCache.cloningError = ""
+	r.snapshotCloningDstCache.cloningState = ""
+	return staleErr, true
 }
 
 func (r *Replica) snapshotLinkedCloneSrcStart(spdkClient *spdkclient.Client, snapshotName, dstReplicaName string) (err error) {

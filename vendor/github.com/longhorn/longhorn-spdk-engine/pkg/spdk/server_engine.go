@@ -3,6 +3,7 @@ package spdk
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -30,6 +31,11 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	if req.SpecSize == 0 {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "engine spec size is required")
 	}
+	// Without the volume UID, a new volume with the same name would restore the
+	// reservation state of a deleted volume.
+	if req.SharedBlock && (req.Reservation == nil || req.Reservation.VolumeUid == "") {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "reservation state with the volume UID is required for a shared block engine")
+	}
 
 	s.Lock()
 
@@ -40,8 +46,14 @@ func (s *Server) EngineCreate(ctx context.Context, req *spdkrpc.EngineCreateRequ
 	}
 
 	if e == nil {
-		s.engineMap[req.Name] = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient)
-		e = s.engineMap[req.Name]
+		e = NewEngine(req.Name, req.VolumeName, req.Frontend, req.SpecSize, s.updateChs[types.InstanceTypeEngine], req.SnapshotMaxCount, s.newServiceClient,
+			req.SharedBlock, s.metadataDir)
+		if req.SharedBlock {
+			e.sharedBlockState.reservationEpoch = req.Reservation.Epoch
+			e.sharedBlockState.reservationSeed = req.Reservation
+			e.sharedBlockState.volumeUID = req.Reservation.VolumeUid
+		}
+		s.engineMap[req.Name] = e
 	}
 
 	spdkClient := s.spdkClient
@@ -192,17 +204,18 @@ func (s *Server) EngineExpand(ctx context.Context, req *spdkrpc.EngineExpandRequ
 
 	// EC volumes take the backend-reset path because ShardGroupExpand has
 	// already driven the backend resize against the ShardGroup process;
-	// RAID1 keeps its tear-down/expand-replicas/reconstruct cycle. The
-	// engine itself remains layout-blind - the dispatch is decided here
-	// by inspecting which Backend implementation EngineCreate's factory
-	// populated. EngineExpandRequest does not currently carry
-	// DataLayoutType, so this inference is the substitute for
-	// req.data_layout_type until both topologies converge on
-	// ExpandViaBackendReset and the dispatch is removed.
+	// RAID1 expands its replicas and grows its RAID bdev in place, without
+	// tearing it down. Like the V1 engine controller, RAID1 returns once the
+	// expansion has started, and the caller waits until the engine no longer
+	// reports IsExpanding. The engine itself remains layout-blind - the
+	// dispatch is decided here by inspecting which Backend implementation
+	// EngineCreate's factory populated. EngineExpandRequest does not
+	// currently carry DataLayoutType, so this inference is the substitute
+	// for req.data_layout_type.
 	if isShardedEngine(e) {
 		err = e.ExpandViaBackendReset(spdkClient, req.Size)
 	} else {
-		err = e.Expand(spdkClient, req.Size)
+		err = e.StartExpand(spdkClient, req.Size)
 	}
 	if err != nil {
 		return nil, toExpansionGRPCError(err, "failed to expand engine %v", req.Name)
@@ -313,6 +326,38 @@ func (s *Server) EngineDeleteTarget(ctx context.Context, req *spdkrpc.EngineDele
 	return &emptypb.Empty{}, grpcstatus.Error(grpccodes.Unimplemented, "EngineDeleteTarget is not implemented yet and will be removed in the future")
 }
 
+// EngineReservationCleanup removes the persisted NVMe reservation state of a
+// shared block volume on the node. The engine of the volume must be deleted
+// first, as the state is the latest one of the engine.
+func (s *Server) EngineReservationCleanup(ctx context.Context, req *spdkrpc.EngineReservationCleanupRequest) (ret *emptypb.Empty, err error) {
+	volumeName := req.VolumeName
+	if volumeName == "" || volumeName == "." || volumeName == ".." || filepath.Base(volumeName) != volumeName {
+		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid volume name %q for reservation cleanup", volumeName)
+	}
+
+	s.RLock()
+	metadataDir := s.metadataDir
+	engineName := ""
+	for _, e := range s.engineMap {
+		if e.VolumeName == volumeName {
+			engineName = e.Name
+			break
+		}
+	}
+	s.RUnlock()
+
+	if engineName != "" {
+		return nil, grpcstatus.Errorf(grpccodes.FailedPrecondition, "cannot clean up reservation of volume %s since engine %s still exists", volumeName, engineName)
+	}
+	if metadataDir == "" {
+		return &emptypb.Empty{}, nil
+	}
+	if err := cleanupVolumeReservationPtplFiles(metadataDir, volumeName); err != nil {
+		return nil, grpcstatus.Error(grpccodes.Internal, err.Error())
+	}
+	return &emptypb.Empty{}, nil
+}
+
 // EngineSetTargetListenerANAState updates the ANA state of an engine's exported NVMe/TCP listener.
 func (s *Server) EngineSetTargetListenerANAState(ctx context.Context, req *spdkrpc.EngineSetTargetListenerANAStateRequest) (ret *emptypb.Empty, err error) {
 	if req == nil {
@@ -341,6 +386,29 @@ func (s *Server) EngineSetTargetListenerANAState(ctx context.Context, req *spdkr
 
 	if err := e.SetTargetListenerANAState(spdkClient, anaState); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to set ANA state %s for engine %s: %v", anaState, req.Name, err)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) EngineRegisterFrontend(ctx context.Context, req *spdkrpc.EngineRegisterFrontendRequest) (ret *emptypb.Empty, err error) {
+	if req.Name == "" || req.FrontendName == "" || req.FrontendAddress == "" || req.HostNqn == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "engine name, frontend name, frontend address and host NQN are required")
+	}
+
+	s.RLock()
+	e := s.engineMap[req.Name]
+	s.RUnlock()
+
+	if e == nil {
+		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for engine frontend registration", req.Name)
+	}
+
+	if err := e.RegisterFrontend(req.FrontendName, req.FrontendAddress, req.HostNqn); err != nil {
+		if errors.Is(err, ErrSharedBlockFrontendsFreezing) {
+			return nil, grpcstatus.Error(grpccodes.Unavailable, err.Error())
+		}
+		return nil, grpcstatus.Error(grpccodes.FailedPrecondition, err.Error())
 	}
 
 	return &emptypb.Empty{}, nil
@@ -447,7 +515,9 @@ func (s *Server) EngineReplicaAdd(ctx context.Context, req *spdkrpc.EngineReplic
 	}
 
 	var frontendSuspendResumeWrapper replicaAddFrontendSuspendResumeWrapper
-	if efName != "" {
+	if e.SharedBlock {
+		frontendSuspendResumeWrapper = e.buildSharedBlockReplicaAddFrontendSuspendResumeWrapper(s.getSPDKClient)
+	} else if efName != "" {
 		log := logrus.WithFields(logrus.Fields{
 			"engineName":     req.EngineName,
 			"replicaName":    req.ReplicaName,
@@ -462,7 +532,18 @@ func (s *Server) EngineReplicaAdd(ctx context.Context, req *spdkrpc.EngineReplic
 		linkedCloneSrcEngineName = req.LinkedCloneSource.EngineName
 		linkedCloneSrcEngineAddress = req.LinkedCloneSource.EngineAddress
 	}
-	if err := e.ReplicaAdd(spdkClient, req.ReplicaName, req.ReplicaAddress, req.FastSync, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, frontendSuspendResumeWrapper); err != nil {
+	replicaAdd := func() error {
+		return e.ReplicaAdd(spdkClient, req.ReplicaName, req.ReplicaAddress, req.FastSync, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, frontendSuspendResumeWrapper)
+	}
+	if e.SharedBlock {
+		// The engine frontends on all hosts, including the requesting one, are
+		// suspended during the synchronous setup, and the engine lock is not
+		// held while they are called.
+		err = e.withSharedBlockFrontendsSuspended(spdkClient, "", true, true, replicaAdd)
+	} else {
+		err = replicaAdd()
+	}
+	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to add replica %s to engine %s: %v", req.ReplicaName, req.EngineName, err)
 	}
 	return &emptypb.Empty{}, nil
@@ -546,7 +627,7 @@ func (s *Server) EngineSnapshotCreate(ctx context.Context, req *spdkrpc.Snapshot
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find engine %v for snapshot creation", req.Name)
 	}
 
-	snapshotName, err := e.SnapshotCreate(spdkClient, req.SnapshotName)
+	snapshotName, err := e.SnapshotCreate(spdkClient, req.SnapshotName, req.EngineFrontendName)
 	return &spdkrpc.SnapshotResponse{SnapshotName: snapshotName}, err
 }
 
@@ -864,6 +945,7 @@ func (s *Server) registerRestoreFrontend(e *Engine, volumeName string, specSize 
 		types.DefaultUblkNumberOfQueue,
 		throwawayUpdateCh,
 		s.newServiceClient,
+		false,
 	)
 	tempEF.unregisterRestoreFrontendFn = func() {
 		s.Lock()

@@ -210,3 +210,16 @@ type NvmfSubsystemListener struct {
 	Address  NvmfSubsystemListenAddress    `json:"address"`
 	AnaState NvmfSubsystemListenerAnaState `json:"ana_state"`
 }
+
+type NvmfSubsystemGetControllersRequest struct {
+	Nqn string `json:"nqn"`
+
+	TgtName string `json:"tgt_name,omitempty"`
+}
+
+type NvmfSubsystemController struct {
+	Cntlid      uint16 `json:"cntlid"`
+	Hostnqn     string `json:"hostnqn"`
+	Hostid      string `json:"hostid"`
+	NumIoQpairs uint32 `json:"num_io_qpairs"`
+}

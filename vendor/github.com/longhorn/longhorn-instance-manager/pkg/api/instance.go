@@ -80,6 +80,9 @@ type InstanceStatus struct {
 	ActivePath             string                      `json:"activePath"`
 	PreferredPath          string                      `json:"preferredPath"`
 	Paths                  []EngineFrontendNvmeTCPPath `json:"paths"`
+	// Reservation is set for a shared block engine if its persisted NVMe
+	// reservation state is known.
+	Reservation *ReservationState `json:"reservation,omitempty"`
 }
 
 type EngineFrontendNvmeTCPPath struct {
@@ -124,6 +127,7 @@ func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
 		ActivePath:             obj.ActivePath,
 		PreferredPath:          obj.PreferredPath,
 		Paths:                  paths,
+		Reservation:            RPCToReservationState(obj.Reservation),
 	}
 }
 
@@ -185,4 +189,60 @@ func (s *LogStream) Recv() (string, error) {
 		return "", err
 	}
 	return resp.Line, nil
+}
+
+// ReservationState is the NVMe reservation state of a shared block volume
+// namespace that persists through power loss.
+type ReservationState struct {
+	// Epoch identifies the generation of the state. It changes when the engine
+	// of the volume moves to another node.
+	Epoch        uint64                  `json:"epoch"`
+	Type         uint32                  `json:"type"`
+	HolderKey    uint64                  `json:"holderKey"`
+	HolderHostID string                  `json:"holderHostID"`
+	Registrants  []ReservationRegistrant `json:"registrants"`
+	// VolumeUID identifies the lifetime of the volume. It is set only when the
+	// state is restored.
+	VolumeUID string `json:"volumeUID,omitempty"`
+}
+
+type ReservationRegistrant struct {
+	Key    uint64 `json:"key"`
+	HostID string `json:"hostID"`
+}
+
+func RPCToReservationState(obj *rpc.InstanceReservationState) *ReservationState {
+	if obj == nil {
+		return nil
+	}
+	res := &ReservationState{
+		Epoch:        obj.Epoch,
+		Type:         obj.Type,
+		HolderKey:    obj.HolderKey,
+		HolderHostID: obj.HolderHostId,
+		Registrants:  make([]ReservationRegistrant, 0, len(obj.Registrants)),
+		VolumeUID:    obj.VolumeUid,
+	}
+	for _, reg := range obj.Registrants {
+		res.Registrants = append(res.Registrants, ReservationRegistrant{Key: reg.Key, HostID: reg.HostId})
+	}
+	return res
+}
+
+func ReservationStateToRPC(state *ReservationState) *rpc.InstanceReservationState {
+	if state == nil {
+		return nil
+	}
+	res := &rpc.InstanceReservationState{
+		Epoch:        state.Epoch,
+		Type:         state.Type,
+		HolderKey:    state.HolderKey,
+		HolderHostId: state.HolderHostID,
+		Registrants:  make([]*rpc.InstanceReservationRegistrant, 0, len(state.Registrants)),
+		VolumeUid:    state.VolumeUID,
+	}
+	for _, reg := range state.Registrants {
+		res.Registrants = append(res.Registrants, &rpc.InstanceReservationRegistrant{Key: reg.Key, HostId: reg.HostID})
+	}
+	return res
 }

@@ -170,10 +170,18 @@ func (c *Client) StartExposeBdev(nqn, bdevName, nguid, ip, port string, allowedH
 // a unique controller-ID range per engine to avoid "Duplicate cntlid" errors
 // when multiple targets share one subsystem NQN. Pass 0 for defaults.
 func (c *Client) StartExposeBdevWithANAState(nqn, bdevName, nguid, nsUUID, ip, port string, anaState spdktypes.NvmfSubsystemListenerAnaState, minCntlid, maxCntlid uint16) error {
+	return c.StartExposeBdevWithANAStateAndPtplFile(nqn, bdevName, nguid, nsUUID, ip, port, anaState, minCntlid, maxCntlid, "")
+}
+
+// StartExposeBdevWithANAStateAndPtplFile is StartExposeBdevWithANAState with an
+// optional ptpl file for the namespace. A non-empty ptplFile makes SPDK persist
+// the NVMe reservation state in the file and restore it before the listener is
+// added, so the state is in place before any host I/O.
+func (c *Client) StartExposeBdevWithANAStateAndPtplFile(nqn, bdevName, nguid, nsUUID, ip, port string, anaState spdktypes.NvmfSubsystemListenerAnaState, minCntlid, maxCntlid uint16, ptplFile string) error {
 	ip = spdkutil.NormalizeNvmeAddr(ip)
 
-	logrus.Infof("Exposing bdev with nqn %v, bdevName %v, nguid %v, nsUUID %v, ip %v, port %v, anaState %v, minCntlid %v, maxCntlid %v",
-		nqn, bdevName, nguid, nsUUID, ip, port, anaState, minCntlid, maxCntlid)
+	logrus.Infof("Exposing bdev with nqn %v, bdevName %v, nguid %v, nsUUID %v, ip %v, port %v, anaState %v, minCntlid %v, maxCntlid %v, ptplFile %v",
+		nqn, bdevName, nguid, nsUUID, ip, port, anaState, minCntlid, maxCntlid, ptplFile)
 
 	if err := c.EnsureNvmfTransport(); err != nil {
 		return err
@@ -184,8 +192,8 @@ func (c *Client) StartExposeBdevWithANAState(nqn, bdevName, nguid, nsUUID, ip, p
 		return err
 	}
 
-	logrus.Infof("Adding NVMe namespace with bdev name %v, nguid %v, uuid %v to subsystem with nqn %v", bdevName, nguid, nsUUID, nqn)
-	if _, err := c.NvmfSubsystemAddNsWithUUID(nqn, bdevName, nguid, nsUUID); err != nil {
+	logrus.Infof("Adding NVMe namespace with bdev name %v, nguid %v, uuid %v, ptpl file %v to subsystem with nqn %v", bdevName, nguid, nsUUID, ptplFile, nqn)
+	if _, err := c.NvmfSubsystemAddNsWithPtplFile(nqn, bdevName, nguid, nsUUID, ptplFile); err != nil {
 		return err
 	}
 

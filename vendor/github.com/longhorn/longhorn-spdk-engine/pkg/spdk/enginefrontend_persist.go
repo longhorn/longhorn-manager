@@ -32,6 +32,7 @@ type EngineFrontendRecord struct {
 	TargetIP      string                      `json:"targetIP"`
 	TargetPort    int32                       `json:"targetPort"`
 	NrIoQueues    int32                       `json:"nrIoQueues,omitempty"`
+	SharedBlock   bool                        `json:"sharedBlock,omitempty"`
 	ActivePath    string                      `json:"activePath,omitempty"`
 	PreferredPath string                      `json:"preferredPath,omitempty"`
 	Paths         []*EngineFrontendPathRecord `json:"paths,omitempty"`
@@ -92,6 +93,7 @@ func saveEngineFrontendRecord(metadataDir string, ef *EngineFrontend) error {
 		TargetIP:      targetIP,
 		TargetPort:    targetPort,
 		NrIoQueues:    ef.NvmeTcpFrontend.NrIoQueues,
+		SharedBlock:   ef.SharedBlock,
 		ActivePath:    ef.ActivePath,
 		PreferredPath: ef.PreferredPath,
 	}
