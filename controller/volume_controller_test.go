@@ -4332,6 +4332,223 @@ func (s *TestSuite) TestReplicaAutoBalanceWithUnavailableManager(c *C) {
 	}
 }
 
+func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
+	const (
+		zone1 = "zone-1"
+		zone2 = "zone-2"
+	)
+	zone1Nodes := []string{"zone-1-node-1", "zone-1-node-2", "zone-1-node-3", "zone-1-node-4"}
+	zone2Nodes := []string{"zone-2-node-1", "zone-2-node-2", "zone-2-node-3", "zone-2-node-4"}
+	engineNode := zone1Nodes[0]
+
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	testCases := []struct {
+		name               string
+		numberOfReplicas   int
+		replicaNodes       []string
+		failedReplicaNodes []string
+		downNodes          []string
+		softAntiAffinity   bool
+		topologyRegion     string
+		nodeRegions        map[string]string
+		expectedCount      int
+		expectedAffinityIn []string
+	}{
+		{
+			name:               "3+1 adds a replica in the zone with fewer replicas",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			expectedCount:      1,
+			expectedAffinityIn: zone2Nodes[1:],
+		},
+		{
+			name:               "1+3 adds a replica in the engine zone when it has fewer replicas",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone2Nodes[0], zone2Nodes[1], zone2Nodes[2]},
+			expectedCount:      1,
+			expectedAffinityIn: zone1Nodes[1:],
+		},
+		{
+			name:             "2+2 is balanced",
+			numberOfReplicas: 4,
+			replicaNodes:     []string{zone1Nodes[0], zone1Nodes[1], zone2Nodes[0], zone2Nodes[1]},
+			expectedCount:    0,
+		},
+		{
+			name:             "2+1 is balanced",
+			numberOfReplicas: 3,
+			replicaNodes:     []string{zone1Nodes[0], zone1Nodes[1], zone2Nodes[0]},
+			expectedCount:    0,
+		},
+		{
+			name:               "3+1 reuses a failed replica when the target zone has no free node",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: zone2Nodes[1:],
+			expectedCount:      1,
+			expectedAffinityIn: zone2Nodes[1:],
+		},
+		{
+			name:               "3+1 waits while the failed replicas in the target zone are not reusable",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: zone2Nodes[1:],
+			downNodes:          zone2Nodes[1:],
+			expectedCount:      0,
+		},
+		{
+			name:               "3+1 does not reuse a failed replica on the node that already runs one",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: []string{zone2Nodes[0]},
+			downNodes:          zone2Nodes[1:],
+			softAntiAffinity:   true,
+			expectedCount:      0,
+		},
+		{
+			name:               "3+1 does not reuse a failed replica outside the topology requirement",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: []string{zone2Nodes[1]},
+			downNodes:          zone2Nodes[2:],
+			topologyRegion:     "region-a",
+			nodeRegions:        map[string]string{zone2Nodes[1]: "region-b"},
+			expectedCount:      0,
+		},
+	}
+
+	for _, tc := range testCases {
+		fmt.Printf("testing %v\n", tc.name)
+
+		volume := newVolume(TestVolumeName, tc.numberOfReplicas)
+		volume.Spec.ReplicaAutoBalance = longhorn.ReplicaAutoBalanceBestEffort
+		volume.Status.State = longhorn.VolumeStateAttached
+		volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+		volume.Status.CurrentImage = TestEngineImage
+		if tc.topologyRegion != "" {
+			volume.Spec.TopologyRequirement = []longhorn.VolumeTopologyTerm{{Zone: zone2, Region: tc.topologyRegion}}
+		}
+
+		engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+		engineImage.Status.NodeDeploymentMap = map[string]bool{}
+
+		engine := newEngineForVolume(volume)
+		engine.Spec.NodeID = engineNode
+		engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+
+		replicas := map[string]*longhorn.Replica{}
+		for _, nodeID := range tc.replicaNodes {
+			replica := newReplicaForVolume(volume, engine, nodeID, TestDiskID1)
+			replica.Spec.HealthyAt = TestTimeNow
+			replica.Status.CurrentState = longhorn.InstanceStateRunning
+			replicas[replica.Name] = replica
+			engine.Status.ReplicaModeMap[replica.Name] = longhorn.ReplicaModeRW
+		}
+		for _, nodeID := range tc.failedReplicaNodes {
+			replica := newReplicaForVolume(volume, engine, nodeID, TestDiskID1)
+			replica.Spec.HealthyAt = TestTimeNow
+			replica.Spec.FailedAt = TestTimeNow
+			replica.Status.CurrentState = longhorn.InstanceStateStopped
+			replicas[replica.Name] = replica
+		}
+
+		longhornNodes := []*longhorn.Node{}
+		kubeNodes := []*corev1.Node{}
+		instanceManagers := []*longhorn.InstanceManager{}
+		for zone, nodeNames := range map[string][]string{zone1: zone1Nodes, zone2: zone2Nodes} {
+			for _, nodeName := range nodeNames {
+				status := longhorn.ConditionStatusTrue
+				if util.Contains(tc.downNodes, nodeName) {
+					status = longhorn.ConditionStatusFalse
+				}
+				node := newNode(nodeName, TestNamespace, true, status, "")
+				node.Status.Zone = zone
+				node.Status.Region = tc.topologyRegion
+				if region, ok := tc.nodeRegions[nodeName]; ok {
+					node.Status.Region = region
+				}
+				longhornNodes = append(longhornNodes, node)
+				kubeNodes = append(kubeNodes, newKubernetesNode(nodeName, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue))
+				engineImage.Status.NodeDeploymentMap[nodeName] = true
+				instanceManagers = append(instanceManagers, newInstanceManager(TestInstanceManagerName+"-"+nodeName,
+					longhorn.InstanceManagerStateRunning, nodeName, nodeName, TestIP1,
+					map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{},
+					longhorn.DataEngineTypeV1, TestInstanceManagerImage, false))
+			}
+		}
+		settings := []*longhorn.Setting{
+			initSettingsNameValue(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage),
+		}
+		if tc.softAntiAffinity {
+			settings = append(settings, initSettingsNameValue(string(types.SettingNameReplicaSoftAntiAffinity), "true"))
+		}
+		for _, setting := range settings {
+			setting.Namespace = TestNamespace
+		}
+
+		lhObjects := []runtime.Object{volume, engine, engineImage}
+		for _, node := range longhornNodes {
+			lhObjects = append(lhObjects, node)
+		}
+		for _, replica := range replicas {
+			lhObjects = append(lhObjects, replica)
+		}
+		for _, im := range instanceManagers {
+			lhObjects = append(lhObjects, im)
+		}
+		for _, setting := range settings {
+			lhObjects = append(lhObjects, setting)
+		}
+		kubeObjects := []runtime.Object{}
+		for _, node := range kubeNodes {
+			kubeObjects = append(kubeObjects, node)
+		}
+
+		lhClient := lhfake.NewSimpleClientset(lhObjects...) // nolint: staticcheck
+		kubeClient := fake.NewSimpleClientset(kubeObjects...)
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		for _, node := range longhornNodes {
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+		}
+		for _, node := range kubeNodes {
+			c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
+		}
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer().Add(engineImage), IsNil)
+		for _, im := range instanceManagers {
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
+		}
+		for _, setting := range settings {
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer().Add(setting), IsNil)
+		}
+
+		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+		vc := &VolumeController{
+			baseController: newBaseController("test-volume", logrus.StandardLogger()),
+			ds:             ds,
+			eventRecorder:  record.NewFakeRecorder(10),
+			scheduler:      scheduler.NewReplicaScheduler(ds),
+			nowHandler:     getTestNow,
+		}
+
+		// Map iteration order inside the counting code is random, so run the
+		// same case several times to catch order-dependent results.
+		for i := 0; i < 20; i++ {
+			count, affinity := vc.getReplenishReplicasCount(volume, replicas, engine)
+			c.Assert(count, Equals, tc.expectedCount, Commentf("%v", tc.name))
+			if len(tc.expectedAffinityIn) == 0 {
+				c.Assert(affinity, Equals, "", Commentf("%v", tc.name))
+			} else {
+				c.Assert(util.Contains(tc.expectedAffinityIn, affinity), Equals, true, Commentf("%v: affinity %v", tc.name, affinity))
+			}
+		}
+	}
+}
+
 func (s *TestSuite) TestCleanupAutoBalancedReplicasWithUnavailableManager(c *C) {
 	const (
 		testNode3   = "test-node-name-3"
