@@ -768,6 +768,8 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		InitiatorAddress:                 instanceManagerStorageIP,
 		TargetAddress:                    instanceManagerStorageIP,
 		SharedBlock:                      util.IsSharedBlockVolume(v),
+		Reservation:                      getEngineReservationToRestore(v, e),
+		VolumeUID:                        string(v.UID),
 	})
 }
 
@@ -850,12 +852,108 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		}
 	}(c)
 
+	if err = ec.syncFinalReservation(e, im, c, log); err != nil {
+		return err
+	}
+
 	err = c.InstanceDelete(e.Spec.DataEngine, e.Name, "", string(longhorn.InstanceManagerTypeEngine), "", true)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
 	return nil
+}
+
+// getEngineReservationToRestore returns the NVMe reservation state for the
+// engine of a shared block volume to restore, with the epoch of the engine. The
+// epoch stays the same if the engine runs on the node of the latest state, so
+// the engine keeps its newer local state if any, and increases if the engine
+// moves to another node, so the engine restores the synced state instead of a
+// stale local state.
+func getEngineReservationToRestore(v *longhorn.Volume, e *longhorn.Engine) *longhorn.VolumeReservation {
+	if !util.IsSharedBlockVolume(v) {
+		return nil
+	}
+
+	// The engine status may hold a newer state of the latest epoch that is not
+	// synced to the volume yet.
+	latest := v.Status.Reservation
+	if e.Status.Reservation != nil && (latest == nil || e.Status.Reservation.Epoch >= latest.Epoch) {
+		latest = e.Status.Reservation
+	}
+	if latest == nil {
+		return &longhorn.VolumeReservation{Epoch: 1, NodeID: e.Spec.NodeID}
+	}
+
+	r := latest.DeepCopy()
+	if r.NodeID != e.Spec.NodeID {
+		r.Epoch++
+		r.NodeID = e.Spec.NodeID
+	}
+	return r
+}
+
+// syncFinalReservation records the NVMe reservation state of a shared block
+// engine right before the engine is deleted. The engine frontends are already
+// disconnected then, so the state includes all changes of the epoch. The state
+// is recorded with the node of the instance manager, since e.Spec.NodeID is
+// already cleared when the volume is detaching. The state is persisted before
+// the engine is deleted, since it cannot be read again after that. Failing to
+// read the state does not block the deletion.
+func (ec *EngineController) syncFinalReservation(e *longhorn.Engine, im *longhorn.InstanceManager, c *engineapi.InstanceManagerClient, log *logrus.Entry) error {
+	if !types.IsDataEngineV2(e.Spec.DataEngine) || e.Status.CurrentState != longhorn.InstanceStateRunning {
+		return nil
+	}
+	v, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
+	if err != nil {
+		log.WithError(err).Warn("Failed to get volume to sync the final reservation state")
+		return nil
+	}
+	if !util.IsSharedBlockVolume(v) {
+		return nil
+	}
+
+	r, err := c.EngineInstanceReservationGet(e, im.Spec.NodeID)
+	if err != nil {
+		log.WithError(err).Warn("Failed to sync the final reservation state before deleting the engine")
+		return nil
+	}
+	if r == nil {
+		log.Warn("Reservation state is unknown when deleting the engine, the latest changes may not be synced")
+		return nil
+	}
+	e.Status.Reservation = r
+	updated, err := ec.ds.UpdateEngineStatus(e)
+	if err != nil {
+		return errors.Wrap(err, "failed to persist the final reservation state before deleting the engine")
+	}
+	// Keep the later status update of this reconcile from conflicting.
+	e.ResourceVersion = updated.ResourceVersion
+	log.Infof("Synced the final reservation state of epoch %v with %d registrants", r.Epoch, len(r.Registrants))
+	return nil
+}
+
+// refreshReservation records the NVMe reservation state the target of a shared
+// block engine persists, which the instance manager monitor polls into the
+// instance manager status. An unknown state keeps the previous one. It stops
+// once the engine is stopping, so the cached state never overwrites the final
+// state read right before the engine is deleted.
+func (m *EngineMonitor) refreshReservation(engine *longhorn.Engine) {
+	if engine.Spec.DesireState != longhorn.InstanceStateRunning || engine.DeletionTimestamp != nil {
+		return
+	}
+	im, err := m.ds.GetInstanceManagerRO(engine.Status.InstanceManagerName)
+	if err != nil {
+		m.logger.WithError(err).Warn("Failed to get instance manager to refresh the reservation state")
+		return
+	}
+	instance, ok := im.Status.InstanceEngines[engine.Name]
+	if !ok || instance.Status.Reservation == nil {
+		return
+	}
+	r := instance.Status.Reservation.DeepCopy()
+	r.NodeID = im.Spec.NodeID
+	engine.Status.Reservation = r
 }
 
 func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
@@ -1205,6 +1303,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 		engine.Status.CurrentSize = volumeInfo.Size
 		engine.Status.IsExpanding = volumeInfo.IsExpanding
+
+		if util.IsSharedBlockVolume(volume) && types.IsDataEngineV2(engine.Spec.DataEngine) {
+			m.refreshReservation(engine)
+		}
 
 		if types.IsDataEngineV1(engine.Spec.DataEngine) {
 			// For v1, the engine owns and starts its frontend directly.

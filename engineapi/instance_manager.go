@@ -3,6 +3,7 @@ package engineapi
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strconv"
 
@@ -239,6 +240,11 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 		})
 	}
 
+	reservation, err := instanceReservationToVolumeReservation(p.InstanceStatus.Reservation, "")
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to parse the reservation state of instance %v", p.Name)
+	}
+
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name:       p.Name,
@@ -260,6 +266,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			UUID:            p.InstanceStatus.UUID,
 			Endpoint:        p.InstanceStatus.Endpoint,
 			Frontend:        p.InstanceStatus.Frontend,
+			Reservation:     reservation,
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen: "",
 		},
@@ -454,6 +461,12 @@ type EngineInstanceCreateRequest struct {
 	InitiatorAddress                 string
 	TargetAddress                    string
 	SharedBlock                      bool
+	// Reservation is the NVMe reservation state for a shared block engine to
+	// restore, with the epoch of the engine.
+	Reservation *longhorn.VolumeReservation
+	// VolumeUID identifies the lifetime of the volume, so that the state of a
+	// deleted volume is never restored to a new volume with the same name.
+	VolumeUID string
 }
 
 // EngineInstanceCreate creates a new engine instance
@@ -525,6 +538,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			SalvageRequested:  req.Engine.Spec.SalvageRequested,
 			SnapshotMaxCount:  req.Engine.Spec.SnapshotMaxCount,
 			SharedBlock:       req.SharedBlock,
+			Reservation:       volumeReservationToInstanceReservation(req.Reservation, req.VolumeUID),
 		},
 	})
 
@@ -838,6 +852,90 @@ func (c *InstanceManagerClient) InstanceGet(dataEngine longhorn.DataEngineType, 
 		return nil, err
 	}
 	return parseInstance(instance), nil
+}
+
+// EngineInstanceReservationGet returns the NVMe reservation state the target of
+// a shared block engine persists through power loss, or nil if it is unknown.
+// nodeID is the node the engine runs on.
+func (c *InstanceManagerClient) EngineInstanceReservationGet(e *longhorn.Engine, nodeID string) (*longhorn.VolumeReservation, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(e.Spec.DataEngine), e.Name, string(longhorn.InstanceManagerTypeEngine))
+	if err != nil {
+		return nil, err
+	}
+	return instanceReservationToVolumeReservation(instance.InstanceStatus.Reservation, nodeID)
+}
+
+// EngineInstanceReservationCleanup removes the NVMe reservation state a shared
+// block engine persisted on the node of the instance manager. It is required
+// only when the volume is deleted, after its engine is deleted.
+func (c *InstanceManagerClient) EngineInstanceReservationCleanup(dataEngine longhorn.DataEngineType, volumeName string) error {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+	return c.instanceServiceGrpcClient.InstanceReservationCleanup(string(dataEngine), volumeName)
+}
+
+func volumeReservationToInstanceReservation(r *longhorn.VolumeReservation, volumeUID string) *imapi.ReservationState {
+	if r == nil {
+		return nil
+	}
+
+	res := &imapi.ReservationState{
+		Epoch:        uint64(r.Epoch),
+		Type:         uint32(r.Type),
+		HolderHostID: r.HolderHostID,
+		Registrants:  []imapi.ReservationRegistrant{},
+		VolumeUID:    volumeUID,
+	}
+	// The keys were formatted by instanceReservationToVolumeReservation, but
+	// skip any registrant whose key cannot be parsed rather than failing the
+	// engine creation.
+	if key, err := strconv.ParseUint(r.HolderKey, 0, 64); err == nil {
+		res.HolderKey = key
+	}
+	for _, reg := range r.Registrants {
+		key, err := strconv.ParseUint(reg.Key, 0, 64)
+		if err != nil {
+			continue
+		}
+		res.Registrants = append(res.Registrants, imapi.ReservationRegistrant{Key: key, HostID: reg.HostID})
+	}
+	return res
+}
+
+func instanceReservationToVolumeReservation(r *imapi.ReservationState, nodeID string) (*longhorn.VolumeReservation, error) {
+	if r == nil {
+		return nil, nil
+	}
+	if r.Epoch > math.MaxInt64 {
+		return nil, fmt.Errorf("invalid reservation epoch %v", r.Epoch)
+	}
+
+	res := &longhorn.VolumeReservation{
+		Epoch:        int64(r.Epoch),
+		NodeID:       nodeID,
+		Type:         int(r.Type),
+		HolderHostID: r.HolderHostID,
+		Registrants:  []longhorn.VolumeReservationRegistrant{},
+	}
+	if r.HolderKey != 0 {
+		res.HolderKey = formatReservationKey(r.HolderKey)
+	}
+	for _, reg := range r.Registrants {
+		res.Registrants = append(res.Registrants, longhorn.VolumeReservationRegistrant{
+			Key:    formatReservationKey(reg.Key),
+			HostID: reg.HostID,
+		})
+	}
+	return res, nil
+}
+
+func formatReservationKey(key uint64) string {
+	return fmt.Sprintf("%#x", key)
 }
 
 // InstanceGetBinary returns the binary name of the instance

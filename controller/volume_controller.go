@@ -426,6 +426,17 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			c.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
 
+		// Record the reservation state the engine reports until it is deleted,
+		// so the state is cleaned up on the node of the latest epoch.
+		recordedReservation := volume.Status.Reservation.DeepCopy()
+		if err := c.syncSharedBlockReservation(volume, engines); err != nil {
+			log.WithError(err).Warn("Failed to sync the reservation state of the deleted volume")
+		} else if !reflect.DeepEqual(recordedReservation, volume.Status.Reservation) {
+			if volume, err = c.ds.UpdateVolumeStatus(volume); err != nil {
+				return err
+			}
+		}
+
 		if util.IsRegularRWXVolume(volume) {
 			log.Info("Removing share manager for deleted volume")
 			if err := c.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
@@ -572,6 +583,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		}
 
 		// now snapshots, replicas, engines, and engine frontends are deleted
+		c.cleanupSharedBlockReservation(volume)
 		return c.ds.RemoveFinalizerForVolume(volume)
 	}
 
@@ -703,9 +715,15 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.syncSharedBlockReservation(volume, engines); err != nil {
+		return err
+	}
+
 	if err := c.reconcileSharedBlockEngineFrontends(volume, engines, engineFrontends); err != nil {
 		return err
 	}
+
+	c.syncUnreservedSharedAccessCondition(volume)
 
 	if err := c.cleanupReplicas(volume, engines, replicas, engineFrontends); err != nil {
 		return err
@@ -6108,6 +6126,93 @@ func (c *VolumeController) reconcileSharedBlockEngineFrontends(v *longhorn.Volum
 	v.Status.FrontendNodeIDs = frontendNodeIDs
 
 	return nil
+}
+
+// syncSharedBlockReservation records the NVMe reservation state the engine of a
+// shared block volume reports, so the state survives the engine moving to
+// another node. A state of an older epoch is from a stale engine and ignored.
+func (c *VolumeController) syncSharedBlockReservation(v *longhorn.Volume, es map[string]*longhorn.Engine) error {
+	if !util.IsSharedBlockVolume(v) || len(es) == 0 {
+		return nil
+	}
+	e, err := c.ds.PickVolumeCurrentEngine(v, es)
+	if err != nil {
+		return err
+	}
+	if e == nil || e.Status.Reservation == nil {
+		return nil
+	}
+
+	reported := e.Status.Reservation
+	recorded := v.Status.Reservation
+	if recorded != nil && reported.Epoch < recorded.Epoch {
+		return nil
+	}
+
+	v.Status.Reservation = reported.DeepCopy()
+	return nil
+}
+
+// cleanupSharedBlockReservation removes the NVMe reservation state the engine
+// of a deleted shared block volume persisted on the node of the latest state.
+// It is best effort, since each lifetime of the volume has its own state, so a
+// state left behind is never restored to a new volume with the same name, e.g.,
+// on a node whose instance manager is not running, or on another node an engine
+// ran on before.
+func (c *VolumeController) cleanupSharedBlockReservation(v *longhorn.Volume) {
+	if !types.IsDataEngineV2(v.Spec.DataEngine) || !util.IsSharedBlockVolume(v) ||
+		v.Status.Reservation == nil || v.Status.Reservation.NodeID == "" {
+		return
+	}
+	nodeID := v.Status.Reservation.NodeID
+	log := getLoggerForVolume(c.logger, v).WithField("node", nodeID)
+
+	if err := c.cleanupSharedBlockReservationOnNode(v, nodeID); err != nil {
+		log.WithError(err).Warn("Failed to clean up the reservation state of the deleted volume")
+		return
+	}
+	log.Info("Cleaned up the reservation state of the deleted volume")
+}
+
+func (c *VolumeController) cleanupSharedBlockReservationOnNode(v *longhorn.Volume, nodeID string) error {
+	im, err := c.ds.GetRunningInstanceManagerByNodeRO(nodeID, v.Spec.DataEngine)
+	if err != nil {
+		return err
+	}
+	client, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := client.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}()
+	return client.EngineInstanceReservationCleanup(v.Spec.DataEngine, v.Name)
+}
+
+// syncUnreservedSharedAccessCondition warns that a shared block volume is
+// available on multiple nodes without an NVMe reservation held. Longhorn does
+// not block the IO then, since applications such as GFS2 and OCFS2 coordinate
+// the access through their own lock manager instead. Only the reservations
+// persisted through power loss are reported by the engine, which include all
+// registered through the kernel block layer.
+func (c *VolumeController) syncUnreservedSharedAccessCondition(v *longhorn.Volume) {
+	if !util.IsSharedBlockVolume(v) {
+		return
+	}
+
+	if len(v.Status.FrontendNodeIDs) > 1 && (v.Status.Reservation == nil || v.Status.Reservation.Type == 0) {
+		v.Status.Conditions = types.SetConditionAndRecord(v.Status.Conditions,
+			longhorn.VolumeConditionTypeUnreservedSharedAccess, longhorn.ConditionStatusTrue,
+			longhorn.VolumeConditionReasonNoReservation,
+			fmt.Sprintf("Volume is available on nodes %v without an NVMe reservation held, "+
+				"so concurrent writes are not protected unless the application coordinates them", v.Status.FrontendNodeIDs),
+			c.eventRecorder, v, corev1.EventTypeWarning)
+		return
+	}
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeUnreservedSharedAccess, longhorn.ConditionStatusFalse, "", "")
 }
 
 // getSharedBlockSecondaryFrontendNodes returns the nodes other than the engine

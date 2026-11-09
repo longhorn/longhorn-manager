@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -8,6 +9,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
@@ -342,4 +344,191 @@ func (s *TestSuite) TestIsWorkloadTicketOfSharedBlockVolume(c *C) {
 	v.Spec.SharedBlock = false
 	ticket := newSharedBlockAttachmentTicket("ticket", longhorn.AttacherTypeCSIAttacher, TestNode2)
 	c.Assert(isWorkloadTicketOfSharedBlockVolume(ticket, v), Equals, false)
+}
+
+func newTestVolumeReservation(epoch int64, nodeID string, keys ...string) *longhorn.VolumeReservation {
+	r := &longhorn.VolumeReservation{
+		Epoch:       epoch,
+		NodeID:      nodeID,
+		Registrants: []longhorn.VolumeReservationRegistrant{},
+	}
+	for i, key := range keys {
+		r.Registrants = append(r.Registrants, longhorn.VolumeReservationRegistrant{
+			Key:    key,
+			HostID: fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", i),
+		})
+	}
+	if len(keys) > 0 {
+		r.Type = 3
+		r.HolderKey = keys[0]
+		r.HolderHostID = r.Registrants[0].HostID
+	}
+	return r
+}
+
+func (s *TestSuite) TestGetEngineReservationToRestore(c *C) {
+	v := newSharedBlockVolume()
+	e := newEngineForVolume(v)
+	e.Spec.NodeID = TestNode1
+
+	// The first engine starts the first epoch on its node.
+	c.Assert(getEngineReservationToRestore(v, e), DeepEquals, &longhorn.VolumeReservation{Epoch: 1, NodeID: TestNode1})
+
+	// An engine on the node of the latest state keeps the epoch, so it keeps a
+	// newer local state if any.
+	v.Status.Reservation = newTestVolumeReservation(2, TestNode1, "0xa")
+	r := getEngineReservationToRestore(v, e)
+	c.Assert(r.Epoch, Equals, int64(2))
+	c.Assert(r.NodeID, Equals, TestNode1)
+	c.Assert(r.Registrants, DeepEquals, v.Status.Reservation.Registrants)
+
+	// An engine on another node starts a new epoch with the latest state.
+	e.Spec.NodeID = TestNode2
+	r = getEngineReservationToRestore(v, e)
+	c.Assert(r.Epoch, Equals, int64(3))
+	c.Assert(r.NodeID, Equals, TestNode2)
+	c.Assert(r.Registrants, DeepEquals, v.Status.Reservation.Registrants)
+	c.Assert(v.Status.Reservation.Epoch, Equals, int64(2))
+
+	// The engine status may hold a newer state of the latest epoch.
+	e.Status.Reservation = newTestVolumeReservation(2, TestNode1, "0xa", "0xb")
+	r = getEngineReservationToRestore(v, e)
+	c.Assert(r.Epoch, Equals, int64(3))
+	c.Assert(r.Registrants, HasLen, 2)
+
+	// But not a state of an older epoch.
+	e.Status.Reservation = newTestVolumeReservation(1, TestNode2)
+	r = getEngineReservationToRestore(v, e)
+	c.Assert(r.Epoch, Equals, int64(3))
+	c.Assert(r.Registrants, HasLen, 1)
+
+	// Other volumes have no reservation state.
+	v.Spec.SharedBlock = false
+	c.Assert(getEngineReservationToRestore(v, e), IsNil)
+}
+
+func (s *TestSuite) TestSyncSharedBlockReservation(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newSharedBlockVolume()
+	e := newEngineForVolume(v)
+	es := map[string]*longhorn.Engine{e.Name: e}
+
+	// Nothing to sync before the engine reports.
+	c.Assert(vc.syncSharedBlockReservation(v, es), IsNil)
+	c.Assert(v.Status.Reservation, IsNil)
+
+	e.Status.Reservation = newTestVolumeReservation(1, TestNode1, "0xa")
+	c.Assert(vc.syncSharedBlockReservation(v, es), IsNil)
+	c.Assert(v.Status.Reservation, DeepEquals, e.Status.Reservation)
+
+	// A state of an older epoch is from a stale engine.
+	v.Status.Reservation = newTestVolumeReservation(2, TestNode2, "0xa", "0xb")
+	c.Assert(vc.syncSharedBlockReservation(v, es), IsNil)
+	c.Assert(v.Status.Reservation.Epoch, Equals, int64(2))
+	c.Assert(v.Status.Reservation.Registrants, HasLen, 2)
+
+	// A state of a newer epoch is from the engine on another node.
+	e.Status.Reservation = newTestVolumeReservation(3, TestNode1, "0xa", "0xb")
+	c.Assert(vc.syncSharedBlockReservation(v, es), IsNil)
+	c.Assert(v.Status.Reservation, DeepEquals, e.Status.Reservation)
+
+	// Newer states of the same epoch are recorded.
+	e.Status.Reservation = newTestVolumeReservation(3, TestNode1, "0xb")
+	c.Assert(vc.syncSharedBlockReservation(v, es), IsNil)
+	c.Assert(v.Status.Reservation.Registrants, HasLen, 1)
+}
+
+func (s *TestSuite) TestRefreshReservation(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	m := &EngineMonitor{ds: vc.ds, logger: logrus.StandardLogger()}
+
+	v := newSharedBlockVolume()
+	e := newEngineForVolume(v)
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	e.Status.InstanceManagerName = TestInstanceManagerName
+	im := &longhorn.InstanceManager{
+		ObjectMeta: metav1.ObjectMeta{Name: TestInstanceManagerName, Namespace: TestNamespace},
+		Spec:       longhorn.InstanceManagerSpec{NodeID: TestNode1},
+	}
+	c.Assert(imIndexer.Add(im), IsNil)
+
+	// An unknown state keeps the previous one.
+	previous := newTestVolumeReservation(1, TestNode1, "0xa")
+	e.Status.Reservation = previous
+	m.refreshReservation(e)
+	c.Assert(e.Status.Reservation, Equals, previous)
+
+	// The state the instance manager reports is recorded with its node.
+	im.Status.InstanceEngines = map[string]longhorn.InstanceProcess{
+		e.Name: {Status: longhorn.InstanceProcessStatus{Reservation: newTestVolumeReservation(1, "", "0xa", "0xb")}},
+	}
+	c.Assert(imIndexer.Update(im), IsNil)
+	m.refreshReservation(e)
+	c.Assert(e.Status.Reservation, DeepEquals, newTestVolumeReservation(1, TestNode1, "0xa", "0xb"))
+	c.Assert(im.Status.InstanceEngines[e.Name].Status.Reservation.NodeID, Equals, "")
+
+	// A stopping engine keeps the final state read before its deletion.
+	final := newTestVolumeReservation(1, TestNode1, "0xa")
+	e.Status.Reservation = final
+	e.Spec.DesireState = longhorn.InstanceStateStopped
+	m.refreshReservation(e)
+	c.Assert(e.Status.Reservation, Equals, final)
+}
+
+func (s *TestSuite) TestSyncUnreservedSharedAccessCondition(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+	recorder := record.NewFakeRecorder(10)
+	vc.eventRecorder = recorder
+
+	conditionStatus := func(v *longhorn.Volume) longhorn.ConditionStatus {
+		return types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeUnreservedSharedAccess).Status
+	}
+
+	v := newSharedBlockVolume()
+
+	// A single node is not shared access.
+	v.Status.FrontendNodeIDs = []string{TestNode1}
+	vc.syncUnreservedSharedAccessCondition(v)
+	c.Assert(conditionStatus(v), Equals, longhorn.ConditionStatusFalse)
+
+	// Multiple nodes without a reservation held, even with registrants, warn once.
+	v.Status.FrontendNodeIDs = []string{TestNode1, TestNode2}
+	v.Status.Reservation = newTestVolumeReservation(1, TestNode1, "0xa", "0xb")
+	v.Status.Reservation.Type = 0
+	vc.syncUnreservedSharedAccessCondition(v)
+	vc.syncUnreservedSharedAccessCondition(v)
+	c.Assert(conditionStatus(v), Equals, longhorn.ConditionStatusTrue)
+	c.Assert(recorder.Events, HasLen, 1)
+	c.Assert(<-recorder.Events, Matches, "Warning "+longhorn.VolumeConditionTypeUnreservedSharedAccess+" .*")
+
+	// A reservation held clears the warning.
+	v.Status.Reservation.Type = 5
+	vc.syncUnreservedSharedAccessCondition(v)
+	c.Assert(conditionStatus(v), Equals, longhorn.ConditionStatusFalse)
+
+	// Other volumes never get the condition.
+	other := newVolume(TestVolumeName, 3)
+	other.Status.FrontendNodeIDs = []string{TestNode1, TestNode2}
+	vc.syncUnreservedSharedAccessCondition(other)
+	c.Assert(conditionStatus(other), Equals, longhorn.ConditionStatusUnknown)
 }
