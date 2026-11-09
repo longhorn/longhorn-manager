@@ -4347,16 +4347,21 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 	}()
 
 	testCases := []struct {
-		name               string
-		numberOfReplicas   int
-		replicaNodes       []string
-		failedReplicaNodes []string
-		downNodes          []string
-		softAntiAffinity   bool
-		topologyRegion     string
-		nodeRegions        map[string]string
-		expectedCount      int
-		expectedAffinityIn []string
+		name                  string
+		numberOfReplicas      int
+		replicaNodes          []string
+		failedReplicaNodes    []string
+		downNodes             []string
+		nodeSelector          []string
+		taggedNodes           []string
+		diskSelector          []string
+		diskTaggedNodes       []string
+		secondDiskTaggedNodes []string
+		softAntiAffinity      bool
+		topologyRegion        string
+		nodeRegions           map[string]string
+		expectedCount         int
+		expectedAffinityIn    []string
 	}{
 		{
 			name:               "3+1 adds a replica in the zone with fewer replicas",
@@ -4401,6 +4406,15 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 			expectedCount:      0,
 		},
 		{
+			name:               "3+1 only picks a target-zone node that matches the volume node selector",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			nodeSelector:       []string{"ssd"},
+			taggedNodes:        []string{zone2Nodes[2]},
+			expectedCount:      1,
+			expectedAffinityIn: []string{zone2Nodes[2]},
+		},
+		{
 			name:               "3+1 does not reuse a failed replica on the node that already runs one",
 			numberOfReplicas:   4,
 			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
@@ -4419,6 +4433,29 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 			nodeRegions:        map[string]string{zone2Nodes[1]: "region-b"},
 			expectedCount:      0,
 		},
+		{
+			name:               "3+1 reuses a failed replica when the free target-zone nodes have no disk matching the disk selector",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: []string{zone2Nodes[1]},
+			diskSelector:       []string{"ssd"},
+			diskTaggedNodes:    append(append([]string{}, zone1Nodes...), zone2Nodes[0], zone2Nodes[1]),
+			expectedCount:      1,
+			expectedAffinityIn: []string{zone2Nodes[1]},
+		},
+		{
+			name:                  "3+1 places a new replica on another disk of a node whose failed replica sits on a disk not matching the disk selector",
+			numberOfReplicas:      4,
+			replicaNodes:          []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes:    []string{zone2Nodes[1]},
+			downNodes:             zone2Nodes[2:],
+			softAntiAffinity:      true,
+			diskSelector:          []string{"ssd"},
+			diskTaggedNodes:       append(append([]string{}, zone1Nodes...), zone2Nodes[0]),
+			secondDiskTaggedNodes: []string{zone2Nodes[1]},
+			expectedCount:         1,
+			expectedAffinityIn:    []string{zone2Nodes[1]},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -4429,6 +4466,8 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 		volume.Status.State = longhorn.VolumeStateAttached
 		volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
 		volume.Status.CurrentImage = TestEngineImage
+		volume.Spec.NodeSelector = tc.nodeSelector
+		volume.Spec.DiskSelector = tc.diskSelector
 		if tc.topologyRegion != "" {
 			volume.Spec.TopologyRequirement = []longhorn.VolumeTopologyTerm{{Zone: zone2, Region: tc.topologyRegion}}
 		}
@@ -4470,6 +4509,22 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 				node.Status.Region = tc.topologyRegion
 				if region, ok := tc.nodeRegions[nodeName]; ok {
 					node.Status.Region = region
+				}
+				if util.Contains(tc.taggedNodes, nodeName) {
+					node.Spec.Tags = tc.nodeSelector
+				}
+				if util.Contains(tc.diskTaggedNodes, nodeName) {
+					disk := node.Spec.Disks[TestDiskID1]
+					disk.Tags = tc.diskSelector
+					node.Spec.Disks[TestDiskID1] = disk
+				}
+				if util.Contains(tc.secondDiskTaggedNodes, nodeName) {
+					disk := node.Spec.Disks[TestDiskID1]
+					disk.Tags = tc.diskSelector
+					node.Spec.Disks[TestDiskID2] = disk
+					diskStatus := node.Status.DiskStatus[TestDiskID1].DeepCopy()
+					diskStatus.DiskUUID = TestDiskID2
+					node.Status.DiskStatus[TestDiskID2] = diskStatus
 				}
 				longhornNodes = append(longhornNodes, node)
 				kubeNodes = append(kubeNodes, newKubernetesNode(nodeName, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue))
