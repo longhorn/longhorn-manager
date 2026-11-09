@@ -266,6 +266,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.VolumeCloneStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeDataLayout"):
 		return &longhornv1beta2.VolumeDataLayoutApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeReservation"):
+		return &longhornv1beta2.VolumeReservationApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("VolumeReservationRegistrant"):
+		return &longhornv1beta2.VolumeReservationRegistrantApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeSpec"):
 		return &longhornv1beta2.VolumeSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("VolumeStatus"):

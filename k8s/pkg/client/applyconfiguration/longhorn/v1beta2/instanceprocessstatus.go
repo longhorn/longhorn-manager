@@ -42,6 +42,9 @@ type InstanceProcessStatusApplyConfiguration struct {
 	ResourceVersion *int64                                        `json:"resourceVersion,omitempty"`
 	UblkID          *int32                                        `json:"ublkID,omitempty"`
 	UUID            *string                                       `json:"uuid,omitempty"`
+	// reservation is the persisted NVMe reservation state of a shared block
+	// engine if it is known. Its nodeID is not set.
+	Reservation *VolumeReservationApplyConfiguration `json:"reservation,omitempty"`
 }
 
 // InstanceProcessStatusApplyConfiguration constructs a declarative configuration of the InstanceProcessStatus type for use with
@@ -194,5 +197,13 @@ func (b *InstanceProcessStatusApplyConfiguration) WithUblkID(value int32) *Insta
 // If called multiple times, the UUID field is set to the value of the last call.
 func (b *InstanceProcessStatusApplyConfiguration) WithUUID(value string) *InstanceProcessStatusApplyConfiguration {
 	b.UUID = &value
+	return b
+}
+
+// WithReservation sets the Reservation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Reservation field is set to the value of the last call.
+func (b *InstanceProcessStatusApplyConfiguration) WithReservation(value *VolumeReservationApplyConfiguration) *InstanceProcessStatusApplyConfiguration {
+	b.Reservation = value
 	return b
 }

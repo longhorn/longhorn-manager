@@ -27,9 +27,12 @@ import (
 //
 // EngineStatus defines the observed state of the Longhorn engine
 type EngineStatusApplyConfiguration struct {
-	CurrentSize              *int64                                 `json:"currentSize,omitempty"`
-	CurrentReplicaAddressMap map[string]string                      `json:"currentReplicaAddressMap,omitempty"`
-	ReplicaModeMap           map[string]longhornv1beta2.ReplicaMode `json:"replicaModeMap,omitempty"`
+	CurrentSize              *int64            `json:"currentSize,omitempty"`
+	CurrentReplicaAddressMap map[string]string `json:"currentReplicaAddressMap,omitempty"`
+	// reservation is the NVMe reservation state the target of a shared block
+	// engine persists through power loss, as last reported by the engine.
+	Reservation    *VolumeReservationApplyConfiguration   `json:"reservation,omitempty"`
+	ReplicaModeMap map[string]longhornv1beta2.ReplicaMode `json:"replicaModeMap,omitempty"`
 	// ReplicaTransitionTimeMap records the time a replica in ReplicaModeMap transitions from one mode to another (or
 	// from not being in the ReplicaModeMap to being in it). This information is sometimes required by other controllers
 	// (e.g. the volume controller uses it to determine the correct value for replica.Spec.lastHealthyAt).
@@ -91,6 +94,14 @@ func (b *EngineStatusApplyConfiguration) WithCurrentReplicaAddressMap(entries ma
 	for k, v := range entries {
 		b.CurrentReplicaAddressMap[k] = v
 	}
+	return b
+}
+
+// WithReservation sets the Reservation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Reservation field is set to the value of the last call.
+func (b *EngineStatusApplyConfiguration) WithReservation(value *VolumeReservationApplyConfiguration) *EngineStatusApplyConfiguration {
+	b.Reservation = value
 	return b
 }
 

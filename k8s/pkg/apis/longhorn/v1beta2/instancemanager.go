@@ -175,6 +175,11 @@ type InstanceProcessStatus struct {
 	UblkID int32 `json:"ublkID,omitempty"`
 	// +optional
 	UUID string `json:"uuid,omitempty"`
+	// reservation is the persisted NVMe reservation state of a shared block
+	// engine if it is known. Its nodeID is not set.
+	// +optional
+	// +nullable
+	Reservation *VolumeReservation `json:"reservation,omitempty"`
 }
 
 type V2DataEngineSpec struct {
