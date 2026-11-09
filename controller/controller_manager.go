@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	corev1 "k8s.io/api/core/v1"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
+	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -27,6 +29,9 @@ var (
 	Workers              = 5
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
+
+// Kubernetes 1.35 is the first release with stable in-place container resource resizing.
+const minimumKubernetesVersionForInPlacePodResize = "v1.35.0"
 
 // StartNodeLocalControllers runs the DaemonSet's node-local controllers. The
 // cluster-wide-Pod-informer controllers (KubernetesPV/Pod) run only in the
@@ -373,4 +378,61 @@ func IsSameGuaranteedCPURequirement(a, b *corev1.ResourceRequirements) bool {
 		bQ = b.Requests[corev1.ResourceCPU]
 	}
 	return (&aQ).Cmp(bQ) == 0
+}
+
+func isInPlacePodResizeSupported(kubeClient clientset.Interface, ds *datastore.DataStore, nodeName string) (bool, error) {
+	serverSupportsResize, err := util.IsKubernetesVersionAtLeast(kubeClient, minimumKubernetesVersionForInPlacePodResize)
+	if err != nil {
+		return false, err
+	}
+	return isInPlacePodResizeSupportedForNode(ds, nodeName, serverSupportsResize)
+}
+
+func isInPlacePodResizeSupportedForNode(ds *datastore.DataStore, nodeName string, serverSupportsResize bool) (bool, error) {
+	if !serverSupportsResize {
+		return false, nil
+	}
+
+	kubeNode, err := ds.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get Kubernetes node %v for in-place pod resize support check", nodeName)
+	}
+	kubeletVersion, err := utilversion.ParseSemantic(kubeNode.Status.NodeInfo.KubeletVersion)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse kubelet version %v on node %v", kubeNode.Status.NodeInfo.KubeletVersion, nodeName)
+	}
+
+	return kubeletVersion.AtLeast(utilversion.MustParseSemantic(minimumKubernetesVersionForInPlacePodResize)), nil
+}
+
+func isInstanceManagerCPUResizeComplete(pod *corev1.Pod, resourceReq *corev1.ResourceRequirements) bool {
+	if pod == nil || len(pod.Spec.Containers) == 0 || !IsSameGuaranteedCPURequirement(resourceReq, &pod.Spec.Containers[0].Resources) {
+		return false
+	}
+
+	for _, condition := range pod.Status.Conditions {
+		if condition.Status == corev1.ConditionTrue &&
+			(condition.Type == corev1.PodResizePending || condition.Type == corev1.PodResizeInProgress) {
+			return false
+		}
+	}
+
+	containerName := pod.Spec.Containers[0].Name
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name != containerName {
+			continue
+		}
+
+		desiredCPU := resource.Quantity{}
+		if resourceReq != nil && resourceReq.Requests != nil {
+			desiredCPU = resourceReq.Requests[corev1.ResourceCPU]
+		}
+		if status.Resources == nil {
+			return false
+		}
+		actualCPU := status.Resources.Requests[corev1.ResourceCPU]
+		return desiredCPU.Cmp(actualCPU) == 0
+	}
+
+	return len(pod.Status.ContainerStatuses) == 0
 }

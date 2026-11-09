@@ -187,6 +187,21 @@ func NewInstanceManagerController(
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc: imc.enqueueLonghornNode,
+		UpdateFunc: func(oldObj, cur interface{}) {
+			oldNode, oldOK := oldObj.(*longhorn.Node)
+			curNode, curOK := cur.(*longhorn.Node)
+			if oldOK && curOK && oldNode.Spec.InstanceManagerCPURequest == curNode.Spec.InstanceManagerCPURequest {
+				return
+			}
+			imc.enqueueLonghornNode(cur)
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.NodeInformer.HasSynced)
+
 	if _, err = ds.OrphanInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc: imc.enqueueInstanceManagerOrphan,
 	}, 0); err != nil {
@@ -230,6 +245,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameAllowInstanceManagerAutomaticUpgrade ||
 		types.SettingName(setting.Name) == types.SettingNameInstanceManagerUpgradeStartTime ||
+		types.SettingName(setting.Name) == types.SettingNameGuaranteedInstanceManagerCPU ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufLargePoolSize ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufSmallPoolSize ||
@@ -792,6 +808,14 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return nil
 	}
 
+	cpuResizeInProgress, err := imc.syncGuaranteedInstanceManagerCPU(im, pod)
+	if err != nil {
+		return err
+	}
+	if cpuResizeInProgress {
+		return nil
+	}
+
 	err = imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
@@ -1044,6 +1068,66 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 	}
 	podResourceReq := pod.Spec.Containers[0].Resources
 	return IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq), nil
+}
+
+func (imc *InstanceManagerController) syncGuaranteedInstanceManagerCPU(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if im.Spec.DataEngine != longhorn.DataEngineTypeV1 || pod == nil || len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	lhNode, err := imc.ds.GetNode(im.Spec.NodeID)
+	if err != nil {
+		return false, err
+	}
+	if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+		return false, nil
+	}
+
+	resourceReq, err := GetInstanceManagerCPURequirement(imc.ds, im.Name)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get CPU request for instance manager %v", im.Name)
+	}
+	if IsSameGuaranteedCPURequirement(resourceReq, &pod.Spec.Containers[0].Resources) {
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && pod.Status.Phase == corev1.PodRunning {
+			for _, condition := range pod.Status.Conditions {
+				if condition.Status == corev1.ConditionTrue &&
+					(condition.Type == corev1.PodResizePending || condition.Type == corev1.PodResizeInProgress) {
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	}
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || pod.Status.Phase != corev1.PodRunning {
+		return false, nil
+	}
+
+	resizeSupported, err := isInPlacePodResizeSupported(imc.kubeClient, imc.ds, pod.Spec.NodeName)
+	if err != nil {
+		return false, err
+	}
+	if !resizeSupported {
+		return false, nil
+	}
+
+	resizedPod := pod.DeepCopy()
+	if resizedPod.Spec.Containers[0].Resources.Requests == nil {
+		resizedPod.Spec.Containers[0].Resources.Requests = corev1.ResourceList{}
+	}
+	if resourceReq == nil || resourceReq.Requests == nil {
+		delete(resizedPod.Spec.Containers[0].Resources.Requests, corev1.ResourceCPU)
+	} else if cpuRequest, exists := resourceReq.Requests[corev1.ResourceCPU]; exists {
+		resizedPod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = cpuRequest
+	} else {
+		delete(resizedPod.Spec.Containers[0].Resources.Requests, corev1.ResourceCPU)
+	}
+
+	if _, err := imc.ds.UpdatePodResize(resizedPod); err != nil {
+		return false, errors.Wrapf(err, "failed to resize CPU request for instance manager pod %v", pod.Name)
+	}
+
+	imc.logger.Infof("Requested in-place CPU resize for v1 instance manager pod %v", pod.Name)
+	return true, nil
 }
 
 func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -1857,6 +1941,14 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 	}
 
 	imc.enqueueInstanceManagersForNode(kubernetesNode.Name)
+}
+
+func (imc *InstanceManagerController) enqueueLonghornNode(obj interface{}) {
+	node, ok := obj.(*longhorn.Node)
+	if !ok {
+		return
+	}
+	imc.enqueueInstanceManagersForNode(node.Name)
 }
 
 func (imc *InstanceManagerController) enqueueInstanceManagerOrphan(obj interface{}) {
