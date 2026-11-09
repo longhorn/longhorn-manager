@@ -156,6 +156,21 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.Migratable = isMigratable
 	}
 
+	if sharedBlock, ok := volOptions["sharedBlock"]; ok {
+		isSharedBlock, err := strconv.ParseBool(sharedBlock)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter sharedBlock")
+		}
+
+		if isSharedBlock && vol.AccessMode != string(longhorn.AccessModeReadWriteMany) {
+			logrus.Infof("Cannot mark volume %v as shared block, "+
+				"since access mode is not RWX proceeding with non shared block volume creation", volumeID)
+			volOptions["sharedBlock"] = strconv.FormatBool(false)
+			isSharedBlock = false
+		}
+		vol.SharedBlock = isSharedBlock
+	}
+
 	if encrypted, ok := volOptions["encrypted"]; ok {
 		isEncrypted, err := strconv.ParseBool(encrypted)
 		if err != nil {
@@ -590,6 +605,29 @@ func isBlockDevice(volumePath string) (bool, error) {
 func getDiskFormat(devicePath string) (string, error) {
 	m := mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
 	return m.GetDiskFormat(devicePath)
+}
+
+func flushBlockDeviceBuffers(devicePath string) error {
+	f, err := os.OpenFile(devicePath, os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warnf("Failed to close block device %v", devicePath)
+		}
+	}()
+	return unix.IoctlSetInt(int(f.Fd()), unix.BLKFLSBUF, 0)
+}
+
+// canFormatEncryptedVolume returns whether this node may write the LUKS header.
+// For a shared block volume it is the node of the primary engine frontend,
+// which is always the first controller.
+func canFormatEncryptedVolume(volume *longhornclient.Volume, nodeID string) bool {
+	if !volume.SharedBlock {
+		return true
+	}
+	return len(volume.Controllers) > 0 && volume.Controllers[0].HostId == nodeID
 }
 
 func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, error) {

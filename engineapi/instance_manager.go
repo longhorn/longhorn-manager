@@ -453,6 +453,7 @@ type EngineInstanceCreateRequest struct {
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
 	TargetAddress                    string
+	SharedBlock                      bool
 }
 
 // EngineInstanceCreate creates a new engine instance
@@ -523,6 +524,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			TargetAddress:     req.TargetAddress,
 			SalvageRequested:  req.Engine.Spec.SalvageRequested,
 			SnapshotMaxCount:  req.Engine.Spec.SnapshotMaxCount,
+			SharedBlock:       req.SharedBlock,
 		},
 	})
 
@@ -555,6 +557,7 @@ type EngineFrontendInstanceCreateRequest struct {
 	EngineName                    string
 	Encrypted                     bool
 	ExtraLUKS2HeaderSpaceRequired bool
+	SharedBlock                   bool
 }
 
 func getEngineFrontendInstanceSize(ef *longhorn.EngineFrontend) int64 {
@@ -610,6 +613,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 			NvmeTcpNrIoQueues: req.NvmeTcpNrIoQueues,
 			TargetAddress:     targetAddress,
 			EngineName:        req.EngineName,
+			SharedBlock:       req.SharedBlock,
 		},
 	})
 

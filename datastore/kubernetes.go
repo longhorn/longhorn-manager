@@ -30,6 +30,7 @@ import (
 	patchtypes "k8s.io/apimachinery/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -1130,11 +1131,20 @@ func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType
 	case longhorn.AccessModeReadWriteMany:
 		accessMode = corev1.ReadWriteMany
 		volAttributes["migratable"] = strconv.FormatBool(v.Spec.Migratable)
+		if v.Spec.SharedBlock {
+			volAttributes["sharedBlock"] = strconv.FormatBool(v.Spec.SharedBlock)
+		}
 	case longhorn.AccessModeReadWriteOncePod:
 		accessMode = corev1.ReadWriteOncePod
 	}
 
-	return NewPVManifest(v.Spec.Size, pvName, v.Name, storageClassName, fsType, volAttributes, accessMode)
+	pv := NewPVManifest(v.Spec.Size, pvName, v.Name, storageClassName, fsType, volAttributes, accessMode)
+	// A shared block volume is only consumed as a raw block device.
+	if util.IsSharedBlockVolume(v) {
+		blockVolumeMode := corev1.PersistentVolumeBlock
+		pv.Spec.VolumeMode = &blockVolumeMode
+	}
+	return pv
 }
 
 // NewPVManifest returns a new PersistentVolume object
@@ -1180,7 +1190,13 @@ func NewPVCManifestForVolume(v *longhorn.Volume, pvName, ns, pvcName, storageCla
 		accessMode = corev1.ReadWriteOncePod
 	}
 
-	return NewPVCManifest(v.Spec.Size, pvName, ns, pvcName, storageClassName, accessMode)
+	pvc := NewPVCManifest(v.Spec.Size, pvName, ns, pvcName, storageClassName, accessMode)
+	// A shared block volume is only consumed as a raw block device.
+	if util.IsSharedBlockVolume(v) {
+		blockVolumeMode := corev1.PersistentVolumeBlock
+		pvc.Spec.VolumeMode = &blockVolumeMode
+	}
+	return pvc
 }
 
 // NewPVCManifest returns a new PersistentVolumeClaim object

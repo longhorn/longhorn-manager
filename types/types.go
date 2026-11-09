@@ -495,6 +495,12 @@ func GenerateEngineFrontendNameForVolume(vName, currentEngineFrontendName string
 	return vName + "-ef-" + strconv.Itoa(suffix+1)
 }
 
+// GenerateSharedBlockEngineFrontendNameForVolume returns the name of the
+// secondary engine frontend of a shared block volume on the given node.
+func GenerateSharedBlockEngineFrontendNameForVolume(vName, nodeID string) string {
+	return vName + "-ef-shared-" + util.GetStringHash(nodeID)
+}
+
 func GenerateReplicaNameForVolume(vName string) string {
 	return vName + replicaSuffix + "-" + util.RandomID()
 }

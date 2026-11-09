@@ -745,6 +745,7 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		EngineName:                    ef.Spec.EngineName,
 		Encrypted:                     volume.Spec.Encrypted,
 		ExtraLUKS2HeaderSpaceRequired: types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume),
+		SharedBlock:                   util.IsSharedBlockVolume(volume),
 	})
 }
 

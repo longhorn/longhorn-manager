@@ -207,6 +207,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return err
 	}
 
+	if err := validateSharedBlockConstraints(volume); err != nil {
+		return err
+	}
+
 	if err := checkECCreationSizeCap(volume, volume.Spec.Size); err != nil {
 		return err
 	}
@@ -265,6 +269,16 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	// re-check the EC (sharded) constraints here to keep an update from breaking
 	// the invariants Create established.
 	if err := validateShardedConstraints(newVolume); err != nil {
+		return err
+	}
+
+	// The CRD rule skips a volume created before the field exists.
+	if err := validateImmutable(".spec.sharedBlock", oldVolume.Spec.SharedBlock, newVolume.Spec.SharedBlock); err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.sharedBlock")
+	}
+
+	// spec.frontend and spec.dataLocality stay mutable after create as well.
+	if err := validateSharedBlockConstraints(newVolume); err != nil {
 		return err
 	}
 
@@ -546,6 +560,36 @@ func validateShardedConstraints(volume *longhorn.Volume) error {
 	}
 	if volume.Spec.Migratable {
 		return werror.NewInvalidError("spec.migratable is not supported for EC (sharded) volumes", "spec.migratable")
+	}
+
+	return nil
+}
+
+// validateSharedBlockConstraints rejects a shared block volume configuration
+// the v2 data engine cannot serve to multiple nodes yet. It runs on both create
+// and update so that a later update to a mutable field cannot slip past the
+// create-time guards.
+func validateSharedBlockConstraints(volume *longhorn.Volume) error {
+	if !volume.Spec.SharedBlock {
+		return nil
+	}
+
+	if !types.IsDataEngineV2(volume.Spec.DataEngine) {
+		return werror.NewInvalidError("spec.sharedBlock is only supported by the v2 data engine", "spec.sharedBlock")
+	}
+	if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
+		return werror.NewInvalidError("spec.sharedBlock requires ReadWriteMany (rwx) access mode", "spec.accessMode")
+	}
+	// A standby (DR) volume has no frontend until it is activated.
+	isStandbyWithoutFrontend := volume.Spec.Standby && volume.Spec.Frontend == ""
+	if volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev && !isStandbyWithoutFrontend {
+		return werror.NewInvalidError(fmt.Sprintf("spec.frontend must be %v for shared block volumes", longhorn.VolumeFrontendBlockDev), "spec.frontend")
+	}
+	if volume.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded {
+		return werror.NewInvalidError("EC (sharded) volumes cannot be shared block volumes", "spec.dataLayout")
+	}
+	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		return werror.NewInvalidError(fmt.Sprintf("spec.dataLocality %v is not supported for shared block volumes", longhorn.DataLocalityStrictLocal), "spec.dataLocality")
 	}
 
 	return nil

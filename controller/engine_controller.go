@@ -767,6 +767,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		UpgradeRequired:                  false,
 		InitiatorAddress:                 instanceManagerStorageIP,
 		TargetAddress:                    instanceManagerStorageIP,
+		SharedBlock:                      util.IsSharedBlockVolume(v),
 	})
 }
 

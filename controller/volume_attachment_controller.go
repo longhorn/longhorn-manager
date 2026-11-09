@@ -656,7 +656,12 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 		if isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket, vol) {
 			continue
 		}
-		if attachmentTicket.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
+		// A shared block volume stays attached, with its engine on vol.Spec.NodeID,
+		// as long as any node still requests it with the current frontend setting.
+		// The engine frontends on the requesting nodes are managed by the volume
+		// controller.
+		if (attachmentTicket.NodeID == vol.Spec.NodeID || util.IsSharedBlockVolume(vol)) &&
+			verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
 			currentAttachmentTickets[attachmentTicket.ID] = attachmentTicket
 		}
 		if attachmentTicket.NodeID != vol.Spec.NodeID {
@@ -887,6 +892,33 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 		return
 	}
 
+	if isWorkloadTicketOfSharedBlockVolume(attachmentTicket, vol) {
+		if vol.Status.State == longhorn.VolumeStateAttached && !verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
+			setAttachedWithIncompatibleParametersCondition(log, attachmentTicketStatus, vol)
+			return
+		}
+		if vol.Status.State == longhorn.VolumeStateAttached && vac.isVolumeAvailableOnNode(vol.Name, attachmentTicket.NodeID) {
+			attachmentTicketStatus.Satisfied = true
+			attachmentTicketStatus.Conditions = types.SetCondition(
+				attachmentTicketStatus.Conditions,
+				longhorn.AttachmentStatusConditionTypeSatisfied,
+				longhorn.ConditionStatusTrue,
+				"",
+				"",
+			)
+			return
+		}
+		attachmentTicketStatus.Satisfied = false
+		attachmentTicketStatus.Conditions = types.SetCondition(
+			attachmentTicketStatus.Conditions,
+			longhorn.AttachmentStatusConditionTypeSatisfied,
+			longhorn.ConditionStatusFalse,
+			"",
+			fmt.Sprintf("waiting for the shared block volume to be available on node %v", attachmentTicket.NodeID),
+		)
+		return
+	}
+
 	if vol.Status.CurrentNodeID == "" || vol.Status.State != longhorn.VolumeStateAttached {
 		attachmentTicketStatus.Satisfied = false
 		attachmentTicketStatus.Conditions = types.SetCondition(
@@ -926,18 +958,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 
 	if vol.Status.CurrentNodeID == attachmentTicket.NodeID && vol.Status.State == longhorn.VolumeStateAttached {
 		if !verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
-			attachmentTicketStatus.Satisfied = false
-			cond := types.GetCondition(attachmentTicketStatus.Conditions, longhorn.AttachmentStatusConditionTypeSatisfied)
-			if cond.Reason != longhorn.AttachmentStatusConditionReasonAttachedWithIncompatibleParameters {
-				log.Warnf("Volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID)
-			}
-			attachmentTicketStatus.Conditions = types.SetCondition(
-				attachmentTicketStatus.Conditions,
-				longhorn.AttachmentStatusConditionTypeSatisfied,
-				longhorn.ConditionStatusFalse,
-				longhorn.AttachmentStatusConditionReasonAttachedWithIncompatibleParameters,
-				fmt.Sprintf("volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID),
-			)
+			setAttachedWithIncompatibleParametersCondition(log, attachmentTicketStatus, vol)
 			return
 		}
 		attachmentTicketStatus.Satisfied = true
@@ -949,6 +970,21 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 			"",
 		)
 	}
+}
+
+func setAttachedWithIncompatibleParametersCondition(log logrus.FieldLogger, attachmentTicketStatus *longhorn.AttachmentTicketStatus, vol *longhorn.Volume) {
+	attachmentTicketStatus.Satisfied = false
+	cond := types.GetCondition(attachmentTicketStatus.Conditions, longhorn.AttachmentStatusConditionTypeSatisfied)
+	if cond.Reason != longhorn.AttachmentStatusConditionReasonAttachedWithIncompatibleParameters {
+		log.Warnf("Volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID)
+	}
+	attachmentTicketStatus.Conditions = types.SetCondition(
+		attachmentTicketStatus.Conditions,
+		longhorn.AttachmentStatusConditionTypeSatisfied,
+		longhorn.ConditionStatusFalse,
+		longhorn.AttachmentStatusConditionReasonAttachedWithIncompatibleParameters,
+		fmt.Sprintf("volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID),
+	)
 }
 
 func verifyAttachmentParameters(parameters map[string]string, vol *longhorn.Volume) bool {
@@ -1025,6 +1061,13 @@ func isMigratingCSIAttacherTicket(attachmentTicket *longhorn.AttachmentTicket, v
 	isCSIAttacherTicket := attachmentTicket.Type == longhorn.AttacherTypeCSIAttacher
 	isMigratingTicket := attachmentTicket.NodeID == vol.Status.CurrentMigrationNodeID
 	return util.IsMigratableVolume(vol) && util.IsVolumeMigrating(vol) && isCSIAttacherTicket && isMigratingTicket
+}
+
+// isWorkloadTicketOfSharedBlockVolume returns true if the ticket requests a
+// shared block volume to be available on its node.
+func isWorkloadTicketOfSharedBlockVolume(attachmentTicket *longhorn.AttachmentTicket, vol *longhorn.Volume) bool {
+	return util.IsSharedBlockVolume(vol) &&
+		(attachmentTicket.Type == longhorn.AttacherTypeCSIAttacher || attachmentTicket.Type == longhorn.AttacherTypeLonghornAPI)
 }
 
 func isVolumeShareAvailable(vol *longhorn.Volume) bool {

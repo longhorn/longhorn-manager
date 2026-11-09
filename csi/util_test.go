@@ -55,6 +55,32 @@ func TestGetVolumeOptions(t *testing.T) {
 				RevisionCounterDisabled: true,
 			},
 		},
+		"shared block": {
+			volumeID: "test-vol-shared-block",
+			volumeOptions: map[string]string{
+				"share":       "true",
+				"sharedBlock": "true",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				AccessMode:              string(longhorn.AccessModeReadWriteMany),
+				SharedBlock:             true,
+				DataEngine:              string(longhorn.DataEngineTypeV1),
+				RevisionCounterDisabled: true,
+			},
+		},
+		"shared block is ignored without shared access": {
+			volumeID: "test-vol-shared-block-rwo",
+			volumeOptions: map[string]string{
+				"sharedBlock": "true",
+			},
+			expectedVolume: &longhornclient.Volume{
+				StaleReplicaTimeout:     defaultStaleReplicaTimeout,
+				AccessMode:              string(longhorn.AccessModeReadWriteOnce),
+				DataEngine:              string(longhorn.DataEngineTypeV1),
+				RevisionCounterDisabled: true,
+			},
+		},
 		"exclusive and shared conflict": {
 			volumeID: "test-vol-conflict",
 			volumeOptions: map[string]string{

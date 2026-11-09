@@ -197,6 +197,16 @@ func NewVolumeController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
 
+	// A shared block volume creates and deletes the engine frontends of the
+	// nodes other than the engine node by their attachment tickets, which do
+	// not update the volume.
+	if _, err = ds.LHVolumeAttachmentInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.enqueueVolumeForAttachmentTicketsChange,
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.LHVolumeAttachmentInformer.HasSynced)
+
 	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
@@ -416,7 +426,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			c.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
 
-		if volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !volume.Spec.Migratable {
+		if util.IsRegularRWXVolume(volume) {
 			log.Info("Removing share manager for deleted volume")
 			if err := c.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				return err
@@ -690,6 +700,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	if err := c.ReconcileVolumeState(volume, engines, replicas, engineFrontends); err != nil {
+		return err
+	}
+
+	if err := c.reconcileSharedBlockEngineFrontends(volume, engines, engineFrontends); err != nil {
 		return err
 	}
 
@@ -2277,13 +2291,11 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			// is actually serving the new size. EF.Status.CurrentSize is 0
 			// while the frontend is not yet running.
 			if expansionComplete {
-				ef, err := pickCurrentEngineFrontend(v, efs)
+				served, err := isEngineFrontendServingVolumeSize(v, efs)
 				if err != nil {
 					return err
 				}
-				if ef == nil || ef.Status.CurrentSize != v.Spec.Size {
-					expansionComplete = false
-				}
+				expansionComplete = served
 			}
 		}
 		if expansionComplete {
@@ -2459,7 +2471,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				case longhorn.VolumeStateAttached:
-					if v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && v.Status.CurrentMigrationNodeID != "" {
+					if util.IsMigratableVolume(v) && v.Status.CurrentMigrationNodeID != "" {
 						if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 							return err
 						}
@@ -3573,13 +3585,11 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		// which prevents prematurely clearing ExpansionRequired before
 		// the frontend device is actually serving the new size.
 		if expansionCanceledOrNotStarted {
-			ef, err := pickCurrentEngineFrontend(v, efs)
+			served, err := isEngineFrontendServingVolumeSize(v, efs)
 			if err != nil {
 				return err
 			}
-			if ef == nil || ef.Status.CurrentSize != v.Spec.Size {
-				expansionCanceledOrNotStarted = false
-			}
+			expansionCanceledOrNotStarted = served
 		}
 	}
 	if expansionCanceledOrNotStarted {
@@ -5922,6 +5932,31 @@ func isEngineFrontendReady(ef *longhorn.EngineFrontend) bool {
 	return ef.Status.Endpoint != ""
 }
 
+// isEngineFrontendServingVolumeSize reports whether the current engine frontend
+// serves the volume size. For a shared block volume, the other ready or
+// suspended engine frontends must serve it as well, since each one reloads its
+// own device and stops expanding once the volume no longer requires expansion.
+// A suspended one, e.g., during a snapshot, still holds its device at the old
+// size, and resizes it after it resumes.
+func isEngineFrontendServingVolumeSize(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (bool, error) {
+	ef, err := pickCurrentEngineFrontend(v, efs)
+	if err != nil {
+		return false, err
+	}
+	if ef == nil || ef.Status.CurrentSize != v.Spec.Size {
+		return false, nil
+	}
+	if util.IsSharedBlockVolume(v) {
+		for _, ef := range efs {
+			suspended := ef.Spec.DesireState == longhorn.InstanceStateRunning && ef.Status.CurrentState == longhorn.InstanceStateSuspended
+			if ef.DeletionTimestamp == nil && (isEngineFrontendReady(ef) || suspended) && ef.Status.CurrentSize != v.Spec.Size {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
+}
+
 // createEngineFrontend creates an EngineFrontend CR for v2 data engine
 // The EngineFrontend is created in stopped state and will be started when
 // the Engine is running.
@@ -5933,6 +5968,11 @@ func isEngineFrontendReady(ef *longhorn.EngineFrontend) bool {
 // expansion gate in the volume controller would pass before the frontend
 // device is actually resized, causing premature auto-detach.
 func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, e *longhorn.Engine, currentEngineFrontendName, engineName, nodeID string) (*longhorn.EngineFrontend, error) {
+	name := types.GenerateEngineFrontendNameForVolume(v.Name, currentEngineFrontendName)
+	return c.createEngineFrontendWithName(v, e, name, engineName, nodeID, currentEngineFrontendName == "")
+}
+
+func (c *VolumeController) createEngineFrontendWithName(v *longhorn.Volume, e *longhorn.Engine, name, engineName, nodeID string, active bool) (*longhorn.EngineFrontend, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	// Determine the initial EF size.  During an active expansion the engine
@@ -5946,7 +5986,7 @@ func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, e *longhorn.
 
 	ef := &longhorn.EngineFrontend{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateEngineFrontendNameForVolume(v.Name, currentEngineFrontendName),
+			Name:            name,
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.EngineFrontendSpec{
@@ -5968,13 +6008,134 @@ func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, e *longhorn.
 		},
 	}
 
-	if currentEngineFrontendName == "" {
-		ef.Spec.Active = true
-	}
+	ef.Spec.Active = active
 
 	log.WithField("engineFrontend", ef.Name).Info("Creating EngineFrontend CR for v2 data engine")
 
 	return c.ds.CreateEngineFrontend(ef)
+}
+
+// reconcileSharedBlockEngineFrontends keeps an engine frontend running on every
+// node that requests a shared block volume. The current engine frontend runs on
+// the engine node, v.Spec.NodeID, and is managed by the attach/detach state
+// machine like the one of any v2 volume. This function manages the secondary
+// engine frontends on the other requesting nodes, which connect to the same
+// engine target, and reports the nodes the volume is available on.
+func (c *VolumeController) reconcileSharedBlockEngineFrontends(v *longhorn.Volume, es map[string]*longhorn.Engine, efs map[string]*longhorn.EngineFrontend) error {
+	if !util.IsSharedBlockVolume(v) {
+		return nil
+	}
+
+	log := getLoggerForVolume(c.logger, v)
+
+	secondaryNodes, err := c.getSharedBlockSecondaryFrontendNodes(v)
+	if err != nil {
+		return err
+	}
+
+	var e *longhorn.Engine
+	if len(es) > 0 {
+		if e, err = c.ds.PickVolumeCurrentEngine(v, es); err != nil {
+			return err
+		}
+	}
+	// Secondary engine frontends only connect to an attached volume whose
+	// engine target is exposed.
+	engineReady := v.Status.State == longhorn.VolumeStateAttached && !v.Status.FrontendDisabled &&
+		e != nil && e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.StorageIP != "" && e.Status.Port != 0
+
+	existing := map[string]*longhorn.EngineFrontend{}
+	// The name of a secondary engine frontend is fixed per node, so a new one
+	// can only be created after the old one on the node is removed.
+	removing := map[string]bool{}
+	for _, ef := range efs {
+		if ef.Spec.Active {
+			continue
+		}
+		nodeID := ef.Spec.NodeID
+		if ef.DeletionTimestamp != nil {
+			removing[nodeID] = true
+			continue
+		}
+		// A failed engine frontend is recreated after it is removed.
+		if !engineReady || !secondaryNodes[nodeID] || existing[nodeID] != nil || ef.Status.CurrentState == longhorn.InstanceStateError {
+			log.WithField("engineFrontend", ef.Name).Infof("Deleting secondary engine frontend on node %v", nodeID)
+			ef.Spec.DesireState = longhorn.InstanceStateStopped
+			if err := c.deleteEngineFrontend(ef, efs); err != nil {
+				return err
+			}
+			removing[nodeID] = true
+			continue
+		}
+		existing[nodeID] = ef
+	}
+
+	if engineReady {
+		for nodeID := range secondaryNodes {
+			ef := existing[nodeID]
+			if ef == nil {
+				// A new engine frontend waits for the expansion to complete, so
+				// the expansion does not have to catch up with a joining node.
+				if removing[nodeID] || v.Status.ExpansionRequired {
+					continue
+				}
+				name := types.GenerateSharedBlockEngineFrontendNameForVolume(v.Name, nodeID)
+				if ef, err = c.createEngineFrontendWithName(v, e, name, e.Name, nodeID, false); err != nil {
+					return err
+				}
+				efs[ef.Name] = ef
+			}
+			ef.Spec.NodeID = nodeID
+			ef.Spec.VolumeSize = v.Spec.Size
+			ef.Spec.Size = v.Spec.Size
+			ef.Spec.Frontend = v.Spec.Frontend
+			ef.Spec.NvmeTcpNrIoQueues = v.Spec.NvmeTcpNrIoQueues
+			ef.Spec.DisableFrontend = false
+			ef.Spec.TargetIP = e.Status.StorageIP
+			ef.Spec.TargetPort = e.Status.Port
+			ef.Spec.EngineName = e.Name
+			ef.Spec.DesireState = longhorn.InstanceStateRunning
+		}
+	}
+
+	var frontendNodeIDs []string
+	for _, ef := range efs {
+		if ef.DeletionTimestamp == nil && ef.Spec.NodeID != "" && isEngineFrontendReady(ef) {
+			frontendNodeIDs = append(frontendNodeIDs, ef.Spec.NodeID)
+		}
+	}
+	sort.Strings(frontendNodeIDs)
+	v.Status.FrontendNodeIDs = frontendNodeIDs
+
+	return nil
+}
+
+// getSharedBlockSecondaryFrontendNodes returns the nodes other than the engine
+// node that request a shared block volume with its frontend enabled.
+func (c *VolumeController) getSharedBlockSecondaryFrontendNodes(v *longhorn.Volume) (map[string]bool, error) {
+	nodes := map[string]bool{}
+	if v.Spec.NodeID == "" {
+		return nodes, nil
+	}
+
+	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(v.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nodes, nil
+		}
+		return nil, err
+	}
+
+	for _, ticket := range va.Spec.AttachmentTickets {
+		if !isWorkloadTicketOfSharedBlockVolume(ticket, v) || ticket.NodeID == "" || ticket.NodeID == v.Spec.NodeID {
+			continue
+		}
+		if ticket.Parameters[longhorn.AttachmentParameterDisableFrontend] == longhorn.TrueValue {
+			continue
+		}
+		nodes[ticket.NodeID] = true
+	}
+	return nodes, nil
 }
 
 func (c *VolumeController) getBackupVolumeInfo(v *longhorn.Volume) (string, string, string, error) {
@@ -6884,6 +7045,14 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		return nil
 	}
 
+	// A shared block volume keeps its single engine on the node it was first
+	// attached to: the engine frontends on the other nodes would all have to
+	// switch over together, which is not supported yet.
+	if util.IsSharedBlockVolume(v) {
+		v.Status.SwitchoverState = longhorn.VolumeSwitchoverStateEmpty
+		return nil
+	}
+
 	// Skip engine switchover when a migration is in progress.
 	// processMigration manages the extra (migration) engine in that case;
 	// processEngineSwitchover's cleanup branch would incorrectly delete it.
@@ -7426,6 +7595,23 @@ func (c *VolumeController) deleteEngineFrontend(ef *longhorn.EngineFrontend, efs
 	return nil
 }
 
+// enqueueVolumeForAttachmentTicketsChange enqueues the volume of the volume
+// attachment if its attachment tickets change.
+func (c *VolumeController) enqueueVolumeForAttachmentTicketsChange(old, cur interface{}) {
+	oldVA, oldOK := old.(*longhorn.VolumeAttachment)
+	curVA, curOK := cur.(*longhorn.VolumeAttachment)
+	if !oldOK || !curOK {
+		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", cur))
+		return
+	}
+	if reflect.DeepEqual(oldVA.Spec.AttachmentTickets, curVA.Spec.AttachmentTickets) {
+		return
+	}
+
+	// The volume attachment is in the namespace of its volume.
+	c.queue.Add(curVA.Namespace + "/" + curVA.Spec.Volume)
+}
+
 // enqueueVolumesForShareManager enqueues all volumes that are currently claimed by this share manager
 func (c *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
 	sm, isShareManager := obj.(*longhorn.ShareManager)
@@ -7458,7 +7644,7 @@ func (c *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) e
 		return errors.Wrapf(err, "failed to get share manager for volume %v", volume.Name)
 	}
 
-	if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany || volume.Spec.Migratable {
+	if !util.IsRegularRWXVolume(volume) {
 		if sm != nil {
 			log.Info("Removing share manager for non shared volume")
 			if err := c.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {

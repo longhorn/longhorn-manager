@@ -109,6 +109,31 @@ func TestGetV2VolumeEndpointForNode(t *testing.T) {
 			expected: "/dev/longhorn/vol-b",
 		},
 		{
+			name:   "shared block selects own node endpoint",
+			nodeID: "node-b",
+			volume: &longhornclient.Volume{
+				Name:        "vol-d",
+				SharedBlock: true,
+				Controllers: []longhornclient.Controller{
+					{HostId: "node-a", Endpoint: "/dev/longhorn/vol-d-a"},
+					{HostId: "node-b", Endpoint: "/dev/longhorn/vol-d-b"},
+				},
+			},
+			expected: "/dev/longhorn/vol-d-b",
+		},
+		{
+			name:   "shared block does not fall back to another node endpoint",
+			nodeID: "node-b",
+			volume: &longhornclient.Volume{
+				Name:        "vol-e",
+				SharedBlock: true,
+				Controllers: []longhornclient.Controller{
+					{HostId: "node-a", Endpoint: "/dev/longhorn/vol-e"},
+				},
+			},
+			expectError: true,
+		},
+		{
 			name:   "migratable does not fall back to another node endpoint",
 			nodeID: "node-b",
 			volume: &longhornclient.Volume{
@@ -335,6 +360,30 @@ func TestCheckStagedMount(t *testing.T) {
 			mountPoints, _ := mounter.List()
 			if unmounted := len(mountPoints) == 0; unmounted != tc.unmounted {
 				t.Errorf("unmounted = %v, want %v", unmounted, tc.unmounted)
+			}
+		})
+	}
+}
+
+func TestCanFormatEncryptedVolume(t *testing.T) {
+	sharedBlock := &longhornclient.Volume{
+		SharedBlock: true,
+		Controllers: []longhornclient.Controller{{HostId: "node-a"}, {HostId: "node-b"}},
+	}
+	for _, tc := range []struct {
+		name     string
+		volume   *longhornclient.Volume
+		nodeID   string
+		expected bool
+	}{
+		{name: "non shared block", volume: &longhornclient.Volume{}, nodeID: "node-b", expected: true},
+		{name: "shared block primary node", volume: sharedBlock, nodeID: "node-a", expected: true},
+		{name: "shared block secondary node", volume: sharedBlock, nodeID: "node-b", expected: false},
+		{name: "shared block without controller", volume: &longhornclient.Volume{SharedBlock: true}, nodeID: "node-a", expected: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if actual := canFormatEncryptedVolume(tc.volume, tc.nodeID); actual != tc.expected {
+				t.Fatalf("expected %v, got %v", tc.expected, actual)
 			}
 		})
 	}

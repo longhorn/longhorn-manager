@@ -192,6 +192,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			Size:                            spec.Size,
 			AccessMode:                      spec.AccessMode,
 			Migratable:                      spec.Migratable,
+			SharedBlock:                     spec.SharedBlock,
 			Encrypted:                       spec.Encrypted,
 			Frontend:                        spec.Frontend,
 			Image:                           "",
@@ -810,6 +811,10 @@ func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err err
 		if v.Status.Robustness == longhorn.VolumeRobustnessDegraded {
 			return nil, fmt.Errorf("volume is degraded")
 		}
+	}
+
+	if util.IsSharedBlockVolume(v) {
+		return nil, fmt.Errorf("trimming the filesystem is not supported for shared block volume %v", name)
 	}
 
 	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {

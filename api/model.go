@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -92,6 +93,9 @@ type Volume struct {
 	OfflineRebuilding longhorn.VolumeOfflineRebuilding `json:"offlineRebuilding"`
 
 	Migratable bool `json:"migratable"`
+
+	SharedBlock     bool     `json:"sharedBlock"`
+	FrontendNodeIDs []string `json:"frontendNodeIDs"`
 
 	Encrypted bool `json:"encrypted"`
 
@@ -1698,12 +1702,24 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		Attachments: make(map[string]Attachment),
 		Volume:      v.Name,
 	}
-	// Build engine-name -> EF map so we can merge EF endpoint into Controller.
-	// For v2, the engine itself has no endpoint; the EF provides it.
-	efByEngine := map[string]*longhorn.EngineFrontend{}
+	// Build engine-name -> EFs map so we can merge EF endpoint into Controller.
+	// For v2, the engine itself has no endpoint; the EF provides it. A shared
+	// block volume has an EF on every attached node for the same engine.
+	efsByEngine := map[string][]*longhorn.EngineFrontend{}
 	for _, ef := range vefs {
 		if ef.Spec.EngineName != "" {
-			efByEngine[ef.Spec.EngineName] = ef
+			efsByEngine[ef.Spec.EngineName] = append(efsByEngine[ef.Spec.EngineName], ef)
+		}
+	}
+	if util.IsSharedBlockVolume(v) {
+		for _, efs := range efsByEngine {
+			// The current (active) EF of the engine comes first.
+			sort.Slice(efs, func(i, j int) bool {
+				if efs[i].Spec.Active != efs[j].Spec.Active {
+					return efs[i].Spec.Active
+				}
+				return efs[i].Name < efs[j].Name
+			})
 		}
 	}
 	for _, e := range ves {
@@ -1717,47 +1733,70 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			}
 			actualSize += snapshotSize
 		}
-		endpoint := e.Status.Endpoint
-		controllerNodeID := e.Spec.NodeID
-		controllerSize := e.Status.CurrentSize
-		// For v2, the engine has no endpoint; use the matching EF's endpoint.
-		// Keep engine size as the source of truth, but for an attached volume
-		// do not expose a newer size until the frontend is also serving it.
-		if ef, ok := efByEngine[e.Name]; ok {
-			controllerNodeID = ef.Spec.NodeID
-			if ef.Status.Endpoint != "" {
-				endpoint = ef.Status.Endpoint
+		newController := func(ef *longhorn.EngineFrontend) Controller {
+			endpoint := e.Status.Endpoint
+			controllerNodeID := e.Spec.NodeID
+			controllerSize := e.Status.CurrentSize
+			// For v2, the engine has no endpoint; use the matching EF's endpoint.
+			// Keep engine size as the source of truth, but for an attached volume
+			// do not expose a newer size until the frontend is also serving it.
+			if ef != nil {
+				controllerNodeID = ef.Spec.NodeID
+				if ef.Status.Endpoint != "" {
+					endpoint = ef.Status.Endpoint
+				}
+				// For an attached volume, also use the frontend size as a source
+				// of truth. If the frontend lags the backend engine, keep
+				// returning the older size until the frontend catches up.
+				if v.Status.State == longhorn.VolumeStateAttached &&
+					ef.Status.Endpoint != "" &&
+					ef.Status.CurrentSize > 0 &&
+					ef.Status.CurrentSize < controllerSize {
+					controllerSize = ef.Status.CurrentSize
+				}
 			}
-			// For an attached volume, also use the frontend size as a source
-			// of truth. If the frontend lags the backend engine, keep
-			// returning the older size until the frontend catches up.
-			if v.Status.State == longhorn.VolumeStateAttached &&
-				ef.Status.Endpoint != "" &&
-				ef.Status.CurrentSize > 0 &&
-				ef.Status.CurrentSize < controllerSize {
-				controllerSize = ef.Status.CurrentSize
+			return Controller{
+				Instance: Instance{
+					Name:                e.Name,
+					Running:             e.Status.CurrentState == longhorn.InstanceStateRunning,
+					NodeID:              controllerNodeID,
+					Address:             e.Status.IP,
+					Image:               e.Spec.Image,
+					CurrentImage:        e.Status.CurrentImage,
+					InstanceManagerName: e.Status.InstanceManagerName,
+				},
+				Size:                             strconv.FormatInt(controllerSize, 10),
+				ActualSize:                       strconv.FormatInt(actualSize, 10),
+				Endpoint:                         endpoint,
+				LastRestoredBackup:               e.Status.LastRestoredBackup,
+				RequestedBackupRestore:           e.Spec.RequestedBackupRestore,
+				IsExpanding:                      e.Status.IsExpanding,
+				LastExpansionError:               e.Status.LastExpansionError,
+				LastExpansionFailedAt:            e.Status.LastExpansionFailedAt,
+				UnmapMarkSnapChainRemovedEnabled: e.Status.UnmapMarkSnapChainRemovedEnabled,
 			}
 		}
-		controllers = append(controllers, Controller{
-			Instance: Instance{
-				Name:                e.Name,
-				Running:             e.Status.CurrentState == longhorn.InstanceStateRunning,
-				NodeID:              controllerNodeID,
-				Address:             e.Status.IP,
-				Image:               e.Spec.Image,
-				CurrentImage:        e.Status.CurrentImage,
-				InstanceManagerName: e.Status.InstanceManagerName,
-			},
-			Size:                             strconv.FormatInt(controllerSize, 10),
-			ActualSize:                       strconv.FormatInt(actualSize, 10),
-			Endpoint:                         endpoint,
-			LastRestoredBackup:               e.Status.LastRestoredBackup,
-			RequestedBackupRestore:           e.Spec.RequestedBackupRestore,
-			IsExpanding:                      e.Status.IsExpanding,
-			LastExpansionError:               e.Status.LastExpansionError,
-			LastExpansionFailedAt:            e.Status.LastExpansionFailedAt,
-			UnmapMarkSnapChainRemovedEnabled: e.Status.UnmapMarkSnapChainRemovedEnabled,
-		})
+
+		var ef *longhorn.EngineFrontend
+		if efs := efsByEngine[e.Name]; len(efs) > 0 {
+			// Other volumes keep using the last EF of the engine.
+			ef = efs[len(efs)-1]
+			if util.IsSharedBlockVolume(v) {
+				ef = efs[0]
+			}
+		}
+		controller := newController(ef)
+		controllerNodeID := controller.NodeID
+		controllers = append(controllers, controller)
+		// Report the EFs of a shared block volume on the other attached nodes
+		// as well, so that each node finds the endpoint of its own EF.
+		if util.IsSharedBlockVolume(v) && ef != nil {
+			for _, otherEF := range efsByEngine[e.Name][1:] {
+				if otherEF.DeletionTimestamp == nil {
+					controllers = append(controllers, newController(otherEF))
+				}
+			}
+		}
 
 		if controllerNodeID == v.Status.CurrentNodeID {
 			ve = e
@@ -1952,6 +1991,9 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		OfflineRebuilding: v.Spec.OfflineRebuilding,
 
 		Migratable: v.Spec.Migratable,
+
+		SharedBlock:     v.Spec.SharedBlock,
+		FrontendNodeIDs: v.Status.FrontendNodeIDs,
 
 		Encrypted: v.Spec.Encrypted,
 

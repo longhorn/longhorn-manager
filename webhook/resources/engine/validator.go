@@ -11,6 +11,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -106,6 +107,11 @@ func (e *engineValidator) validateNumberOfEngines(newEngine *longhorn.Engine, vo
 
 func getMaxAllowedEnginesForVolume(volume *longhorn.Volume, newEngine *longhorn.Engine) int {
 	if volume == nil {
+		return 1
+	}
+	// A shared block volume never has a second engine: no engine migration and
+	// no engine switchover.
+	if util.IsSharedBlockVolume(volume) {
 		return 1
 	}
 	if volume.Spec.Migratable {

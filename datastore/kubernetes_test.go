@@ -145,3 +145,35 @@ func TestLeaseInformerIsNamespaceScoped(t *testing.T) {
 	assert.Equal(t, longhornNamespace, cached[0].Namespace)
 	assert.Equal(t, shareManagerLease.Name, cached[0].Name)
 }
+
+func TestNewPVAndPVCManifestForSharedBlockVolume(t *testing.T) {
+	v := &longhorn.Volume{
+		Spec: longhorn.VolumeSpec{
+			Size:             2 * 1024 * 1024 * 1024,
+			AccessMode:       longhorn.AccessModeReadWriteMany,
+			SharedBlock:      true,
+			NumberOfReplicas: 3,
+		},
+	}
+
+	pv := NewPVManifestForVolume(v, "pv-shared-block", "longhorn", "ext4")
+	require.NotNil(t, pv)
+	require.NotNil(t, pv.Spec.VolumeMode)
+	assert.Equal(t, corev1.PersistentVolumeBlock, *pv.Spec.VolumeMode)
+	assert.Equal(t, "true", pv.Spec.CSI.VolumeAttributes["sharedBlock"])
+
+	pvc := NewPVCManifestForVolume(v, "pv-shared-block", "default", "pvc-shared-block", "longhorn")
+	require.NotNil(t, pvc)
+	require.NotNil(t, pvc.Spec.VolumeMode)
+	assert.Equal(t, corev1.PersistentVolumeBlock, *pvc.Spec.VolumeMode)
+
+	// Other RWX volumes keep the filesystem volume mode.
+	v.Spec.SharedBlock = false
+	pv = NewPVManifestForVolume(v, "pv-rwx", "longhorn", "ext4")
+	require.NotNil(t, pv.Spec.VolumeMode)
+	assert.Equal(t, corev1.PersistentVolumeFilesystem, *pv.Spec.VolumeMode)
+	_, hasSharedBlock := pv.Spec.CSI.VolumeAttributes["sharedBlock"]
+	assert.False(t, hasSharedBlock)
+	pvc = NewPVCManifestForVolume(v, "pv-rwx", "default", "pvc-rwx", "longhorn")
+	assert.Nil(t, pvc.Spec.VolumeMode)
+}
