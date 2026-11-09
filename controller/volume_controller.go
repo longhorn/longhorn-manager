@@ -4743,7 +4743,10 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		return candidateNames
 	}
 
-	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
+	// Apply the same volume-level constraints (schedulable-for-volume, node
+	// selector, topology requirement) the node pass uses, so a candidate here
+	// is one the replica scheduler can actually accept.
+	readyNodes, err := c.listReadySchedulableAndScheduledNodesRO(v, rs, log)
 	if err != nil {
 		return candidateNames
 	}
@@ -4776,7 +4779,10 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		}
 
 		for _, r := range rs {
-			if r.Spec.NodeID == nName {
+			// A failed replica does not make the node unusable; the precheck
+			// below applies the scheduler's own anti-affinity view, and if the
+			// replica is reusable the replenish step reuses it.
+			if r.Spec.NodeID == nName && r.Spec.FailedAt == "" {
 				delete(readyNodes, nName)
 				break
 			}
@@ -4784,7 +4790,18 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 	}
 
 	for nName := range readyNodes {
+		// The replica is replenished with a hard node affinity that bypasses the
+		// usual precheck, so run it here: a node without an eligible disk (disk
+		// selector, disk schedulability, space) would produce an unschedulable
+		// replica that is cleaned up and proposed again every sync.
+		if precheckErrs := c.precheckCreateReplica(newReplicaCR(v, e, nName), rs, v); len(precheckErrs) > 0 {
+			log.WithField("node", nName).Debugf("Skip node candidate, replica precheck failed: %v", precheckErrs.Error())
+			continue
+		}
 		candidateNames = append(candidateNames, nName)
+		// The caller uses one candidate and each precheck lists every node in
+		// the cluster, so stop at the first node that passes.
+		break
 	}
 	if len(candidateNames) != 0 {
 		log.Infof("Found node candidates: %v ", candidateNames)
