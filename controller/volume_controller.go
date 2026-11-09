@@ -4013,10 +4013,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 	var mostExtraRList []string
 	var mostExtraRCount int
 	var leastExtraROwners []string
-	var leastExtraRCount int
+	leastExtraRCount := -1
 	for owner, rNames := range extraRNames {
 		rNameCount := len(rNames)
-		if leastExtraRCount == 0 || rNameCount < leastExtraRCount {
+		if leastExtraRCount == -1 || rNameCount < leastExtraRCount {
 			leastExtraRCount = rNameCount
 			leastExtraROwners = []string{}
 			leastExtraROwners = append(leastExtraROwners, owner)
