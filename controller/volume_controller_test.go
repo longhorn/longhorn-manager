@@ -4279,9 +4279,11 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 	const (
 		zone1 = "zone-1"
 		zone2 = "zone-2"
+		zone3 = "zone-3"
 	)
 	zone1Nodes := []string{"zone-1-node-1", "zone-1-node-2", "zone-1-node-3", "zone-1-node-4"}
 	zone2Nodes := []string{"zone-2-node-1", "zone-2-node-2", "zone-2-node-3", "zone-2-node-4"}
+	zone3Nodes := []string{"zone-3-node-1", "zone-3-node-2"}
 	engineNode := zone1Nodes[0]
 
 	datastore.SkipListerCheck = true
@@ -4300,6 +4302,7 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 		diskSelector          []string
 		diskTaggedNodes       []string
 		secondDiskTaggedNodes []string
+		withZone3             bool
 		softAntiAffinity      bool
 		topologyRegion        string
 		nodeRegions           map[string]string
@@ -4356,6 +4359,14 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 			taggedNodes:        []string{zone2Nodes[2]},
 			expectedCount:      1,
 			expectedAffinityIn: []string{zone2Nodes[2]},
+		},
+		{
+			name:               "3+1+1 adds a replica in either of the tied smaller zones",
+			numberOfReplicas:   5,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0], zone3Nodes[0]},
+			withZone3:          true,
+			expectedCount:      1,
+			expectedAffinityIn: []string{zone2Nodes[1], zone2Nodes[2], zone2Nodes[3], zone3Nodes[1]},
 		},
 		{
 			name:               "3+1 does not reuse a failed replica on the node that already runs one",
@@ -4441,7 +4452,11 @@ func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
 		longhornNodes := []*longhorn.Node{}
 		kubeNodes := []*corev1.Node{}
 		instanceManagers := []*longhorn.InstanceManager{}
-		for zone, nodeNames := range map[string][]string{zone1: zone1Nodes, zone2: zone2Nodes} {
+		zoneNodes := map[string][]string{zone1: zone1Nodes, zone2: zone2Nodes}
+		if tc.withZone3 {
+			zoneNodes[zone3] = zone3Nodes
+		}
+		for zone, nodeNames := range zoneNodes {
 			for _, nodeName := range nodeNames {
 				status := longhorn.ConditionStatusTrue
 				if util.Contains(tc.downNodes, nodeName) {

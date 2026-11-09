@@ -4759,11 +4759,10 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		}
 	}
 	for nName, n := range readyNodes {
-		for _, zone := range zones {
-			if n.Status.Zone != zone {
-				delete(readyNodes, nName)
-				continue
-			}
+		if !util.Contains(zones, n.Status.Zone) {
+			// cannot use node, not in a zone that needs a replica.
+			delete(readyNodes, nName)
+			continue
 		}
 
 		if !n.Spec.AllowScheduling {
