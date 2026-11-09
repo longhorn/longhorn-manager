@@ -4691,9 +4691,21 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 		var nCandidates []string
 		adjustCount, _, nCandidates := c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode)
 		if adjustCount == 0 {
-			adjustCount, _, zCandidates := c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
+			var zCandidates []string
+			adjustCount, _, zCandidates = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
 			if adjustCount != 0 {
 				nCandidates = c.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
+				if len(nCandidates) == 0 {
+					// No free node in the zone that needs a replica. A failed replica
+					// still sitting on a node there can be rebuilt in place, so try that
+					// before giving up.
+					if nodeID := c.getReusableFailedReplicaNodeInZones(v, rs, zCandidates); nodeID != "" {
+						return adjustCount, nodeID
+					}
+					// Left to the scheduler, a new replica would land in the zone that
+					// already has too many and be cleaned up next sync, so wait instead.
+					return 0, ""
+				}
 			}
 		}
 		if adjustCount != 0 && len(nCandidates) != 0 {
@@ -4779,6 +4791,49 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		log.Infof("Found node candidates: %v ", candidateNames)
 	}
 	return candidateNames
+}
+
+// getReusableFailedReplicaNodeInZones returns the node of a failed replica in one
+// of the given zones that the scheduler would reuse right now, or "" if none.
+func (c *VolumeController) getReusableFailedReplicaNodeInZones(v *longhorn.Volume, rs map[string]*longhorn.Replica, zones []string) string {
+	log := getLoggerForVolume(c.logger, v)
+	runningReplicaNodes := map[string]struct{}{}
+	for _, r := range rs {
+		if r.Status.CurrentState == longhorn.InstanceStateRunning {
+			runningReplicaNodes[r.Spec.NodeID] = struct{}{}
+		}
+	}
+	for _, r := range rs {
+		if !scheduler.IsPotentiallyReusableReplica(r) {
+			continue
+		}
+		// Rebuilding next to a running replica stacks two replicas on one node,
+		// which the node pass removes again, so it does not improve zone balance.
+		if _, hasRunning := runningReplicaNodes[r.Spec.NodeID]; hasRunning {
+			continue
+		}
+		node, err := c.ds.GetNodeRO(r.Spec.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get node %v of failed replica %v for zone auto-balance", r.Spec.NodeID, r.Name)
+			continue
+		}
+		if !util.Contains(zones, node.Status.Zone) {
+			continue
+		}
+		// The scheduler reuse check does not apply the topology requirement.
+		if !types.NodeMatchesTopologyRequirement(node, v.Spec.TopologyRequirement) {
+			continue
+		}
+		reusable, err := c.scheduler.CheckAndReuseFailedReplica(rs, v, r.Spec.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to check whether failed replica %v is reusable for zone auto-balance", r.Name)
+			continue
+		}
+		if reusable != nil {
+			return r.Spec.NodeID
+		}
+	}
+	return ""
 }
 
 func (c *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
