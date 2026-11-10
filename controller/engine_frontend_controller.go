@@ -1190,7 +1190,15 @@ func shouldExpandEngineFrontend(ef *longhorn.EngineFrontend, v *longhorn.Volume,
 	if isReplicaRebuildingInProgress(e) {
 		return false
 	}
-	return ef.Status.CurrentSize < ef.Spec.Size
+	if ef.Status.CurrentSize < ef.Spec.Size {
+		return true
+	}
+	// The EF reports its own SpecSize, which can already match the target while the
+	// backend has not grown. This happens when replicas start at the old size and the
+	// engine is then created with the new size: SPDK clamps the engine SpecSize down to
+	// the RAID size and waits for an expand request. The engine status reports that
+	// clamped size, so it is used to trigger the expansion.
+	return e.Status.CurrentSize > 0 && e.Status.CurrentSize < e.Spec.VolumeSize
 }
 
 func isReplicaRebuildingInProgress(e *longhorn.Engine) bool {
