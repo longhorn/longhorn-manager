@@ -1037,15 +1037,14 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 
 		createDangerZoneSettingsForV2(c, lhClient, sIndexer)
 
-		if tc.interruptModeEnabled {
-			imSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Get(context.TODO(), string(types.SettingNameDataEngineInterruptModeEnabled), metav1.GetOptions{})
-			c.Assert(err, IsNil)
-			imSetting.Value = `{"v2":"true"}`
-			imSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Update(context.TODO(), imSetting, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Update(imSetting)
-			c.Assert(err, IsNil)
-		}
+		// Set the value explicitly because the setting default is not polling mode.
+		imSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Get(context.TODO(), string(types.SettingNameDataEngineInterruptModeEnabled), metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		imSetting.Value = fmt.Sprintf(`{"v2":"%v"}`, tc.interruptModeEnabled)
+		imSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Update(context.TODO(), imSetting, metav1.UpdateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Update(imSetting)
+		c.Assert(err, IsNil)
 
 		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 		kubeNode.Status.Allocatable = corev1.ResourceList{
