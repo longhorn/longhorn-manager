@@ -3,12 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 
 	. "gopkg.in/check.v1"
 
@@ -54,6 +56,78 @@ type SystemBackupTestCase struct {
 	expectState                 longhorn.SystemBackupState
 	expectRemove                bool
 	expectNewVolumBackupCount   int
+
+	// Runs after the volume backups are marked Completed and before
+	// WaitForVolumeBackupToComplete, so a case can change the volume or
+	// backup state that the wait loop will read.
+	prepareVolumeBackupWait     volumeBackupWaitHook
+	expectVolumeBackupWaitError bool
+	// If set, exactly one warning containing this text must be logged while
+	// WaitForVolumeBackupToComplete runs.
+	expectVolumeBackupWaitWarnOnce string
+}
+
+type volumeBackupWaitHook func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, informerFactory lhinformers.SharedInformerFactory)
+
+const (
+	testBackupSnapshotTime = "2026-10-23T07:00:00Z"
+	testBackupCreatedTime  = "2026-10-23T07:01:00Z"
+	testEarlierTime        = "2026-10-23T06:00:00Z"
+	testLaterTime          = "2026-10-23T08:00:00Z"
+)
+
+// waitForVolumeBackupsWithLogs runs WaitForVolumeBackupToComplete and
+// captures the log entries it writes. Capture is removed from the shared
+// logger on return so later tests are unaffected.
+func waitForVolumeBackupsWithLogs(sbc *SystemBackupController, backups map[string]*longhorn.Backup, systemBackup *longhorn.SystemBackup) (*test.Hook, error) {
+	logger := logrus.StandardLogger()
+	capturedLogs := test.NewLocal(logger)
+	defer logger.ReplaceHooks(make(logrus.LevelHooks))
+	return capturedLogs, sbc.WaitForVolumeBackupToComplete(backups, systemBackup)
+}
+
+func countLogEntries(logs *test.Hook, level logrus.Level, substr string) int {
+	n := 0
+	for _, e := range logs.AllEntries() {
+		if e.Level == level && strings.Contains(e.Message, substr) {
+			n++
+		}
+	}
+	return n
+}
+
+// otherVolumeBackup builds a backup of volumeName that the system backup did
+// not create. Test cases set it as volume.Status.LastBackup to simulate the
+// backup store reporting a different backup as the volume's last backup.
+func otherVolumeBackup(name, volumeName string, state longhorn.BackupState, snapshotCreatedAt, backupCreatedAt string) *longhorn.Backup {
+	b := newBackup(name)
+	b.Labels = map[string]string{types.LonghornLabelBackupVolume: volumeName}
+	b.Status = longhorn.BackupStatus{
+		State:             state,
+		VolumeName:        volumeName,
+		SnapshotCreatedAt: snapshotCreatedAt,
+		BackupCreatedAt:   backupCreatedAt,
+	}
+	return b
+}
+
+// backupOfVolume returns the system backup's own backup of volumeName.
+func backupOfVolume(c *C, backups map[string]*longhorn.Backup, volumeName string) *longhorn.Backup {
+	for _, b := range backups {
+		if b.Status.VolumeName == volumeName {
+			return b
+		}
+	}
+	c.Fatalf("no backup of volume %v in %v", volumeName, backups)
+	return nil
+}
+
+// setVolumeLastBackup sets volume.Status.LastBackup and LastBackupAt, which
+// is what the backup store would report as the volume's last backup.
+func setVolumeLastBackup(volumes map[SystemRolloutCRName]*longhorn.Volume, volumeName, lastBackup, lastBackupAt string) {
+	volume := volumes[SystemRolloutCRName(volumeName)]
+	volume.Status.LastBackup = lastBackup
+	volume.Status.LastBackupAt = lastBackupAt
 }
 
 func (s *TestSuite) TestReconcileSystemBackup(c *C) {
@@ -93,6 +167,160 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			},
 			expectState:               longhorn.SystemBackupStateBackingImageBackup,
 			expectNewVolumBackupCount: 1,
+		},
+		// Test cases named "system backup wait for volume backup:" cover
+		// WaitForVolumeBackupToComplete. They use the if-not-present policy on a
+		// volume with no backup so BackupVolumes creates exactly one backup; the
+		// policy itself is not under test. That backup has already completed, and
+		// each case then changes the volume status so a different backup shows up
+		// as the volume's last backup.
+		"system backup wait for volume backup: volume status already names our backup": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
+		},
+		"system backup wait for volume backup: another backup with a newer snapshot is last": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				setVolumeLastBackup(volumes, TestVolumeName, "other", testLaterTime)
+			},
+		},
+		"system backup wait for volume backup: another backup of the same snapshot time is last": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				setVolumeLastBackup(volumes, TestVolumeName, "other", testBackupSnapshotTime)
+			},
+		},
+		"system backup wait for volume backup: snapshot CR was deleted before the check": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, informerFactory lhinformers.SharedInformerFactory) {
+				backup := backupOfVolume(c, backups, TestVolumeName)
+				indexer := informerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+				snapshot, exists, err := indexer.GetByKey(TestNamespace + "/" + backup.Status.SnapshotName)
+				c.Assert(err, IsNil)
+				c.Assert(exists, Equals, true)
+				c.Assert(indexer.Delete(snapshot), IsNil)
+			},
+		},
+		"system backup wait for volume backup: older backup that finished after ours is last": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 2, // own backup plus the injected "older" one
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				setVolumeLastBackup(volumes, TestVolumeName, "older", testEarlierTime)
+				backups["older"] = otherVolumeBackup("older", TestVolumeName, longhorn.BackupStateCompleted, testEarlierTime, testLaterTime)
+			},
+			expectVolumeBackupWaitWarnOnce: "as synced",
+		},
+		"system backup wait for volume backup: older backup that finished before ours is last": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateError,
+			expectNewVolumBackupCount: 2, // own backup plus the injected "older" one
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				// Stale volume status: the next sync will name our backup, so keep waiting.
+				setVolumeLastBackup(volumes, TestVolumeName, "older", testEarlierTime)
+				backups["older"] = otherVolumeBackup("older", TestVolumeName, longhorn.BackupStateCompleted, testEarlierTime, testEarlierTime)
+			},
+			expectVolumeBackupWaitError: true,
+		},
+		"system backup wait for volume backup: older backup is last but its CR is missing": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateError,
+			expectNewVolumBackupCount: 1,
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				setVolumeLastBackup(volumes, TestVolumeName, "older", testEarlierTime)
+			},
+			expectVolumeBackupWaitError: true,
+		},
+		"system backup wait for volume backup: older backup is last but still in progress": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateError,
+			expectNewVolumBackupCount: 2, // own backup plus the injected "older" one
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				setVolumeLastBackup(volumes, TestVolumeName, "older", testEarlierTime)
+				backups["older"] = otherVolumeBackup("older", TestVolumeName, longhorn.BackupStateInProgress, testEarlierTime, "")
+			},
+			expectVolumeBackupWaitError: true,
+		},
+		"system backup wait for volume backup: volume status has no lastBackupAt yet": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateError,
+			expectNewVolumBackupCount: 1,
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				setVolumeLastBackup(volumes, TestVolumeName, "other", "")
+			},
+			expectVolumeBackupWaitError: true,
+		},
+		"system backup wait for volume backup: backup status has no volumeName": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				backupOfVolume(c, backups, TestVolumeName).Status.VolumeName = ""
+			},
+		},
+		"system backup wait for volume backup: older backup accepted once while another volume never syncs": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName):        {},
+				SystemRolloutCRName(TestVolumeName + "-2"): {},
+			},
+			expectState:               longhorn.SystemBackupStateError,
+			expectNewVolumBackupCount: 3, // two own backups plus the injected "older" one
+			prepareVolumeBackupWait: func(c *C, backups map[string]*longhorn.Backup, volumes map[SystemRolloutCRName]*longhorn.Volume, _ lhinformers.SharedInformerFactory) {
+				setVolumeLastBackup(volumes, TestVolumeName, "older", testEarlierTime)
+				backups["older"] = otherVolumeBackup("older", TestVolumeName, longhorn.BackupStateCompleted, testEarlierTime, testLaterTime)
+				setVolumeLastBackup(volumes, TestVolumeName+"-2", "other", "")
+			},
+			expectVolumeBackupWaitError:    true,
+			expectVolumeBackupWaitWarnOnce: "as synced",
 		},
 		"system backup create volume backup if-not-present when backup exists": {
 			state:              longhorn.SystemBackupStateVolumeBackup,
@@ -549,17 +777,36 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			}
 
 			for _, backup := range backups {
+				snapshot, err := lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), backup.Spec.SnapshotName, metav1.GetOptions{})
+				c.Assert(err, IsNil)
+				backup.Labels = map[string]string{types.LonghornLabelBackupVolume: snapshot.Spec.Volume}
 				backup.Status.State = longhorn.BackupStateCompleted
 				backup.Status.SnapshotName = backup.Spec.SnapshotName
-				snapshot, err := lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), backup.Status.SnapshotName, metav1.GetOptions{})
-				c.Assert(err, IsNil)
-				tc.existVolumes[SystemRolloutCRName(snapshot.Spec.Volume)].Status.LastBackup = backup.Name
+				backup.Status.VolumeName = snapshot.Spec.Volume
+				backup.Status.SnapshotCreatedAt = testBackupSnapshotTime
+				backup.Status.BackupCreatedAt = testBackupCreatedTime
+				setVolumeLastBackup(tc.existVolumes, snapshot.Spec.Volume, backup.Name, testBackupSnapshotTime)
 				fakeSystemRolloutSnapshot(snapshot, c, informerFactories.LhInformerFactory, lhClient)
+			}
+			waitBackups := maps.Clone(backups)
+			// Keep this after the loop above. The loop looks up each volume through
+			// its Snapshot CR, and the "snapshot CR was deleted" case removes that CR
+			// from the lister to prove the wait loop no longer depends on it.
+			if tc.prepareVolumeBackupWait != nil {
+				tc.prepareVolumeBackupWait(c, backups, tc.existVolumes, informerFactories.LhInformerFactory)
 			}
 			fakeSystemRolloutVolumes(tc.existVolumes, c, informerFactories.LhInformerFactory, lhClient)
 			fakeSystemRolloutBackups(backups, c, informerFactories.LhInformerFactory, lhClient)
-			err = systemBackupController.WaitForVolumeBackupToComplete(backups, systemBackup)
-			c.Assert(err, IsNil)
+
+			capturedLogs, err := waitForVolumeBackupsWithLogs(systemBackupController, waitBackups, systemBackup)
+			if tc.expectVolumeBackupWaitError {
+				c.Assert(err, NotNil)
+			} else {
+				c.Assert(err, IsNil)
+			}
+			if tc.expectVolumeBackupWaitWarnOnce != "" {
+				c.Assert(countLogEntries(capturedLogs, logrus.WarnLevel, tc.expectVolumeBackupWaitWarnOnce), Equals, 1)
+			}
 
 		case longhorn.SystemBackupStateBackingImageBackup:
 			backupBackingImages, _ := systemBackupController.BackupBackingImage()

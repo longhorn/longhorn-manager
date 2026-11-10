@@ -57,7 +57,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.13.0
-	github.com/docker/go-connections v0.8.1
+	github.com/docker/go-connections v0.8.2
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
@@ -67,20 +67,20 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.25.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
-	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.11.0
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
-	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004
+	github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085
+	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
+	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
+	github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00
+	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004
-	github.com/longhorn/types v0.0.0-20260930155107-5849431731c3
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261106064302-40b61a7ef9f8
+	github.com/longhorn/types v0.0.0-20261030035820-c6ac902022cf
 	github.com/prometheus/client_golang v1.25.0
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
-	github.com/rancher/dynamiclistener v0.9.3
+	github.com/rancher/dynamiclistener v0.9.4
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.7.2
+	github.com/rancher/wrangler/v3 v3.8.0-rc.3
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
@@ -103,7 +103,7 @@ require (
 	k8s.io/kubernetes v1.37.1
 	k8s.io/metrics v0.37.1
 	k8s.io/mount-utils v0.37.1
-	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
+	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
 )
@@ -134,8 +134,8 @@ require (
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
-	github.com/gammazero/deque v1.0.0 // indirect
-	github.com/gammazero/workerpool v1.1.3 // indirect
+	github.com/gammazero/deque v1.2.2 // indirect
+	github.com/gammazero/workerpool v1.2.2 // indirect
 	github.com/getsentry/sentry-go v0.46.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -161,7 +161,7 @@ require (
 	github.com/gorilla/context v1.1.2 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.20.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
@@ -177,14 +177,14 @@ require (
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.29 // indirect
+	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
-	github.com/rancher/lasso v0.2.9 // indirect
+	github.com/rancher/lasso v0.2.10 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
@@ -199,11 +199,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
-	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
-	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -213,7 +213,7 @@ require (
 	k8s.io/component-helpers v0.33.0 // indirect
 	k8s.io/controller-manager v0.33.0 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
-	k8s.io/kube-aggregator v0.36.0 // indirect
+	k8s.io/kube-aggregator v0.37.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect

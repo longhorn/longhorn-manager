@@ -213,27 +213,6 @@ type CliDevice struct {
 	SectorSize   int32  `json:"SectorSize,omitempty"`
 }
 
-func listRecognizedNvmeDevices(executor *commonns.Executor) ([]CliDevice, error) {
-	opts := []string{
-		"list",
-		"-o", "json",
-	}
-	outputStr, err := executor.Execute(nil, nvmeBinary, opts, types.ExecuteTimeout)
-	if err != nil {
-		return nil, err
-	}
-	jsonStr, err := extractJSONString(outputStr)
-	if err != nil {
-		return nil, err
-	}
-	output := map[string][]CliDevice{}
-	if err := json.Unmarshal([]byte(jsonStr), &output); err != nil {
-		return nil, err
-	}
-
-	return output["Devices"], nil
-}
-
 func getHostID(executor *commonns.Executor) (string, error) {
 	outputStr, err := executor.Execute(nil, "cat", []string{"/etc/nvme/hostid"}, types.ExecuteTimeout)
 	if err == nil {

@@ -567,3 +567,36 @@ func (s *TestSuite) TestSyncEngineImageDaemonSetNodeSelector(c *C) {
 		c.Assert(daemonSet.Spec.Template.Spec.NodeSelector, DeepEquals, tc.expectedNodeSelector)
 	}
 }
+
+func (s *TestSuite) TestGetVolumesForEngineImageUpgradingSkipsV2(c *C) {
+	kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+	extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	replicaIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+
+	ic, err := newTestEngineImageController(lhClient, kubeClient, extensionClient, informerFactories)
+	c.Assert(err, IsNil)
+
+	// A detached V2 volume with a scheduled replica passes the V1 candidate checks,
+	// so it must be skipped explicitly to avoid consuming the V1 upgrade limit.
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Image = TestInstanceManagerImage
+	v.Status.CurrentImage = TestInstanceManagerImage
+	v.Status.State = longhorn.VolumeStateDetached
+	r := newReplicaForVolume(v, &longhorn.Engine{ObjectMeta: metav1.ObjectMeta{Name: TestEngineName}}, TestNode1, TestDiskID1)
+	r.Namespace = TestNamespace
+	c.Assert(replicaIndexer.Add(r), IsNil)
+
+	upgrading := v.DeepCopy()
+	upgrading.Name = TestVolumeName + "-upgrading"
+	upgrading.Spec.Image = TestExtraInstanceManagerImage
+
+	candidates, inProgress := ic.getVolumesForEngineImageUpgrading(
+		map[string]*longhorn.Volume{v.Name: v, upgrading.Name: upgrading},
+		newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed))
+	c.Assert(candidates, HasLen, 0)
+	c.Assert(inProgress, HasLen, 0)
+}

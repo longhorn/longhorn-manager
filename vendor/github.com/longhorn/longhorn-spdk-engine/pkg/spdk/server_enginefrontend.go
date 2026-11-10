@@ -40,7 +40,7 @@ func (s *Server) EngineFrontendSuspend(ctx context.Context, req *spdkrpc.EngineF
 	spdkClient := s.spdkClient
 	s.RUnlock()
 
-	err = ef.Suspend(spdkClient)
+	err = ef.SuspendWithOptions(spdkClient, req.NoFlush, req.NoLockFs)
 	if err != nil {
 		return nil, toEngineFrontendLifecycleGRPCError(err, "failed to suspend engine frontend %v", req.Name)
 	}
@@ -94,20 +94,20 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //  4. Delegate to Server.EngineReplicaAdd on the Engine node, passing the
 //     EF name and address in the request fields.
 //
-// # Engine-side flow (Server.EngineReplicaAdd → Engine.ReplicaAdd)
+// # Engine-side flow (Server.EngineReplicaAdd -> Engine.ReplicaAdd)
 //
 // Server.EngineReplicaAdd reads the EF fields from the request, then
 // calls buildGRPCReplicaAddFrontendSuspendResumeWrapper to create a replicaAddFrontendSuspendResumeWrapper
-// — a callback that will call back to this EF for suspend/resume during both
+// - a callback that will call back to this EF for suspend/resume during both
 // the snapshot-creation step and the finish step. It then delegates to
 // Engine.ReplicaAdd(frontendSuspendResumeWrapper).
 //
 // Engine.ReplicaAdd runs the synchronous part under the Engine lock:
 //
 //  0. Snapshot + setup (sync, under frontendSuspendResumeWrapper): suspend frontend via
-//     frontendSuspendResumeWrapper → create rebuild snapshot, connect to src/dst replica
+//     frontendSuspendResumeWrapper -> create rebuild snapshot, connect to src/dst replica
 //     SPDK services, add dst replica head bdev to RAID, mark dst as ModeWO
-//     → resume frontend.
+//     -> resume frontend.
 //
 // On return (with lock released), a deferred goroutine runs the remaining
 // phases:
@@ -120,7 +120,7 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //     snapshot controller, stop expose).
 //     b. If shallow copy succeeded, call frontendSuspendResumeWrapper(finish):
 //     - frontendSuspendResumeWrapper (buildGRPCReplicaAddFrontendSuspendResumeWrapper) calls back to
-//     EF via gRPC: Suspend → finish() → Resume
+//     EF via gRPC: Suspend -> finish() -> Resume
 //     - finish() (replicaAddFinish) detaches the external snapshot
 //     NVMe controller on the dst replica, stops the src replica from
 //     exposing, and promotes the dst replica from ModeWO to ModeRW.
@@ -130,22 +130,26 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //
 // This call returns as soon as the synchronous part succeeds; the
 // remaining phases run in the background goroutine. The caller can monitor
-// progress by polling the Engine's ReplicaModeMap — the rebuilding replica
+// progress by polling the Engine's ReplicaModeMap - the rebuilding replica
 // appears as ModeWO until finished (ModeRW) or failed (ModeERR).
 //
 // # Error handling
 //
 // EF is stateless with respect to replica-add. Engine owns all state.
 // If the Engine's async goroutine fails at any phase, it sets the replica
-// to ModeERR and cleans up SPDK resources — without notifying EF.
+// to ModeERR and cleans up SPDK resources - without notifying EF.
 //
 // The frontendSuspendResumeWrapper (buildGRPCReplicaAddFrontendSuspendResumeWrapper) handles EF-unreachable
-// scenarios gracefully:
-//   - EF node down / pod deleted (GetServiceClient fails) → proceed with
-//     the operation without suspension (no active I/O = suspension unnecessary).
-//   - Suspend fails → proceed without suspension (data integrity is not
-//     compromised; not proceeding would block the rebuild).
-//   - Resume fails → log error but do not override the operation result;
+// and suspend failures:
+//   - Snapshot step: the EF must be suspended. If it cannot be reached or
+//     suspended (e.g. it is switching over its target), the replica add fails
+//     before the rebuild snapshot, and longhorn-manager retries it: an SPDK
+//     snapshot taken while writes allocate clusters in a replica head can abort
+//     spdk_tgt or corrupt the lvstore metadata. Only a frontend type that cannot
+//     be suspended at all proceeds without suspension.
+//   - Finish step: proceed without suspension, as the data has already been
+//     copied and not running the step would leak SPDK resources.
+//   - Resume fails -> log error but do not override the operation result;
 //     longhorn-manager will detect the stuck-suspended EF and recover.
 func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.EngineFrontendReplicaAddRequest) (ret *emptypb.Empty, err error) {
 	if req.ReplicaName == "" || req.ReplicaAddress == "" {
@@ -188,6 +192,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 
 	// Resolve the local node IP so Engine can call back to this EF
 	// for suspend/resume during the finish step.
+	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
 	localIP, err := commonnet.GetIPForPod()
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to get local IP for engine frontend %s: %v", ef.Name, err)
@@ -211,6 +216,35 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// validateVolumeReadyForFrontendLocked returns an error wrapping
+// ErrEngineFrontendCreatePrecondition when volumeName still has a registered
+// restore frontend.
+//
+// A restore connects a temporary NVMe-TCP initiator to the volume NQN. When
+// the restore finishes, that initiator is disconnected by NQN, which drops
+// every host connection to the same NQN. A frontend created before the
+// teardown is done would lose its connection without any error being
+// reported. Rejecting the create here makes the conflict visible to the
+// caller instead.
+//
+// The caller must hold the server lock (read or write) and the volume host
+// lock of volumeName. The host lock is what makes the check reliable:
+// EngineBackupRestore registers its restore frontend under the same lock,
+// so a registration cannot slip in between this check and the create.
+func (s *Server) validateVolumeReadyForFrontendLocked(volumeName string) error {
+	for _, restoreEF := range s.restoreFrontendMap {
+		restoreEF.RLock()
+		restoreVolumeName := restoreEF.VolumeName
+		restoreEF.RUnlock()
+
+		if restoreVolumeName == volumeName {
+			return errors.Wrapf(ErrEngineFrontendCreatePrecondition, "cannot create engine frontend for volume %v: %s", volumeName, restoreEF.restoreTeardownBlockReason())
+		}
+	}
+
+	return nil
 }
 
 // EngineFrontendCreate creates a new engine frontend.
@@ -246,6 +280,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	// co-located on the same instance-manager pod, derive the address from
 	// the pod IP.
 	if targetAddress == "" {
+		// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
 		if podIP, ipErr := commonnet.GetIPForPod(); ipErr == nil && podIP != "" {
 			targetAddress = net.JoinHostPort(podIP, strconv.Itoa(types.SPDKServicePort))
 		}
@@ -263,16 +298,16 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 
 	if existing, ok := s.engineFrontendMap[req.Name]; ok {
 		// If the conflicting ef is still recovering (Pending state from
-		// async recovery), the new Create takes priority — evict it.
+		// async recovery), the new Create takes priority - evict it.
 		// We only mark state and remove from map here; the recovery
 		// goroutine will detect the state/map change and handle Delete
 		// sequentially after RecoverFromHost returns, avoiding concurrent
 		// access to the initiator.
 		//
 		// Keep metadataDir intact for now. After Create() we decide:
-		// - Create succeeded → clear metadataDir so the old ef's Delete
+		// - Create succeeded -> clear metadataDir so the old ef's Delete
 		//   does not remove the NEW persistence record (same volumeName key).
-		// - Create failed with runtime error → keep metadataDir so Delete
+		// - Create failed with runtime error -> keep metadataDir so Delete
 		//   removes the stale old record that would cause bad recovery.
 		existing.Lock()
 		if existing.State == types.InstanceStatePending {
@@ -315,11 +350,20 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	unlockVolumeHost := s.acquireVolumeHostLock(req.VolumeName)
 	defer unlockVolumeHost()
 
+	// The restore frontend check runs here, under the host lock, and not in
+	// the write-lock section above: EngineBackupRestore registers its
+	// restore frontend under the same host lock, so a check made before we
+	// held it could be stale by the time Create connects to the volume NQN.
+	// A rejection is a create precondition failure, so it takes the same
+	// hard-error path as the preconditions checked inside Create.
 	s.RLock()
 	spdkClient := s.spdkClient
+	createErr := s.validateVolumeReadyForFrontendLocked(req.VolumeName)
 	s.RUnlock()
 
-	ret, createErr := ef.Create(spdkClient, targetAddress)
+	if createErr == nil {
+		ret, createErr = ef.Create(spdkClient, targetAddress)
+	}
 	for _, evicted := range evictedEfs {
 		if createErr == nil && evicted.VolumeName == req.VolumeName {
 			evicted.setMetadataDir("")
@@ -334,7 +378,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	if createErr != nil &&
 		(errors.Is(createErr, ErrEngineFrontendCreateInvalidArgument) ||
 			errors.Is(createErr, ErrEngineFrontendCreatePrecondition)) {
-		// Hard error — Create did not mutate anything.  Restore the
+		// Hard error - Create did not mutate anything.  Restore the
 		// evicted efs so valid ongoing recoveries are not permanently lost.
 		if len(evictedEfs) > 0 {
 			s.Lock()
@@ -405,7 +449,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		// resources (bdevs, NVMe controllers, etc.). Clean them up so
 		// they don't leak.
 		// Only clear metadataDir when the loser shares the same
-		// volumeName as the winner — they use the same persistence
+		// volumeName as the winner - they use the same persistence
 		// directory, so the loser's Delete() must not remove it.
 		// When volumeNames differ, each has its own directory and the
 		// loser should clean up its own record.

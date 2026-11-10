@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,8 @@ import (
 
 const (
 	defaultFsType = "ext4"
+
+	mountOptionReadOnly = "ro"
 )
 
 type fsParameters struct {
@@ -271,7 +274,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	mountOptions := []string{"bind"}
 	if req.GetReadonly() {
-		mountOptions = append(mountOptions, "ro")
+		mountOptions = append(mountOptions, mountOptionReadOnly)
 	}
 	mountOptions = append(mountOptions, volumeCapability.GetMount().GetMountFlags()...)
 
@@ -407,6 +410,22 @@ func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, stagingTargetPa
 	log.Infof("Formatting device %v with fsType %v and mounting at %v with mount flags %v", devicePath, fsType, stagingTargetPath, mountFlags)
 	if err := mounter.FormatAndMount(devicePath, stagingTargetPath, fsType, mountFlags); err != nil {
 		return status.Error(codes.Internal, err.Error())
+	}
+	return ns.checkStagedMount(volumeID, stagingTargetPath, mountFlags, mounter, syncMountPointDirectory)
+}
+
+func (ns *NodeServer) checkStagedMount(volumeID, stagingTargetPath string, mountFlags []string, mounter mount.Interface, probe func(string) error) error {
+	// The probe (syncMountPointDirectory) writes a file, so it cannot run on a read-only mount.
+	if slices.Contains(mountFlags, mountOptionReadOnly) {
+		return nil
+	}
+
+	// The new mount can reuse a broken filesystem still held by another mount, so retry on I/O errors until that mount is gone.
+	if err := probe(stagingTargetPath); errors.Is(err, unix.EIO) || errors.Is(err, unix.EROFS) {
+		if unmountErr := unmount(stagingTargetPath, mounter); unmountErr != nil {
+			ns.log.WithFields(logrus.Fields{"function": "checkStagedMount"}).WithError(unmountErr).Warnf("Failed to unmount unhealthy mount point %v", stagingTargetPath)
+		}
+		return status.Errorf(codes.Aborted, "filesystem of volume %v mounted at %v is unhealthy, it may still be held by another mount: %v", volumeID, stagingTargetPath, err)
 	}
 	return nil
 }

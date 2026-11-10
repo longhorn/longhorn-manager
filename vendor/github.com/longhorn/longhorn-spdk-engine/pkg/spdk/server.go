@@ -59,6 +59,26 @@ type Server struct {
 	engineMap         map[string]*Engine
 	engineFrontendMap map[string]*EngineFrontend
 
+	// restoreFrontendMap tracks the temporary restore frontend of each engine,
+	// keyed by engine name. An entry exists from the moment a restore starts
+	// until its data path is fully torn down.
+	//
+	// While an entry exists, the server rejects two requests:
+	//   - a new restore for the same engine
+	//   - a new engine frontend for the same volume
+	// Both would connect to the volume NQN that the leftover restore data
+	// path is about to disconnect.
+	//
+	// Entries are added and checked under the server lock, and both
+	// EngineBackupRestore and EngineFrontendCreate also hold the volume host
+	// lock while they do so. The host lock is what closes the window between
+	// a create's check and its connect; see validateVolumeReadyForFrontendLocked.
+	//
+	// The entry is removed when the teardown succeeds or the engine frontend
+	// is deleted. If the teardown gives up, the entry stays, so the engine
+	// keeps rejecting both requests.
+	restoreFrontendMap map[string]*EngineFrontend
+
 	shardMap      map[string]*Shard
 	shardGroupMap map[string]*ShardGroup
 
@@ -80,7 +100,9 @@ type Server struct {
 	// volume. Recovery and all frontend lifecycle RPCs that mutate host
 	// NVMe controllers or dm devices (create, delete, suspend, resume,
 	// expand, switchover) acquire the per-volume lock so that these
-	// operations cannot overlap on one volume.
+	// operations cannot overlap on one volume. EngineBackupRestore holds it
+	// while registering its restore frontend so that a concurrent create
+	// for the same volume cannot miss the registration.
 	//
 	// Entries are reference-counted and removed when the last holder
 	// releases, so the map is bounded by the number of concurrently
@@ -137,9 +159,10 @@ func NewServer(ctx context.Context, portStart, portEnd int32, newServiceClient S
 
 		diskMap: map[string]*Disk{},
 
-		replicaMap:        map[string]*Replica{},
-		engineMap:         map[string]*Engine{},
-		engineFrontendMap: map[string]*EngineFrontend{},
+		replicaMap:         map[string]*Replica{},
+		engineMap:          map[string]*Engine{},
+		engineFrontendMap:  map[string]*EngineFrontend{},
+		restoreFrontendMap: map[string]*EngineFrontend{},
 
 		shardMap:      map[string]*Shard{},
 		shardGroupMap: map[string]*ShardGroup{},
@@ -770,6 +793,12 @@ func (s *Server) getBackingImage(backingImageName, lvsUUID string) (backingImage
 }
 
 func toSwitchOverGRPCError(err error, format string, args ...interface{}) error {
+	// Check this first so a downstream gRPC code from a failed ANA rollback
+	// does not hide that the caller must restart the switchover from preparing.
+	if errors.Is(err, ErrSwitchOverRestartRequired) {
+		return grpcstatus.Error(grpccodes.Aborted, errors.Wrapf(err, format, args...).Error())
+	}
+
 	code := grpccodes.Internal
 
 	// Preserve downstream gRPC code when available.
@@ -797,18 +826,25 @@ func toSwitchOverGRPCError(err error, format string, args ...interface{}) error 
 // calls back to the EngineFrontend on a (potentially remote) node via gRPC
 // for suspend/resume around the work step.
 //
-// If the EngineFrontend is unreachable (node down, pod deleted, etc.), the
-// wrapper proceeds with work() without suspension. This is safe because an
-// unreachable frontend means there is no active I/O to quiesce, and not
-// running the work would leak SPDK resources (detach controller, stop expose).
+// If suspendRequired is set (the rebuild snapshot), work does not run unless the
+// frontend is suspended: I/O may still flow from a frontend that cannot be
+// reached or suspended right now (e.g. while it switches over its target), and
+// failing the replica add is cheap, as nothing has been done yet. The only
+// exception is a frontend type that cannot be suspended at all.
+//
+// Otherwise (the finish step), the wrapper proceeds without suspension: the data
+// has already been copied, and not running the work would leak SPDK resources
+// (detach controller, stop expose).
 func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, log *logrus.Entry, newServiceClient ServiceClientFactory) replicaAddFrontendSuspendResumeWrapper {
 	if newServiceClient == nil {
 		newServiceClient = GetServiceClient
 	}
-	return func(work func() error) error {
+	return func(work func() error, suspendRequired bool) error {
 		efClient, err := newServiceClient(efAddress)
 		if err != nil {
-			// Cannot connect to the EF node at all — proceed without suspension.
+			if suspendRequired {
+				return errors.Wrapf(err, "engine frontend %s at %s is unreachable, cannot suspend it before replica add work", efName, efAddress)
+			}
 			log.WithError(err).Warnf("Engine frontend %s at %s is unreachable, proceeding without suspension", efName, efAddress)
 			return work()
 		}
@@ -818,13 +854,16 @@ func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, l
 			}
 		}()
 
-		// Suspend the frontend before running the work.
-		// If suspend fails for any reason (EF deleted, node down, unimplemented
-		// frontend type), proceed without suspension rather than aborting. The
-		// data has already been copied; not running the work is worse than a
-		// brief I/O disruption.
+		// The suspension only needs to block new I/O and drain the in-flight I/O, which the
+		// kernel does regardless of these options. Skip syncing and freezing the
+		// filesystem: neither the rebuild snapshot, which is internal, nor the parent
+		// switch needs a consistent filesystem, and the sync can exceed the dmsetup
+		// timeout under heavy writes.
 		suspended := false
-		if err := efClient.EngineFrontendSuspend(efName); err != nil {
+		if err := efClient.EngineFrontendSuspendWithOptions(efName, true, true); err != nil {
+			if suspendRequired && grpcstatus.Code(errors.UnwrapAll(err)) != grpccodes.Unimplemented {
+				return errors.Wrapf(err, "failed to suspend engine frontend %s before replica add work", efName)
+			}
 			log.WithError(err).Warnf("Failed to suspend engine frontend %s before replica add work, proceeding without suspension", efName)
 		} else {
 			suspended = true

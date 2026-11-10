@@ -906,19 +906,108 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 	return fmt.Errorf("unexpected error: stopped waiting for Volume backups without completing, failing or timing out")
 }
 
+// isVolumeLastBackupSynced reports whether the volume status has caught up
+// with a completed volume backup created by this system backup.
+//
+// The backup store records whichever backup finished uploading most recently
+// as the volume's LastBackup. LastBackupAt is not an upload time: it is the
+// SnapshotCreatedAt of that LastBackup. When several backups of one volume
+// run close together, another backup can take that slot instead of the
+// system backup's volume backup. The status still counts as caught up if
+// that other backup carries the same or newer data, or if it finished
+// uploading after the system backup's volume backup.
 func (c *SystemBackupController) isVolumeLastBackupSynced(backup *longhorn.Backup) bool {
-	snapshot, err := c.ds.GetSnapshotRO(backup.Status.SnapshotName)
+	synced, err := c.checkVolumeLastBackupSynced(backup)
 	if err != nil {
-		c.logger.WithError(err).Warnf("Failed to get snapshot %v for backup %v", backup.Status.SnapshotName, backup.Name)
+		c.logger.WithError(err).Warnf("Failed to check volume status for backup %v", backup.Name)
 		return false
 	}
-	volume, err := c.ds.GetVolumeRO(snapshot.Spec.Volume)
+	return synced
+}
+
+// checkVolumeLastBackupSynced returns an error when it cannot decide, such as
+// a missing volume or an unparsable timestamp. The caller logs it, treats the
+// backup as not synced, and checks again on the next tick.
+func (c *SystemBackupController) checkVolumeLastBackupSynced(backup *longhorn.Backup) (bool, error) {
+	volumeName := backup.Status.VolumeName
+	if volumeName == "" {
+		volumeName = backup.Labels[types.LonghornLabelBackupVolume]
+	}
+	if volumeName == "" {
+		return false, fmt.Errorf("backup %v has no volume name in status or labels", backup.Name)
+	}
+	volume, err := c.ds.GetVolumeRO(volumeName)
 	if err != nil {
-		c.logger.WithError(err).Warnf("Failed to get volume %v for snapshot %v", snapshot.Spec.Volume, snapshot.Name)
-		return false
+		return false, errors.Wrapf(err, "failed to get volume %v of backup %v", volumeName, backup.Name)
 	}
 
-	return volume.Status.LastBackup == backup.Name
+	if volume.Status.LastBackup == backup.Name {
+		return true, nil
+	}
+	if volume.Status.LastBackupAt == "" {
+		// Volume status has not been synced from the backup target yet.
+		return false, nil
+	}
+
+	lastBackupAt, err := parseBackupTimestamp("volume "+volume.Name, "lastBackupAt", volume.Status.LastBackupAt)
+	if err != nil {
+		return false, err
+	}
+	snapshotCreatedAt, err := parseBackupTimestamp("backup "+backup.Name, "snapshotCreatedAt", backup.Status.SnapshotCreatedAt)
+	if err != nil {
+		return false, err
+	}
+	if !lastBackupAt.Before(snapshotCreatedAt) {
+		// A different backup is last, but its snapshot is the same or newer,
+		// so it carries this backup's data.
+		return true, nil
+	}
+
+	// The last backup has an older snapshot than this backup. If it finished
+	// before this backup, the volume status is stale and the next sync will
+	// name this backup, so keep waiting. If it finished after this backup,
+	// the volume status will not change again, so accept it.
+	completedAfter, err := c.lastBackupCompletedAfter(volume, backup)
+	if err != nil || !completedAfter {
+		return false, err
+	}
+	c.logger.Warnf("Accepting volume %v last backup %v as synced: it finished after backup %v but holds an older snapshot, so a restore from the volume's last backup will carry older data than this system backup",
+		volume.Name, volume.Status.LastBackup, backup.Name)
+	return true, nil
+}
+
+// lastBackupCompletedAfter reports whether the volume's current LastBackup
+// finished uploading after the system backup's volume backup. A LastBackup
+// that is missing or still uploading is not an error: it returns false and
+// the caller keeps waiting.
+func (c *SystemBackupController) lastBackupCompletedAfter(volume *longhorn.Volume, backup *longhorn.Backup) (bool, error) {
+	lastBackup, err := c.ds.GetBackupRO(volume.Status.LastBackup)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to get last backup %v of volume %v", volume.Status.LastBackup, volume.Name)
+	}
+	if lastBackup.Status.State != longhorn.BackupStateCompleted || lastBackup.Status.BackupCreatedAt == "" {
+		return false, nil
+	}
+
+	lastBackupCreatedAt, err := parseBackupTimestamp("backup "+lastBackup.Name, "backupCreatedAt", lastBackup.Status.BackupCreatedAt)
+	if err != nil {
+		return false, err
+	}
+	backupCreatedAt, err := parseBackupTimestamp("backup "+backup.Name, "backupCreatedAt", backup.Status.BackupCreatedAt)
+	if err != nil {
+		return false, err
+	}
+	return !lastBackupCreatedAt.Before(backupCreatedAt), nil
+}
+
+// parseBackupTimestamp wraps util.ParseTimeZ with the owning object and field
+// so a parse failure in the wait loop identifies the bad value.
+func parseBackupTimestamp(owner, field, value string) (time.Time, error) {
+	t, err := util.ParseTimeZ(value)
+	return t, errors.Wrapf(err, "failed to parse %s %q of %s", field, value, owner)
 }
 
 func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume, systemBackup *longhorn.SystemBackup) (bool, error) {

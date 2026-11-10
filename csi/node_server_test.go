@@ -3,12 +3,19 @@ package csi
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	csipb "github.com/container-storage-interface/spec/lib/go/csi"
+
+	"k8s.io/mount-utils"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -258,6 +265,76 @@ func TestIsWorkloadMountReady(t *testing.T) {
 			got := isWorkloadMountReady(podsStatus)
 			if got != tc.ready {
 				t.Errorf("isWorkloadMountReady() = %v, want %v; podsStatus=%+v", got, tc.ready, podsStatus)
+			}
+		})
+	}
+}
+
+func TestCheckStagedMount(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mountFlags []string
+		probeErr   error
+		code       codes.Code
+		probed     bool
+		unmounted  bool
+	}{
+		{
+			name:   "healthy mount",
+			code:   codes.OK,
+			probed: true,
+		},
+		{
+			name:      "I/O error",
+			probeErr:  &os.PathError{Op: "open", Path: "f", Err: unix.EIO},
+			code:      codes.Aborted,
+			probed:    true,
+			unmounted: true,
+		},
+		{
+			name:      "read-only filesystem",
+			probeErr:  &os.PathError{Op: "open", Path: "f", Err: unix.EROFS},
+			code:      codes.Aborted,
+			probed:    true,
+			unmounted: true,
+		},
+		{
+			name:     "full filesystem is not rejected",
+			probeErr: &os.PathError{Op: "write", Path: "f", Err: unix.ENOSPC},
+			code:     codes.OK,
+			probed:   true,
+		},
+		{
+			name:       "read-only mount skips the probe",
+			mountFlags: []string{mountOptionReadOnly},
+			probeErr:   &os.PathError{Op: "open", Path: "f", Err: unix.EIO},
+			code:       codes.OK,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stagingTargetPath, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatalf("failed to resolve temp dir: %v", err)
+			}
+			mounter := mount.NewFakeMounter([]mount.MountPoint{{Device: "/dev/longhorn/vol", Path: stagingTargetPath}})
+			probed := false
+			probe := func(string) error {
+				probed = true
+				return tc.probeErr
+			}
+			ns := &NodeServer{log: logrus.NewEntry(logrus.New())}
+
+			err = ns.checkStagedMount("vol", stagingTargetPath, tc.mountFlags, mounter, probe)
+
+			if status.Code(err) != tc.code {
+				t.Errorf("checkStagedMount() code = %v, want %v; err=%v", status.Code(err), tc.code, err)
+			}
+			if probed != tc.probed {
+				t.Errorf("probed = %v, want %v", probed, tc.probed)
+			}
+			mountPoints, _ := mounter.List()
+			if unmounted := len(mountPoints) == 0; unmounted != tc.unmounted {
+				t.Errorf("unmounted = %v, want %v", unmounted, tc.unmounted)
 			}
 		})
 	}
