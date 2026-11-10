@@ -79,6 +79,20 @@ func (s *TestSuite) TestShouldExpandEngineFrontend(c *C) {
 		},
 	}
 	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, true)
+
+	// The EF already reports the target size, but the engine backend is still
+	// smaller, e.g. replicas started at the old size before expansion was accepted.
+	ef.Status.CurrentSize = TestVolumeSize
+	e.Spec.VolumeSize = TestVolumeSize
+	e.Status.CurrentSize = TestVolumeSize / 2
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, true)
+
+	// The engine size is not reported yet.
+	e.Status.CurrentSize = 0
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
+
+	e.Status.CurrentSize = TestVolumeSize
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
 }
 
 func (s *TestSuite) TestIsEngineFrontendTargetInitialized(c *C) {
