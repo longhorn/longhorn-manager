@@ -1101,7 +1101,18 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get volume info for volume %v during engine frontend monitoring", ef.Spec.VolumeName)
 	}
-	ef.Status.CurrentSize = volumeInfo.Size
+
+	if types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
+		// The frontend size includes the LUKS header. Convert it to the volume
+		// size, so the expansion check below compares it with the volume size
+		// and the API does not report the header as part of the volume size.
+		ef.Status.CurrentSize, err = util.GetVolumeSizeFromBackendSize(volumeInfo.Size, volume.Spec.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get volume size from backend size for engine frontend %v", ef.Name)
+		}
+	} else {
+		ef.Status.CurrentSize = volumeInfo.Size
+	}
 
 	if shouldExpandEngineFrontend(ef, volume, engineForFrontend) {
 		// Expand only when the volume is actually in expansion flow.
@@ -1152,8 +1163,9 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 
 		// An encrypted volume's frontend carries a LUKS header, so the size it reports is
 		// larger than the volume's logical size. Report the logical size once the header
-		// is there.
-		if volume.Spec.Encrypted && volumeInfo.Size > ef.Spec.VolumeSize {
+		// is there. Compare the size converted above, so a pending expansion smaller than
+		// the header is not reported as done.
+		if volume.Spec.Encrypted && ef.Status.CurrentSize > ef.Spec.VolumeSize {
 			ef.Status.CurrentSize = ef.Spec.VolumeSize
 		}
 	}
