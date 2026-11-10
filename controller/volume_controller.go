@@ -3092,10 +3092,12 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			// Always propagate the target size to the EF so the EF
 			// monitor can detect that expansion is needed and trigger
 			// EngineFrontendExpand (which expands replicas -> engine ->
-			// frontend).  The createEngineFrontend function already
-			// creates the SPDK EF at the pre-expansion size, so
-			// ef.Status.CurrentSize will correctly reflect the actual
-			// device size until expansion completes.
+			// frontend). createEngineFrontend uses the pre-expansion size
+			// only when it creates a new EF CR. An existing EF CR starts
+			// its SPDK instance at ef.Spec.Size, which may already be the
+			// target size while the backend is still smaller, so the EF
+			// monitor also compares the engine's current size with its
+			// spec before skipping expansion.
 			ef.Spec.Size = v.Spec.Size
 			// Only set EngineFrontend to running when Engine is actually running
 			// so we have the TargetIP available.
@@ -3610,10 +3612,11 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		if ef != nil {
 			ef.Spec.VolumeSize = v.Spec.Size
 			// Always propagate the target size to the EF so the EF
-			// monitor can trigger expansion.  The createEngineFrontend
-			// function creates the SPDK EF at the pre-expansion size,
-			// so ef.Status.CurrentSize correctly reflects the actual
-			// device size until expansion completes.
+			// monitor can trigger expansion. If the SPDK EF instance is
+			// started after this point, it is created at the target size
+			// and ef.Status.CurrentSize reports that size before the
+			// backend grows. The EF monitor then relies on the engine's
+			// current size to trigger the expansion.
 			ef.Spec.Size = v.Spec.Size
 		}
 	}
