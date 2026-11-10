@@ -567,6 +567,16 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		}
 	}
 
+	// The engine reports the backend size, including the LUKS2 header, until it reaches
+	// the expected size. Growing by no more than the header leaves the old backend size
+	// at or above the new size, so the expansion cannot be tracked correctly.
+	if types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(newVolume) {
+		if newSize > oldSize && newSize-oldSize <= lhtypes.Luks2EncryptionHeaderSize {
+			return fmt.Errorf("expanding v2 encrypted volume %v from %v to %v is not supported: the size must grow by more than the LUKS2 header size %v",
+				newVolume.Name, oldSize, newSize, lhtypes.Luks2EncryptionHeaderSize)
+		}
+	}
+
 	replicaMap, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
 	if err != nil {
 		return err
