@@ -5,17 +5,22 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/types"
@@ -28,6 +33,8 @@ const (
 	defaultDeadlineSeconds       = 300
 	snapshotGroupWaitGracePeriod = 30 * time.Second
 )
+
+var errSnapshotLimitReached = errors.New("member volumes have reached their snapshot limits")
 
 // StartSnapshotGroupJob runs one scheduled snapshot-group recurring job: it skips
 // the run if a previous group is still active, otherwise creates a SnapshotGroup
@@ -51,6 +58,18 @@ func StartSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) error 
 		job.logger.WithError(err).Errorf("Failed to initialize snapshotGroup job")
 		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning,
 			constant.EventReasonFailedSnapshotGroup, err.Error())
+		// Retention normally runs after a group is created. A volume at its limit may be
+		// full of this job's own expired groups, so run it here too; otherwise every later
+		// run is rejected the same way. It deletes only groups beyond retainCount, e.g. with
+		// retainCount 2 and SnapshotMaxCount 3:
+		//   - 2 groups of this job + 1 other snapshot: nothing is expired, so nothing is
+		//     deleted; the volume stays full until the user frees a snapshot.
+		//   - 3 groups of this job (one kept earlier for an active backup that has since
+		//     finished): the oldest is deleted, and the next run has room once it is purged.
+		if errors.Is(err, errSnapshotLimitReached) {
+			retentionJob := &SnapshotGroupJob{Job: job, logger: logrus.NewEntry(job.logger).WithField("job", job.name)}
+			retentionJob.cleanup()
+		}
 		return err
 	}
 
@@ -131,6 +150,10 @@ func newSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) (*Snapsh
 		return nil, err
 	}
 
+	if err := checkSnapshotLimits(job, volumes, volumeNames); err != nil {
+		return nil, err
+	}
+
 	snapshotGroupName := sliceStringSafely(types.GetCronJobNameForRecurringJob(job.name), 0, 8) + "-" + util.UUID()
 
 	logger := job.logger.WithFields(logrus.Fields{
@@ -198,6 +221,64 @@ func resolveSnapshotGroupVolumes(job *Job, recurringJob *longhorn.RecurringJob, 
 		}
 	}
 	return filteredVols, len(assignedVols) - len(filteredVols), nil
+}
+
+// checkSnapshotLimits returns an error naming the member volumes that have already reached
+// SnapshotMaxCount or SnapshotMaxSize, because the engine would refuse their member snapshot
+// and fail the whole group.
+func checkSnapshotLimits(job *Job, volumes []*longhorn.Volume, volumeNames []string) error {
+	requirement, err := labels.NewRequirement(types.LonghornLabelVolume, selection.In, volumeNames)
+	if err != nil {
+		return errors.Wrapf(err, "failed to build the engine selector for recurring job %v", job.name)
+	}
+	engineList, err := job.lhClient.LonghornV1beta2().Engines(job.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.NewSelector().Add(*requirement).String(),
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to list engines of member volumes for recurring job %v", job.name)
+	}
+
+	type snapshotUsage struct {
+		count int
+		size  int64
+	}
+	usageByVolume := make(map[string]snapshotUsage, len(volumes))
+	for _, engine := range engineList.Items {
+		var usage snapshotUsage
+		for _, snapshot := range engine.Status.Snapshots {
+			if snapshot == nil || snapshot.Name == etypes.VolumeHeadName {
+				continue
+			}
+			usage.count++
+			if snapshot.Removed || snapshot.Size == "" {
+				continue
+			}
+			size, err := strconv.ParseInt(snapshot.Size, 10, 64)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse size %q of snapshot %v of volume %v", snapshot.Size, snapshot.Name, engine.Spec.VolumeName)
+			}
+			usage.size += size
+		}
+		// A volume has two engines during a live migration; keep the larger usage.
+		current := usageByVolume[engine.Spec.VolumeName]
+		usageByVolume[engine.Spec.VolumeName] = snapshotUsage{count: max(current.count, usage.count), size: max(current.size, usage.size)}
+	}
+
+	var limitReached []string
+	for _, volume := range volumes {
+		usage := usageByVolume[volume.Name]
+		switch {
+		case volume.Spec.SnapshotMaxCount > 0 && usage.count >= volume.Spec.SnapshotMaxCount:
+			limitReached = append(limitReached, fmt.Sprintf("%v (%d/%d snapshots)", volume.Name, usage.count, volume.Spec.SnapshotMaxCount))
+		case volume.Spec.SnapshotMaxSize > 0 && usage.size >= volume.Spec.SnapshotMaxSize:
+			limitReached = append(limitReached, fmt.Sprintf("%v (%d/%d bytes of snapshots)", volume.Name, usage.size, volume.Spec.SnapshotMaxSize))
+		}
+	}
+	if len(limitReached) > 0 {
+		return fmt.Errorf("cannot create snapshot group for recurring job %v: %w: %v; delete snapshots or raise the limits",
+			job.name, errSnapshotLimitReached, strings.Join(limitReached, ", "))
+	}
+	return nil
 }
 
 // run creates the SnapshotGroup with the resolved volumes as explicit members,

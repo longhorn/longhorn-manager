@@ -72,12 +72,38 @@ func TestNewSnapshotGroupJob(t *testing.T) {
 			v.Spec.SnapshotMaxCount = count
 		}
 	}
+	snapshotMaxSize := func(size int64) func(v *longhorn.Volume) {
+		return func(v *longhorn.Volume) {
+			v.Spec.SnapshotMaxSize = size
+		}
+	}
+	// engine builds the volume's engine whose status reports the given snapshots plus the volume head.
+	engine := func(volumeName string, snapshots ...*longhorn.SnapshotInfo) *longhorn.Engine {
+		e := &longhorn.Engine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      volumeName + "-e-0",
+				Namespace: testNamespace,
+				Labels:    types.GetVolumeLabels(volumeName),
+			},
+			Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{VolumeName: volumeName}},
+		}
+		e.Status.Snapshots = map[string]*longhorn.SnapshotInfo{"volume-head": {Name: "volume-head", Size: "100"}}
+		for _, s := range snapshots {
+			e.Status.Snapshots[s.Name] = s
+		}
+		return e
+	}
+	snap := func(name, size string) *longhorn.SnapshotInfo { return &longhorn.SnapshotInfo{Name: name, Size: size} }
+	removedSnap := func(name, size string) *longhorn.SnapshotInfo {
+		return &longhorn.SnapshotInfo{Name: name, Size: size, Removed: true}
+	}
 
 	tests := []struct {
 		name          string
 		labels        map[string]string // RecurringJob.Spec.Labels (snapshot labels)
 		groups        []string          // RecurringJob.Spec.Groups
 		volumes       []*longhorn.Volume
+		engines       []*longhorn.Engine
 		retainCount   int
 		wantVolumes   []string
 		wantErr       string
@@ -210,6 +236,75 @@ func TestNewSnapshotGroupJob(t *testing.T) {
 			retainCount: 2,
 			wantErr:     "vol-b(snapshotMaxCount=2)",
 		},
+		{
+			name:    "volume at snapshotMaxCount is rejected",
+			volumes: []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxCount(2))},
+			engines: []*longhorn.Engine{engine("vol-a", snap("s1", "10"), snap("s2", "10"))},
+			wantErr: "member volumes have reached their snapshot limits: vol-a (2/2 snapshots)",
+		},
+		{
+			name:        "volume one below snapshotMaxCount passes",
+			volumes:     []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxCount(3))},
+			engines:     []*longhorn.Engine{engine("vol-a", snap("s1", "10"), snap("s2", "10"))},
+			wantVolumes: []string{"vol-a"},
+		},
+		{
+			name:    "snapshot marked removed but not purged still counts toward snapshotMaxCount",
+			volumes: []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxCount(2))},
+			engines: []*longhorn.Engine{engine("vol-a", snap("s1", "10"), removedSnap("s2", "10"))},
+			wantErr: "vol-a (2/2 snapshots)",
+		},
+		{
+			name:    "volume at snapshotMaxSize is rejected",
+			volumes: []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxSize(100))},
+			engines: []*longhorn.Engine{engine("vol-a", snap("s1", "60"), snap("s2", "40"))},
+			wantErr: "member volumes have reached their snapshot limits: vol-a (100/100 bytes of snapshots)",
+		},
+		{
+			name:        "volume under snapshotMaxSize passes",
+			volumes:     []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxSize(101))},
+			engines:     []*longhorn.Engine{engine("vol-a", snap("s1", "60"), snap("s2", "40"))},
+			wantVolumes: []string{"vol-a"},
+		},
+		{
+			name:        "snapshot marked removed does not count toward snapshotMaxSize",
+			volumes:     []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxSize(100))},
+			engines:     []*longhorn.Engine{engine("vol-a", snap("s1", "60"), removedSnap("s2", "40"))},
+			wantVolumes: []string{"vol-a"},
+		},
+		{
+			name:        "snapshotMaxSize 0 means no size limit",
+			volumes:     []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel})},
+			engines:     []*longhorn.Engine{engine("vol-a", snap("s1", "999999999999"))},
+			wantVolumes: []string{"vol-a"},
+		},
+		{
+			name: "only the member volumes at a limit are named",
+			volumes: []*longhorn.Volume{
+				assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxCount(3)),
+				assigned("vol-b", []map[string]string{jobLabel}, snapshotMaxCount(2)),
+			},
+			engines: []*longhorn.Engine{
+				engine("vol-a", snap("a1", "10")),
+				engine("vol-b", snap("b1", "10"), snap("b2", "10")),
+			},
+			wantErr: "member volumes have reached their snapshot limits: vol-b (2/2 snapshots);",
+		},
+		{
+			name:    "engine of a volume that is not a member is ignored",
+			volumes: []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel}, snapshotMaxCount(2))},
+			engines: []*longhorn.Engine{
+				engine("vol-a", snap("a1", "10")),
+				engine("vol-other", snap("o1", "10"), snap("o2", "10"), snap("o3", "10")),
+			},
+			wantVolumes: []string{"vol-a"},
+		},
+		{
+			name:    "unparsable snapshot size returns an error",
+			volumes: []*longhorn.Volume{assigned("vol-a", []map[string]string{jobLabel})},
+			engines: []*longhorn.Engine{engine("vol-a", snap("s1", "not-a-number"))},
+			wantErr: `failed to parse size "not-a-number" of snapshot s1 of volume vol-a`,
+		},
 	}
 
 	for _, tc := range tests {
@@ -217,6 +312,9 @@ func TestNewSnapshotGroupJob(t *testing.T) {
 			objs := []runtime.Object{newSetting(strconv.FormatBool(tc.allowDetached))}
 			for _, v := range tc.volumes {
 				objs = append(objs, v)
+			}
+			for _, e := range tc.engines {
+				objs = append(objs, e)
 			}
 			env := newSnapshotGroupJobForTest(objs...)
 			if tc.retainCount != 0 {
@@ -711,6 +809,73 @@ func TestSnapshotGroupJobCleanup(t *testing.T) {
 			env.cleanup()
 
 			fakeClient := env.lhClient.(*lhfake.Clientset)
+			assert.ElementsMatch(t, tc.wantDeleted, deletedSnapshotGroups(fakeClient))
+		})
+	}
+}
+
+func TestStartSnapshotGroupJobRetentionOnSnapshotLimit(t *testing.T) {
+	jobLabel := types.GetRecurringJobLabelValueMap(types.LonghornLabelRecurringJob, testRecurringJob)
+	// readyGroup builds a Ready group of this job created `age` ago.
+	readyGroup := func(name string, age time.Duration) *longhorn.SnapshotGroup {
+		return &longhorn.SnapshotGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              name,
+				Namespace:         testNamespace,
+				Labels:            map[string]string{testOwnerLabelKey: testRecurringJob},
+				CreationTimestamp: metav1.NewTime(time.Now().Add(-age)),
+			},
+			Status: longhorn.SnapshotGroupStatus{Phase: longhorn.SnapshotGroupPhaseReady},
+		}
+	}
+	// fullEngine builds vol-a's engine reporting two snapshots plus the volume head.
+	fullEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: "vol-a-e-0", Namespace: testNamespace, Labels: types.GetVolumeLabels("vol-a")},
+		Spec:       longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{VolumeName: "vol-a"}},
+		Status: longhorn.EngineStatus{Snapshots: map[string]*longhorn.SnapshotInfo{
+			"volume-head": {Name: "volume-head"},
+			"s1":          {Name: "s1", Size: "10"},
+			"s2":          {Name: "s2", Size: "10"},
+		}},
+	}
+
+	tests := []struct {
+		name        string
+		volumeLabel map[string]string // labels of vol-a; nil leaves it unassigned
+		wantErr     string
+		wantDeleted []string
+	}{
+		{
+			name:        "volume at its snapshot limit runs retention for the job's expired groups",
+			volumeLabel: jobLabel,
+			wantErr:     "member volumes have reached their snapshot limits: vol-a (2/2 snapshots)",
+			wantDeleted: []string{"sg-1", "sg-2"},
+		},
+		{
+			name:    "a rejection for another reason does not run retention",
+			wantErr: "no volumes are assigned",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			volume := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: "vol-a", Namespace: testNamespace, Labels: tc.volumeLabel},
+				Spec:       longhorn.VolumeSpec{SnapshotMaxCount: 2},
+				Status:     longhorn.VolumeStatus{State: longhorn.VolumeStateAttached},
+			}
+			job := newJob(&longhornclient.RancherClient{},
+				newSetting("false"), volume, fullEngine,
+				readyGroup("sg-1", 3*time.Hour), readyGroup("sg-2", 2*time.Hour), readyGroup("sg-3", 1*time.Hour))
+			job.retentionPolicy = longhorn.RecurringJobRetentionPolicyCountBased
+			job.retainCount = 1
+
+			err := StartSnapshotGroupJob(job, newRecurringJob(nil))
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+			fakeClient := job.lhClient.(*lhfake.Clientset)
+			assert.Empty(t, createdSnapshotGroups(fakeClient), "no group should be created when the run is rejected")
 			assert.ElementsMatch(t, tc.wantDeleted, deletedSnapshotGroups(fakeClient))
 		})
 	}
