@@ -15,6 +15,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -101,6 +103,20 @@ type InstanceManagerMonitor struct {
 }
 
 type instanceProcessMap map[string]longhorn.InstanceProcess
+
+// errInstanceManagerNotServing marks a sync error of a running instance manager
+// whose services cannot be reached yet.
+var errInstanceManagerNotServing = errors.New("instance manager services are not reachable")
+
+// isTransientGRPCError reports whether err carries a gRPC code that a later retry
+// can clear, such as services that do not listen yet.
+func isTransientGRPCError(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return true
+	}
+	return false
+}
 
 func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
 	cli, err := engineapi.NewInstanceManagerClient(im, false)
@@ -309,7 +325,10 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	}
 
 	log := imc.logger.WithField("InstanceManager", key)
-	if imc.queue.NumRequeues(key) < maxRetries {
+	// The pod can turn ready before the instance manager services listen. Keep
+	// retrying with backoff rather than dropping the key, which would leave the
+	// instance manager starting until the next informer resync.
+	if imc.queue.NumRequeues(key) < maxRetries || errors.Is(err, errInstanceManagerNotServing) {
 		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn instance manager")
 		imc.queue.AddRateLimited(key)
 		return
@@ -1423,6 +1442,9 @@ func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn
 	shouldUpdateProxyAPIVersion := im.Status.ProxyAPIVersion == engineapi.UnknownInstanceManagerProxyAPIVersion
 	if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && (shouldUpdateAPIVersion || shouldUpdateProxyAPIVersion) {
 		if err := imc.versionUpdater(im); err != nil {
+			if isTransientGRPCError(err) {
+				return errors.Mark(err, errInstanceManagerNotServing)
+			}
 			return err
 		}
 	}
