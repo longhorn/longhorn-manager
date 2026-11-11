@@ -102,6 +102,10 @@ type InstanceManagerMonitor struct {
 
 type instanceProcessMap map[string]longhorn.InstanceProcess
 
+// errInstanceManagerNotServing marks a sync error of a running instance manager
+// whose services cannot be reached yet.
+var errInstanceManagerNotServing = errors.New("instance manager services are not reachable")
+
 func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
 	cli, err := engineapi.NewInstanceManagerClient(im, false)
 	if err != nil {
@@ -309,7 +313,10 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	}
 
 	log := imc.logger.WithField("InstanceManager", key)
-	if imc.queue.NumRequeues(key) < maxRetries {
+	// The pod can turn ready before the instance manager services listen. Keep
+	// retrying with backoff rather than dropping the key, which would leave the
+	// instance manager starting until the next informer resync.
+	if imc.queue.NumRequeues(key) < maxRetries || errors.Is(err, errInstanceManagerNotServing) {
 		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn instance manager")
 		imc.queue.AddRateLimited(key)
 		return
@@ -1423,7 +1430,7 @@ func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn
 	shouldUpdateProxyAPIVersion := im.Status.ProxyAPIVersion == engineapi.UnknownInstanceManagerProxyAPIVersion
 	if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && (shouldUpdateAPIVersion || shouldUpdateProxyAPIVersion) {
 		if err := imc.versionUpdater(im); err != nil {
-			return err
+			return errors.Mark(err, errInstanceManagerNotServing)
 		}
 	}
 	return nil

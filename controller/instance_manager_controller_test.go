@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	. "gopkg.in/check.v1"
@@ -1119,4 +1120,41 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 			c.Assert(hasArg(args, isolationArg), Equals, false, Commentf("test case: %v, args: %v", name, args))
 		}
 	}
+}
+
+func (s *TestSuite) TestHandleErrRetriesNotServingInstanceManager(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	// A running instance manager whose services do not listen yet.
+	im := &longhorn.InstanceManager{
+		Status: longhorn.InstanceManagerStatus{
+			CurrentState:    longhorn.InstanceManagerStateRunning,
+			APIVersion:      engineapi.UnknownInstanceManagerAPIVersion,
+			ProxyAPIVersion: engineapi.UnknownInstanceManagerProxyAPIVersion,
+		},
+	}
+	imc.versionUpdater = func(*longhorn.InstanceManager) error {
+		return fmt.Errorf("dial tcp :8500: connect: connection refused")
+	}
+	syncErr := errors.Wrapf(imc.syncInstanceManagerAPIVersion(im), "failed to sync instance manager for %v", "im")
+	c.Assert(errors.Is(syncErr, errInstanceManagerNotServing), Equals, true)
+
+	// The key stays queued with backoff instead of being dropped after maxRetries.
+	notServingKey := TestNamespace + "/not-serving"
+	for i := 0; i < maxRetries+2; i++ {
+		imc.handleErr(syncErr, notServingKey)
+	}
+	c.Assert(imc.queue.NumRequeues(notServingKey), Equals, maxRetries+2)
+
+	// Other errors are still dropped after maxRetries.
+	otherKey := TestNamespace + "/other"
+	for i := 0; i < maxRetries+1; i++ {
+		imc.handleErr(fmt.Errorf("other error"), otherKey)
+	}
+	c.Assert(imc.queue.NumRequeues(otherKey), Equals, 0)
 }
