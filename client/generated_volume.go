@@ -35,6 +35,8 @@ type Volume struct {
 
 	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`
 
+	DataEngineTransport string `json:"dataEngineTransport,omitempty" yaml:"data_engine_transport,omitempty"`
+
 	DataLocality string `json:"dataLocality,omitempty" yaml:"data_locality,omitempty"`
 
 	DataSource string `json:"dataSource,omitempty" yaml:"data_source,omitempty"`
