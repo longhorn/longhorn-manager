@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -22,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1659,6 +1661,455 @@ func (s *TestSuite) TestSyncGuaranteedInstanceManagerCPU(c *C) {
 		} else {
 			c.Assert(events, HasLen, 1, comment)
 			c.Assert(strings.HasPrefix(events[0], tc.expectedEvent+" "), Equals, true, Commentf("test case: %v, event: %v", name, events[0]))
+		}
+	}
+}
+
+func newReplicaOnNodeForVolume(name, volumeName, nodeID string) *longhorn.Replica {
+	labels := types.GetVolumeLabels(volumeName)
+	labels[types.LonghornNodeKey] = nodeID
+
+	return &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels:    labels,
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: volumeName,
+			},
+			HealthyAt: getTestNow(),
+		},
+	}
+}
+
+func setReplicaState(replica *longhorn.Replica, state longhorn.InstanceState) {
+	replica.Spec.DesireState = state
+	replica.Status.CurrentState = state
+}
+
+func (s *TestSuite) TestCanDeleteInstanceManagerPDBWithStrictLocalReplica(c *C) {
+	testCases := map[string]struct {
+		drainPolicy     types.NodeDrainPolicy
+		dataLocality    longhorn.DataLocality
+		skipStrictLocal bool
+		replicaRunning  bool
+		expected        bool
+	}{
+		"block-for-eviction with strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEviction,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			expected:        true,
+		},
+		"block-for-eviction-if-contains-last-replica with strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			expected:        true,
+		},
+		"block-for-eviction with normal replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEviction,
+			dataLocality:    longhorn.DataLocalityDisabled,
+			skipStrictLocal: true,
+			expected:        false,
+		},
+		"block-for-eviction-if-contains-last-replica with normal replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityDisabled,
+			skipStrictLocal: true,
+			expected:        false,
+		},
+		"block-if-contains-last-replica with strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			expected:        true,
+		},
+		"block-if-contains-last-replica with normal replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityDisabled,
+			skipStrictLocal: true,
+			expected:        false,
+		},
+		"block-for-eviction with running strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEviction,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			replicaRunning:  true,
+			expected:        false,
+		},
+		"block-for-eviction-if-contains-last-replica with running strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			replicaRunning:  true,
+			expected:        false,
+		},
+		"block-if-contains-last-replica with running strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			replicaRunning:  true,
+			expected:        false,
+		},
+		"allow-if-replica-is-stopped with running strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyAllowIfReplicaIsStopped,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			replicaRunning:  true,
+			expected:        false,
+		},
+		"allow-if-replica-is-stopped with stopped strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyAllowIfReplicaIsStopped,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			expected:        true,
+		},
+		"always-allow with running strict-local replica": {
+			drainPolicy:     types.NodeDrainPolicyAlwaysAllow,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: true,
+			replicaRunning:  true,
+			expected:        true,
+		},
+		"block-for-eviction with strict-local replica and skip disabled": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEviction,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: false,
+			expected:        false,
+		},
+		"block-for-eviction-if-contains-last-replica with strict-local replica and skip disabled": {
+			drainPolicy:     types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: false,
+			expected:        false,
+		},
+		"block-if-contains-last-replica with strict-local replica and skip disabled": {
+			drainPolicy:     types.NodeDrainPolicyBlockIfContainsLastReplica,
+			dataLocality:    longhorn.DataLocalityStrictLocal,
+			skipStrictLocal: false,
+			expected:        false,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+		kubeNode, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = kubeNodeIndexer.Add(kubeNode)
+		c.Assert(err, IsNil)
+
+		drainPolicySetting := newSetting(string(types.SettingNameNodeDrainPolicy), string(tc.drainPolicy))
+		drainPolicySetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), drainPolicySetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(drainPolicySetting)
+		c.Assert(err, IsNil)
+
+		skipSetting := newSetting(string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain), strconv.FormatBool(tc.skipStrictLocal))
+		skipSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), skipSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(skipSetting)
+		c.Assert(err, IsNil)
+
+		volume := newVolumeWithDataLocality(TestVolumeName, tc.dataLocality)
+		volume, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = vIndexer.Add(volume)
+		c.Assert(err, IsNil)
+
+		replica := newReplicaOnNodeForVolume(TestReplicaName, volume.Name, TestNode1)
+		if tc.replicaRunning {
+			setReplicaState(replica, longhorn.InstanceStateRunning)
+		} else {
+			setReplicaState(replica, longhorn.InstanceStateStopped)
+		}
+		replica, err = lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = rIndexer.Add(replica)
+		c.Assert(err, IsNil)
+
+		// No engine instance and no PDB: every volume is detached and no replica is protected elsewhere.
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestNode1,
+			TestNode1,
+			TestIP1,
+			nil,
+			nil,
+			map[string]longhorn.InstanceProcess{TestReplicaName: {}},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
+		im, err = lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+
+		canDelete, _, err := imc.canDeleteInstanceManagerPDB(im, true)
+		c.Assert(err, IsNil)
+		c.Assert(canDelete, Equals, tc.expected)
+	}
+}
+
+// With Cluster Autoscaler enabled, the PDB of a schedulable node is what keeps the node holding the only copy.
+func (s *TestSuite) TestCanDeleteInstanceManagerPDBWithStrictLocalReplicaOnSchedulableNode(c *C) {
+	testCases := map[string]struct {
+		drainPolicy types.NodeDrainPolicy
+	}{
+		"block-for-eviction": {
+			drainPolicy: types.NodeDrainPolicyBlockForEviction,
+		},
+		"block-for-eviction-if-contains-last-replica": {
+			drainPolicy: types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+		},
+		"block-if-contains-last-replica": {
+			drainPolicy: types.NodeDrainPolicyBlockIfContainsLastReplica,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = kubeNodeIndexer.Add(kubeNode)
+		c.Assert(err, IsNil)
+
+		drainPolicySetting := newSetting(string(types.SettingNameNodeDrainPolicy), string(tc.drainPolicy))
+		drainPolicySetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), drainPolicySetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(drainPolicySetting)
+		c.Assert(err, IsNil)
+
+		imImageSetting := newDefaultInstanceManagerImageSetting()
+		imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(imImageSetting)
+		c.Assert(err, IsNil)
+
+		skipSetting := newSetting(string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain), "true")
+		skipSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), skipSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(skipSetting)
+		c.Assert(err, IsNil)
+
+		volume := newVolumeWithDataLocality(TestVolumeName, longhorn.DataLocalityStrictLocal)
+		volume, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = vIndexer.Add(volume)
+		c.Assert(err, IsNil)
+
+		replica := newReplicaOnNodeForVolume(TestReplicaName, volume.Name, TestNode1)
+		setReplicaState(replica, longhorn.InstanceStateStopped)
+		replica, err = lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = rIndexer.Add(replica)
+		c.Assert(err, IsNil)
+
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestNode1,
+			TestNode1,
+			TestIP1,
+			nil,
+			nil,
+			map[string]longhorn.InstanceProcess{TestReplicaName: {}},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
+		im, err = lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+
+		canDelete, _, err := imc.canDeleteInstanceManagerPDB(im, false)
+		c.Assert(err, IsNil)
+		c.Assert(canDelete, Equals, false)
+	}
+}
+
+func (s *TestSuite) TestSyncInstanceManagerPDBRecordsStrictLocalEvictionSkipped(c *C) {
+	testCases := map[string]struct {
+		drainPolicy     types.NodeDrainPolicy
+		skipStrictLocal bool
+		replicaRunning  bool
+		expectDeleted   bool
+		expectEvent     bool
+	}{
+		"skip enabled": {
+			skipStrictLocal: true,
+			expectDeleted:   true,
+			expectEvent:     true,
+		},
+		"skip disabled": {
+			skipStrictLocal: false,
+			expectDeleted:   false,
+		},
+		"skip enabled with block-if-contains-last-replica": {
+			drainPolicy:     types.NodeDrainPolicyBlockIfContainsLastReplica,
+			skipStrictLocal: true,
+			expectDeleted:   true,
+			expectEvent:     true,
+		},
+		"skip enabled with running replica": {
+			skipStrictLocal: true,
+			replicaRunning:  true,
+			expectDeleted:   false,
+		},
+		"skip enabled with always-allow": {
+			drainPolicy:     types.NodeDrainPolicyAlwaysAllow,
+			skipStrictLocal: true,
+			expectDeleted:   true,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		pdbIndexer := informerFactories.KubeNamespaceFilteredInformerFactory.Policy().V1().PodDisruptionBudgets().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+		fakeRecorder := imc.eventRecorder.(*record.FakeRecorder)
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+		kubeNode, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = kubeNodeIndexer.Add(kubeNode)
+		c.Assert(err, IsNil)
+
+		drainPolicy := tc.drainPolicy
+		if drainPolicy == "" {
+			drainPolicy = types.NodeDrainPolicyBlockForEviction
+		}
+		for _, setting := range []*longhorn.Setting{
+			newSetting(string(types.SettingNameNodeDrainPolicy), string(drainPolicy)),
+			newSetting(string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain), strconv.FormatBool(tc.skipStrictLocal)),
+		} {
+			setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
+
+		volume := newVolumeWithDataLocality(TestVolumeName, longhorn.DataLocalityStrictLocal)
+		volume, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = vIndexer.Add(volume)
+		c.Assert(err, IsNil)
+
+		replica := newReplicaOnNodeForVolume(TestReplicaName, volume.Name, TestNode1)
+		if tc.replicaRunning {
+			setReplicaState(replica, longhorn.InstanceStateRunning)
+		} else {
+			setReplicaState(replica, longhorn.InstanceStateStopped)
+		}
+		replica, err = lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = rIndexer.Add(replica)
+		c.Assert(err, IsNil)
+
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestNode1,
+			TestNode1,
+			TestIP1,
+			nil,
+			nil,
+			map[string]longhorn.InstanceProcess{TestReplicaName: {}},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
+		im, err = lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+
+		pdb := &policyv1.PodDisruptionBudget{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      types.GetPDBName(im),
+				Namespace: TestNamespace,
+			},
+		}
+		pdb, err = kubeClient.PolicyV1().PodDisruptionBudgets(TestNamespace).Create(context.TODO(), pdb, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = pdbIndexer.Add(pdb)
+		c.Assert(err, IsNil)
+
+		err = imc.syncInstanceManagerPDB(im)
+		c.Assert(err, IsNil)
+
+		_, err = kubeClient.PolicyV1().PodDisruptionBudgets(TestNamespace).Get(context.TODO(), pdb.Name, metav1.GetOptions{})
+		c.Assert(apierrors.IsNotFound(err), Equals, tc.expectDeleted)
+
+		events := []string{}
+		for len(fakeRecorder.Events) > 0 {
+			events = append(events, <-fakeRecorder.Events)
+		}
+		if tc.expectEvent {
+			c.Assert(events, HasLen, 1)
+			c.Assert(strings.HasPrefix(events[0], corev1.EventTypeWarning+" "+constant.EventReasonEvictionSkipped+" "), Equals, true)
+			c.Assert(strings.Contains(events[0], volume.Name), Equals, true)
+		} else {
+			c.Assert(events, HasLen, 0)
 		}
 	}
 }

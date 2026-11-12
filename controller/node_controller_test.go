@@ -27,6 +27,7 @@ import (
 
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
@@ -83,6 +84,7 @@ type NodeControllerSuite struct {
 	informerFactories *util.InformerFactories
 
 	lhNodeIndexer                          cache.Indexer
+	lhVolumeIndexer                        cache.Indexer
 	lhReplicaIndexer                       cache.Indexer
 	lhSettingsIndexer                      cache.Indexer
 	lhInstanceManagerIndexer               cache.Indexer
@@ -102,6 +104,7 @@ type NodeControllerSuite struct {
 // nodes and pods
 type NodeControllerFixture struct {
 	lhNodes                          map[string]*longhorn.Node
+	lhVolumes                        []*longhorn.Volume
 	lhReplicas                       []*longhorn.Replica
 	lhSettings                       map[string]*longhorn.Setting
 	lhInstanceManagers               map[string]*longhorn.InstanceManager
@@ -136,6 +139,7 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 	s.informerFactories = util.NewInformerFactories(TestNamespace, s.kubeClient, s.lhClient, controller.NoResyncPeriodFunc())
 
 	s.lhNodeIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	s.lhVolumeIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 	s.lhReplicaIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 	s.lhSettingsIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 	s.lhInstanceManagerIndexer = s.informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
@@ -2660,6 +2664,14 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 		c.Assert(err, IsNil)
 	}
 
+	for _, volume := range fixture.lhVolumes {
+		v, err := s.lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(v, NotNil)
+		err = s.lhVolumeIndexer.Add(v)
+		c.Assert(err, IsNil)
+	}
+
 	for _, replica := range fixture.lhReplicas {
 		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -3652,5 +3664,190 @@ func TestNodeDiskRecoveryDoesNotUpdateBackingImageManagers(t *testing.T) {
 			require.Empty(t, f.lh.Actions(), "the node controller must not write backing image managers on disk recovery")
 			require.Empty(t, f.kube.Actions(), "the node controller must not recreate pods")
 		})
+	}
+}
+
+func newVolumeWithDataLocality(name string, dataLocality longhorn.DataLocality) *longhorn.Volume {
+	return &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.VolumeSpec{
+			NumberOfReplicas: 1,
+			DataLocality:     dataLocality,
+			DataEngine:       longhorn.DataEngineTypeV1,
+		},
+	}
+}
+
+func (s *NodeControllerSuite) TestStrictLocalReplicaEviction(c *C) {
+	strictLocalVolume := newVolumeWithDataLocality("strict-local-volume", longhorn.DataLocalityStrictLocal)
+	normalVolume := newVolumeWithDataLocality("normal-volume", longhorn.DataLocalityDisabled)
+
+	newFixture := func(drainPolicy types.NodeDrainPolicy, cordoned, nodeEvictionRequested bool) (*NodeControllerFixture, *longhorn.Node, *corev1.Node) {
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Spec.EvictionRequested = nodeEvictionRequested
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{
+			"strict-local-replica": 0, "normal-replica": 0,
+		}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = cordoned
+
+		return &NodeControllerFixture{
+			lhNodes:   map[string]*longhorn.Node{TestNode1: lhNode},
+			lhVolumes: []*longhorn.Volume{strictLocalVolume, normalVolume},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("strict-local-replica", strictLocalVolume.Name, TestNode1, TestDiskID1),
+				newSrcReplica("normal-replica", normalVolume.Name, TestNode1, TestDiskID1),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy), string(drainPolicy)),
+				string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain): newSetting(
+					string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain), "true"),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		}, lhNode, kubeNode
+	}
+
+	assertEvictionRequested := func(replicaName string, expected bool) {
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), replicaName, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, expected)
+	}
+
+	// No PDB is registered, so both replicas count as last replicas.
+	{
+		s.SetUpTest(c)
+		fixture, lhNode, kubeNode := newFixture(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica, true, false)
+		s.initTest(c, fixture)
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		assertEvictionRequested("strict-local-replica", false)
+		assertEvictionRequested("normal-replica", true)
+	}
+
+	{
+		s.SetUpTest(c)
+		fixture, lhNode, kubeNode := newFixture(types.NodeDrainPolicyBlockForEviction, true, false)
+		s.initTest(c, fixture)
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		assertEvictionRequested("strict-local-replica", false)
+		assertEvictionRequested("normal-replica", true)
+	}
+
+	// A manual node eviction request takes precedence over the drain policy.
+	{
+		s.SetUpTest(c)
+		fixture, lhNode, kubeNode := newFixture(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica, false, true)
+		s.initTest(c, fixture)
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		assertEvictionRequested("strict-local-replica", true)
+		assertEvictionRequested("normal-replica", true)
+	}
+}
+
+func (s *NodeControllerSuite) TestStrictLocalReplicaEvictionSkipDisabled(c *C) {
+	strictLocalVolume := newVolumeWithDataLocality("strict-local-volume", longhorn.DataLocalityStrictLocal)
+
+	for _, drainPolicy := range []types.NodeDrainPolicy{
+		types.NodeDrainPolicyBlockForEviction,
+		types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica,
+	} {
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{"strict-local-replica": 0}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes:   map[string]*longhorn.Node{TestNode1: lhNode},
+			lhVolumes: []*longhorn.Volume{strictLocalVolume},
+			lhReplicas: []*longhorn.Replica{
+				newSrcReplica("strict-local-replica", strictLocalVolume.Name, TestNode1, TestDiskID1),
+			},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy), string(drainPolicy)),
+				string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain): newSetting(
+					string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain), "false"),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "strict-local-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, true, Commentf("drain policy %v", drainPolicy))
+	}
+}
+
+// The event reason tells whether the eviction was cancelled by the skip setting or by the drain policy.
+func (s *NodeControllerSuite) TestStrictLocalReplicaEvictionSkipPolicies(c *C) {
+	strictLocalVolume := newVolumeWithDataLocality("strict-local-volume", longhorn.DataLocalityStrictLocal)
+
+	testCases := map[types.NodeDrainPolicy]string{
+		types.NodeDrainPolicyBlockIfContainsLastReplica: constant.EventReasonEvictionSkipped,
+		types.NodeDrainPolicyAllowIfReplicaIsStopped:    constant.EventReasonEvictionCanceled,
+		types.NodeDrainPolicyAlwaysAllow:                constant.EventReasonEvictionCanceled,
+	}
+
+	for drainPolicy, expectedReason := range testCases {
+		s.SetUpTest(c)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		lhNode.Status.DiskStatus[TestDiskID1].ScheduledReplica = map[string]int64{"strict-local-replica": 0}
+
+		kubeNode := newKubernetesNode(TestNode1,
+			corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse,
+			corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Spec.Unschedulable = true
+
+		replica := newSrcReplica("strict-local-replica", strictLocalVolume.Name, TestNode1, TestDiskID1)
+		replica.Spec.EvictionRequested = true
+
+		s.initTest(c, &NodeControllerFixture{
+			lhNodes:    map[string]*longhorn.Node{TestNode1: lhNode},
+			lhVolumes:  []*longhorn.Volume{strictLocalVolume},
+			lhReplicas: []*longhorn.Replica{replica},
+			lhSettings: map[string]*longhorn.Setting{
+				string(types.SettingNameNodeDrainPolicy): newSetting(
+					string(types.SettingNameNodeDrainPolicy), string(drainPolicy)),
+				string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain): newSetting(
+					string(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain), "true"),
+			},
+			nodes: map[string]*corev1.Node{TestNode1: kubeNode},
+		})
+
+		c.Assert(s.controller.syncReplicaEvictionRequested(lhNode, kubeNode), IsNil)
+
+		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Get(
+			context.TODO(), "strict-local-replica", metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(r.Spec.EvictionRequested, Equals, false, Commentf("drain policy %v", drainPolicy))
+
+		events := []string{}
+		for len(s.eventRecorder.Events) > 0 {
+			events = append(events, <-s.eventRecorder.Events)
+		}
+		c.Assert(events, HasLen, 1, Commentf("drain policy %v", drainPolicy))
+		c.Assert(strings.HasPrefix(events[0], corev1.EventTypeNormal+" "+expectedReason+" "), Equals, true,
+			Commentf("drain policy %v, event %v", drainPolicy, events[0]))
 	}
 }
