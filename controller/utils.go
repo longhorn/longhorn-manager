@@ -71,6 +71,53 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	return false
 }
 
+// A replica whose volume is already gone is not strict-local.
+func isStrictLocalReplica(ds *datastore.DataStore, replica *longhorn.Replica) (bool, error) {
+	volume, err := ds.GetVolumeRO(replica.Spec.VolumeName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return isDataLocalityStrictLocal(volume), nil
+}
+
+// The other policies already allow the drain, so skipping has nothing to do for them.
+func isStrictLocalEvictionSkipPolicy(nodeDrainPolicy string) bool {
+	switch nodeDrainPolicy {
+	case string(types.NodeDrainPolicyBlockForEviction),
+		string(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica),
+		string(types.NodeDrainPolicyBlockIfContainsLastReplica):
+		return true
+	}
+	return false
+}
+
+func isReplicaStopped(replica *longhorn.Replica) bool {
+	return replica.Spec.DesireState == longhorn.InstanceStateStopped &&
+		replica.Status.CurrentState == longhorn.InstanceStateStopped
+}
+
+// Only stopped replicas are removed: a detached volume does not guarantee that the replica process has exited.
+func removeStoppedStrictLocalReplicas(ds *datastore.DataStore, replicas []*longhorn.Replica) ([]*longhorn.Replica, error) {
+	remaining := []*longhorn.Replica{}
+	for _, replica := range replicas {
+		if isReplicaStopped(replica) {
+			isStrictLocal, err := isStrictLocalReplica(ds, replica)
+			if err != nil {
+				return nil, err
+			}
+			if isStrictLocal {
+				continue
+			}
+		}
+		remaining = append(remaining, replica)
+	}
+	return remaining, nil
+}
+
 func hasShardEvictionRequested(shards map[string]*longhorn.Shard) bool {
 	for _, s := range shards {
 		if s.Spec.EvictionRequested {
