@@ -721,7 +721,7 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 	// strict-local volumes must keep exactly one local replica. Trying to
 	// replenish a second replica during eviction creates an invalid
 	// intermediate state that later blocks VolumeAttachment updates.
-	if types.IsDataEngineV2(v.Spec.DataEngine) && v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+	if types.IsDataEngineV2(v.Spec.DataEngine) && isDataLocalityStrictLocal(v) {
 		return nil
 	}
 
@@ -1013,8 +1013,10 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				}
 			}
 
+			// Auto-balance does not count a replica on a cordoned node unless it is running, and
+			// would add a second strict-local replica that can never be scheduled.
 			setting := c.ds.GetAutoBalancedReplicasSetting(v, log)
-			if setting != longhorn.ReplicaAutoBalanceDisabled {
+			if setting != longhorn.ReplicaAutoBalanceDisabled && !isDataLocalityStrictLocal(v) {
 				if err := c.replenishReplicas(v, e, rs, ""); err != nil {
 					return err
 				}
@@ -1387,6 +1389,13 @@ func (c *VolumeController) cleanupFailedToScheduleReplicas(v *longhorn.Volume, r
 
 	for _, r := range rs {
 		if r.Spec.HealthyAt == "" && r.Spec.NodeID == "" {
+			// It is pinned to the current node, so the generic rule below would keep it forever.
+			if isDataLocalityStrictLocal(v) {
+				if healthyCount >= v.Spec.NumberOfReplicas {
+					replicasToCleanUp = append(replicasToCleanUp, r)
+				}
+				continue
+			}
 			// If this unscheduled replica has HardNodeAffinity when DataLocality is disabled, we can delete it
 			// immediately. It is better to replenish a new replica without HardNodeAffinity so we can avoid corner
 			// cases like https://github.com/longhorn/longhorn/issues/8522.
@@ -3777,6 +3786,10 @@ func isDataLocalityBestEffort(v *longhorn.Volume) bool {
 
 func isDataLocalityDisabled(v *longhorn.Volume) bool {
 	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == longhorn.DataLocalityDisabled
+}
+
+func isDataLocalityStrictLocal(v *longhorn.Volume) bool {
+	return v.Spec.DataLocality == longhorn.DataLocalityStrictLocal
 }
 
 // hasLocalReplicaOnSameNodeAsEngine returns true if one of the following condition is satisfied:
