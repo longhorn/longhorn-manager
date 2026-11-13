@@ -3,6 +3,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -1119,4 +1122,292 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 			c.Assert(hasArg(args, isolationArg), Equals, false, Commentf("test case: %v, args: %v", name, args))
 		}
 	}
+}
+
+func (s *TestSuite) TestIsInstanceManagerDataPlaneStopped(c *C) {
+	now := metav1.Now()
+	running := corev1.ContainerStatus{State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}
+	terminated := corev1.ContainerStatus{State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{}}}
+
+	newIMPod := func(phase corev1.PodPhase, deleting bool, containerStatuses ...corev1.ContainerStatus) *corev1.Pod {
+		pod := newPod(&corev1.PodStatus{Phase: phase, ContainerStatuses: containerStatuses}, TestInstanceManagerName, TestNamespace, TestNode1)
+		if deleting {
+			pod.DeletionTimestamp = &now
+		}
+		return pod
+	}
+
+	testCases := map[string]struct {
+		pod      *corev1.Pod
+		expected bool
+	}{
+		"pod is gone": {
+			pod:      nil,
+			expected: true,
+		},
+		"pod failed": {
+			pod:      newIMPod(corev1.PodFailed, false, terminated),
+			expected: true,
+		},
+		"pod succeeded": {
+			pod:      newIMPod(corev1.PodSucceeded, false, terminated),
+			expected: true,
+		},
+		"pod unknown, container statuses are stale even if terminated": {
+			pod:      newIMPod(corev1.PodUnknown, true, terminated),
+			expected: false,
+		},
+		"pod pending": {
+			pod:      newIMPod(corev1.PodPending, false),
+			expected: false,
+		},
+		"pod running": {
+			pod:      newIMPod(corev1.PodRunning, false, running),
+			expected: false,
+		},
+		"pod running and not deleted, even if containers are terminated": {
+			pod:      newIMPod(corev1.PodRunning, false, terminated),
+			expected: false,
+		},
+		"pod terminating without container statuses": {
+			pod:      newIMPod(corev1.PodRunning, true),
+			expected: false,
+		},
+		"pod terminating with a running container": {
+			pod:      newIMPod(corev1.PodRunning, true, terminated, running),
+			expected: false,
+		},
+		"pod terminating with all containers terminated": {
+			pod:      newIMPod(corev1.PodRunning, true, terminated, terminated),
+			expected: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Assert(isInstanceManagerDataPlaneStopped(tc.pod), Equals, tc.expected, Commentf("test case: %s", name))
+	}
+}
+
+func (s *TestSuite) TestShouldCleanupStaleEngineFrontendCryptoDevices(c *C) {
+	runningPod := newPod(&corev1.PodStatus{Phase: corev1.PodRunning}, TestInstanceManagerName, TestNamespace, TestNode1)
+
+	testCases := map[string]struct {
+		dataEngine   longhorn.DataEngineType
+		state        longhorn.InstanceManagerState
+		controllerID string
+		pod          *corev1.Pod
+		expected     bool
+	}{
+		"v2 instance manager on this node whose pod is gone": {
+			dataEngine:   longhorn.DataEngineTypeV2,
+			state:        longhorn.InstanceManagerStateError,
+			controllerID: TestNode1,
+			pod:          nil,
+			expected:     true,
+		},
+		"v1 instance manager": {
+			dataEngine:   longhorn.DataEngineTypeV1,
+			state:        longhorn.InstanceManagerStateError,
+			controllerID: TestNode1,
+			pod:          nil,
+			expected:     false,
+		},
+		"live upgrade keeps the initiators up": {
+			dataEngine:   longhorn.DataEngineTypeV2,
+			state:        longhorn.InstanceManagerStateUpgrading,
+			controllerID: TestNode1,
+			pod:          nil,
+			expected:     false,
+		},
+		"instance manager on another node": {
+			dataEngine:   longhorn.DataEngineTypeV2,
+			state:        longhorn.InstanceManagerStateError,
+			controllerID: TestNode2,
+			pod:          nil,
+			expected:     false,
+		},
+		"pod is still running": {
+			dataEngine:   longhorn.DataEngineTypeV2,
+			state:        longhorn.InstanceManagerStateRunning,
+			controllerID: TestNode1,
+			pod:          runningPod,
+			expected:     false,
+		},
+	}
+
+	for name, tc := range testCases {
+		im := newInstanceManager(TestInstanceManagerName, tc.state, TestNode1, TestNode1, TestIP1,
+			nil, nil, nil, tc.dataEngine, TestInstanceManagerImage, false)
+		c.Assert(shouldCleanupStaleEngineFrontendCryptoDevices(im, tc.pod, tc.controllerID), Equals, tc.expected, Commentf("test case: %s", name))
+	}
+}
+
+func (s *TestSuite) TestIsNodeV2DataPlaneStopped(c *C) {
+	const otherInstanceManagerName = "instance-manager-other"
+
+	testCases := map[string]struct {
+		otherNodeID   string // empty means there is no other v2 instance manager
+		otherState    longhorn.InstanceManagerState
+		otherPodPhase corev1.PodPhase // empty means the other instance manager has no pod
+		expected      bool
+	}{
+		"no other v2 instance manager": {
+			expected: true,
+		},
+		"another v2 instance manager on this node is running": {
+			otherNodeID:   TestNode1,
+			otherState:    longhorn.InstanceManagerStateRunning,
+			otherPodPhase: corev1.PodRunning,
+			expected:      false,
+		},
+		"another v2 instance manager on this node is starting": {
+			otherNodeID:   TestNode1,
+			otherState:    longhorn.InstanceManagerStateStarting,
+			otherPodPhase: corev1.PodPending,
+			expected:      false,
+		},
+		"another v2 instance manager on this node is upgrading": {
+			otherNodeID: TestNode1,
+			otherState:  longhorn.InstanceManagerStateUpgrading,
+			expected:    false,
+		},
+		"another v2 instance manager on this node has no pod": {
+			otherNodeID: TestNode1,
+			otherState:  longhorn.InstanceManagerStateStopped,
+			expected:    true,
+		},
+		"another v2 instance manager on this node has a failed pod": {
+			otherNodeID:   TestNode1,
+			otherState:    longhorn.InstanceManagerStateError,
+			otherPodPhase: corev1.PodFailed,
+			expected:      true,
+		},
+		"another v2 instance manager on another node is running": {
+			otherNodeID:   TestNode2,
+			otherState:    longhorn.InstanceManagerStateRunning,
+			otherPodPhase: corev1.PodRunning,
+			expected:      true,
+		},
+	}
+
+	for name, tc := range testCases {
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateError, TestNode1, TestNode1, "",
+			nil, nil, nil, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
+		c.Assert(imIndexer.Add(im), IsNil)
+
+		if tc.otherNodeID != "" {
+			other := newInstanceManager(otherInstanceManagerName, tc.otherState, tc.otherNodeID, tc.otherNodeID, TestIP2,
+				nil, nil, nil, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
+			c.Assert(imIndexer.Add(other), IsNil)
+			if tc.otherPodPhase != "" {
+				pod := newPod(&corev1.PodStatus{Phase: tc.otherPodPhase}, otherInstanceManagerName, TestNamespace, tc.otherNodeID)
+				c.Assert(pIndexer.Add(pod), IsNil)
+			}
+		}
+
+		stopped, err := imc.isNodeV2DataPlaneStopped(im)
+		c.Assert(err, IsNil, Commentf("test case: %s", name))
+		c.Assert(stopped, Equals, tc.expected, Commentf("test case: %s", name))
+	}
+}
+
+func (s *TestSuite) TestIsSPDKTgtRunningOnHost(c *C) {
+	type process struct {
+		pid     string
+		cmdline string
+	}
+
+	testCases := map[string]struct {
+		processes []process
+		expected  bool
+	}{
+		"no processes": {
+			expected: false,
+		},
+		"spdk_tgt started by a relative path, e.g. a force-deleted pod's container": {
+			processes: []process{
+				{pid: "1", cmdline: "/sbin/init\x00"},
+				{pid: "4242", cmdline: "spdk_tgt\x00-m\x000x1\x00"},
+			},
+			expected: true,
+		},
+		"spdk_tgt started by an absolute path": {
+			processes: []process{
+				{pid: "4242", cmdline: "/usr/local/bin/spdk_tgt\x00-m\x000x1\x00"},
+			},
+			expected: true,
+		},
+		"only other processes, including one with spdk_tgt as an argument": {
+			processes: []process{
+				{pid: "1", cmdline: "/sbin/init\x00"},
+				{pid: "100", cmdline: "pgrep\x00-f\x00^spdk_tgt\x00"},
+				{pid: "101", cmdline: "longhorn-instance-manager\x00daemon\x00"},
+			},
+			expected: false,
+		},
+		"kernel thread with an empty cmdline": {
+			processes: []process{
+				{pid: "2", cmdline: ""},
+			},
+			expected: false,
+		},
+	}
+
+	for name, tc := range testCases {
+		procDir := c.MkDir()
+		c.Assert(os.WriteFile(filepath.Join(procDir, "meminfo"), []byte(""), 0644), IsNil)
+		for _, p := range tc.processes {
+			c.Assert(os.MkdirAll(filepath.Join(procDir, p.pid), 0755), IsNil)
+			c.Assert(os.WriteFile(filepath.Join(procDir, p.pid, "cmdline"), []byte(p.cmdline), 0644), IsNil)
+		}
+
+		running, err := isSPDKTgtRunningOnHost(procDir)
+		c.Assert(err, IsNil, Commentf("test case: %s", name))
+		c.Assert(running, Equals, tc.expected, Commentf("test case: %s", name))
+	}
+}
+
+func (s *TestSuite) TestShouldDeferPodRecreationForStaleCryptoCleanup(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+	log := logrus.StandardLogger()
+
+	// Nothing pending: the pod is recreated and nothing is recorded.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, false), Equals, false)
+	c.Assert(imc.staleCryptoCleanupPendingSince, HasLen, 0)
+
+	// Pending for the first time: defer and start the clock.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
+	since, ok := imc.staleCryptoCleanupPendingSince[TestInstanceManagerName]
+	c.Assert(ok, Equals, true)
+
+	// Still pending within the bound: keep deferring without restarting the clock.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
+	c.Assert(imc.staleCryptoCleanupPendingSince[TestInstanceManagerName], Equals, since)
+
+	// Pending past the bound: stop deferring, and do not start a new deferral while still pending.
+	imc.staleCryptoCleanupPendingSince[TestInstanceManagerName] = time.Now().Add(-staleCryptoCleanupMaxPendingDuration - time.Second)
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, false)
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, false)
+
+	// No longer pending: the record is cleared, so a later pending cleanup is deferred again.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, false), Equals, false)
+	c.Assert(imc.staleCryptoCleanupPendingSince, HasLen, 0)
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
 }
