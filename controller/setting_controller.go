@@ -144,6 +144,18 @@ func NewSettingController(
 	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.NodeInformer.HasSynced)
 
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isInstanceManagerPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.enqueueGuaranteedInstanceManagerCPUForPod,
+			UpdateFunc: sc.enqueueGuaranteedInstanceManagerCPUForPodUpdate,
+			DeleteFunc: sc.enqueueGuaranteedInstanceManagerCPUForPod,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.PodInformer.HasSynced)
+
 	return sc, nil
 }
 
@@ -1404,20 +1416,119 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
 }
 
-// updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
+func (sc *SettingController) enqueueGuaranteedInstanceManagerCPUForPod(obj interface{}) {
+	if !isInstanceManagerPod(obj) {
+		return
+	}
+	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
+}
+
+func (sc *SettingController) enqueueGuaranteedInstanceManagerCPUForPodUpdate(oldObj, curObj interface{}) {
+	oldPod, oldOK := oldObj.(*corev1.Pod)
+	curPod, curOK := curObj.(*corev1.Pod)
+	if !curOK || !isInstanceManagerPod(curPod) {
+		return
+	}
+	if oldOK && !hasInstanceManagerCPUResizeStateChanged(oldPod, curPod) {
+		return
+	}
+	sc.enqueueGuaranteedInstanceManagerCPUForPod(curPod)
+}
+
+func hasInstanceManagerCPUResizeStateChanged(oldPod, curPod *corev1.Pod) bool {
+	var oldResources, curResources *corev1.ResourceRequirements
+	if len(oldPod.Spec.Containers) > 0 {
+		oldResources = &oldPod.Spec.Containers[0].Resources
+	}
+	if len(curPod.Spec.Containers) > 0 {
+		curResources = &curPod.Spec.Containers[0].Resources
+	}
+	if !IsSameGuaranteedCPURequirement(oldResources, curResources) {
+		return true
+	}
+
+	getResizeConditions := func(pod *corev1.Pod) []corev1.PodCondition {
+		conditions := []corev1.PodCondition{}
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == corev1.PodResizePending || condition.Type == corev1.PodResizeInProgress {
+				conditions = append(conditions, condition)
+			}
+		}
+		return conditions
+	}
+	if !reflect.DeepEqual(getResizeConditions(oldPod), getResizeConditions(curPod)) {
+		return true
+	}
+
+	type containerCPUResizeStatus struct {
+		allocatedCPU   resource.Quantity
+		allocatedKnown bool
+		actualCPU      resource.Quantity
+		actualCPUKnown bool
+	}
+	getCPUResizeStatus := func(pod *corev1.Pod) map[string]containerCPUResizeStatus {
+		statusByContainer := map[string]containerCPUResizeStatus{}
+		for _, status := range pod.Status.ContainerStatuses {
+			containerStatus := containerCPUResizeStatus{}
+			if cpu, exists := status.AllocatedResources[corev1.ResourceCPU]; exists {
+				containerStatus.allocatedCPU = cpu
+				containerStatus.allocatedKnown = true
+			}
+			if status.Resources != nil {
+				containerStatus.actualCPU = status.Resources.Requests[corev1.ResourceCPU]
+				containerStatus.actualCPUKnown = true
+			}
+			statusByContainer[status.Name] = containerStatus
+		}
+		return statusByContainer
+	}
+	return !reflect.DeepEqual(getCPUResizeStatus(oldPod), getCPUResizeStatus(curPod))
+}
+
+// updateInstanceManagerCPURequest ensures instance manager pods use the configured CPU request.
 func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
-	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	if err != nil {
-		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
+	imTypes := []longhorn.InstanceManagerType{longhorn.InstanceManagerTypeAllInOne}
+	if dataEngine == longhorn.DataEngineTypeV1 {
+		imTypes = []longhorn.InstanceManagerType{
+			longhorn.InstanceManagerTypeEngine,
+			longhorn.InstanceManagerTypeReplica,
+			longhorn.InstanceManagerTypeAllInOne,
+		}
 	}
-	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	if err != nil {
-		return err
+
+	imMap := map[string]*longhorn.InstanceManager{}
+	imPodList := []*corev1.Pod{}
+	for _, imType := range imTypes {
+		pods, err := sc.ds.ListInstanceManagerPodsBy("", "", imType, dataEngine)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list %v instance manager pods", imType)
+		}
+		imPodList = append(imPodList, pods...)
+
+		ims, err := sc.ds.ListInstanceManagersBySelectorRO("", "", imType, dataEngine)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list %v instance managers", imType)
+		}
+		for name, im := range ims {
+			imMap[name] = im
+		}
 	}
-	notUpdatedPods := []*corev1.Pod{}
+
+	serverSupportsResize := false
+	if dataEngine == longhorn.DataEngineTypeV1 && len(imPodList) > 0 {
+		var err error
+		serverSupportsResize, err = util.IsKubernetesVersionAtLeast(sc.kubeClient, minimumKubernetesVersionForInPlacePodResize)
+		if err != nil {
+			return errors.Wrap(err, "failed to check Kubernetes version for in-place pod resize")
+		}
+	}
+
+	podsToDelete := []*corev1.Pod{}
+	pendingInstanceManagers := []string{}
 
 	for _, imPod := range imPodList {
-		if _, exists := imMap[imPod.Name]; !exists {
+		im, exists := imMap[imPod.Name]
+		if !exists {
 			continue
 		}
 		lhNode, err := sc.ds.GetNode(imPod.Spec.NodeName)
@@ -1432,34 +1543,72 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		if err != nil {
 			return err
 		}
+		if len(imPod.Spec.Containers) == 0 {
+			return fmt.Errorf("instance manager pod %v has no containers", imPod.Name)
+		}
+
 		podResourceReq := imPod.Spec.Containers[0].Resources
-		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
+		isCPURequestSynced := IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq)
+
+		if dataEngine == longhorn.DataEngineTypeV1 && serverSupportsResize {
+			resizeSupported, err := isInPlacePodResizeSupportedForNode(sc.ds, imPod.Spec.NodeName, serverSupportsResize)
+			if err != nil {
+				return err
+			}
+			if resizeSupported {
+				if !isInstanceManagerCPUResizeComplete(imPod, resourceReq) {
+					pendingInstanceManagers = append(pendingInstanceManagers, fmt.Sprintf("%v: %v", imPod.Name, getInstanceManagerCPUResizeStatus(imPod)))
+				}
+				continue
+			}
+		}
+
+		if isCPURequestSynced {
 			continue
 		}
 
-		notUpdatedPods = append(notUpdatedPods, imPod)
-	}
-
-	if len(notUpdatedPods) == 0 {
-		return nil
-	}
-
-	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
-	if err != nil {
-		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
-	}
-	if !stopped {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
-	}
-
-	for _, pod := range notUpdatedPods {
-		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
-		if err := sc.ds.DeletePod(pod.Name); err != nil {
-			return err
+		if im.Spec.Type == longhorn.InstanceManagerTypeAllInOne {
+			podsToDelete = append(podsToDelete, imPod)
+		} else {
+			pendingInstanceManagers = append(pendingInstanceManagers, fmt.Sprintf("%v: awaiting instance manager reconciliation", imPod.Name))
 		}
 	}
 
+	if len(podsToDelete) > 0 {
+		stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
+		}
+		if !stopped {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
+		}
+
+		for _, pod := range podsToDelete {
+			sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
+			if err := sc.ds.DeletePod(pod.Name); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(pendingInstanceManagers) > 0 {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("waiting for instance manager CPU requests to converge for %v setting: %v", types.SettingNameGuaranteedInstanceManagerCPU, strings.Join(pendingInstanceManagers, "; "))}
+	}
+
 	return nil
+}
+
+func getInstanceManagerCPUResizeStatus(pod *corev1.Pod) string {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Status != corev1.ConditionTrue ||
+			(condition.Type != corev1.PodResizePending && condition.Type != corev1.PodResizeInProgress) {
+			continue
+		}
+		if condition.Reason != "" || condition.Message != "" {
+			return fmt.Sprintf("%s: %s", condition.Reason, condition.Message)
+		}
+	}
+	return "waiting for kubelet to allocate the requested CPU"
 }
 
 func (sc *SettingController) cleanupFailedSupportBundles() error {

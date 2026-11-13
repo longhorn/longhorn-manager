@@ -255,6 +255,11 @@ func (s *DataStore) UpdatePod(obj *corev1.Pod) (*corev1.Pod, error) {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
 }
 
+// UpdatePodResize updates container resource requirements through the Pod resize subresource.
+func (s *DataStore) UpdatePodResize(obj *corev1.Pod) (*corev1.Pod, error) {
+	return s.kubeClient.CoreV1().Pods(s.namespace).UpdateResize(context.TODO(), obj.Name, obj, metav1.UpdateOptions{})
+}
+
 // PatchPod patches Pod for the given name and namespace.
 func (s *DataStore) PatchPod(name string, patch []byte) (*corev1.Pod, error) {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Patch(context.TODO(), name, patchtypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
