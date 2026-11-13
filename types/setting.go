@@ -1314,7 +1314,7 @@ var (
 			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
 			"WARNING: \n\n" +
 			"  - Value 0 means unsetting CPU requests for instance manager pods. \n\n" +
-			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 40. \n\n" +
+			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 50. \n\n" +
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, the instance manager pod using this global setting will be automatically restarted without instances running on the instance manager. " +
@@ -1333,7 +1333,7 @@ var (
 		Default:            fmt.Sprintf("{%q:\"12\",%q:\"12\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 		ValueFloatRange: map[string]float64{
 			ValueFloatRangeMinimum: 0,
-			ValueFloatRangeMaximum: 40,
+			ValueFloatRangeMaximum: 50,
 		},
 	}
 
