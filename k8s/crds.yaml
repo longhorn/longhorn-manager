@@ -5473,6 +5473,159 @@ spec:
                 - disabled
                 - enabled
                 type: string
+              volumeAntiAffinity:
+                description: |-
+                  VolumeAntiAffinity keeps the replicas of this volume off the nodes that
+                  hold replicas of related volumes, using the terms inherited from the pod.
+                  Empty means disabled.
+                enum:
+                - ""
+                - enabled
+                - disabled
+                type: string
+              volumeAntiAffinityFromPod:
+                description: |-
+                  VolumeAntiAffinityFromPod is maintained by Longhorn, which replaces any
+                  value written by users.
+                nullable: true
+                properties:
+                  pendingInheritance:
+                    description: |-
+                      PendingInheritance holds replica scheduling until the terms are
+                      inherited from the pod. The CSI driver sets it at creation.
+                    type: boolean
+                  pod:
+                    description: Pod is the namespace/name of the pod the terms are
+                      inherited from.
+                    type: string
+                  preferredTerms:
+                    description: |-
+                      PreferredTerms rank first the nodes that hold the fewest replicas of
+                      related volumes.
+                    items:
+                      description: |-
+                        VolumeAntiAffinityTerm is a node-level spreading rule inherited from a pod.
+                        Volumes of different pods that carry the same term are related.
+                      properties:
+                        labelSelector:
+                          description: |-
+                            LabelSelector of the rule, with matchLabelKeys and mismatchLabelKeys
+                            merged.
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
+                              items:
+                                description: |-
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
+                                    type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        namespaces:
+                          description: Namespaces the rule applies to, sorted.
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  requiredTerms:
+                    description: RequiredTerms exclude the nodes that hold a replica
+                      of a related volume.
+                    items:
+                      description: |-
+                        VolumeAntiAffinityTerm is a node-level spreading rule inherited from a pod.
+                        Volumes of different pods that carry the same term are related.
+                      properties:
+                        labelSelector:
+                          description: |-
+                            LabelSelector of the rule, with matchLabelKeys and mismatchLabelKeys
+                            merged.
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
+                              items:
+                                description: |-
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
+                                    type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        namespaces:
+                          description: Namespaces the rule applies to, sorted.
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                type: object
             type: object
           status:
             description: VolumeStatus defines the observed state of the Longhorn volume

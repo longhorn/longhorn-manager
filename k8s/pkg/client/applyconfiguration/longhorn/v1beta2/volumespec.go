@@ -59,10 +59,17 @@ type VolumeSpecApplyConfiguration struct {
 	// be scheduled in, derived from the CSI accessible topology at creation -
 	// the same failure domains as the PV nodeAffinity terms (a node must match
 	// at least one term). Empty means unconstrained.
-	TopologyRequirement       []VolumeTopologyTermApplyConfiguration     `json:"topologyRequirement,omitempty"`
-	DisableFrontend           *bool                                      `json:"disableFrontend,omitempty"`
-	RevisionCounterDisabled   *bool                                      `json:"revisionCounterDisabled,omitempty"`
-	UnmapMarkSnapChainRemoved *longhornv1beta2.UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved,omitempty"`
+	TopologyRequirement []VolumeTopologyTermApplyConfiguration `json:"topologyRequirement,omitempty"`
+	// VolumeAntiAffinity keeps the replicas of this volume off the nodes that
+	// hold replicas of related volumes, using the terms inherited from the pod.
+	// Empty means disabled.
+	VolumeAntiAffinity *longhornv1beta2.VolumeAntiAffinity `json:"volumeAntiAffinity,omitempty"`
+	// VolumeAntiAffinityFromPod is maintained by Longhorn, which replaces any
+	// value written by users.
+	VolumeAntiAffinityFromPod *VolumeAntiAffinityFromPodApplyConfiguration `json:"volumeAntiAffinityFromPod,omitempty"`
+	DisableFrontend           *bool                                        `json:"disableFrontend,omitempty"`
+	RevisionCounterDisabled   *bool                                        `json:"revisionCounterDisabled,omitempty"`
+	UnmapMarkSnapChainRemoved *longhornv1beta2.UnmapMarkSnapChainRemoved   `json:"unmapMarkSnapChainRemoved,omitempty"`
 	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node.
 	ReplicaSoftAntiAffinity *longhornv1beta2.ReplicaSoftAntiAffinity `json:"replicaSoftAntiAffinity,omitempty"`
 	// Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone.
@@ -281,6 +288,22 @@ func (b *VolumeSpecApplyConfiguration) WithTopologyRequirement(values ...*Volume
 		}
 		b.TopologyRequirement = append(b.TopologyRequirement, *values[i])
 	}
+	return b
+}
+
+// WithVolumeAntiAffinity sets the VolumeAntiAffinity field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the VolumeAntiAffinity field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithVolumeAntiAffinity(value longhornv1beta2.VolumeAntiAffinity) *VolumeSpecApplyConfiguration {
+	b.VolumeAntiAffinity = &value
+	return b
+}
+
+// WithVolumeAntiAffinityFromPod sets the VolumeAntiAffinityFromPod field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the VolumeAntiAffinityFromPod field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithVolumeAntiAffinityFromPod(value *VolumeAntiAffinityFromPodApplyConfiguration) *VolumeSpecApplyConfiguration {
+	b.VolumeAntiAffinityFromPod = value
 	return b
 }
 
