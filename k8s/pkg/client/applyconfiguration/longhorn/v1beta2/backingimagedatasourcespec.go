@@ -27,14 +27,15 @@ import (
 //
 // BackingImageDataSourceSpec defines the desired state of the Longhorn backing image data source
 type BackingImageDataSourceSpecApplyConfiguration struct {
-	NodeID          *string                                     `json:"nodeID,omitempty"`
-	UUID            *string                                     `json:"uuid,omitempty"`
-	DiskUUID        *string                                     `json:"diskUUID,omitempty"`
-	DiskPath        *string                                     `json:"diskPath,omitempty"`
-	Checksum        *string                                     `json:"checksum,omitempty"`
-	SourceType      *longhornv1beta2.BackingImageDataSourceType `json:"sourceType,omitempty"`
-	Parameters      map[string]string                           `json:"parameters,omitempty"`
-	FileTransferred *bool                                       `json:"fileTransferred,omitempty"`
+	NodeID            *string                                     `json:"nodeID,omitempty"`
+	UUID              *string                                     `json:"uuid,omitempty"`
+	DiskUUID          *string                                     `json:"diskUUID,omitempty"`
+	DiskPath          *string                                     `json:"diskPath,omitempty"`
+	Checksum          *string                                     `json:"checksum,omitempty"`
+	SourceType        *longhornv1beta2.BackingImageDataSourceType `json:"sourceType,omitempty"`
+	Parameters        map[string]string                           `json:"parameters,omitempty"`
+	FileTransferred   *bool                                       `json:"fileTransferred,omitempty"`
+	RecoveryRequested *bool                                       `json:"recoveryRequested,omitempty"`
 }
 
 // BackingImageDataSourceSpecApplyConfiguration constructs a declarative configuration of the BackingImageDataSourceSpec type for use with
@@ -110,5 +111,13 @@ func (b *BackingImageDataSourceSpecApplyConfiguration) WithParameters(entries ma
 // If called multiple times, the FileTransferred field is set to the value of the last call.
 func (b *BackingImageDataSourceSpecApplyConfiguration) WithFileTransferred(value bool) *BackingImageDataSourceSpecApplyConfiguration {
 	b.FileTransferred = &value
+	return b
+}
+
+// WithRecoveryRequested sets the RecoveryRequested field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RecoveryRequested field is set to the value of the last call.
+func (b *BackingImageDataSourceSpecApplyConfiguration) WithRecoveryRequested(value bool) *BackingImageDataSourceSpecApplyConfiguration {
+	b.RecoveryRequested = &value
 	return b
 }
