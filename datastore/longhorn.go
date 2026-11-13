@@ -273,7 +273,7 @@ func (s *DataStore) syncV2DataEngineGuaranteedInstanceManagerCPU() error {
 	}
 
 	// The guaranteedInstanceManagerCPUInPercentage value should not exceed the maximum value allowed
-	valueMaximum, ok := defaultSetting.ValueFloatRange[types.ValueFloatRangeMaximum]
+	valueMaximum, ok := defaultSetting.GetValueFloatRange(longhorn.DataEngineTypeV2)[types.ValueFloatRangeMaximum]
 	if ok {
 		if float64(guaranteedInstanceManagerCPUInPercentage) > valueMaximum {
 			originalGuaranteedInstanceManagerCPUInPercentage := guaranteedInstanceManagerCPUInPercentage

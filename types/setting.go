@@ -375,6 +375,9 @@ type SettingDefinition struct {
 	// Use map to present minimum and maximum value instead of using int directly, so we can omitempy and distinguish 0 or nil at the same time.
 	ValueIntRange   map[string]int     `json:"range,omitempty"`      // +optional
 	ValueFloatRange map[string]float64 `json:"floatRange,omitempty"` // +optional
+	// DataEngineValueFloatRange specifies the float value range per data engine, and the validation relies on it instead of ValueFloatRange.
+	// It is not exposed in the API, so ValueFloatRange is only set to the overall range across all data engines for API clients.
+	DataEngineValueFloatRange map[longhorn.DataEngineType]map[string]float64 `json:"-"`
 
 	// If DataEngineSpecific is false, the setting is applicable to both V1 and V2 Data Engine, and Default is a non-JSON string.
 	// If DataEngineSpecific is true, the setting is only applicable to V1 or V2 Data Engine, and Default is a JSON string.
@@ -1307,7 +1310,7 @@ var (
 			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
 			"WARNING: \n\n" +
 			"  - Value 0 means unsetting CPU requests for instance manager pods. \n\n" +
-			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 40. \n\n" +
+			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 40 for the V1 Data Engine and from 0 to 50 for the V2 Data Engine. \n\n" +
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, the instance manager pod using this global setting will be automatically restarted without instances running on the instance manager. \n\n" +
@@ -1315,6 +1318,7 @@ var (
 			"It is necessary that the effective instance manager pod CPU request reserve at least as many CPU cores as configured by the V2 Data Engine CPU Mask based on the node's allocatable CPU capacity. " +
 			"For example, reserving 2 CPU cores on a node with 8 allocatable CPUs requires an effective CPU request of at least 25% or 2 CPU cores. " +
 			"If the V2 Data Engine Number of CPU Cores setting is specified, Longhorn automatically raises the pod CPU request to at least that many CPU cores. " +
+			"Otherwise, adjust this setting whenever the V2 Data Engine CPU Mask is changed. If the CPU request is lower than the number of CPU cores in the mask and interrupt mode is disabled, Longhorn records a warning event on the instance manager. " +
 			"Setting a minimum CPU usage is critical to maintaining stability during periods of high node load.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeFloat,
@@ -1322,9 +1326,22 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"12\",%q:\"12\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+		// ValueFloatRange is only the overall range across all data engines for API clients.
+		// The actual validation relies on DataEngineValueFloatRange below.
 		ValueFloatRange: map[string]float64{
 			ValueFloatRangeMinimum: 0,
-			ValueFloatRangeMaximum: 40,
+			ValueFloatRangeMaximum: 50,
+		},
+		DataEngineValueFloatRange: map[longhorn.DataEngineType]map[string]float64{
+			longhorn.DataEngineTypeV1: {
+				ValueFloatRangeMinimum: 0,
+				ValueFloatRangeMaximum: 40,
+			},
+			// V2 allows 50% so that the CPU request can match half of the CPU cores on a node, e.g. 2 dedicated cores on a 4-CPU node.
+			longhorn.DataEngineTypeV2: {
+				ValueFloatRangeMinimum: 0,
+				ValueFloatRangeMaximum: 50,
+			},
 		},
 	}
 
@@ -1922,7 +1939,8 @@ var (
 			"It specifies the CPU cores used by the Storage Performance Development Kit (SPDK) target daemon, which runs in each Instance Manager pod. \n\n" +
 			"It is necessary that the effective V2 Instance Manager pod CPU request reserves at least the same number of CPU cores configured here, based on the node's allocatable CPU capacity. " +
 			"If the InstanceManagerCPURequest field is set on the node, it overrides the global Guaranteed Instance Manager CPU setting. " +
-			"If the effective CPU request is lower than the assigned CPU cores, the V2 Instance Manager may experience CPU contention and become unstable under heavy workloads. \n\n" +
+			"If the effective CPU request is lower than the assigned CPU cores, the V2 Instance Manager may experience CPU contention and become unstable under heavy workloads, and Longhorn records a warning event on the instance manager unless interrupt mode is enabled. " +
+			"Therefore, adjust the Guaranteed Instance Manager CPU setting whenever this setting is changed. For example, 2 CPU cores on a node with 4 allocatable CPUs require a Guaranteed Instance Manager CPU of 50%. \n\n" +
 			"A minimum of 2 CPU cores is recommended. SPDK uses a busy-polling reactor model. The first (lowest-numbered) core of the mask runs only the admin (main) reactor, which handles management RPCs, " +
 			"and the other cores run the I/O pollers (the NVMe-oF target poll groups and the ublk target). " +
 			"With only a single core, the admin reactor and the I/O pollers share that core, so heavy I/O workloads can delay RPC processing, causing increased latency, timeout events, and operational instability. " +
@@ -2904,6 +2922,14 @@ func parseSettingSingleFloat(definition SettingDefinition, value string) (map[lo
 	return values, nil
 }
 
+// GetValueFloatRange returns the float value range of the setting for the data engine.
+func (definition SettingDefinition) GetValueFloatRange(dataEngine longhorn.DataEngineType) map[string]float64 {
+	if valueFloatRange, ok := definition.DataEngineValueFloatRange[dataEngine]; ok {
+		return valueFloatRange
+	}
+	return definition.ValueFloatRange
+}
+
 // validateSettingFloatValues ensures all float64 values are within the defined range.
 func validateSettingFloatValues(definition SettingDefinition, values map[longhorn.DataEngineType]any) error {
 	var errs []error
@@ -2915,7 +2941,7 @@ func validateSettingFloatValues(definition SettingDefinition, values map[longhor
 			continue
 		}
 
-		valueFloatRange := definition.ValueFloatRange
+		valueFloatRange := definition.GetValueFloatRange(dataEngine)
 		if minValue, exists := valueFloatRange[ValueFloatRangeMinimum]; exists {
 			if floatValue < minValue {
 				errs = append(errs, fmt.Errorf("value %v for data engine %v should be larger than or equal to %v", floatValue, dataEngine, minValue))
