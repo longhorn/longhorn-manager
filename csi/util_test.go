@@ -1,6 +1,10 @@
 package csi
 
 import (
+	"io"
+	"os"
+	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -251,6 +255,112 @@ func TestRequiresSharedAccess(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result := requiresSharedAccess(tc.volume, tc.capability)
 			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestCheckDeviceReadable covers the data-path availability probe performed
+// before initializing a volume.
+//
+// Note the guard's narrow scope: it rejects hard read errors in the first
+// block and reads returning no data. Partially readable devices (first block
+// readable, other offsets failing) are a known, accepted limitation and are
+// not covered by this probe.
+func TestCheckDeviceReadable(t *testing.T) {
+	testCases := []struct {
+		name          string
+		fileSize      int
+		expectedError bool
+	}{
+		{
+			// Zero content: the probe checks readability only and
+			// intentionally does not inspect the data read back.
+			name:          "readable device",
+			fileSize:      4096,
+			expectedError: false,
+		},
+		{
+			name:          "readable device larger than one block",
+			fileSize:      8192,
+			expectedError: false,
+		},
+		{
+			// A partial read returning io.EOF is still a readable device;
+			// it must not be mistaken for an unavailable data path.
+			name:          "device smaller than one block",
+			fileSize:      512,
+			expectedError: false,
+		},
+		{
+			name:          "empty file",
+			fileSize:      0,
+			expectedError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			devicePath := filepath.Join(t.TempDir(), "dev")
+			require.NoError(t, os.WriteFile(devicePath, make([]byte, tc.fileSize), 0600))
+
+			err := checkDeviceReadable(devicePath)
+			if tc.expectedError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("directory read fails", func(t *testing.T) {
+		err := checkDeviceReadable(t.TempDir())
+		require.ErrorIs(t, err, syscall.EISDIR)
+	})
+
+	t.Run("nonexistent device path", func(t *testing.T) {
+		err := checkDeviceReadable(filepath.Join(t.TempDir(), "nonexistent"))
+		require.Error(t, err)
+	})
+}
+
+// deviceProbeReader returns controlled read results for error-path tests.
+type deviceProbeReader struct {
+	n   int
+	err error
+}
+
+func (r deviceProbeReader) ReadAt(p []byte, off int64) (int, error) {
+	clear(p[:r.n])
+	return r.n, r.err
+}
+
+func TestCheckDeviceReaderReadable(t *testing.T) {
+	testCases := []struct {
+		name          string
+		n             int
+		readError     error
+		expectedError bool
+	}{
+		{name: "full read", n: 4096},
+		{name: "partial read with EOF", n: 512, readError: io.EOF},
+		{name: "empty read with EOF", readError: io.EOF, expectedError: true},
+		{name: "empty read with EIO", readError: syscall.EIO, expectedError: true},
+		{name: "empty read with ENODATA", readError: syscall.ENODATA, expectedError: true},
+		{name: "partial read with EIO", n: 512, readError: syscall.EIO, expectedError: true},
+		{name: "partial read with ENODATA", n: 512, readError: syscall.ENODATA, expectedError: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkDeviceReaderReadable(deviceProbeReader{n: tc.n, err: tc.readError}, "test-device")
+			if !tc.expectedError {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			if tc.readError != nil && tc.readError != io.EOF {
+				require.ErrorIs(t, err, tc.readError)
+			}
 		})
 	}
 }
