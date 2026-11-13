@@ -206,6 +206,8 @@ type EngineStatus struct {
 	// +nullable
 	PurgeStatus map[string]*PurgeStatus `json:"purgeStatus"`
 	// +optional
+	PostRebuildPurgeError string `json:"postRebuildPurgeError,omitempty"`
+	// +optional
 	// +nullable
 	RebuildStatus map[string]*RebuildStatus `json:"rebuildStatus"`
 	// +optional

@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -65,6 +66,10 @@ var (
 
 	purgeWaitIntervalInSecond = 24 * 60 * 60
 
+	postRebuildPurgeRetryCount            = 3
+	postRebuildPurgeRetryInterval         = 5 * time.Second
+	postRebuildPurgeInProgressWaitTimeout = 2 * time.Minute
+
 	// restoreMaxInterval caps the backoff between restore retries. Most
 	// failures retry until the restore succeeds, for example while a backup
 	// deletion holds the backup lock or a backup target is unreachable, so
@@ -87,6 +92,8 @@ var (
 	// number of consecutive actual size updates allowed during bursts
 	sizeUpdateBurst = 3
 )
+
+var errSnapshotPurgeInProgress = errors.New("snapshot purge is still in progress")
 
 const (
 	ConflictRetryCount = 5
@@ -2873,7 +2880,7 @@ func (ec *EngineController) waitForPreRebuildPurge(
 			"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
 		return false
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
+	if err := cleanupProxy.SnapshotPurge(dataEngineObj, true); err != nil {
 		log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 			"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
@@ -3006,11 +3013,117 @@ func (ec *EngineController) startPostRebuildPurge(
 			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
 		return
 	}
-	if err := cleanupProxy.SnapshotPurge(dataEngineObj); err != nil {
-		log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
-		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
-			"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", engine.Name, engine.Spec.VolumeName, err)
-		return
+
+	var lastErr error
+	attempts := 0
+	for attempts < postRebuildPurgeRetryCount {
+		attempts++
+		if attempts > 1 {
+			log.WithError(lastErr).Warnf("Failed to start snapshot purge after rebuilding (attempt %d/%d), retrying in %v",
+				attempts-1, postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval)
+			time.Sleep(postRebuildPurgeRetryInterval)
+		}
+
+		// Wait for purges already running on any replica (e.g. one that accepted a previous attempt
+		// that failed on another replica) to finish, so the start below is not rejected as busy.
+		if !ec.isEngineOwner(log, engine.Name) {
+			log.Warn("Stopped snapshot purge after rebuilding since this node no longer owns the engine")
+			return
+		}
+		lastErr = waitForNoSnapshotPurgeInProgress(log, dataEngineObj, cleanupProxy)
+		// Ownership may change while waiting, including when the wait returns an error.
+		if !ec.isEngineOwner(log, engine.Name) {
+			log.Warn("Stopped snapshot purge after rebuilding since this node no longer owns the engine")
+			return
+		}
+		if lastErr != nil {
+			if errors.Is(lastErr, errSnapshotPurgeInProgress) {
+				// The full wait budget is used up; another attempt would be rejected the same way.
+				break
+			}
+			continue
+		}
+
+		// Start without skipIfInProgress. The idle check above is not atomic with this call: a purge
+		// requested elsewhere (snapshot controller, manual or recurring purge) can start in between.
+		// With skipping, the engine would then return nil without purging the replicas that purge
+		// missed, and this retry would wrongly stop. Without skipping, nil means every replica accepted
+		// the purge, and a busy engine returns an "already purging" error that is retried.
+		lastErr = cleanupProxy.SnapshotPurge(dataEngineObj, false)
+		if lastErr == nil {
+			ec.setPostRebuildPurgeError(log, engine.Name, attempts, nil)
+			return
+		}
+		if etypes.IsAlreadyPurgingError(lastErr) {
+			log.WithError(lastErr).Info("Another snapshot purge started before the post-rebuild purge, will wait and retry")
+		}
+	}
+
+	log.WithError(lastErr).Errorf("Failed to start snapshot purge after rebuilding after %d attempts", attempts)
+	ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+		"Failed to start snapshot purge for engine %v and volume %v after rebuilding (%d attempts): %v",
+		engine.Name, engine.Spec.VolumeName, attempts, lastErr)
+	ec.setPostRebuildPurgeError(log, engine.Name, attempts, lastErr)
+}
+
+// waitForNoSnapshotPurgeInProgress waits, up to postRebuildPurgeInProgressWaitTimeout, until no
+// replica reports an in-progress snapshot purge. It returns an error wrapping
+// errSnapshotPurgeInProgress if replicas are still purging at the deadline, or the status error.
+func waitForNoSnapshotPurgeInProgress(log *logrus.Entry, dataEngineObj engineapi.DataEngineObject, cleanupProxy engineapi.EngineClientProxy) error {
+	deadline := time.Now().Add(postRebuildPurgeInProgressWaitTimeout)
+	for {
+		purgeStatus, err := cleanupProxy.SnapshotPurgeStatus(dataEngineObj)
+		if err != nil {
+			return errors.Wrap(err, "failed to get snapshot purge status")
+		}
+
+		var purging []string
+		for addr, status := range purgeStatus {
+			if status != nil && (status.IsPurging || status.State == engineapi.ProcessStateInProgress) {
+				purging = append(purging, addr)
+			}
+		}
+		if len(purging) == 0 {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return errors.Wrapf(errSnapshotPurgeInProgress, "replicas %v are still purging after waiting %v",
+				purging, postRebuildPurgeInProgressWaitTimeout)
+		}
+
+		log.Debugf("Waiting for the in-progress snapshot purge on replicas %v to finish before starting the post-rebuild purge", purging)
+		time.Sleep(postRebuildPurgeRetryInterval)
+	}
+}
+
+// setPostRebuildPurgeError records the post-rebuild purge start failure in
+// engine.Status.PostRebuildPurgeError, or clears it when purgeErr is nil.
+func (ec *EngineController) setPostRebuildPurgeError(log *logrus.Entry, engineName string, attempts int, purgeErr error) {
+	errMsg := ""
+	if purgeErr != nil {
+		errMsg = fmt.Sprintf("failed to start snapshot purge after rebuilding (%d attempts): %v", attempts, purgeErr)
+	}
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		e, err := ec.ds.GetEngineUncached(engineName)
+		if err != nil {
+			return err
+		}
+		// A node that no longer owns the engine must not write its status.
+		if e.Status.OwnerID != ec.controllerID {
+			log.Warnf("Skipped recording the post-rebuild snapshot purge result since engine %v is now owned by %v",
+				engineName, e.Status.OwnerID)
+			return nil
+		}
+		if e.Status.PostRebuildPurgeError == errMsg {
+			return nil
+		}
+		e.Status.PostRebuildPurgeError = errMsg
+		_, err = ec.ds.UpdateEngineStatus(e)
+		return err
+	})
+	if err != nil {
+		log.WithError(err).Warn("Failed to record the post-rebuild snapshot purge result in engine status")
 	}
 }
 
