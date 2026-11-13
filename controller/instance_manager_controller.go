@@ -40,6 +40,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -1945,14 +1946,50 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	}
 
 	log.Info("Creating instance manager pod")
-	if _, err := imc.ds.CreatePod(podSpec); err != nil {
+	pod, err := imc.ds.CreatePod(podSpec)
+	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			return nil
 		}
 		return err
 	}
 
+	// Check the created pod, since admission controllers such as LimitRange may change the CPU request.
+	imc.warnIfCPURequestLowerThanCPUMask(im, pod)
+
 	return nil
+}
+
+// warnIfCPURequestLowerThanCPUMask records a warning event if the CPU request of the V2 instance manager pod
+// cannot reserve all the CPU cores in the CPU mask, since busy-polling SPDK reactors fully occupy every core in the mask.
+func (imc *InstanceManagerController) warnIfCPURequestLowerThanCPUMask(im *longhorn.InstanceManager, pod *corev1.Pod) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
+		return
+	}
+
+	// In interrupt mode, SPDK reactors sleep when idle instead of busy-polling, so they do not fully occupy the cores in the mask.
+	if im.Status.DataEngineStatus.V2.InterruptModeEnabled == longhorn.TrueValue {
+		return
+	}
+
+	// The CPU mask in status is empty when the Data Engine Number of CPU Cores setting is used,
+	// and the CPU request is already raised to cover those cores, so no warning is needed.
+	cpuMaskCoreNumber := countCPUCoresFromMask(im.Status.DataEngineStatus.V2.CPUMask)
+
+	// Each CPU core in the mask is fully occupied by a busy-polling SPDK reactor, and 1 CPU core equals 1000m in Kubernetes.
+	// See https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-cpu
+	// For example, on a node with 4 allocatable CPUs and CPU mask 0x3 (2 CPU cores):
+	//   - Guaranteed Instance Manager CPU 12%: request 480m < required 2000m, so a warning is recorded.
+	//   - Guaranteed Instance Manager CPU 50%: request 2000m >= required 2000m, so no warning is recorded.
+	requiredMilliCPU := int64(cpuMaskCoreNumber) * 1000
+	cpuRequest := pod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+	if cpuRequest.MilliValue() >= requiredMilliCPU {
+		return
+	}
+
+	imc.eventRecorder.Eventf(im, corev1.EventTypeWarning, constant.EventReasonInsufficientCPURequest,
+		"CPU request %v of instance manager pod %v is lower than the %v CPU cores in CPU mask %v; adjust the %v setting or the InstanceManagerCPURequest field of node %v",
+		cpuRequest.String(), pod.Name, cpuMaskCoreNumber, im.Status.DataEngineStatus.V2.CPUMask, types.SettingNameGuaranteedInstanceManagerCPU, im.Spec.NodeID)
 }
 
 func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {

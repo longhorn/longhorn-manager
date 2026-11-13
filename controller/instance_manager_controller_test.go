@@ -19,6 +19,7 @@ import (
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -1118,5 +1119,60 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 		for _, isolationArg := range isolationArgs {
 			c.Assert(hasArg(args, isolationArg), Equals, false, Commentf("test case: %v, args: %v", name, args))
 		}
+	}
+}
+
+func (s *TestSuite) TestWarnIfCPURequestLowerThanCPUMask(c *C) {
+	testCases := map[string]struct {
+		dataEngine    longhorn.DataEngineType
+		cpuMask       string
+		cpuRequest    string
+		interruptMode bool
+		expectEvent   bool
+	}{
+		"v2 request lower than mask cores": {
+			dataEngine: longhorn.DataEngineTypeV2, cpuMask: "0x3", cpuRequest: "1920m", expectEvent: true,
+		},
+		"v2 request covers mask cores": {
+			dataEngine: longhorn.DataEngineTypeV2, cpuMask: "0x3", cpuRequest: "2",
+		},
+		"v2 dynamic CPU pinning without mask": {
+			dataEngine: longhorn.DataEngineTypeV2, cpuMask: "", cpuRequest: "480m",
+		},
+		"v2 interrupt mode is ignored": {
+			dataEngine: longhorn.DataEngineTypeV2, cpuMask: "0x3", cpuRequest: "480m", interruptMode: true,
+		},
+		"v1 is ignored": {
+			dataEngine: longhorn.DataEngineTypeV1, cpuMask: "0x3", cpuRequest: "480m",
+		},
+	}
+
+	for name, tc := range testCases {
+		fakeRecorder := record.NewFakeRecorder(1)
+		imc := &InstanceManagerController{eventRecorder: fakeRecorder}
+
+		im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateStarting,
+			TestNode1, TestNode1, TestIP1, nil, nil, nil, tc.dataEngine, TestInstanceManagerImage, false)
+		im.Status.DataEngineStatus.V2.CPUMask = tc.cpuMask
+		if tc.interruptMode {
+			im.Status.DataEngineStatus.V2.InterruptModeEnabled = longhorn.TrueValue
+		}
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: im.Name},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(tc.cpuRequest)},
+				},
+			}}},
+		}
+
+		imc.warnIfCPURequestLowerThanCPUMask(im, pod)
+
+		if !tc.expectEvent {
+			c.Assert(fakeRecorder.Events, HasLen, 0, Commentf("test case: %v", name))
+			continue
+		}
+		c.Assert(fakeRecorder.Events, HasLen, 1, Commentf("test case: %v", name))
+		c.Assert(<-fakeRecorder.Events, Matches, "Warning "+constant.EventReasonInsufficientCPURequest+" .*", Commentf("test case: %v", name))
 	}
 }
