@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -50,6 +51,10 @@ type KubernetesPodController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	// zeroGraceDeletedPods holds the last state of a zero grace-period deletion of a
+	// Longhorn-volume pod, so the cleanup can run after the pod left the cache and be retried.
+	zeroGraceDeletedPods sync.Map
 }
 
 func NewKubernetesPodController(
@@ -78,7 +83,7 @@ func NewKubernetesPodController(
 	if _, err = ds.PodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePodChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
-		DeleteFunc: kc.enqueuePodChange,
+		DeleteFunc: kc.enqueuePodDeletion,
 	}); err != nil {
 		return nil, err
 	}
@@ -114,12 +119,14 @@ func (kc *KubernetesPodController) processNextWorkItem() bool {
 		return false
 	}
 	defer kc.queue.Done(key)
-	err := kc.syncHandler(key.(string))
-	kc.handleErr(err, key)
+	// the state the sync works on, the delete handler may store a newer one meanwhile
+	deletedPod, _ := kc.zeroGraceDeletedPods.Load(key)
+	err := kc.syncHandler(key.(string), deletedPod)
+	kc.handleErr(err, key, deletedPod)
 	return true
 }
 
-func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
+func (kc *KubernetesPodController) handleErr(err error, key, deletedPod interface{}) {
 	if err == nil {
 		kc.queue.Forget(key)
 		return
@@ -134,6 +141,7 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 
 	handleReconcileErrorLogging(log, err, "Dropping Longhorn kubernetes pod out of the queue")
 	kc.queue.Forget(key)
+	kc.zeroGraceDeletedPods.CompareAndDelete(key, deletedPod)
 	utilruntime.HandleError(err)
 }
 
@@ -144,7 +152,7 @@ func getLoggerForPod(logger logrus.FieldLogger, pod *corev1.Pod) *logrus.Entry {
 	})
 }
 
-func (kc *KubernetesPodController) syncHandler(key string) (err error) {
+func (kc *KubernetesPodController) syncHandler(key string, deletedPod interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to sync pod %v", key)
 	}()
@@ -157,6 +165,11 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "Error getting Pod: %s", name)
 	}
+
+	if err := kc.cleanupDeletedForceDeletedPod(key, pod, deletedPod); err != nil {
+		return err
+	}
+
 	if pod == nil {
 		return nil
 	}
@@ -166,12 +179,31 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 		return nil
 	}
 
+	// A stored force-deleted state enqueues every event of its key, also pods without a volume.
+	shouldSync, err := kc.shouldSyncPod(pod)
+	if err != nil {
+		return err
+	}
+	if !shouldSync {
+		return nil
+	}
+
 	if isCSIPluginPod(pod) {
 		return kc.handleWorkloadPodDeletionIfCSIPluginPodIsDown(pod)
 	}
 
-	if err := kc.cleanupForceDeletedPodResources(pod); err != nil {
-		return err
+	// A stored state for this UID was already handled above, including its retry window.
+	if deletedPod == nil || deletedPod.(*deletedPodState).pod.UID != pod.UID {
+		nodeStillUp, err := kc.cleanupForceDeletedPodResources(pod)
+		if err != nil {
+			return err
+		}
+		if nodeStillUp && !isPodInTerminalPhase(pod) {
+			// Finalizers can delay the delete event until after the node goes down. Keep
+			// the first observation without replacing a concurrent delete handler's state.
+			kc.zeroGraceDeletedPods.LoadOrStore(key, &deletedPodState{pod: pod, observedAt: time.Now()})
+			kc.queue.AddAfter(key, forceDeletedPodCleanupRetryInterval)
+		}
 	}
 
 	if err := kc.handlePodDeletionIfNodeDown(pod, nodeID, namespace); err != nil {
@@ -360,28 +392,111 @@ func (kc *KubernetesPodController) isControllerInBlacklist(resource *metav1.Owne
 	return false
 }
 
-// cleanupForceDeletedPodResources removes stale resources left behind when a pod
-// is force-deleted (i.e., deletion grace period is zero).
-func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
-	if pod.DeletionTimestamp.IsZero() {
+// isZeroGracePeriodDeletion reports a zero grace-period deletion: a force deletion, but also
+// the final delete of a graceful termination, so callers additionally gate on the node.
+func isZeroGracePeriodDeletion(pod *corev1.Pod) bool {
+	return !pod.DeletionTimestamp.IsZero() &&
+		pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds == 0
+}
+
+// deletedPodState is a zero grace-period deletion's last pod state and when it was observed.
+// The retry window runs from observedAt, so it is independent of the apiserver clock.
+type deletedPodState struct {
+	pod        *corev1.Pod
+	observedAt time.Time
+}
+
+const (
+	// forceDeletedPodCleanupRetryInterval is the requeue delay while the node is still up.
+	forceDeletedPodCleanupRetryInterval = 10 * time.Second
+	// forceDeletedPodCleanupRetryPeriod bounds the retry; it must cover the node-monitor grace period.
+	forceDeletedPodCleanupRetryPeriod = 2 * time.Minute
+)
+
+// cleanupDeletedForceDeletedPod cleans up a stored zero grace-period deletion when the pod is
+// gone, cached under a finalizer, or replaced on another node, retrying while its node is up.
+func (kc *KubernetesPodController) cleanupDeletedForceDeletedPod(key string, pod *corev1.Pod, obj interface{}) error {
+	if obj == nil {
 		return nil
 	}
 
-	if *pod.DeletionGracePeriodSeconds != 0 {
+	state := obj.(*deletedPodState)
+	deletedPod := state.pod
+	// A not-yet-scheduled replacement has an unknown node. Its later update re-enqueues the
+	// key, so keep the state until then.
+	if pod != nil && pod.UID != deletedPod.UID && pod.Spec.NodeName == "" {
 		return nil
+	}
+
+	// A replacement on the same node reuses the VolumeAttachment, so leave it in place.
+	// The same UID can still be in the cache when a finalizer prevents the final deletion.
+	if pod == nil || pod.UID == deletedPod.UID || pod.Spec.NodeName != deletedPod.Spec.NodeName {
+		nodeStillUp, err := kc.cleanupForceDeletedPodResources(deletedPod)
+		if err != nil {
+			return err
+		}
+
+		// Node still up, so nothing was cleaned up yet. Requeue until it is down or the window
+		// expires. nodeStillUp reuses the cleanup's node read. Ref: https://github.com/longhorn/longhorn/issues/14182
+		if nodeStillUp && kc.shouldRetryForceDeletedPodCleanup(state) {
+			kc.queue.AddAfter(key, forceDeletedPodCleanupRetryInterval)
+			return nil
+		}
+	}
+
+	kc.zeroGraceDeletedPods.CompareAndDelete(key, obj)
+	return nil
+}
+
+// shouldRetryForceDeletedPodCleanup retries a cleanup whose node is still up (checked by the
+// caller) until the window expires. A terminal pod (graceful termination) is not retried.
+func (kc *KubernetesPodController) shouldRetryForceDeletedPodCleanup(state *deletedPodState) bool {
+	if isPodInTerminalPhase(state.pod) {
+		return false
+	}
+	return time.Since(state.observedAt) < forceDeletedPodCleanupRetryPeriod
+}
+
+// isPodInTerminalPhase reports a terminal phase, which the kubelet sets before the final delete
+// of a graceful termination, while a force-deleted pod on a frozen node stays non-terminal.
+func isPodInTerminalPhase(pod *corev1.Pod) bool {
+	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
+}
+
+// cleanupForceDeletedPodResources deletes the VolumeAttachment that Kubernetes cannot detach
+// from a force-deleted pod on a down or gone node. It returns nodeStillUp true only for a zero
+// grace-period deletion whose node is not yet down, so the caller shares this one node read.
+func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) (nodeStillUp bool, err error) {
+	if !isZeroGracePeriodDeletion(pod) {
+		return false, nil
+	}
+
+	// Only a down or gone node keeps a VolumeAttachment Kubernetes cannot detach, so restrict
+	// the cleanup to that case. Ref: https://github.com/longhorn/longhorn/issues/2947
+	if pod.Spec.NodeName == "" {
+		return false, nil
+	}
+	isNodeDownOrDeleted, err := kc.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to check if node %v of force-deleted pod %v is down", pod.Spec.NodeName, pod.Name)
+	}
+	if !isNodeDownOrDeleted {
+		return true, nil
 	}
 
 	// Cleanup volume attachments associated with the force-deleted pod.
 	// Ref: https://github.com/longhorn/longhorn/issues/10689
 	volumeAttachments, err := kc.getVolumeAttachmentsOfPod(pod)
 	if err != nil {
-		return err
+		return false, err
 	}
 
+	// Keep checking the remaining attachments, the collected errors requeue the key.
+	var checkErrs []error
 	for _, volumeAttachment := range volumeAttachments {
 		shouldDeleteVolumeAttachment, err := kc.shouldDeleteVolumeAttachmentForForceDeletedPod(pod, volumeAttachment)
 		if err != nil {
-			logrus.WithError(err).Errorf("%v: failed to check if volume attachment %q for force-deleted pod %q should be deleted", controllerAgentName, volumeAttachment.Name, pod.Name)
+			checkErrs = append(checkErrs, errors.Wrapf(err, "failed to check if volume attachment %q for force-deleted pod %q should be deleted", volumeAttachment.Name, pod.Name))
 			continue
 		}
 
@@ -396,13 +511,13 @@ func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.P
 			if datastore.ErrorIsNotFound(err) {
 				continue
 			}
-			return errors.Wrapf(err, "failed to delete volume attachment %q for force-deleted pod %q", volumeAttachment.Name, pod.Name)
+			return false, errors.Wrapf(err, "failed to delete volume attachment %q for force-deleted pod %q", volumeAttachment.Name, pod.Name)
 		}
 
 		kc.logger.Infof("%v: deleted volume attachment %q for force-deleted pod %q", controllerAgentName, volumeAttachment.Name, pod.Name)
 	}
 
-	return nil
+	return false, errors.Join(checkErrs...)
 }
 
 // shouldDeleteVolumeAttachmentForForceDeletedPod checks whether the VolumeAttachment
@@ -440,13 +555,14 @@ func (kc *KubernetesPodController) shouldDeleteVolumeAttachmentForForceDeletedPo
 		return false, err
 	}
 
-	if conflictingPod := kc.getPodWithConflictedAttachment(pods, pod); conflictingPod != nil {
+	conflictingPod, err := kc.getPodWithConflictedAttachment(pods, pod)
+	if conflictingPod != nil {
 		kc.logger.Infof("%v: found conflicting pod %q with attachment for volume %q; cleaning up volume attachment %q for force-deleted pod %q",
 			controllerAgentName, conflictingPod.Name, persistentVolume.Name, volumeAttachment.Name, pod.Name)
 		return true, nil // There are pods that require the volume and run on another node.
 	}
 
-	return false, nil
+	return false, err
 }
 
 // multiAttachEventMessages are the markers the Kubernetes attach/detach controller
@@ -478,8 +594,10 @@ func isMultiAttachEvent(event *corev1.Event) bool {
 
 // getPodWithConflictedAttachment returns the first pod in Pending phase from the
 // given list of pods that has a multi-attach event (see isMultiAttachEvent) caused
-// by the specified conflictingPod
-func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1.Pod, conflictingPod *corev1.Pod) *corev1.Pod {
+// by the specified conflictingPod. Without such a pod, it returns the joined errors
+// of failed event lookups, if any.
+func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1.Pod, conflictingPod *corev1.Pod) (*corev1.Pod, error) {
+	var eventErrs []error
 	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil {
 			continue
@@ -491,7 +609,7 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 
 		events, err := kc.ds.GetResourceEventList("Pod", pod.Name, pod.Namespace)
 		if err != nil {
-			logrus.WithError(err).Warnf("%v: failed to get events for pod %v", controllerAgentName, pod.Name)
+			eventErrs = append(eventErrs, errors.Wrapf(err, "failed to get events for pod %v", pod.Name))
 			continue
 		}
 
@@ -502,7 +620,7 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 			}
 
 			if strings.Contains(event.Message, conflictingPod.Name) {
-				return pod
+				return pod, nil
 			}
 
 			logrus.Debugf("%s: pod %v has multi-attach event, but not caused by pod %v, skipping cleanup",
@@ -510,7 +628,7 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 		}
 	}
 
-	return nil
+	return nil, errors.Join(eventErrs...)
 }
 
 // handlePodDeletionIfNodeDown determines whether we are allowed to forcefully delete a pod
@@ -784,6 +902,12 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 		return
 	}
 
+	// a pod with a stored force-deleted pod state under its key, e.g. a replacement pod getting scheduled
+	if _, ok := kc.zeroGraceDeletedPods.Load(key); ok {
+		kc.queue.Add(key)
+		return
+	}
+
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -800,9 +924,20 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 		}
 	}
 
-	if isCSIPluginPod(pod) {
-		kc.queue.Add(key)
+	shouldSync, err := kc.shouldSyncPod(pod)
+	if err != nil {
+		utilruntime.HandleError(err)
 		return
+	}
+	if shouldSync {
+		kc.queue.Add(key)
+	}
+}
+
+// shouldSyncPod returns true for a CSI plugin pod or a pod with a PV created by us (driver.longhorn.io)
+func (kc *KubernetesPodController) shouldSyncPod(pod *corev1.Pod) (bool, error) {
+	if isCSIPluginPod(pod) {
+		return true, nil
 	}
 
 	for _, v := range pod.Spec.Volumes {
@@ -815,8 +950,7 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 			continue
 		}
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", pvc, err))
-			return
+			return false, errors.Wrapf(err, "failed to get PVC %v of pod %v", v.PersistentVolumeClaim.ClaimName, pod.Name)
 		}
 
 		pv, err := kc.getAssociatedPersistentVolume(pvc)
@@ -824,15 +958,44 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 			continue
 		}
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("error getting Persistent Volume for PVC: %v", pvc))
-			return
+			return false, errors.Wrapf(err, "failed to get PV of PVC %v", pvc.Name)
 		}
 
 		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == types.LonghornDriverName {
-			kc.queue.Add(key)
-			break
+			return true, nil
 		}
 	}
+
+	return false, nil
+}
+
+// enqueuePodDeletion records the last state of a zero grace-period deletion and enqueues the
+// key, because the worker may only see the key after the pod left the cache.
+func (kc *KubernetesPodController) enqueuePodDeletion(obj interface{}) {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		if deletedState, isTombstone := obj.(cache.DeletedFinalStateUnknown); isTombstone {
+			pod, ok = deletedState.Obj.(*corev1.Pod)
+		}
+	}
+
+	if ok && isZeroGracePeriodDeletion(pod) && !isCSIPluginPod(pod) {
+		// Store only Longhorn-volume pods (same filter as enqueuePodChange). On a lookup
+		// error store anyway, so a needed cleanup is not lost.
+		shouldSync, err := kc.shouldSyncPod(pod)
+		if err != nil || shouldSync {
+			key, err := controller.KeyFunc(pod)
+			if err == nil {
+				// One state per key: a same-name replacement's delete overwrites an earlier
+				// one, leaving that VolumeAttachment to the attach/detach controller.
+				kc.zeroGraceDeletedPods.Store(key, &deletedPodState{pod: pod, observedAt: time.Now()})
+				kc.queue.Add(key)
+				return
+			}
+		}
+	}
+
+	kc.enqueuePodChange(obj)
 }
 
 func (kc *KubernetesPodController) getAssociatedPersistentVolume(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolume, error) {
