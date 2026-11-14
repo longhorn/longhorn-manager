@@ -12,9 +12,8 @@ permissions: {}
 
 jobs:
   fossa-scan:
-    timeout-minutes: 60
     if: github.repository == 'longhorn/longhorn-manager' # FOSSA is not intended to run on forks.
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
