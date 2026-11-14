@@ -1,6 +1,7 @@
 package volume
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,6 +20,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 const tib = int64(1) << 40
@@ -296,6 +298,151 @@ func TestValidateLinkedCloneSize(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestVerifyVolumeDataSourceEncryption(t *testing.T) {
+	const (
+		srcVolName  = "src-vol"
+		destVolName = "dest-vol"
+		snapName    = "snap-0"
+	)
+
+	testCases := []struct {
+		name          string
+		dataSource    longhorn.VolumeDataSource
+		srcEncrypted  bool
+		destEncrypted bool
+		wantErr       bool
+	}{
+		{
+			name:          "plain to plain is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  false,
+			destEncrypted: false,
+			wantErr:       false,
+		},
+		{
+			name:          "encrypted to encrypted is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			wantErr:       false,
+		},
+		{
+			name:          "plain to encrypted is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  false,
+			destEncrypted: true,
+			wantErr:       true,
+		},
+		{
+			name:          "encrypted to plain is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeVolume(srcVolName),
+			srcEncrypted:  true,
+			destEncrypted: false,
+			wantErr:       true,
+		},
+		{
+			name:          "snapshot source with matching encryption is allowed",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  true,
+			destEncrypted: true,
+			wantErr:       false,
+		},
+		{
+			name:          "snapshot source plain to encrypted is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  false,
+			destEncrypted: true,
+			wantErr:       true,
+		},
+		{
+			name:          "snapshot source encrypted to plain is rejected",
+			dataSource:    types.NewVolumeDataSourceTypeSnapshot(srcVolName, snapName),
+			srcEncrypted:  true,
+			destEncrypted: false,
+			wantErr:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			srcVol := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: srcVolName, Namespace: linkedCloneTestNamespace},
+				Spec: longhorn.VolumeSpec{
+					Encrypted:  tc.srcEncrypted,
+					DataEngine: longhorn.DataEngineTypeV1,
+				},
+			}
+			destVol := &longhorn.Volume{
+				ObjectMeta: metav1.ObjectMeta{Name: destVolName, Namespace: linkedCloneTestNamespace},
+				Spec: longhorn.VolumeSpec{
+					DataSource: tc.dataSource,
+					Encrypted:  tc.destEncrypted,
+					DataEngine: longhorn.DataEngineTypeV1,
+				},
+			}
+			ds := newLinkedCloneTestDataStore(t, []*longhorn.Volume{srcVol}, nil)
+
+			err := verifyVolumeDataSource(ds, destVol)
+			if !tc.wantErr {
+				assert.NoError(t, err)
+				return
+			}
+			var admitErr werror.AdmitError
+			require.ErrorAs(t, err, &admitErr)
+			status := admitErr.AsResult()
+			assert.Equal(t, metav1.StatusReasonInvalid, status.Reason)
+			require.NotNil(t, status.Details)
+			require.Len(t, status.Details.Causes, 1)
+			assert.Equal(t, "spec.encrypted", status.Details.Causes[0].Field)
+		})
+	}
+}
+
+func TestValidateExpansionSizeV2EncryptedHeader(t *testing.T) {
+	const mib = int64(1) << 20
+	newVolume := func(dataEngine longhorn.DataEngineType, encrypted bool, luksHeaderLabel string, size int64) *longhorn.Volume {
+		v := &longhorn.Volume{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-vol", Namespace: linkedCloneTestNamespace},
+			Spec: longhorn.VolumeSpec{
+				DataEngine: dataEngine,
+				Encrypted:  encrypted,
+				Size:       size,
+			},
+		}
+		if luksHeaderLabel != "" {
+			v.Labels = map[string]string{types.LonghornLabelV2EncryptedVolumeWithLuksHeader: luksHeaderLabel}
+		}
+		return v
+	}
+
+	testCases := []struct {
+		name       string
+		dataEngine longhorn.DataEngineType
+		encrypted  bool
+		label      string
+		newSize    int64
+		wantReject bool
+	}{
+		{"v2 encrypted grows by less than the header", longhorn.DataEngineTypeV2, true, longhorn.TrueValue, 1026 * mib, true},
+		{"v2 encrypted grows by the header size", longhorn.DataEngineTypeV2, true, longhorn.TrueValue, 1040 * mib, true},
+		{"v2 encrypted grows by more than the header", longhorn.DataEngineTypeV2, true, longhorn.TrueValue, 1041 * mib, false},
+		{"v2 encrypted without the header label", longhorn.DataEngineTypeV2, true, "", 1026 * mib, false},
+		{"v2 not encrypted", longhorn.DataEngineTypeV2, false, "", 1026 * mib, false},
+		{"v1 encrypted", longhorn.DataEngineTypeV1, true, longhorn.TrueValue, 1026 * mib, false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &volumeValidator{ds: newLinkedCloneTestDataStore(t, nil, nil)}
+			oldVolume := newVolume(tc.dataEngine, tc.encrypted, tc.label, 1024*mib)
+			err := v.validateExpansionSize(oldVolume, newVolume(tc.dataEngine, tc.encrypted, tc.label, tc.newSize))
+			// Allowed cases fail later on the volume readiness check, which this test does not set up.
+			rejected := err != nil && strings.Contains(err.Error(), "LUKS2 header size")
+			assert.Equal(t, tc.wantReject, rejected, "err: %v", err)
 		})
 	}
 }

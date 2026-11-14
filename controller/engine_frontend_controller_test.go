@@ -79,6 +79,20 @@ func (s *TestSuite) TestShouldExpandEngineFrontend(c *C) {
 		},
 	}
 	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, true)
+
+	// The EF already reports the target size, but the engine backend is still
+	// smaller, e.g. replicas started at the old size before expansion was accepted.
+	ef.Status.CurrentSize = TestVolumeSize
+	e.Spec.VolumeSize = TestVolumeSize
+	e.Status.CurrentSize = TestVolumeSize / 2
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, true)
+
+	// The engine size is not reported yet.
+	e.Status.CurrentSize = 0
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
+
+	e.Status.CurrentSize = TestVolumeSize
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
 }
 
 func (s *TestSuite) TestIsEngineFrontendTargetInitialized(c *C) {
@@ -464,8 +478,10 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 				CurrentState:        longhorn.InstanceStateSuspended,
 				Started:             true,
 			},
-			TargetIP:   TestIP2,
-			TargetPort: 0,
+			TargetIP:    TestIP2,
+			TargetPort:  0,
+			Endpoint:    "/dev/longhorn/" + volume.Name,
+			CurrentSize: volume.Spec.Size,
 		},
 	}
 
@@ -502,6 +518,9 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 	c.Assert(err, IsNil)
 	c.Assert(efIndexer.Add(createdEF), IsNil)
 
+	// The frontend was being monitored before it was suspended.
+	efc.engineFrontendMonitorMap[ef.Name] = make(chan struct{})
+
 	err = efc.syncEngineFrontend(TestNamespace + "/" + ef.Name)
 	c.Assert(err, IsNil)
 
@@ -510,8 +529,10 @@ func (s *TestSuite) TestSyncEngineFrontendInitializesIncompleteTargetStatus(c *C
 	c.Assert(updatedEF.Status.TargetIP, Equals, ef.Spec.TargetIP)
 	c.Assert(updatedEF.Status.TargetPort, Equals, ef.Spec.TargetPort)
 	c.Assert(updatedEF.Status.CurrentState, Equals, longhorn.InstanceStateSuspended)
+	c.Assert(updatedEF.Status.Endpoint, Equals, ef.Status.Endpoint)
+	c.Assert(updatedEF.Status.CurrentSize, Equals, volume.Spec.Size)
 	_, exists := efc.engineFrontendMonitorMap[ef.Name]
-	c.Assert(exists, Equals, false)
+	c.Assert(exists, Equals, true)
 }
 
 func (s *TestSuite) TestSyncEngineFrontendDeletesStaleRunningInstance(c *C) {

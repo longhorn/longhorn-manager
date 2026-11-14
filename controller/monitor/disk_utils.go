@@ -3,6 +3,7 @@ package monitor
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -98,7 +99,10 @@ func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDrive
 		return getHealthDataFromBlockDevice(diskName, diskPath, logger)
 	case longhorn.DiskDriverNvme:
 		// NVME driver claims device exclusively, use SPDK health info instead
-		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client, logger)
+		if client == nil || client.c == nil {
+			return nil, errors.New("disk service client is nil")
+		}
+		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client.c, logger)
 	default:
 		return nil, fmt.Errorf("unknown block disk driver %v", diskDriver)
 	}
@@ -124,8 +128,12 @@ func getHealthDataFromBlockDevice(diskName, diskPath string, logger logrus.Field
 	return healthData, nil
 }
 
-func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
-	if client == nil || client.c == nil {
+type diskHealthClient interface {
+	DiskHealthGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskHealth, error)
+}
+
+func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client diskHealthClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
+	if client == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
@@ -136,9 +144,9 @@ func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *Di
 	log.Debugf("Collecting controller health info for NVME disk")
 
 	// Get health data from SPDK via disk service
-	health, err := client.c.DiskHealthGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(longhorn.DiskDriverNvme))
+	health, err := client.DiskHealthGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(longhorn.DiskDriverNvme))
 	if err != nil {
-		log.WithError(err).Warnf("Failed to get controller health info")
+		log.WithError(err).Debugf("Failed to get controller health info")
 		return nil, err
 	}
 
@@ -390,8 +398,8 @@ func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.D
 
 	defer func() {
 		if err != nil {
-			if derr := util.DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(diskPath); derr != nil {
-				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", diskPath, derr)
+			if derr := lhns.DeletePath(diskCfgFilePath); derr != nil {
+				err = errors.Wrapf(err, "cleaning up disk config file %v failed with error: %v", diskCfgFilePath, derr)
 			}
 		}
 	}()
@@ -408,7 +416,31 @@ func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.D
 		return nil, err
 	}
 
+	// Syncing the file does not persist its entry in the parent directory. The recorded disk UUID is later used to
+	// tell an unmounted or replaced disk from a new one, so make sure the config file and the replica subdirectory
+	// are not lost after a crash once the UUID is reported.
+	if _, err = lhns.RunFunc(func() (interface{}, error) {
+		return nil, syncDirectory(diskPath)
+	}, 0); err != nil {
+		return nil, errors.Wrapf(err, "failed to sync disk path %v", diskPath)
+	}
+
 	return cfg, nil
+}
+
+// syncDirectory flushes the directory entries of the given directory to the disk.
+func syncDirectory(dirPath string) error {
+	dir, err := os.Open(dirPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if errClose := dir.Close(); errClose != nil {
+			logrus.WithError(errClose).Warnf("Failed to close directory %v", dirPath)
+		}
+	}()
+
+	return dir.Sync()
 }
 
 func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*util.DiskConfig, error) {

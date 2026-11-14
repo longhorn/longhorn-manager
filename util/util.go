@@ -939,6 +939,20 @@ func GetActualBackendSize(size int64, encrypted bool, cliAPIVersion int) (int64,
 	return nsexec.GetLuksBackendSize(size, encrypted, cliAPIVersion)
 }
 
+// GetVolumeSizeFromBackendSize is the reverse of GetActualBackendSize. It returns the
+// volume size without the extra LUKS header space included in backendSize.
+func GetVolumeSizeFromBackendSize(backendSize int64, encrypted bool, cliAPIVersion int) (int64, error) {
+	size, err := GetActualBackendSize(backendSize, encrypted, cliAPIVersion)
+	if err != nil {
+		return backendSize, err
+	}
+	headerSize := size - backendSize
+	if backendSize <= headerSize {
+		return backendSize, nil
+	}
+	return backendSize - headerSize, nil
+}
+
 func IsCryptsetupVerWithFixed16MiBHeaderSize() (bool, error) {
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
 	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)

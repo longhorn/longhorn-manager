@@ -2,8 +2,7 @@
 
 [![GoDoc](https://pkg.go.dev/badge/github.com/gammazero/deque)](https://pkg.go.dev/github.com/gammazero/deque)
 [![Build Status](https://github.com/gammazero/deque/actions/workflows/go.yml/badge.svg)](https://github.com/gammazero/deque/actions/workflows/go.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/gammazero/deque)](https://goreportcard.com/report/github.com/gammazero/deque)
-[![codecov](https://codecov.io/gh/gammazero/deque/branch/master/graph/badge.svg)](https://codecov.io/gh/gammazero/deque)
+[![codecov](https://codecov.io/gh/gammazero/deque/graph/badge.svg?token=LGS6XRID3D)](https://codecov.io/gh/gammazero/deque)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Fast ring-buffer deque ([double-ended queue](https://en.wikipedia.org/wiki/Double-ended_queue)) implementation.
@@ -39,6 +38,8 @@ Deque uses generics to create a Deque that contains items of the type specified.
     stringDeque := new(deque.Deque[string])
     var intDeque deque.Deque[int]
 ```
+
+Deque supports iterators that allow traversal or removal of items. When removing items this is useful to avoid intermediate resizes of the internal buffer. It also allows Deque to be used with the stdlib [`slices.Collect`](https://pkg.go.dev/slices#Collect), [`slices.Sorted`](https://pkg.go.dev/slices#Sorted), and others that take [`iter.Seq`](https://pkg.go.dev/iter#Seq) argumments.
 
 ## Example
 

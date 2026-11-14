@@ -55,6 +55,12 @@ var (
 	AutoSalvageTimeLimit = 1 * time.Minute
 
 	UnstableNodeReadyTimeThreshold = 30 * time.Minute
+
+	// AutoBalanceManagerUnavailableTolerance is how long replica auto-balance
+	// waits for the longhorn-manager pod of a node with running replicas to
+	// become ready again, e.g. during a restart or a DaemonSet rollout, before
+	// it rebalances the replicas to other nodes.
+	AutoBalanceManagerUnavailableTolerance = 3 * time.Minute
 )
 
 const (
@@ -166,6 +172,7 @@ func NewVolumeController(
 				oldEF.Status.Endpoint == curEF.Status.Endpoint &&
 				oldEF.Status.TargetIP == curEF.Status.TargetIP &&
 				oldEF.Status.TargetPort == curEF.Status.TargetPort &&
+				oldEF.Status.CurrentImage == curEF.Status.CurrentImage &&
 				reflect.DeepEqual(oldEF.Spec, curEF.Spec) {
 				return
 			}
@@ -624,6 +631,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			err = nil
 		}
 	}()
+
+	if updated, err := c.syncV2VolumeImage(volume, engines, replicas, engineFrontends); err != nil || updated {
+		return err
+	}
 
 	if err := c.handleVolumeAttachmentCreation(volume); err != nil {
 		return err
@@ -1246,7 +1257,7 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	}
 
 	// give a chance to delete new replicas failed when upgrading volume and waiting for IM-r starting
-	if isVolumeUpgrading(v) {
+	if isV1VolumeUpgrading(v) {
 		return nil
 	}
 
@@ -1316,7 +1327,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 	// See comments for isSafeAsLastReplica for an explanation of why we call getSafeAsLastReplicaCount instead of
 	// getHealthyAndActiveReplicaCount here.
 	safeAsLastReplicaCount := getSafeAsLastReplicaCount(rs)
-	cleanupLeftoverReplicas := !isVolumeUpgrading(v) && !util.IsVolumeMigrating(v)
+	cleanupLeftoverReplicas := !isV1VolumeUpgrading(v) && !util.IsVolumeMigrating(v)
 	log := getLoggerForVolume(c.logger, v)
 
 	for _, r := range rs {
@@ -1567,7 +1578,9 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 			chosenReplica = rs[r.Name]
 			break
 		}
-		if types.IsDataEngineV2(v.Spec.DataEngine) && r.Status.InstanceManagerName == "" {
+		// A replica without an instance manager (e.g. a stopped or failed replica) cannot be
+		// checked here. Skip it instead of failing the whole reconcile.
+		if r.Status.InstanceManagerName == "" {
 			continue
 		}
 		im, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
@@ -2236,8 +2249,15 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		v.Status.State == longhorn.VolumeStateAttached &&
 		e.Status.CurrentState == longhorn.InstanceStateRunning {
 		if e.Spec.RequestedBackupRestore != "" {
+			// The engine monitor keeps retrying after an engine-level restore
+			// error. Show the error here so the retry loop stays visible on the
+			// volume after the events and manager logs have rotated away.
+			restoreMessage := ""
+			if e.Status.EngineRestoreError != "" {
+				restoreMessage = fmt.Sprintf("Restore is being retried after an engine-level error: %s", e.Status.EngineRestoreError)
+			}
 			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
+				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, restoreMessage)
 		}
 
 		// TODO: reconcileVolumeSize
@@ -2885,7 +2905,7 @@ func (c *VolumeController) getSnapshotTotalSize(e *longhorn.Engine, log *logrus.
 }
 
 func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
-	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.Image
+	return v.Status.State == longhorn.VolumeStateDetached && isV1VolumeUpgrading(v)
 }
 
 func isReplicaNeverStarted(r *longhorn.Replica) bool {
@@ -2928,14 +2948,14 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 
 		failedReason := ""
 		if canIMLaunchReplica {
-			if r.Spec.FailedAt == "" && r.Spec.Image == v.Status.CurrentImage {
+			if r.Spec.FailedAt == "" && (types.IsDataEngineV2(v.Spec.DataEngine) || r.Spec.Image == v.Status.CurrentImage) {
 				if r.Status.CurrentState == longhorn.InstanceStateStopped {
 					r.Spec.DesireState = longhorn.InstanceStateRunning
 				}
 			}
 		} else {
 			// wait for IM is starting when volume is upgrading
-			if isVolumeUpgrading(v) {
+			if isV1VolumeUpgrading(v) {
 				continue
 			}
 
@@ -2986,7 +3006,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if types.IsDataEngineV2(v.Spec.DataEngine) && r.DeletionTimestamp != nil {
 			continue
 		}
-		if r.Spec.Image != v.Status.CurrentImage {
+		if types.IsDataEngineV1(v.Spec.DataEngine) && r.Spec.Image != v.Status.CurrentImage {
 			continue
 		}
 		if r.Spec.EngineName != e.Name {
@@ -3073,10 +3093,12 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			// Always propagate the target size to the EF so the EF
 			// monitor can detect that expansion is needed and trigger
 			// EngineFrontendExpand (which expands replicas -> engine ->
-			// frontend).  The createEngineFrontend function already
-			// creates the SPDK EF at the pre-expansion size, so
-			// ef.Status.CurrentSize will correctly reflect the actual
-			// device size until expansion completes.
+			// frontend). createEngineFrontend uses the pre-expansion size
+			// only when it creates a new EF CR. An existing EF CR starts
+			// its SPDK instance at ef.Spec.Size, which may already be the
+			// target size while the backend is still smaller, so the EF
+			// monitor also compares the engine's current size with its
+			// spec before skipping expansion.
 			ef.Spec.Size = v.Spec.Size
 			// Only set EngineFrontend to running when Engine is actually running
 			// so we have the TargetIP available.
@@ -3591,10 +3613,11 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		if ef != nil {
 			ef.Spec.VolumeSize = v.Spec.Size
 			// Always propagate the target size to the EF so the EF
-			// monitor can trigger expansion.  The createEngineFrontend
-			// function creates the SPDK EF at the pre-expansion size,
-			// so ef.Status.CurrentSize correctly reflects the actual
-			// device size until expansion completes.
+			// monitor can trigger expansion. If the SPDK EF instance is
+			// started after this point, it is created at the target size
+			// and ef.Status.CurrentSize reports that size before the
+			// backend grows. The EF monitor then relies on the engine's
+			// current size to trigger the expansion.
 			ef.Spec.Size = v.Spec.Size
 		}
 	}
@@ -3994,10 +4017,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 	var mostExtraRList []string
 	var mostExtraRCount int
 	var leastExtraROwners []string
-	var leastExtraRCount int
+	leastExtraRCount := -1
 	for owner, rNames := range extraRNames {
 		rNameCount := len(rNames)
-		if leastExtraRCount == 0 || rNameCount < leastExtraRCount {
+		if leastExtraRCount == -1 || rNameCount < leastExtraRCount {
 			leastExtraRCount = rNameCount
 			leastExtraROwners = []string{}
 			leastExtraROwners = append(leastExtraROwners, owner)
@@ -4438,6 +4461,62 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 	return filteredReadyNodes, nil
 }
 
+// isReplicaOnNodeWithUnavailableManager returns true if a replica of the volume
+// that the engine reports as RW runs on a node that is not ready only because
+// its longhorn-manager pod is down or missing, and not for longer than
+// AutoBalanceManagerUnavailableTolerance. Auto-balance would count such a
+// replica as gone and rebuild it on another node, although it keeps serving
+// the volume. Ref: https://github.com/longhorn/longhorn/issues/13941
+func (c *VolumeController) isReplicaOnNodeWithUnavailableManager(e *longhorn.Engine, rs map[string]*longhorn.Replica, log logrus.FieldLogger) bool {
+	if e == nil {
+		return false
+	}
+
+	now, err := util.ParseTime(c.nowHandler())
+	if err != nil {
+		log.WithError(err).Warn("Failed to parse the current time")
+		return false
+	}
+
+	for _, r := range rs {
+		if r.Status.CurrentState != longhorn.InstanceStateRunning || e.Status.ReplicaModeMap[r.Name] != longhorn.ReplicaModeRW {
+			continue
+		}
+
+		node, err := c.ds.GetNodeRO(r.Spec.NodeID)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				log.WithError(err).Warnf("Failed to get node %v of replica %v, not waiting for its manager pod", r.Spec.NodeID, r.Name)
+			}
+			continue
+		}
+
+		condition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+		if condition.Status == longhorn.ConditionStatusTrue {
+			continue
+		}
+		if condition.Reason != string(longhorn.NodeConditionReasonManagerPodDown) &&
+			condition.Reason != string(longhorn.NodeConditionReasonManagerPodMissing) {
+			continue
+		}
+
+		notReadySince, err := util.ParseTime(condition.LastTransitionTime)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to parse the ready condition transition time of node %v", node.Name)
+			continue
+		}
+		if now.Sub(notReadySince) > AutoBalanceManagerUnavailableTolerance {
+			continue
+		}
+
+		log.Debugf("Skipping replica auto-balance: replica %v runs on node %v, which is not ready since %v because of %v, waiting up to %v",
+			r.Name, node.Name, condition.LastTransitionTime, condition.Reason, AutoBalanceManagerUnavailableTolerance)
+		return true
+	}
+
+	return false
+}
+
 func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "node")
 
@@ -4595,6 +4674,16 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 	case v.Spec.NumberOfReplicas > usableCount:
 		return v.Spec.NumberOfReplicas - usableCount, ""
 	case v.Spec.NumberOfReplicas == usableCount:
+		// Only guard adding replicas. The auto-balance count functions also pick the deletion
+		// candidates in cleanupAutoBalancedReplicas, which must stay unchanged.
+		log := getLoggerForVolume(c.logger, v)
+		if c.ds.GetAutoBalancedReplicasSetting(v, log) != longhorn.ReplicaAutoBalanceDisabled &&
+			c.isReplicaOnNodeWithUnavailableManager(e, rs, log) {
+			// The node condition does not change when the tolerance expires, so check again.
+			c.enqueueVolumeAfter(v, 30*time.Second)
+			return 0, ""
+		}
+
 		if adjustCount := c.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone); adjustCount != 0 {
 			return adjustCount, ""
 		}
@@ -4605,9 +4694,21 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 		var nCandidates []string
 		adjustCount, _, nCandidates := c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode)
 		if adjustCount == 0 {
-			adjustCount, _, zCandidates := c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
+			var zCandidates []string
+			adjustCount, _, zCandidates = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
 			if adjustCount != 0 {
 				nCandidates = c.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
+				if len(nCandidates) == 0 {
+					// No free node in the zone that needs a replica. A failed replica
+					// still sitting on a node there can be rebuilt in place, so try that
+					// before giving up.
+					if nodeID := c.getReusableFailedReplicaNodeInZones(v, rs, zCandidates); nodeID != "" {
+						return adjustCount, nodeID
+					}
+					// Left to the scheduler, a new replica would land in the zone that
+					// already has too many and be cleaned up next sync, so wait instead.
+					return 0, ""
+				}
 			}
 		}
 		if adjustCount != 0 && len(nCandidates) != 0 {
@@ -4646,7 +4747,10 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		return candidateNames
 	}
 
-	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
+	// Apply the same volume-level constraints (schedulable-for-volume, node
+	// selector, topology requirement) the node pass uses, so a candidate here
+	// is one the replica scheduler can actually accept.
+	readyNodes, err := c.listReadySchedulableAndScheduledNodesRO(v, rs, log)
 	if err != nil {
 		return candidateNames
 	}
@@ -4659,11 +4763,10 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		}
 	}
 	for nName, n := range readyNodes {
-		for _, zone := range zones {
-			if n.Status.Zone != zone {
-				delete(readyNodes, nName)
-				continue
-			}
+		if !util.Contains(zones, n.Status.Zone) {
+			// cannot use node, not in a zone that needs a replica.
+			delete(readyNodes, nName)
+			continue
 		}
 
 		if !n.Spec.AllowScheduling {
@@ -4679,7 +4782,10 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		}
 
 		for _, r := range rs {
-			if r.Spec.NodeID == nName {
+			// A failed replica does not make the node unusable; the precheck
+			// below applies the scheduler's own anti-affinity view, and if the
+			// replica is reusable the replenish step reuses it.
+			if r.Spec.NodeID == nName && r.Spec.FailedAt == "" {
 				delete(readyNodes, nName)
 				break
 			}
@@ -4687,12 +4793,66 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 	}
 
 	for nName := range readyNodes {
+		// The replica is replenished with a hard node affinity that bypasses the
+		// usual precheck, so run it here: a node without an eligible disk (disk
+		// selector, disk schedulability, space) would produce an unschedulable
+		// replica that is cleaned up and proposed again every sync.
+		if precheckErrs := c.precheckCreateReplica(newReplicaCR(v, e, nName), rs, v); len(precheckErrs) > 0 {
+			log.WithField("node", nName).Debugf("Skip node candidate, replica precheck failed: %v", precheckErrs.Error())
+			continue
+		}
 		candidateNames = append(candidateNames, nName)
+		// The caller uses one candidate and each precheck lists every node in
+		// the cluster, so stop at the first node that passes.
+		break
 	}
 	if len(candidateNames) != 0 {
 		log.Infof("Found node candidates: %v ", candidateNames)
 	}
 	return candidateNames
+}
+
+// getReusableFailedReplicaNodeInZones returns the node of a failed replica in one
+// of the given zones that the scheduler would reuse right now, or "" if none.
+func (c *VolumeController) getReusableFailedReplicaNodeInZones(v *longhorn.Volume, rs map[string]*longhorn.Replica, zones []string) string {
+	log := getLoggerForVolume(c.logger, v)
+	runningReplicaNodes := map[string]struct{}{}
+	for _, r := range rs {
+		if r.Status.CurrentState == longhorn.InstanceStateRunning {
+			runningReplicaNodes[r.Spec.NodeID] = struct{}{}
+		}
+	}
+	for _, r := range rs {
+		if !scheduler.IsPotentiallyReusableReplica(r) {
+			continue
+		}
+		// Rebuilding next to a running replica stacks two replicas on one node,
+		// which the node pass removes again, so it does not improve zone balance.
+		if _, hasRunning := runningReplicaNodes[r.Spec.NodeID]; hasRunning {
+			continue
+		}
+		node, err := c.ds.GetNodeRO(r.Spec.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get node %v of failed replica %v for zone auto-balance", r.Spec.NodeID, r.Name)
+			continue
+		}
+		if !util.Contains(zones, node.Status.Zone) {
+			continue
+		}
+		// The scheduler reuse check does not apply the topology requirement.
+		if !types.NodeMatchesTopologyRequirement(node, v.Spec.TopologyRequirement) {
+			continue
+		}
+		reusable, err := c.scheduler.CheckAndReuseFailedReplica(rs, v, r.Spec.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to check whether failed replica %v is reusable for zone auto-balance", r.Name)
+			continue
+		}
+		if reusable != nil {
+			return r.Spec.NodeID
+		}
+	}
+	return ""
 }
 
 func (c *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
@@ -4721,6 +4881,116 @@ func (c *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[stri
 	return true
 }
 
+// syncV2VolumeImage syncs the image fields of a replicated V2 volume. They record
+// the instance manager image and do not drive an upgrade: the instance manager
+// upgrade moves the instances, whether it is live or offline.
+//
+//   - volume.spec.image follows the default instance manager image when automatic
+//     upgrade is enabled or the serving instances already run that image. The
+//     existing or last confirmed image is used while automatic upgrade is
+//     disabled. Engines, replicas and engine frontends follow the volume.
+//   - volume.status.currentImage is the image that every serving instance runs.
+//     It is kept while they do not run the same image, such as during the
+//     upgrade or while the volume is detached.
+//
+// It returns true when it updated volume.spec.image, and the caller must skip the
+// rest of this reconciliation because the cached volume is stale.
+func (c *VolumeController) syncV2VolumeImage(v *longhorn.Volume, es map[string]*longhorn.Engine,
+	rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (bool, error) {
+	// EC volumes require the ShardGroup and Shard instances to be synced as well.
+	if types.IsDataEngineV1(v.Spec.DataEngine) || isECVolume(v) {
+		return false, nil
+	}
+
+	log := getLoggerForVolume(c.logger, v)
+
+	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return false, err
+	}
+	runningImage := getV2VolumeRunningImage(es, rs, efs)
+
+	image := defaultImage
+	if image != v.Spec.Image || v.Status.CurrentImage != image || (runningImage != "" && runningImage != image) {
+		allowAutoUpgrade, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowInstanceManagerAutomaticUpgrade, v.Spec.DataEngine)
+		if err != nil {
+			return false, errors.Wrap(err, "failed to get V2 instance manager automatic upgrade setting")
+		}
+		if !allowAutoUpgrade && runningImage != defaultImage {
+			switch {
+			case v.Spec.Image != defaultImage:
+				image = v.Spec.Image
+			case runningImage != "":
+				image = runningImage
+			case v.Status.CurrentImage != "":
+				image = v.Status.CurrentImage
+			}
+		}
+	}
+	if image != v.Spec.Image {
+		log.Infof("Updating V2 volume image from %v to %v", v.Spec.Image, image)
+		updated := v.DeepCopy()
+		updated.Spec.Image = image
+		if _, err := c.ds.UpdateVolume(updated); err != nil {
+			return false, errors.Wrapf(err, "failed to update V2 volume image to %v", image)
+		}
+		return true, nil
+	}
+
+	// The deferred commit in syncVolume persists the changes below.
+	for _, e := range es {
+		e.Spec.Image = v.Spec.Image
+	}
+	for _, r := range rs {
+		r.Spec.Image = v.Spec.Image
+	}
+	for _, ef := range efs {
+		ef.Spec.Image = v.Spec.Image
+	}
+
+	if runningImage != "" && runningImage != v.Status.CurrentImage {
+		log.Infof("Updating V2 volume current image from %v to %v", v.Status.CurrentImage, runningImage)
+		v.Status.CurrentImage = runningImage
+	}
+	return false, nil
+}
+
+// getV2VolumeRunningImage returns the image that every serving instance of a V2
+// volume runs. It returns an empty string if no instance is serving, or if the
+// serving instances do not report the same image, such as in the middle of an
+// instance manager upgrade.
+func getV2VolumeRunningImage(es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica,
+	efs map[string]*longhorn.EngineFrontend) string {
+	// Deleting instances are included because they may keep serving I/O until they
+	// stop, such as a replica still held by a running engine. Non-running instances
+	// are skipped below.
+	statuses := []*longhorn.InstanceStatus{}
+	for _, e := range es {
+		statuses = append(statuses, &e.Status.InstanceStatus)
+	}
+	for _, r := range rs {
+		// Inactive or failed replicas do not serve I/O.
+		if r.Spec.Active && r.Spec.FailedAt == "" {
+			statuses = append(statuses, &r.Status.InstanceStatus)
+		}
+	}
+	for _, ef := range efs {
+		statuses = append(statuses, &ef.Status.InstanceStatus)
+	}
+
+	image := ""
+	for _, status := range statuses {
+		if status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+		if status.CurrentImage == "" || (image != "" && status.CurrentImage != image) {
+			return ""
+		}
+		image = status.CurrentImage
+	}
+	return image
+}
+
 func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	if len(es) > 1 {
 		return nil
@@ -4739,7 +5009,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		"volumeDesiredEngineImage": v.Spec.Image,
 	})
 
-	if !isVolumeUpgrading(v) {
+	if !isV1VolumeUpgrading(v) {
 		// it must be a rollback
 		if e.Spec.Image != v.Spec.Image {
 			e.Spec.Image = v.Spec.Image
@@ -6293,7 +6563,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	log := getLoggerForVolume(c.logger, v).WithField("migrationNodeID", v.Spec.MigrationNodeID)
 
 	// cannot process migrate when upgrading
-	if isVolumeUpgrading(v) {
+	if isV1VolumeUpgrading(v) {
 		log.Warn("Skip the migration processing since the volume is being upgraded")
 		return nil
 	}

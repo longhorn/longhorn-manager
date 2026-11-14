@@ -567,6 +567,16 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		}
 	}
 
+	// The engine reports the backend size, including the LUKS2 header, until it reaches
+	// the expected size. Growing by no more than the header leaves the old backend size
+	// at or above the new size, so the expansion cannot be tracked correctly.
+	if types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(newVolume) {
+		if newSize > oldSize && newSize-oldSize <= lhtypes.Luks2EncryptionHeaderSize {
+			return fmt.Errorf("expanding v2 encrypted volume %v from %v to %v is not supported: the size must grow by more than the LUKS2 header size %v",
+				newVolume.Name, oldSize, newSize, lhtypes.Luks2EncryptionHeaderSize)
+		}
+	}
+
 	replicaMap, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
 	if err != nil {
 		return err
@@ -1081,6 +1091,14 @@ func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error
 	if vol.Spec.DataEngine != srcVol.Spec.DataEngine {
 		return werror.NewInvalidError(fmt.Sprintf("cannot clone volume with data engine %v into a volume with data engine %v", srcVol.Spec.DataEngine, vol.Spec.DataEngine), ".spec.dataSource")
 	}
+
+	// Clones copy raw blocks, so a LUKS header cannot be added or stripped on the way.
+	if srcVol.Spec.Encrypted != vol.Spec.Encrypted {
+		return werror.NewInvalidError(fmt.Sprintf(
+			"failed to clone volume %v to volume %v because encryption settings must match (source: %v, destination: %v)",
+			srcVol.Name, vol.Name, srcVol.Spec.Encrypted, vol.Spec.Encrypted), "spec.encrypted")
+	}
+
 	// If the source volume is itself a linked-clone, it must have completed cloning
 	// before it can serve as the source for another linked-clone volume.
 	if srcVol.Spec.CloneMode == longhorn.CloneModeLinkedClone &&

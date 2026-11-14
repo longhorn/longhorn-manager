@@ -310,6 +310,30 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 	priorityClass := priorityClassSetting.Value
+	priorityClassesSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedComponentsPriorityClasses), metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	csiAttacherPriorityClass, err := types.ResolveSystemManagedComponentPriorityClass(priorityClass, priorityClassesSetting.Value, types.CSIAttacherName)
+	if err != nil {
+		return err
+	}
+	csiProvisionerPriorityClass, err := types.ResolveSystemManagedComponentPriorityClass(priorityClass, priorityClassesSetting.Value, types.CSIProvisionerName)
+	if err != nil {
+		return err
+	}
+	csiResizerPriorityClass, err := types.ResolveSystemManagedComponentPriorityClass(priorityClass, priorityClassesSetting.Value, types.CSIResizerName)
+	if err != nil {
+		return err
+	}
+	csiSnapshotterPriorityClass, err := types.ResolveSystemManagedComponentPriorityClass(priorityClass, priorityClassesSetting.Value, types.CSISnapshotterName)
+	if err != nil {
+		return err
+	}
+	csiPluginPriorityClass, err := types.ResolveSystemManagedComponentPriorityClass(priorityClass, priorityClassesSetting.Value, types.CSIPluginName)
+	if err != nil {
+		return err
+	}
 
 	registrySecretSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameRegistrySecret), metav1.GetOptions{})
 	if err != nil {

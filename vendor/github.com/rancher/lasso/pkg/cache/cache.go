@@ -109,14 +109,16 @@ func (d *deferredListWatcher) List(options metav1.ListOptions) (runtime.Object, 
 	if d.lw == nil {
 		return nil, fmt.Errorf("cache not started")
 	}
-	return d.lw.List(options)
+	return d.lw.List(options) //nolint:staticcheck
+
 }
 
 func (d *deferredListWatcher) Watch(options metav1.ListOptions) (watch.Interface, error) {
 	if d.lw == nil {
 		return nil, fmt.Errorf("cache not started")
 	}
-	return d.lw.Watch(options)
+	return d.lw.Watch(options) //nolint:staticcheck
+
 }
 
 func (d *deferredListWatcher) run(stopCh <-chan struct{}) {

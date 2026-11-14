@@ -19,45 +19,45 @@ go 1.27
 
 replace (
 	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
-	k8s.io/api => k8s.io/api v0.37.0
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.37.0
-	k8s.io/apimachinery => k8s.io/apimachinery v0.37.0
-	k8s.io/apiserver => k8s.io/apiserver v0.37.0
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.37.0
-	k8s.io/client-go => k8s.io/client-go v0.37.0
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.37.0
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.37.0
-	k8s.io/code-generator => k8s.io/code-generator v0.37.0
-	k8s.io/component-base => k8s.io/component-base v0.37.0
-	k8s.io/component-helpers => k8s.io/component-helpers v0.37.0
-	k8s.io/controller-manager => k8s.io/controller-manager v0.37.0
+	k8s.io/api => k8s.io/api v0.37.1
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.37.1
+	k8s.io/apimachinery => k8s.io/apimachinery v0.37.1
+	k8s.io/apiserver => k8s.io/apiserver v0.37.1
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.37.1
+	k8s.io/client-go => k8s.io/client-go v0.37.1
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.37.1
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.37.1
+	k8s.io/code-generator => k8s.io/code-generator v0.37.1
+	k8s.io/component-base => k8s.io/component-base v0.37.1
+	k8s.io/component-helpers => k8s.io/component-helpers v0.37.1
+	k8s.io/controller-manager => k8s.io/controller-manager v0.37.1
 	k8s.io/cri-api => k8s.io/cri-api v0.37.1
-	k8s.io/cri-client => k8s.io/cri-client v0.37.0
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.37.0
-	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.37.0
-	k8s.io/endpointslice => k8s.io/endpointslice v0.37.0
+	k8s.io/cri-client => k8s.io/cri-client v0.37.1
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.37.1
+	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.37.1
+	k8s.io/endpointslice => k8s.io/endpointslice v0.37.1
 	k8s.io/externaljwt => k8s.io/externaljwt v0.37.1
-	k8s.io/kms => k8s.io/kms v0.37.0
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.37.0
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.37.0
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.37.0
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.37.0
-	k8s.io/kubectl => k8s.io/kubectl v0.37.0
-	k8s.io/kubelet => k8s.io/kubelet v0.37.0
+	k8s.io/kms => k8s.io/kms v0.37.1
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.37.1
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.37.1
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.37.1
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.37.1
+	k8s.io/kubectl => k8s.io/kubectl v0.37.1
+	k8s.io/kubelet => k8s.io/kubelet v0.37.1
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
-	k8s.io/metrics => k8s.io/metrics v0.37.0
+	k8s.io/metrics => k8s.io/metrics v0.37.1
 	k8s.io/mount-utils => k8s.io/mount-utils v0.37.1
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.37.0
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.37.0
-	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.37.0
-	k8s.io/sample-controller => k8s.io/sample-controller v0.37.0
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.37.1
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.37.1
+	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.37.1
+	k8s.io/sample-controller => k8s.io/sample-controller v0.37.1
 )
 
 require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.13.0
-	github.com/docker/go-connections v0.8.1
+	github.com/docker/go-connections v0.8.2
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
@@ -67,46 +67,45 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.25.0
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20260503
-	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
-	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20260625081921-94479d1d3cf4
-	github.com/longhorn/go-spdk-helper v0.10.1-0.20260921021616-6102449746a0
-	github.com/longhorn/longhorn-engine v1.14.0-dev-20260823.0.20261006044102-69db71890717
-	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20260823.0.20260922031848-d0a5b916d3ce
+	github.com/longhorn/backupstore v0.0.0-20261106055638-bcc51f569085
+	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
+	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
+	github.com/longhorn/go-spdk-helper v0.14.1-0.20261105073243-fc901c166c71
+	github.com/longhorn/longhorn-engine v1.14.0-dev-20261004.0.20261022020249-032fb18c0f00
+	github.com/longhorn/longhorn-instance-manager v1.14.0-dev-20261004.0.20261106060847-efb0cd69a623
 	github.com/longhorn/longhorn-share-manager v1.13.0-rc2
-	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20260823.0.20260922025523-7ec03791a09c
-	github.com/longhorn/types v0.0.0-20260912171147-ce65698c8b35
-	github.com/prometheus/client_golang v1.24.1
+	github.com/longhorn/longhorn-spdk-engine v1.14.0-dev-20261004.0.20261106064302-40b61a7ef9f8
+	github.com/longhorn/types v0.0.0-20261030035820-c6ac902022cf
+	github.com/prometheus/client_golang v1.25.0
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
-	github.com/rancher/dynamiclistener v0.9.3
+	github.com/rancher/dynamiclistener v0.9.4
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.7.2
+	github.com/rancher/wrangler/v3 v3.8.0-rc.3
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
-	github.com/urfave/cli/v3 v3.13.0
+	github.com/urfave/cli/v3 v3.14.0
 	go.uber.org/multierr v1.11.0
-	golang.org/x/mod v0.41.0
-	golang.org/x/sync v0.23.0
-	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.42.0
+	golang.org/x/mod v0.42.0
+	golang.org/x/sync v0.25.0
+	golang.org/x/sys v0.50.0
+	golang.org/x/text v0.44.0
 	golang.org/x/time v0.16.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.37.0
-	k8s.io/apiextensions-apiserver v0.37.0
-	k8s.io/apimachinery v0.37.0
-	k8s.io/cli-runtime v0.37.0
-	k8s.io/client-go v0.37.0
-	k8s.io/kubernetes v1.37.0
-	k8s.io/metrics v0.37.0
+	k8s.io/api v0.37.1
+	k8s.io/apiextensions-apiserver v0.37.1
+	k8s.io/apimachinery v0.37.1
+	k8s.io/cli-runtime v0.37.1
+	k8s.io/client-go v0.37.1
+	k8s.io/kubernetes v1.37.1
+	k8s.io/metrics v0.37.1
 	k8s.io/mount-utils v0.37.1
-	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
-	sigs.k8s.io/controller-runtime v0.25.1
+	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
+	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
-	sigs.k8s.io/structured-merge-diff/v7 v7.0.0
 )
 
 require (
@@ -135,8 +134,8 @@ require (
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
-	github.com/gammazero/deque v1.0.0 // indirect
-	github.com/gammazero/workerpool v1.1.3 // indirect
+	github.com/gammazero/deque v1.2.2 // indirect
+	github.com/gammazero/workerpool v1.2.2 // indirect
 	github.com/getsentry/sentry-go v0.46.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -162,7 +161,7 @@ require (
 	github.com/gorilla/context v1.1.2 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
@@ -178,14 +177,14 @@ require (
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.29 // indirect
+	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.70.1 // indirect
-	github.com/prometheus/procfs v0.21.1 // indirect
-	github.com/rancher/lasso v0.2.9 // indirect
+	github.com/prometheus/client_model v0.6.3 // indirect
+	github.com/prometheus/common v0.72.0 // indirect
+	github.com/prometheus/procfs v0.22.0 // indirect
+	github.com/rancher/lasso v0.2.10 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
@@ -196,25 +195,25 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.opentelemetry.io/otel v1.46.0 // indirect
-	go.opentelemetry.io/otel/trace v1.46.0 // indirect
+	go.opentelemetry.io/otel v1.47.0 // indirect
+	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.56.0 // indirect
-	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/term v0.45.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
+	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/oauth2 v0.37.0 // indirect
+	golang.org/x/term v0.48.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	howett.net/plist v1.0.1 // indirect
-	k8s.io/apiserver v0.37.0 // indirect
-	k8s.io/component-base v0.37.0 // indirect
+	k8s.io/apiserver v0.37.1 // indirect
+	k8s.io/component-base v0.37.1 // indirect
 	k8s.io/component-helpers v0.33.0 // indirect
 	k8s.io/controller-manager v0.33.0 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
-	k8s.io/kube-aggregator v0.36.0 // indirect
+	k8s.io/kube-aggregator v0.37.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect

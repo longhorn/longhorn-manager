@@ -373,7 +373,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(nil, newObj, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -436,7 +436,7 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(oldObj, newObj, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -446,8 +446,13 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 // mutate contains functionality shared by Create and Update.
 // Unlike mutate for other resources, this mutate takes a moreLabels map, as Create may want to add some.
-func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
+// oldVolume is the existing volume on Update and nil on Create.
+func (v *volumeMutator) mutate(oldObj, newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
 	volume := newObj.(*longhorn.Volume)
+	var oldVolume *longhorn.Volume
+	if oldObj != nil {
+		oldVolume = oldObj.(*longhorn.Volume)
+	}
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(volume)
@@ -511,8 +516,12 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	}
 
 	var backupBlockSize = volume.Spec.BackupBlockSize
-	if volume.Spec.Standby {
-		// The backup block size of a DR volume is always copied from the latest backup
+	// The backup block size of a DR volume is copied from its source backup only when the volume is created.
+	// A valid backup block size cannot be changed later (see the validator),
+	// so an update must not depend on the source backup, which can be deleted before the DR volume is activated.
+	// Otherwise every update of the volume is rejected, including removing its finalizer on deletion.
+	// On update, only an unset backup block size is mutated, to the default one.
+	if volume.Spec.Standby && oldVolume == nil {
 		bName, _, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("failed to get backup name from backup URL %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
@@ -522,6 +531,7 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 			return nil, werror.NewInvalidError(fmt.Sprintf("failed to inspect the backup config %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
 		}
 		backupBlockSize = backup.Spec.BackupBlockSize
+		// Check the backup block size for backups created before Longhorn introduced backup block size.
 		if backupBlockSize == 0 {
 			// fall back to legacy default 2 MiB
 			backupBlockSize = types.BackupBlockSize2Mi
