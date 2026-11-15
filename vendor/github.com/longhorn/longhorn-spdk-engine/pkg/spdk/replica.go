@@ -40,11 +40,9 @@ import (
 	safelog "github.com/longhorn/longhorn-spdk-engine/pkg/log"
 )
 
-// restorePeriodicRefreshInterval is how often restore progress is polled.
-// It is a package-level variable so tests can shrink it.
-var restorePeriodicRefreshInterval = 2 * time.Second
-
 const (
+	restorePeriodicRefreshInterval = 2 * time.Second
+
 	lvolRangeShallowCopyLength = uint64(1 << 8)
 
 	setParentRetryAttempts = 10
