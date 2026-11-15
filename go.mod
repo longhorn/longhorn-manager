@@ -89,14 +89,14 @@ require (
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.84.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-	k8s.io/api v0.37.1
-	k8s.io/apiextensions-apiserver v0.37.1
-	k8s.io/apimachinery v0.37.1
+	k8s.io/api v0.37.2
+	k8s.io/apiextensions-apiserver v0.37.2
+	k8s.io/apimachinery v0.37.2
 	k8s.io/cli-runtime v0.36.4
-	k8s.io/client-go v0.37.1
+	k8s.io/client-go v0.37.2
 	k8s.io/kubernetes v1.36.4
 	k8s.io/metrics v0.36.4
-	k8s.io/mount-utils v0.37.1
+	k8s.io/mount-utils v0.37.2
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
