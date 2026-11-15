@@ -217,6 +217,9 @@ func DuplicateDevice(dev *LonghornBlockDevice, dest string) error {
 	if dest == "" {
 		return fmt.Errorf("found empty destination for device duplication")
 	}
+	if dev.Export.Major == 0 && dev.Export.Minor == 0 {
+		return fmt.Errorf("found invalid device number 0:0 of device %s for device duplication to %s", dev.Source.Name, dest)
+	}
 	dir := filepath.Dir(dest)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err := os.MkdirAll(dir, 0755); err != nil {

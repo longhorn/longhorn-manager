@@ -55,7 +55,7 @@ replace (
 )
 
 require (
-	github.com/cockroachdb/errors v1.12.0
+	github.com/cockroachdb/errors v1.14.0
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/docker/go-connections v0.6.0
 	github.com/go-co-op/gocron v1.37.0
@@ -68,9 +68,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/longhorn/backing-image-manager v1.12.0-dev-20251228.0.20260125135229-1c3981801092
 	github.com/longhorn/backupstore v0.0.0-20260929130031-0fe49ea4aac7
-	github.com/longhorn/go-common-libs v0.0.0-20260909075701-1a37e0e5083e
+	github.com/longhorn/go-common-libs v0.0.0-20261023023359-4e90b601fcb9
 	github.com/longhorn/go-iscsi-helper v0.0.0-20261012034506-35fee3c307ac
-	github.com/longhorn/go-spdk-helper v0.8.0
+	github.com/longhorn/go-spdk-helper v0.14.0
 	github.com/longhorn/longhorn-engine v1.12.0-dev-20251228.0.20260821033200-571574ebd967
 	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20251228.0.20261002014200-4f23fdf51df4
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20251228.0.20260125094554-850cb68cc193
@@ -81,12 +81,12 @@ require (
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.3.4
 	github.com/robfig/cron v1.2.0
-	github.com/sirupsen/logrus v1.9.4
+	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.48.0
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sys v0.49.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.84.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -120,7 +120,7 @@ require (
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/getsentry/sentry-go v0.27.0 // indirect
+	github.com/getsentry/sentry-go v0.46.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
