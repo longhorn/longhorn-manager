@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -42,6 +43,11 @@ const (
 
 var nsmounterPath = "/usr/local/sbin/nsmounter"
 
+const hostUtabPath = "/run/mount/utab"
+
+// libmount escapes these characters in utab values
+var utabUnescaper = strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+
 // hostNamespaceMounter mounts and unmounts in the host mount namespace through nsmounter.
 // mount-utils always runs umount in the current namespace, ignoring the mounter path,
 // which leaves the host's /run/mount/utab entry of the mount behind.
@@ -69,14 +75,37 @@ func (m *hostNamespaceMounter) UnmountWithForce(target string, umountTimeout tim
 }
 
 func hostNamespaceUmount(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, nsmounterPath, append([]string{"umount"}, args...)...)
-	// nsmounter runs umount as a child, which can keep the output pipe open after the timeout kills nsmounter
-	cmd.WaitDelay = time.Second
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+	if output, err := runNsmounter(ctx, append([]string{"umount"}, args...)...); err != nil {
 		return errors.Wrapf(err, "failed to unmount %v in the host mount namespace, output: %s", args, output)
 	}
 	return nil
+}
+
+func runNsmounter(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, nsmounterPath, args...)
+	// nsmounter runs the command as a child, so kill the whole process group on timeout,
+	// otherwise the child keeps running and keeps the output pipe open
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = time.Second
+	return cmd.CombinedOutput()
+}
+
+// hostUtabHasTarget reports whether the host's utab has an entry of a mount at target,
+// which only a mount made through the host mount namespace leaves behind.
+func hostUtabHasTarget(target string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	output, err := runNsmounter(ctx, "cat", hostUtabPath)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to read host %v, output: %s", hostUtabPath, output)
+	}
+	for _, field := range strings.Fields(string(output)) {
+		if value, ok := strings.CutPrefix(field, "TARGET="); ok && utabUnescaper.Replace(value) == target {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func logCSIRequest(log *logrus.Entry, function string, req any) {
@@ -556,9 +585,14 @@ func ensureDirectory(path string) (bool, error) {
 	return false, fmt.Errorf("path %v exists but is not a folder", path)
 }
 
-func lazyUnmount(path string, exec utilexec.Interface) (err error) {
-	lazyUnmountCmd := exec.Command("umount", "-l", path)
-	output, err := lazyUnmountCmd.CombinedOutput()
+func lazyUnmount(path string, mounter mount.Interface) (err error) {
+	var output []byte
+	if _, ok := mounter.(*hostNamespaceMounter); ok {
+		// the error carries the output
+		err = hostNamespaceUmount(context.Background(), "-l", path)
+	} else {
+		output, err = utilexec.New().Command("umount", "-l", path).CombinedOutput()
+	}
 	if isFileNotExistError(err) || isNotMountedError(err) {
 		logrus.WithError(err).Infof("No need for lazy unmount: not a mount point %v", path)
 		return nil
@@ -582,7 +616,7 @@ func unmount(path string, mounter mount.Interface) (err error) {
 		return nil
 	}
 	logrus.WithError(err).Warnf("Failed to unmount %v, attempting lazy unmount to release mount point", path)
-	return lazyUnmount(path, utilexec.New())
+	return lazyUnmount(path, mounter)
 }
 
 // unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount point is removed

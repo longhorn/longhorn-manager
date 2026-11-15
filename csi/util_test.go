@@ -3,6 +3,9 @@ package csi
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -279,4 +282,55 @@ func TestHostNamespaceMounterUnmountWithForce(t *testing.T) {
 	got, err := os.ReadFile(calls)
 	require.NoError(t, err)
 	assert.Equal(t, "umount /staging\numount -f /staging\n", string(got))
+}
+
+func fakeNsmounterScript(t *testing.T, script string) {
+	t.Helper()
+	fakeNsmounter := filepath.Join(t.TempDir(), "nsmounter")
+	require.NoError(t, os.WriteFile(fakeNsmounter, []byte(script), 0755))
+	oldNsmounterPath := nsmounterPath
+	nsmounterPath = fakeNsmounter
+	t.Cleanup(func() { nsmounterPath = oldNsmounterPath })
+}
+
+func TestHostNamespaceMounterTimeoutKillsChildProcess(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "child-pid")
+	// Like the real nsmounter, which runs nsenter as a child of the shell
+	fakeNsmounterScript(t, "#!/bin/sh\n[ \"$2\" = \"-f\" ] && exit 0\nsleep 30 &\necho $! > "+pidFile+"\nwait\n")
+
+	require.NoError(t, newHostNamespaceMounter().(mount.MounterForceUnmounter).UnmountWithForce("/staging", 200*time.Millisecond))
+
+	data, err := os.ReadFile(pidFile)
+	require.NoError(t, err)
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	require.NoError(t, err)
+	assert.Eventually(t, func() bool { return syscall.Kill(pid, 0) != nil }, 5*time.Second, 50*time.Millisecond, "timed-out nsmounter child %d is still running", pid)
+}
+
+func TestUnmountLazyFallbackUsesMounterNamespace(t *testing.T) {
+	calls := filepath.Join(t.TempDir(), "nsmounter-calls")
+	// A busy mount: only the lazy unmount succeeds
+	fakeNsmounterScript(t, "#!/bin/sh\necho \"$@\" >> "+calls+"\n[ \"$2\" = \"-l\" ] || { echo busy >&2; exit 32; }\n")
+
+	require.NoError(t, unmount("/staging", newHostNamespaceMounter()))
+
+	got, err := os.ReadFile(calls)
+	require.NoError(t, err)
+	assert.Equal(t, "umount /staging\numount -l /staging\n", string(got))
+}
+
+func TestHostUtabHasTarget(t *testing.T) {
+	fakeNsmounterScript(t, "#!/bin/sh\n[ \"$1 $2\" = \"cat /run/mount/utab\" ] || exit 1\n"+
+		"printf 'SRC=10.0.0.1:/vol TARGET=/staging/a\\\\040b ROOT=/ OPTS=rw\\nSRC=x TARGET=/staging/other\\n'\n")
+
+	for target, want := range map[string]bool{
+		"/staging/a b":   true,
+		"/staging/other": true,
+		"/staging":       false,
+		"/staging/a":     false,
+	} {
+		got, err := hostUtabHasTarget(target)
+		require.NoError(t, err)
+		assert.Equal(t, want, got, target)
+	}
 }

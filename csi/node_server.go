@@ -731,8 +731,18 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	stagingMounter := mounter
 	requireHostNamespaceMounter, err := ns.requireHostNamespaceMounter(volume, nil, nil)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to check if volume %s was mounted in the host mount namespace, unmounting in the plugin container", volumeID)
-	} else if requireHostNamespaceMounter {
+		log.WithError(err).Warnf("Failed to check if volume %s was mounted in the host mount namespace", volumeID)
+	}
+	// The volume or the setting can be gone or changed since staging, so also trust the host's utab
+	if !requireHostNamespaceMounter {
+		if found, err := hostUtabHasTarget(stagingTargetPath); err != nil {
+			log.WithError(err).Debugf("Failed to check the host utab for %v", stagingTargetPath)
+		} else if found {
+			log.Infof("Found %v in the host utab, unmounting in the host mount namespace", stagingTargetPath)
+			requireHostNamespaceMounter = true
+		}
+	}
+	if requireHostNamespaceMounter {
 		stagingMounter = newHostNamespaceMounter()
 	}
 
