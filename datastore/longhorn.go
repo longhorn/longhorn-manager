@@ -8041,6 +8041,18 @@ func (s *DataStore) ListLinkedCloneReplicasBySrcReplicaRO(srcReplicaName string)
 // IsSnapshotLinkedCloneEntrypoint returns (true, cloneVolumeNames, nil) when
 // snapshotName is the entrypoint snapshot for one or more linked-clone volumes.
 func (s *DataStore) IsSnapshotLinkedCloneEntrypoint(snapshotName string) (bool, []string, error) {
+	// Snapshot names may be up to 253 bytes, but label values are limited to
+	// 63. The linked-clone source snapshot label is the only record of the
+	// entrypoint, and CreateVolume and the volume mutator stamp it with the raw
+	// snapshot name before the apiserver validates labels. A linked clone from a
+	// snapshot whose name is not a valid label value is therefore rejected at
+	// creation, so such a snapshot can never be an entrypoint. Building a selector
+	// from the name would fail and block the deletion instead. Revisit this if
+	// the label stops storing the raw snapshot name.
+	if len(validation.IsValidLabelValue(snapshotName)) > 0 {
+		return false, nil, nil
+	}
+
 	matchLabels := types.GetLinkedCloneSourceSnapshotLabel(snapshotName)
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: matchLabels,
