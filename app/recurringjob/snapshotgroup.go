@@ -36,31 +36,42 @@ const (
 
 var errSnapshotLimitReached = errors.New("member volumes have reached their snapshot limits")
 
-// StartSnapshotGroupJob runs one scheduled snapshot-group recurring job. If a group
-// of this job is still unfinished (for example, a retry after the wait timed out),
-// it waits for that group and reports its outcome instead of creating a new one.
-// Otherwise it creates a SnapshotGroup of the assigned volumes and waits for it.
-func StartSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) error {
+// StartSnapshotGroupJob runs one scheduled snapshot-group recurring job.
+//   - If this run (runName) already created a group, as on a
+//     container restart, it waits for that group and reports its outcome.
+//   - If another run's group is still unfinished, it skips this run.
+//   - If runName is unknown (CronJob spec predates it), it waits on any unfinished group,
+//     since that group may be this run's own.
+//
+// Otherwise, it creates a SnapshotGroup of the assigned volumes and waits for it.
+func StartSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob, runName string) error {
 	sgExists, err := job.ListSnapshotGroup()
 	if err != nil {
 		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning,
 			constant.EventReasonFailedSnapshotGroup, fmt.Sprintf("Failed to list SnapshotGroups for recurring job: %v", err))
 		return fmt.Errorf("failed to list SnapshotGroups for recurring job %s: %w", recurringJob.Name, err)
 	}
-	if pendingName, ok := anyInProgress(sgExists.Items); ok {
-		resumeJob := &SnapshotGroupJob{
-			Job:             job,
-			logger:          job.logger.WithFields(logrus.Fields{"job": job.name, "snapshotGroup": pendingName}),
-			snapshotGroup:   pendingName,
-			deadlineSeconds: defaultDeadlineSeconds,
-		}
-		resumeJob.logger.Infof("Waiting for unfinished SnapshotGroup %v to finish", pendingName)
-		sg, err := resumeJob.waitForTerminalPhase()
-		defer resumeJob.cleanup()
-		return resumeJob.recordResult(recurringJob, sg, err)
+
+	if sgName, found := findRunGroup(sgExists.Items, runName); found {
+		return resumeSnapshotGroup(job, recurringJob, sgName)
 	}
 
-	snapshotGroupJob, err := newSnapshotGroupJob(job, recurringJob)
+	if pendingName, ok := anyInProgress(sgExists.Items); ok {
+		if runName == "" {
+			// CronJob spec predates the run identity: the group may be this run's own.
+			job.logger.Infof(
+				"%v is not set, so SnapshotGroup %v may belong to this run; waiting for it",
+				types.EnvRecurringJobRunName, pendingName,
+			)
+			return resumeSnapshotGroup(job, recurringJob, pendingName)
+		}
+		job.logger.Infof("Skipping this run: SnapshotGroup %v of a previous run is still in progress", pendingName)
+		job.eventRecorder.Event(recurringJob, corev1.EventTypeNormal, constant.EventReasonSkippedSnapshotGroup,
+			fmt.Sprintf("previous group %s is still InProgress; skipping this run", pendingName))
+		return nil
+	}
+
+	snapshotGroupJob, err := newSnapshotGroupJob(job, recurringJob, runName)
 	if err != nil {
 		job.logger.WithError(err).Errorf("Failed to initialize snapshotGroup job")
 		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning,
@@ -86,8 +97,50 @@ func StartSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) error 
 	return snapshotGroupJob.recordResult(recurringJob, sg, err)
 }
 
+// findRunGroup returns this run's own group in any phase, so a retry of the same
+// Kubernetes Job reports that group's outcome instead of skipping or creating another.
+func findRunGroup(groups []longhorn.SnapshotGroup, runName string) (string, bool) {
+	if runName == "" {
+		return "", false
+	}
+	for _, group := range groups {
+		if group.DeletionTimestamp == nil && group.Labels[types.GetRecurringJobRunNameLabelKey()] == runName {
+			return group.Name, true
+		}
+	}
+	return "", false
+}
+
+// anyInProgress reports a group that is created but not yet finished: an empty phase
+// (not yet reconciled by the controller) or InProgress. Only Ready and Failed are terminal.
+func anyInProgress(groups []longhorn.SnapshotGroup) (string, bool) {
+	for _, group := range groups {
+		if group.DeletionTimestamp != nil {
+			continue
+		}
+		if group.Status.Phase == longhorn.SnapshotGroupPhaseInProgress || group.Status.Phase == "" {
+			return group.Name, true
+		}
+	}
+	return "", false
+}
+
+// resumeSnapshotGroup waits for an existing group if needed and reports its outcome.
+func resumeSnapshotGroup(job *Job, recurringJob *longhorn.RecurringJob, name string) error {
+	resumeJob := &SnapshotGroupJob{
+		Job:             job,
+		logger:          job.logger.WithFields(logrus.Fields{"job": job.name, "snapshotGroup": name}),
+		snapshotGroup:   name,
+		deadlineSeconds: defaultDeadlineSeconds,
+	}
+	resumeJob.logger.Infof("Resuming SnapshotGroup %v", name)
+	sg, err := resumeJob.waitForTerminalPhase()
+	defer resumeJob.cleanup()
+	return resumeJob.recordResult(recurringJob, sg, err)
+}
+
 // newSnapshotGroupJob resolves the volumes assigned to the recurring job and builds the job.
-func newSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) (*SnapshotGroupJob, error) {
+func newSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob, runName string) (*SnapshotGroupJob, error) {
 	allowDetached, err := getSettingAsBoolean(types.SettingNameAllowRecurringJobWhileVolumeDetached, job.namespace, job.lhClient)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowRecurringJobWhileVolumeDetached)
@@ -149,6 +202,7 @@ func newSnapshotGroupJob(job *Job, recurringJob *longhorn.RecurringJob) (*Snapsh
 		Job:             job,
 		logger:          logger,
 		snapshotGroup:   snapshotGroupName,
+		runName:         runName,
 		volumes:         volumeNames,
 		labels:          recurringJob.Spec.Labels,
 		deadlineSeconds: defaultDeadlineSeconds,
@@ -263,13 +317,18 @@ func checkSnapshotLimits(job *Job, volumes []*longhorn.Volume, volumeNames []str
 func (job *SnapshotGroupJob) run() (*longhorn.SnapshotGroup, error) {
 	job.logger.Info("Starting SnapshotGroup job")
 
+	sgLabels := map[string]string{
+		types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, string(longhorn.RecurringJobTypeSnapshotGroup)): job.name,
+	}
+	if job.runName != "" {
+		sgLabels[types.GetRecurringJobRunNameLabelKey()] = job.runName
+	}
+
 	newSnapshotGroup := &longhorn.SnapshotGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      job.snapshotGroup,
 			Namespace: job.namespace,
-			Labels: map[string]string{
-				types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, string(longhorn.RecurringJobTypeSnapshotGroup)): job.name,
-			},
+			Labels:    sgLabels,
 		},
 		Spec: longhorn.SnapshotGroupSpec{
 			Volumes:         job.volumes,
@@ -380,43 +439,6 @@ func (job *SnapshotGroupJob) cleanup() {
 	}
 }
 
-// recordResult logs and emits one event for the group's final state on the RecurringJob,
-// and returns the Job's result: nil only when the group is Ready.
-func (job *SnapshotGroupJob) recordResult(recurringJob *longhorn.RecurringJob, sg *longhorn.SnapshotGroup, err error) error {
-	recordFailure := func(err error) error {
-		job.logger.WithError(err).Error("snapshotGroup job failed")
-		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning,
-			constant.EventReasonFailedSnapshotGroup, err.Error())
-		return err
-	}
-	recordCompleted := func(msg string) error {
-		job.logger.Info(msg)
-		job.eventRecorder.Event(recurringJob, corev1.EventTypeNormal,
-			constant.EventReasonCompletedSnapshotGroup, msg)
-		return nil
-	}
-
-	switch {
-	case err != nil:
-		return recordFailure(err)
-
-	case sg == nil:
-		return recordFailure(fmt.Errorf("SnapshotGroup %v was not observed for recurring job %v", job.snapshotGroup, job.name))
-
-	case sg.Status.Phase == longhorn.SnapshotGroupPhaseFailed:
-		return recordFailure(fmt.Errorf("SnapshotGroup %s ended in phase %v: %s", sg.Name, sg.Status.Phase, sg.Status.Error))
-
-	case sg.Status.Phase == longhorn.SnapshotGroupPhaseReady:
-		if !sg.Status.ReadyToUse {
-			return recordFailure(fmt.Errorf("SnapshotGroup %s reached Ready phase but is not ready to use", sg.Name))
-		}
-		return recordCompleted(fmt.Sprintf("SnapshotGroup %s is ready", sg.Name))
-
-	default:
-		return recordFailure(fmt.Errorf("SnapshotGroup %s ended in unexpected phase %q", sg.Name, sg.Status.Phase))
-	}
-}
-
 // isSnapshotGroupEligibleForRetention reports whether a SnapshotGroup should be
 // considered by retention cleanup. Only the completed terminal states Ready and
 // Failed participate.
@@ -475,16 +497,39 @@ func filterExpiredSnapshotGroupItems(groups []longhorn.SnapshotGroup, retainCoun
 	return filtered
 }
 
-// anyInProgress reports a group that is created but not yet finished: an empty phase
-// (not yet reconciled by the controller) or InProgress. Only Ready and Failed are terminal.
-func anyInProgress(snapshotGroups []longhorn.SnapshotGroup) (string, bool) {
-	for _, snapshotGroup := range snapshotGroups {
-		if snapshotGroup.DeletionTimestamp != nil {
-			continue
-		}
-		if snapshotGroup.Status.Phase == longhorn.SnapshotGroupPhaseInProgress || snapshotGroup.Status.Phase == "" {
-			return snapshotGroup.Name, true
-		}
+// recordResult logs and emits one event for the group's final state on the RecurringJob,
+// and returns the Job's result: nil only when the group is Ready and ReadyToUse.
+func (job *SnapshotGroupJob) recordResult(recurringJob *longhorn.RecurringJob, sg *longhorn.SnapshotGroup, err error) error {
+	recordFailure := func(err error) error {
+		job.logger.WithError(err).Error("snapshotGroup job failed")
+		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning,
+			constant.EventReasonFailedSnapshotGroup, err.Error())
+		return err
 	}
-	return "", false
+	recordCompleted := func(msg string) error {
+		job.logger.Info(msg)
+		job.eventRecorder.Event(recurringJob, corev1.EventTypeNormal,
+			constant.EventReasonCompletedSnapshotGroup, msg)
+		return nil
+	}
+
+	switch {
+	case err != nil:
+		return recordFailure(err)
+
+	case sg == nil:
+		return recordFailure(fmt.Errorf("SnapshotGroup %v was not observed for recurring job %v", job.snapshotGroup, job.name))
+
+	case sg.Status.Phase == longhorn.SnapshotGroupPhaseFailed:
+		return recordFailure(fmt.Errorf("SnapshotGroup %s ended in phase %v: %s", sg.Name, sg.Status.Phase, sg.Status.Error))
+
+	case sg.Status.Phase == longhorn.SnapshotGroupPhaseReady:
+		if !sg.Status.ReadyToUse {
+			return recordFailure(fmt.Errorf("SnapshotGroup %s reached Ready phase but is not ready to use", sg.Name))
+		}
+		return recordCompleted(fmt.Sprintf("SnapshotGroup %s is ready", sg.Name))
+
+	default:
+		return recordFailure(fmt.Errorf("SnapshotGroup %s ended in unexpected phase %q", sg.Name, sg.Status.Phase))
+	}
 }

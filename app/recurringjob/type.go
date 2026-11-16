@@ -67,6 +67,7 @@ type SnapshotGroupJob struct {
 	logger *logrus.Entry // Log messages related to the volume job.
 
 	snapshotGroup   string // Name of the SnapshotGroup.
+	runName         string // Kubernetes Job name of this run, "" if unknown
 	volumes         []string
 	labels          map[string]string
 	deadlineSeconds int64

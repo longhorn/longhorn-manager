@@ -29,6 +29,7 @@ const (
 
 	EventReasonCompletedSnapshotGroup = "CompletedSnapshotGroup"
 	EventReasonFailedSnapshotGroup    = "FailedSnapshotGroup"
+	EventReasonSkippedSnapshotGroup   = "SkippedSnapshotGroup"
 
 	EventReasonRestored      = "Restored"
 	EventReasonRestoredFmt   = "Restored %v"

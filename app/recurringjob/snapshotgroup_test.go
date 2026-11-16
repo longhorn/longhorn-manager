@@ -31,6 +31,8 @@ import (
 const (
 	testRecurringJob  = "demo-group-snapshot"          // Job.name: the RecurringJob name, used as the owner label value
 	testSnapshotGroup = "demo-group-snapshot-1315f068" // the SnapshotGroup object name
+	testRunName1      = "demo-group-snapshot-29000000" // Kubernetes Job name of the current run
+	testRunName0      = "demo-group-snapshot-28999940" // an earlier scheduled run
 )
 
 var (
@@ -322,7 +324,7 @@ func TestNewSnapshotGroupJob(t *testing.T) {
 				env.retainCount = tc.retainCount
 			}
 
-			sgJob, err := newSnapshotGroupJob(env.Job, newRecurringJob(tc.labels, tc.groups...))
+			sgJob, err := newSnapshotGroupJob(env.Job, newRecurringJob(tc.labels, tc.groups...), testRunName1)
 
 			if tc.wantErr != "" {
 				require.Error(t, err)
@@ -331,6 +333,7 @@ func TestNewSnapshotGroupJob(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			assert.Equal(t, testRunName1, sgJob.runName)
 			assert.Equal(t, tc.wantVolumes, sgJob.volumes)
 			assert.Equal(t, tc.labels, sgJob.labels)
 			assert.NotEmpty(t, sgJob.snapshotGroup)
@@ -339,11 +342,15 @@ func TestNewSnapshotGroupJob(t *testing.T) {
 }
 
 func TestStartSnapshotGroupJob(t *testing.T) {
-	activeSG := func(vols []string, phase longhorn.SnapshotGroupPhase) longhorn.SnapshotGroup {
+	activeSG := func(vols []string, phase longhorn.SnapshotGroupPhase, runName string) longhorn.SnapshotGroup {
+		labels := map[string]string{testOwnerLabelKey: testRecurringJob}
+		if runName != "" {
+			labels[types.GetRecurringJobRunNameLabelKey()] = runName
+		}
 		return longhorn.SnapshotGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "test-sg-1", Namespace: testNamespace,
-				Labels: map[string]string{testOwnerLabelKey: testRecurringJob},
+				Labels: labels,
 			},
 			Spec: longhorn.SnapshotGroupSpec{
 				Volumes: vols,
@@ -352,7 +359,7 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 		}
 	}
 	deletingSG := func(vols []string, phase longhorn.SnapshotGroupPhase) longhorn.SnapshotGroup {
-		sg := activeSG(vols, phase)
+		sg := activeSG(vols, phase, "")
 		now := metav1.Now()
 		sg.DeletionTimestamp = &now
 		sg.Finalizers = []string{"longhorn.io"}
@@ -360,6 +367,7 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 	}
 	tests := []struct {
 		name                string
+		runName             string // Kubernetes Job name of this run
 		labels              map[string]string
 		volumes             []string
 		existingSGs         []longhorn.SnapshotGroup
@@ -375,22 +383,21 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 		expectedEventReason string
 	}{
 		{
-			name:    "resume previous snapshot group that is in progress and wait",
+			name:    "run name unknown: wait on unfinished group that may be this run's, ends Ready",
 			labels:  testVolumeLabels,
 			volumes: []string{"vol-a", "vol-b", "vol-c"},
 			existingSGs: []longhorn.SnapshotGroup{
-				activeSG([]string{"vol-a", "vol-b", "vol-c"}, longhorn.SnapshotGroupPhaseInProgress)},
+				activeSG([]string{"vol-a", "vol-b", "vol-c"}, longhorn.SnapshotGroupPhaseInProgress, "")},
 			getPhases: []longhorn.SnapshotGroupPhase{
 				longhorn.SnapshotGroupPhaseInProgress, longhorn.SnapshotGroupPhaseReady},
 			wantPolled:          "test-sg-1",
-			wantErr:             false,
 			expectedEventReason: "CompletedSnapshotGroup",
 		},
 		{
-			name:                "resume previous snapshot group that is pending (phase not yet set), ends Failed",
+			name:                "run name unknown: wait on pending group (phase not yet set), ends Failed",
 			labels:              testVolumeLabels,
 			volumes:             []string{"vol-a"},
-			existingSGs:         []longhorn.SnapshotGroup{activeSG([]string{"vol-a"}, "")},
+			existingSGs:         []longhorn.SnapshotGroup{activeSG([]string{"vol-a"}, "", "")},
 			getPhases:           []longhorn.SnapshotGroupPhase{longhorn.SnapshotGroupPhaseFailed},
 			wantPolled:          "test-sg-1",
 			wantErr:             true,
@@ -414,12 +421,12 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 		},
 		{
 			name:    "successful run to Ready phase",
+			runName: testRunName1, // also checks the new group carries the run label
 			labels:  testVolumeLabels,
 			volumes: []string{"vol-a", "vol-b"},
 			getPhases: []longhorn.SnapshotGroupPhase{
 				longhorn.SnapshotGroupPhaseInProgress, longhorn.SnapshotGroupPhaseReady},
 			wantCreate:          true,
-			wantErr:             false,
 			expectedEventReason: "CompletedSnapshotGroup",
 		},
 		{
@@ -468,7 +475,7 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 			labels:  testVolumeLabels,
 			volumes: []string{"vol-a"},
 			existingSGs: []longhorn.SnapshotGroup{
-				activeSG([]string{"vol-a"}, longhorn.SnapshotGroupPhaseReady)},
+				activeSG([]string{"vol-a"}, longhorn.SnapshotGroupPhaseReady, "")},
 			getPhases:           []longhorn.SnapshotGroupPhase{longhorn.SnapshotGroupPhaseReady},
 			wantCreate:          true,
 			expectedEventReason: "CompletedSnapshotGroup",
@@ -496,6 +503,36 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 			wantErr:             true,
 			expectedErrStr:      "not ready to use",
 			expectedEventReason: "FailedSnapshotGroup",
+		},
+		{
+			name:                "own group in progress is resumed, ends Ready",
+			runName:             testRunName1,
+			labels:              testVolumeLabels,
+			volumes:             []string{"vol-a"},
+			existingSGs:         []longhorn.SnapshotGroup{activeSG([]string{"vol-a"}, longhorn.SnapshotGroupPhaseInProgress, testRunName1)},
+			getPhases:           []longhorn.SnapshotGroupPhase{longhorn.SnapshotGroupPhaseInProgress, longhorn.SnapshotGroupPhaseReady},
+			wantPolled:          "test-sg-1",
+			expectedEventReason: "CompletedSnapshotGroup",
+		},
+		{
+			name:                "own group in progress is resumed, ends Failed",
+			runName:             testRunName1,
+			labels:              testVolumeLabels,
+			volumes:             []string{"vol-a"},
+			existingSGs:         []longhorn.SnapshotGroup{activeSG([]string{"vol-a"}, longhorn.SnapshotGroupPhaseInProgress, testRunName1)},
+			getPhases:           []longhorn.SnapshotGroupPhase{longhorn.SnapshotGroupPhaseFailed},
+			wantPolled:          "test-sg-1",
+			wantErr:             true,
+			expectedErrStr:      "ended in phase",
+			expectedEventReason: "FailedSnapshotGroup",
+		},
+		{
+			name:                "another run's group in progress skips this run",
+			runName:             testRunName1,
+			labels:              testVolumeLabels,
+			volumes:             []string{"vol-a"},
+			existingSGs:         []longhorn.SnapshotGroup{activeSG([]string{"vol-a"}, longhorn.SnapshotGroupPhaseInProgress, testRunName0)},
+			expectedEventReason: "SkippedSnapshotGroup",
 		},
 	}
 	for _, tc := range tests {
@@ -555,7 +592,7 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 					})
 			}
 
-			err := StartSnapshotGroupJob(job, recurringJob)
+			err := StartSnapshotGroupJob(job, recurringJob, tc.runName)
 
 			if tc.wantErr {
 				require.Error(t, err)
@@ -581,17 +618,16 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 			created := createdSnapshotGroups(fakeClient)
 			if !tc.wantCreate {
 				assert.Empty(t, created, "this run must not send a create request")
-				// a resumed run must wait on the unfinished group, not some other name
-				if tc.wantPolled != "" {
-					polled := false
-					for _, a := range fakeClient.Actions() {
-						if a.Matches("get", "snapshotgroups") {
-							assert.Equal(t, tc.wantPolled, a.(k8stesting.GetAction).GetName())
-							polled = true
-						}
+				// a resumed run must wait on the unfinished group, not some other name;
+				// a skipped or rejected run must not wait on any group
+				polled := false
+				for _, a := range fakeClient.Actions() {
+					if a.Matches("get", "snapshotgroups") {
+						assert.Equal(t, tc.wantPolled, a.(k8stesting.GetAction).GetName())
+						polled = true
 					}
-					assert.True(t, polled, "expected the run to wait on SnapshotGroup %v", tc.wantPolled)
 				}
+				assert.Equal(t, tc.wantPolled != "", polled, "resume must poll; skip and rejections must not")
 				return
 			}
 			require.Len(t, created, 1)
@@ -599,8 +635,11 @@ func TestStartSnapshotGroupJob(t *testing.T) {
 			assert.Equal(t, tc.volumes, sg.Spec.Volumes, "expected volumes: %v, SnapshotGroup got: %v", tc.volumes, sg.Spec.Volumes)
 			assert.Equal(t, tc.labels, sg.Spec.Labels,
 				"expected labels: %v, SnapshotGroup got: %v", tc.labels, sg.Spec.Labels)
-			assert.Equal(t, map[string]string{testOwnerLabelKey: testRecurringJob}, sg.Labels,
-				"SnapshotGroup does not have expected owning-job label: %v", sg.Labels)
+			wantLabels := map[string]string{testOwnerLabelKey: testRecurringJob}
+			if tc.runName != "" {
+				wantLabels[types.GetRecurringJobRunNameLabelKey()] = tc.runName
+			}
+			assert.Equal(t, wantLabels, sg.Labels, "SnapshotGroup does not have expected labels: %v", sg.Labels)
 			assert.EqualValues(t, defaultDeadlineSeconds, sg.Spec.DeadlineSeconds,
 				"expected deadline: %v, SnapshotGroup got: %v", defaultDeadlineSeconds, sg.Spec.DeadlineSeconds)
 			assert.Equal(t, testNamespace, sg.Namespace)
@@ -943,7 +982,7 @@ func TestStartSnapshotGroupJobRetentionOnSnapshotLimit(t *testing.T) {
 			job.retentionPolicy = longhorn.RecurringJobRetentionPolicyCountBased
 			job.retainCount = 1
 
-			err := StartSnapshotGroupJob(job, newRecurringJob(nil))
+			err := StartSnapshotGroupJob(job, newRecurringJob(nil), "")
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
