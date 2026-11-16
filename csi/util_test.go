@@ -1,6 +1,7 @@
 package csi
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -304,7 +305,22 @@ func TestHostNamespaceMounterTimeoutKillsChildProcess(t *testing.T) {
 	require.NoError(t, err)
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool { return syscall.Kill(pid, 0) != nil }, 5*time.Second, 50*time.Millisecond, "timed-out nsmounter child %d is still running", pid)
+	assert.Eventually(t, func() bool { return processTerminated(pid) }, 5*time.Second, 50*time.Millisecond, "timed-out nsmounter child %d is still running", pid)
+}
+
+// processTerminated treats a zombie as terminated: without an init that reaps orphans
+// (e.g. PID 1 in a container) a killed child stays a zombie and kill(pid, 0) still succeeds.
+func processTerminated(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return true
+	}
+	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	// "pid (comm) S ...": comm may contain spaces or parentheses, so cut at the last ")"
+	i := strings.LastIndex(string(stat), ")")
+	return i >= 0 && strings.HasPrefix(strings.TrimSpace(string(stat)[i+1:]), "Z")
 }
 
 func TestUnmountLazyFallbackUsesMounterNamespace(t *testing.T) {
