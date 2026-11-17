@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -746,6 +748,91 @@ func TestHandleRebuildFailure(t *testing.T) {
 			} else {
 				assert.Equal(longhorn.InstanceStateRunning, updated.Spec.DesireState)
 				assert.Empty(updated.Spec.FailedAt)
+			}
+		})
+	}
+}
+
+func TestSyncSnapshotCRs(t *testing.T) {
+	const snapName = "snap-1"
+
+	type testCase struct {
+		active          bool
+		snapshots       map[string]*longhorn.SnapshotInfo
+		expectCRDeleted bool
+	}
+
+	tests := map[string]testCase{
+		// A v2 switchover target engine is inactive and has not fetched snapshots yet.
+		// It must not delete the CRs, otherwise the snapshot controller removes the snapshots.
+		"inactive engine keeps snapshot CRs": {
+			active:          false,
+			snapshots:       map[string]*longhorn.SnapshotInfo{},
+			expectCRDeleted: false,
+		},
+		"active engine without fetched snapshots keeps snapshot CRs": {
+			active:          true,
+			snapshots:       nil,
+			expectCRDeleted: false,
+		},
+		"active engine deletes CR of snapshot missing from engine": {
+			active:          true,
+			snapshots:       map[string]*longhorn.SnapshotInfo{etypes.VolumeHeadName: {Name: etypes.VolumeHeadName}},
+			expectCRDeleted: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+			datastore.SkipListerCheck = true
+
+			kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			ec := &EngineController{
+				baseController: newBaseController("longhorn-engine", logger),
+				ds:             datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+			}
+
+			volume := &longhorn.Volume{ObjectMeta: metav1.ObjectMeta{Name: TestVolumeName, Namespace: TestNamespace}}
+			vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+			assert.NoError(vIndexer.Add(volume))
+
+			snapshot := &longhorn.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapName,
+					Namespace: TestNamespace,
+					Labels:    types.GetVolumeLabels(TestVolumeName),
+				},
+				Spec:   longhorn.SnapshotSpec{Volume: TestVolumeName},
+				Status: longhorn.SnapshotStatus{CreationTime: "2026-01-01T00:00:00Z"},
+			}
+			snapshot, err := lhClient.LonghornV1beta2().Snapshots(TestNamespace).Create(context.TODO(), snapshot, metav1.CreateOptions{})
+			assert.NoError(err)
+			sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+			assert.NoError(sIndexer.Add(snapshot))
+
+			engine := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+					Active:       tc.active,
+				},
+				Status: longhorn.EngineStatus{Snapshots: tc.snapshots},
+			}
+
+			assert.NoError(ec.syncSnapshotCRs(engine))
+
+			_, err = lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), snapName, metav1.GetOptions{})
+			if tc.expectCRDeleted {
+				assert.True(apierrors.IsNotFound(err), "expected snapshot CR to be deleted, got %v", err)
+			} else {
+				assert.NoError(err)
 			}
 		})
 	}
