@@ -2046,7 +2046,7 @@ func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2UsesTargetNodeID(c
 
 	rs := map[string]*longhorn.Replica{replica.Name: replica}
 
-	ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode1, currentEngine, migrationEngine, rs)
+	ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode1, currentEngine, migrationEngine, nil, rs)
 	c.Assert(err, IsNil)
 	c.Assert(ready, Equals, false)
 	c.Assert(revertRequired, Equals, false)
@@ -2054,6 +2054,121 @@ func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2UsesTargetNodeID(c
 	c.Assert(migrationEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
 	c.Assert(len(migrationEngine.Spec.ReplicaAddressMap), Equals, 1)
 	c.Assert(replica.Spec.MigrationEngineName, Equals, migrationEngine.Name)
+}
+
+func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2StopsEngineFrontendBeforeEngineRestart(c *C) {
+	datastore.SkipListerCheck = true
+
+	testCases := []struct {
+		name                       string
+		engineFrontendDesireState  longhorn.InstanceState
+		engineFrontendCurrentState longhorn.InstanceState
+		engineFrontendStarting     bool
+		expectEngineRestart        bool
+	}{
+		{
+			name:                       "running engine frontend is stopped first",
+			engineFrontendDesireState:  longhorn.InstanceStateRunning,
+			engineFrontendCurrentState: longhorn.InstanceStateRunning,
+			expectEngineRestart:        false,
+		},
+		{
+			name:                       "engine frontend that still desires to run is stopped first",
+			engineFrontendDesireState:  longhorn.InstanceStateRunning,
+			engineFrontendCurrentState: longhorn.InstanceStateStopped,
+			expectEngineRestart:        false,
+		},
+		{
+			name:                       "engine restart waits for the engine frontend to finish stopping",
+			engineFrontendDesireState:  longhorn.InstanceStateStopped,
+			engineFrontendCurrentState: longhorn.InstanceStateRunning,
+			expectEngineRestart:        false,
+		},
+		{
+			name:                       "engine restart waits for an in-flight engine frontend start",
+			engineFrontendDesireState:  longhorn.InstanceStateStopped,
+			engineFrontendCurrentState: longhorn.InstanceStateStopped,
+			engineFrontendStarting:     true,
+			expectEngineRestart:        false,
+		},
+		{
+			name:                       "engine is restarted once the engine frontend is stopped",
+			engineFrontendDesireState:  longhorn.InstanceStateStopped,
+			engineFrontendCurrentState: longhorn.InstanceStateStopped,
+			expectEngineRestart:        true,
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Log(tc.name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		c.Assert(err, IsNil)
+
+		nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = nodeIndexer.Add(createdNode)
+		c.Assert(err, IsNil)
+
+		v := newVolume(TestVolumeName, 1)
+		v.Spec.DataEngine = longhorn.DataEngineTypeV2
+
+		currentEngine := newEngineForVolume(v)
+		currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+		currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
+
+		replica := newReplicaForVolume(v, currentEngine, TestNode1, TestDiskID1)
+		replica.Spec.DesireState = longhorn.InstanceStateRunning
+		replica.Status.CurrentState = longhorn.InstanceStateRunning
+		replica.Status.IP = randomIP()
+		replica.Status.StorageIP = replica.Status.IP
+		replica.Status.Port = randomPort()
+
+		currentEngine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{replica.Name: longhorn.ReplicaModeRW}
+
+		// The running migration engine records a replica that is no longer
+		// available, so it needs a restart.
+		staleReplicaAddressMap := map[string]string{"stale-replica": "10.0.0.1:20001"}
+		migrationEngine := newEngineForVolume(v)
+		migrationEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+		migrationEngine.Spec.Active = false
+		migrationEngine.Spec.NodeID = TestNode1
+		migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
+		migrationEngine.Spec.ReplicaAddressMap = staleReplicaAddressMap
+		migrationEngine.Status.CurrentState = longhorn.InstanceStateRunning
+
+		migrationEngineFrontend := newEngineFrontendForVolume(v, migrationEngine.Name, TestNode1, "")
+		migrationEngineFrontend.Spec.DesireState = tc.engineFrontendDesireState
+		migrationEngineFrontend.Status.CurrentState = tc.engineFrontendCurrentState
+		migrationEngineFrontend.Status.Starting = tc.engineFrontendStarting
+
+		rs := map[string]*longhorn.Replica{replica.Name: replica}
+
+		ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode1, currentEngine, migrationEngine, migrationEngineFrontend, rs)
+		c.Assert(err, IsNil)
+		c.Assert(ready, Equals, false)
+		c.Assert(revertRequired, Equals, false)
+
+		c.Assert(migrationEngineFrontend.Spec.DesireState, Equals, longhorn.InstanceStateStopped)
+		c.Assert(migrationEngineFrontend.Spec.NodeID, Equals, TestNode1)
+
+		if tc.expectEngineRestart {
+			c.Assert(migrationEngine.Spec.DesireState, Equals, longhorn.InstanceStateStopped)
+			c.Assert(migrationEngine.Spec.NodeID, Equals, "")
+			c.Assert(len(migrationEngine.Spec.ReplicaAddressMap), Equals, 0)
+		} else {
+			c.Assert(migrationEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+			c.Assert(migrationEngine.Spec.NodeID, Equals, TestNode1)
+			c.Assert(migrationEngine.Spec.ReplicaAddressMap, DeepEquals, staleReplicaAddressMap)
+		}
+	}
 }
 
 func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2SupportsSplitFrontendAndEngineNodes(c *C) {
@@ -2102,7 +2217,7 @@ func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2SupportsSplitFront
 
 	rs := map[string]*longhorn.Replica{replica.Name: replica}
 
-	ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode2, currentEngine, migrationEngine, rs)
+	ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode2, currentEngine, migrationEngine, nil, rs)
 	c.Assert(err, IsNil)
 	c.Assert(ready, Equals, false)
 	c.Assert(revertRequired, Equals, false)
