@@ -1762,6 +1762,15 @@ func (m *EngineMonitor) acquireRestoringCounter(acquire bool) error {
 func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
 	log := ec.logger.WithField("engine", engine.Name)
 
+	// Only an active engine whose snapshot list has been fetched reflects the real
+	// snapshot chain. A v2 switchover target engine is inactive until promoted, and
+	// its Status.Snapshots stays nil until the first monitor sync. Trusting either
+	// would delete the snapshot CRs, and the snapshot controller would then delete
+	// the snapshots themselves.
+	if !engine.Spec.Active || engine.Status.Snapshots == nil {
+		return nil
+	}
+
 	vol, err := ec.ds.GetVolumeRO(engine.Spec.VolumeName)
 	if err != nil {
 		return err
