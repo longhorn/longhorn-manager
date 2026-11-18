@@ -50,15 +50,55 @@ func filterSnapshotCRsNotInTargets(snapshotCRs []longhornclient.SnapshotCR, targ
 	})
 }
 
-// filterExpiredItems returns a list of names from the input sts excluding the latest retainCount names
-func filterExpiredItems(nts []NameWithTimestamp, retainCount int) []string {
+// filterExpiredItems returns the names of items to clean up. The two retention
+// policies work independently and exactly one is in force:
+//
+//   - age-based expires an item that has existed for longer than retainAge as of
+//     now, a rolling window re-evaluated on every run. retainCount is not read.
+//   - count-based expires an item that is not among the newest retainCount items.
+//     retainAge is not read. New jobs default to count-based and jobs predating the
+//     policy field are backfilled to it on upgrade.
+//
+// A non-positive retainAge expires nothing under age-based. Treating it as "the
+// window is already past" would delete every snapshot/backup on the next run, so
+// the safe reading is that the job is not configured yet; the webhook rejects the
+// combination up front.
+//
+// A retainCount of 0 under count-based expires everything, which is not a
+// misconfiguration: the webhook allows retain 0 for the snapshot-cleanup,
+// snapshot-delete and filesystem-trim tasks precisely so a snapshot-delete job can
+// clear every snapshot.
+func filterExpiredItems(nts []NameWithTimestamp, retainCount int, retainAge time.Duration, policy longhorn.RecurringJobRetentionPolicy, now time.Time) []string {
 	sort.Slice(nts, func(i, j int) bool {
 		return nts[i].Timestamp.Before(nts[j].Timestamp)
 	})
 
+	// Items with index < countExpiredBoundary are beyond the newest retainCount.
+	countExpiredBoundary := len(nts)
+	if retainCount >= 0 {
+		countExpiredBoundary = len(nts) - retainCount
+	}
+
 	ret := []string{}
-	for i := 0; i < len(nts)-retainCount; i++ {
-		ret = append(ret, nts[i].Name)
+	for i, nt := range nts {
+		expired := false
+
+		switch policy {
+		case longhorn.RecurringJobRetentionPolicyAgeBased:
+			expired = retainAge > 0 && now.Sub(nt.Timestamp) > retainAge
+		case longhorn.RecurringJobRetentionPolicyCountBased:
+			// nts is sorted from oldest to newest, so the first len(nts) - retainCount items are expired.
+			expired = i < countExpiredBoundary
+		default:
+			// Unreachable: new jobs default to count-based, existing jobs are backfilled on
+			// upgrade, and the webhook rejects an empty or unrecognized policy. Returning
+			// nothing is the safe fail-mode so an unexpected policy never deletes anything.
+			return ret
+		}
+
+		if expired {
+			ret = append(ret, nt.Name)
+		}
 	}
 	return ret
 }

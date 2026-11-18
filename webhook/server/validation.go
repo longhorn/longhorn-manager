@@ -18,6 +18,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/enginefrontend"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
+	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanagerupgrade"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/persistentvolumeclaim"
@@ -27,6 +28,8 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/shard"
 	"github.com/longhorn/longhorn-manager/webhook/resources/shardgroup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
+	"github.com/longhorn/longhorn-manager/webhook/resources/snapshotgroup"
+	"github.com/longhorn/longhorn-manager/webhook/resources/storageclass"
 	"github.com/longhorn/longhorn-manager/webhook/resources/supportbundle"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systemrestore"
@@ -53,8 +56,10 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		volume.NewValidator(ds, currentNodeID),
 		orphan.NewValidator(ds),
 		snapshot.NewValidator(ds),
+		snapshotgroup.NewValidator(ds),
 		shardgroup.NewValidator(ds),
 		shard.NewValidator(ds),
+		storageclass.NewValidator(ds),
 		supportbundle.NewValidator(ds),
 		systembackup.NewValidator(ds),
 		systemrestore.NewValidator(ds),
@@ -63,6 +68,7 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		enginefrontend.NewValidator(ds),
 		replica.NewValidator(ds),
 		instancemanager.NewValidator(ds),
+		instancemanagerupgrade.NewValidator(ds),
 		persistentvolumeclaim.NewValidator(ds),
 		engineimage.NewValidator(ds),
 	}

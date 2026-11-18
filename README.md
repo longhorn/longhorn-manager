@@ -103,7 +103,7 @@ Please check [the Longhorn repo](https://github.com/longhorn/longhorn#community)
 
 ## License
 
-Copyright (c) 2014-2025 The Longhorn Authors
+Copyright (c) 2014-2026 The Longhorn Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

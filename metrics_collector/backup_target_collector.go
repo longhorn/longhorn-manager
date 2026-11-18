@@ -1,16 +1,21 @@
 package metricscollector
 
 import (
+	"strings"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 type BackupTargetCollector struct {
 	*baseCollector
 
 	backupVolumeCountMetric metricInfo
+	statusMetric            metricInfo
 }
 
 func NewBackupTargetCollector(
@@ -32,11 +37,22 @@ func NewBackupTargetCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	btc.statusMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemBackupTarget, "status"),
+			"Status of the backup target",
+			[]string{backupTargetLabel, conditionLabel, conditionReasonLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return btc
 }
 
 func (btc *BackupTargetCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- btc.backupVolumeCountMetric.Desc
+	ch <- btc.statusMetric.Desc
 }
 
 func (btc *BackupTargetCollector) Collect(ch chan<- prometheus.Metric) {
@@ -64,5 +80,14 @@ func (btc *BackupTargetCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 
 		ch <- prometheus.MustNewConstMetric(btc.backupVolumeCountMetric.Desc, btc.backupVolumeCountMetric.Type, float64(len(bvs)), bt.Name)
+
+		for _, condition := range bt.Status.Conditions {
+			val := 0
+			if condition.Status == longhorn.ConditionStatusTrue {
+				val = 1
+			}
+
+			ch <- prometheus.MustNewConstMetric(btc.statusMetric.Desc, btc.statusMetric.Type, float64(val), bt.Name, strings.ToLower(condition.Type), condition.Reason)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
+
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -69,8 +70,8 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
 	if !isExist {
 		if backup.Spec.SnapshotName == "" {
-			err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
-			return nil, werror.NewInvalidError(err.Error(), "")
+			message := fmt.Sprintf("cannot find the backup volume label for backup %v", backup.Name)
+			return nil, werror.NewInvalidError(message, "")
 		}
 
 		// Try to get volume name from snapshot

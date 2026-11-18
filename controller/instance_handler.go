@@ -25,6 +25,11 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+// errStaleInstanceReaped signals that createInstance only reaped a stale stopped
+// record instead of creating an instance, so the caller must not treat it as a
+// successful create (e.g. must not set SalvageExecuted).
+var errStaleInstanceReaped = errors.New("stale stopped instance reaped")
+
 // InstanceHandler can handle the state transition of correlated instance and
 // engine/replica object. It assumed the instance it's going to operate with is using
 // the SAME NAME from the engine/replica object
@@ -196,11 +201,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 		if status.UblkID != instance.Status.UblkID {
 			status.UblkID = instance.Status.UblkID
 		}
-		// only set CurrentImage when first started, since later we may specify
-		// different spec.Image for upgrade
-		if status.CurrentImage == "" {
-			status.CurrentImage = spec.Image
-		}
+		status.CurrentImage = h.getInstanceCurrentImage(log, im, spec, status.CurrentImage)
 
 		if status.UUID != instance.Status.UUID {
 			status.UUID = instance.Status.UUID
@@ -245,9 +246,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			status.UblkID = instance.Status.UblkID
 		}
 
-		if status.CurrentImage == "" {
-			status.CurrentImage = spec.Image
-		}
+		status.CurrentImage = h.getInstanceCurrentImage(log, im, spec, status.CurrentImage)
 
 		if status.UUID != instance.Status.UUID {
 			status.UUID = instance.Status.UUID
@@ -294,6 +293,33 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 		status.UUID = ""
 		h.resetInstanceErrorCondition(status)
 	}
+}
+
+// getInstanceCurrentImage returns the image that a running or suspended instance runs.
+//
+// A V1 instance runs the engine binary of spec.Image. Only record it when first
+// started, since a later spec.Image change means a live upgrade, which updates
+// CurrentImage on completion.
+//
+// A V2 instance runs inside its instance manager regardless of spec.Image, so record
+// the instance manager image once its container is confirmed to run it. Keep the
+// last known image until then, which is empty for a newly started instance.
+func (h *InstanceHandler) getInstanceCurrentImage(log *logrus.Entry, im *longhorn.InstanceManager, spec *longhorn.InstanceSpec, currentImage string) string {
+	if types.IsDataEngineV1(spec.DataEngine) {
+		if currentImage == "" {
+			return spec.Image
+		}
+		return currentImage
+	}
+
+	image, err := h.ds.GetInstanceManagerRunningImage(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get running image of instance manager %v", im.Name)
+	}
+	if image != "" {
+		return image
+	}
+	return currentImage
 }
 
 func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProcess, status *longhorn.InstanceStatus) {
@@ -347,6 +373,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			if !datastore.ErrorIsNotFound(err) {
 				return err
 			}
+			if types.IsDataEngineV2(spec.DataEngine) &&
+				status.CurrentState == longhorn.InstanceStateStopped && !status.Started {
+				log.Infof("Clearing stale instance manager %v for stopped V2 instance", status.InstanceManagerName)
+				status.InstanceManagerName = ""
+			}
 		}
 	}
 	// There should be an available instance manager for a scheduled instance when its related engine image is compatible
@@ -372,6 +403,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 	if im != nil {
 		log = log.WithFields(logrus.Fields{"instanceManager": im.Name})
+	}
+	if im != nil && im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
+		if _, ok := obj.(*longhorn.EngineFrontend); ok && spec.DesireState == longhorn.InstanceStateRunning { // A v2 EngineFrontend is kernel-hosted on the source node and remains
+			// active while its instance manager pod is restarted for live upgrade.
+			// Do not reconcile it against transient IM process status.
+			return nil
+		}
 	}
 
 	if spec.LogRequested {
@@ -427,6 +465,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
 		if err != nil {
+			// A stale stopped record was only reaped, not created. Wait for the next
+			// reconcile to recreate and don't set SalvageExecuted, otherwise SalvageRequested
+			// would be cleared before the salvaged instance is actually created.
+			if errors.Is(err, errStaleInstanceReaped) {
+				break
+			}
 			return err
 		}
 
@@ -542,8 +586,19 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 }
 
 func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhorn.DataEngineType, obj runtime.Object) error {
-	_, err := h.instanceManagerHandler.GetInstance(obj)
+	instance, err := h.instanceManagerHandler.GetInstance(obj)
 	if err == nil {
+		// For a v1 data engine, a stale `stopped` process record still answers GetInstance
+		// successfully, so create would short-circuit into a silent no-op forever and the
+		// volume stays stuck in attaching (longhorn/longhorn#13687). Reap the stale record
+		// here so the next reconcile can recreate the instance from a clean state.
+		if types.IsDataEngineV1(dataEngine) && instance != nil && instance.Status.State == longhorn.InstanceStateStopped {
+			logrus.Warnf("Reaping stale stopped instance %v before recreating it", instanceName)
+			if err := h.deleteInstance(instanceName, obj); err != nil {
+				return err
+			}
+			return errStaleInstanceReaped
+		}
 		return nil
 	}
 	isStoppedV2Engine := types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)

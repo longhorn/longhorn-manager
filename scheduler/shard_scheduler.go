@@ -9,7 +9,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -68,6 +67,14 @@ func (ss *ShardScheduler) ScheduleShard(sg *longhorn.ShardGroup, vol *longhorn.V
 			continue
 		}
 
+		// Shards hold the volume data, so like replicas they must stay in one of
+		// the failure domains the volume resolved at creation. An empty topology
+		// requirement leaves the volume unconstrained.
+		if !types.NodeMatchesTopologyRequirement(node, vol.Spec.TopologyRequirement) {
+			skipReasons.Append("node is outside the volume topology requirement", fmt.Errorf("node %v", nodeName))
+			continue
+		}
+
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			diskSpec, ok := node.Spec.Disks[diskName]
 			if !ok {
@@ -119,16 +126,10 @@ func (ss *ShardScheduler) ScheduleShard(sg *longhorn.ShardGroup, vol *longhorn.V
 	return nil, skipReasons, nil
 }
 
-// ComputeShardSize returns the size in bytes that each EC shard lvol must be:
-// ceil(volumeSize/k) plus the per-disk SPDK front reservation, rounded up to a 2 MiB
-// (util.SizeAlignment) boundary so SPDK accepts it on create and expand.
+// ComputeShardSize delegates to the shared go-spdk-helper formula so the size
+// the scheduler predicts and the lvstore the engine creates on the EC bdev
+// agree; the engine validates the result against the measured lvstore at
+// creation and after expand.
 func ComputeShardSize(volumeSize int64, k, stripSizeKB int) int64 {
-	if k <= 0 {
-		// Guards the division below. ValidateECParameters requires k >= 1, so this
-		// should not be reached.
-		return volumeSize
-	}
-	perDiskUser := (volumeSize + int64(k) - 1) / int64(k) // ceil(volumeSize/k)
-	reservation := int64(spdktypes.EcFrontReservationBytes(uint32(stripSizeKB)))
-	return util.RoundUpSize(perDiskUser + reservation)
+	return spdktypes.ComputeShardSize(volumeSize, k, stripSizeKB)
 }

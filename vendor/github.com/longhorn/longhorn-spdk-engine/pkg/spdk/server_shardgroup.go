@@ -180,7 +180,7 @@ func (s *Server) ShardGroupExpand(ctx context.Context, req *spdkrpc.ShardGroupEx
 	if shardGroup == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find shardgroup %v", req.Name)
 	}
-	if err := shardGroup.Expand(spdkClient, req.Size); err != nil {
+	if err := shardGroup.Expand(spdkClient, req.Size, req.CreationSize); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
@@ -202,7 +202,7 @@ func (s *Server) ShardGroupExpandPrecheck(ctx context.Context, req *spdkrpc.Shar
 	if shardGroup == nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find shardgroup %v", req.Name)
 	}
-	required, err := shardGroup.ExpandPrecheck(spdkClient, req.Size)
+	required, err := shardGroup.ExpandPrecheck(spdkClient, req.Size, req.CreationSize)
 	if err != nil {
 		return nil, err
 	}
@@ -438,8 +438,12 @@ func bdevEcSlotStateToProto(state string) spdkrpc.EcSlotState {
 //   - Shards: shard NVMe-oF endpoints may have moved (new IM pod IPs/ports).
 //     Without this refresh, Create would dial dead addresses.
 //
-// Immutable fields (DataChunks, ParityChunks, StripSizeKb, SpecSize) must match
-// the cached values; a mismatch indicates corrupted state and is rejected.
+// Immutable fields (DataChunks, ParityChunks, StripSizeKb) must match the
+// cached values; a mismatch indicates corrupted state and is rejected.
+// SpecSize must match too, with one exception: a larger requested size on a
+// Stopped record means re-attach after an interrupted expansion. The requested
+// size is adopted, and Create's discovery corrects it from the on-disk head if
+// needed. A smaller requested size is rejected.
 func (s *Server) getOrCreateShardGroup(req *spdkrpc.ShardGroupCreateRequest) (*ShardGroup, error) {
 	s.Lock()
 	defer s.Unlock()
@@ -457,11 +461,12 @@ func (s *Server) getOrCreateShardGroup(req *spdkrpc.ShardGroupCreateRequest) (*S
 		shardGroup.Lock()
 		defer shardGroup.Unlock()
 
+		specSizeGrewWhileStopped := shardGroup.State == types.InstanceStateStopped && req.SpecSize > shardGroup.SpecSize
 		if shardGroup.VolumeName != req.VolumeName ||
 			shardGroup.DataChunks != req.Spec.DataChunks ||
 			shardGroup.ParityChunks != req.Spec.ParityChunks ||
 			shardGroup.StripSizeKb != req.Spec.StripSizeKb ||
-			shardGroup.SpecSize != req.SpecSize {
+			(shardGroup.SpecSize != req.SpecSize && !specSizeGrewWhileStopped) {
 			return nil, grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"shardgroup %s create request does not match cached immutable fields "+
 					"(cached: volumeName=%s dataChunks=%d parityChunks=%d stripSizeKb=%d specSize=%d; "+
@@ -469,6 +474,11 @@ func (s *Server) getOrCreateShardGroup(req *spdkrpc.ShardGroupCreateRequest) (*S
 				shardGroup.Name,
 				shardGroup.VolumeName, shardGroup.DataChunks, shardGroup.ParityChunks, shardGroup.StripSizeKb, shardGroup.SpecSize,
 				req.VolumeName, req.Spec.DataChunks, req.Spec.ParityChunks, req.Spec.StripSizeKb, req.SpecSize)
+		}
+		if specSizeGrewWhileStopped {
+			logrus.Infof("ShardGroupCreate adopting SpecSize %d over cached %d for stopped shardgroup %s (re-attach after interrupted expansion)",
+				req.SpecSize, shardGroup.SpecSize, req.Name)
+			shardGroup.SpecSize = req.SpecSize
 		}
 
 		shardGroup.SalvageRequested = req.Spec.SalvageRequested

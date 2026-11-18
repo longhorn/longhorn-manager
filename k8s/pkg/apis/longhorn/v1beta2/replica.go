@@ -84,6 +84,10 @@ type ReplicaSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// LinkedCloneSrcReplicaName is the name of the src replica this clone replica is parented to.
+	// Immutable once set. Non-empty only for linked-clone replicas.
+	// +optional
+	LinkedCloneSrcReplicaName string `json:"linkedCloneSrcReplicaName,omitempty"`
 }
 
 // ReplicaStatus defines the observed state of the Longhorn replica

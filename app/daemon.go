@@ -121,29 +121,32 @@ func DaemonCmd() *cli.Command {
 //
 // https://github.com/longhorn/longhorn/issues/10054
 //
+// It returns the clients built for the admission webhook so the caller reuses
+// them instead of constructing a second set of informer caches.
+//
 // Parameters:
 // - ctx: The context used to manage the webhook servers lifecycle.
 // - kubeconfigPath: The path to the kubeconfig file.
 // - currentNodeID: The ID of the current node attempting to acquire the leadership.
-func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentNodeID string) error {
+func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentNodeID string) (*client.Clients, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		return errors.Wrap(err, "failed to get client config")
+		return nil, errors.Wrap(err, "failed to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "failed to get k8s client")
+		return nil, errors.Wrap(err, "failed to get k8s client")
 	}
 
 	podName, err := util.GetRequiredEnv(types.EnvPodName)
 	if err != nil {
-		return fmt.Errorf("failed to detect the manager pod name")
+		return nil, fmt.Errorf("failed to detect the manager pod name")
 	}
 
 	podNamespace, err := util.GetRequiredEnv(types.EnvPodNamespace)
 	if err != nil {
-		return fmt.Errorf("failed to detect the manager pod namespace")
+		return nil, fmt.Errorf("failed to detect the manager pod namespace")
 	}
 
 	lock := &resourcelock.LeaseLock{
@@ -156,6 +159,9 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			Identity: currentNodeID,
 		},
 	}
+
+	var clients *client.Clients
+	webhookStarted := make(chan struct{})
 
 	fnStartWebhook := func(ctx context.Context) error {
 		if enableConversionWebhook {
@@ -190,7 +196,10 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			}
 		}
 
-		clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+		var err error
+		// Neither the admission webhook (longhorn-system Pods only, AWS-IAM secret path) nor the
+		// node-local controllers read workload Pods, so this process stays off a cluster-wide Pod watch.
+		clients, err = client.NewClientsForNodeLocal(kubeconfigPath, ctx.Done())
 		if err != nil {
 			return err
 		}
@@ -231,6 +240,7 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 					logrus.Fatalf("Error starting webhooks: %v", err)
 				}
 
+				close(webhookStarted)
 				cancel()
 			},
 			OnStoppedLeading: func() {
@@ -245,7 +255,14 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 		},
 	})
 
-	return nil
+	// OnStartedLeading runs on its own goroutine, so RunOrDie may return while
+	// fnStartWebhook is still in flight; read clients only after the completion signal.
+	select {
+	case <-webhookStarted:
+		return clients, nil
+	default:
+		return nil, fmt.Errorf("terminated before the admission webhook startup completed")
+	}
 }
 
 func startManager(cmd *cli.Command) error {
@@ -301,12 +318,7 @@ func startManager(cmd *cli.Command) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
-	err = startWebhooksByLeaderElection(ctx, kubeconfigPath, currentNodeID)
-	if err != nil {
-		return err
-	}
-
-	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+	clients, err := startWebhooksByLeaderElection(ctx, kubeconfigPath, currentNodeID)
 	if err != nil {
 		return err
 	}
@@ -330,12 +342,14 @@ func startManager(cmd *cli.Command) error {
 
 	snapshotConcurrentLimiter := controller.NewSnapshotConcurrentLimiter()
 
-	wsc, err := controller.StartControllers(logger, clients,
+	wsc, err := controller.StartNodeLocalControllers(logger, clients,
 		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, instanceManagerImage,
 		kubeconfigPath, meta.Version, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
 		return err
 	}
+
+	go monitorGlobalManagerLease(ctx, logger, clients.Datastore)
 
 	m := manager.NewVolumeManager(currentNodeID, clients.Datastore, proxyConnCounter, snapshotConcurrentLimiter)
 
@@ -439,4 +453,109 @@ func initDaemonNode(ds *datastore.DataStore, nodeName string) error {
 		return err
 	}
 	return nil
+}
+
+const (
+	globalManagerLeaseCheckInterval  = 30 * time.Second
+	globalManagerLeaseStaleThreshold = time.Minute
+	globalManagerLeaseAbsenceGrace   = 10 * time.Minute
+	globalManagerLeaseWarnInterval   = 5 * time.Minute
+)
+
+// monitorGlobalManagerLease warns when the longhorn-global-manager Lease is
+// missing, released without a successor, or no longer changing — the
+// controllers it hosts are then paused cluster-wide, which nothing else
+// surfaces in the manager logs. Staleness is judged by locally-observed
+// record changes rather than by comparing the leader-written RenewTime with
+// this node's clock (clock skew); a released Lease also carries a fresh
+// RenewTime, so an empty holder is tracked separately. The absence grace
+// keeps install and upgrade windows quiet, and the staleness threshold stays
+// well above the lease duration so normal failovers do not warn. Reads only
+// the informer cache.
+func monitorGlobalManagerLease(ctx context.Context, logger logrus.FieldLogger, ds *datastore.DataStore) {
+	log := logger.WithField("monitor", "globalManagerLease")
+	startTime := time.Now()
+
+	var lastWarnedAt time.Time
+	warn := func(reason string) {
+		if time.Since(lastWarnedAt) < globalManagerLeaseWarnInterval {
+			return
+		}
+		lastWarnedAt = time.Now()
+		log.Warnf("Lease %v %v; volume KubernetesStatus sync and remount-triggered pod deletion are paused cluster-wide while volume I/O keeps working; check the %v Deployment",
+			types.LonghornGlobalManagerName, reason, types.LonghornGlobalManagerName)
+	}
+
+	// Lease state as observed by this node, with local observation times.
+	var (
+		observed         bool
+		lastHolder       string
+		lastRenewTime    time.Time
+		lastChangeSeenAt time.Time
+		emptyHolderSince time.Time
+	)
+
+	check := func() string {
+		lease, err := ds.GetLeaseRO(types.LonghornGlobalManagerName)
+		if datastore.ErrorIsNotFound(err) {
+			observed = false
+			emptyHolderSince = time.Time{}
+			if time.Since(startTime) > globalManagerLeaseAbsenceGrace {
+				return "is not found"
+			}
+			return ""
+		}
+		if err != nil {
+			log.WithError(err).Debug("Failed to check the global-manager lease")
+			return ""
+		}
+		if lease.Spec.RenewTime == nil {
+			if time.Since(startTime) > globalManagerLeaseAbsenceGrace {
+				return "has never been acquired"
+			}
+			return ""
+		}
+
+		holder := ""
+		if lease.Spec.HolderIdentity != nil {
+			holder = *lease.Spec.HolderIdentity
+		}
+		if !observed || holder != lastHolder || !lease.Spec.RenewTime.Time.Equal(lastRenewTime) {
+			observed = true
+			lastHolder = holder
+			lastRenewTime = lease.Spec.RenewTime.Time
+			lastChangeSeenAt = time.Now()
+		}
+
+		if holder == "" {
+			if emptyHolderSince.IsZero() {
+				emptyHolderSince = time.Now()
+			}
+			if time.Since(emptyHolderSince) > globalManagerLeaseStaleThreshold {
+				return fmt.Sprintf("has been released and not re-acquired for at least %v",
+					time.Since(emptyHolderSince).Truncate(time.Second))
+			}
+			return ""
+		}
+		emptyHolderSince = time.Time{}
+
+		if time.Since(lastChangeSeenAt) > globalManagerLeaseStaleThreshold {
+			return fmt.Sprintf("has not been renewed for at least %v (holder %q)",
+				time.Since(lastChangeSeenAt).Truncate(time.Second), holder)
+		}
+		return ""
+	}
+
+	ticker := time.NewTicker(globalManagerLeaseCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if reason := check(); reason != "" {
+			warn(reason)
+		}
+	}
 }

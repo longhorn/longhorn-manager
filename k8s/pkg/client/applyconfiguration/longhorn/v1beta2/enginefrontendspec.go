@@ -36,6 +36,11 @@ type EngineFrontendSpecApplyConfiguration struct {
 	UblkQueueDepth *int `json:"ublkQueueDepth,omitempty"`
 	// ublkNumberOfQueue controls the number of queues for ublk frontend.
 	UblkNumberOfQueue *int `json:"ublkNumberOfQueue,omitempty"`
+	// nvmeTcpNrIoQueues limits the number of I/O queues the kernel initiator
+	// creates when connecting the blockdev frontend over NVMe-TCP.
+	// 0 means inheriting the global setting default-nvme-tcp-nr-io-queues.
+	// Takes effect on (re)attach.
+	NvmeTcpNrIoQueues *int `json:"nvmeTcpNrIoQueues,omitempty"`
 	// TargetIP is the IP address of the v2 engine target
 	TargetIP *string `json:"targetIP,omitempty"`
 	// TargetPort is the port of the v2 engine target
@@ -81,6 +86,14 @@ func (b *EngineFrontendSpecApplyConfiguration) WithUblkQueueDepth(value int) *En
 // If called multiple times, the UblkNumberOfQueue field is set to the value of the last call.
 func (b *EngineFrontendSpecApplyConfiguration) WithUblkNumberOfQueue(value int) *EngineFrontendSpecApplyConfiguration {
 	b.UblkNumberOfQueue = &value
+	return b
+}
+
+// WithNvmeTcpNrIoQueues sets the NvmeTcpNrIoQueues field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the NvmeTcpNrIoQueues field is set to the value of the last call.
+func (b *EngineFrontendSpecApplyConfiguration) WithNvmeTcpNrIoQueues(value int) *EngineFrontendSpecApplyConfiguration {
+	b.NvmeTcpNrIoQueues = &value
 	return b
 }
 

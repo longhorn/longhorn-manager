@@ -57,8 +57,8 @@ type controller struct {
 
 	name        string
 	ctxID       string
-	workqueue   workqueue.RateLimitingInterface
-	rateLimiter workqueue.RateLimiter
+	workqueue   workqueue.TypedRateLimitingInterface[any]
+	rateLimiter workqueue.TypedRateLimiter[any]
 	informer    cache.SharedIndexInformer
 	handler     Handler
 	gvk         schema.GroupVersionKind
@@ -73,7 +73,7 @@ type startKey struct {
 }
 
 type Options struct {
-	RateLimiter            workqueue.RateLimiter
+	RateLimiter            workqueue.TypedRateLimiter[any]
 	SyncOnlyChangedObjects bool
 }
 
@@ -88,7 +88,7 @@ func New(name string, informer cache.SharedIndexInformer, startCache func(contex
 		startCache:  startCache,
 	}
 
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.handleObject,
 		UpdateFunc: func(old, new interface{}) {
 			if !opts.SyncOnlyChangedObjects || old.(ResourceVersionGetter).GetResourceVersion() != new.(ResourceVersionGetter).GetResourceVersion() {
@@ -99,6 +99,9 @@ func New(name string, informer cache.SharedIndexInformer, startCache func(contex
 		},
 		DeleteFunc: controller.handleObject,
 	})
+	if err != nil {
+		log.Errorf("error adding event handler: %v", err)
+	}
 
 	return controller
 }
@@ -113,9 +116,9 @@ func applyDefaultOptions(opts *Options) *Options {
 	// from failure 13 to 30: 30s delay
 	// from failure 31 on: 120s delay (2 minutes)
 	if newOpts.RateLimiter == nil {
-		newOpts.RateLimiter = workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemFastSlowRateLimiter(time.Millisecond, maxTimeout2min, 30),
-			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 30*time.Second),
+		newOpts.RateLimiter = workqueue.NewTypedMaxOfRateLimiter[any](
+			workqueue.NewTypedItemFastSlowRateLimiter[any](time.Millisecond, maxTimeout2min, 30),
+			workqueue.NewTypedItemExponentialFailureRateLimiter[any](5*time.Millisecond, 30*time.Second),
 		)
 	}
 	return &newOpts
@@ -135,7 +138,7 @@ func (c *controller) run(workers int, stopCh <-chan struct{}) {
 	// will create a goroutine under the hood.  It we instantiate a workqueue we must have
 	// a mechanism to Shutdown it down.  Without the stopCh we don't know when to shutdown
 	// the queue and release the goroutine
-	c.workqueue = workqueue.NewNamedRateLimitingQueue(c.rateLimiter, c.name)
+	c.workqueue = workqueue.NewTypedRateLimitingQueueWithConfig(c.rateLimiter, workqueue.TypedRateLimitingQueueConfig[any]{Name: c.name})
 	for _, start := range c.startKeys {
 		if start.after == 0 {
 			c.workqueue.Add(start.key)

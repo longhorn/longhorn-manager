@@ -67,6 +67,8 @@ type Volume struct {
 
 	NodeSelector []string `json:"nodeSelector,omitempty" yaml:"node_selector,omitempty"`
 
+	TopologyRequirement []VolumeTopologyTerm `json:"topologyRequirement,omitempty" yaml:"topology_requirement,omitempty"`
+
 	NumberOfReplicas int64 `json:"numberOfReplicas,omitempty" yaml:"number_of_replicas,omitempty"`
 
 	OfflineRebuilding string `json:"offlineRebuilding,omitempty" yaml:"offline_rebuilding,omitempty"`
@@ -124,6 +126,8 @@ type Volume struct {
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
+
+	NvmeTcpNrIoQueues int64 `json:"nvmeTcpNrIoQueues,omitempty" yaml:"nvme_tcp_nr_io_queues,omitempty"`
 
 	UblkNumberOfQueue int64 `json:"ublkNumberOfQueue,omitempty" yaml:"ublk_number_of_queue,omitempty"`
 

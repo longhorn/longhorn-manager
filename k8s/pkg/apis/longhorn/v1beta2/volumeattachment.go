@@ -82,6 +82,8 @@ const (
 	AttachmentStatusConditionTypeSatisfied = "Satisfied"
 
 	AttachmentStatusConditionReasonAttachedWithIncompatibleParameters = "AttachedWithIncompatibleParameters"
+
+	AttachmentStatusConditionReasonMigrationPending = "MigrationPending"
 )
 
 func GetAttacherPriorityLevel(t AttacherType) int {

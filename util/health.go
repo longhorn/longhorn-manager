@@ -7,17 +7,18 @@ import (
 	"github.com/sirupsen/logrus"
 
 	commonns "github.com/longhorn/go-common-libs/ns"
-	commonsys "github.com/longhorn/go-common-libs/sys"
 	commonutils "github.com/longhorn/go-common-libs/utils"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-// CollectHealthDataFromMountPath collects health data by resolving a mount path to its physical device
-// This is used for V1 filesystem-type disks where the disk path is a mount point.
+// CollectHealthDataFromMountPath collects health data for a V1 filesystem-type
+// disk by resolving the disk path to the physical device backing its filesystem.
+// The disk path does not need to be a mount point (e.g. /mnt/disk1/longhorn on
+// a drive mounted at /mnt/disk1, or a directory on the root filesystem).
 // Returns nil if health data cannot be collected (e.g., device doesn't support health monitoring)
 func CollectHealthDataFromMountPath(mountPath, diskName string, logger logrus.FieldLogger) (map[string]longhorn.HealthData, error) {
-	physicalDevice, err := resolveMountPathToPhysicalDeviceWithDeps(mountPath)
+	physicalDevice, err := resolveDiskPathToPhysicalDevice(mountPath)
 	if err != nil {
 		return nil, err
 	}
@@ -128,11 +129,16 @@ func collectSmartDataForDevice(devicePath, diskName string, logger logrus.FieldL
 	return result, nil
 }
 
-// resolveMountPathToPhysicalDeviceWithDeps returns the top-level physical device
-// (e.g., /dev/nvme0 for NVMe, /dev/sda for SATA) corresponding to the given
-// mount path (e.g., /var/lib/longhorn).
-func resolveMountPathToPhysicalDeviceWithDeps(mountPath string) (string, error) {
-	blockDevice, err := commonsys.FindBlockDeviceForMount(mountPath)
+// resolveDiskPathToPhysicalDevice returns the top-level physical device
+// (e.g., /dev/nvme0 for NVMe, /dev/sda for SATA) backing the filesystem that
+// contains the given disk path (e.g., /var/lib/longhorn or /mnt/disk1/longhorn).
+//
+// The path is resolved in the host mount namespace through its device number
+// rather than by matching it against the mount table, because disk paths are
+// usually not bind-mounted into the longhorn-manager container and are often
+// not mount points themselves.
+func resolveDiskPathToPhysicalDevice(diskPath string) (string, error) {
+	blockDevice, err := commonns.FindBlockDeviceForPath(diskPath)
 	if err != nil {
 		return "", err
 	}

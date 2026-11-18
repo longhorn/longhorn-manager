@@ -56,14 +56,16 @@ func (s *Server) RecurringJobCreate(rw http.ResponseWriter, req *http.Request) e
 	}
 
 	obj, err := s.m.CreateRecurringJob(&longhorn.RecurringJobSpec{
-		Name:        input.Name,
-		Groups:      input.Groups,
-		Task:        longhorn.RecurringJobType(input.Task),
-		Cron:        input.Cron,
-		Retain:      input.Retain,
-		Concurrency: input.Concurrency,
-		Labels:      input.Labels,
-		Parameters:  input.Parameters,
+		Name:            input.Name,
+		Groups:          input.Groups,
+		Task:            longhorn.RecurringJobType(input.Task),
+		Cron:            input.Cron,
+		Retain:          input.Retain,
+		RetainAge:       input.RetainAge,
+		RetentionPolicy: input.RetentionPolicy,
+		Concurrency:     input.Concurrency,
+		Labels:          input.Labels,
+		Parameters:      input.Parameters,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "failed to create recurring job %v", input.Name)
@@ -84,14 +86,16 @@ func (s *Server) RecurringJobUpdate(rw http.ResponseWriter, req *http.Request) e
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateRecurringJob(longhorn.RecurringJobSpec{
-			Name:        name,
-			Groups:      input.Groups,
-			Task:        longhorn.RecurringJobType(input.Task),
-			Cron:        input.Cron,
-			Retain:      input.Retain,
-			Concurrency: input.Concurrency,
-			Labels:      input.Labels,
-			Parameters:  input.Parameters,
+			Name:            name,
+			Groups:          input.Groups,
+			Task:            longhorn.RecurringJobType(input.Task),
+			Cron:            input.Cron,
+			Retain:          input.Retain,
+			RetainAge:       input.RetainAge,
+			RetentionPolicy: input.RetentionPolicy,
+			Concurrency:     input.Concurrency,
+			Labels:          input.Labels,
+			Parameters:      input.Parameters,
 		})
 	})
 	if err != nil {

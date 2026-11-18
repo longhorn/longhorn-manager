@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,8 @@ import (
 
 const (
 	defaultFsType = "ext4"
+
+	mountOptionReadOnly = "ro"
 )
 
 type fsParameters struct {
@@ -133,7 +136,7 @@ func getV2VolumeEndpointForNode(volume *longhornclient.Volume, nodeID string) (s
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
 
-	log.Infof("NodePublishVolume is called with req %+v", req)
+	logCSIRequest(log, "NodePublishVolume", req)
 
 	targetPath := req.GetTargetPath()
 	if targetPath == "" {
@@ -201,8 +204,8 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	podsStatus := ns.collectWorkloadPodsStatus(volume, log)
-	if len(podsStatus[corev1.PodPending]) == 0 && len(podsStatus[corev1.PodRunning]) != len(volume.KubernetesStatus.WorkloadsStatus) {
-		return nil, status.Errorf(codes.Aborted, "no %v workload pods for volume %v to be mounted: %+v", corev1.PodPending, volumeID, podsStatus)
+	if !isWorkloadMountReady(podsStatus) {
+		return nil, status.Errorf(codes.Aborted, "volume %v workload pods are not ready to be mounted: %+v", volumeID, podsStatus)
 	}
 
 	// It may be necessary to restage the volume before we can publish it. For example, sometimes kubelet calls
@@ -271,7 +274,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	mountOptions := []string{"bind"}
 	if req.GetReadonly() {
-		mountOptions = append(mountOptions, "ro")
+		mountOptions = append(mountOptions, mountOptionReadOnly)
 	}
 	mountOptions = append(mountOptions, volumeCapability.GetMount().GetMountFlags()...)
 
@@ -291,6 +294,34 @@ func (ns *NodeServer) collectWorkloadPodsStatus(volume *longhornclient.Volume, l
 	}
 
 	return podsStatus
+}
+
+// isWorkloadMountReady reports whether NodePublishVolume may proceed based on workload pod states.
+// A volume is considered mount-ready if any of the following is true:
+//   - No workload pod status is recorded; an empty status alone is not sufficient
+//     to reject the mount.
+//   - At least one workload pod is Pending.
+//   - At least one non-terminal workload pod exists and all non-terminal workload pods are Running.
+//
+// Failed and Succeeded workload pods are treated as terminal and excluded from
+// the non-terminal readiness check.
+func isWorkloadMountReady(podsStatus map[corev1.PodPhase][]string) bool {
+	if len(podsStatus[corev1.PodPending]) > 0 {
+		return true
+	}
+	workloadCount := 0
+	for _, pods := range podsStatus {
+		workloadCount += len(pods)
+	}
+	if workloadCount == 0 {
+		return true
+	}
+	terminalWorkloadCount := len(podsStatus[corev1.PodFailed]) + len(podsStatus[corev1.PodSucceeded])
+	nonTerminalWorkloadCount := workloadCount - terminalWorkloadCount
+	if nonTerminalWorkloadCount == 0 {
+		return false
+	}
+	return len(podsStatus[corev1.PodRunning]) == nonTerminalWorkloadCount
 }
 
 func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, customMountOptions []string) error {
@@ -380,6 +411,22 @@ func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, stagingTargetPa
 	if err := mounter.FormatAndMount(devicePath, stagingTargetPath, fsType, mountFlags); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
+	return ns.checkStagedMount(volumeID, stagingTargetPath, mountFlags, mounter, syncMountPointDirectory)
+}
+
+func (ns *NodeServer) checkStagedMount(volumeID, stagingTargetPath string, mountFlags []string, mounter mount.Interface, probe func(string) error) error {
+	// The probe (syncMountPointDirectory) writes a file, so it cannot run on a read-only mount.
+	if slices.Contains(mountFlags, mountOptionReadOnly) {
+		return nil
+	}
+
+	// The new mount can reuse a broken filesystem still held by another mount, so retry on I/O errors until that mount is gone.
+	if err := probe(stagingTargetPath); errors.Is(err, unix.EIO) || errors.Is(err, unix.EROFS) {
+		if unmountErr := unmount(stagingTargetPath, mounter); unmountErr != nil {
+			ns.log.WithFields(logrus.Fields{"function": "checkStagedMount"}).WithError(unmountErr).Warnf("Failed to unmount unhealthy mount point %v", stagingTargetPath)
+		}
+		return status.Errorf(codes.Aborted, "filesystem of volume %v mounted at %v is unhealthy, it may still be held by another mount: %v", volumeID, stagingTargetPath, err)
+	}
 	return nil
 }
 
@@ -424,7 +471,7 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeUnpublishVolume"})
 
-	log.Infof("NodeUnpublishVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeUnpublishVolume", req)
 
 	targetPath := req.GetTargetPath()
 	if targetPath == "" {
@@ -447,7 +494,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeStageVolume"})
 
-	log.Infof("NodeStageVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeStageVolume", req)
 
 	stagingTargetPath := req.GetStagingTargetPath()
 	if stagingTargetPath == "" {
@@ -662,7 +709,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeUnstageVolume"})
 
-	log.Infof("NodeUnstageVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeUnstageVolume", req)
 
 	stagingTargetPath := req.GetStagingTargetPath()
 	if stagingTargetPath == "" {
@@ -831,7 +878,7 @@ func (ns *NodeServer) NodeExpandSharedVolume(volumeName string) error {
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeExpandVolume"})
 
-	log.Infof("NodeExpandVolume is called with req %+v", req)
+	logCSIRequest(log, "NodeExpandVolume", req)
 
 	if req.CapacityRange == nil {
 		return nil, status.Error(codes.InvalidArgument, "capacity range missing in request")
@@ -993,12 +1040,13 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		}
 	}
 
-	// Always expose hostname and zone topology keys in CSINode regardless of the csi-allowed-topology-keys setting.
+	// Always expose hostname, zone and region topology keys in CSINode regardless of the csi-allowed-topology-keys setting.
 	// Controller server relies on these keys to locate the correct node or zone when responding to capacity queries.
 	// Note: these keys are only included in PV node affinity if listed in the csi-allowed-topology-keys setting.
 	if kubeNode != nil {
 		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelHostname)
 		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelTopologyZone)
+		ns.ensureTopologyKey(kubeNode.Name, topologySegments, kubeNode.Labels, corev1.LabelTopologyRegion)
 	}
 
 	return &csi.NodeGetInfoResponse{

@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -211,7 +213,9 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage ||
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
-		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy
+		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy ||
+		types.SettingName(setting.Name) == types.SettingNameSystemManagedComponentsNodeSelector ||
+		types.SettingName(setting.Name) == types.SettingNameNodeDiskHealthMonitoring
 }
 
 func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
@@ -329,6 +333,7 @@ func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	nc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(nc.worker, time.Second, stopCh)
 	}
@@ -349,7 +354,7 @@ func (nc *NodeController) processNextWorkItem() bool {
 	}
 	defer nc.queue.Done(key)
 
-	err := nc.syncNode(key.(string))
+	err := nc.syncWithMetrics(func() error { return nc.syncNode(key.(string)) })
 	nc.handleErr(err, key)
 
 	return true
@@ -742,6 +747,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			diskStatus.HealthData = nil
 			diskStatus.HealthDataLastCollectedAt = metav1.Time{}
+			diskStatus.Conditions = types.RemoveCondition(diskStatus.Conditions, longhorn.DiskConditionTypeHealthDataCollected)
 			node.Status.DiskStatus[diskName] = diskStatus
 		}
 	}
@@ -900,6 +906,16 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			if monitorDiskHealth {
 				diskStatus.HealthData = info.HealthData
 				diskStatus.HealthDataLastCollectedAt = metav1.NewTime(info.HealthDataLastCollectedAt)
+				if condition := info.HealthDataCondition; condition != nil {
+					eventType := corev1.EventTypeNormal
+					if condition.Status != longhorn.ConditionStatusTrue {
+						eventType = corev1.EventTypeWarning
+					}
+					diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
+						longhorn.DiskConditionTypeHealthDataCollected, condition.Status,
+						condition.Reason, condition.Message,
+						nc.eventRecorder, node, eventType)
+				}
 			} else {
 				diskStatus.HealthData = nil
 				diskStatus.HealthDataLastCollectedAt = metav1.Time{}
@@ -1127,6 +1143,21 @@ func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
 	return nil
 }
 
+func (nc *NodeController) isSystemManagedComponentsNodeSelectorMatching(nodeName string) (bool, error) {
+	nodeSelector, err := nc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameSystemManagedComponentsNodeSelector)
+	}
+	if len(nodeSelector) == 0 {
+		return true, nil
+	}
+	kubeNode, err := nc.ds.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		return false, err
+	}
+	return labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
+}
+
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
@@ -1134,6 +1165,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	}
 
 	log := getLoggerForNode(nc.logger, node)
+
+	isNodeSelectorMatching, err := nc.isSystemManagedComponentsNodeSelectorMatching(node.Name)
+	if err != nil {
+		return err
+	}
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
@@ -1147,9 +1183,67 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	for imType, dataEngines := range imTypeDataEngines {
 		for _, dataEngine := range dataEngines {
 			defaultInstanceManagerCreated := false
+			automaticUpgradeEnabled := false
 			imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType, dataEngine)
 			if err != nil {
 				return err
+			}
+			preservedV2AIOInstanceManagerName := ""
+			if imType == longhorn.InstanceManagerTypeAllInOne && types.IsDataEngineV2(dataEngine) {
+				automaticUpgradeEnabled, err = nc.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowInstanceManagerAutomaticUpgrade, dataEngine)
+				if err != nil {
+					return err
+				}
+				// Preserve the source IM for live upgrade. When automatic upgrade is
+				// disabled, retain only a sole Running IM whose Pod is temporarily
+				// unavailable so it can self-heal; pod-backed IMs use offline cleanup.
+				activeIM, err := nc.ds.GetNodeV2InstanceManagerRO(node.Name)
+				if err == nil {
+					if automaticUpgradeEnabled {
+						preservedV2AIOInstanceManagerName = activeIM.Name
+						defaultInstanceManagerCreated = true
+					}
+				} else if !datastore.ErrorIsNotFound(err) && !types.ErrorIsNotFound(err) {
+					return err
+				} else {
+					imNames := make([]string, 0, len(imMap))
+					for name := range imMap {
+						imNames = append(imNames, name)
+					}
+					sort.Strings(imNames)
+
+					if !automaticUpgradeEnabled {
+						var sourceIM *longhorn.InstanceManager
+						for _, name := range imNames {
+							im := imMap[name]
+							if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Spec.Image == defaultInstanceManagerImage {
+								continue
+							}
+							if sourceIM != nil {
+								sourceIM = nil
+								break
+							}
+							sourceIM = im
+						}
+						if sourceIM != nil {
+							// Keep the sole old-image IM so its controller can recreate a
+							// temporarily missing Pod with the same image.
+							preservedV2AIOInstanceManagerName = sourceIM.Name
+							defaultInstanceManagerCreated = true
+						}
+					}
+
+					if automaticUpgradeEnabled && preservedV2AIOInstanceManagerName == "" {
+						for _, name := range imNames {
+							im := imMap[name]
+							if im.DeletionTimestamp == nil && im.Status.CurrentState == longhorn.InstanceManagerStateUnknown {
+								preservedV2AIOInstanceManagerName = im.Name
+								defaultInstanceManagerCreated = true
+								break
+							}
+						}
+					}
+				}
 			}
 			for _, im := range imMap {
 				if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
@@ -1169,7 +1263,27 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				cleanupRequired := true
 
-				if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
+				if !isNodeSelectorMatching {
+					if runningOrStartingInstanceFound {
+						cleanupRequired = false
+						log.Infof("Keeping instance manager %v on selector-excluded node %v because it still has running/starting instances", im.Name, node.Name)
+					} else if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
+						// The node is unreachable, so the real instance state is unknown. Defer cleanup until the node is observable again.
+						cleanupRequired = false
+						log.Infof("Skipping cleanup of instance manager %v on selector-excluded node %v because it is in unknown state", im.Name, node.Name)
+					} else {
+						log.Infof("Cleaning up instance manager %v because node %v does not match %v", im.Name, node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
+					}
+				} else if im.Name == preservedV2AIOInstanceManagerName {
+					disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
+					if err != nil {
+						return errors.Wrapf(err, "failed to check if v2 data engine is disabled for node %v", node.Name)
+					}
+					cleanupRequired = disabled && !runningOrStartingInstanceFound
+					if cleanupRequired {
+						log.Infof("Cleaning up instance manager %v since v2 data engine is disabled for node %v", im.Name, node.Name)
+					}
+				} else if (im.Spec.Image == defaultInstanceManagerImage || im.Spec.Image == nc.instanceManagerImage) && im.Spec.DataEngine == dataEngine {
 					// Keep default instance manager or instance manager matching argument image (during rolling update)
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
@@ -1194,6 +1308,14 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						cleanupRequired = false
 						log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
 					}
+
+					if shouldPreserveV2InstanceManagerDuringOfflineUpgrade(im, automaticUpgradeEnabled, runningOrStartingInstanceFound) {
+						// V2 supports only one active IM per node. Preserve an IM that
+						// still hosts an active workload or whose state is unknown.
+						cleanupRequired = false
+						defaultInstanceManagerCreated = true
+						log.Infof("Keeping V2 instance manager %v during offline upgrade because it still has running/starting instances or its state is unknown", im.Name)
+					}
 				}
 				if cleanupRequired {
 					log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
@@ -1203,6 +1325,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 			if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
+				if !isNodeSelectorMatching {
+					log.Debugf("Skipping default instance manager creation for node %v because it does not match %v", node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
+					continue
+				}
+
 				// Only create instance manager when argument image matches setting image
 				if nc.instanceManagerImage != defaultInstanceManagerImage {
 					log.Debugf("Skipping instance manager creation for node %v: argument image (%v) != setting image (%v)",
@@ -1242,6 +1369,22 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		}
 	}
 	return nil
+}
+
+// shouldPreserveV2InstanceManagerDuringOfflineUpgrade keeps an old V2 IM when
+// its actual state cannot safely be replaced. When the IM image differs from
+// the default image, V2 instance manager reconciliation behaves as follows:
+//
+//   - allow-v2-instance-manager-automatic-upgrade=true: upgrade the IM in place, with or without an attached volume
+//   - allow-v2-instance-manager-automatic-upgrade=false and old IM has running/starting instances: retain the old IM
+//   - allow-v2-instance-manager-automatic-upgrade=false and old IM is idle: replace it with the default image
+func shouldPreserveV2InstanceManagerDuringOfflineUpgrade(im *longhorn.InstanceManager, automaticUpgradeEnabled, runningOrStartingInstanceFound bool) bool {
+	if automaticUpgradeEnabled || !types.IsDataEngineV2(im.Spec.DataEngine) {
+		return false
+	}
+
+	return runningOrStartingInstanceFound ||
+		(im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil)
 }
 
 func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
@@ -1717,13 +1860,21 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 		diskStatus.StorageMaximum = 0
 		diskStatus.StorageAvailable = 0
 		diskStatus.Type = node.Spec.Disks[diskName].Type
+		// Record the configured path before the disk is created. Otherwise a disk
+		// whose creation fails has no path at all, and the cleanup on removal
+		// cannot tell the disk service which device to release. Only fill it in
+		// when unset so the path never desyncs from the recorded UUID and driver.
+		if diskStatus.DiskPath == "" {
+			diskStatus.DiskPath = node.Spec.Disks[diskName].Path
+		}
 		node.Status.DiskStatus[diskName] = diskStatus
 	}
 
 	for diskName := range node.Status.DiskStatus {
 		if _, exists := node.Spec.Disks[diskName]; !exists {
 			diskStatus, ok := node.Status.DiskStatus[diskName]
-			if !ok {
+			if !ok || diskStatus == nil {
+				delete(node.Status.DiskStatus, diskName)
 				continue
 			}
 
@@ -1781,13 +1932,18 @@ func (nc *NodeController) cleanupDisksBeforeNodeDeletion(node *longhorn.Node) er
 
 	errs := multierr.NewMultiError()
 	for diskName, diskStatus := range node.Status.DiskStatus {
+		// Node deletion bypasses alignDiskSpecAndStatus, so a nil status entry is
+		// still possible here.
+		if diskStatus == nil {
+			continue
+		}
 		nc.logger.Infof("Cleaning up disk %s", diskName)
 		// Skip non-SPDK disks
 		if diskStatus.Type != longhorn.DiskTypeBlock {
 			continue
 		}
 
-		if diskStatus.DiskDriver == longhorn.DiskDriverNone {
+		if diskStatus.DiskDriver == longhorn.DiskDriverNone && diskStatus.DiskPath == "" {
 			continue
 		}
 
@@ -1948,16 +2104,8 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 				return err
 			}
 			if replica.Spec.EvictionRequested != shouldEvictReplica {
-				isLinkedClone, err := nc.ds.IsVolumeLinkedCloneVolume(replica.Spec.VolumeName)
-				if err != nil {
-					log.WithError(err).Warnf("Cannot evict replica %v", replica.Name)
-				} else if isLinkedClone {
-					log.Warnf("Cannot evict replica %v because the volume %v is a linked-clone volume. "+
-						"Please delete this volume to unblock the eviction", replica.Name, replica.Spec.VolumeName)
-				} else {
-					replica.Spec.EvictionRequested = shouldEvictReplica
-					replicasToSync = append(replicasToSync, replicaToSync{replica, reason})
-				}
+				replica.Spec.EvictionRequested = shouldEvictReplica
+				replicasToSync = append(replicasToSync, replicaToSync{replica, reason})
 			}
 
 			if replica.Spec.EvictionRequested && !node.Spec.EvictionRequested && !diskSpec.EvictionRequested {
@@ -2390,7 +2538,7 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse SnapshotHashingRequestedAt")
 	}
 
-	// Case 1: First-ever request → allow immediately
+	// Case 1: Allow the first-ever request immediately.
 	if v.Status.LastOnDemandSnapshotHashingCompleteAt == "" {
 		return true, nil
 	}
@@ -2400,11 +2548,11 @@ func shouldConsiderOnDemandRequest(v *longhorn.Volume) (bool, error) {
 		return false, errors.Wrapf(err, "failed to parse LastOnDemandSnapshotHashingCompleteAt")
 	}
 
-	// Case 2: Not a new request → reject
+	// Case 2: Reject requests that are not newer than the last completion.
 	if !requestTime.After(lastCompleted) {
 		return false, nil
 	}
 
-	// Case 3: New request → allow
+	// Case 3: Allow a new request.
 	return true, nil
 }

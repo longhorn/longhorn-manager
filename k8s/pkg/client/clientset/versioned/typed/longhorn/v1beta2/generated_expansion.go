@@ -40,6 +40,10 @@ type EngineImageExpansion interface{}
 
 type InstanceManagerExpansion interface{}
 
+type InstanceManagerUpgradeExpansion interface{}
+
+type InstanceManagerUpgradeControlExpansion interface{}
+
 type NodeExpansion interface{}
 
 type OrphanExpansion interface{}
@@ -57,6 +61,8 @@ type ShardGroupExpansion interface{}
 type ShareManagerExpansion interface{}
 
 type SnapshotExpansion interface{}
+
+type SnapshotGroupExpansion interface{}
 
 type SupportBundleExpansion interface{}
 

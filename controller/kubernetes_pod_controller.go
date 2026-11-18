@@ -38,11 +38,11 @@ const (
 	remountRequestDelayDuration = 5 * time.Second
 )
 
+// KubernetesPodController is hosted by the longhorn-global-manager Deployment.
+// TODO: Enable reconcile metrics when longhorn-global-manager exposes the
+// Longhorn metrics registry.
 type KubernetesPodController struct {
 	*baseController
-
-	// use as the OwnerID of the controller
-	controllerID string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -56,8 +56,7 @@ func NewKubernetesPodController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	kubeClient clientset.Interface,
-	controllerID string) (*KubernetesPodController, error) {
+	kubeClient clientset.Interface) (*KubernetesPodController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -68,8 +67,6 @@ func NewKubernetesPodController(
 
 	kc := &KubernetesPodController{
 		baseController: newBaseController("longhorn-kubernetes-pod", logger),
-
-		controllerID: controllerID,
 
 		ds: ds,
 
@@ -366,10 +363,6 @@ func (kc *KubernetesPodController) isControllerInBlacklist(resource *metav1.Owne
 // cleanupForceDeletedPodResources removes stale resources left behind when a pod
 // is force-deleted (i.e., deletion grace period is zero).
 func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
-	if !isControllerResponsibleFor(kc.controllerID, kc.ds, pod.Name, "", pod.Spec.NodeName) {
-		return nil
-	}
-
 	if pod.DeletionTimestamp.IsZero() {
 		return nil
 	}
@@ -456,9 +449,36 @@ func (kc *KubernetesPodController) shouldDeleteVolumeAttachmentForForceDeletedPo
 	return false, nil
 }
 
+// multiAttachEventMessages are the markers the Kubernetes attach/detach controller
+// puts into the FailedAttachVolume event of a pod whose RWO volume is still
+// attached to another node. Kubernetes v1.37 replaced "Multi-Attach error" with
+// "Waiting for detach" (kubernetes/kubernetes#138837), backported to
+// v1.36.4 and v1.35.9.
+var multiAttachEventMessages = []string{
+	"Multi-Attach error",
+	"Waiting for detach",
+}
+
+// failedAttachVolumeEventReason is the reason of the events with these markers
+const failedAttachVolumeEventReason = "FailedAttachVolume"
+
+// isMultiAttachEvent returns true if the event reports that the volume is still
+// attached to another node. Substring match, aggregated events start with "(combined from similar events): ".
+func isMultiAttachEvent(event *corev1.Event) bool {
+	if event.Reason != failedAttachVolumeEventReason {
+		return false
+	}
+	for _, msg := range multiAttachEventMessages {
+		if strings.Contains(event.Message, msg) {
+			return true
+		}
+	}
+	return false
+}
+
 // getPodWithConflictedAttachment returns the first pod in Pending phase from the
-// given list of pods that has a "Multi-Attach error" event caused by the specified
-// conflictingPod
+// given list of pods that has a multi-attach event (see isMultiAttachEvent) caused
+// by the specified conflictingPod
 func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1.Pod, conflictingPod *corev1.Pod) *corev1.Pod {
 	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil {
@@ -475,8 +495,9 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 			continue
 		}
 
-		for _, event := range events.Items {
-			if !strings.Contains(event.Message, "Multi-Attach error") {
+		for i := range events.Items {
+			event := &events.Items[i]
+			if !isMultiAttachEvent(event) {
 				continue
 			}
 
@@ -484,7 +505,7 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 				return pod
 			}
 
-			logrus.Debugf("%s: pod %v has Multi-Attach error, but not caused by pod %v, skipping cleanup",
+			logrus.Debugf("%s: pod %v has multi-attach event, but not caused by pod %v, skipping cleanup",
 				controllerAgentName, pod.Name, conflictingPod.Name)
 		}
 	}
@@ -616,11 +637,6 @@ func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *corev1.Pod) ([
 // handlePodDeletionIfVolumeRequestRemount will delete the pod which is using a volume that has requested remount.
 // By deleting the consuming pod, Kubernetes will recreated them, reattaches, and remounts the volume.
 func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *corev1.Pod) error {
-	// Only handle pod that is on the same node as this manager
-	if pod.Spec.NodeName != kc.controllerID {
-		return nil
-	}
-
 	autoDeletePodWhenVolumeDetachedUnexpectedly, err := kc.ds.GetSettingAsBool(types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
 	if err != nil {
 		return err
@@ -785,9 +801,7 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 	}
 
 	if isCSIPluginPod(pod) {
-		if pod.Spec.NodeName == kc.controllerID {
-			kc.queue.Add(key)
-		}
+		kc.queue.Add(key)
 		return
 	}
 

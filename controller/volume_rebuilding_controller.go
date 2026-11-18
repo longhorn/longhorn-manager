@@ -295,6 +295,7 @@ func (vbc *VolumeRebuildingController) Run(workers int, stopCh <-chan struct{}) 
 		return
 	}
 
+	vbc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(vbc.worker, time.Second, stopCh)
 	}
@@ -313,7 +314,7 @@ func (vbc *VolumeRebuildingController) processNextWorkItem() bool {
 		return false
 	}
 	defer vbc.queue.Done(key)
-	err := vbc.syncHandler(key.(string))
+	err := vbc.syncWithMetrics(func() error { return vbc.syncHandler(key.(string)) })
 	vbc.handleErr(err, key)
 	return true
 }

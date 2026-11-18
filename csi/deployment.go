@@ -65,6 +65,14 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
+			// Some special volume provisioning methods, like full-copy clone or
+			// restore, take time to pull data from an external source. Before the
+			// data copy finishes, the volume is not ready for workloads.
+			// ControllerPublishVolume will be rejected and retried multiple times
+			// with error "not ready for workloads" during this period.
+			// Using a small max retry interval helps reduce the volume idle time
+			// after it becomes ready.
+			"--retry-interval-max=1m",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
@@ -183,6 +191,14 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
+			// Some special volume provisioning methods, like full-copy clone or
+			// restore, take time to pull data from an external source. Before the
+			// data copy finishes, the volume is not ready for workloads.
+			// ControllerExpandVolume will be rejected and retried multiple times
+			// during this period.
+			// Using a small max retry interval helps reduce the volume idle time
+			// after it becomes ready.
+			"--retry-interval-max=1m",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
@@ -192,12 +208,6 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 			// Issue: https://github.com/longhorn/longhorn/issues/3303
 			// TODO: Remove this after upgrading the CSI resizer version that contains the fix of https://github.com/kubernetes-csi/external-resizer/issues/175
 			"--handle-volume-inuse-error=false",
-			// Since v1.13.1, the CSI resizer enabled features.RecoverVolumeExpansionFailure
-			// by default. This silently requeues the PVC without logging the error.
-			// https://github.com/longhorn/longhorn/issues/10411#issuecomment-2655252262
-			// TODO: Investigate and fix potential cause of the failure if we want
-			// to use this feature.
-			"--feature-gates=RecoverVolumeExpansionFailure=false",
 		},
 		int32(replicaCount),
 		podAntiAffinityPreset,
@@ -238,7 +248,27 @@ type SnapshotterDeployment struct {
 }
 
 func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
-	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, resources *corev1.ResourceRequirements) *SnapshotterDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, resources *corev1.ResourceRequirements,
+	volumeGroupSnapshotEnabled bool) *SnapshotterDeployment {
+
+	args := []string{
+		"--v=2",
+		"--csi-address=$(ADDRESS)",
+		"--timeout=1m50s",
+		"--leader-election",
+		"--leader-election-namespace=$(POD_NAMESPACE)",
+		fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
+		fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
+		fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
+	}
+	if volumeGroupSnapshotEnabled {
+		// The CSIVolumeGroupSnapshot feature gate is disabled by default in
+		// csi-snapshotter. It must only be enabled when the VolumeGroupSnapshot
+		// CRDs are installed: with the gate on and the CRDs missing, the sidecar
+		// blocks on informer cache sync and stops serving regular volume
+		// snapshots. The caller is responsible for verifying the CRDs exist.
+		args = append(args, "--feature-gates=CSIVolumeGroupSnapshot=true")
+	}
 
 	deployment := getCommonDeployment(
 		types.CSISnapshotterName,
@@ -246,16 +276,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		serviceAccount,
 		snapshotterImage,
 		rootDir,
-		[]string{
-			"--v=2",
-			"--csi-address=$(ADDRESS)",
-			"--timeout=1m50s",
-			"--leader-election",
-			"--leader-election-namespace=$(POD_NAMESPACE)",
-			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
-			fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
-			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
-		},
+		args,
 		int32(replicaCount),
 		podAntiAffinityPreset,
 		tolerations,
@@ -296,7 +317,20 @@ type PluginDeployment struct {
 
 func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, livenessProbeImage, managerImage, managerURL, rootDir string,
 	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string,
-	endpointNetworkForRWXVolumeSetting *longhorn.Setting, resourceLimits *types.ComponentResourceLimits) *PluginDeployment {
+	endpointNetworkForRWXVolumeSetting *longhorn.Setting, resourceLimits *types.ComponentResourceLimits, volumeGroupSnapshotEnabled bool) *PluginDeployment {
+
+	pluginArgs := []string{
+		"longhorn-manager",
+		"-d",
+		"csi",
+		"--nodeid=$(NODE_ID)",
+		"--endpoint=$(CSI_ENDPOINT)",
+		fmt.Sprintf("--drivername=%s", types.LonghornDriverName),
+		"--manager-url=" + managerURL,
+	}
+	if volumeGroupSnapshotEnabled {
+		pluginArgs = append(pluginArgs, "--volume-group-snapshot-enabled")
+	}
 
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -441,15 +475,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									},
 								},
 							},
-							Args: []string{
-								"longhorn-manager",
-								"-d",
-								"csi",
-								"--nodeid=$(NODE_ID)",
-								"--endpoint=$(CSI_ENDPOINT)",
-								fmt.Sprintf("--drivername=%s", types.LonghornDriverName),
-								"--manager-url=" + managerURL,
-							},
+							Args: pluginArgs,
 							Env: appendTimezoneEnv([]corev1.EnvVar{
 								{
 									Name: "NODE_ID",

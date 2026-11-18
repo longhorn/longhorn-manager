@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1.25.0@sha256:0adf442eae370b6087e08edc7c50b552d80ddf261576f4ebd6421006b2461f12
-FROM registry.suse.com/bci/golang:1.26@sha256:b673c05ec4523174269423a9dff436c267339cdfd9827bf9987e0fe447ad4f02 AS builder
+# syntax=docker/dockerfile:1.28.0@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
+FROM registry.suse.com/bci/golang:1.27@sha256:aab9e6c4d40ccb3b465c2d32d328b6c55740c1aeb3e4c1eb4cd380e00b222601 AS builder
 
 ARG LONGHORN_TWO_MINOR_UPGRADE_DISTROS
 ENV LONGHORN_TWO_MINOR_UPGRADE_DISTROS=${LONGHORN_TWO_MINOR_UPGRADE_DISTROS}
@@ -15,7 +15,7 @@ RUN chmod +x /app/scripts/build
 # Run the build script
 RUN /app/scripts/build
 
-FROM registry.suse.com/bci/bci-base:15.7@sha256:c1ec34664d6735fdec897dabefed021386e1bf36a5aef1138bf1d41ab614efb9 AS release
+FROM registry.suse.com/bci/bci-base:15.7@sha256:8cd100ae2ec5ab23d6ec7aa1c0fe2dc30ca852c609406097797c9d298b7decdd AS release
 
 ARG TARGETPLATFORM
 RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
@@ -41,6 +41,11 @@ RUN zypper -n install \
     kmod \
     smartmontools \
     && zypper clean --all
+
+# nsmounter needs these utilities.
+RUN for cmd in xargs grep tail; do \
+    command -v "$cmd" >/dev/null || { echo "Error: $cmd is required by nsmounter"; exit 1; }; \
+    done
 
 COPY --from=builder /app/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
 

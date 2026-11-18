@@ -3,6 +3,7 @@ package datastore
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -225,7 +226,7 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-	ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -242,167 +243,223 @@ func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	require.Contains(t, err.Error(), "cannot find the current engine frontend")
 }
 
-func TestValidateSettingDefaultControlPath(t *testing.T) {
-	const testNamespace = "longhorn-system"
-
-	baseSetting := &longhorn.Setting{
+func TestGetCurrentEngineAndExtrasIgnoresDeletingActiveEngine(t *testing.T) {
+	deletionTime := metav1.Now()
+	deletingEngine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      string(types.SettingNameDefaultControlPath),
-			Namespace: testNamespace,
+			Name:              "deleting-engine",
+			DeletionTimestamp: &deletionTime,
 		},
-		Value: types.DefaultControlPath,
+		Spec: longhorn.EngineSpec{Active: true},
+	}
+	currentEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: "current-engine"},
+		Spec:       longhorn.EngineSpec{Active: true},
 	}
 
-	newNode := func(name string) *longhorn.Node {
-		return &longhorn.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: testNamespace,
-			},
-		}
-	}
+	engine, extras, err := GetCurrentEngineAndExtras(&longhorn.Volume{}, map[string]*longhorn.Engine{
+		deletingEngine.Name: deletingEngine,
+		currentEngine.Name:  currentEngine,
+	})
+	require.NoError(t, err)
+	assert.Same(t, currentEngine, engine)
+	require.Len(t, extras, 1)
+	assert.Same(t, deletingEngine, extras[0])
+}
 
-	tests := map[string]struct {
-		existingObjects []runtime.Object
-		newValue        string
-		expectError     string
-	}{
-		"same path with trailing slash normalization is allowed": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "/var/lib/longhorn/",
+func TestGetVolumeCurrentEngineDoesNotPromoteCachedEngine(t *testing.T) {
+	const namespace = "longhorn-system"
+	volume := &longhorn.Volume{
+		ObjectMeta: metav1.ObjectMeta{Name: "volume", Namespace: namespace},
+		Spec: longhorn.VolumeSpec{
+			DataEngine:   longhorn.DataEngineTypeV2,
+			NodeID:       "old-node",
+			EngineNodeID: "target-node",
 		},
-		"changing path before initialization is allowed": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "/control/longhorn",
-		},
-		"changing path after initialization is rejected": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy(), newNode("node-1")},
-			newValue:        "/control/longhorn",
-			expectError:     "cannot change default-control-path after Longhorn has been initialized",
-		},
-		"block device path is rejected": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "/dev/nvme0n1",
-			expectError:     "the value of default-control-path is invalid",
-		},
-		"root path is rejected": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "/",
-			expectError:     "the value of default-control-path is invalid",
-		},
+		Status: longhorn.VolumeStatus{CurrentNodeID: "old-node", CurrentEngineNodeID: "old-node"},
 	}
+	deletionTime := metav1.Now()
+	oldEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "old-engine", Namespace: namespace,
+			Labels: types.GetVolumeLabels(volume.Name), DeletionTimestamp: &deletionTime,
+		},
+		Spec: longhorn.EngineSpec{Active: true, InstanceSpec: longhorn.InstanceSpec{NodeID: "old-node"}},
+	}
+	targetEngine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "target-engine", Namespace: namespace, Labels: types.GetVolumeLabels(volume.Name),
+		},
+		Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: "target-node"}},
+	}
+	factory := lhinformerfactory.NewSharedInformerFactory(lhfake.NewSimpleClientset(), 0) // nolint: staticcheck
+	engineInformer := factory.Longhorn().V1beta2().Engines()
+	volumeInformer := factory.Longhorn().V1beta2().Volumes()
+	require.NoError(t, engineInformer.Informer().GetIndexer().Add(oldEngine))
+	require.NoError(t, engineInformer.Informer().GetIndexer().Add(targetEngine))
+	require.NoError(t, volumeInformer.Informer().GetIndexer().Add(volume))
+	ds := &DataStore{namespace: namespace, engineLister: engineInformer.Lister(), volumeLister: volumeInformer.Lister()}
 
-	for name, tc := range tests {
+	engine, err := ds.GetVolumeCurrentEngine(volume.Name)
+	require.NoError(t, err)
+	assert.Equal(t, targetEngine.Name, engine.Name)
+	assert.False(t, engine.Spec.Active)
+	assert.False(t, targetEngine.Spec.Active, "selection must not promote the informer object")
+	assert.True(t, oldEngine.Spec.Active)
+	assert.Equal(t, "old-node", volume.Status.CurrentEngineNodeID)
+}
+
+func TestCurrentEngineSelectionWithSingleActiveEngineWithoutNodeID(t *testing.T) {
+	for name, selectEngine := range map[string]func(*longhorn.Volume, map[string]*longhorn.Engine) (*longhorn.Engine, []*longhorn.Engine, error){
+		"GetCurrentEngineAndExtras":    GetCurrentEngineAndExtras,
+		"GetNewCurrentEngineAndExtras": GetNewCurrentEngineAndExtras,
+	} {
 		t.Run(name, func(t *testing.T) {
-			lhClient := lhfake.NewSimpleClientset(tc.existingObjects...) // nolint: staticcheck
-			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
-			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
-			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			for _, deleting := range []bool{false, true} {
+				t.Run(fmt.Sprintf("deleting=%t", deleting), func(t *testing.T) {
+					engine := &longhorn.Engine{
+						ObjectMeta: metav1.ObjectMeta{Name: "engine"},
+						Spec:       longhorn.EngineSpec{Active: true},
+					}
+					if deleting {
+						deletionTime := metav1.Now()
+						engine.DeletionTimestamp = &deletionTime
+					}
 
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-			informerFactories.Start(stopCh)
-
-			require.True(t, cache.WaitForCacheSync(stopCh,
-				ds.SettingInformer.HasSynced,
-				ds.NodeInformer.HasSynced,
-			))
-
-			err := ds.ValidateSetting(string(types.SettingNameDefaultControlPath), tc.newValue)
-			if tc.expectError == "" {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.expectError)
+					currentEngine, extras, err := selectEngine(&longhorn.Volume{}, map[string]*longhorn.Engine{
+						engine.Name: engine,
+					})
+					if deleting {
+						require.Error(t, err)
+						assert.Contains(t, err.Error(), "cannot find the current engine")
+						assert.Nil(t, currentEngine)
+						return
+					}
+					require.NoError(t, err)
+					assert.Same(t, engine, currentEngine)
+					assert.Empty(t, extras)
+				})
 			}
 		})
 	}
 }
 
-func TestValidateSettingDefaultDataPathImmutability(t *testing.T) {
+func TestValidateSettingBlocksV2IMUpgradeStartTimeWhenActiveIMUExistsWithoutIMUC(t *testing.T) {
 	const testNamespace = "longhorn-system"
 
-	baseSetting := &longhorn.Setting{
+	testCases := map[string]longhorn.InstanceManagerUpgradeStatus{
+		"active relocating IMU": {
+			State: longhorn.InstanceManagerUpgradeStateRelocatingEngines,
+		},
+		"pending IMU with startedAt": {
+			State:     longhorn.InstanceManagerUpgradeStatePending,
+			StartedAt: "2026-04-20T15:00:00Z",
+		},
+	}
+
+	for name, status := range testCases {
+		t.Run(name, func(t *testing.T) {
+			lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+			kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+			extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+
+			ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+			imuIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagerUpgrades().Informer().GetIndexer()
+
+			imu := &longhorn.InstanceManagerUpgrade{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-imu",
+					Namespace: testNamespace,
+				},
+				Spec: longhorn.InstanceManagerUpgradeSpec{
+					NodeID:      "test-node-1",
+					TargetImage: "im:target",
+				},
+				Status: status,
+			}
+			createdIMU, err := lhClient.LonghornV1beta2().InstanceManagerUpgrades(testNamespace).Create(context.TODO(), imu, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, imuIndexer.Add(createdIMU))
+
+			err = ds.ValidateSetting(string(types.SettingNameInstanceManagerUpgradeStartTime), "2026-04-20T15:00:00Z")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "actively in progress")
+			assert.Contains(t, err.Error(), "IMU")
+		})
+	}
+}
+
+func TestValidateSettingRejectsUnsupportedV2InstanceManagerLiveUpgrade(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+	currentVersion := &longhorn.Setting{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      string(types.SettingNameDefaultDataPath),
+			Name:      string(types.SettingNameCurrentLonghornVersion),
+			Namespace: testNamespace,
+			Annotations: map[string]string{
+				types.GetLonghornLabelKey(types.V2InstanceManagerLiveUpgradeUnsupported): "true",
+			},
+		},
+		Value: "v1.13.0",
+	}
+	created, err := lhClient.LonghornV1beta2().Settings(testNamespace).Create(context.TODO(), currentVersion, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NoError(t, settingIndexer.Add(created))
+
+	err = ds.ValidateSetting(string(types.SettingNameAllowInstanceManagerAutomaticUpgrade), `{"v2":"true"}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), types.MinimumLonghornVersionForV2InstanceManagerLiveUpgrade)
+
+	require.NoError(t, ds.ValidateSetting(string(types.SettingNameAllowInstanceManagerAutomaticUpgrade), `{"v2":"false"}`))
+}
+
+func TestGetSettingValueExistedByDataEngineAllowsEmptyValue(t *testing.T) {
+	const testNamespace = "longhorn-system"
+
+	lhClient := lhfake.NewSimpleClientset()                    // nolint:staticcheck
+	kubeClient := fake.NewSimpleClientset()                    // nolint:staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint:staticcheck
+	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
+	ds := NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+	setting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      string(types.SettingNameDataEngineLogFlags),
 			Namespace: testNamespace,
 		},
-		Value: "/var/lib/longhorn",
+		Value: `{"v2":""}`,
 	}
+	created, err := lhClient.LonghornV1beta2().Settings(testNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NoError(t, settingIndexer.Add(created))
 
-	newNode := func(name string) *longhorn.Node {
-		return &longhorn.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: testNamespace,
-			},
-		}
-	}
+	value, err := ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineLogFlags, longhorn.DataEngineTypeV2)
+	require.NoError(t, err)
+	assert.Empty(t, value)
+}
 
+func TestIsSameImageReference(t *testing.T) {
 	tests := map[string]struct {
-		existingObjects []runtime.Object
-		newValue        string
-		expectError     string
+		running string
+		target  string
+		expect  bool
 	}{
-		"relative path is rejected": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "relative/path",
-			expectError:     "the value of default-data-path is invalid",
-		},
-		"root path is rejected": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "/",
-			expectError:     "the value of default-data-path is invalid",
-		},
-		"same path with trailing slash normalization is allowed": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "/var/lib/longhorn/",
-		},
-		"same path with whitespace normalization is allowed (even after initialization)": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy(), newNode("node-1")},
-			newValue:        " /var/lib/longhorn/ ",
-		},
-		"changing path before initialization is allowed": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "/data/longhorn",
-		},
-		"bare pci identifier is rejected": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy()},
-			newValue:        "0000:00:1e.0",
-			expectError:     "the value of default-data-path is invalid",
-		},
-		"changing path after initialization is rejected": {
-			existingObjects: []runtime.Object{baseSetting.DeepCopy(), newNode("node-1")},
-			newValue:        "/data/longhorn",
-			expectError:     "cannot change default-data-path after Longhorn has been initialized",
-		},
+		"same reference":        {"longhornio/im:v1", "longhornio/im:v1", true},
+		"normalized repository": {"docker.io/longhornio/im:v1", "longhornio/im:v1", true},
+		"another tag":           {"longhornio/im:v1-head", "longhornio/im:v1", false},
+		"another repository":    {"registry.example.com/longhornio/im:v1", "longhornio/im:v1", false},
+		"image ID":              {"sha256:" + strings.Repeat("a", 64), "longhornio/im:v1", false},
 	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			lhClient := lhfake.NewSimpleClientset(tc.existingObjects...) // nolint: staticcheck
-			kubeClient := fake.NewSimpleClientset()                      // nolint: staticcheck
-			extensionsClient := apiextensionsfake.NewSimpleClientset()   // nolint: staticcheck
-			informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
-			ds := NewDataStore(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
-
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-			informerFactories.Start(stopCh)
-
-			require.True(t, cache.WaitForCacheSync(stopCh,
-				ds.SettingInformer.HasSynced,
-				ds.NodeInformer.HasSynced,
-			))
-
-			err := ds.ValidateSetting(string(types.SettingNameDefaultDataPath), tc.newValue)
-			if tc.expectError == "" {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.expectError)
-			}
-		})
+	for name, tt := range tests {
+		assert.Equal(t, tt.expect, isSameImageReference(tt.running, tt.target), name)
 	}
 }

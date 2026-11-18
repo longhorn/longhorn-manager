@@ -190,7 +190,8 @@ func (s *Shard) Create(spdkClient *spdkclient.Client, superiorPortAllocator *com
 		return nil, err
 	}
 
-	if err := spdkClient.StartExposeBdev(s.Nqn, s.UUID, generateNGUID(s.LvolName), s.IP, strconv.Itoa(int(s.Port))); err != nil {
+	if err := spdkClient.StartExposeBdev(s.Nqn, s.UUID, generateNGUID(s.LvolName), s.IP, strconv.Itoa(int(s.Port)),
+		helpertypes.InternalHostNQN); err != nil {
 		return nil, errors.Wrapf(err, "failed to expose bdev for shard %s", s.Name)
 	}
 
@@ -418,7 +419,8 @@ func (s *Shard) Expand(spdkClient *spdkclient.Client, newSize uint64) (err error
 	}
 
 	if reExposeBdev {
-		if err := spdkClient.StartExposeBdev(s.Nqn, s.UUID, generateNGUID(s.LvolName), s.IP, strconv.Itoa(int(s.Port))); err != nil {
+		if err := spdkClient.StartExposeBdev(s.Nqn, s.UUID, generateNGUID(s.LvolName), s.IP, strconv.Itoa(int(s.Port)),
+			helpertypes.InternalHostNQN); err != nil {
 			return errors.Wrapf(err, "failed to re-expose shard %s after expansion", s.Name)
 		}
 		s.IsExposed = true
@@ -465,6 +467,7 @@ func (s *Shard) validateAndSyncLvstore(spdkClient *spdkclient.Client) error {
 // shard serves one target, so it always uses one port and does not use the
 // request's port_count.
 func (s *Shard) prepareIPAndPort(superiorPortAllocator *commonbitmap.Bitmap) error {
+	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
 	podIP, err := commonnet.GetIPForPod()
 	if err != nil {
 		return err

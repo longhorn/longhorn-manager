@@ -109,6 +109,7 @@ func (c *RecurringJobController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -129,7 +130,7 @@ func (c *RecurringJobController) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncRecurringJob(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncRecurringJob(key.(string)) })
 	c.handleErr(err, key)
 
 	return true
@@ -518,19 +519,11 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 												},
 											},
 										},
-										{
-											Name:  types.LonghornDataPathEnv,
-											Value: types.GetLonghornDataPath(),
-										},
-										{
-											Name:  types.LonghornControlPathEnv,
-											Value: types.GetLonghornControlPath(),
-										},
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "engine-binaries",
-											MountPath: types.GetEngineBinaryDirectoryOnHost(),
+											MountPath: types.EngineBinaryDirectoryOnHost,
 										},
 									},
 								},
@@ -540,7 +533,7 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 									Name: "engine-binaries",
 									VolumeSource: corev1.VolumeSource{
 										HostPath: &corev1.HostPathVolumeSource{
-											Path: types.GetEngineBinaryDirectoryOnHost(),
+											Path: types.EngineBinaryDirectoryOnHost,
 										},
 									},
 								},

@@ -15,6 +15,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,6 +48,10 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
+
+const (
+	livenessProbeScript = "/usr/local/bin/instance-manager-liveness-probe"
 )
 
 var (
@@ -97,6 +103,20 @@ type InstanceManagerMonitor struct {
 }
 
 type instanceProcessMap map[string]longhorn.InstanceProcess
+
+// errInstanceManagerNotServing marks a sync error of a running instance manager
+// whose services cannot be reached yet.
+var errInstanceManagerNotServing = errors.New("instance manager services are not reachable")
+
+// isTransientGRPCError reports whether err carries a gRPC code that a later retry
+// can clear, such as services that do not listen yet.
+func isTransientGRPCError(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return true
+	}
+	return false
+}
 
 func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
 	cli, err := engineapi.NewInstanceManagerClient(im, false)
@@ -194,12 +214,16 @@ func NewInstanceManagerController(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: imc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    imc.enqueueSettingChange,
 				UpdateFunc: func(old, cur interface{}) { imc.enqueueSettingChange(cur) },
+				DeleteFunc: imc.enqueueSettingChange,
 			},
 		}, 0); err != nil {
 		return nil, err
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeInformer.HasSynced)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerUpgradeControlInformer.HasSynced)
 
 	return imc, nil
 }
@@ -220,11 +244,16 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 	}
 
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameAllowInstanceManagerAutomaticUpgrade ||
+		types.SettingName(setting.Name) == types.SettingNameInstanceManagerUpgradeStartTime ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufLargePoolSize ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufSmallPoolSize ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
-		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize
+		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineInterruptModeEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUIsolationEnabled
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -262,6 +291,7 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	imc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(imc.worker, time.Second, stopCh)
 	}
@@ -282,7 +312,7 @@ func (imc *InstanceManagerController) processNextWorkItem() bool {
 	}
 	defer imc.queue.Done(key)
 
-	err := imc.syncInstanceManager(key.(string))
+	err := imc.syncWithMetrics(func() error { return imc.syncInstanceManager(key.(string)) })
 	imc.handleErr(err, key)
 
 	return true
@@ -295,7 +325,10 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	}
 
 	log := imc.logger.WithField("InstanceManager", key)
-	if imc.queue.NumRequeues(key) < maxRetries {
+	// The pod can turn ready before the instance manager services listen. Keep
+	// retrying with backoff rather than dropping the key, which would leave the
+	// instance manager starting until the next informer resync.
+	if imc.queue.NumRequeues(key) < maxRetries || errors.Is(err, errInstanceManagerNotServing) {
 		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn instance manager")
 		imc.queue.AddRateLimited(key)
 		return
@@ -406,6 +439,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
+	if err := imc.syncInstanceManagerUpgrade(im); err != nil {
+		return err
+	}
+
 	if err := imc.syncInstanceManagerAPIVersion(im); err != nil {
 		return err
 	}
@@ -451,6 +488,56 @@ func (imc *InstanceManagerController) canProceedWithInstanceManagerSync(currentI
 	return currentIm.Spec.Image == defaultInstanceManagerImage, nil
 }
 
+func (imc *InstanceManagerController) syncInPlaceUpgradedInstanceManagerPod(im *longhorn.InstanceManager, imu *longhorn.InstanceManagerUpgrade) (bool, error) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) || im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+		return false, nil
+	}
+	if imu == nil {
+		return false, nil
+	}
+
+	pod, err := imc.ds.GetPod(im.Name)
+	if err != nil {
+		return true, err
+	}
+	if pod == nil {
+		return false, nil
+	}
+
+	currentImage := getInstanceManagerPodImage(pod, "instance-manager")
+	if currentImage == "" || currentImage == im.Spec.Image {
+		return true, nil
+	}
+
+	patch := []byte(fmt.Sprintf(`{"spec":{"containers":[{"name":%q,"image":%q}]}}`, "instance-manager", im.Spec.Image))
+	if _, err := imc.ds.PatchPod(pod.Name, patch); err != nil {
+		return true, errors.Wrapf(err, "failed to patch instance manager pod %v image from %v to %v", pod.Name, currentImage, im.Spec.Image)
+	}
+
+	getLoggerForInstanceManager(imc.logger, im).Infof("Patched instance manager pod %v image from %v to %v for instance manager upgrade %v",
+		pod.Name, currentImage, im.Spec.Image, imu.Name)
+	return true, nil
+}
+
+func isInstanceManagerUpgradeTransientPodState(pod *corev1.Pod) bool {
+	if pod == nil || pod.DeletionTimestamp != nil {
+		return false
+	}
+
+	switch pod.Status.Phase {
+	case corev1.PodPending:
+		return true
+	case corev1.PodRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldRecreateInstanceManagerPodDuringInstanceManagerUpgrade(pod *corev1.Pod) bool {
+	return !isInstanceManagerUpgradeTransientPodState(pod)
+}
+
 // syncStatusWithPod updates the InstanceManager based on the pod current phase only,
 // regardless of the InstanceManager previous status.
 func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceManager) error {
@@ -467,8 +554,18 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 	if err != nil {
 		return errors.Wrapf(err, "failed get pod for instance manager %v", im.Name)
 	}
+	imu, err := imc.ds.GetPendingOrActiveInstanceManagerUpgradeByNodeAndImageRO(im.Spec.NodeID, im.Spec.Image)
+	if err != nil {
+		return err
+	}
 
 	if pod == nil {
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			return nil
+		}
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
 			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodNotFound, "")
 		if im.Status.CurrentState == "" || im.Status.CurrentState == longhorn.InstanceManagerStateStopped {
@@ -483,6 +580,12 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 
 	// By design instance manager pods should not be terminated.
 	if pod.DeletionTimestamp != nil {
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			return nil
+		}
 		imc.logger.Warnf("Instance manager pod %v is being deleted, updating the instance manager state from %s to error", im.Name, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
@@ -493,7 +596,13 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 	// Blindly update the state based on the pod phase.
 	switch pod.Status.Phase {
 	case corev1.PodPending:
-		im.Status.CurrentState = longhorn.InstanceManagerStateStarting
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+		} else {
+			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
+		}
 	case corev1.PodRunning:
 		isReady := true
 		// Make sure readiness probe has passed.
@@ -507,11 +616,23 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
 				longhorn.ConditionStatusTrue, longhorn.InstanceManagerConditionReasonPodRunning, "")
 		} else {
-			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
-			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
-				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodStarting, "")
+			if imu != nil {
+				im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+				im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+					longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			} else {
+				im.Status.CurrentState = longhorn.InstanceManagerStateStarting
+				im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+					longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodStarting, "")
+			}
 		}
 	default:
+		if imu != nil {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUpgrading
+			im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
+				longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonPodUpgrading, "")
+			return nil
+		}
 		imc.logger.Warnf("Instance manager pod %v is in phase %s, updating the instance manager state from %s to error", im.Name, pod.Status.Phase, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 		im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypePodReady,
@@ -546,14 +667,25 @@ func (imc *InstanceManagerController) syncStatusWithNode(im *longhorn.InstanceMa
 // syncInstanceStatus sets the status of instances in special cases independent of InstanceManagerMonitor (e.g. when
 // InstanceManagerMonitor isn't running yet).
 func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceManager) error {
-	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped ||
-		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
-		im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
+	switch im.Status.CurrentState {
+	case longhorn.InstanceManagerStateStopped,
+		longhorn.InstanceManagerStateError,
+		longhorn.InstanceManagerStateStarting:
 		// In these states, instance processes either are not running or will soon not be running.
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
 		im.Status.InstanceEngines = nil
 		im.Status.InstanceEngineFrontends = nil
+		im.Status.InstanceReplicas = nil
+		im.Status.InstanceShards = nil
+		im.Status.InstanceShardGroups = nil
+		im.Status.BackingImages = nil
+	case longhorn.InstanceManagerStateUpgrading:
+		// A v2 EngineFrontend runs in the kernel on the source node and survives
+		// the instance manager pod restart. Keep its last observed process status
+		// so the EngineFrontend controller does not mistake this upgrade window for
+		// a missing frontend process.
+		im.Status.InstanceEngines = nil
 		im.Status.InstanceReplicas = nil
 		im.Status.InstanceShards = nil
 		im.Status.InstanceShardGroups = nil
@@ -655,7 +787,7 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) error {
 	log := getLoggerForInstanceManager(imc.logger, im)
 
-	err := imc.annotateCASafeToEvict(im)
+	imu, err := imc.ds.GetPendingOrActiveInstanceManagerUpgradeByNodeAndImageRO(im.Spec.NodeID, im.Spec.Image)
 	if err != nil {
 		return err
 	}
@@ -663,6 +795,25 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 	err = imc.syncLogSettingsToInstanceManagerPod(im)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
+	}
+
+	instanceManagerUpgradeInProgress, err := imc.syncInPlaceUpgradedInstanceManagerPod(im, imu)
+	if err != nil {
+		return err
+	}
+	instanceManagerUpgradeInProgress = instanceManagerUpgradeInProgress || imu != nil
+
+	pod, err := imc.ds.GetPodRO(im.Namespace, im.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get pod for instance manager %v", im.Name)
+	}
+	if instanceManagerUpgradeInProgress && isInstanceManagerUpgradeTransientPodState(pod) {
+		return nil
+	}
+
+	err = imc.annotateCASafeToEvict(im)
+	if err != nil {
+		return err
 	}
 
 	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskCoreNumberApplied(im)
@@ -689,6 +840,8 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	recreatePodDuringInstanceManagerUpgrade := instanceManagerUpgradeInProgress && shouldRecreateInstanceManagerPodDuringInstanceManagerUpgrade(pod)
+
 	// When hugepage settings are not synced and the pod is eligible for deletion,
 	// decide whether to block or allow based on node hugepage capacity.
 	if !hugepageSettingsSynced && !isPodDeletedOrNotRunning && !areInstancesRunningInPod {
@@ -708,7 +861,8 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 			longhorn.ConditionStatusFalse, longhorn.InstanceManagerConditionReasonSettingNotSynced, fmt.Sprintf("Settings %v are not synced", unSyncedSettings))
 	}
 
-	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied && hugepageSettingApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	isPodDeletionNotRequired := !recreatePodDuringInstanceManagerUpgrade &&
+		((isSettingSynced && dataEngineCPUMaskIsApplied && hugepageSettingApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning)
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
 		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
 		isPodDeletionNotRequired {
@@ -793,6 +947,9 @@ func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.Instanc
 }
 
 func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *longhorn.InstanceManager) (isSynced bool, unSyncedDangerSettings []types.SettingName, isPodDeletedOrNotRunning, areInstancesRunningInPod bool, err error) {
+	if im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
+		return true, nil, true, false, nil
+	}
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return false, nil, true, false, nil
 	}
@@ -842,6 +999,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
 		case types.SettingNameDataEngineIobufLargePoolSize:
 			isSettingSynced, err = imc.isSettingIobufLargePoolSizeSynced(im, pod)
+		case types.SettingNameDataEngineIobufSmallPoolSize:
+			isSettingSynced, err = imc.isSettingIobufSmallPoolSizeSynced(im, pod)
 		case types.SettingNameDataEngineCPUIsolationEnabled:
 			isSettingSynced, err = imc.isSettingCPUIsolationEnabledSynced(setting, im, pod)
 		}
@@ -918,7 +1077,7 @@ func (imc *InstanceManagerController) isSettingLogPathSynced(setting *longhorn.S
 
 	logPath := setting.Value
 	if logPath == "" {
-		logPath = types.GetDefaultLogDirectoryOnHost()
+		logPath = types.DefaultLogDirectoryOnHost
 	}
 
 	normalizedLogPath := filepath.Clean(logPath)
@@ -994,30 +1153,40 @@ func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(settin
 }
 
 // resolveCPUIsolationEnabled returns the effective CPU-isolation-enabled value
-// for a V2 instance manager. The per-IM Spec.DataEngineSpec.V2.CPUIsolationEnabled
-// field takes priority over the cluster-wide data-engine-cpu-isolation-enabled
-// setting:
+// for a V2 instance manager, in the following order of precedence:
 //
-//	"true"  -> enabled
-//	"false" -> disabled
-//	""      -> inherit the global setting value
+//  1. Interrupt mode: CPU isolation only protects busy-polling SPDK reactors from
+//     being preempted, so it is disabled whenever the SPDK target runs in
+//     interrupt mode, regardless of any other input.
+//  2. The per-IM Spec.DataEngineSpec.V2.CPUIsolationEnabled field:
+//     "true" -> enabled, "false" -> disabled, "" -> fall through.
+//  3. The cluster-wide data-engine-cpu-isolation-enabled setting.
 func (imc *InstanceManagerController) resolveCPUIsolationEnabled(im *longhorn.InstanceManager) (bool, error) {
-	switch im.Spec.DataEngineSpec.V2.CPUIsolationEnabled {
-	case "true":
-		return true, nil
-	case "false":
+	interruptMode, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+	if interruptMode == longhorn.TrueValue {
 		return false, nil
 	}
+
+	switch im.Spec.DataEngineSpec.V2.CPUIsolationEnabled {
+	case longhorn.TrueValue:
+		return true, nil
+	case longhorn.FalseValue:
+		return false, nil
+	}
+
 	val, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUIsolationEnabled, im.Spec.DataEngine)
 	if err != nil {
 		return false, err
 	}
-	return val == "true", nil
+	return val == longhorn.TrueValue, nil
 }
 
 // isSettingCPUIsolationEnabledSynced returns true if the effective CPU-isolation
-// value (Spec.DataEngineSpec.V2.CPUIsolationEnabled, falling back to the global
-// setting) matches what the V2 instance-manager pod was started with. The pod
+// value (see resolveCPUIsolationEnabled) matches what the V2 instance-manager
+// pod was started with. The pod
 // always receives --longhorn-control-path (so we can reconcile stale state
 // across restarts even after toggling off); the actual toggle is the presence
 // of --enable-irq-affinity, --enable-workqueue-affinity, AND --enable-rps in the
@@ -1235,6 +1404,30 @@ func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *long
 	return current == expected, nil
 }
 
+// isSettingIobufSmallPoolSizeSynced checks the pod's --spdk-iobuf-small-pool-size against the
+// setting. At or below the SPDK default the flag is omitted, so an absent flag is synced.
+func (imc *InstanceManagerController) isSettingIobufSmallPoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	iobufSmallPoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	expected := ""
+	if iobufSmallPoolSize > types.SpdkDefaultIobufSmallPoolSize {
+		expected = fmt.Sprintf("%d", iobufSmallPoolSize)
+	}
+	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-small-pool-size")
+	return current == expected, nil
+}
+
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {
 	// Avoid changing API versions when InstanceManagers are state Unknown.
 	// Then once required (in the future), the monitor could still talk with the pod and update processes in some corner cases. e.g., kubelet restart.
@@ -1249,6 +1442,9 @@ func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn
 	shouldUpdateProxyAPIVersion := im.Status.ProxyAPIVersion == engineapi.UnknownInstanceManagerProxyAPIVersion
 	if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && (shouldUpdateAPIVersion || shouldUpdateProxyAPIVersion) {
 		if err := imc.versionUpdater(im); err != nil {
+			if isTransientGRPCError(err) {
+				return errors.Mark(err, errInstanceManagerNotServing)
+			}
 			return err
 		}
 	}
@@ -1884,38 +2080,18 @@ func (imc *InstanceManagerController) setPodExtraAnnotations(podSpec *corev1.Pod
 	return nil
 }
 
-func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
-	var livenessProbes []string
+// getLivenessProbeCommand returns the command string for the liveness probe of the instance manager pod.
+//
+// podProbeTimeout is used to set the timeout for the probe command (nc) and it should be between TimeoutSeconds and PeriodSeconds to avoid false alarms and accumulate pending nc processes.
+func getLivenessProbeCommand(dataEngine longhorn.DataEngineType, podProbeTimeout int64) string {
+	var livenessProbes = []string{livenessProbeScript}
 
-	ports := []int{
-		engineapi.InstanceManagerProcessManagerServiceDefaultPort,
-		engineapi.InstanceManagerProxyServiceDefaultPort,
-		engineapi.InstanceManagerDiskServiceDefaultPort,
-		engineapi.InstanceManagerInstanceServiceDefaultPort,
-	}
-	for _, port := range ports {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
-	}
+	livenessProbes = append(livenessProbes, "--timeout", fmt.Sprintf("%d", podProbeTimeout))
 	if types.IsDataEngineV2(dataEngine) {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
-
-		// For v2, also verify:
-		// 1. spdk_tgt process exists.
-		// 2. spdk_tgt is not stuck in a stopped/traced state (for example, after SIGSTOP).
-		processProbe := `
-pids=$(pgrep -f '^spdk_tgt') &&
-[ -n "$pids" ] &&
-status=0 &&
-for pid in $pids; do
-  state=$(awk '/^State:/ {print $2}' /proc/$pid/status 2>/dev/null)
-  [ -n "$state" ] || status=1
-  [ "$state" != "T" ] && [ "$state" != "t" ] || status=1
-done
-test $status -eq 0
-`
-		livenessProbes = append(livenessProbes, processProbe)
+		livenessProbes = append(livenessProbes, "--data-engine", "v2")
 	}
-	return strings.Join(livenessProbes, " && ")
+
+	return strings.Join(livenessProbes, " ")
 }
 
 func (imc *InstanceManagerController) getLogPath() (string, error) {
@@ -1925,7 +2101,7 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 	}
 
 	if logPath == "" || logPath == string(filepath.Separator) {
-		logPath = types.GetDefaultLogDirectoryOnHost()
+		logPath = types.DefaultLogDirectoryOnHost
 	} else {
 		logPath = filepath.Clean(logPath)
 	}
@@ -1933,16 +2109,16 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 	parent := filepath.Dir(logPath)
 	if parent == "." || parent == string(filepath.Separator) {
 		imc.logger.Warnf("Log path %q is not a valid directory, using default log directory", logPath)
-		logPath = types.GetDefaultLogDirectoryOnHost()
+		logPath = types.DefaultLogDirectoryOnHost
 	}
 
 	if st, err := lhns.Stat(parent); err != nil {
 		imc.logger.WithError(err).Warnf("Failed to stat parent of log path %q, using default log directory", logPath)
-		logPath = types.GetDefaultLogDirectoryOnHost()
+		logPath = types.DefaultLogDirectoryOnHost
 	} else {
 		if !st.IsDir() {
 			imc.logger.Warnf("Parent of log path %q is not a directory, using default log directory", logPath)
-			logPath = types.GetDefaultLogDirectoryOnHost()
+			logPath = types.DefaultLogDirectoryOnHost
 		}
 		imc.logger.Infof("Using log path %q", logPath)
 	}
@@ -2031,9 +2207,10 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufLargePoolSize)
 		}
 
-		controlPath, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultControlPath)
+		// iobuf small pool size (small_pool_count), handled the same way as the large pool above.
+		iobufSmallPoolSize, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineIobufSmallPoolSize, dataEngine)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDefaultControlPath)
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufSmallPoolSize)
 		}
 
 		args := []string{
@@ -2047,8 +2224,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
 			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
 		}
+		if iobufSmallPoolSize > types.SpdkDefaultIobufSmallPoolSize {
+			args = append(args, "--spdk-iobuf-small-pool-size", fmt.Sprintf("%d", iobufSmallPoolSize))
+		}
 		args = append(args,
-			"--longhorn-control-path", controlPath.Value,
+			"--longhorn-control-path", types.DefaultControlPath,
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
@@ -2128,7 +2308,9 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 				Command: []string{
 					"/bin/sh",
 					"-c",
-					getLivenessProbeCommand(dataEngine),
+					// timeout is used for the nc command to check the port availability
+					// and it should be between TimeoutSeconds and PeriodSeconds to avoid false alarms and accumulate pending nc processes.
+					getLivenessProbeCommand(dataEngine, podProbeTimeout+1),
 				},
 			},
 		},
@@ -2155,14 +2337,6 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		{
 			Name:  types.EnvDataEngine,
 			Value: string(dataEngine),
-		},
-		{
-			Name:  types.LonghornDataPathEnv,
-			Value: types.GetLonghornDataPath(),
-		},
-		{
-			Name:  types.LonghornControlPathEnv,
-			Value: types.GetLonghornControlPath(),
 		},
 	}
 	if tz := os.Getenv(types.EnvTZ); tz != "" {
@@ -2191,7 +2365,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
-			MountPath: types.GetUnixDomainSocketDirectoryInContainer(),
+			MountPath: types.UnixDomainSocketDirectoryInContainer,
 			Name:      "unix-domain-socket",
 		},
 		{
@@ -2217,7 +2391,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "engine-binaries",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetEngineBinaryDirectoryOnHost(),
+					Path: types.EngineBinaryDirectoryOnHost,
 				},
 			},
 		},
@@ -2225,7 +2399,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "metadata",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetMetadataDirectoryOnHost(),
+					Path: types.MetadataDirectoryOnHost,
 					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
@@ -2234,7 +2408,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name: "unix-domain-socket",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: types.GetUnixDomainSocketDirectoryOnHost(),
+					Path: types.UnixDomainSocketDirectoryOnHost,
 				},
 			},
 		},
@@ -2757,6 +2931,118 @@ func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, insta
 	m.createOrphanForInstances(existOrphans, im, shardGroupProcesses, longhorn.OrphanTypeShardGroupInstance, m.isShardGroupInstanceOrphaned, longhorn.DataEngineTypeV2)
 }
 
+// syncInstanceManagerUpgrade ensures an InstanceManagerUpgradeControl CR exists
+// and tracks the current default instance manager image for v2 AllInOne IMs.
+func (imc *InstanceManagerController) syncInstanceManagerUpgrade(im *longhorn.InstanceManager) error {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) || im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+		return nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil
+	}
+
+	defaultIMImage, err := imc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+	if im.Spec.Image == defaultIMImage {
+		return nil
+	}
+
+	log := getLoggerForInstanceManager(imc.logger, im)
+
+	allowed, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowInstanceManagerAutomaticUpgrade, im.Spec.DataEngine)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		log.Debugf("Skipping automatic V2 instance manager upgrade because %v is disabled", types.SettingNameAllowInstanceManagerAutomaticUpgrade)
+		return nil
+	}
+
+	imuc, existingErr := imc.ds.GetInstanceManagerUpgradeControl(types.InstanceManagerUpgradeControlName)
+	if existingErr != nil && !datastore.ErrorIsNotFound(existingErr) {
+		return existingErr
+	}
+
+	startTime, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameInstanceManagerUpgradeStartTime, im.Spec.DataEngine)
+	if err != nil {
+		return err
+	}
+
+	if datastore.ErrorIsNotFound(existingErr) {
+		newIMUC := &longhorn.InstanceManagerUpgradeControl{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: types.InstanceManagerUpgradeControlName,
+			},
+			Spec: longhorn.InstanceManagerUpgradeControlSpec{
+				TargetImage: defaultIMImage,
+				StartAt:     startTime,
+			},
+		}
+		log.Infof("Creating InstanceManagerUpgradeControl for target image %v with start time %v", defaultIMImage, startTime)
+		if _, err := imc.ds.CreateInstanceManagerUpgradeControl(newIMUC); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+
+	upgradeStarted, err := imc.hasStartedNodeUpgradeForTarget(imuc, defaultIMImage)
+	if err != nil {
+		return err
+	}
+
+	needsUpdate := false
+	if imuc.Spec.TargetImage != defaultIMImage {
+		log.Infof("Updating InstanceManagerUpgradeControl target image from %v to %v", imuc.Spec.TargetImage, defaultIMImage)
+		imuc.Spec.TargetImage = defaultIMImage
+		needsUpdate = true
+	}
+
+	if !upgradeStarted && imuc.Spec.StartAt != startTime {
+		log.Infof("Updating InstanceManagerUpgradeControl start time from %v to %v", imuc.Spec.StartAt, startTime)
+		imuc.Spec.StartAt = startTime
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		if _, err := imc.ds.UpdateInstanceManagerUpgradeControl(imuc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// hasStartedNodeUpgradeForTarget reports whether the upgrade cycle for targetImage has already
+// begun, which freezes Spec.StartAt so a scheduling change cannot disturb the active cycle.
+// NodeUpgradeInfo does not record the target image, so a StartedAt entry is only conclusive
+// after its IMU confirms the entry belongs to this cycle rather than an earlier one.
+func (imc *InstanceManagerController) hasStartedNodeUpgradeForTarget(imuc *longhorn.InstanceManagerUpgradeControl, targetImage string) (bool, error) {
+	if imuc.Status.CurrentNode != "" {
+		return true, nil
+	}
+	for _, info := range imuc.Status.Nodes {
+		if info.StartedAt == "" || info.IMUName == "" {
+			continue
+		}
+		imu, err := imc.ds.GetInstanceManagerUpgrade(info.IMUName)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				continue
+			}
+			return false, err
+		}
+		if imu.Spec.TargetImage == targetImage {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // isEngineOrphaned returns true only when it is very certain that an engine is scheduled on another instance manager
 func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, instanceManager string) (bool, error) {
 	existEngine, err := m.ds.GetEngineRO(instanceName)
@@ -3004,4 +3290,16 @@ func isReplicaInTransitionState(replica *longhorn.Replica) bool {
 	}
 
 	return false
+}
+
+func getInstanceManagerPodImage(pod *corev1.Pod, containerName string) string {
+	if pod == nil {
+		return ""
+	}
+	for _, container := range pod.Spec.Containers {
+		if container.Name == containerName {
+			return container.Image
+		}
+	}
+	return ""
 }

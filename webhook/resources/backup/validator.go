@@ -6,7 +6,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -55,6 +54,14 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("BackupMode %v is not a valid option", backup.Spec.BackupMode), "")
 	}
 
+	// Reject backups for legacy linked-clone volumes
+	labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
+	if labelVolumeName != "" {
+		if vol, err := b.ds.GetVolumeRO(labelVolumeName); err == nil && types.IsLegacyLinkedCloneVolume(vol) {
+			return werror.NewInvalidError("cannot create backups for legacy linked-clone volumes", "")
+		}
+	}
+
 	// Check if backup target exists and is available
 	backupTargetName := backup.Labels[types.LonghornLabelBackupTarget]
 	if backupTargetName == "" {
@@ -72,8 +79,6 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	if backupTarget.Spec.BackupTargetURL == "" || !backupTarget.Status.Available {
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
-
-	labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
 
 	if backup.Spec.SnapshotName != "" {
 		//check if label volume name matches snapshot volume name
@@ -98,14 +103,6 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
-	if isLinkedClone, err := b.ds.IsVolumeLinkedCloneVolume(labelVolumeName); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return werror.NewInvalidError(fmt.Sprintf("failed to check IsVolumeLinkedCloneVolume: %v", err), "")
-		}
-	} else if isLinkedClone {
-		return werror.NewInvalidError(fmt.Sprintf("backup is not allowed for linked-clone volume %v", labelVolumeName), "")
-	}
-
 	return nil
 }
 
@@ -117,6 +114,15 @@ func (b *backupValidator) Update(request *admission.Request, oldObj runtime.Obje
 	newBackup, ok := newObj.(*longhorn.Backup)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("newObj %v is not a longhorn.Backup", newObj), "")
+	}
+
+	// Reject changing or removing the backup-target label, which the backup
+	// controller resolves the target from.
+	// Ref: https://github.com/longhorn/longhorn/issues/14000
+	oldBackupTargetName := oldBackup.Labels[types.LonghornLabelBackupTarget]
+	newBackupTargetName := newBackup.Labels[types.LonghornLabelBackupTarget]
+	if oldBackupTargetName != "" && newBackupTargetName != oldBackupTargetName {
+		return werror.NewInvalidError(fmt.Sprintf("changing or removing the %v label of backup %v is not allowed", types.LonghornLabelBackupTarget, oldBackup.Name), "")
 	}
 
 	// Allow backup block size mutation only when the existing obj is not set, or correcting the existed invalid value

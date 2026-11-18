@@ -9,11 +9,11 @@ import (
 
 	iscsidevtypes "github.com/longhorn/go-iscsi-helper/types"
 	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
-	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
-	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
-
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	imrpc "github.com/longhorn/types/pkg/generated/imrpc"
 
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -104,7 +104,7 @@ type EngineClient interface {
 	VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error
+	ReplicaAdd(obj DataEngineObject, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, linkedCloneSource *imrpc.LinkedCloneSource) error
 	ReplicaRemove(engine *longhorn.Engine, url, replicaName string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimitMbps int64) error
@@ -123,12 +123,12 @@ type EngineClient interface {
 	SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential, parameters map[string]string) (string, string, error)
 	SnapshotBackupStatus(obj DataEngineObject, backupName, replicaAddress, replicaName string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(obj DataEngineObject) (map[string]*longhorn.SnapshotCloneStatus, error)
-	SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error
+	SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) error
 	SnapshotHash(obj DataEngineObject, snapshotName string, rehash bool) error
 	SnapshotHashStatus(obj DataEngineObject, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int, needCorrectEncryptedVolumeSize bool) error
-	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
+	BackupRestoreStatus(engine *longhorn.Engine) (*BackupRestoreStatusInfo, error)
 
 	SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error)
 	SPDKBackingImageDelete(name, diskUUID string) error
@@ -207,6 +207,12 @@ type BackupVolume struct {
 	StorageClassName     string             `json:"storageClassName"`
 	BackupTargetName     string             `json:"backupTargetName"`
 	VolumeName           string             `json:"volumeName"`
+
+	// LinkedCloneSourceVolume and LinkedCloneSourceSnapshot are set when the backed
+	// up volume was a linked clone. Such a backup only holds the data the clone wrote
+	// itself, so restoring it requires re-establishing the link to this source.
+	LinkedCloneSourceVolume   string `json:"linkedCloneSourceVolume"`
+	LinkedCloneSourceSnapshot string `json:"linkedCloneSourceSnapshot"`
 }
 
 type Backup struct {
@@ -238,6 +244,18 @@ type BackupCreateInfo struct {
 	BackupID       string
 	ReplicaAddress string
 	IsIncremental  bool
+}
+
+// BackupRestoreStatusInfo is the restore status reported by the engine.
+type BackupRestoreStatusInfo struct {
+	// ReplicaStatuses holds the restore status of each replica, keyed by the
+	// replica address URL ("tcp://<ip>:<port>").
+	ReplicaStatuses map[string]*longhorn.RestoreStatus
+	// EngineError is a restore error that cannot be attributed to a current
+	// replica, for example when the backup target is unreachable or the
+	// replica that failed has already been removed from the engine. Only the
+	// v2 data engine reports it. It is empty when there is no such error.
+	EngineError string
 }
 
 type LauncherVolumeInfo struct {

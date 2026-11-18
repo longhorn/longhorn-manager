@@ -14,11 +14,12 @@ const (
 type InstanceManagerState string
 
 const (
-	InstanceManagerStateError    = InstanceManagerState("error")
-	InstanceManagerStateRunning  = InstanceManagerState("running")
-	InstanceManagerStateStopped  = InstanceManagerState("stopped")
-	InstanceManagerStateStarting = InstanceManagerState("starting")
-	InstanceManagerStateUnknown  = InstanceManagerState("unknown")
+	InstanceManagerStateError     = InstanceManagerState("error")
+	InstanceManagerStateRunning   = InstanceManagerState("running")
+	InstanceManagerStateStopped   = InstanceManagerState("stopped")
+	InstanceManagerStateStarting  = InstanceManagerState("starting")
+	InstanceManagerStateUpgrading = InstanceManagerState("upgrading")
+	InstanceManagerStateUnknown   = InstanceManagerState("unknown")
 )
 
 const (
@@ -29,11 +30,12 @@ const (
 	InstanceManagerConditionReasonNodeDown          = "Down"
 	InstanceManagerConditionReasonNodeUnschedulable = "Unschedulable"
 
-	InstanceManagerConditionReasonPodDeleting = "Deleting"
-	InstanceManagerConditionReasonPodFailed   = "Failed"
-	InstanceManagerConditionReasonPodNotFound = "NotFound"
-	InstanceManagerConditionReasonPodRunning  = "Running"
-	InstanceManagerConditionReasonPodStarting = "Starting"
+	InstanceManagerConditionReasonPodDeleting  = "Deleting"
+	InstanceManagerConditionReasonPodFailed    = "Failed"
+	InstanceManagerConditionReasonPodNotFound  = "NotFound"
+	InstanceManagerConditionReasonPodRunning   = "Running"
+	InstanceManagerConditionReasonPodStarting  = "Starting"
+	InstanceManagerConditionReasonPodUpgrading = "Upgrading"
 
 	InstanceManagerConditionReasonSettingNotSynced = "SettingNotSynced"
 )
@@ -186,6 +188,8 @@ type V2DataEngineSpec struct {
 	//            workqueues away from the SPDK reactor CPUs).
 	// "false" -> do not pass the flags.
 	// ""      -> inherit the global setting value.
+	// This field is ignored when interrupt mode is enabled, since the SPDK
+	// reactors no longer busy-poll and CPU isolation is always disabled.
 	// +optional
 	// +kubebuilder:validation:Enum="";"true";"false"
 	CPUIsolationEnabled string `json:"cpuIsolationEnabled"`

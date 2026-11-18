@@ -171,6 +171,7 @@ func (c *BackingImageDataSourceController) Run(workers int, stopCh <-chan struct
 		return
 	}
 
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -191,7 +192,7 @@ func (c *BackingImageDataSourceController) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncBackingImageDataSource(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncBackingImageDataSource(key.(string)) })
 	c.handleErr(err, key)
 
 	return true

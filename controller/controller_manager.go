@@ -28,8 +28,10 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-// StartControllers initiates all Longhorn component controllers and monitors to manage the creating, updating, and deletion of Longhorn resources
-func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
+// StartNodeLocalControllers runs the DaemonSet's node-local controllers. The
+// cluster-wide-Pod-informer controllers (KubernetesPV/Pod) run only in the
+// longhorn-global-manager Deployment.
+func StartNodeLocalControllers(logger logrus.FieldLogger, clients *client.Clients,
 	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, instanceManagerImage,
 	kubeconfigPath, version string, proxyConnCounter util.Counter, snapshotConcurrentLimiter *SnapshotConcurrentLimiter) (*WebsocketController, error) {
 	namespace := clients.Namespace
@@ -120,6 +122,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	snapshotGroupController, err := NewSnapshotGroupController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	supportBundleController, err := NewSupportBundleController(logger, ds, scheme, kubeClient, controllerID, namespace, serviceAccount)
 	if err != nil {
 		return nil, err
@@ -156,21 +162,21 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	instanceManagerUpgradeController, err := NewInstanceManagerUpgradeController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	instanceManagerUpgradeControlController, err := NewInstanceManagerUpgradeControlController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	shardGroupController, err := NewShardGroupController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	if err != nil {
 		return nil, err
 	}
 
 	// Kubernetes controllers
-	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
-	if err != nil {
-		return nil, err
-	}
 	kubernetesNodeController, err := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
-	if err != nil {
-		return nil, err
-	}
-	kubernetesPodController, err := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +218,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go recurringJobController.Run(Workers, stopCh)
 	go orphanController.Run(Workers, stopCh)
 	go snapshotController.Run(Workers, stopCh)
+	go snapshotGroupController.Run(Workers, stopCh)
 	go supportBundleController.Run(Workers, stopCh)
 	go systemBackupController.Run(Workers, stopCh)
 	go systemRestoreController.Run(Workers, stopCh)
@@ -221,18 +228,44 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeEvictionController.Run(Workers, stopCh)
 	go volumeCloneController.Run(Workers, stopCh)
 	go volumeExpansionController.Run(Workers, stopCh)
+	go instanceManagerUpgradeController.Run(Workers, stopCh)
+	go instanceManagerUpgradeControlController.Run(Workers, stopCh)
 	go shardGroupController.Run(Workers, stopCh)
 
 	// Start goroutines for Kubernetes controllers
-	go kubernetesPVController.Run(Workers, stopCh)
 	go kubernetesNodeController.Run(Workers, stopCh)
-	go kubernetesPodController.Run(Workers, stopCh)
 	go kubernetesConfigMapController.Run(Workers, stopCh)
 	go kubernetesSecretController.Run(Workers, stopCh)
 	go kubernetesPDBController.Run(Workers, stopCh)
 	go kubernetesEndpointController.Run(Workers, stopCh)
 
 	return websocketController, nil
+}
+
+// StartGlobalControllers runs the cluster-wide-Pod-informer controllers
+// (KubernetesPVController, KubernetesPodController) inside the leader-elected
+// longhorn-global-manager Deployment. The leader is the single writer, so the
+// controllers carry no per-node sharding guard. stopCh must be bound to the
+// leadership lifetime so the workers stop as soon as leadership is lost.
+func StartGlobalControllers(logger logrus.FieldLogger, clients *client.Clients,
+	stopCh <-chan struct{}) error {
+	kubeClient := clients.K8s
+	ds := clients.Datastore
+	scheme := clients.Scheme
+
+	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient)
+	if err != nil {
+		return err
+	}
+	kubernetesPodController, err := NewKubernetesPodController(logger, ds, scheme, kubeClient)
+	if err != nil {
+		return err
+	}
+
+	go kubernetesPVController.Run(Workers, stopCh)
+	go kubernetesPodController.Run(Workers, stopCh)
+
+	return nil
 }
 
 func ParseResourceRequirement(val string) (*corev1.ResourceRequirements, error) {

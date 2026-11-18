@@ -56,6 +56,10 @@ type ShardGroupController struct {
 	ds        *datastore.DataStore
 	scheduler *scheduler.ShardScheduler
 
+	// dialSPDKFn dials the SPDK service on a node. Defaults to dialSPDK;
+	// overridable in tests to stub per-shard-node RPCs.
+	dialSPDKFn func(nodeID string) (spdkrpc.SPDKServiceClient, *grpc.ClientConn, error)
+
 	// rebuildingLock guards inProgressRebuildingMap so the per-node rebuild limit is
 	// checked and reserved atomically across the controller's parallel workers.
 	rebuildingLock sync.Mutex
@@ -107,6 +111,7 @@ func NewShardGroupController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-shard-group-controller"}),
 	}
+	c.dialSPDKFn = c.dialSPDK
 
 	var err error
 	if _, err = ds.ShardGroupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -292,6 +297,7 @@ func (c *ShardGroupController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(c.name, stopCh, c.cacheSyncs...) {
 		return
 	}
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -309,7 +315,7 @@ func (c *ShardGroupController) processNextWorkItem() bool {
 		return false
 	}
 	defer c.queue.Done(key)
-	err := c.syncShardGroup(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncShardGroup(key.(string)) })
 	c.handleErr(err, key)
 	return true
 }
@@ -1363,6 +1369,54 @@ func (c *ShardGroupController) syncProcess(rctx *sgReconcileCtx) error {
 		if sizeErr != nil {
 			return errors.Wrapf(sizeErr, "failed to look up volume size for ShardGroup %v", shardGroup.Name)
 		}
+
+		// A previous cycle persisted the anchor and the create failed; if
+		// the volume grew since, create at the anchor so the lvstore
+		// metadata matches it. syncShardGrow expands to the current spec
+		// after attach.
+		if !salvage && shardGroup.Spec.CreationSize > 0 && uint64(shardGroup.Spec.CreationSize) < size {
+			size = uint64(shardGroup.Spec.CreationSize)
+		}
+
+		// An expansion while the volume was detached leaves placed shards
+		// at their old size, and the engine rejects a head lvol larger
+		// than the shards can back. syncShardGrow cannot repair this
+		// before the process exists, so resize stale shards here first.
+		// Expand-only: ShardExpand rejects shrink.
+		if !salvage {
+			shardSize := scheduler.ComputeShardSize(int64(size), shardGroup.Spec.DataChunks, shardGroup.Spec.StripSizeKB)
+			for _, shard := range rctx.shards {
+				if shard.Spec.Size < shardSize {
+					if !c.resizeShardsTo(rctx, uint64(shardSize)) {
+						return nil
+					}
+					break
+				}
+			}
+		}
+
+		// Persist the growth-ceiling anchor before creating the lvstore.
+		// Persisting after would risk a running lvstore with CreationSize
+		// stuck at zero, which disables the ceiling. A crash after the
+		// persist is safe: the next cycle creates normally, and the clamp
+		// above keeps a later, larger spec from outgrowing the anchor.
+		// Immutable via CEL once set.
+		if !salvage && shardGroup.Spec.CreationSize == 0 {
+			fresh, freshErr := c.ds.GetShardGroup(shardGroup.Name)
+			if freshErr != nil {
+				return freshErr
+			}
+			fresh.Spec.CreationSize = int64(size)
+			updated, updateErr := c.ds.UpdateShardGroup(fresh)
+			if updateErr != nil {
+				return errors.Wrapf(updateErr, "failed to persist creation size %v on ShardGroup %v", size, shardGroup.Name)
+			}
+			// Carry the fresh spec and resourceVersion so the deferred
+			// status update does not conflict.
+			updated.Status = shardGroup.Status
+			*shardGroup = *updated
+		}
+
 		instance, err = imClient.ShardGroupInstanceCreate(&engineapi.ShardGroupInstanceCreateRequest{
 			ShardGroup:       shardGroup,
 			Size:             size,
@@ -1753,6 +1807,55 @@ func (c *ShardGroupController) countFailedShards(rctx *sgReconcileCtx) int {
 	return failed
 }
 
+// resizeShardsTo brings every shard lvol and its Shard CR Spec.Size to
+// shardSize. ShardExpand goes to each shard node's instance manager, because
+// the engine cannot resize a remote lvol; a running ShardGroup process is not
+// needed. Returns false on a transient failure so the caller retries next
+// cycle.
+func (c *ShardGroupController) resizeShardsTo(rctx *sgReconcileCtx, shardSize uint64) bool {
+	log := rctx.log
+	for _, shard := range rctx.shards {
+		shardSPDKClient, shardConn, err := c.dialSPDKFn(shard.Spec.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Cannot connect to SPDK service for shard %v; will retry", shard.Name)
+			return false
+		}
+
+		expandCtx, expandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+		_, expandErr := shardSPDKClient.ShardExpand(expandCtx, &spdkrpc.ShardExpandRequest{
+			Name: shard.Name,
+			Size: shardSize,
+		})
+		expandCancel()
+		shardConn.Close() //nolint:errcheck
+		if expandErr != nil {
+			log.WithError(expandErr).Warnf("Failed to expand shard %v; will retry", shard.Name)
+			return false
+		}
+
+		// Persist the new size to the Shard CR only after the SPDK resize
+		// succeeds. Spec.Size is what ShardInstanceCreate re-provisions
+		// with, so a stale value would recreate the shard at the old size.
+		// Updating per shard keeps the CRs consistent with on-disk state
+		// if a later shard's resize fails and we return early.
+		if shard.Spec.Size != int64(shardSize) {
+			fresh, err := c.ds.GetShard(shard.Name)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to refetch shard %v to persist expanded size; will retry", shard.Name)
+				return false
+			}
+			if fresh.Spec.Size != int64(shardSize) {
+				fresh.Spec.Size = int64(shardSize)
+				if _, err := c.ds.UpdateShard(fresh); err != nil {
+					log.WithError(err).Warnf("Failed to update shard %v Spec.Size after expansion; will retry", shard.Name)
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 // syncShardGrow detects a volume expansion request and drives the two-step
 // shard-then-engine resize sequence. It is idempotent.
 func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
@@ -1791,55 +1894,36 @@ func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
 		return nil
 	}
 
+	// Gate the 10x growth ceiling (and engine-side rebuild/degraded checks)
+	// before any shard lvol is resized; a rejection here leaves the volume
+	// untouched. Zero CreationSize means unknown and skips the ceiling check.
+	sgPrecheckCtx, sgPrecheckCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	_, sgPrecheckErr := rctx.spdkClient.ShardGroupExpandPrecheck(sgPrecheckCtx, &spdkrpc.ShardGroupExpandPrecheckRequest{
+		Name:         shardGroup.Name,
+		Size:         uint64(volume.Spec.Size),
+		CreationSize: uint64(shardGroup.Spec.CreationSize),
+	})
+	sgPrecheckCancel()
+	if sgPrecheckErr != nil {
+		if e, ok := status.FromError(sgPrecheckErr); ok && e.Code() == codes.FailedPrecondition {
+			// Policy rejection (growth ceiling): terminal, leave the volume untouched.
+			log.WithError(sgPrecheckErr).Warn("ShardGroupExpandPrecheck rejected expansion; skipping")
+			c.eventRecorder.Eventf(shardGroup, corev1.EventTypeWarning, constant.EventReasonFailedExpansion,
+				"expansion to %v bytes rejected by precheck: %v", volume.Spec.Size, sgPrecheckErr)
+			return nil
+		}
+		// Transient (outage, timeout, rebuild in progress): requeue and retry.
+		return errors.Wrapf(sgPrecheckErr, "failed to precheck expansion to %v bytes for ShardGroup %v", volume.Spec.Size, shardGroup.Name)
+	}
+
 	log.Infof("Expanding EC volume to %v bytes", volume.Spec.Size)
 	shardGroup.Status.GrowInProgress = true
 
-	// ShardExpand must be called on each shard node's instance manager SPDK service:
-	// the engine cannot resize a remote lvol directly via its own SPDK connection.
 	// Per-shard size derivation (and MiB alignment) lives in scheduler.ComputeShardSize
 	// so create-time and expand-time paths stay byte-identical.
 	shardSize := uint64(scheduler.ComputeShardSize(volume.Spec.Size, shardGroup.Spec.DataChunks, shardGroup.Spec.StripSizeKB))
-	for _, shard := range rctx.shards {
-		shardSPDKClient, shardConn, err := c.dialSPDK(shard.Spec.NodeID)
-		if err != nil {
-			log.WithError(err).Warnf("Cannot connect to SPDK service for shard %v; will retry", shard.Name)
-			return nil
-		}
-
-		expandCtx, expandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
-		_, expandErr := shardSPDKClient.ShardExpand(expandCtx, &spdkrpc.ShardExpandRequest{
-			Name: shard.Name,
-			Size: shardSize,
-		})
-		expandCancel()
-		shardConn.Close() //nolint:errcheck
-		if expandErr != nil {
-			log.WithError(expandErr).Warnf("Failed to expand shard %v; will retry", shard.Name)
-			return nil
-		}
-
-		// Persist the new size to the Shard CR after the SPDK-side resize
-		// succeeds, like scheduleShards which records placement in the CR.
-		// Spec.Size is the source of truth for idempotent re-create
-		// (ShardInstanceCreate forwards it as the instance Size), so a stale
-		// value would re-provision the shard at the old, pre-expansion size.
-		// Updating per-shard rather than after the whole loop keeps the CR
-		// consistent with on-disk state if a later shard's ShardExpand fails
-		// and the function returns early.
-		if shard.Spec.Size != int64(shardSize) {
-			fresh, err := c.ds.GetShard(shard.Name)
-			if err != nil {
-				log.WithError(err).Warnf("Failed to refetch shard %v to persist expanded size; will retry", shard.Name)
-				return nil
-			}
-			if fresh.Spec.Size != int64(shardSize) {
-				fresh.Spec.Size = int64(shardSize)
-				if _, err := c.ds.UpdateShard(fresh); err != nil {
-					log.WithError(err).Warnf("Failed to update shard %v Spec.Size after expansion; will retry", shard.Name)
-					return nil
-				}
-			}
-		}
+	if !c.resizeShardsTo(rctx, shardSize) {
+		return nil
 	}
 
 	// ShardGroupExpand resizes the EC bdev, lvstore, and head lvol in the
@@ -1848,9 +1932,12 @@ func (c *ShardGroupController) syncShardGrow(rctx *sgReconcileCtx) error {
 	// that the engine's nvme initiator picks up to grow its view, so the
 	// EngineExpand call below polls until it lands.
 	sgExpandCtx, sgExpandCancel := context.WithTimeout(context.Background(), spdkRPCTimeout)
+	// CreationSize lets the engine check the 10x growth ceiling before
+	// resizing anything. Zero means unknown; the engine skips the check.
 	_, sgExpandErr := rctx.spdkClient.ShardGroupExpand(sgExpandCtx, &spdkrpc.ShardGroupExpandRequest{
-		Name: shardGroup.Name,
-		Size: uint64(volume.Spec.Size),
+		Name:         shardGroup.Name,
+		Size:         uint64(volume.Spec.Size),
+		CreationSize: uint64(shardGroup.Spec.CreationSize),
 	})
 	sgExpandCancel()
 	if sgExpandErr != nil {
@@ -2032,5 +2119,12 @@ func getLoggerForShardGroup(logger logrus.FieldLogger, shardGroup *longhorn.Shar
 	return logger.WithFields(logrus.Fields{
 		"shardGroup": shardGroup.Name,
 		"volume":     shardGroup.Spec.VolumeName,
+	})
+}
+
+func getLoggerForShard(logger logrus.FieldLogger, shard *longhorn.Shard) *logrus.Entry {
+	return logger.WithFields(logrus.Fields{
+		"shard":      shard.Name,
+		"shardGroup": shard.Spec.ShardGroupName,
 	})
 }

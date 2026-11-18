@@ -92,6 +92,10 @@ func NewWebsocketController(
 		return nil, err
 	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.RecurringJobInformer.HasSynced)
+	if _, err = ds.SnapshotGroupInformer.AddEventHandler(wc.notifyWatchersHandler("snapshotGroup")); err != nil {
+		return nil, err
+	}
+	wc.cacheSyncs = append(wc.cacheSyncs, ds.SnapshotGroupInformer.HasSynced)
 	if _, err = ds.SystemBackupInformer.AddEventHandler(wc.notifyWatchersHandler("systemBackup")); err != nil {
 		return nil, err
 	}

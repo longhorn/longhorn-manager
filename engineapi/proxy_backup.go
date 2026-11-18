@@ -12,6 +12,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+func (p *Proxy) supportsBackupSignAcceptEncoding() bool {
+	return p.proxyAPIVersion >= MinProxyAPIVersionForBackupSignAcceptEncoding
+}
+
 func (p *Proxy) SnapshotBackup(obj DataEngineObject, snapshotName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels, credential, parameters map[string]string) (string, string, error) {
@@ -29,7 +33,7 @@ func (p *Proxy) SnapshotBackup(obj DataEngineObject, snapshotName, backupName, b
 	}
 
 	// get environment variables if backup for s3
-	credentialEnv, err := getBackupCredentialEnv(backupTarget, credential)
+	credentialEnv, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding())
 	if err != nil {
 		return "", "", err
 	}
@@ -59,7 +63,7 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 	backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
-	envs, err := getBackupCredentialEnv(backupTarget, credential)
+	envs, err := getBackupCredentialEnv(backupTarget, credential, p.supportsBackupSignAcceptEncoding())
 	if err != nil {
 		return err
 	}
@@ -68,18 +72,21 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 		backupURL, backupTarget, backupVolumeName, envs, concurrentLimit, needCorrectEncryptedVolumeSize)
 }
 
-func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error) {
+func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (*BackupRestoreStatusInfo, error) {
 	recv, err := p.grpcClient.BackupRestoreStatus(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
 		p.DirectToURL(e))
 	if err != nil {
 		return nil, err
 	}
 
-	status = map[string]*longhorn.RestoreStatus{}
-	for k, v := range recv {
-		status[k] = (*longhorn.RestoreStatus)(v)
+	info := &BackupRestoreStatusInfo{
+		ReplicaStatuses: map[string]*longhorn.RestoreStatus{},
+		EngineError:     recv.EngineError,
 	}
-	return status, nil
+	for k, v := range recv.Status {
+		info.ReplicaStatuses[k] = (*longhorn.RestoreStatus)(v)
+	}
+	return info, nil
 }
 
 func (p *Proxy) CleanupBackupMountPoints() (err error) {

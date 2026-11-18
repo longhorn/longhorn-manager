@@ -46,6 +46,10 @@ type Interface interface {
 	EngineImages() EngineImageInformer
 	// InstanceManagers returns a InstanceManagerInformer.
 	InstanceManagers() InstanceManagerInformer
+	// InstanceManagerUpgrades returns a InstanceManagerUpgradeInformer.
+	InstanceManagerUpgrades() InstanceManagerUpgradeInformer
+	// InstanceManagerUpgradeControls returns a InstanceManagerUpgradeControlInformer.
+	InstanceManagerUpgradeControls() InstanceManagerUpgradeControlInformer
 	// Nodes returns a NodeInformer.
 	Nodes() NodeInformer
 	// Orphans returns a OrphanInformer.
@@ -64,6 +68,8 @@ type Interface interface {
 	ShareManagers() ShareManagerInformer
 	// Snapshots returns a SnapshotInformer.
 	Snapshots() SnapshotInformer
+	// SnapshotGroups returns a SnapshotGroupInformer.
+	SnapshotGroups() SnapshotGroupInformer
 	// SupportBundles returns a SupportBundleInformer.
 	SupportBundles() SupportBundleInformer
 	// SystemBackups returns a SystemBackupInformer.
@@ -142,6 +148,16 @@ func (v *version) InstanceManagers() InstanceManagerInformer {
 	return &instanceManagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
+// InstanceManagerUpgrades returns a InstanceManagerUpgradeInformer.
+func (v *version) InstanceManagerUpgrades() InstanceManagerUpgradeInformer {
+	return &instanceManagerUpgradeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// InstanceManagerUpgradeControls returns a InstanceManagerUpgradeControlInformer.
+func (v *version) InstanceManagerUpgradeControls() InstanceManagerUpgradeControlInformer {
+	return &instanceManagerUpgradeControlInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
 // Nodes returns a NodeInformer.
 func (v *version) Nodes() NodeInformer {
 	return &nodeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
@@ -185,6 +201,11 @@ func (v *version) ShareManagers() ShareManagerInformer {
 // Snapshots returns a SnapshotInformer.
 func (v *version) Snapshots() SnapshotInformer {
 	return &snapshotInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// SnapshotGroups returns a SnapshotGroupInformer.
+func (v *version) SnapshotGroups() SnapshotGroupInformer {
+	return &snapshotGroupInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // SupportBundles returns a SupportBundleInformer.

@@ -4,13 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
+
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/util/retry"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +28,23 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+var ErrSnapshotPurgeSkipped = errors.New("snapshot purge skipped: replica is rebuilding")
+
+// startVolumeJobFn runs a single volume's recurring job. It is injected so tests
+// can substitute a stub without a live Longhorn API.
+type startVolumeJobFn func(
+	job *Job,
+	recurringJob *longhorn.RecurringJob,
+	volumeName string,
+	concurrentLimiter chan struct{},
+	jobGroups []string,
+) error
+
 func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
+	return startVolumeJobs(job, recurringJob, startVolumeJob)
+}
+
+func startVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob, startJob startVolumeJobFn) (err error) {
 	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
 	allowDetached, err := getSettingAsBoolean(allowDetachedSetting, job.namespace, job.lhClient)
 	if err != nil {
@@ -52,18 +73,50 @@ func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
 
 	concurrentLimiter := make(chan struct{}, recurringJob.Spec.Concurrency)
 	ewg := &errgroup.Group{}
-	defer func() {
-		if wgError := ewg.Wait(); wgError != nil {
-			err = wgError
-		}
-	}()
+	var skippedMu sync.Mutex
+	var skippedVols []string
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
-			return startVolumeJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups)
+			// errgroup.Group has no context here, so returning an error does not stop sibling volume jobs.
+			jobErr := startJob(job, recurringJob, startJobVolumeName, concurrentLimiter, jobGroups)
+			if errors.Is(jobErr, ErrSnapshotPurgeSkipped) {
+				skippedMu.Lock()
+				skippedVols = append(skippedVols, startJobVolumeName)
+				skippedMu.Unlock()
+				return nil // volume skipped, not failed
+			}
+			if jobErr != nil {
+				job.logger.WithError(jobErr).WithField("volume", startJobVolumeName).Warn("Failed to run recurring job for volume")
+			}
+			return jobErr
 		})
 	}
 
+	err = ewg.Wait()
+
+	var eventMsg string
+	if len(skippedVols) > 0 {
+		sort.Strings(skippedVols)
+		const maxSkippedVolsInEvent = 10
+
+		// Always log all volumes in the pod debug logs. Per Volume warning is already logged by startVolumeJob
+		eventMsg = fmt.Sprintf("%v for %d volume(s). Will be retried on the next scheduled run: %v",
+			ErrSnapshotPurgeSkipped, len(skippedVols), strings.Join(skippedVols, ", "))
+		job.logger.Debug(eventMsg)
+
+		// Truncate message only for Kubernetes Event and Condition Status
+		if len(skippedVols) > maxSkippedVolsInEvent {
+			eventMsg = fmt.Sprintf("%v for %d volume(s). Will be retried on the next scheduled run: %v and %d others",
+				ErrSnapshotPurgeSkipped, len(skippedVols), strings.Join(skippedVols[:maxSkippedVolsInEvent], ", "), len(skippedVols)-maxSkippedVolsInEvent)
+		}
+
+		job.eventRecorder.Event(recurringJob, corev1.EventTypeWarning, constant.EventReasonSkippedSnapshotPurge, eventMsg)
+	}
+
+	if uErr := job.updateRecurringJobCondition(len(skippedVols) > 0, eventMsg); uErr != nil {
+		job.logger.WithError(uErr).Warn("Failed to update recurring job condition")
+	}
 	return err
 }
 
@@ -85,7 +138,14 @@ func startVolumeJob(job *Job, recurringJob *longhorn.RecurringJob,
 
 	err = volumeJob.run()
 	if err != nil {
-		volumeJob.logger.WithError(err).Error("Failed to run volume job")
+		// A skip is expected while a replica rebuilds, so it's logged at Warn
+		// rather than Error. The error is still returned so the caller can
+		// collect skipped volumes for the summary event.
+		if errors.Is(err, ErrSnapshotPurgeSkipped) {
+			volumeJob.logger.Warn(ErrSnapshotPurgeSkipped)
+		} else {
+			volumeJob.logger.WithError(err).Error("Failed to run volume job")
+		}
 		return err
 	}
 
@@ -114,7 +174,7 @@ func newVolumeJob(job *Job, recurringJob *longhorn.RecurringJob, volumeName stri
 		// job-specific fields
 		"job":            job.name,
 		"task":           job.task,
-		"retain":         job.retain,
+		"retainCount":    job.retainCount,
 		"parameters":     job.parameters,
 		"executionCount": job.executionCount,
 		// volume-specific fields
@@ -286,7 +346,7 @@ func (job *VolumeJob) waitForSnaphotReady(volume *longhornclient.Volume, timeout
 
 func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	defer func() {
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrSnapshotPurgeSkipped) {
 			errMessage := errors.Wrapf(err, "failed to clean up old snapshots of volume %v", job.volumeName).Error()
 			if err := job.eventCreate(corev1.EventTypeWarning, constant.EventReasonFailedDeleting, errMessage); err != nil {
 				job.logger.WithError(err).Warn("failed to create an event log")
@@ -310,7 +370,18 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	}
 
 	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
+	activeBackupSnapshots := map[string]string{}
+	if len(cleanupSnapshotNames) != 0 {
+		activeBackupSnapshots, err = job.getSnapshotsReferencedByActiveBackups()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list active backups for volume %v", volumeName)
+		}
+	}
 	for _, snapshotName := range cleanupSnapshotNames {
+		if backupName, exists := activeBackupSnapshots[snapshotName]; exists {
+			job.logger.WithField("backup", backupName).Debugf("Skipped cleaning up snapshot CR %v because an active backup references it", snapshotName)
+			continue
+		}
 		if _, err := job.api.Volume.ActionSnapshotCRDelete(volume, &longhornclient.SnapshotCRInput{
 			Name: snapshotName,
 		}); err != nil {
@@ -328,6 +399,33 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	return nil
 }
 
+func (job *VolumeJob) getSnapshotsReferencedByActiveBackups() (map[string]string, error) {
+	backupList, err := job.lhClient.LonghornV1beta2().Backups(job.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetBackupVolumeLabels(job.volumeName)).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := map[string]string{}
+	for _, backup := range backupList.Items {
+		if isBackupSnapshotCleanupSafe(backup.Status.State) || backup.Spec.SnapshotName == "" {
+			continue
+		}
+		result[backup.Spec.SnapshotName] = backup.Name
+	}
+	return result, nil
+}
+
+func isBackupSnapshotCleanupSafe(state longhorn.BackupState) bool {
+	switch state {
+	case longhorn.BackupStateCompleted, longhorn.BackupStateError, longhorn.BackupStateUnknown, longhorn.BackupStateDeleting:
+		return true
+	default:
+		return false
+	}
+}
+
 func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error {
 	jobName, found := job.specLabels[types.RecurringJobLabel]
 	if !found || jobName == "" {
@@ -343,6 +441,15 @@ func (job *VolumeJob) eventCreate(eventType, eventReason, message string) error 
 }
 
 func (job *VolumeJob) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
+	// Snapshot purge cannot proceed while a replica is rebuilding. Return
+	// ErrSnapshotPurgeSkipped so callers can tell a skip apart from a
+	// real failure and treat it as non-fatal.
+	for _, status := range volume.RebuildStatus {
+		if status.IsRebuilding {
+			return errors.Wrapf(ErrSnapshotPurgeSkipped, "volume %v", volume.Name)
+		}
+	}
+
 	// Trigger snapshot purge of the volume
 	if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
 		return err
@@ -360,7 +467,7 @@ func (job *VolumeJob) purgeSnapshots(volume *longhornclient.Volume, volumeAPI lo
 			return err
 		}
 		if volume == nil {
-			job.logger.Infof("Volume %v not found during snapshbot purge, skipping", volumeName)
+			job.logger.Infof("Volume %v not found during snapshot purge, skipping", volumeName)
 			return nil
 		}
 
@@ -424,9 +531,9 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 		return []string{}
 	}
 
-	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retain.
+	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retainCount.
 	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate || !allowBackupSnapshotDeleted {
-		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 	}
 
 	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot when AutoCleanupRecurringJobBackupSnapshot is enabled.
@@ -441,7 +548,7 @@ func (job *VolumeJob) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []
 }
 
 func (job *VolumeJob) filterExpiredSnapshots(snapshotCRs []longhornclient.SnapshotCR) []string {
-	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
+	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 }
 
 func (job *VolumeJob) doRecurringBackup() (err error) {
@@ -689,5 +796,35 @@ func (job *VolumeJob) listBackupsForCleanup(backups []longhornclient.Backup) []s
 			})
 		}
 	}
-	return filterExpiredItems(sts, job.retain)
+	return filterExpiredItems(sts, job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
+}
+
+func (job *Job) updateRecurringJobCondition(volumesSkipped bool, msg string) error {
+	client := job.lhClient.LonghornV1beta2().RecurringJobs(job.namespace)
+	status, reason := longhorn.ConditionStatusFalse, ""
+	if volumesSkipped {
+		status, reason = longhorn.ConditionStatusTrue, longhorn.RecurringJobConditionReasonReplicaRebuilding
+	} else {
+		msg = ""
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		recurringJob, err := client.Get(context.TODO(), job.name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		latest := types.GetCondition(recurringJob.Status.Conditions, longhorn.RecurringJobConditionTypeVolumesSkipped)
+		if !volumesSkipped && latest.Status != longhorn.ConditionStatusTrue {
+			return nil
+		}
+		if latest.Status == status && latest.Message == msg {
+			return nil
+		}
+
+		recurringJob.Status.Conditions = types.SetCondition(
+			recurringJob.Status.Conditions, longhorn.RecurringJobConditionTypeVolumesSkipped, status, reason, msg)
+		_, err = client.UpdateStatus(context.TODO(), recurringJob, metav1.UpdateOptions{})
+		return err
+	})
 }

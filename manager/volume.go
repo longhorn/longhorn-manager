@@ -166,7 +166,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	}
 
 	if spec.DataSource != "" {
-		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size); err != nil {
+		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size, spec.FromBackup); err != nil {
 			return nil, err
 		}
 	}
@@ -207,6 +207,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			Standby:                         spec.Standby,
 			DiskSelector:                    spec.DiskSelector,
 			NodeSelector:                    spec.NodeSelector,
+			TopologyRequirement:             spec.TopologyRequirement,
 			RevisionCounterDisabled:         spec.RevisionCounterDisabled,
 			SnapshotDataIntegrity:           spec.SnapshotDataIntegrity,
 			SnapshotMaxCount:                spec.SnapshotMaxCount,
@@ -226,6 +227,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			RebuildConcurrentSyncLimit:      spec.RebuildConcurrentSyncLimit,
 			UblkQueueDepth:                  spec.UblkQueueDepth,
 			UblkNumberOfQueue:               spec.UblkNumberOfQueue,
+			NvmeTcpNrIoQueues:               spec.NvmeTcpNrIoQueues,
 		},
 	}
 
@@ -245,6 +247,30 @@ func (m *VolumeManager) Delete(name string) error {
 	return nil
 }
 
+// validateVolumeHasScheduledReplica rejects attaching a volume that has no
+// scheduled replicas, since such a volume can never start.
+func (m *VolumeManager) validateVolumeHasScheduledReplica(v *longhorn.Volume) error {
+	// Sharded volumes place shards instead of replicas.
+	if v.Spec.DataLayout.Type == longhorn.VolumeDataLayoutTypeSharded {
+		return nil
+	}
+	// Strict-local and best-effort data locality want a replica on the node the
+	// volume attaches to, so replicas stay unscheduled until the volume is attached.
+	if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal ||
+		v.Spec.DataLocality == longhorn.DataLocalityBestEffort {
+		return nil
+	}
+	// One scheduled replica is enough to keep a degraded volume attachable.
+	hasScheduledReplica, err := m.ds.HasVolumeScheduledReplica(v.Name)
+	if err != nil {
+		return err
+	}
+	if !hasScheduledReplica {
+		return fmt.Errorf("volume %v has no scheduled replicas", v.Name)
+	}
+	return nil
+}
+
 func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attachedBy, attacherType, attachmentID string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", name, nodeID)
@@ -261,6 +287,10 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 
 	v, err = m.ds.GetVolume(name)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := m.validateVolumeHasScheduledReplica(v); err != nil {
 		return nil, err
 	}
 
@@ -504,19 +534,35 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, fmt.Errorf("invalid volume state to expand: %v", v.Status.State)
 	}
 
-	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
-		return nil, fmt.Errorf("invalid volume clone state to expand: %v", v.Status.CloneStatus.State)
-	}
-
-	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
-		return nil, fmt.Errorf("cannot expand volume when it is in faulted state")
-	}
-
 	size = util.RoundUpSize(size)
 
 	if v.Spec.Size >= size {
 		logrus.Infof("Volume %v expansion is not allowable since current size %v >= %v", v.Name, v.Spec.Size, size)
 		return v, nil
+	}
+
+	// Defer to the same readiness check the webhook enforces rather than spot-checking a
+	// single clone state here. The webhook rejects this update anyway, so reusing the check
+	// cannot refuse anything it would have allowed; it only reports the reason before the
+	// round trip instead of as an admission error, and it stops the two from drifting.
+	replicaMap, err := m.ds.ListVolumeReplicasRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	replicas := make([]*longhorn.Replica, 0, len(replicaMap))
+	for _, r := range replicaMap {
+		replicas = append(replicas, r)
+	}
+	if ready, msg := types.IsVolumeReady(v, replicas, types.VolumeOperationSizeExpansion); !ready {
+		return nil, fmt.Errorf("volume is not ready to expand: %v", msg)
+	}
+
+	blocked, err := m.isV2VolumeExpansionBlockedByLiveUpgrade(v)
+	if err != nil {
+		return nil, err
+	}
+	if blocked {
+		return nil, fmt.Errorf("cannot expand V2 volume %v while its instance manager is being live upgraded; retry after the upgrade completes", v.Name)
 	}
 
 	if _, err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
@@ -549,6 +595,73 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 	logrus.Infof("Expanding volume %v from %v to %v requested", v.Name, previousSize, size)
 
 	return v, nil
+}
+
+// isV2VolumeExpansionBlockedByLiveUpgrade reports whether an active live
+// upgrade can move this volume's engine or restart one of its replicas. The
+// expansion request must not update Volume.Spec.Size in that case: replica
+// replenishment is intentionally paused while an online expansion is pending,
+// whereas the live upgrade waits for the volume to become healthy.
+func (m *VolumeManager) isV2VolumeExpansionBlockedByLiveUpgrade(v *longhorn.Volume) (bool, error) {
+	if !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return false, nil
+	}
+
+	upgrades, err := m.ds.ListInstanceManagerUpgradesRO()
+	if err != nil {
+		return false, err
+	}
+
+	blockingUpgrades := make([]*longhorn.InstanceManagerUpgrade, 0, len(upgrades))
+	var control *longhorn.InstanceManagerUpgradeControl
+	controlLoaded := false
+	for _, upgrade := range upgrades {
+		if upgrade.Status.State == longhorn.InstanceManagerUpgradeStateCompleted ||
+			upgrade.Status.State == longhorn.InstanceManagerUpgradeStateFailed {
+			continue
+		}
+		if types.IsActiveInstanceManagerUpgradeState(upgrade.Status.State) ||
+			upgrade.Status.StartedAt != "" || upgrade.Status.AbortRequested {
+			blockingUpgrades = append(blockingUpgrades, upgrade)
+			continue
+		}
+		if upgrade.Status.State != "" && upgrade.Status.State != longhorn.InstanceManagerUpgradeStatePending {
+			continue
+		}
+
+		if !controlLoaded {
+			control, err = m.ds.GetInstanceManagerUpgradeControlRO(types.InstanceManagerUpgradeControlName)
+			if err != nil {
+				if !datastore.ErrorIsNotFound(err) && !types.ErrorIsNotFound(err) {
+					return false, err
+				}
+				control = nil
+			}
+			controlLoaded = true
+		}
+		if types.IsInstanceManagerUpgradeAuthorizedByControl(upgrade, control) {
+			blockingUpgrades = append(blockingUpgrades, upgrade)
+		}
+	}
+	if len(blockingUpgrades) == 0 {
+		return false, nil
+	}
+
+	replicas, err := m.ds.ListVolumeReplicasRO(v.Name)
+	if err != nil {
+		return false, err
+	}
+	frontends, err := m.ds.ListVolumeEngineFrontendsRO(v.Name)
+	if err != nil {
+		return false, err
+	}
+	for _, upgrade := range blockingUpgrades {
+		if types.IsVolumeAffectedByInstanceManagerUpgrade(v, replicas, frontends, upgrade) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (m *VolumeManager) checkAndExpandPVC(namespace string, pvcName string, size int64) (waitForPVCExpansion bool, s int64, err error) {
@@ -912,7 +1025,8 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	if v.Spec.NodeID == "" || v.Status.State != longhorn.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid volume state to update replica count%v", v.Status.State)
 	}
-	if v.Spec.Image != v.Status.CurrentImage {
+	// A V2 image does not drive an upgrade, see controller.syncV2VolumeImage.
+	if types.IsDataEngineV1(v.Spec.DataEngine) && v.Spec.Image != v.Status.CurrentImage {
 		return nil, fmt.Errorf("upgrading in process, cannot update replica count")
 	}
 	if v.Spec.MigrationNodeID != "" {
@@ -1189,7 +1303,7 @@ func (m *VolumeManager) UpdateReplicaDiskSoftAntiAffinity(name string, replicaDi
 	return v, nil
 }
 
-func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64) (err error) {
+func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64, fromBackup string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to verify data source")
 	}()
@@ -1204,7 +1318,12 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 		if err != nil {
 			return err
 		}
-		if requestSize != srcVol.Spec.Size {
+		// A volume restored from a backup takes its size from that backup, which the
+		// volume mutator applies after this point, so there is no size to compare here
+		// yet. The source is only a lower bound for such a volume anyway, since a
+		// linked clone may have been expanded before it was backed up; the size is
+		// checked against the backup in the volume webhook instead.
+		if fromBackup == "" && requestSize != srcVol.Spec.Size {
 			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
 		}
 

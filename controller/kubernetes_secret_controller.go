@@ -102,6 +102,7 @@ func (ks *KubernetesSecretController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(ks.name, stopCh, ks.cacheSyncs...) {
 		return
 	}
+	ks.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(ks.worker, time.Second, stopCh)
 	}
@@ -119,7 +120,7 @@ func (ks *KubernetesSecretController) processNextWorkItem() bool {
 		return false
 	}
 	defer ks.queue.Done(key)
-	err := ks.syncHandler(key.(string))
+	err := ks.syncWithMetrics(func() error { return ks.syncHandler(key.(string)) })
 	ks.handleErr(err, key)
 	return true
 }

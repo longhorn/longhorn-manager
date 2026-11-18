@@ -27,6 +27,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	patchtypes "k8s.io/apimachinery/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -218,6 +219,11 @@ func (s *DataStore) GetPDBRO(name string) (*policyv1.PodDisruptionBudget, error)
 	return s.podDisruptionBudgetLister.PodDisruptionBudgets(s.namespace).Get(name)
 }
 
+// UpdatePDB updates a PodDisruptionBudget in the Longhorn namespace.
+func (s *DataStore) UpdatePDB(obj *policyv1.PodDisruptionBudget) (*policyv1.PodDisruptionBudget, error) {
+	return s.kubeClient.PolicyV1().PodDisruptionBudgets(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+}
+
 // ListPDBsRO gets a map of PDB in s.namespace
 // This function returns direct reference to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
@@ -247,6 +253,11 @@ func (s *DataStore) DeletePod(name string) error {
 // UpdatePod updates Pod for the given Pod object and namespace
 func (s *DataStore) UpdatePod(obj *corev1.Pod) (*corev1.Pod, error) {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+}
+
+// PatchPod patches Pod for the given name and namespace.
+func (s *DataStore) PatchPod(name string, patch []byte) (*corev1.Pod, error) {
+	return s.kubeClient.CoreV1().Pods(s.namespace).Patch(context.TODO(), name, patchtypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 }
 
 // CreateLease creates a Lease resource for the given CreateLease object

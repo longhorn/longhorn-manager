@@ -98,7 +98,11 @@ func (c *SPDKClient) ShardGroupWatch(ctx context.Context) (spdkrpc.SPDKService_S
 	return stream, nil
 }
 
-func (c *SPDKClient) ShardGroupExpand(name string, size uint64) error {
+// ShardGroupExpand grows the shardgroup to size bytes. creationSize is the
+// volume size when the ShardGroup was created; in-place growth is limited to
+// EcLvstoreMaxGrowthFactor x creationSize. Pass 0 when unknown to skip the
+// check.
+func (c *SPDKClient) ShardGroupExpand(name string, size, creationSize uint64) error {
 	if name == "" {
 		return fmt.Errorf("failed to expand SPDK shardgroup: missing required parameter")
 	}
@@ -108,13 +112,19 @@ func (c *SPDKClient) ShardGroupExpand(name string, size uint64) error {
 	defer cancel()
 
 	_, err := client.ShardGroupExpand(ctx, &spdkrpc.ShardGroupExpandRequest{
-		Name: name,
-		Size: size,
+		Name:         name,
+		Size:         size,
+		CreationSize: creationSize,
 	})
 	return errors.Wrapf(err, "failed to expand SPDK shardgroup %v", name)
 }
 
-func (c *SPDKClient) ShardGroupExpandPrecheck(name string, size uint64) (bool, error) {
+// ShardGroupExpandPrecheck reports whether the shardgroup needs an expansion
+// to reach size bytes and whether its EC stack can accept one. creationSize
+// is the volume size when the ShardGroup was created; in-place growth is
+// limited to EcLvstoreMaxGrowthFactor x creationSize. Pass 0 when unknown to
+// skip the check.
+func (c *SPDKClient) ShardGroupExpandPrecheck(name string, size, creationSize uint64) (bool, error) {
 	if name == "" {
 		return false, fmt.Errorf("failed to precheck expand SPDK shardgroup: missing required parameter")
 	}
@@ -124,8 +134,9 @@ func (c *SPDKClient) ShardGroupExpandPrecheck(name string, size uint64) (bool, e
 	defer cancel()
 
 	resp, err := client.ShardGroupExpandPrecheck(ctx, &spdkrpc.ShardGroupExpandPrecheckRequest{
-		Name: name,
-		Size: size,
+		Name:         name,
+		Size:         size,
+		CreationSize: creationSize,
 	})
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to precheck expand SPDK shardgroup %v", name)

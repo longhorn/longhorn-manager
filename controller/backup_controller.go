@@ -169,6 +169,7 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.cacheSyncs...) {
 		return
 	}
+	bc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(bc.worker, time.Second, stopCh)
 	}
@@ -187,7 +188,7 @@ func (bc *BackupController) processNextWorkItem() bool {
 		return false
 	}
 	defer bc.queue.Done(key)
-	err := bc.syncHandler(key.(string))
+	err := bc.syncWithMetrics(func() error { return bc.syncHandler(key.(string)) })
 	bc.handleErr(err, key)
 	return true
 }
@@ -270,6 +271,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 	if !isResponsible {
+		bc.disableBackupMonitor(backup.Name)
 		return nil
 	}
 	if backup.Status.OwnerID != bc.controllerID {
@@ -389,17 +391,24 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 
 		// Delete the backup volume attachment ticket after the backup status is set to the final state.
-		if bc.backupInFinalState(existingBackup) && (!existingBackup.Status.LastSyncedAt.IsZero() || existingBackup.Spec.SnapshotName == "") {
+		if engineapi.BackupInFinalState(existingBackup.Status.State) && (!existingBackup.Status.LastSyncedAt.IsZero() || existingBackup.Spec.SnapshotName == "") {
 			err = bc.handleAttachmentTicketDeletion(backup, canonicalBackupVolumeName)
 		}
-		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
-			return
+		if !reflect.DeepEqual(existingBackup.Status, backup.Status) {
+			if _, updateErr := bc.ds.UpdateBackupStatus(backup); updateErr != nil {
+				if apierrors.IsConflict(errors.Cause(updateErr)) {
+					log.WithError(updateErr).Debugf("Requeue %v due to conflict", backupName)
+					bc.enqueueBackup(backup)
+				} else {
+					err = errors.Join(err, updateErr)
+				}
+				// Keep the monitor: it holds the final state that is not persisted yet.
+				return
+			}
 		}
-		if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Debugf("Requeue %v due to conflict", backupName)
-			bc.enqueueBackup(backup)
-			err = nil // nolint: ineffassign
-			return
+		// The final state is persisted, by this or an earlier reconcile; the monitor is done.
+		if engineapi.BackupInFinalState(backup.Status.State) {
+			bc.disableBackupMonitor(backup.Name)
 		}
 		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
 			if err := bc.syncBackupVolume(backupTargetName, canonicalBackupVolumeName); err != nil {
@@ -420,7 +429,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	// Otherwise, the Backup CR is created by the backup volume controller, which means the backup already
 	// exists in the remote backup target before the CR creation.
 	// What the controller needs to do for this case is retrieve the info from the remote backup target.
-	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && !bc.backupInFinalState(backup) {
+	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && !engineapi.BackupInFinalState(backup.Status.State) {
 		volume, err := bc.ds.GetVolume(canonicalBackupVolumeName)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
@@ -469,11 +478,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		switch backup.Status.State {
 		case longhorn.BackupStateNew, longhorn.BackupStatePending, longhorn.BackupStateInProgress:
 			return nil
-		case longhorn.BackupStateCompleted:
-			bc.disableBackupMonitor(backup.Name)
 		case longhorn.BackupStateError, longhorn.BackupStateUnknown:
 			backup.Status.LastSyncedAt = syncTime
-			bc.disableBackupMonitor(backup.Name)
 			return nil
 		}
 	}
@@ -635,10 +641,28 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	checkInstanceManager := false
+	var dataEngine longhorn.DataEngineType
+
 	volumeName, err := bc.getBackupVolumeName(b)
 	if err == nil {
 		if compatible, err := bc.ds.IsNodeSupportingDataEngine(volumeName, bc.controllerID); err != nil || !compatible {
 			return false, err
+		}
+		if bc.backupRequiresInstanceManager(b) {
+			// If the volume label exists but the Volume CR is gone (remote/synced backup),
+			// skip the IM check: there is no volume.Spec.DataEngine to scope against, and
+			// that path does not call getBackupTarget with a volume data engine. Any other
+			// error is transient and must abort the decision instead of silently disabling
+			// the IM check, which would fall back to the engine-image-only behavior.
+			volume, err := bc.ds.GetVolumeRO(volumeName)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return false, err
+			}
+			if err == nil {
+				checkInstanceManager = true
+				dataEngine = volume.Spec.DataEngine
+			}
 		}
 	}
 
@@ -653,11 +677,37 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		return false, err
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && bc.controllerID == b.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	currentOwnerAvailable := currentOwnerEngineAvailable
+	currentNodeAvailable := currentNodeEngineAvailable
+	if checkInstanceManager {
+		nodesWithIM, imErr := bc.ds.ListNodesWithReadyInstanceManagerRO(dataEngine)
+		if imErr != nil {
+			return false, imErr
+		}
+		// Only require a running instance manager when at least one node has one to fall back to.
+		// If the data engine has no running instance manager anywhere (e.g. a full outage), keep the
+		// engine-image-only behavior so the backup still gets an owner that surfaces the error and
+		// retries, instead of being left ownerless and silently stalled.
+		if len(nodesWithIM) > 0 {
+			_, ownerIMRunning := nodesWithIM[b.Status.OwnerID]
+			_, nodeIMRunning := nodesWithIM[bc.controllerID]
+			currentOwnerAvailable = currentOwnerAvailable && ownerIMRunning
+			currentNodeAvailable = currentNodeAvailable && nodeIMRunning
+		}
+	}
+
+	isPreferredOwner := currentNodeAvailable && isResponsible
+	continueToBeOwner := currentNodeAvailable && bc.controllerID == b.Status.OwnerID
+	requiresNewOwner := currentNodeAvailable && !currentOwnerAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+func (bc *BackupController) backupRequiresInstanceManager(b *longhorn.Backup) bool {
+	if !b.DeletionTimestamp.IsZero() {
+		return false
+	}
+	return b.Spec.SnapshotName != "" && b.Status.LastSyncedAt.IsZero() && !engineapi.BackupInFinalState(b.Status.State)
 }
 
 func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.BackupTarget, error) {
@@ -677,8 +727,20 @@ func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.
 }
 
 func (bc *BackupController) getBackupTargetName(backup *longhorn.Backup) (string, error) {
-	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
-	if !ok {
+	backupTargetName := backup.Labels[types.LonghornLabelBackupTarget]
+	if backupTargetName == "" {
+		// The backup target name in the status is synced from the backup store and
+		// cannot be modified from the client side. Once the label is unexpectedly
+		// lost (e.g. kubectl apply drift on a pulled Backup CR), it is a more
+		// reliable fallback than the snapshot lookup below, and it also works for
+		// backups pulled from the backup target, whose spec.snapshotName is empty
+		// by design.
+		if backup.Status.BackupTargetName != "" {
+			return backup.Status.BackupTargetName, nil
+		}
+		if backup.Spec.SnapshotName == "" {
+			return "", fmt.Errorf("cannot resolve the backup target for backup %v: no %v label, no synced status backup target, and no snapshot name to look up", backup.Name, types.LonghornLabelBackupTarget)
+		}
 		snapshot, err := bc.ds.GetSnapshot(backup.Spec.SnapshotName)
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to get the snapshot %v of the backup %v", backup.Spec.SnapshotName, backup.Name)
@@ -818,6 +880,37 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
+	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
+	if err != nil {
+		return nil, err
+	}
+	// A nil engine means the volume has no current engine CR yet, so treat it as not-ready
+	// and reuse the same retry-then-error handling as a non-running engine.
+	if engine == nil ||
+		engine.Status.CurrentState != longhorn.InstanceStateRunning ||
+		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
+		volume.Status.State != longhorn.VolumeStateAttached {
+
+		engineName := volume.Name
+		if engine != nil {
+			engineName = engine.Name
+		}
+
+		bc.creationRetryCounter.IncreaseCount(backup.Name)
+		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
+			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engineName)
+			backup.Status.State = longhorn.BackupStateError
+			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+			bc.creationRetryCounter.DeleteEntry(backup.Name)
+			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engineName)
+			return nil, err
+		}
+		backup.Status.State = longhorn.BackupStatePending
+		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engineName)
+		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engineName)
+		return nil, err
+	}
+
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter, volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
@@ -846,29 +939,6 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 				bc.logger.Warnf("Failed to find the StorageClassName from the pvc %v", pvc.Name)
 			}
 		}
-	}
-
-	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
-		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
-		volume.Status.State != longhorn.VolumeStateAttached {
-		bc.creationRetryCounter.IncreaseCount(backup.Name)
-		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
-			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
-			backup.Status.State = longhorn.BackupStateError
-			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
-			bc.creationRetryCounter.DeleteEntry(backup.Name)
-			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-			return nil, err
-		}
-		backup.Status.State = longhorn.BackupStatePending
-		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
-		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
-		return nil, err
 	}
 
 	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
@@ -923,7 +993,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
 		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
 	if err != nil {
-		backup.Status.Error = err.Error()
+		backup.Status.Error = util.SanitizeVolatileErrorContent(err.Error())
 		backup.Status.State = longhorn.BackupStateError
 		backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err
@@ -945,7 +1015,7 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 	backupStatus := monitor.GetBackupStatus()
 	backup.Status.Progress = backupStatus.Progress
 	backup.Status.URL = backupStatus.URL
-	backup.Status.Error = backupStatus.Error
+	backup.Status.Error = util.SanitizeVolatileErrorContent(backupStatus.Error)
 	backup.Status.SnapshotName = backupStatus.SnapshotName
 	backup.Status.ReplicaAddress = backupStatus.ReplicaAddress
 	backup.Status.State = backupStatus.State
@@ -976,7 +1046,7 @@ func (bc *BackupController) syncBackupVolume(backupTargetName, volumeName string
 		if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 			bc.logger.WithError(err).Warnf("Failed to update backup volume %v spec", volumeName)
 		}
-	} else if err != nil && apierrors.IsNotFound(err) {
+	} else if apierrors.IsNotFound(err) {
 		// Request backup_target_controller to reconcile BackupTarget immediately.
 		backupTarget, err := bc.ds.GetBackupTarget(backupTargetName)
 		if err != nil {
@@ -1067,13 +1137,6 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 	}
 
 	backup.Status.SnapshotCreatedAt = snap.Created
-}
-
-func (bc *BackupController) backupInFinalState(backup *longhorn.Backup) bool {
-	return backup.Status.State == longhorn.BackupStateCompleted ||
-		backup.Status.State == longhorn.BackupStateError ||
-		backup.Status.State == longhorn.BackupStateUnknown ||
-		backup.Status.State == longhorn.BackupStateDeleting
 }
 
 func (bc *BackupController) startDeletingBackupInBackupStore(backupURL string, backupTargetClient *engineapi.BackupTargetClient) {

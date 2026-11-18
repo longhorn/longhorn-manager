@@ -61,8 +61,9 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 		if err != nil {
 			return nil, err
 		}
+		// There is a race condition where the volume CRs might be removed when listing backups, so we ignore not found errors
 		backups, err := s.m.ListBackupsForVolumeSorted(v.Name)
-		if err != nil {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return nil, err
 		}
 		volumeAttachment, err := s.m.GetVolumeAttachment(v.Name)
@@ -213,12 +214,14 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		RevisionCounterDisabled:         volume.RevisionCounterDisabled,
 		DiskSelector:                    volume.DiskSelector,
 		NodeSelector:                    volume.NodeSelector,
+		TopologyRequirement:             volume.TopologyRequirement,
 		SnapshotDataIntegrity:           volume.SnapshotDataIntegrity,
 		SnapshotMaxCount:                volume.SnapshotMaxCount,
 		SnapshotMaxSize:                 snapshotMaxSize,
 		ReplicaRebuildingBandwidthLimit: volume.ReplicaRebuildingBandwidthLimit,
 		UblkQueueDepth:                  volume.UblkQueueDepth,
 		UblkNumberOfQueue:               volume.UblkNumberOfQueue,
+		NvmeTcpNrIoQueues:               volume.NvmeTcpNrIoQueues,
 		BackupCompressionMethod:         volume.BackupCompressionMethod,
 		BackupBlockSize:                 backupBlockSize,
 		UnmapMarkSnapChainRemoved:       volume.UnmapMarkSnapChainRemoved,

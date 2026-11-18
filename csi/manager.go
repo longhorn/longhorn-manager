@@ -13,6 +13,7 @@ type Manager struct {
 	ids *IdentityServer
 	ns  *NodeServer
 	cs  *ControllerServer
+	gcs *GroupControllerServer
 }
 
 // It can take up to 10s for each try. So total retry time would be 180s
@@ -24,8 +25,8 @@ func GetCSIManager() *Manager {
 	return &Manager{}
 }
 
-func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL string) error {
-	logrus.Infof("CSI Driver: %v version: %v, manager URL %v", driverName, identityVersion, managerURL)
+func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL string, volumeGroupSnapshotEnabled bool) error {
+	logrus.Infof("CSI Driver: %v version: %v, manager URL %v, volume group snapshot enabled %v", driverName, identityVersion, managerURL, volumeGroupSnapshotEnabled)
 
 	// Longhorn API Client
 	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
@@ -35,7 +36,7 @@ func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL 
 	}
 
 	// Create GRPC servers
-	m.ids = NewIdentityServer(driverName, identityVersion)
+	m.ids = NewIdentityServer(driverName, identityVersion, volumeGroupSnapshotEnabled)
 	m.ns, err = NewNodeServer(apiClient, nodeID)
 	if err != nil {
 		return errors.Wrap(err, "Failed to create CSI node server ")
@@ -46,8 +47,13 @@ func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL 
 		return errors.Wrap(err, "failed to create CSI controller server")
 	}
 
+	m.gcs, err = NewGroupControllerServer(volumeGroupSnapshotEnabled)
+	if err != nil {
+		return errors.Wrap(err, "failed to create CSI group controller server")
+	}
+
 	s := NewNonBlockingGRPCServer()
-	s.Start(endpoint, m.ids, m.cs, m.ns)
+	s.Start(endpoint, m.ids, m.cs, m.ns, m.gcs)
 	s.Wait()
 
 	return nil

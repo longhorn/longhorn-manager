@@ -6,6 +6,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
@@ -13,6 +14,40 @@ import (
 const (
 	upgradeLogPrefix = "upgrade from v1.12.x to v1.13.0: "
 )
+
+func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
+	if resourceMaps == nil {
+		return errors.New("resourceMaps cannot be nil")
+	}
+
+	if err := upgradeRecurringJobs(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade recurring jobs failed")
+	}()
+
+	recurringJobsMap, err := upgradeutil.ListAndUpdateRecurringJobsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn recurring jobs during the recurring jobs upgrade")
+	}
+
+	for _, rj := range recurringJobsMap {
+		if rj.Spec.RetentionPolicy == "" {
+			rj.Spec.RetentionPolicy = longhorn.RecurringJobRetentionPolicyCountBased
+		}
+	}
+
+	return nil
+}
 
 func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	if resourceMaps == nil {

@@ -199,7 +199,7 @@ func GetDeviceSectorSize(devPath string, executor *commonns.Executor) (int64, er
 // GetDeviceNumbers returns the major and minor numbers of the given device
 func GetDeviceNumbers(devPath string, executor *commonns.Executor) (int, int, error) {
 	opts := []string{
-		"-l", "-J", "-n", "-o", "MAJ:MIN", devPath,
+		"--nodeps", "-l", "-J", "-n", "-o", "MAJ:MIN", devPath,
 	}
 	output, err := executor.Execute(nil, lsblkBinary, opts, types.ExecuteTimeout)
 	if err != nil {
@@ -216,6 +216,9 @@ func DuplicateDevice(dev *LonghornBlockDevice, dest string) error {
 	}
 	if dest == "" {
 		return fmt.Errorf("found empty destination for device duplication")
+	}
+	if dev.Export.Major == 0 && dev.Export.Minor == 0 {
+		return fmt.Errorf("found invalid device number 0:0 of device %s for device duplication to %s", dev.Source.Name, dest)
 	}
 	dir := filepath.Dir(dest)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {

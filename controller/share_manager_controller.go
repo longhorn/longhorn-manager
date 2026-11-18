@@ -30,13 +30,14 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -117,6 +118,16 @@ func NewShareManagerController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
+	// the share manager is started when the volume attachment gets a CSI attacher ticket,
+	// so react to the first ticket right away instead of waiting for the next resync
+	if _, err = ds.LHVolumeAttachmentInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueShareManagerForNewVolumeAttachment,
+		UpdateFunc: c.enqueueShareManagerForUpdatedVolumeAttachment,
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.LHVolumeAttachmentInformer.HasSynced)
+
 	// we are only interested in pods for which we are responsible for managing
 	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isShareManagerPod,
@@ -178,6 +189,35 @@ func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 		c.queue.Add(key)
 		return
 	}
+}
+
+func (c *ShareManagerController) enqueueShareManagerForNewVolumeAttachment(obj interface{}) {
+	if hasCSIAttacherTicket(obj) {
+		c.enqueueShareManagerForVolumeAttachment(obj)
+	}
+}
+
+func (c *ShareManagerController) enqueueShareManagerForUpdatedVolumeAttachment(old, cur interface{}) {
+	// stopping the share manager is left to the existing triggers, only the first CSI attacher ticket is handled here
+	if !hasCSIAttacherTicket(old) && hasCSIAttacherTicket(cur) {
+		c.enqueueShareManagerForVolumeAttachment(cur)
+	}
+}
+
+func (c *ShareManagerController) enqueueShareManagerForVolumeAttachment(obj interface{}) {
+	va, ok := obj.(*longhorn.VolumeAttachment)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+		return
+	}
+
+	// the share manager has the same name as its volume; for volumes without a share manager the sync is a no-op
+	c.queue.Add(va.Namespace + "/" + va.Spec.Volume)
+}
+
+func hasCSIAttacherTicket(obj interface{}) bool {
+	va, ok := obj.(*longhorn.VolumeAttachment)
+	return ok && hasRemainingCSIAttacherTicket(va)
 }
 
 func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
@@ -284,6 +324,7 @@ func (c *ShareManagerController) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync("longhorn-share-manager-controller", stopCh, c.cacheSyncs...) {
 		return
 	}
+	c.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -302,7 +343,7 @@ func (c *ShareManagerController) processNextWorkItem() bool {
 		return false
 	}
 	defer c.queue.Done(key)
-	err := c.syncShareManager(key.(string))
+	err := c.syncWithMetrics(func() error { return c.syncShareManager(key.(string)) })
 	c.handleErr(err, key)
 	return true
 }
@@ -517,6 +558,16 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(sm *longhorn.Sh
 	return false
 }
 
+// hasRemainingCSIAttacherTicket returns true if a CSI attacher ticket remains on the volume attachment
+func hasRemainingCSIAttacherTicket(va *longhorn.VolumeAttachment) bool {
+	for _, ticket := range va.Spec.AttachmentTickets {
+		if isCSIAttacherTicket(ticket) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) error {
 	log := getLoggerForShareManager(c.logger, sm)
 	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
@@ -686,6 +737,11 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		c.detachShareManagerVolume(sm, va)
 		if sm.Status.State != longhorn.ShareManagerStateStopped {
 			log.Info("Stopping share manager since it is no longer required")
+			if sm.Status.State == longhorn.ShareManagerStateRunning && !hasRemainingCSIAttacherTicket(va) {
+				// The workload released a share manager that worked, so the next start is not a pod failure retry.
+				// If a CSI attacher ticket remains, the stop is caused by the volume (e.g. faulted) and the backoff is kept.
+				c.backoff.DeleteEntry(sm.Name)
+			}
 			sm.Status.State = longhorn.ShareManagerStateStopping
 		}
 		return nil

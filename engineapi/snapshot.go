@@ -10,6 +10,8 @@ import (
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/types"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -44,7 +46,20 @@ func (e *EngineBinary) SnapshotList(DataEngineObject) (map[string]*longhorn.Snap
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing snapshot list")
 	}
+	markSystemGeneratedSnapshots(data)
 	return data, nil
+}
+
+func markSystemGeneratedSnapshots(snapshots map[string]*longhorn.SnapshotInfo) {
+	exportLabelKey := types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage)
+	for _, snapshot := range snapshots {
+		if snapshot == nil {
+			continue
+		}
+		if _, ok := snapshot.Labels[exportLabelKey]; ok {
+			snapshot.UserCreated = false
+		}
+	}
 }
 
 // SnapshotGet calls engine binary
@@ -110,7 +125,7 @@ func (e *EngineBinary) SnapshotPurgeStatus(obj DataEngineObject) (map[string]*lo
 // SnapshotClone calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotClone(obj DataEngineObject, snapshotName, fromEngineAddress, fromVolumeName,
-	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string) error {
+	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64, cloneMode string, dstReplicaSrcReplicaPairMap map[string]string) error {
 	args := []string{"snapshot", "clone", "--snapshot-name", snapshotName, "--from-controller-address",
 		fromEngineAddress}
 

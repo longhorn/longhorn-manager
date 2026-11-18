@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,12 +12,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/retry"
 
-	retrygo "github.com/avast/retry-go/v4"
+	retrygo "github.com/avast/retry-go/v5"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
@@ -153,6 +155,8 @@ type Engine struct {
 	lastExpansionFailedAt string
 	lastExpansionError    string
 
+	isCloning bool // true while SnapshotClone is in progress (linked-clone mode only)
+
 	// UpdateCh should not be protected by the engine lock
 	UpdateCh chan interface{}
 
@@ -170,7 +174,7 @@ type Engine struct {
 	// tests call TryLock() to prove the lock is truly released during phase 2.
 	// Without this, a future change that accidentally holds the lock through
 	// the RPCs (reverting to single-phase) would be undetectable from
-	// external behavior alone — replica-add would still succeed or fail
+	// external behavior alone - replica-add would still succeed or fail
 	// identically, but all other Engine operations would stall for 10+
 	// seconds on same-node NVMe-oF ETIMEDOUT.
 	replicaAddFinishUnlockedHook func()
@@ -312,7 +316,7 @@ func (e *Engine) Create(spdkClient *spdkclient.Client, replicaAddressMap map[str
 		}
 	case types.FrontendUBLK:
 		e.log.Infof("Creating UBLK target for engine %v", e.Name)
-		if err := spdkClient.UblkCreateTarget("", true); err != nil {
+		if err := createUblkTarget(spdkClient); err != nil {
 			return nil, err
 		}
 	}
@@ -331,6 +335,7 @@ func (e *Engine) Create(spdkClient *spdkclient.Client, replicaAddressMap map[str
 // kernel multipath layer does not route I/O to the new path until explicitly
 // promoted.
 func (e *Engine) createNVMeTCPTarget(spdkClient *spdkclient.Client, superiorPortAllocator *commonbitmap.Bitmap, portCount int32, initialANAState NvmeTCPANAState) error {
+	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
 	podIP, err := commonnet.GetIPForPod()
 	if err != nil {
 		return err
@@ -357,13 +362,8 @@ func (e *Engine) createNVMeTCPTarget(spdkClient *spdkclient.Client, superiorPort
 		return errors.Wrapf(err, "failed to blindly stop exposing RAID bdev for engine target %v", e.Name)
 	}
 
-	cntlid := getEngineCntlid(e.Name)
-	nsUUID := getStableVolumeNsUUID(e.VolumeName)
-
-	e.log.Infof("Starting to expose RAID bdev for engine target %v on %v:%v with initial ANA state %v, cntlid %v, nsUUID %v",
-		e.Name, e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port, initialANAState, cntlid, nsUUID)
-	if err := spdkClient.StartExposeBdevWithANAState(e.NvmeTcpTarget.Nqn, e.Name, e.NvmeTcpTarget.Nguid, nsUUID,
-		e.NvmeTcpTarget.IP, strconv.Itoa(int(e.NvmeTcpTarget.Port)), spdkANAState, cntlid, cntlid); err != nil {
+	cntlid := getTargetCntlid(e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port)
+	if err := e.startExposeNVMeTCPTarget(spdkClient, initialANAState, spdkANAState, cntlid); err != nil {
 		// No need to release ports here. The engine will be marked as ERR by
 		// Create's deferred error handler, and Delete will release the ports
 		// when the user cleans up this engine.
@@ -373,6 +373,14 @@ func (e *Engine) createNVMeTCPTarget(spdkClient *spdkclient.Client, superiorPort
 	e.NvmeTcpTarget.ANAState = initialANAState
 
 	return nil
+}
+
+func (e *Engine) startExposeNVMeTCPTarget(spdkClient *spdkclient.Client, anaState NvmeTCPANAState, spdkANAState spdktypes.NvmfSubsystemListenerAnaState, cntlid uint16) error {
+	nsUUID := getStableVolumeNsUUID(e.VolumeName)
+	e.log.Infof("Starting to expose RAID bdev for engine target %v on %v:%v with ANA state %v, cntlid %v, nsUUID %v",
+		e.Name, e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port, anaState, cntlid, nsUUID)
+	return spdkClient.StartExposeBdevWithANAState(e.NvmeTcpTarget.Nqn, e.Name, e.NvmeTcpTarget.Nguid, nsUUID,
+		e.NvmeTcpTarget.IP, strconv.Itoa(int(e.NvmeTcpTarget.Port)), spdkANAState, cntlid, cntlid)
 }
 
 // connectReplicas connects to each backend's NVMf bdev and populates
@@ -774,46 +782,53 @@ func (e *Engine) SetSnapshotMaxCount(count int32) {
 	}
 }
 
-type replicaAddFrontendSuspendResumeWrapper func(work func() error) error
+// replicaAddFrontendSuspendResumeWrapper suspends the frontend I/O around work.
+// If suspendRequired is set, work does not run unless the frontend is
+// suspended, or cannot be suspended at all (e.g. a ublk frontend).
+type replicaAddFrontendSuspendResumeWrapper func(work func() error, suspendRequired bool) error
 
 // ReplicaAdd performs the full replica-add flow consisting of three phases:
 //
-// Phase 0 — Synchronous Setup (under Engine lock, returns on completion):
+// Phase 0 - Synchronous Setup (under Engine lock, returns on completion):
 //  1. Validate engine state is Running, dst replica doesn't exist, no other WO replica.
 //  2. Obtain replica gRPC clients for all existing replicas, plus src/dst rebuild clients.
 //  3. Pick an RW replica as the rebuild source.
-//  4. Call replicaAddStart (optionally wrapped by frontendSuspendResumeWrapper for EF suspend/resume):
+//  4. Call replicaAddStart (optionally wrapped by frontendSuspendResumeWrapper for EF suspend/resume).
+//     The suspension is required: an SPDK snapshot taken while writes allocate
+//     clusters in a replica head can abort spdk_tgt or corrupt the lvstore
+//     metadata (spdk/spdk#3113). If the frontend cannot be suspended, the replica
+//     add fails, and longhorn-manager retries it:
 //     a. Create rebuild snapshot across all replicas.
 //     b. Get rebuilding snapshot list from src replica.
 //     c. ReplicaRebuildingSrcStart: src replica exposes snapshot as NVMe-oF target.
 //     d. ReplicaRebuildingDstStart: dst replica attaches external snapshot, creates head.
 //     e. BdevRaidGrowBaseBdev: add dst head bdev to RAID as base bdev.
 //     f. Mark dst replica as WO in backends.
-//  5. Launch replicaAddAsync goroutine (Phase 1–2 below).
-//  6. Return nil (or setupErr on failure) — background goroutine takes over.
+//  5. Launch replicaAddAsync goroutine (Phase 1-2 below).
+//  6. Return nil (or setupErr on failure) - background goroutine takes over.
 //     On sync error: outer defer marks dst replica ERR and (if applicable) sets engine to Error state.
 //
-// Phase 1 — Shallow Copy (replicaAddAsync goroutine):
+// Phase 1 - Shallow Copy (replicaAddAsync goroutine):
 //  7. Check for setup errors: if Phase 0 failed (setupErr != nil), set asyncErr and skip to cleanup.
 //  8. adder.ReplicaShallowCopy(): copy all snapshots from src to dst; on failure set asyncErr.
 //
-// Phase 2 — Finish or Cleanup (replicaAddCleanupOrFinish, two mutually exclusive paths):
+// Phase 2 - Finish or Cleanup (replicaAddCleanupOrFinish, two mutually exclusive paths):
 //
-//	Path A — Failure (asyncErr != nil):
+//	Path A - Failure (asyncErr != nil):
 //	  9. Call e.replicaAddFinish() directly (no frontendSuspendResumeWrapper, no suspend/resume) for SPDK resource cleanup.
-//	     Replica is already ERR. replicaAddFinish uses the same DstFinish→SrcFinish order as the success path.
+//	     Replica is already ERR. replicaAddFinish uses the same DstFinish->SrcFinish order as the success path.
 //
-//	Path B — Success (asyncErr == nil):
+//	Path B - Success (asyncErr == nil):
 //	 10. Call adder.ReplicaAddFinish() via frontendSuspendResumeWrapper (if present) or directly.
 //	     frontendSuspendResumeWrapper (buildGRPCReplicaAddFrontendSuspendResumeWrapper) does:
 //	       a. EF Suspend (gRPC to EngineFrontend).
 //	       b. Execute replicaAddFinish (3-phase lock pattern):
 //	          Phase 1 (lock): read dst mode. Phase 2 (unlock): RPC calls. Phase 3 (lock): update mode.
 //	       c. EF Resume (gRPC to EngineFrontend).
-//	 11. If finish returns error: mark dst replica ERR. SPDK resource cleanup is NOT retried —
+//	 11. If finish returns error: mark dst replica ERR. SPDK resource cleanup is NOT retried -
 //	     it is the responsibility of the ReplicaAdder (mock should call Real.ReplicaAddFinish()
 //	     before returning error) or r.Delete() when the replica is subsequently removed.
-func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstReplicaAddress string, fastSync bool, frontendSuspendResumeWrapper replicaAddFrontendSuspendResumeWrapper) (err error) {
+func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstReplicaAddress string, fastSync bool, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string, frontendSuspendResumeWrapper replicaAddFrontendSuspendResumeWrapper) (err error) {
 	updateRequired := false
 
 	e.Lock()
@@ -834,6 +849,9 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 	if e.IsRestoring {
 		return fmt.Errorf("cannot add replica %s while engine %s restore is in progress", dstReplicaName, e.Name)
 	}
+	if e.isCloning {
+		return fmt.Errorf("cannot add replica %s while engine %s linked-clone is in progress", dstReplicaName, e.Name)
+	}
 
 	if _, exists := e.backends[dstReplicaName]; exists {
 		return fmt.Errorf("replica %s already exists", dstReplicaName)
@@ -842,6 +860,23 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 	for replicaName, replicaStatus := range e.backends {
 		if replicaStatus.Mode() == types.ModeWO {
 			return fmt.Errorf("cannot add a new replica %s since there is already a rebuilding replica %s", dstReplicaName, replicaName)
+		}
+	}
+
+	linkedCloneFieldCount := 0
+	for _, f := range []string{linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress} {
+		if f != "" {
+			linkedCloneFieldCount++
+		}
+	}
+	if linkedCloneFieldCount != 0 && linkedCloneFieldCount != 3 {
+		return fmt.Errorf("engine %s replica %s add has partial linked-clone src fields: replicaName=%q engineName=%q engineAddress=%q",
+			e.Name, dstReplicaName, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress)
+	}
+
+	if linkedCloneFieldCount == 3 {
+		if err := e.checkLinkedCloneSrcReplicaMode(linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, linkedCloneSrcReplicaName); err != nil {
+			return err
 		}
 	}
 
@@ -910,7 +945,7 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 		var startEngineErr error
 		var startUpdateRequired bool
 		rebuildingSnapshotList, startUpdateRequired, startEngineErr, setupErr = e.replicaAddStart(spdkClient,
-			srcReplicaServiceCli, dstReplicaServiceCli, srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress)
+			srcReplicaServiceCli, dstReplicaServiceCli, srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress)
 		updateRequired = updateRequired || startUpdateRequired
 		if startEngineErr != nil {
 			engineErr = startEngineErr
@@ -922,13 +957,9 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 	}
 
 	if frontendSuspendResumeWrapper != nil {
-		if wrapErr := frontendSuspendResumeWrapper(startFn); wrapErr != nil {
-			// The wrapper itself may fail (e.g. suspend or resume failure).
-			// If the inner startFn already set engineErr, those are captured
-			// via closure.
-			if err == nil && engineErr == nil {
-				engineErr = wrapErr
-			}
+		if wrapErr := frontendSuspendResumeWrapper(startFn, true); wrapErr != nil {
+			// startFn captures fatal engine errors in engineErr. The wrapper
+			// returns the work error, so keep setup failures replica-scoped.
 			setupErr = wrapErr
 		}
 	} else {
@@ -969,7 +1000,7 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 //   - err: non-nil for replica-related operation errors
 func (e *Engine) replicaAddStart(spdkClient *spdkclient.Client,
 	srcReplicaServiceCli, dstReplicaServiceCli *client.SPDKClient,
-	srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress string,
+	srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string,
 ) (rebuildingSnapshotList []*api.Lvol, startUpdateRequired bool, engineErr, err error) {
 	snapshotName := GenerateRebuildingSnapshotName()
 	opts := &api.SnapshotOptions{
@@ -986,7 +1017,8 @@ func (e *Engine) replicaAddStart(spdkClient *spdkclient.Client,
 	}
 	e.checkAndUpdateInfoFromReplicasNoLock()
 
-	rebuildingSnapshotList, err = getRebuildingSnapshotList(srcReplicaServiceCli, srcReplicaName)
+	var linkedCloneSrcSnapshotName string
+	rebuildingSnapshotList, linkedCloneSrcSnapshotName, err = getRebuildingInfo(srcReplicaServiceCli, srcReplicaName)
 	if err != nil {
 		return nil, startUpdateRequired, nil, err
 	}
@@ -997,8 +1029,21 @@ func (e *Engine) replicaAddStart(spdkClient *spdkclient.Client,
 		return nil, startUpdateRequired, nil, err
 	}
 
+	// Build LinkedCloneSource for linked-clone rebuilds (nil for normal rebuilds).
+	// If the src replica lost its clone identity (LinkedCloneInfo is nil / SourceSnapshotName
+	// is empty), fall back to a normal rebuild - the entrypoint was already lost.
+	var linkedCloneSource *spdkrpc.LinkedCloneSource
+	if linkedCloneSrcReplicaName != "" && linkedCloneSrcSnapshotName != "" {
+		linkedCloneSource = &spdkrpc.LinkedCloneSource{
+			SnapshotName:  linkedCloneSrcSnapshotName,
+			ReplicaName:   linkedCloneSrcReplicaName,
+			EngineName:    linkedCloneSrcEngineName,
+			EngineAddress: linkedCloneSrcEngineAddress,
+		}
+	}
+
 	// The destination replica attaches the source replica exposed snapshot as the external snapshot then create a head based on it.
-	dstHeadLvolAddress, err := dstReplicaServiceCli.ReplicaRebuildingDstStart(dstReplicaName, srcReplicaName, srcReplicaAddress, snapshotName, externalSnapshotAddress, rebuildingSnapshotList)
+	dstHeadLvolAddress, err := dstReplicaServiceCli.ReplicaRebuildingDstStart(dstReplicaName, srcReplicaName, srcReplicaAddress, snapshotName, externalSnapshotAddress, rebuildingSnapshotList, linkedCloneSource)
 	if err != nil {
 		return nil, startUpdateRequired, nil, err
 	}
@@ -1101,7 +1146,7 @@ func (e *Engine) replicaAddCleanupOrFinish(
 		// outer defer. Call replicaAddFinish directly (no wrapper)
 		// for SPDK resource cleanup (exposed snapshot, NVMe
 		// connections). The mode is already ERR, so replicaAddFinish
-		// uses the same DstFinish→SrcFinish order as the success path.
+		// uses the same DstFinish->SrcFinish order as the success path.
 		if cleanupErr := e.replicaAddFinish(srcReplicaServiceCli, dstReplicaServiceCli, srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress); cleanupErr != nil {
 			e.log.WithError(cleanupErr).Errorf("Engine %s failed to clean up after replica %s add failure", e.Name, dstReplicaName)
 		}
@@ -1117,7 +1162,7 @@ func (e *Engine) replicaAddCleanupOrFinish(
 
 	var finishErr error
 	if frontendSuspendResumeWrapper != nil {
-		finishErr = frontendSuspendResumeWrapper(finishFn)
+		finishErr = frontendSuspendResumeWrapper(finishFn, false)
 	} else {
 		finishErr = finishFn()
 	}
@@ -1271,7 +1316,7 @@ func (e *Engine) replicaShallowCopy(dstReplicaServiceCli *client.SPDKClient, src
 // potentially slow RPC calls (ReplicaRebuildingSrcFinish, ReplicaRebuildingDstFinish):
 //
 //	Phase 1 (lock):   Read dst replica mode from backends
-//	Phase 2 (unlock): Execute RPC calls (DstFinish → SrcFinish) to src/dst replicas
+//	Phase 2 (unlock): Execute RPC calls (DstFinish -> SrcFinish) to src/dst replicas
 //	Phase 3 (lock):   Update replica mode and engine state
 func (e *Engine) replicaAddFinish(srcReplicaServiceCli, dstReplicaServiceCli *client.SPDKClient, srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress string) error {
 	defer e.closeReplicaAddClients(srcReplicaServiceCli, dstReplicaServiceCli,
@@ -1306,7 +1351,7 @@ func (e *Engine) replicaAddFinish(srcReplicaServiceCli, dstReplicaServiceCli *cl
 	// up dst-side resources (external snapshot attachment, NVMe controller).
 	var dstReplicaErr error
 	if dstReplicaStatus == nil {
-		// Dst replica was already removed from the engine map during Phase 1→2.
+		// Dst replica was already removed from the engine map during Phase 1->2.
 		// Skip dst-side finish, but still clean up src-side resources (exposed
 		// snapshot, NVMe-oF target, port) so they don't leak.
 		e.log.Infof("Engine skipped finishing rebuilding dst replica %s as it was already removed, will still clean up src replica %s", dstReplicaName, srcReplicaName)
@@ -1368,10 +1413,10 @@ func (e *Engine) replicaAddFinish(srcReplicaServiceCli, dstReplicaServiceCli *cl
 		e.ErrorMsg = ""
 	}
 
-	// Re-read replica status — it may have been removed while we were unlocked.
+	// Re-read replica status - it may have been removed while we were unlocked.
 	// Use the current mode (not the phase-1 snapshot dstMode) to decide the
 	// state transition, so that concurrent downgrades (e.g. validateReplicaStatusMapNoLock
-	// setting WO → ERR during unlocked phase 2) are not overwritten with RW.
+	// setting WO -> ERR during unlocked phase 2) are not overwritten with RW.
 	dstReplicaStatus = e.backends[dstReplicaName]
 	if dstReplicaStatus != nil {
 		switch dstReplicaStatus.Mode() {
@@ -1393,7 +1438,7 @@ func (e *Engine) replicaAddFinish(srcReplicaServiceCli, dstReplicaServiceCli *cl
 		e.log.Errorf("Engine failed to finish rebuilding replica %s from healthy replica %s (dstErr=%v)", dstReplicaName, srcReplicaName, dstReplicaErr)
 	} else if dstReplicaStatus != nil && dstReplicaStatus.Mode() == types.ModeERR {
 		// All RPCs succeeded, but the replica mode is ERR because another
-		// goroutine (e.g. validateReplicaStatusMapNoLock) downgraded WO → ERR
+		// goroutine (e.g. validateReplicaStatusMapNoLock) downgraded WO -> ERR
 		// during the unlocked phase 2. Phase 3 correctly preserved that
 		// concurrent downgrade instead of overwriting it with RW.
 		e.log.Warnf("Engine finished rebuilding RPC cleanup for replica %s from healthy replica %s, but replica mode is ERR due to concurrent downgrade during unlocked phase", dstReplicaName, srcReplicaName)
@@ -1420,20 +1465,48 @@ func (e *Engine) getReplicaAddSrcReplica() (srcReplicaName, srcReplicaAddress st
 	return srcReplicaName, srcReplicaAddress, nil
 }
 
-// getRebuildingSnapshotList fetches the snapshot tree from the src replica and
-// returns the ordered list of snapshots that need to be shallow-copied to the
-// dst replica. It finds the ancestor snapshot (empty parent or backing image
-// parent) and traverses the tree via DFS to produce the copy order.
-func getRebuildingSnapshotList(srcReplicaServiceCli *client.SPDKClient, srcReplicaName string) ([]*api.Lvol, error) {
+// checkLinkedCloneSrcReplicaMode verifies that the linked-clone src replica is
+// RW in its engine before starting the rebuild.
+func (e *Engine) checkLinkedCloneSrcReplicaMode(linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, linkedCloneSrcReplicaName string) error {
+	cli, err := GetServiceClient(linkedCloneSrcEngineAddress)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get service client for linked clone src engine %s at %s", linkedCloneSrcEngineName, linkedCloneSrcEngineAddress)
+	}
+	defer func() {
+		if errClose := cli.Close(); errClose != nil {
+			e.log.WithError(errClose).Warnf("Failed to close linked clone src engine %s client during pre-check", linkedCloneSrcEngineName)
+		}
+	}()
+
+	srcEngine, err := cli.EngineGet(linkedCloneSrcEngineName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get linked clone src engine %s for replica mode pre-check", linkedCloneSrcEngineName)
+	}
+	if srcEngine.State != types.InstanceStateRunning {
+		return fmt.Errorf("linked clone src engine %s is not running (state %v) at replica add start", linkedCloneSrcEngineName, srcEngine.State)
+	}
+	if srcEngine.ReplicaModeMap[linkedCloneSrcReplicaName] != types.ModeRW {
+		return fmt.Errorf("linked clone src replica %s is not in RW mode (mode %v) at replica add start", linkedCloneSrcReplicaName, srcEngine.ReplicaModeMap[linkedCloneSrcReplicaName])
+	}
+	return nil
+}
+
+// getRebuildingInfo fetches the snapshot tree from the src replica and returns
+// the ordered list of snapshots that need to be shallow-copied to the dst
+// replica, along with the clone entrypoint snapshot name (non-empty only for
+// linked-clone replicas). It finds the ancestor snapshot (empty parent or
+// backing image parent) and traverses the tree via DFS to produce the copy order.
+func getRebuildingInfo(srcReplicaServiceCli *client.SPDKClient, srcReplicaName string) (rebuildingSnapshotList []*api.Lvol, linkedCloneSrcSnapshotName string, err error) {
 	rpcSrcReplica, err := srcReplicaServiceCli.ReplicaGet(srcReplicaName)
 	if err != nil {
-		return []*api.Lvol{}, err
+		return []*api.Lvol{}, "", err
 	}
 	ancestorSnapshotName, latestSnapshotName := "", ""
 	for snapshotName, snapApiLvol := range rpcSrcReplica.Snapshots {
-		// If the parent is empty, it's the ancestor snapshot
-		// Notice that the ancestor snapshot parent is still empty even if there is a backing image
-		if snapApiLvol.Parent == "" || types.IsBackingImageSnapLvolName(snapApiLvol.Parent) {
+		// The root/ancestor snapshot is the one whose parent is not in this replica's snapshot map.
+		// Parent is empty for normal replicas; for replicas with a backing image or linked-clone
+		// entrypoint, the parent name is not a valid snapshot key in rpcSrcReplica.Snapshots.
+		if snapApiLvol.Parent == "" || rpcSrcReplica.Snapshots[snapApiLvol.Parent] == nil {
 			ancestorSnapshotName = snapshotName
 		}
 		if snapApiLvol.Children[types.VolumeHead] {
@@ -1441,10 +1514,19 @@ func getRebuildingSnapshotList(srcReplicaServiceCli *client.SPDKClient, srcRepli
 		}
 	}
 	if ancestorSnapshotName == "" || latestSnapshotName == "" {
-		return []*api.Lvol{}, fmt.Errorf("cannot find the ancestor snapshot %s or latest snapshot %s from RW replica %s snapshot map during engine replica add", ancestorSnapshotName, latestSnapshotName, srcReplicaName)
+		return []*api.Lvol{}, "", fmt.Errorf("cannot find the ancestor snapshot %s or latest snapshot %s from RW replica %s snapshot map during rebuilding snapshot list retrieval", ancestorSnapshotName, latestSnapshotName, srcReplicaName)
 	}
 
-	return retrieveRebuildingSnapshotList(rpcSrcReplica, ancestorSnapshotName, []*api.Lvol{}), nil
+	// For linked-clone replicas, extract the source snapshot name
+	// so it can be passed explicitly to the DST replica at rebuild start.
+	if rpcSrcReplica.LinkedCloneInfo != nil {
+		if rpcSrcReplica.LinkedCloneInfo.SourceSnapshotName == "" {
+			return []*api.Lvol{}, "", fmt.Errorf("linked clone replica %s has LinkedCloneInfo but source snapshot name is empty", srcReplicaName)
+		}
+		linkedCloneSrcSnapshotName = rpcSrcReplica.LinkedCloneInfo.SourceSnapshotName
+	}
+
+	return retrieveRebuildingSnapshotList(rpcSrcReplica, ancestorSnapshotName, []*api.Lvol{}), linkedCloneSrcSnapshotName, nil
 }
 
 // retrieveRebuildingSnapshotList recursively traverses the replica snapshot tree with a DFS way
@@ -1638,6 +1720,10 @@ func (e *Engine) closeReplicaClients(replicaClients map[string]*client.SPDKClien
 }
 
 func (e *Engine) snapshotOperationPreCheckWithoutLock(snapshotName string, snapshotOp SnapshotOperationType) (string, error) {
+	if e.isCloning {
+		return "", fmt.Errorf("cannot perform snapshot operation %v while engine %s linked-clone is in progress", snapshotOp, e.Name)
+	}
+
 	if snapshotOp == SnapshotOperationCreate && snapshotName == "" {
 		snapshotName = util.UUID()[:8]
 	}
@@ -1657,6 +1743,25 @@ func (e *Engine) snapshotOperationPreCheckWithoutLock(snapshotName string, snaps
 		}
 		if len(e.SnapshotMap[snapshotName].Children) > 1 {
 			return "", fmt.Errorf("engine %s cannot delete snapshot %s since it contains multiple children %+v", e.Name, snapshotName, e.SnapshotMap[snapshotName].Children)
+		}
+		// Guard: if any replica has an active clone entrypoint for this snapshot, the snapshot
+		// is the base of a linked-clone volume and must not be deleted. We check this at the
+		// engine level (before dispatching to replicas) so that a healthy replica is never
+		// incorrectly marked ERR just because it refused a guarded deletion.
+		replicaClients, err := e.getReplicaClients()
+		if err != nil {
+			return "", err
+		}
+		defer e.closeReplicaClients(replicaClients)
+		for replicaName, replicaClient := range replicaClients {
+			r, err := replicaClient.ReplicaGet(replicaName)
+			if err != nil {
+				return "", errors.Wrapf(err, "cannot verify clone-entrypoint guard for replica %s during snapshot %s deletion pre-check", replicaName, snapshotName)
+			}
+			if _, hasEP := r.CloneSnapshotUsage[snapshotName]; hasEP {
+				return "", fmt.Errorf("cannot delete snapshot %s: replica %s has an active linked-clone entrypoint for this snapshot; delete the linked-clone volume first",
+					snapshotName, replicaName)
+			}
 		}
 	}
 
@@ -1741,14 +1846,15 @@ func (e *Engine) snapshotOperationWithoutLock(spdkClient *spdkclient.Client, sna
 			replicaBdevList = append(replicaBdevList, replicaStatus.BdevName())
 		}
 
-		engineErr = retrygo.Do(
+		engineErr = retrygo.New(
+			retrygo.Attempts(uint(maxRetries)),
+			retrygo.Delay(retryInterval),
+			retrygo.LastErrorOnly(true),
+		).Do(
 			func() error {
 				_, err := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, "")
 				return err
 			},
-			retrygo.Attempts(uint(maxRetries)),
-			retrygo.Delay(retryInterval),
-			retrygo.LastErrorOnly(true),
 		)
 	}
 
@@ -1838,21 +1944,86 @@ type replicaCandidate struct {
 	address string
 }
 
-func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress string, cloneMode spdkrpc.CloneMode) (err error) {
+func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress string, cloneMode spdkrpc.CloneMode, dstReplicaSrcReplicaPairMap map[string]string) (err error) {
 	e.Lock()
-	defer e.Unlock()
-
 	defer func() {
-		err = errors.Wrap(err, "failed to do SnapshotClone")
+		e.Unlock()
+
+		if err != nil {
+			err = errors.Wrap(err, "failed to do SnapshotClone")
+		}
+
+		select {
+		case e.UpdateCh <- nil:
+		default:
+		}
 	}()
 
-	e.log.Infof("Engine is starting cloning snapshot %s", snapshotName)
+	e.log.Infof("Engine is starting cloning snapshot %s (cloneMode=%v)", snapshotName, cloneMode)
 
-	if len(e.backends) != 1 {
-		return fmt.Errorf("destination engine must only have 1 replica when doing snapshot clone. Current "+
-			"replica count is %v", len(e.backends))
+	if cloneMode != spdkrpc.CloneMode_CLONE_MODE_LINKED_CLONE {
+		// Deep-copy clone requires exactly 1 replica to avoid data inconsistency.
+		if len(e.backends) != 1 {
+			return fmt.Errorf("destination engine must only have 1 replica when doing deep-copy snapshot clone. Current replica count is %v", len(e.backends))
+		}
 	}
 
+	srcEngineServiceCli, err := e.newServiceClient(srcEngineAddress)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if errClose := srcEngineServiceCli.Close(); errClose != nil {
+			e.log.WithError(errClose).Errorf("Engine %v failed to close src engine %v client with address %v"+
+				" during snapshot clone", e.Name, srcEngineName, srcEngineAddress)
+		}
+	}()
+
+	srcEngine, err := srcEngineServiceCli.EngineGet(srcEngineName)
+	if err != nil {
+		return err
+	}
+	if srcEngine.State != types.InstanceStateRunning {
+		return fmt.Errorf("engine %s cannot start snapshot %s clone with mode %s since its src engine %s is not running", e.Name, snapshotName, cloneMode, srcEngineName)
+	}
+
+	srcReplicas, err := srcEngineServiceCli.EngineReplicaList(srcEngineName)
+	if err != nil {
+		return err
+	}
+
+	srcReplicaCandidates := map[string]replicaCandidate{}
+	for rName, mode := range srcEngine.ReplicaModeMap {
+		if mode != types.ModeRW {
+			e.log.Debugf("Src replica %s excluded from candidates: mode=%v (not RW)", rName, mode)
+			continue
+		}
+		rAddr, ok := srcEngine.ReplicaAddressMap[rName]
+		if !ok {
+			e.log.Debugf("Src replica %s excluded from candidates: not in ReplicaAddressMap", rName)
+			continue
+		}
+		r, ok := srcReplicas[rName]
+		if !ok {
+			e.log.Debugf("Src replica %s excluded from candidates: not in EngineReplicaList result", rName)
+			continue
+		}
+		srcReplicaCandidates[rName] = replicaCandidate{ip: r.IP, lvsUUID: r.LvsUUID, address: rAddr}
+	}
+	e.log.Infof("Built srcReplicaCandidates with %d entries from src engine %s (mode map has %d, replica list has %d)",
+		len(srcReplicaCandidates), srcEngineName, len(srcEngine.ReplicaModeMap), len(srcReplicas))
+
+	if cloneMode == spdkrpc.CloneMode_CLONE_MODE_LINKED_CLONE {
+		if len(dstReplicaSrcReplicaPairMap) == 0 {
+			return fmt.Errorf("linked-clone snapshot clone requires a non-empty dst->src replica name map from the manager")
+		}
+		e.log.Infof("Linked-clone: dstReplicaSrcReplicaPairMap has %d entries, engine backends has %d entries",
+			len(dstReplicaSrcReplicaPairMap), len(e.backends))
+		// New path: manager provided an explicit dst->src replica name map (proxy API >= 7).
+		return e.snapshotCloneLinkedN(snapshotName, dstReplicaSrcReplicaPairMap, srcReplicaCandidates)
+	}
+
+	// Deep-copy: single-replica path.
 	dstReplicaName, dstReplicaAddr := "", ""
 	for rName, rStatus := range e.backends {
 		if rStatus.Mode() != types.ModeRW {
@@ -1885,42 +2056,6 @@ func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress str
 		return err
 	}
 
-	srcEngineServiceCli, err := e.newServiceClient(srcEngineAddress)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if errClose := srcEngineServiceCli.Close(); errClose != nil {
-			e.log.WithError(errClose).Errorf("Engine %v failed to close src engine %v client with address %v"+
-				" during snapshot clone", e.Name, srcEngineName, srcEngineAddress)
-		}
-	}()
-
-	srcEngine, err := srcEngineServiceCli.EngineGet(srcEngineName)
-	if err != nil {
-		return err
-	}
-	srcReplicas, err := srcEngineServiceCli.EngineReplicaList(srcEngineName)
-	if err != nil {
-		return err
-	}
-
-	srcReplicaCandidates := map[string]replicaCandidate{}
-	for rName, mode := range srcEngine.ReplicaModeMap {
-		if mode != types.ModeRW {
-			continue
-		}
-		rAddr, ok := srcEngine.ReplicaAddressMap[rName]
-		if !ok {
-			continue
-		}
-		r, ok := srcReplicas[rName]
-		if !ok {
-			continue
-		}
-		srcReplicaCandidates[rName] = replicaCandidate{ip: r.IP, lvsUUID: r.LvsUUID, address: rAddr}
-	}
-
 	srcReplicaName := ""
 	srcReplicaAddress := ""
 	for rName, cand := range srcReplicaCandidates {
@@ -1932,10 +2067,6 @@ func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress str
 	}
 
 	if srcReplicaName == "" || srcReplicaAddress == "" {
-		if cloneMode == spdkrpc.CloneMode_CLONE_MODE_LINKED_CLONE {
-			return fmt.Errorf("cannot find the src replica at the same address %v and on same LvsUUID %v as the "+
-				"dst replica", dstReplica.IP, dstReplica.LvsUUID)
-		}
 		for rName, cand := range srcReplicaCandidates {
 			srcReplicaName = rName
 			srcReplicaAddress = cand.address
@@ -1948,6 +2079,117 @@ func (e *Engine) SnapshotClone(snapshotName, srcEngineName, srcEngineAddress str
 	}
 
 	return dstReplicaServiceCli.ReplicaSnapshotCloneDstStart(dstReplicaName, snapshotName, srcReplicaName, srcReplicaAddress, cloneMode)
+}
+
+// snapshotCloneLinkedN performs SnapshotCloneDstStart on ALL RW dst replicas simultaneously
+// (linked-clone mode only). It uses the explicit dst->src replica name map provided by the
+// manager (which already ran the scheduler) instead of auto-detecting by IP+lvsUUID co-location.
+// Must be called with the engine lock held.
+func (e *Engine) snapshotCloneLinkedN(snapshotName string, dstReplicaSrcReplicaPairMap map[string]string, srcReplicaCandidates map[string]replicaCandidate) error {
+	type dstEntry struct {
+		name           string
+		address        string
+		srcReplicaName string
+		srcReplicaAddr string
+	}
+
+	var dstEntries []dstEntry
+	for rName, rStatus := range e.backends {
+		if dstReplicaSrcReplicaPairMap[rName] == "" {
+			rStatus.SetMode(types.ModeERR)
+			e.log.Warnf("Dst replica %s is not included in the dst-src replica pair map for linked-clone, marking it ERR", rName)
+		}
+	}
+	for dstName, srcName := range dstReplicaSrcReplicaPairMap {
+		dstStatus, ok := e.backends[dstName]
+		if !ok || dstStatus == nil {
+			e.log.Warnf("Dst replica %s not found in engine backends map, skipping", dstName)
+			continue
+		}
+		if dstStatus.Mode() != types.ModeRW {
+			dstStatus.SetMode(types.ModeERR)
+			e.log.Warnf("Dst replica %s is not RW (mode=%v), marking it ERR for linked-clone", dstName, dstStatus.Mode())
+			continue
+		}
+
+		srcCand, ok := srcReplicaCandidates[srcName]
+		if !ok {
+			e.log.Warnf("Src replica %s not found in src engine replica list for dst replica %s, will record clone error via empty src address", srcName, dstName)
+		}
+
+		entry := dstEntry{
+			name:           dstName,
+			address:        dstStatus.Address(),
+			srcReplicaName: srcName,
+		}
+		if ok {
+			entry.srcReplicaAddr = srcCand.address
+		}
+		dstEntries = append(dstEntries, entry)
+	}
+
+	if len(dstEntries) == 0 {
+		return fmt.Errorf("no valid dst-src replica pairs found for linked-clone")
+	}
+
+	e.log.Infof("Starting linked-clone on %d replicas simultaneously for snapshot %s", len(dstEntries), snapshotName)
+	for _, entry := range dstEntries {
+		e.log.Infof("  dst replica %s (addr %s) <- src replica %s (addr %s)", entry.name, entry.address, entry.srcReplicaName, entry.srcReplicaAddr)
+	}
+
+	e.isCloning = true
+	defer func() { e.isCloning = false }()
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	cloneErrs := make(map[string]error, len(dstEntries))
+
+	for _, entry := range dstEntries {
+		wg.Add(1)
+		go func(dst dstEntry) {
+			defer wg.Done()
+			cli, err := GetServiceClient(dst.address)
+			if err != nil {
+				mu.Lock()
+				cloneErrs[dst.name] = errors.Wrapf(err, "failed to get client for dst replica %s", dst.name)
+				mu.Unlock()
+				return
+			}
+			defer func() {
+				if errClose := cli.Close(); errClose != nil {
+					e.log.WithError(errClose).Warnf("Failed to close client for dst replica %s", dst.name)
+				}
+			}()
+
+			if err := cli.ReplicaSnapshotCloneDstStart(dst.name, snapshotName, dst.srcReplicaName, dst.srcReplicaAddr, spdkrpc.CloneMode_CLONE_MODE_LINKED_CLONE); err != nil {
+				mu.Lock()
+				cloneErrs[dst.name] = errors.Wrapf(err, "dst replica %s: SnapshotCloneDstStart failed", dst.name)
+				mu.Unlock()
+			}
+		}(entry)
+	}
+	wg.Wait()
+
+	// Mark failed replicas as ERR so the manager can schedule rebuilds for them.
+	var errList []error
+	for replicaName, cloneErr := range cloneErrs {
+		if rStatus, ok := e.backends[replicaName]; ok && rStatus != nil {
+			rStatus.SetMode(types.ModeERR)
+		}
+		e.log.WithError(cloneErr).Errorf("Dst replica %s failed during N-replica linked-clone", replicaName)
+		errList = append(errList, cloneErr)
+	}
+
+	if len(cloneErrs) == len(dstEntries) {
+		// All replicas failed - return a combined error.
+		return util.CombineErrors(errList...)
+	}
+
+	if len(cloneErrs) > 0 {
+		e.log.Warnf("%d/%d dst replicas failed during linked-clone and have been marked ERR for later rebuild",
+			len(cloneErrs), len(dstEntries))
+	}
+	return nil
 }
 
 func (e *Engine) getReplicaSnapshotHashStatus(replicaName, replicaAddress, snapshotName string) (*spdkrpc.ReplicaSnapshotHashStatusResponse, error) {
@@ -2047,6 +2289,15 @@ func (e *Engine) BackupCreate(backupName, volumeName, engineName, snapshotName, 
 		}
 	}()
 
+	// NOTE: labels are forwarded to the replica opaquely on purpose. Well-known
+	// backup parameters are smuggled into this slice under a reserved
+	// DNS-qualified prefix by the entry-side client wrapper
+	// (client.EngineBackupCreate via types.EncodeBackupParametersIntoLabels)
+	// and extracted again on the replica-side server
+	// (server_replica.ReplicaBackupCreate via types.ExtractBackupParametersFromLabels).
+	// Do not filter, deduplicate, or normalize labels here or those reserved
+	// entries will silently disappear and callers' intent (e.g. forcing a full
+	// backup) will be lost.
 	recv, err := replicaServiceCli.ReplicaBackupCreate(&client.BackupCreateRequest{
 		BackupName:           backupName,
 		SnapshotName:         snapshotName,
@@ -2130,6 +2381,18 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 		return resp, nil, err
 	}
 
+	// Fail fast on a persistently broken replica I/O path before the restore
+	// starts, instead of waiting for the idle timeout. This runs without the
+	// engine lock, so the re-checks do not block other engine RPCs.
+	if replicaName, preflightErr := e.preflightReplicaIOPathsForRestore(spdkClient); preflightErr != nil {
+		e.Lock()
+		if e.recordBackupRestoreStartErrorLocked(spdkClient, backupUrl, "", superiorPortAllocator, preflightErr) {
+			e.restore.RecordErrorSource(replicaName)
+		}
+		e.Unlock()
+		return resp, nil, preflightErr
+	}
+
 	e.Lock()
 	defer e.Unlock()
 
@@ -2143,6 +2406,12 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 		err := fmt.Errorf("the backup volume %v size %v must be the same as the Longhorn volume size %v", backupInfo.VolumeName, backupInfo.VolumeSize, e.SpecSize)
 		e.recordBackupRestoreStartErrorLocked(spdkClient, backupUrl, "", superiorPortAllocator, err)
 		return resp, nil, err
+	}
+
+	prevRestore := e.restore
+	var prevRestoreStatus *EngineRestore
+	if prevRestore != nil {
+		prevRestoreStatus = prevRestore.DeepCopy()
 	}
 
 	isFullRestore, err := e.backupRestorePrepare(spdkClient, backupUrl, credential, superiorPortAllocator)
@@ -2164,7 +2433,7 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	// The frontend (NVMe-TCP initiator) is managed by EngineFrontend.
 	// Store the provided endpoint so EngineRestore.OpenVolumeDev can access the block device.
 	// Also copy it into e.restore.endpoint so OpenVolumeDev does not need to re-acquire the
-	// engine lock (which would deadlock — BackupRestore already holds e.Lock()).
+	// engine lock (which would deadlock - BackupRestore already holds e.Lock()).
 	e.log.Infof("Using endpoint %v for backup restore", endpoint)
 	e.restore.endpoint = endpoint
 
@@ -2174,15 +2443,17 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	if isFullRestore {
 		e.log.Infof("Starting a new full restore for backup %v", backupUrl)
 		if err := e.backupRestore(backupUrl, concurrentLimit); err != nil {
-			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
-			return resp, nil, errors.Wrapf(err, "failed to start full backup restore")
+			err = errors.Wrapf(err, "failed to start full backup restore")
+			e.handleBackupRestoreStartErrorLocked(resp, prevRestore, prevRestoreStatus, err)
+			return resp, nil, err
 		}
 		e.log.Infof("Successfully initiated full restore for %v to %v", backupUrl, e.Name)
 	} else {
 		e.log.Infof("Starting an incremental restore for backup %v", backupUrl)
 		if err := e.backupRestoreIncrementally(backupUrl, lastRestored, concurrentLimit); err != nil {
-			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
-			return resp, nil, errors.Wrapf(err, "failed to start incremental backup restore")
+			err = errors.Wrapf(err, "failed to start incremental backup restore")
+			e.handleBackupRestoreStartErrorLocked(resp, prevRestore, prevRestoreStatus, err)
+			return resp, nil, err
 		}
 		e.log.Infof("Successfully initiated incremental restore for %v to %v", backupUrl, e.Name)
 	}
@@ -2206,9 +2477,36 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, endpoin
 	return resp, ch, nil
 }
 
-func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Client, backupURL, backupName string, superiorPortAllocator *commonbitmap.Bitmap, restoreErr error) {
+// handleBackupRestoreStartErrorLocked reports a failure to start the backupstore restore
+// per replica, like a v1 restore task error. A lock conflict is retryable, so the restore
+// status is reverted instead of being marked as failed, matching the v1 replica behavior.
+func (e *Engine) handleBackupRestoreStartErrorLocked(resp *spdkrpc.EngineBackupRestoreResponse, prevRestore, prevRestoreStatus *EngineRestore, startErr error) {
+	if backupstore.IsLockConflictError(startErr) {
+		e.log.WithError(startErr).Warn("Reverting the restore status since the backupstore lock is held by another operation")
+		if prevRestore == nil || e.restore != prevRestore {
+			// The restore built for this attempt is dropped; release its cycle
+			// context since no worker was started.
+			e.restore.ReleaseCycle()
+			e.restore = prevRestore
+		} else {
+			e.restore.Revert(prevRestoreStatus)
+		}
+	} else {
+		e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, startErr)
+	}
+
+	for _, replicaStatus := range e.backends {
+		resp.Errors[replicaStatus.Address()] = startErr.Error()
+	}
+}
+
+// recordBackupRestoreStartErrorLocked publishes a restore start error in
+// e.restore so the control plane can observe it. It reports whether the error
+// was recorded; it declines when another restore is already in progress,
+// because e.restore then belongs to that restore.
+func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Client, backupURL, backupName string, superiorPortAllocator *commonbitmap.Bitmap, restoreErr error) (recorded bool) {
 	if restoreErr == nil {
-		return
+		return false
 	}
 
 	// If another restore is already in progress, don't overwrite its state.
@@ -2217,7 +2515,7 @@ func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Clie
 	// recording (which re-acquired it).
 	if e.IsRestoring {
 		e.log.Warnf("Skipping restore error recording for %v: another restore is already in progress", backupURL)
-		return
+		return false
 	}
 
 	if backupName == "" {
@@ -2235,6 +2533,7 @@ func (e *Engine) recordBackupRestoreStartErrorLocked(spdkClient *spdkclient.Clie
 		e.restore.StartNewRestore(backupURL, backupName, true)
 	}
 	e.restore.UpdateRestoreStatus("", 0, restoreErr)
+	return true
 }
 
 func (e *Engine) precheckBackupRestore(backupURL string) error {
@@ -2278,8 +2577,18 @@ func (e *Engine) backupRestorePrepare(spdkClient *spdkclient.Client, backupUrl s
 		}
 		if e.restore.State == btypes.ProgressStateError || e.restore.State == btypes.ProgressStateCanceled {
 			lastRestored := e.restore.LastRestored
+			// The snapshot of the last completed restore. It is still on the
+			// replicas and completeBackupRestore deletes it on the next
+			// success, so it is kept even when LastRestored is cleared below.
+			snapshotName := e.restore.SnapshotName
+			// The errored cycle is replaced, not restarted, so nothing else
+			// cancels its context; release it here. A cycle that ran and
+			// finished has already been canceled by FinalizeRestore; the
+			// second cancel is a no-op.
+			e.restore.ReleaseCycle()
 			e.restore = NewEngineRestore(spdkClient, backupUrl, backupName, e, superiorPortAllocator)
 			e.restore.LastRestored = lastRestored
+			e.restore.SnapshotName = snapshotName
 			if !e.canDoIncrementalRestore(e.restore, backupUrl, backupName) {
 				e.restore.LastRestored = ""
 			}
@@ -2312,6 +2621,96 @@ func (e *Engine) canDoIncrementalRestore(restore *EngineRestore, backupURL, requ
 	return true
 }
 
+// snapshotRevertFn reverts the engine's volume head to a snapshot. It is a
+// variable so tests can replace it.
+var snapshotRevertFn = func(e *Engine, spdkClient *spdkclient.Client, snapshotName string) error {
+	return e.SnapshotRevert(spdkClient, snapshotName)
+}
+
+// restoreBaselineSnapshotToRevertLocked returns the snapshot to revert the
+// volume head to before the next restore, or "" if no revert is needed. The
+// caller holds the engine lock.
+//
+// A restore writes into the live head. A cycle that failed or was canceled
+// after opening the device leaves the head as the baseline plus part of the
+// failed backup. Neither an incremental nor a full restore can remove those
+// blocks, so the head is reverted to the snapshot of the last completed
+// restore first.
+func (e *Engine) restoreBaselineSnapshotToRevertLocked() string {
+	if e.restore == nil || e.IsRestoring {
+		return ""
+	}
+
+	e.restore.RLock()
+	defer e.restore.RUnlock()
+
+	if e.restore.State != btypes.ProgressStateError && e.restore.State != btypes.ProgressStateCanceled {
+		return ""
+	}
+	if !e.restore.volumeDevOpened {
+		return ""
+	}
+	return e.restore.SnapshotName
+}
+
+// revertRestoreBaseline reverts the volume head to the restore baseline if
+// the previous restore cycle may have left it partially overwritten. It must
+// run before the restore data path is set up, because the revert recreates
+// the raid bdev.
+//
+// If the engine is not running or a replica is still rebuilding, it returns
+// an error and leaves the restore state as is; the next attempt reverts.
+//
+// Any other revert failure clears LastRestored and volumeDevOpened, so the
+// next attempt skips the revert and runs a full restore instead of failing
+// the same way again.
+func (e *Engine) revertRestoreBaseline(spdkClient *spdkclient.Client) error {
+	e.Lock()
+	snapshotName := e.restoreBaselineSnapshotToRevertLocked()
+	restore := e.restore
+	var transientErr error
+	if snapshotName != "" {
+		transientErr = e.revertRestoreBaselineBlockerLocked()
+	}
+	e.Unlock()
+
+	if snapshotName == "" {
+		return nil
+	}
+	if transientErr != nil {
+		return errors.Wrapf(transientErr, "cannot revert the volume head to restore baseline snapshot %v yet", snapshotName)
+	}
+
+	e.log.Infof("Reverting the volume head to restore baseline snapshot %v before the next restore", snapshotName)
+	if err := snapshotRevertFn(e, spdkClient, snapshotName); err != nil {
+		restore.Lock()
+		restore.LastRestored = ""
+		restore.volumeDevOpened = false
+		restore.Unlock()
+		e.log.WithError(err).Warnf("Failed to revert the volume head to restore baseline snapshot %v; stale blocks from the failed restore may remain and the next restore will be a full restore", snapshotName)
+		return errors.Wrapf(err, "failed to revert the volume head to restore baseline snapshot %v; the next restore will be a full restore", snapshotName)
+	}
+
+	restore.Lock()
+	restore.volumeDevOpened = false
+	restore.Unlock()
+	return nil
+}
+
+// revertRestoreBaselineBlockerLocked returns the reason a baseline revert
+// must wait, or nil. The caller holds the engine lock.
+func (e *Engine) revertRestoreBaselineBlockerLocked() error {
+	if e.State != types.InstanceStateRunning {
+		return fmt.Errorf("engine %s is in state %v", e.Name, e.State)
+	}
+	for replicaName, replicaStatus := range e.backends {
+		if isBackendDispatchable(replicaStatus) && replicaStatus.Mode() == types.ModeWO {
+			return fmt.Errorf("replica %s is still rebuilding", replicaName)
+		}
+	}
+	return nil
+}
+
 func (e *Engine) backupRestore(backupURL string, concurrentLimit int32) error {
 	backupURL = butil.UnescapeURL(backupURL)
 
@@ -2320,7 +2719,10 @@ func (e *Engine) backupRestore(backupURL string, concurrentLimit int32) error {
 		"concurrentLimit": concurrentLimit,
 	}).Info("Starting full backup restore")
 
-	return backupstore.RestoreDeltaBlockBackup(e.ctx, &backupstore.DeltaRestoreConfig{
+	// The restore cycle's own context, not the engine's: FinalizeRestore and
+	// signalStop cancel it, so an aborted restore also ends the backupstore
+	// block producers, not just the workers.
+	return backupstore.RestoreDeltaBlockBackup(e.restore.Context(), &backupstore.DeltaRestoreConfig{
 		BackupURL:       backupURL,
 		DeltaOps:        e.restore,
 		Filename:        "",
@@ -2337,7 +2739,8 @@ func (e *Engine) backupRestoreIncrementally(backupURL, lastRestored string, conc
 		"concurrentLimit": concurrentLimit,
 	}).Info("Starting incremental backup restore")
 
-	return backupstore.RestoreDeltaBlockBackupIncrementally(e.ctx, &backupstore.DeltaRestoreConfig{
+	// See backupRestore for why this passes the restore cycle's context.
+	return backupstore.RestoreDeltaBlockBackupIncrementally(e.restore.Context(), &backupstore.DeltaRestoreConfig{
 		BackupURL:       backupURL,
 		DeltaOps:        e.restore,
 		LastBackupName:  lastRestored,
@@ -2348,8 +2751,8 @@ func (e *Engine) backupRestoreIncrementally(backupURL, lastRestored string, conc
 
 func (e *Engine) completeBackupRestore(spdkClient *spdkclient.Client, backupSnapshotName string) (err error) {
 	// waitForRestoreComplete only reads e.restore fields under e.restore.RLock;
-	// no engine lock is needed (and must not be held — SnapshotCreate/Delete acquire it).
-	waitErr := e.waitForRestoreComplete()
+	// no engine lock is needed (and must not be held - SnapshotCreate/Delete acquire it).
+	waitErr := e.waitForRestoreComplete(spdkClient)
 
 	// Acquire the engine lock to mutate shared fields and tear down the temporary
 	// NVMe-TCP target. This runs regardless of success or failure so that the target
@@ -2380,12 +2783,26 @@ func (e *Engine) completeBackupRestore(spdkClient *spdkclient.Client, backupSnap
 	e.Unlock()
 
 	if waitErr != nil {
+		updateRequired := false
 		e.Lock()
 		e.IsRestoring = false
+		// Restore writes go through the raid bdev, so losing it is an engine failure rather than a replica one.
+		if bdevMap, err := GetBdevMap(spdkClient); err != nil {
+			e.log.WithError(err).Warn("Failed to get bdev map after backup restore failure")
+		} else if _, raidErr := e.getRaidBdevNoLock(bdevMap); raidErr != nil {
+			e.applyValidateAndUpdateErrorNoLock(raidErr, &updateRequired)
+		}
 		if e.restore != nil {
-			e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, waitErr)
+			// The watcher gave up before the backupstore workers finished.
+			// Stop the workers that are between blocks and record the outcome
+			// before any late worker report can change it.
+			e.restore.signalStop()
+			e.restore.FinalizeRestore(waitErr)
 		}
 		e.Unlock()
+		if updateRequired {
+			e.UpdateCh <- nil
+		}
 		return errors.Wrapf(waitErr, "failed to wait for engine restore complete")
 	}
 
@@ -2394,11 +2811,7 @@ func (e *Engine) completeBackupRestore(spdkClient *spdkclient.Client, backupSnap
 		e.Lock()
 		e.IsRestoring = false
 		if e.restore != nil {
-			if err != nil {
-				e.restore.UpdateRestoreStatus(e.restore.SnapshotName, 0, err)
-			} else {
-				e.restore.FinishRestore()
-			}
+			e.restore.FinalizeRestore(err)
 		}
 		e.Unlock()
 	}()
@@ -2461,6 +2874,12 @@ func (e *Engine) cleanupTemporaryNvmeTcpTargetForRestore(spdkClient *spdkclient.
 	e.cleanupTemporaryNvmeTcpTargetForRestoreLocked(spdkClient, superiorPortAllocator, reason)
 }
 
+// cleanupTemporaryNvmeTcpTargetForRestoreLocked removes the temporary
+// NVMe-TCP target and releases its port. A StopExposeBdev failure is not
+// returned. Both the next restore and the engine deletion call StopExposeBdev
+// on the volume NQN before anything else, so a subsystem left behind here is
+// removed then. Reusing the port is safe because SPDK shares a TCP listener
+// across subsystems and hosts connect by NQN.
 func (e *Engine) cleanupTemporaryNvmeTcpTargetForRestoreLocked(spdkClient *spdkclient.Client, superiorPortAllocator *commonbitmap.Bitmap, reason string) {
 	if e.Frontend != types.FrontendEmpty || e.NvmeTcpTarget == nil {
 		return
@@ -2481,22 +2900,188 @@ func (e *Engine) cleanupTemporaryNvmeTcpTargetForRestoreLocked(spdkClient *spdkc
 	}
 }
 
-func (e *Engine) waitForRestoreComplete() error {
+// restoreIdleTimeout is how long a restore may go without completing a block
+// before the engine aborts it. It also bounds the final sync and close, which
+// report no blocks: it must be long enough for a normal flush over a slow but
+// live path, and it is the only thing that ends a sync over a path that never
+// connected.
+//
+// This is a variable so tests can shorten it.
+var restoreIdleTimeout = 10 * time.Minute
+
+// idleTimer tracks how long the reported block count has gone without
+// changing, and expires once that exceeds the timeout. The caller supplies
+// the current time, which keeps tests deterministic.
+type idleTimer struct {
+	timeout        time.Duration
+	lastReported   uint64
+	lastReportedAt time.Time
+}
+
+// newIdleTimer returns a timer whose idle clock starts at now. If blocks
+// are reported before the first check, that check sees a changed count and
+// restarts the clock.
+func newIdleTimer(timeout time.Duration, now time.Time) *idleTimer {
+	return &idleTimer{
+		timeout:        timeout,
+		lastReportedAt: now,
+	}
+}
+
+// check records the report count seen at now. A changed count restarts the
+// timer. It returns how long the count has been unchanged and whether that
+// exceeds the timeout.
+func (t *idleTimer) check(reported uint64, now time.Time) (idleFor time.Duration, expired bool) {
+	if reported != t.lastReported {
+		t.lastReported = reported
+		t.lastReportedAt = now
+		return 0, false
+	}
+	idleFor = now.Sub(t.lastReportedAt)
+	return idleFor, idleFor > t.timeout
+}
+
+// listNvmeIOPathsFn lists the NVMe I/O paths of every bdev on the local SPDK
+// target in one RPC. It is a variable so tests can replace it.
+var listNvmeIOPathsFn = func(spdkClient *spdkclient.Client) ([]spdktypes.BdevNvmePollGroupIoPaths, error) {
+	return spdkClient.BdevNvmeGetIoPaths("")
+}
+
+// findReplicaWithoutUsableIOPath returns the first replica, in name order,
+// that has no usable I/O path on some reactor, and a description of the
+// unusable paths. It returns empty strings when every replica is healthy.
+// All replicas are evaluated from one SPDK query, so a query error means no
+// replica could be checked.
+func (e *Engine) findReplicaWithoutUsableIOPath(spdkClient *spdkclient.Client) (string, string, error) {
+	type replicaBdev struct {
+		replicaName string
+		bdevName    string
+	}
+
+	e.RLock()
+	candidates := make([]replicaBdev, 0, len(e.backends))
+	for replicaName, backend := range e.backends {
+		if backend.Mode() == types.ModeERR || backend.BdevName() == "" {
+			continue
+		}
+		candidates = append(candidates, replicaBdev{replicaName: replicaName, bdevName: backend.BdevName()})
+	}
+	e.RUnlock()
+
+	// Name order makes the result stable when more than one replica is broken.
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].replicaName < candidates[j].replicaName })
+
+	if len(candidates) == 0 {
+		return "", "", nil
+	}
+
+	pollGroups, err := listNvmeIOPathsFn(spdkClient)
+	if err != nil {
+		return "", "", errors.Wrap(err, "failed to query NVMe I/O paths")
+	}
+	for _, candidate := range candidates {
+		usable, detail := nvmeEveryPollGroupHasUsableIOPath(nvmeIOPathsOfBdev(pollGroups, candidate.bdevName))
+		if !usable {
+			e.log.Warnf("Replica %s bdev %s has a reactor without a usable I/O path: %s", candidate.replicaName, candidate.bdevName, detail)
+			return candidate.replicaName, detail, nil
+		}
+	}
+	return "", "", nil
+}
+
+// recordBrokenReplicaAsRestoreErrorSource records the first replica without a
+// usable I/O path as the restore error source, so the manager fails only that
+// replica. This is best effort: the broken path may not be the cause of the
+// failure. When no broken replica is found, or the I/O path query fails, the
+// error stays at the engine level.
+func (e *Engine) recordBrokenReplicaAsRestoreErrorSource(spdkClient *spdkclient.Client) {
+	replicaName, _, queryErr := e.findReplicaWithoutUsableIOPath(spdkClient)
+	if queryErr != nil {
+		e.log.WithError(queryErr).Warn("Cannot check replica I/O paths, so no replica is recorded as the restore error source")
+	}
+	e.restore.RecordErrorSource(replicaName)
+}
+
+// restorePreflightRetryInterval and restorePreflightTimeout control how often
+// and for how long the restore preflight re-checks a broken replica I/O path
+// before giving up. The timeout must exceed replicaCtrlrLossTimeoutSec,
+// because SPDK can still reconnect the controller within that time. They are
+// package-level variables so tests can adjust them.
+var (
+	restorePreflightRetryInterval = 5 * time.Second
+	restorePreflightTimeout       = 2 * replicaCtrlrLossTimeoutSec * time.Second
+)
+
+// preflightReplicaIOPathsForRestore verifies that every replica has a usable
+// NVMe I/O path before a restore starts. A broken path is re-checked until
+// the preflight timeout, so a transient reconnect does not fail the restore.
+// On failure it returns the name of the broken replica so the caller can
+// record it as the restore error source.
+//
+// If the SPDK query keeps failing until the timeout, the restore does not
+// start and the returned name is empty.
+//
+// It sleeps between re-checks. Do not call it with the engine lock held.
+func (e *Engine) preflightReplicaIOPathsForRestore(spdkClient *spdkclient.Client) (string, error) {
+	deadline := time.Now().Add(restorePreflightTimeout)
+	for {
+		replicaName, detail, queryErr := e.findReplicaWithoutUsableIOPath(spdkClient)
+		if replicaName == "" && queryErr == nil {
+			return "", nil
+		}
+
+		var reason error
+		if replicaName != "" {
+			reason = fmt.Errorf("replica %s has no usable NVMe I/O path (%s)", replicaName, detail)
+		} else {
+			reason = errors.Wrap(queryErr, "cannot verify the replica NVMe I/O paths")
+		}
+		if time.Now().After(deadline) {
+			return replicaName, errors.Wrapf(reason, "restore preflight failed after re-checking for %v", restorePreflightTimeout)
+		}
+		e.log.WithError(reason).Warnf("Restore preflight check did not pass, re-checking in %v; giving up in %v", restorePreflightRetryInterval, time.Until(deadline).Truncate(time.Second))
+		time.Sleep(restorePreflightRetryInterval)
+	}
+}
+
+// waitForRestoreComplete blocks until the restore completes, fails, is
+// canceled, or exceeds the idle timeout. On failure or timeout, it records a
+// replica with a broken I/O path, if any, as the error source.
+func (e *Engine) waitForRestoreComplete(spdkClient *spdkclient.Client) error {
+	idleTimeout := restoreIdleTimeout
+
 	e.log.WithFields(logrus.Fields{
 		"interval":     restorePeriodicRefreshInterval.String(),
+		"idleTimeout":  idleTimeout.String(),
 		"snapshotName": e.RestoringSnapshotName,
 	}).Info("Waiting for restore to complete")
 
-	err := retrygo.Do(
+	timer := newIdleTimer(idleTimeout, time.Now())
+
+	return retrygo.New(
+		retrygo.Delay(restorePeriodicRefreshInterval),
+		retrygo.MaxDelay(restorePeriodicRefreshInterval),
+		retrygo.DelayType(retrygo.FixedDelay),
+		retrygo.Attempts(0), // retry until success, error, cancellation, or the idle timeout expires
+	).Do(
 		func() error {
 			e.restore.RLock()
 			restoreProgress := e.restore.Progress
+			restoreReports := e.restore.statusReports
 			restoreError := e.restore.Error
 			restoreState := e.restore.State
 			e.restore.RUnlock()
 
 			if restoreState == btypes.ProgressStateCanceled {
 				return retrygo.Unrecoverable(fmt.Errorf("%v", btypes.ErrorMsgRestoreCancelled))
+			}
+			if restoreError != "" {
+				err := fmt.Errorf("%v", restoreError)
+				e.log.WithError(err).Error("Found backup restoration error")
+				// A replica I/O path that breaks mid-restore surfaces as a
+				// write error from backupstore, not as an idle restore.
+				e.recordBrokenReplicaAsRestoreErrorSource(spdkClient)
+				return retrygo.Unrecoverable(err)
 			}
 			if restoreProgress == 100 {
 				e.log.Infof("Backup restore is done: %v%%", restoreProgress)
@@ -2509,25 +3094,16 @@ func (e *Engine) waitForRestoreComplete() error {
 				"snapshotName": e.RestoringSnapshotName,
 			}).Debug("Restore is still in progress")
 
-			if restoreError != "" {
-				err := fmt.Errorf("%v", restoreError)
-				e.log.WithError(err).Error("Found backup restoration error")
+			if idleFor, expired := timer.check(restoreReports, time.Now()); expired {
+				err := fmt.Errorf("restore idle: no block completed for %v at %v%%, timeout %v", idleFor.Truncate(time.Second), restoreProgress, idleTimeout)
+				e.log.WithError(err).Error("Aborting idle restore")
+				e.recordBrokenReplicaAsRestoreErrorSource(spdkClient)
 				return retrygo.Unrecoverable(err)
 			}
 
 			return fmt.Errorf("restore is still in progress")
 		},
-		retrygo.Delay(restorePeriodicRefreshInterval),
-		retrygo.MaxDelay(restorePeriodicRefreshInterval),
-		retrygo.DelayType(retrygo.FixedDelay),
-		retrygo.Attempts(0), // retry forever until success or unrecoverable error
 	)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (e *Engine) RestoreStatus() (*spdkrpc.RestoreStatusResponse, error) {
@@ -2537,6 +3113,11 @@ func (e *Engine) RestoreStatus() (*spdkrpc.RestoreStatusResponse, error) {
 
 	e.RLock()
 	defer e.RUnlock()
+
+	// Otherwise an engine failure would be reported as a restore error on every replica.
+	if e.State == types.InstanceStateError {
+		return nil, fmt.Errorf("cannot get restore status for engine %v in state %v: %v", e.Name, e.State, e.ErrorMsg)
+	}
 
 	if e.restore == nil {
 		for replicaName, replicaStatus := range e.backends {
@@ -2556,16 +3137,42 @@ func (e *Engine) RestoreStatus() (*spdkrpc.RestoreStatusResponse, error) {
 	lastRestored := e.restore.LastRestored
 	currentRestoringBackup := e.restore.CurrentRestoringBackup
 	backupURL := e.restore.BackupURL
+	errorSourceReplicaName := e.restore.ErrorSourceReplicaName
 	e.restore.RUnlock()
 
+	// The restore error is reported in exactly one place. If the replica that
+	// caused the error is still a member of this engine, the error appears
+	// only on that replica's entry, and the control plane fails only that
+	// replica. In every other case the error is engine-level and is reported
+	// through EngineError. Copying the error to every replica's entry would
+	// fail healthy replicas for a problem they did not cause.
+	if _, sourceIsMember := e.backends[errorSourceReplicaName]; !sourceIsMember {
+		errorSourceReplicaName = ""
+	}
+	// An error without a source replica is not final while the restore is
+	// still running: a backupstore worker publishes its error first, and the
+	// restore watcher needs up to one poll interval to inspect the replica
+	// I/O paths and record the source. Reporting the error in that window
+	// would make the control plane treat a replica failure as an engine
+	// failure. Hold the error back until the restore has ended; the next
+	// status poll then reports it, attributed or not.
+	engineErrorIsFinal := !e.IsRestoring
+	if restoreError != "" && errorSourceReplicaName == "" && engineErrorIsFinal {
+		resp.EngineError = restoreError
+	}
+
 	for replicaName, replicaStatus := range e.backends {
+		replicaError := ""
+		if replicaName == errorSourceReplicaName {
+			replicaError = restoreError
+		}
 		resp.Status[replicaStatus.Address()] = &spdkrpc.ReplicaRestoreStatusResponse{
 			ReplicaName:            replicaName,
 			ReplicaAddress:         GetBackendReplicaURL(replicaStatus.Address()),
 			IsRestoring:            e.IsRestoring,
 			LastRestored:           lastRestored,
 			Progress:               int32(restoreProgress),
-			Error:                  restoreError,
+			Error:                  replicaError,
 			State:                  string(restoreState),
 			BackupUrl:              backupURL,
 			CurrentRestoringBackup: currentRestoringBackup,
@@ -2664,8 +3271,7 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64) (err error) 
 
 	switch e.Frontend {
 	case types.FrontendSPDKTCPBlockdev, types.FrontendSPDKTCPNvmf:
-		cntlid := getEngineCntlid(e.Name)
-		nsUUID := getStableVolumeNsUUID(e.VolumeName)
+		cntlid := getTargetCntlid(e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port)
 		// Preserve the current ANA state across the expand. If this engine
 		// was demoted to inaccessible during a switchover, re-exposing with
 		// optimized would create a dual-write window.
@@ -2677,11 +3283,7 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64) (err error) 
 		if err != nil {
 			return errors.Wrapf(err, "invalid ANA state %q for engine target %v during expand", currentANAState, e.Name)
 		}
-		e.log.Infof("Starting to expose RAID bdev for engine target %v on %v:%v with ANA state %v, cntlid %v, nsUUID %v",
-			e.Name, e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port, currentANAState, cntlid, nsUUID)
-		if err := spdkClient.StartExposeBdevWithANAState(e.NvmeTcpTarget.Nqn, e.Name, e.NvmeTcpTarget.Nguid, nsUUID,
-			e.NvmeTcpTarget.IP, strconv.Itoa(int(e.NvmeTcpTarget.Port)),
-			spdkANAState, cntlid, cntlid); err != nil {
+		if err := e.startExposeNVMeTCPTarget(spdkClient, currentANAState, spdkANAState, cntlid); err != nil {
 			return errors.Wrapf(err, "failed to start exposing RAID bdev for engine target %v", e.Name)
 		}
 	case types.FrontendEmpty:
@@ -3022,6 +3624,10 @@ func (e *Engine) ExpandPrecheck(spdkClient *spdkclient.Client, size uint64) (req
 		return false, fmt.Errorf("%w", ErrRestoringInProgress)
 	}
 
+	if e.isCloning {
+		return false, fmt.Errorf("engine %s linked-clone is in progress", e.Name)
+	}
+
 	defer func() {
 		if err != nil {
 			e.log.WithError(err).Error("Engine precheck expansion failed")
@@ -3130,6 +3736,11 @@ func (e *Engine) shouldSkipValidateAndUpdateNoLock() bool {
 
 	if e.isExpanding {
 		e.log.Debug("Engine is expanding, will skip the validation and update")
+		return true
+	}
+
+	if e.isCloning {
+		e.log.Debug("Engine is cloning, will skip the validation and update")
 		return true
 	}
 
@@ -3392,7 +4003,7 @@ func (e *Engine) resolveReplicaAncestor(replicaName string, view *BackendView,
 			return nil, false, false, false
 		}
 		for _, snapApiLvol := range view.Snapshots {
-			if snapApiLvol.Parent == "" {
+			if snapApiLvol.Parent == "" || view.Snapshots[snapApiLvol.Parent] == nil {
 				return snapApiLvol, false, true, true
 			}
 		}

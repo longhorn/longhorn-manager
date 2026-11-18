@@ -14,21 +14,28 @@ type SnapshotOptions struct {
 }
 
 type Replica struct {
-	Name             string           `json:"name"`
-	LvsName          string           `json:"lvs_name"`
-	LvsUUID          string           `json:"lvs_uuid"`
-	SpecSize         uint64           `json:"spec_size"`
-	ActualSize       uint64           `json:"actual_size"`
-	Head             *Lvol            `json:"head"`
-	Snapshots        map[string]*Lvol `json:"snapshots"`
-	IP               string           `json:"ip"`
-	PortStart        int32            `json:"port_start"`
-	PortEnd          int32            `json:"port_end"`
-	State            string           `json:"state"`
-	ErrorMsg         string           `json:"error_msg"`
-	Rebuilding       bool             `json:"rebuilding"`
-	BackingImageName string           `json:"backing_image_name"`
-	UUID             string           `json:"uuid"`
+	Name               string           `json:"name"`
+	LvsName            string           `json:"lvs_name"`
+	LvsUUID            string           `json:"lvs_uuid"`
+	SpecSize           uint64           `json:"spec_size"`
+	ActualSize         uint64           `json:"actual_size"`
+	Head               *Lvol            `json:"head"`
+	Snapshots          map[string]*Lvol `json:"snapshots"`
+	IP                 string           `json:"ip"`
+	PortStart          int32            `json:"port_start"`
+	PortEnd            int32            `json:"port_end"`
+	State              string           `json:"state"`
+	ErrorMsg           string           `json:"error_msg"`
+	Rebuilding         bool             `json:"rebuilding"`
+	BackingImageName   string           `json:"backing_image_name"`
+	UUID               string           `json:"uuid"`
+	LinkedCloneInfo    *LinkedCloneInfo `json:"linked_clone_info,omitempty"`
+	CloneSnapshotUsage map[string]int32 `json:"clone_snapshot_usage,omitempty"`
+}
+
+type LinkedCloneInfo struct {
+	SourceReplicaName  string `json:"source_replica_name"`
+	SourceSnapshotName string `json:"source_snapshot_name"`
 }
 
 type Lvol struct {
@@ -109,6 +116,14 @@ func ProtoReplicaToReplica(r *spdkrpc.Replica) *Replica {
 		res.BackingImageName = r.BackingImageName
 	}
 
+	if r.LinkedCloneInfo != nil {
+		res.LinkedCloneInfo = &LinkedCloneInfo{
+			SourceReplicaName:  r.LinkedCloneInfo.SourceReplicaName,
+			SourceSnapshotName: r.LinkedCloneInfo.SourceSnapshotName,
+		}
+	}
+	res.CloneSnapshotUsage = r.CloneSnapshotUsage
+
 	return res
 }
 
@@ -138,6 +153,14 @@ func ReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 	if r.BackingImageName != "" {
 		res.BackingImageName = r.BackingImageName
 	}
+
+	if r.LinkedCloneInfo != nil {
+		res.LinkedCloneInfo = &spdkrpc.LinkedCloneInfo{
+			SourceReplicaName:  r.LinkedCloneInfo.SourceReplicaName,
+			SourceSnapshotName: r.LinkedCloneInfo.SourceSnapshotName,
+		}
+	}
+	res.CloneSnapshotUsage = r.CloneSnapshotUsage
 	return res
 }
 

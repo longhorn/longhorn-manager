@@ -3,9 +3,12 @@ package snapshot
 import (
 	"fmt"
 	"reflect"
+	"sort"
+	"strings"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -35,6 +38,7 @@ func (o *snapshotValidator) Resource() admission.Resource {
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
 			admissionregv1.Update,
+			admissionregv1.Delete,
 		},
 	}
 }
@@ -53,10 +57,9 @@ func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Ob
 		return werror.NewInvalidError("spec.volume is required", "spec.volume")
 	}
 
-	if isLinkedClone, err := o.ds.IsVolumeLinkedCloneVolume(snapshot.Spec.Volume); err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("failed to check IsVolumeLinkedCloneVolume: %v", err), "")
-	} else if isLinkedClone {
-		return werror.NewInvalidError(fmt.Sprintf("snapshot is not allowed for linked-clone volume %v", snapshot.Spec.Volume), "")
+	vol, err := o.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err == nil && types.IsLegacyLinkedCloneVolume(vol) {
+		return werror.NewInvalidError("cannot create snapshots for legacy linked-clone volumes", "spec.volume")
 	}
 
 	return nil
@@ -82,6 +85,36 @@ func (o *snapshotValidator) Update(request *admission.Request, oldObj runtime.Ob
 
 	if _, ok := oldSnapshot.Labels[types.LonghornLabelVolume]; ok && newSnapshot.Labels[types.LonghornLabelVolume] != oldSnapshot.Labels[types.LonghornLabelVolume] {
 		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", types.LonghornLabelVolume), "metadata.labels")
+	}
+
+	// The label routes member snapshot events to the owning group and marks
+	// membership; adding, changing, or removing it would detach the snapshot
+	// from its group without the group ever seeing an event for it.
+	snapshotGroupLabelKey := types.GetLonghornLabelKey(types.LonghornLabelSnapshotGroup)
+	if oldSnapshot.Labels[snapshotGroupLabelKey] != newSnapshot.Labels[snapshotGroupLabelKey] {
+		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", snapshotGroupLabelKey), "metadata.labels")
+	}
+
+	return nil
+}
+
+func (o *snapshotValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
+	snapshot, ok := oldObj.(*longhorn.Snapshot)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", oldObj), "")
+	}
+
+	isEntrypoint, cloneNames, err := o.ds.IsSnapshotLinkedCloneEntrypoint(snapshot.Name)
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf(
+			"failed to check if snapshot %v is a linked-clone entrypoint: %v",
+			snapshot.Name, err))
+	}
+	if isEntrypoint {
+		sort.Strings(cloneNames)
+		return werror.NewForbiddenError(fmt.Sprintf(
+			"cannot delete snapshot %v: it is the entrypoint for linked-clone volume(s): %v",
+			snapshot.Name, strings.Join(cloneNames, ", ")))
 	}
 
 	return nil

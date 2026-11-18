@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"regexp"
 	"strconv"
@@ -28,10 +29,12 @@ const (
 	DiskTypeFilesystem = "filesystem"
 	DiskTypeBlock      = "block"
 
-	ReplicaRebuildingLvolSuffix  = "rebuilding"
-	ReplicaExpiredLvolSuffix     = "expired"
-	ReplicaCloningLvolSuffix     = "cloning"
-	RebuildingSnapshotNamePrefix = "rebuild"
+	ReplicaRebuildingLvolSuffix         = "rebuilding"
+	ReplicaExpiredLvolSuffix            = "expired"
+	ReplicaCloningLvolSuffix            = "cloning"
+	RebuildingSnapshotNamePrefix        = "rebuild"
+	ReplicaCloneEntrypointLvolInfix     = "clone-ep"
+	ReplicaCloneEntrypointTmpHeadSuffix = "tmp-head"
 
 	SyncTimeout = 60 * time.Minute
 
@@ -71,6 +74,33 @@ const (
 )
 
 var (
+	cloneEntrypointLvolSeparator = "-" + ReplicaCloneEntrypointLvolInfix + "-"
+
+	// reservedNameTokens are substrings that must not appear in user-supplied
+	// replica or snapshot names. Their presence would cause the classification
+	// helpers (IsCloneEntrypointLvol, IsCloneEntrypointTmpHeadLvol, etc.) and
+	// extraction helpers (GetSourceReplicaNameFromCloneEntrypointLvolName, etc.)
+	// to misidentify ordinary lvols as internal objects.
+	reservedNameTokens = []string{cloneEntrypointLvolSeparator}
+	reservedNameSuffix = "-" + ReplicaCloneEntrypointTmpHeadSuffix
+)
+
+// ValidateReplicaOrSnapshotName checks that a user-supplied replica or snapshot
+// name does not contain reserved tokens that would confuse the internal lvol
+// classification and extraction helpers.
+func ValidateReplicaOrSnapshotName(name string) error {
+	for _, token := range reservedNameTokens {
+		if strings.Contains(name, token) {
+			return fmt.Errorf("name %q contains reserved token %q which is used internally for clone entrypoint management", name, token)
+		}
+	}
+	if strings.HasSuffix(name, reservedNameSuffix) {
+		return fmt.Errorf("name %q ends with reserved suffix %q which is used internally for clone entrypoint temporary heads", name, reservedNameSuffix)
+	}
+	return nil
+}
+
+var (
 	// ErrEngineFrontendCreateInvalidArgument indicates the create request carries
 	// invalid input, such as an unparsable target address.
 	ErrEngineFrontendCreateInvalidArgument = errors.New("engine frontend create invalid argument")
@@ -104,6 +134,9 @@ var (
 	ErrSwitchOverTargetEngineNotFound = errors.New("cannot find target engine for switchover")
 	// ErrSwitchOverTargetInternal indicates switchover execution failed due to runtime/internal reasons.
 	ErrSwitchOverTargetInternal = errors.New("failed to switch over target")
+	// ErrSwitchOverRestartRequired indicates a failed phase rolled back the switchover,
+	// so the caller must restart it from preparing instead of retrying the phase.
+	ErrSwitchOverRestartRequired = errors.New("switchover restart required")
 )
 
 var (
@@ -166,11 +199,20 @@ func ServiceLvolToProtoLvol(replicaName string, lvol *Lvol) *spdkrpc.Lvol {
 	if lvol == nil {
 		return nil
 	}
+	// Clear the parent field when it references a clone entrypoint or backing
+	// image lvol that is not part of this replica's snapshot chain.
+	parent := lvol.Parent
+	if parent != "" && !IsReplicaSnapshotLvol(replicaName, parent) {
+		parent = ""
+	} else {
+		parent = GetSnapshotNameFromReplicaSnapshotLvolName(replicaName, parent)
+	}
+
 	res := &spdkrpc.Lvol{
 		Uuid:              lvol.UUID,
 		SpecSize:          lvol.SpecSize,
 		ActualSize:        lvol.ActualSize,
-		Parent:            GetSnapshotNameFromReplicaSnapshotLvolName(replicaName, lvol.Parent),
+		Parent:            parent,
 		Children:          map[string]bool{},
 		CreationTime:      lvol.CreationTime,
 		UserCreated:       lvol.UserCreated,
@@ -312,6 +354,66 @@ func GetTmpSnapNameForCloningLvol(replicaName string) string {
 	return fmt.Sprintf("%s-%s-tmp", replicaName, ReplicaCloningLvolSuffix)
 }
 
+func GetCloneEntrypointLvolNamePrefix(replicaName string) string {
+	return fmt.Sprintf("%s-%s-", replicaName, ReplicaCloneEntrypointLvolInfix)
+}
+
+func GetCloneEntrypointLvolName(replicaName, snapshotName string) string {
+	return fmt.Sprintf("%s%s", GetCloneEntrypointLvolNamePrefix(replicaName), snapshotName)
+}
+
+func GetCloneEntrypointTmpHeadLvolName(replicaName, snapshotName string) string {
+	return fmt.Sprintf("%s-%s", GetCloneEntrypointLvolName(replicaName, snapshotName), ReplicaCloneEntrypointTmpHeadSuffix)
+}
+
+func IsCloneEntrypointLvol(lvolName string) bool {
+	return strings.Contains(lvolName, cloneEntrypointLvolSeparator) && !IsCloneEntrypointTmpHeadLvol(lvolName)
+}
+
+func IsCloneEntrypointOfReplica(replicaName, lvolName string) bool {
+	return strings.HasPrefix(lvolName, GetCloneEntrypointLvolNamePrefix(replicaName)) &&
+		!IsCloneEntrypointTmpHeadLvol(lvolName)
+}
+
+func IsCloneEntrypointTmpHeadLvol(lvolName string) bool {
+	return strings.Contains(lvolName, cloneEntrypointLvolSeparator) && strings.HasSuffix(lvolName, ReplicaCloneEntrypointTmpHeadSuffix)
+}
+
+func GetSnapshotNameFromCloneEntrypointLvolName(replicaName, epLvolName string) string {
+	return strings.TrimPrefix(epLvolName, GetCloneEntrypointLvolNamePrefix(replicaName))
+}
+
+func GetSnapshotNameFromCloneEntrypointLvolNameWithoutReplicaName(epLvolName string) (string, error) {
+	sepIdx := strings.Index(epLvolName, cloneEntrypointLvolSeparator)
+	if sepIdx < 0 {
+		return "", fmt.Errorf("invalid clone entrypoint name %q: missing %q separator", epLvolName, cloneEntrypointLvolSeparator)
+	}
+	snapshotName := epLvolName[sepIdx+len(cloneEntrypointLvolSeparator):]
+	if snapshotName == "" {
+		return "", fmt.Errorf("invalid clone entrypoint name %q: no content after %q separator", epLvolName, cloneEntrypointLvolSeparator)
+	}
+	return snapshotName, nil
+}
+
+func GetSourceReplicaNameFromCloneEntrypointLvolName(epLvolName string) string {
+	idx := strings.Index(epLvolName, cloneEntrypointLvolSeparator)
+	if idx < 0 {
+		return ""
+	}
+	return epLvolName[:idx]
+}
+
+// GetCloneReplicaNameFromEntrypointChildLvol extracts the clone replica name
+// from a direct child of a clone entrypoint. The child may be the clone
+// replica head (name == replicaName) or a snapshot taken after cloning
+// (name == replicaName-snap-xxx).
+func GetCloneReplicaNameFromEntrypointChildLvol(childLvolName string) string {
+	if idx := strings.Index(childLvolName, "-snap-"); idx > 0 {
+		return childLvolName[:idx]
+	}
+	return childLvolName
+}
+
 func GetNvmfEndpoint(nqn, ip string, port int32) string {
 	return fmt.Sprintf("nvmf://%s:%d/%s", ip, port, nqn)
 }
@@ -436,17 +538,19 @@ func generateNsUUID(name string) string {
 	return nsUUID.String() // standard UUID format: 8-4-4-4-12
 }
 
-// getEngineCntlid derives a unique NVMe controller ID from the engine name.
-// Engine names have the format "{volumeName}-e-{ordinal}", where ordinal is
-// 0, 1, 2, etc. The CNTLID must be unique per subsystem NQN to avoid
-// "Duplicate cntlid" errors when the host connects to multiple SPDK targets
-// sharing the same NQN for NVMe multipath.
-func getEngineCntlid(engineName string) uint16 {
-	parts := strings.Split(engineName, "-")
-	if len(parts) > 0 {
-		if ordinal, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
-			return uint16(ordinal + 1) // CNTLID must be >= 1
-		}
-	}
-	return 1 // fallback
+// maxValidCntlid is the largest controller ID the NVMe spec allows to be assigned.
+const maxValidCntlid = 0xFFEF
+
+// getTargetCntlid derives an NVMe controller ID from the target address.
+//
+// The ID only has to be unique among the controllers a host currently holds for the
+// subsystem NQN. Deriving it from the address rather than the engine name keeps a
+// re-created engine from reusing the ID of its own stale controller, which a host that
+// could not tear that controller down (e.g. after a network outage) rejects with
+// "Duplicate cntlid". It stays stable while the address does, so re-exposing the same
+// target during an expansion keeps the existing controller session.
+func getTargetCntlid(ip string, port int32) uint16 {
+	h := fnv.New32a()
+	_, _ = fmt.Fprintf(h, "%s:%d", ip, port)
+	return uint16(h.Sum32()%maxValidCntlid) + 1
 }

@@ -15,7 +15,7 @@ import (
 
 // EngineFrontendCreate creates and starts an engine frontend for an existing engine.
 func (c *SPDKClient) EngineFrontendCreate(name, volumeName, engineName, frontend string, specSize uint64, targetAddress string,
-	ublkQueueDepth, ublkNumberOfQueue int32) (*api.EngineFrontend, error) {
+	ublkQueueDepth, ublkNumberOfQueue, nvmeTcpNrIoQueues int32) (*api.EngineFrontend, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to start engine frontend: missing required parameter name")
 	}
@@ -44,6 +44,7 @@ func (c *SPDKClient) EngineFrontendCreate(name, volumeName, engineName, frontend
 		Frontend:          frontend,
 		UblkQueueDepth:    ublkQueueDepth,
 		UblkNumberOfQueue: ublkNumberOfQueue,
+		NvmeTcpNrIoQueues: nvmeTcpNrIoQueues,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start engine frontend")
@@ -146,6 +147,16 @@ func (c *SPDKClient) EngineFrontendSwitchOver(name, newEngineName, newTargetAddr
 
 // EngineFrontendSuspend suspends I/O on an engine frontend.
 func (c *SPDKClient) EngineFrontendSuspend(name string) error {
+	return c.EngineFrontendSuspendWithOptions(name, false, false)
+}
+
+// EngineFrontendSuspendWithOptions suspends I/O on an engine frontend. By default the
+// suspension also syncs and freezes the mounted filesystem, which can take longer than the
+// dmsetup timeout under heavy writes. noFlush and noLockFS correspond to
+// `dmsetup suspend --noflush` and `--nolockfs`: for the linear dm device, either of them
+// skips the filesystem sync and freeze, while the kernel still waits for the I/O that is
+// already in flight to complete.
+func (c *SPDKClient) EngineFrontendSuspendWithOptions(name string, noFlush, noLockFS bool) error {
 	if name == "" {
 		return fmt.Errorf("failed to suspend engine frontend: missing required parameter")
 	}
@@ -155,7 +166,9 @@ func (c *SPDKClient) EngineFrontendSuspend(name string) error {
 	defer cancel()
 
 	_, err := client.EngineFrontendSuspend(ctx, &spdkrpc.EngineFrontendSuspendRequest{
-		Name: name,
+		Name:     name,
+		NoFlush:  noFlush,
+		NoLockFs: noLockFS,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "failed to suspend engine frontend %v", name)
@@ -278,12 +291,17 @@ func (c *SPDKClient) EngineFrontendSnapshotPurge(name string) error {
 
 // EngineFrontendReplicaAdd adds a replica through the engine frontend path.
 // The EngineReplicaAdd path is for internal orchestration; external callers should use EngineFrontendReplicaAdd.
-func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool) error {
+func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, replicaAddress string, fastSync bool, linkedCloneSource *spdkrpc.LinkedCloneSource) error {
 	if engineFrontendName == "" {
 		return fmt.Errorf("failed to add replica for engine frontend: missing required parameter engineFrontendName")
 	}
 	if replicaName == "" || replicaAddress == "" {
 		return fmt.Errorf("failed to add replica for engine frontend: missing required parameter replicaName or replicaAddress")
+	}
+	if linkedCloneSource != nil {
+		if linkedCloneSource.ReplicaName == "" || linkedCloneSource.EngineName == "" || linkedCloneSource.EngineAddress == "" {
+			return fmt.Errorf("failed to add replica for engine frontend: linked clone source info is incomplete")
+		}
 	}
 
 	client := c.getSPDKServiceClient()
@@ -295,6 +313,7 @@ func (c *SPDKClient) EngineFrontendReplicaAdd(engineFrontendName, replicaName, r
 		ReplicaName:        replicaName,
 		ReplicaAddress:     replicaAddress,
 		FastSync:           fastSync,
+		LinkedCloneSource:  linkedCloneSource,
 	})
 	return errors.Wrapf(err, "failed to add replica %s with address %s by engine frontend %s", replicaName, replicaAddress, engineFrontendName)
 }

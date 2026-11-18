@@ -72,6 +72,14 @@ func (c *FakeLonghornV1beta2) InstanceManagers(namespace string) v1beta2.Instanc
 	return newFakeInstanceManagers(c, namespace)
 }
 
+func (c *FakeLonghornV1beta2) InstanceManagerUpgrades(namespace string) v1beta2.InstanceManagerUpgradeInterface {
+	return newFakeInstanceManagerUpgrades(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) InstanceManagerUpgradeControls(namespace string) v1beta2.InstanceManagerUpgradeControlInterface {
+	return newFakeInstanceManagerUpgradeControls(c, namespace)
+}
+
 func (c *FakeLonghornV1beta2) Nodes(namespace string) v1beta2.NodeInterface {
 	return newFakeNodes(c, namespace)
 }
@@ -106,6 +114,10 @@ func (c *FakeLonghornV1beta2) ShareManagers(namespace string) v1beta2.ShareManag
 
 func (c *FakeLonghornV1beta2) Snapshots(namespace string) v1beta2.SnapshotInterface {
 	return newFakeSnapshots(c, namespace)
+}
+
+func (c *FakeLonghornV1beta2) SnapshotGroups(namespace string) v1beta2.SnapshotGroupInterface {
+	return newFakeSnapshotGroups(c, namespace)
 }
 
 func (c *FakeLonghornV1beta2) SupportBundles(namespace string) v1beta2.SupportBundleInterface {

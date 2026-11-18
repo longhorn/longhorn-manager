@@ -230,7 +230,7 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 
 func newFakeSupportBundleController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	informerFactories *util.InformerFactories, controllerID string) (*SupportBundleController, error) {
-	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)

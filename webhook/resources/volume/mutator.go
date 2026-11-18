@@ -201,6 +201,57 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			}
 		}
 
+		// A backup of a linked-clone volume only holds the data that clone wrote
+		// itself; the rest was inherited from the source snapshot and never uploaded.
+		// The restored volume therefore has to become a linked clone of the same
+		// source to be whole. Carrying the source over also lets the replica
+		// scheduler co-locate the restored replicas with the source replicas, which
+		// the data plane requires in order to relink them.
+		if bv != nil && (bv.Status.LinkedCloneSourceVolume != "" || bv.Status.LinkedCloneSourceSnapshot != "") && volume.Spec.DataSource == "" {
+			if bv.Status.LinkedCloneSourceVolume == "" || bv.Status.LinkedCloneSourceSnapshot == "" {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: backup %v is a linked clone but its source volume %s or snapshot %s is missing",
+					name, volume.Spec.FromBackup, bv.Status.LinkedCloneSourceVolume, bv.Status.LinkedCloneSourceSnapshot), "spec.fromBackup")
+			}
+			srcVolumeName, srcSnapshotName := bv.Status.LinkedCloneSourceVolume, bv.Status.LinkedCloneSourceSnapshot
+
+			// The backup cannot produce a complete volume on its own, so refuse the
+			// restore up front when the source it needs is gone. Failing here gives a
+			// reason the user can act on, instead of a restore that dies in the data
+			// plane once the replicas are already scheduled.
+			srcVolume, err := v.ds.GetVolumeRO(srcVolumeName)
+			if err != nil {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: backup %v is a linked clone of volume %v, which is not available: %v",
+					name, volume.Spec.FromBackup, srcVolumeName, err), "spec.fromBackup")
+			}
+			if srcVolume.Spec.DataEngine != volume.Spec.DataEngine {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v with data engine %v: its linked-clone source volume %v uses data engine %v",
+					name, volume.Spec.DataEngine, srcVolumeName, srcVolume.Spec.DataEngine), "spec.dataEngine")
+			}
+			srcSnapshot, err := v.ds.GetSnapshotRO(srcSnapshotName)
+			if err != nil {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: backup %v is a linked clone of snapshot %v of volume %v, which is not available: %v",
+					name, volume.Spec.FromBackup, srcSnapshotName, srcVolumeName, err), "spec.fromBackup")
+			}
+			if srcSnapshot.Spec.Volume != srcVolumeName {
+				return nil, werror.NewInvalidError(fmt.Sprintf(
+					"cannot restore volume %v: snapshot %v belongs to volume %v, not to the linked-clone source volume %v",
+					name, srcSnapshotName, srcSnapshot.Spec.Volume, srcVolumeName), "spec.fromBackup")
+			}
+
+			dataSource := types.NewVolumeDataSourceTypeSnapshot(srcVolumeName, srcSnapshotName)
+			volume.Spec.DataSource = dataSource
+			volume.Spec.CloneMode = longhorn.CloneModeLinkedClone
+			patchOps = append(patchOps,
+				fmt.Sprintf(`{"op": "replace", "path": "/spec/dataSource", "value": "%s"}`, dataSource),
+				fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeLinkedClone))
+			logrus.Infof("Volume %v is restored from a linked-clone backup of volume %v snapshot %v, setting its data source to %v",
+				name, srcVolumeName, srcSnapshotName, dataSource)
+		}
+
 		// Volumes restored from backup should not have the label LonghornLabelV2EncryptedVolumeWithLuksHeader set to "true" because they are not extended.
 		if volume.Spec.Encrypted && types.IsDataEngineV2(volume.Spec.DataEngine) {
 			if backup == nil || backup.Status.Labels == nil {
@@ -230,6 +281,26 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	moreLabels[types.LonghornLabelBackupTarget] = backupTargetName
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
+
+	// For linked-clone volumes, fill spec.size from the source when the user leaves it
+	// unset. The validator rejects explicit sizes that do not match.
+	if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone && volume.Spec.DataSource != "" && size == 0 {
+		// A restored volume's size comes from the backup, which was already applied
+		// above. Reaching here means the backup reported no size, and the source is not
+		// a substitute: the clone may have been expanded after it was created and
+		// before it was backed up.
+		if volume.Spec.FromBackup != "" {
+			return nil, werror.NewInvalidError(fmt.Sprintf(
+				"cannot determine the size of volume %v restored from backup %v: the backup reports no volume size yet",
+				name, volume.Spec.FromBackup), ".spec.fromBackup")
+		}
+
+		srcSize, srcErr := linkedCloneSourceSize(v.ds, volume.Spec.DataSource)
+		if srcErr != nil {
+			return nil, srcErr
+		}
+		size = srcSize
+	}
 
 	// Round up the size to the unit in bytes
 	newSize := util.RoundUpSize(size)
@@ -284,11 +355,25 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if volume.Spec.CloneMode == longhorn.CloneModeNone {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeFullCopy))
 		}
+		// Stamp clone source volume label for all clone types (full-copy and linked-clone).
+		if types.IsDataFromVolume(volume.Spec.DataSource) {
+			if srcVolName := types.GetVolumeName(volume.Spec.DataSource); srcVolName != "" {
+				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelCloneSourceVolume)] = srcVolName
+			}
+		}
+		if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			// Stamp source labels so the deletion webhook can protect the entrypoint
+			// snapshot. For vol:// datasources the snapshot is auto-created later
+			// and its label is stamped by the volume controller.
+			if snapName := types.GetSnapshotName(volume.Spec.DataSource); snapName != "" {
+				moreLabels[types.GetLonghornLabelKey(types.LonghornLabelLinkedCloneSourceSnapshot)] = snapName
+			}
+		}
 	}
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(nil, newObj, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -351,7 +436,7 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(oldObj, newObj, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -361,8 +446,13 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 // mutate contains functionality shared by Create and Update.
 // Unlike mutate for other resources, this mutate takes a moreLabels map, as Create may want to add some.
-func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
+// oldVolume is the existing volume on Update and nil on Create.
+func (v *volumeMutator) mutate(oldObj, newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
 	volume := newObj.(*longhorn.Volume)
+	var oldVolume *longhorn.Volume
+	if oldObj != nil {
+		oldVolume = oldObj.(*longhorn.Volume)
+	}
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(volume)
@@ -400,7 +490,16 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
 	}
-	if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
+	// A volume pinned to a single zone by its topology requirement must keep
+	// replicaZoneSoftAntiAffinity enabled: zone anti-affinity can never be
+	// satisfied within one zone (see the volume validator). "ignored" would
+	// couple the volume to the mutable global setting, so record enabled on
+	// the volume instead; an explicit disabled is left for the validator to
+	// reject rather than being silently overwritten.
+	if types.IsTopologyZonePinned(volume.Spec.TopologyRequirement) &&
+		(volume.Spec.ReplicaZoneSoftAntiAffinity == "" || volume.Spec.ReplicaZoneSoftAntiAffinity == longhorn.ReplicaZoneSoftAntiAffinityDefault) {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityEnabled))
+	} else if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
 	}
 	if string(volume.Spec.ReplicaDiskSoftAntiAffinity) == "" {
@@ -417,8 +516,12 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 	}
 
 	var backupBlockSize = volume.Spec.BackupBlockSize
-	if volume.Spec.Standby {
-		// The backup block size of a DR volume is always copied from the latest backup
+	// The backup block size of a DR volume is copied from its source backup only when the volume is created.
+	// A valid backup block size cannot be changed later (see the validator),
+	// so an update must not depend on the source backup, which can be deleted before the DR volume is activated.
+	// Otherwise every update of the volume is rejected, including removing its finalizer on deletion.
+	// On update, only an unset backup block size is mutated, to the default one.
+	if volume.Spec.Standby && oldVolume == nil {
 		bName, _, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("failed to get backup name from backup URL %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
@@ -428,6 +531,7 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 			return nil, werror.NewInvalidError(fmt.Sprintf("failed to inspect the backup config %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
 		}
 		backupBlockSize = backup.Spec.BackupBlockSize
+		// Check the backup block size for backups created before Longhorn introduced backup block size.
 		if backupBlockSize == 0 {
 			// fall back to legacy default 2 MiB
 			backupBlockSize = types.BackupBlockSize2Mi

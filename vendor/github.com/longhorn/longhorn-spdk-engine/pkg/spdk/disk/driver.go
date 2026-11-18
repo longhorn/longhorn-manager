@@ -2,8 +2,11 @@ package disk
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/sirupsen/logrus"
 
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
@@ -60,7 +63,12 @@ func DiskGet(spdkClient *spdkclient.Client, diskName, diskPath, diskDriver strin
 				continue
 			}
 			if bdev.DriverSpecific.Nvme == nil {
-				if diskName == bdev.Name {
+				match, err := IsVirtioScsiBdevOfDisk(bdev.Name, diskName)
+				if err != nil {
+					logrus.WithError(err).Warnf("Failed to check if bdev %v belongs to disk %v", bdev.Name, diskName)
+					continue
+				}
+				if match {
 					foundBdevs = append(foundBdevs, bdev)
 				}
 			} else {
@@ -81,4 +89,25 @@ func DiskGet(spdkClient *spdkclient.Client, diskName, diskPath, diskDriver strin
 	}
 
 	return driver.DiskGet(spdkClient, diskName, diskPath, timeout)
+}
+
+// IsVirtioScsiBdevOfDisk reports whether bdevName belongs to the virtio-scsi
+// controller named diskName. SPDK names such bdevs "<diskName>t<target>",
+// where <target> is a decimal SCSI target number (uint8).
+func IsVirtioScsiBdevOfDisk(bdevName, diskName string) (bool, error) {
+	if bdevName == diskName {
+		return true, nil
+	}
+	suffix, ok := strings.CutPrefix(bdevName, diskName+"t")
+	if !ok || suffix == "" {
+		return false, nil
+	}
+	n, err := strconv.Atoi(suffix) // entire remainder must be decimal
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to parse virtio-scsi target from bdev name %v", bdevName)
+	}
+	if n < 0 || n > 255 {
+		return false, nil
+	}
+	return true, nil
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
@@ -37,6 +38,10 @@ const (
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
 )
+
+func logCSIRequest(log *logrus.Entry, function string, req any) {
+	log.Infof("%s is called with req %+v", function, protosanitizer.StripSecrets(req))
+}
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
 func NewForcedParamsExec(cmdParamMapping map[string]string) utilexec.Interface {
@@ -161,8 +166,11 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
 		nor, err := strconv.Atoi(numberOfReplicas)
-		if err != nil || nor < 0 {
+		if err != nil {
 			return nil, errors.Wrap(err, "invalid parameter numberOfReplicas")
+		}
+		if nor < 0 {
+			return nil, fmt.Errorf("invalid parameter numberOfReplicas %v: must not be negative", numberOfReplicas)
 		}
 		vol.NumberOfReplicas = int64(nor)
 	}
@@ -181,6 +189,14 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 			return nil, errors.Wrap(err, "invalid parameter ublkQueueDepth")
 		}
 		vol.UblkQueueDepth = int64(depth)
+	}
+
+	if nvmeTcpNrIoQueues, ok := volOptions["nvmeTcpNrIoQueues"]; ok {
+		nrIoQueues, err := strconv.Atoi(nvmeTcpNrIoQueues)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter nvmeTcpNrIoQueues")
+		}
+		vol.NvmeTcpNrIoQueues = int64(nrIoQueues)
 	}
 
 	if replicaAutoBalance, ok := volOptions["replicaAutoBalance"]; ok {
@@ -283,11 +299,11 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.DataEngine = driver
 	}
 
-	layoutType, hasLayoutType := volOptions["dataLayout.type"]
-	layoutMode, hasLayoutMode := volOptions["dataLayout.mode"]
-	dataChunksRaw, hasDataChunks := volOptions["dataLayout.dataChunks"]
-	parityChunksRaw, hasParityChunks := volOptions["dataLayout.parityChunks"]
-	stripSizeKBRaw, hasStripSizeKB := volOptions["dataLayout.stripSizeKB"]
+	layoutType, hasLayoutType := volOptions[longhorn.DataLayoutParameterType]
+	layoutMode, hasLayoutMode := volOptions[longhorn.DataLayoutParameterMode]
+	dataChunksRaw, hasDataChunks := volOptions[longhorn.DataLayoutParameterDataChunks]
+	parityChunksRaw, hasParityChunks := volOptions[longhorn.DataLayoutParameterParityChunks]
+	stripSizeKBRaw, hasStripSizeKB := volOptions[longhorn.DataLayoutParameterStripSizeKB]
 
 	if hasLayoutType || hasLayoutMode || hasDataChunks || hasParityChunks || hasStripSizeKB {
 		vol.DataLayout = &longhornclient.VolumeDataLayout{}
@@ -300,21 +316,21 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		if hasDataChunks {
 			dataChunks, err := strconv.Atoi(dataChunksRaw)
 			if err != nil {
-				return nil, errors.Wrap(err, "invalid parameter dataLayout.dataChunks")
+				return nil, errors.Wrapf(err, "invalid parameter %s", longhorn.DataLayoutParameterDataChunks)
 			}
 			vol.DataLayout.DataChunks = int64(dataChunks)
 		}
 		if hasParityChunks {
 			parityChunks, err := strconv.Atoi(parityChunksRaw)
 			if err != nil {
-				return nil, errors.Wrap(err, "invalid parameter dataLayout.parityChunks")
+				return nil, errors.Wrapf(err, "invalid parameter %s", longhorn.DataLayoutParameterParityChunks)
 			}
 			vol.DataLayout.ParityChunks = int64(parityChunks)
 		}
 		if hasStripSizeKB {
 			stripSizeKB, err := strconv.Atoi(stripSizeKBRaw)
 			if err != nil {
-				return nil, errors.Wrap(err, "invalid parameter dataLayout.stripSizeKB")
+				return nil, errors.Wrapf(err, "invalid parameter %s", longhorn.DataLayoutParameterStripSizeKB)
 			}
 			vol.DataLayout.StripSizeKB = int64(stripSizeKB)
 		}

@@ -350,6 +350,7 @@ func (sc *SnapshotController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	sc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(sc.worker, time.Second, stopCh)
 	}
@@ -367,7 +368,7 @@ func (sc *SnapshotController) processNextWorkItem() bool {
 		return false
 	}
 	defer sc.queue.Done(key)
-	err := sc.syncHandler(key.(string))
+	err := sc.syncWithMetrics(func() error { return sc.syncHandler(key.(string)) })
 	sc.handleErr(err, key)
 	return true
 }
@@ -454,7 +455,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
-		if isEngineUpgrading(engine) {
+		if isV1EngineUpgrading(engine) {
 			// requeue the snapshot to wait for upgrading engine after 3 seconds
 			snapshot.Status.Error = fmt.Sprintf("snapshot deletion delayed: volume engine %v is upgrading from image %v to %v", engine.Name, engine.Status.CurrentImage, engine.Spec.Image)
 			sc.enqueueSnapshotAfter(snapshot, 3*time.Second)
@@ -570,7 +571,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return nil
 		}
 
-		if isEngineUpgrading(engine) {
+		if isV1EngineUpgrading(engine) {
 			// requeue the snapshot to wait for upgrading engine after 3 seconds
 			snapshot.Status.Error = fmt.Sprintf("snapshot creation delayed: volume engine %v is upgrading from image %v to %v", engine.Name, engine.Status.CurrentImage, engine.Spec.Image)
 			sc.enqueueSnapshotAfter(snapshot, 3*time.Second)

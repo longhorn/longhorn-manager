@@ -18,6 +18,8 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/enginefrontend"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
+	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanagerupgrade"
+	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanagerupgradecontrol"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
@@ -27,6 +29,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/shardgroup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/sharemanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
+	"github.com/longhorn/longhorn-manager/webhook/resources/snapshotgroup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/supportbundle"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
@@ -53,11 +56,14 @@ func Mutation(ds *datastore.DataStore) (http.Handler, []admission.Resource, erro
 		backuptarget.NewMutator(ds),
 		backupvolume.NewMutator(ds),
 		snapshot.NewMutator(ds),
+		snapshotgroup.NewMutator(ds),
 		replica.NewMutator(ds),
 		supportbundle.NewMutator(ds),
 		systembackup.NewMutator(ds),
 		volumeattachment.NewMutator(ds),
 		instancemanager.NewMutator(ds),
+		instancemanagerupgrade.NewMutator(ds),
+		instancemanagerupgradecontrol.NewMutator(ds),
 		backupbackingimage.NewMutator(ds),
 		setting.NewMutator(ds),
 	}

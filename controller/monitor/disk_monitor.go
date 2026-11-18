@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,11 +15,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
+	"github.com/longhorn/go-common-libs/multierr"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
 
-	"github.com/longhorn/go-common-libs/multierr"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -35,6 +36,8 @@ const (
 	HealthDataUpdateInterval = 10 * time.Minute
 
 	volumeMetaData = "volume.meta"
+
+	diskMessageMaxLength = 1024
 )
 
 type DiskServiceClient struct {
@@ -72,6 +75,9 @@ type CollectedDiskInfo struct {
 	InstanceManagerName       string
 	HealthData                map[string]longhorn.HealthData
 	HealthDataLastCollectedAt time.Time
+	// HealthDataCondition is the result of the latest health data collection. It is
+	// nil when no collection has been attempted.
+	HealthDataCondition *longhorn.Condition
 }
 
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
@@ -256,10 +262,18 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		nodeOrDiskEvicted := isNodeOrDiskEvicted(node, disk)
 
 		diskDriver := longhorn.DiskDriverNone
+		recordedDiskUUID := ""
 		if node.Status.DiskStatus != nil {
-			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
+			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok && diskStatus != nil {
 				diskDriver = diskStatus.DiskDriver
+				recordedDiskUUID = diskStatus.DiskUUID
 			}
+		}
+		// The recorded driver wins over the spec so that a re-creation reuses the
+		// driver that was already resolved for this disk.
+		requestedDiskDriver := disk.DiskDriver
+		if diskDriver != longhorn.DiskDriverNone {
+			requestedDiskDriver = diskDriver
 		}
 
 		instanceManagerName := ""
@@ -286,7 +300,7 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			instanceManagerName = diskServiceClient.c.GetInstanceManagerName()
 		}
 
-		diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+		diskInfoMap[diskName] = NewDiskInfo(diskName, recordedDiskUUID, disk.Path, requestedDiskDriver, nodeOrDiskEvicted, nil,
 			orphanedReplicaDataStores, instanceManagerName, errReason, errs.Error())
 
 		diskConfig, err := m.getDiskConfigHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
@@ -294,21 +308,20 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			if !types.ErrorIsNotFound(err) {
 				errs.Append("errors", errors.Wrap(err, "failed to get disk config"))
 
-				diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+				diskInfoMap[diskName] = NewDiskInfo(diskName, recordedDiskUUID, disk.Path, requestedDiskDriver, nodeOrDiskEvicted, nil,
 					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 				continue
 			}
 
-			diskUUID := ""
-			diskDriver := disk.DiskDriver
-			if node.Status.DiskStatus != nil {
-				if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
-					diskUUID = diskStatus.DiskUUID
-					if diskStatus.DiskDriver != "" {
-						diskDriver = diskStatus.DiskDriver
-					}
-				}
+			// A filesystem-type disk with a recorded UUID already has a disk config, so a missing one means the
+			// data path is not mounted yet or the disk was replaced. Generating a config here would write it to
+			// whatever is behind the path, such as the root filesystem, under a new UUID.
+			if disk.Type == longhorn.DiskTypeFilesystem && recordedDiskUUID != "" {
+				diskInfoMap[diskName] = NewDiskInfo(diskName, recordedDiskUUID, disk.Path, requestedDiskDriver, nodeOrDiskEvicted, nil,
+					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonDiskFilesystemChanged),
+					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to find the disk config file while disk UUID %v is recorded", diskName, disk.Path, node.Name, recordedDiskUUID))
+				continue
 			}
 
 			// Filesystem-type disk
@@ -316,21 +329,45 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			//   The handling of all disks containing the same fsid will be done in NodeController.
 			// Block-type disk
 			//   Create a bdev lvstore
-			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), diskServiceClient, m.ds)
+			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, recordedDiskUUID, disk.Path, string(requestedDiskDriver), diskServiceClient, m.ds)
 			if err != nil {
 				errs.Append("errors", errors.Wrap(err, "failed to generate disk config"))
 
-				diskInfoMap[diskName] = NewDiskInfo(diskName, diskUUID, disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+				diskInfoMap[diskName] = NewDiskInfo(diskName, recordedDiskUUID, disk.Path, requestedDiskDriver, nodeOrDiskEvicted, nil,
 					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 				continue
 			}
+		} else if disk.Type == longhorn.DiskTypeBlock && diskConfig.State == string(spdkdisk.DiskStateError) {
+			// The disk service keeps a failed disk in the error state until it is asked
+			// to create it again, so retry here instead of waiting for an instance
+			// manager restart.
+			m.logger.Warnf("Retrying the creation of disk %v(%v) on node %v after a previous failure: %v",
+				diskName, disk.Path, node.Name, diskConfig.Message)
+
+			previousMessage := diskConfig.Message
+
+			retriedDiskConfig, retryErr := m.generateDiskConfigHandler(disk.Type, diskName, recordedDiskUUID, disk.Path, string(requestedDiskDriver), diskServiceClient, m.ds)
+			if retryErr != nil {
+				errs.Append("errors", errors.Wrap(retryErr, "failed to retry disk creation"))
+			} else {
+				diskConfig = retriedDiskConfig
+				// A retried disk restarts from the creating state with no message, so keep
+				// reporting the previous failure until the retry reaches a conclusion.
+				if diskConfig.Message == "" {
+					diskConfig.Message = previousMessage
+				}
+			}
 		}
 
 		if diskConfig.State != string(spdkdisk.DiskStateReady) {
-			errs.Append("errors", fmt.Errorf("disk is not in ready state, current state: %v", diskConfig.State))
+			if diskConfig.Message != "" {
+				errs.Append("errors", fmt.Errorf("disk is not in ready state, current state: %v, message: %v", diskConfig.State, truncateDiskMessage(diskConfig.Message)))
+			} else {
+				errs.Append("errors", fmt.Errorf("disk is not in ready state, current state: %v", diskConfig.State))
+			}
 
-			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+			diskInfoMap[diskName] = NewDiskInfo(diskName, recordedDiskUUID, disk.Path, requestedDiskDriver, nodeOrDiskEvicted, nil,
 				orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 				fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 			continue
@@ -340,7 +377,7 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		if err != nil {
 			errs.Append("errors", errors.Wrap(err, "failed to get disk stat"))
 
-			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+			diskInfoMap[diskName] = NewDiskInfo(diskName, recordedDiskUUID, disk.Path, requestedDiskDriver, nodeOrDiskEvicted, nil,
 				orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 				fmt.Sprintf("Disk %v(%v) on node %v is not ready: %v", diskName, disk.Path, node.Name, errs.Error()))
 			continue
@@ -361,20 +398,52 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		diskInfoMap[diskName] = NewDiskInfo(diskConfig.DiskName, diskConfig.DiskUUID, disk.Path, diskConfig.DiskDriver, nodeOrDiskEvicted, stat,
 			orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo), "")
 
+		previousHealthDataCondition := types.GetCondition(nil, longhorn.DiskConditionTypeHealthDataCollected)
 		if node.Status.DiskStatus != nil {
-			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
+			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok && diskStatus != nil {
 				// Preserve existing health data to avoid losing it between collection intervals
 				diskInfoMap[diskName].HealthData = diskStatus.HealthData
 				diskInfoMap[diskName].HealthDataLastCollectedAt = diskStatus.HealthDataLastCollectedAt.Time
+				previousHealthDataCondition = types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeHealthDataCollected)
+				if monitorDiskHealth && previousHealthDataCondition.Status != longhorn.ConditionStatusUnknown {
+					// Timestamps are maintained by the controller, not collection results.
+					previousHealthDataCondition.LastProbeTime = ""
+					previousHealthDataCondition.LastTransitionTime = ""
+					diskInfoMap[diskName].HealthDataCondition = &previousHealthDataCondition
+				}
 			}
 		}
 
 		if monitorDiskHealth {
-			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
+			lastCollectedAt := diskInfoMap[diskName].HealthDataLastCollectedAt
+			healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, lastCollectedAt, diskServiceClient, m.logger)
 			if err != nil {
-				m.logger.WithError(err).Debugf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
-			} else if healthData != nil {
-				diskInfoMap[diskName].HealthData = healthData
+				// Only warn on the first failure. The failure is recorded in the disk
+				// condition, so the subsequent ones would just flood the log.
+				log := m.logger.WithError(err)
+				if previousHealthDataCondition.Status == longhorn.ConditionStatusFalse {
+					log.Debugf("Failed to get disk health for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+				} else {
+					log.Warnf("Failed to get disk health for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+				}
+				diskInfoMap[diskName].HealthDataCondition = &longhorn.Condition{
+					Type:    longhorn.DiskConditionTypeHealthDataCollected,
+					Status:  longhorn.ConditionStatusFalse,
+					Reason:  longhorn.DiskConditionReasonHealthDataCollectionFailed,
+					Message: fmt.Sprintf("Failed to collect health data for disk %v(%v) on node %v: %v", diskName, disk.Path, node.Name, truncateDiskMessage(err.Error())),
+				}
+			} else {
+				if healthData != nil {
+					diskInfoMap[diskName].HealthData = healthData
+				}
+				// The handler returns the last collection time when the collection is skipped.
+				if !collectedAt.Equal(lastCollectedAt) {
+					diskInfoMap[diskName].HealthDataCondition = &longhorn.Condition{
+						Type:    longhorn.DiskConditionTypeHealthDataCollected,
+						Status:  longhorn.ConditionStatusTrue,
+						Message: fmt.Sprintf("Health data for disk %v(%v) on node %v is collected", diskName, disk.Path, node.Name),
+					}
+				}
 			}
 
 			diskInfoMap[diskName].HealthDataLastCollectedAt = collectedAt
@@ -386,6 +455,17 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 func isNodeOrDiskEvicted(node *longhorn.Node, disk longhorn.DiskSpec) bool {
 	return node.Spec.EvictionRequested || disk.EvictionRequested
+}
+
+// truncateDiskMessage bounds a message reported by the disk service, since it
+// ends up in the node CR and may embed arbitrary command output.
+func truncateDiskMessage(message string) string {
+	if len(message) <= diskMessageMaxLength {
+		return message
+	}
+	// Cutting on a byte boundary can split a rune and produce invalid UTF-8,
+	// which the API server rejects.
+	return strings.ToValidUTF8(message[:diskMessageMaxLength], "") + "..."
 }
 
 func getReplicaDataStores(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (map[string]string, error) {

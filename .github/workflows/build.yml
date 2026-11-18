@@ -20,7 +20,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - id: build_info
       name: Declare build info
@@ -68,19 +68,19 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/heads/') || startsWith(github.ref, 'refs/tags/') }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Login to Docker Hub
-      uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+      uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
     # For multi-platform support
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+      uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
     # longhornio/longhorn-manager image
     - name: Build and publish image

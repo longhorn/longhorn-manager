@@ -21,6 +21,7 @@ import (
 
 	btypes "github.com/longhorn/backupstore/types"
 	butil "github.com/longhorn/backupstore/util"
+	commonlonghorn "github.com/longhorn/go-common-libs/longhorn"
 
 	"github.com/longhorn/longhorn-spdk-engine/pkg/api"
 	"github.com/longhorn/longhorn-spdk-engine/pkg/types"
@@ -38,6 +39,9 @@ func (s *Server) ReplicaCreate(ctx context.Context, req *spdkrpc.ReplicaCreateRe
 	}
 	if req.LvsName == "" && req.LvsUuid == "" {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "either lvstore name or UUID is required")
+	}
+	if err := ValidateReplicaOrSnapshotName(req.Name); err != nil {
+		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid replica name: %v", err)
 	}
 
 	r, err := s.newReplica(req)
@@ -184,6 +188,9 @@ func (s *Server) ReplicaSnapshotCreate(ctx context.Context, req *spdkrpc.Snapsho
 	}
 	if req.SnapshotName == "" {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "snapshot name is required")
+	}
+	if err := ValidateReplicaOrSnapshotName(req.SnapshotName); err != nil {
+		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid snapshot name: %v", err)
 	}
 
 	s.RLock()
@@ -332,7 +339,6 @@ func (s *Server) ReplicaSnapshotCloneDstStart(ctx context.Context, req *spdkrpc.
 		util.Param{Name: "name", Value: req.Name},
 		util.Param{Name: "snapshotName", Value: req.SnapshotName},
 		util.Param{Name: "srcReplicaName", Value: req.SrcReplicaName},
-		util.Param{Name: "srcReplicaAddress", Value: req.SrcReplicaAddress},
 	); err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "%v", err)
 	}
@@ -601,7 +607,14 @@ func (s *Server) ReplicaRebuildingDstStart(ctx context.Context, req *spdkrpc.Rep
 	for _, snapshot := range req.RebuildingSnapshotList {
 		rebuildingSnapshotList = append(rebuildingSnapshotList, api.ProtoLvolToLvol(snapshot))
 	}
-	address, err := r.RebuildingDstStart(spdkClient, req.SrcReplicaName, req.SrcReplicaAddress, req.ExternalSnapshotName, req.ExternalSnapshotAddress, rebuildingSnapshotList)
+	var linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, linkedCloneSrcSnapshotName string
+	if req.LinkedCloneSource != nil {
+		linkedCloneSrcReplicaName = req.LinkedCloneSource.ReplicaName
+		linkedCloneSrcEngineName = req.LinkedCloneSource.EngineName
+		linkedCloneSrcEngineAddress = req.LinkedCloneSource.EngineAddress
+		linkedCloneSrcSnapshotName = req.LinkedCloneSource.SnapshotName
+	}
+	address, err := r.RebuildingDstStart(spdkClient, req.SrcReplicaName, req.SrcReplicaAddress, req.ExternalSnapshotName, req.ExternalSnapshotAddress, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, rebuildingSnapshotList, linkedCloneSrcSnapshotName)
 	if err != nil {
 		return nil, err
 	}
@@ -748,6 +761,14 @@ func (s *Server) ReplicaBackupCreate(ctx context.Context, req *spdkrpc.BackupCre
 		}
 	}
 
+	// The v2 (SPDK) BackupCreateRequest has no dedicated field for backup
+	// parameters such as forcing a full backup, so callers (e.g. longhorn-manager)
+	// smuggle them through the existing Labels field under a reserved
+	// DNS-qualified prefix (see pkg/types). Extract them here so they drive
+	// backupstore's isFullBackup() decision, and remove them from labelMap so
+	// the reserved entries are not persisted as user-visible backup labels.
+	parameters := types.ExtractBackupParametersFromLabels(labelMap)
+
 	s.Lock()
 	defer s.Unlock()
 
@@ -758,6 +779,35 @@ func (s *Server) ReplicaBackupCreate(ctx context.Context, req *spdkrpc.BackupCre
 	replica, ok := s.replicaMap[req.ReplicaName]
 	if !ok {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound, "cannot find replica %v for volume %v backup creation", req.ReplicaName, req.VolumeName)
+	}
+
+	// Whether a backup is a linked-clone delta is decided by the replica that
+	// produces it, not by the volume's clone mode: a clone replica that lost its
+	// entrypoint is rebuilt as a normal replica (see Engine.replicaAddStart), and
+	// its backup is self-contained.  Everything needed to describe the source is
+	// already on the replica, so nothing has to be passed in: the clone entrypoint
+	// records the source snapshot and the source replica, and the volume prefix of
+	// that replica name identifies the source volume.
+	linkedCloneSourceVolume, linkedCloneSourceSnapshot := "", ""
+	if cloneInfo := replica.Get().GetLinkedCloneInfo(); cloneInfo != nil {
+		srcReplicaName := cloneInfo.GetSourceReplicaName()
+		linkedCloneSourceSnapshot = cloneInfo.GetSourceSnapshotName()
+
+		linkedCloneSourceVolume, err = commonlonghorn.GetVolumeNameFromReplicaCRName(srcReplicaName)
+		// A linked-clone backup only holds the data the clone wrote itself, so it
+		// is restorable only by re-establishing the link to the source.  Refuse to
+		// produce one that cannot say where that source is; it would silently
+		// restore to incomplete data.
+		if err != nil {
+			return nil, grpcstatus.Errorf(grpccodes.Internal,
+				"failed to get the linked-clone source volume of replica %v for backup %v: %v",
+				req.ReplicaName, backupName, err)
+		}
+		if linkedCloneSourceSnapshot == "" {
+			return nil, grpcstatus.Errorf(grpccodes.Internal,
+				"replica %v is a linked clone of source replica %v but reports no source snapshot for backup %v",
+				req.ReplicaName, srcReplicaName, backupName)
+		}
 	}
 
 	var backup *Backup
@@ -784,14 +834,18 @@ func (s *Server) ReplicaBackupCreate(ctx context.Context, req *spdkrpc.BackupCre
 			StorageClassName:     req.StorageClassName,
 			CreatedTime:          util.Now(),
 			DataEngine:           string(backupstore.DataEngineV2),
+
+			LinkedCloneSourceVolume:   linkedCloneSourceVolume,
+			LinkedCloneSourceSnapshot: linkedCloneSourceSnapshot,
 		},
 		Snapshot: &backupstore.Snapshot{
 			Name:        req.SnapshotName,
 			CreatedTime: util.Now(),
 		},
-		DestURL:  req.BackupTarget,
-		DeltaOps: backup,
-		Labels:   labelMap,
+		DestURL:    req.BackupTarget,
+		DeltaOps:   backup,
+		Labels:     labelMap,
+		Parameters: parameters,
 	}
 
 	s.trackBackupLocked(backupName, backup)
@@ -897,6 +951,9 @@ func (s *Server) pruneRetainedBackupsLocked() {
 	}
 }
 
+// Deprecated: unused. The backup restore workflow was moved from the replica to the
+// engine level by commit fe318421, so the live path is EngineBackupRestore. The
+// replica-side restore below is kept only so the rpc still has an implementation.
 func (s *Server) ReplicaBackupRestore(ctx context.Context, req *spdkrpc.ReplicaBackupRestoreRequest) (ret *emptypb.Empty, err error) {
 	s.RLock()
 	replica := s.replicaMap[req.ReplicaName]

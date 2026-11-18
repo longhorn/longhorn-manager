@@ -31,6 +31,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/backupstore"
+
 	lhtypes "github.com/longhorn/go-common-libs/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
@@ -63,8 +65,22 @@ var (
 
 	purgeWaitIntervalInSecond = 24 * 60 * 60
 
-	// restoreMaxInterval: deleting the backup of big size volume takes a long time for retain policy and restoring backups would be in backoff period.
-	restoreMaxInterval = 1 * time.Hour
+	// restoreMaxInterval caps the backoff between restore retries. Most
+	// failures retry until the restore succeeds, for example while a backup
+	// deletion holds the backup lock or a backup target is unreachable, so
+	// this cap bounds how long a restore waits to resume after the cause
+	// clears. Keep it short: a rejected restore call also grows this backoff,
+	// and those rejections are often brief.
+	//
+	// Exception: an engine-level error on a non-DR v2 restore stops retrying
+	// after restoreErrorRetryBudget, before the backoff reaches this cap.
+	restoreMaxInterval = 10 * time.Minute
+
+	// restoreErrorRetryBudget is how long a v2 restore retries engine-level
+	// errors before the monitor gives up. On giving up, the error is written
+	// into the per-replica restore statuses and the volume controller faults
+	// the volume.
+	restoreErrorRetryBudget = 5 * time.Minute
 
 	// amount of time between actual size updates that do not exceed threshold during periods with stable writes
 	sizeUpdateLimit = 30 * time.Second
@@ -99,6 +115,9 @@ type EngineController struct {
 	engineMonitorMutex *sync.RWMutex
 	engineMonitorMap   map[string]chan struct{}
 
+	rebuildingEngines      map[string]bool // key: <engineName>
+	rebuildingEnginesMutex *sync.RWMutex
+
 	proxyConnCounter util.Counter
 
 	restoringCounter      util.Counter
@@ -131,6 +150,18 @@ type EngineMonitor struct {
 	restoringCounter         util.Counter
 	restoringCounterAcquired bool
 	restoringCounterMutex    *sync.Mutex
+
+	// restoreFirstErrorAt is when the first engine-level restore error was
+	// observed. It is kept across retries, including retries that start
+	// cleanly, and cleared only when a restore completes. The retry budget
+	// (restoreErrorRetryBudget) is measured from this time.
+	restoreFirstErrorAt time.Time
+	// restoreAbandoned is set when the errors have lasted longer than
+	// restoreErrorRetryBudget. The monitor then stops retrying the restore.
+	restoreAbandoned bool
+	// restoreAbandonedMsg is the error that caused the restore to be
+	// abandoned. It is kept in the per-replica restore statuses on every poll.
+	restoreAbandonedMsg string
 
 	sizeUpdateLimiter *rate.Limiter
 
@@ -168,6 +199,9 @@ func NewEngineController(
 		engines:            engines,
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   map[string]chan struct{}{},
+
+		rebuildingEnginesMutex: &sync.RWMutex{},
+		rebuildingEngines:      map[string]bool{},
 
 		proxyConnCounter:      proxyConnCounter,
 		restoringCounter:      util.NewAtomicCounter(),
@@ -210,6 +244,7 @@ func (ec *EngineController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	ec.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(ec.worker, time.Second, stopCh)
 	}
@@ -230,7 +265,7 @@ func (ec *EngineController) processNextWorkItem() bool {
 	}
 	defer ec.queue.Done(key)
 
-	err := ec.syncEngine(key.(string))
+	err := ec.syncWithMetrics(func() error { return ec.syncEngine(key.(string)) })
 	ec.handleErr(err, key)
 
 	return true
@@ -1001,7 +1036,7 @@ func (m *EngineMonitor) sync() bool {
 		}
 
 		// engine is upgrading
-		if engine.Status.CurrentImage != engine.Spec.Image || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
+		if isV1EngineUpgrading(engine) || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			return false
 		}
 
@@ -1324,10 +1359,23 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.LastExpansionFailedAt = ""
 	}
 
-	rsMap, err := engineClientProxy.BackupRestoreStatus(engine)
+	restoreStatusInfo, err := engineClientProxy.BackupRestoreStatus(engine)
 	if err != nil {
 		return err
 	}
+	rsMap := restoreStatusInfo.ReplicaStatuses
+
+	if m.restoreAbandoned {
+		// The monitor abandoned this restore. Keep the error in the
+		// per-replica restore statuses on every poll so the volume controller
+		// can fault the volume even when the engine reports an empty status.
+		rsMap = fillRestoreStatusErrors(rsMap, engine.Status.CurrentReplicaAddressMap, m.restoreAbandonedMsg)
+	}
+
+	// restoreStarted is true when the engine accepted a restore request in this
+	// poll. The deferred block uses it to keep the restoring counter slot
+	// acquired for that restore.
+	restoreStarted := false
 
 	defer func() {
 		if err != nil {
@@ -1336,11 +1384,31 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 
 		engine.Status.RestoreStatus = rsMap
+		engine.Status.EngineRestoreError = restoreStatusInfo.EngineError
 
 		removeInvalidEngineOpStatus(engine)
 
 		isBackupRestoreCompleted := existingEngine.Status.LastRestoredBackup != engine.Status.LastRestoredBackup
-		if isBackupRestoreCompleted || isBackupRestoreFailed(engine.Status.RestoreStatus) {
+		if isBackupRestoreCompleted {
+			// The backoff window only exists to space out restarts after a
+			// failure. Once a restore completes, the next restore (for example a
+			// DR volume's next incremental) must not wait for it.
+			m.restoreBackoff.DeleteEntry(engine.Name)
+			// A completed restore clears the error tracking and abandoned state.
+			m.restoreFirstErrorAt = time.Time{}
+			m.restoreAbandoned = false
+			m.restoreAbandonedMsg = ""
+		}
+
+		// Release the counter slot when the restore completed or failed.
+		//
+		// Skip the release when a restore just started: the error still in
+		// engine.Status belongs to the previous attempt, not the new one.
+		//
+		// Releasing on failure lets other volumes restore while this one
+		// waits in the backoff window; the retry re-acquires the slot.
+		// Releasing an unheld slot is a no-op.
+		if isBackupRestoreCompleted || (isBackupRestoreFailed(&engine.Status) && !restoreStarted) {
 			if err := m.acquireRestoringCounter(false); err != nil {
 				m.logger.WithError(err).Warn("Engine Monitor: Failed to unacquire restoring counter")
 			}
@@ -1363,17 +1431,29 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
-	if needRestore {
+	// Do not ask the engine to restore again after abandoning the restore.
+	if needRestore && !m.restoreAbandoned {
 		if m.restoreBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
 			m.logger.Debug("Cannot restore the backup for engine since it is still in the backoff window")
 			return nil
 		}
 
-		volume, err := m.ds.GetVolumeRO(engine.Spec.VolumeName)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get volume %v for restoring counter", engine.Spec.VolumeName)
-		}
 		isDRVolume := volume.Status.IsStandby
+
+		// Check the retry budget for the previous attempt's engine-level error
+		// before starting a new attempt. Abandoning after the new attempt
+		// starts would write errors into its restore statuses and fault the
+		// volume even if that attempt succeeds.
+		if restoreStatusInfo.EngineError != "" {
+			var abandon bool
+			abandon, m.restoreFirstErrorAt = shouldAbandonRestore(isDRVolume, m.restoreFirstErrorAt, time.Now())
+			if abandon {
+				m.abandonRestore(volume, engine, restoreStatusInfo.EngineError)
+				rsMap = fillRestoreStatusErrors(rsMap, engine.Status.CurrentReplicaAddressMap, m.restoreAbandonedMsg)
+				return nil
+			}
+		}
+
 		if !isDRVolume {
 			err := m.acquireRestoringCounter(true)
 			if err != nil {
@@ -1383,41 +1463,106 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 
-		if err = m.restoreBackup(volume, engine, rsMap, cliAPIVersion, engineClientProxy); err != nil {
-			m.restoreBackoff.DeleteEntry(engine.Name)
+		// restoreErr is deliberately separate from err: this rejection is handled
+		// here and must not reach the deferred block, which skips the status update
+		// on error.
+		var restoreErr error
+		restoreStarted, restoreErr = m.restoreBackup(volume, engine, rsMap, cliAPIVersion, engineClientProxy)
+		if restoreErr != nil {
+			// The restore did not start. No replica recorded the reason, so nothing in
+			// rsMap stops the next poll from asking again. Grow the backoff window so a
+			// persistent rejection (for example a failed v2 I/O path preflight, or an
+			// unreachable backup target) is not retried on every poll. If the restore
+			// later starts while an engine-level error is still recorded, the branch
+			// below grows the window a second time.
+			//
+			// The retry budget is not checked here: a call error does not identify
+			// whether the engine, a replica, or the transport failed. Failures that
+			// must be bounded surface as EngineError in the engine's status report
+			// and are checked before the next attempt.
+			m.restoreBackoff.Next(engine.Name, time.Now())
 			if err := m.acquireRestoringCounter(false); err != nil {
 				m.logger.WithError(err).Warn("Failed to unacquire restoring counter")
 			}
-			return err
-		}
-	}
 
-	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if !isECVolume(volume) && (types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive) {
-		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
-			return err
-		}
-	}
-
-	engine.Status.CloneStatus = snapshotCloneStatusMap
-
-	needClone, err := preCloneCheck(engine)
-	if err != nil {
-		return err
-	}
-	if needClone {
-		allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
-		if err != nil {
-			return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
-		}
-
-		if !allowSnapshotClone {
-			m.logger.Debugf("Delaying snapshot clone since snapshot purge is in progress beyond the concurrent limit")
+			m.logger.WithError(restoreErr).
+				WithField("backup", engine.Spec.RequestedBackupRestore).
+				WithField("backoffWindow", m.restoreBackoff.Get(engine.Name)).
+				Warn("Failed to start the backup restore, will retry after the backoff window")
+			m.eventRecorder.Eventf(volume, corev1.EventTypeWarning, constant.EventReasonFailedRestore,
+				"Failed to start the restore of backup %v in engine %v, will retry after %v: %v",
+				engine.Spec.RequestedBackupRestore, engine.Name, m.restoreBackoff.Get(engine.Name), restoreErr)
 			return nil
 		}
 
-		if err = cloneSnapshot(engine, engineClientProxy, m.ds); err != nil {
+		if restoreStarted {
+			if restoreStatusInfo.EngineError == "" {
+				m.restoreBackoff.DeleteEntry(engine.Name)
+			} else {
+				// The previous attempt failed with an engine-level error, and the
+				// restore was just restarted. Grow the backoff window so a persistent
+				// error does not restart the restore on every poll. The retry budget
+				// was already checked before the restart.
+				m.restoreBackoff.Next(engine.Name, time.Now())
+
+				m.logger.WithError(errors.New(restoreStatusInfo.EngineError)).
+					WithField("backup", engine.Spec.RequestedBackupRestore).
+					WithField("backoffWindow", m.restoreBackoff.Get(engine.Name)).
+					Warn("Restarted the backup restore after an engine-level error")
+				m.eventRecorder.Eventf(volume, corev1.EventTypeWarning, constant.EventReasonFailedRestore,
+					"Restarting the restore of backup %v after an engine-level error in engine %v: %s",
+					engine.Spec.RequestedBackupRestore, engine.Name, restoreStatusInfo.EngineError)
+				// The error belongs to the attempt that just ended. Clear it so
+				// the next poll does not treat the new attempt as failed.
+				restoreStatusInfo.EngineError = ""
+			}
+		}
+	}
+
+	// Only query clone status and trigger cloning when a clone request is active.
+	// RequestedDataSource is cleared once the clone is no longer in Initiated state.
+	if engine.Spec.RequestedDataSource != "" {
+		var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
+		if !isECVolume(volume) && (types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive) {
+			if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
+				return err
+			}
+		}
+
+		engine.Status.CloneStatus = snapshotCloneStatusMap
+
+		needClone, err := preCloneCheck(engine)
+		if err != nil {
 			return err
+		}
+		if needClone {
+			// Gate: verify our attachment ticket on the src volume is satisfied.
+			// This prevents wasted clone attempts when the source is still attaching.
+			srcVolName := types.GetVolumeName(engine.Spec.RequestedDataSource)
+			srcVA, vaErr := m.ds.GetLHVolumeAttachmentByVolumeName(srcVolName)
+			if vaErr != nil {
+				return errors.Wrapf(vaErr, "failed to get volume attachment for clone src volume %v", srcVolName)
+			}
+			cloneTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, engine.Spec.VolumeName)
+			if !longhorn.IsAttachmentTicketSatisfied(cloneTicketID, srcVA) {
+				m.logger.Debugf("Deferring clone: attachment ticket %v for clone volume %v on src volume %v not yet satisfied",
+					cloneTicketID, engine.Spec.VolumeName, srcVolName)
+				return nil
+			}
+
+			allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
+			if err != nil {
+				return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
+			}
+
+			if !allowSnapshotClone {
+				m.logger.Debugf("Delaying snapshot clone since snapshot purge is in progress beyond the concurrent limit")
+				return nil
+			}
+
+			if cloneErr := cloneSnapshot(engine, engineClientProxy, m.ds); cloneErr != nil {
+				m.logger.WithError(cloneErr).Warn("Engine monitor: SnapshotClone failed and the error will be recorded in the clone status")
+			}
 		}
 	}
 
@@ -1511,17 +1656,80 @@ func (m *EngineMonitor) getEffectiveRebuildQoS(engine *longhorn.Engine) (int64, 
 	return globalQoS, nil
 }
 
-func isBackupRestoreFailed(rsMap map[string]*longhorn.RestoreStatus) bool {
-	for _, status := range rsMap {
-		if status.IsRestoring {
-			break
+// isBackupRestoreFailed returns true when the current restore attempt has failed.
+//
+// The restore has failed when no replica is still restoring and either the
+// engine or a replica reported an error. If any replica is still restoring,
+// the restore is not failed: an error left over from a previous attempt must
+// not fail the attempt that is still running, because that would release its
+// slot in the concurrent-restore limit too early.
+func isBackupRestoreFailed(engineStatus *longhorn.EngineStatus) bool {
+	hasError := engineStatus.EngineRestoreError != ""
+	for _, rs := range engineStatus.RestoreStatus {
+		if rs.IsRestoring {
+			return false
 		}
-
-		if status.Error != "" {
-			return true
+		if rs.Error != "" {
+			hasError = true
 		}
 	}
-	return false
+	return hasError
+}
+
+// shouldAbandonRestore decides whether to stop retrying a restore whose engine
+// status reports an engine-level error (Status.EngineRestoreError). It returns
+// the updated first-error time; the caller stores it back on the monitor.
+//
+// The caller must only invoke it when an engine-level error is reported. That
+// field is the sole budget signal: the engine records an error there only when
+// the failure is engine-level, keeps replica-caused errors on the replica's
+// own restore status, and never records "try again later" rejections. Only v2
+// engines report it; v1 failures reach the fault path through per-replica
+// TaskErrors. DR volumes retry forever by design.
+func shouldAbandonRestore(isDRVolume bool, firstErrorAt, now time.Time) (abandon bool, updatedFirstErrorAt time.Time) {
+	if isDRVolume {
+		return false, firstErrorAt
+	}
+	if firstErrorAt.IsZero() {
+		return false, now
+	}
+	return now.Sub(firstErrorAt) >= restoreErrorRetryBudget, firstErrorAt
+}
+
+// fillRestoreStatusErrors sets errMsg on every per-replica restore status
+// that has no error yet, so the volume controller fails those replicas.
+// Replicas missing from rsMap get a new entry.
+func fillRestoreStatusErrors(rsMap map[string]*longhorn.RestoreStatus, replicaAddressMap map[string]string, errMsg string) map[string]*longhorn.RestoreStatus {
+	if rsMap == nil {
+		rsMap = map[string]*longhorn.RestoreStatus{}
+	}
+	for _, addr := range replicaAddressMap {
+		url := engineapi.GetBackendReplicaURL(addr)
+		if _, reported := rsMap[url]; !reported {
+			rsMap[url] = &longhorn.RestoreStatus{}
+		}
+	}
+	for _, status := range rsMap {
+		status.IsRestoring = false
+		if status.Error == "" {
+			status.Error = errMsg
+		}
+	}
+	return rsMap
+}
+
+// abandonRestore stops retrying the restore and records why. It runs once per
+// restore; afterwards refresh keeps the error in the restore statuses on
+// every poll.
+func (m *EngineMonitor) abandonRestore(volume *longhorn.Volume, engine *longhorn.Engine, errMsg string) {
+	m.restoreAbandoned = true
+	m.restoreAbandonedMsg = errMsg
+	m.logger.WithError(errors.New(errMsg)).
+		WithField("backup", engine.Spec.RequestedBackupRestore).
+		Warnf("Abandoned restoring the backup after retrying for %v; the volume will become faulted", restoreErrorRetryBudget)
+	m.eventRecorder.Eventf(volume, corev1.EventTypeWarning, constant.EventReasonFailedRestore,
+		"Abandoned restoring backup %v in engine %v after retrying for %v; the volume will become faulted: %s",
+		engine.Spec.RequestedBackupRestore, engine.Name, restoreErrorRetryBudget, errMsg)
 }
 
 func (m *EngineMonitor) acquireRestoringCounter(acquire bool) error {
@@ -1553,6 +1761,15 @@ func (m *EngineMonitor) acquireRestoringCounter(acquire bool) error {
 
 func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
 	log := ec.logger.WithField("engine", engine.Name)
+
+	// Only an active engine whose snapshot list has been fetched reflects the real
+	// snapshot chain. A v2 switchover target engine is inactive until promoted, and
+	// its Status.Snapshots stays nil until the first monitor sync. Trusting either
+	// would delete the snapshot CRs, and the snapshot controller would then delete
+	// the snapshots themselves.
+	if !engine.Spec.Active || engine.Status.Snapshots == nil {
+		return nil
+	}
 
 	vol, err := ec.ds.GetVolumeRO(engine.Spec.VolumeName)
 	if err != nil {
@@ -1663,6 +1880,9 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 	if rsMap == nil {
 		return false, nil
 	}
+	// The v2 data engine reports a CLI API version of 0 (see
+	// GetDataEngineImageCLIAPIVersion), so it takes this compatible-engine
+	// path together with pre-v4 v1 engines.
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		isRestoring, isConsensual := syncWithRestoreStatusForCompatibleEngine(log, engine, rsMap)
 		if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
@@ -1678,9 +1898,103 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 		return false, fmt.Errorf("backup volume is empty for backup restoration of engine %v", engine.Name)
 	}
 
+	if !areV2ReplicasReadyForRestore(log, engine) {
+		return false, nil
+	}
+
+	if needRestore, err := checkLinkedCloneBeforeRestoration(log, engine, ds); err != nil || !needRestore {
+		return needRestore, err
+	}
+
 	if (types.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade) ||
 		types.IsDataEngineV2(engine.Spec.DataEngine) {
 		return checkSizeBeforeRestoration(log, engine, ds)
+	}
+
+	return true, nil
+}
+
+// areV2ReplicasReadyForRestore reports whether all replicas of a v2 engine
+// are RW, so the engine will accept a restore request. It always returns true
+// for v1 engines: v1 keeps restoring replicas WO until the first restore
+// completes, so gating v1 on RW would block that restore.
+//
+// Returning false makes the caller wait instead of sending a request the
+// engine would reject, which would trigger the error backoff.
+func areV2ReplicasReadyForRestore(log logrus.FieldLogger, engine *longhorn.Engine) bool {
+	if !types.IsDataEngineV2(engine.Spec.DataEngine) {
+		return true
+	}
+	for replicaName, mode := range engine.Status.ReplicaModeMap {
+		if mode != longhorn.ReplicaModeRW {
+			log.Debugf("Waiting for replica %v (mode %v) to become RW before starting the restore", replicaName, mode)
+			return false
+		}
+	}
+	return true
+}
+
+// checkLinkedCloneBeforeRestoration holds a linked-clone restore back until the volume
+// is actually ready to receive data.
+//
+// A volume restored from a linked-clone backup inherits most of its content from a
+// source snapshot; the backup only carries what the clone wrote itself. The link to
+// that source is established by the ordinary cloning flow, so the restore has to wait
+// for cloning to finish, and for its own attachment ticket to be satisfied, before any
+// data is written.
+//
+// Waiting here rather than letting the data plane reject the request matters: a
+// rejected restore is reported back as a restore error, which the caller records in
+// the restore status and backs off on, turning a normal "not ready yet" into a failure.
+func checkLinkedCloneBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine, ds *datastore.DataStore) (bool, error) {
+	volume, err := ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get volume %v for backup restoration of engine %v", engine.Spec.VolumeName, engine.Name)
+	}
+	if volume.Spec.CloneMode != longhorn.CloneModeLinkedClone {
+		return true, nil
+	}
+
+	// A failed clone is retried up to maxCloneRetry times by shouldInitVolumeClone, so
+	// only an exhausted one is terminal. Reporting the failure earlier would abort a
+	// restore that is about to recover on its own; waiting on an exhausted one would
+	// hang forever with nothing to show for it.
+	if volume.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed {
+		if volume.Status.CloneStatus.AttemptCount >= maxCloneRetry {
+			return false, fmt.Errorf("cannot restore volume %v: the linked clone from %v it depends on failed after %v attempts",
+				volume.Name, volume.Spec.DataSource, volume.Status.CloneStatus.AttemptCount)
+		}
+		log.Debugf("Waiting for the linked clone of volume %v to be retried before restore, attempt %v of %v",
+			volume.Name, volume.Status.CloneStatus.AttemptCount, maxCloneRetry)
+		return false, nil
+	}
+	if volume.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
+		log.Debugf("Waiting for the linked clone of volume %v to complete before restore, current state %v",
+			volume.Name, volume.Status.CloneStatus.State)
+		return false, nil
+	}
+
+	// Waiting for the restore controller's own attachment ticket, rather than merely for
+	// the volume to be attached, asks the question that matters: is this restore
+	// protected? A satisfied ticket implies the volume is attached, since satisfaction
+	// requires both an attached state and a NodeID matching vol.Status.CurrentNodeID, and
+	// it additionally confirms the ticket generation has been observed. Starting while
+	// the ticket is unsatisfied would mean restoring onto a volume held there by somebody
+	// else, which detaches the moment that other attacher lets go and interrupts the
+	// restore mid-flight.
+	va, err := ds.GetLHVolumeAttachmentByVolumeName(volume.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Debugf("Waiting for the volume attachment of volume %v to be created before restore", volume.Name)
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to get volume attachment of volume %v for backup restoration", volume.Name)
+	}
+	restoreTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRestoreController, volume.Name)
+	if !longhorn.IsAttachmentTicketSatisfied(restoreTicketID, va) {
+		log.Debugf("Waiting for the restore attachment ticket %v of volume %v to be satisfied before restore, current volume state %v",
+			restoreTicketID, volume.Name, volume.Status.State)
+		return false, nil
 	}
 
 	return true, nil
@@ -1831,20 +2145,25 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 	return true, nil
 }
 
-func (m *EngineMonitor) restoreBackup(volume *longhorn.Volume, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
+// restoreBackup asks the engine to start restoring engine.Spec.RequestedBackupRestore.
+//
+// When started is false and err is nil, the engine returned per-replica
+// errors that were already handled here (recorded in rsMap, backed off,
+// or ignored).
+func (m *EngineMonitor) restoreBackup(volume *longhorn.Volume, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) (started bool, err error) {
 	backupVolume, err := m.ds.GetBackupVolumeRO(engine.Spec.BackupVolume)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get backup volume %v for backup restoration of engine %v", engine.Spec.BackupVolume, engine.Name)
+		return false, errors.Wrapf(err, "failed to get backup volume %v for backup restoration of engine %v", engine.Spec.BackupVolume, engine.Name)
 	}
 
 	backupTarget, err := m.ds.GetBackupTargetRO(backupVolume.Spec.BackupTargetName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get backup target %s", backupVolume.Spec.BackupTargetName)
+		return false, errors.Wrapf(err, "failed to get backup target %s", backupVolume.Spec.BackupTargetName)
 	}
 
 	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(m.ds, backupTarget)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get backup target client for backup restoration of engine %v", engine.Name)
+		return false, errors.Wrapf(err, "failed to get backup target client for backup restoration of engine %v", engine.Name)
 	}
 
 	mlog := m.logger.WithFields(logrus.Fields{
@@ -1856,7 +2175,7 @@ func (m *EngineMonitor) restoreBackup(volume *longhorn.Volume, engine *longhorn.
 
 	concurrentLimit, err := m.ds.GetSettingAsInt(types.SettingNameRestoreConcurrentLimit)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting for backup restoration of engine %v",
+		return false, errors.Wrapf(err, "failed to get %v setting for backup restoration of engine %v",
 			types.SettingNameRestoreConcurrentLimit, engine.Name)
 	}
 
@@ -1875,14 +2194,12 @@ func (m *EngineMonitor) restoreBackup(volume *longhorn.Volume, engine *longhorn.
 	}
 	if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, backupVolume.Spec.VolumeName, lastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit), needCorrectEncryptedVolumeSize); err != nil {
 		if extraErr := restoreErrorHandler(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
-			return extraErr
+			return false, extraErr
 		}
-	}
-	if err == nil {
-		m.restoreBackoff.DeleteEntry(engine.Name)
+		return false, nil
 	}
 
-	return nil
+	return true, nil
 }
 
 func (m *EngineMonitor) isReachedConcurrentVolumeBackupRestoreLimit() (isUnderLimit bool, err error) {
@@ -1929,8 +2246,12 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 }
 
 func isReplicaRestoreFailedLockError(err *imclient.ReplicaError) bool {
-	failedLock := regexp.MustCompile(restoreGetLockFailedPatternMsg)
-	return failedLock.MatchString(err.Error())
+	if backupstore.IsLockConflictError(err) {
+		return true
+	}
+
+	// Engines predating the backupstore lock error rework report the conflict this way.
+	return regexp.MustCompile(restoreGetLockFailedPatternMsg).MatchString(err.Error())
 }
 
 func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, backoff *flowcontrol.Backoff, err error) error {
@@ -2007,10 +2328,29 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 		return errors.Wrapf(err, "failed to get volume %v for cloneSnapshot", engine.Spec.VolumeName)
 	}
 
+	// For v2 linked-clone, build the dst→src replica name map that was already
+	// computed by the volume controller (replica.Spec.LinkedCloneSrcReplicaName).
+	// The webhook guarantees all running IMs support this API.
+	var dstReplicaSrcReplicaPairMap map[string]string
+	if types.IsDataEngineV2(engine.Spec.DataEngine) && vol.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		replicas, listErr := ds.ListVolumeReplicasRO(engine.Spec.VolumeName)
+		if listErr != nil {
+			return errors.Wrapf(listErr, "failed to list replicas for linked-clone pair map")
+		}
+		pairMap := map[string]string{}
+		for _, r := range replicas {
+			if r.Spec.LinkedCloneSrcReplicaName != "" {
+				pairMap[r.Name] = r.Spec.LinkedCloneSrcReplicaName
+			}
+		}
+		if len(pairMap) > 0 {
+			dstReplicaSrcReplicaPairMap = pairMap
+		}
+	}
+
 	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL,
-		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds, string(vol.Spec.CloneMode)); err != nil {
-		// There is only 1 replica during volume cloning,
-		// so if the cloning failed, it must be that the replica failed to clone.
+		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds, string(vol.Spec.CloneMode), dstReplicaSrcReplicaPairMap); err != nil {
+		// Mark all replica clone statuses as failed.
 		for _, status := range engine.Status.CloneStatus {
 			status.Error = err.Error()
 			status.State = engineapi.ProcessStateError
@@ -2154,6 +2494,9 @@ type rebuildContext struct {
 	fastReplicaRebuild   bool
 	grpcTimeoutSeconds   int64
 	fileSyncHTTPClientTO int64
+	// linkedCloneSource identifies the source replica/engine for a linked-clone rebuild.
+	// Nil for non-clone rebuilds.
+	linkedCloneSource *imrpc.LinkedCloneSource
 }
 
 func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, addr string) (err error) {
@@ -2161,7 +2504,18 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replicaName, e.Name)
 	}()
 
-	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})
+	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name, "replica": replicaName, "address": addr})
+
+	if !ec.claimEngineRebuild(e.Name) {
+		log.Info("Another replica rebuild is already in flight for this engine")
+		return nil
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			ec.releaseEngineRebuild(e.Name)
+		}
+	}()
 
 	// For v2, the ReplicaAdd call must go through the EngineFrontend (initiator),
 	// while membership and cleanup operations remain engine-owned.
@@ -2213,7 +2567,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 
 	// Transfer proxy ownership to the goroutine by nil-ing the local pointer
 	// so the deferred cleanup above becomes a no-op.
-	go ec.runRebuild(rc)
+	go ec.runRebuild(rc, e.Name)
+	handedOff = true
 	rc = nil
 
 	// Wait until engine confirmed that rebuild started.
@@ -2224,6 +2579,31 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 	}
 
 	return nil
+}
+
+func (ec *EngineController) claimEngineRebuild(engineName string) bool {
+	ec.rebuildingEnginesMutex.Lock()
+	defer ec.rebuildingEnginesMutex.Unlock()
+
+	if ec.rebuildingEngines[engineName] {
+		return false
+	}
+
+	ec.logger.Debugf("Marking engine %v as rebuilding", engineName)
+	ec.rebuildingEngines[engineName] = true
+	return true
+}
+
+func (ec *EngineController) releaseEngineRebuild(engineName string) {
+	ec.rebuildingEnginesMutex.Lock()
+	defer ec.rebuildingEnginesMutex.Unlock()
+
+	if ec.rebuildingEngines[engineName] {
+		ec.logger.Debugf("Removing engine %v from rebuilding map", engineName)
+		delete(ec.rebuildingEngines, engineName)
+		return
+	}
+	ec.logger.Debugf("Try to release engine %v was not marked as rebuilding", engineName)
 }
 
 // prepareRebuildContext performs all synchronous setup for a replica rebuild:
@@ -2332,6 +2712,56 @@ func (ec *EngineController) prepareRebuildContext(
 		return nil, err
 	}
 
+	// For V2 linked-clone rebuilds, pass the src replica name to the DST replica so it can
+	// deterministically locate its local clone entrypoint (no ambiguous LVS scan).
+	// Also resolve the src engine name and address so RebuildingDstFinish can verify the
+	// src replica is RW before connecting the entrypoint.
+	if types.IsDataEngineV2(e.Spec.DataEngine) && rc.replica.Spec.LinkedCloneSrcReplicaName != "" {
+		// Gate: verify our attachment ticket on the src volume is satisfied before proceeding.
+		// This ensures the src volume won't detach mid-rebuild (our ticket keeps it attached).
+		vol, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get volume %v for linked-clone rebuild gate", e.Spec.VolumeName)
+		}
+		srcVolumeName := types.GetVolumeName(vol.Spec.DataSource)
+		if srcVolumeName != "" {
+			srcVA, err := ec.ds.GetLHVolumeAttachmentByVolumeName(srcVolumeName)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get volume attachment for clone src volume %v", srcVolumeName)
+			}
+			cloneTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, e.Spec.VolumeName)
+			if !longhorn.IsAttachmentTicketSatisfied(cloneTicketID, srcVA) {
+				return nil, fmt.Errorf("attachment ticket %v for clone volume %v on src volume %v not yet satisfied: deferring rebuild",
+					cloneTicketID, e.Spec.VolumeName, srcVolumeName)
+			}
+		}
+
+		linkedCloneSrcReplicaName := rc.replica.Spec.LinkedCloneSrcReplicaName
+
+		srcReplica, err := ec.ds.GetReplica(linkedCloneSrcReplicaName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get linked-clone src replica %v for rebuild context of replica %v", linkedCloneSrcReplicaName, replicaName)
+		}
+		srcEngine, err := ec.ds.GetEngineRO(srcReplica.Spec.EngineName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get engine %v for linked-clone src replica %v", srcReplica.Spec.EngineName, linkedCloneSrcReplicaName)
+		}
+		// Guard: if the src engine is not yet running (e.g. still recovering after
+		// an instance manager crash), its StorageIP/Port are stale or zero.
+		// Returning an error here keeps the rebuild deferred (no replica is harmed)
+		// and the engine controller retries on the next reconcile cycle once the
+		// src engine has come back up and reported a valid address.
+		if srcEngine.Status.CurrentState != longhorn.InstanceStateRunning {
+			return nil, fmt.Errorf("linked-clone src engine %v (for src replica %v) is not yet running (state %v): deferring rebuild until src engine recovers",
+				srcEngine.Name, linkedCloneSrcReplicaName, srcEngine.Status.CurrentState)
+		}
+		rc.linkedCloneSource = &imrpc.LinkedCloneSource{
+			ReplicaName:   linkedCloneSrcReplicaName,
+			EngineName:    srcEngine.Name,
+			EngineAddress: imutil.GetURL(srcEngine.Status.StorageIP, srcEngine.Status.Port),
+		}
+	}
+
 	succeeded = true
 	return rc, nil
 }
@@ -2339,7 +2769,9 @@ func (ec *EngineController) prepareRebuildContext(
 // runRebuild is the fire-and-forget goroutine body that performs the actual
 // rebuild work: optional pre-rebuild purge, ReplicaAdd, v2 rebuild wait,
 // and optional post-rebuild purge.
-func (ec *EngineController) runRebuild(rc *rebuildContext) {
+func (ec *EngineController) runRebuild(rc *rebuildContext, rebuildingEngineName string) {
+	defer ec.releaseEngineRebuild(rebuildingEngineName)
+
 	defer rc.rebuildProxy.Close()
 	if rc.cleanupProxy != rc.rebuildProxy {
 		defer rc.cleanupProxy.Close()
@@ -2360,6 +2792,12 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 		}
 	}
 
+	// The engine may have been taken over by another node while this goroutine was running. The new
+	// owner does not know about this goroutine and starts its own rebuild for the same replica.
+	if !ec.isEngineOwner(rc.log, rc.currentEngine.Name) {
+		return
+	}
+
 	// Start rebuild — v1 and v2 diverge on the ReplicaAdd call.
 	var replicaAddErr error
 	if types.IsDataEngineV2(rc.engine.Spec.DataEngine) {
@@ -2369,7 +2807,7 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 		// TODO: Before calling ReplicaAdd for the v2 frontend path, fetch the
 		// latest size/currentSize from currentEngine and pass them through once
 		// the proxy API consumes those fields for EngineFrontend-based rebuild.
-		replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, nil, 0, rc.grpcTimeoutSeconds)
+		replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, nil, 0, rc.grpcTimeoutSeconds, rc.linkedCloneSource)
 		switch {
 		case replicaAddErr == nil:
 			// ok
@@ -2390,12 +2828,12 @@ func (ec *EngineController) runRebuild(rc *rebuildContext) {
 			if rc.engine.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-				replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, true, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, 0)
+				replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, true, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, 0, rc.linkedCloneSource)
 			}
 		} else {
 			ec.eventRecorder.Eventf(rc.engine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", rc.replicaName, rc.addr, rc.engine.Name, rc.engine.Spec.VolumeName)
-			replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds)
+			replicaAddErr = rc.rebuildProxy.ReplicaAdd(rc.rebuildObj, rc.replicaName, rc.replicaURL, false, rc.fastReplicaRebuild, localSync, rc.fileSyncHTTPClientTO, rc.grpcTimeoutSeconds, rc.linkedCloneSource)
 		}
 	}
 
@@ -2467,6 +2905,10 @@ func (ec *EngineController) waitForPreRebuildPurge(
 		if !shouldProceedToWaitAndRebuild(latestEngine, replicaName, addr, log) {
 			return false
 		}
+		if latestEngine.Status.OwnerID != ec.controllerID {
+			log.Warnf("Failed to proceed to rebuild since engine is now owned by %v", latestEngine.Status.OwnerID)
+			return false
+		}
 
 		purgeDone = true
 		for _, purgeStatus := range latestEngine.Status.PurgeStatus {
@@ -2504,6 +2946,19 @@ func (ec *EngineController) handleRebuildFailure(
 	} else {
 		ec.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding,
 			"Failed rebuilding replica with Address %v: %v", addr, rebuildErr)
+	}
+	if isReplicaAddressExistError(rebuildErr) {
+		// If operations before calling `rc.rebuildProxy.ReplicaAdd` take a long time (over 30 seconds),
+		// the second rebuild goroutine for the same replica might be created.
+		// If the replica exists when adding this replica, the replica should have been rebuilt already by previous rebuild goroutine.
+		// Therefore, skip the operations below.
+		log.WithError(rebuildErr).Warn("Replica rebuild failed because replica exists")
+		return
+	}
+	if !ec.isEngineOwner(log, engine.Name) {
+		// The new owner may be rebuilding the same replica. Removing it from the engine or marking it
+		// failed here would tear down that rebuild, so leave the cleanup to the new owner.
+		return
 	}
 
 	log.Infof("Removing failed rebuilding replica %v", addr)
@@ -2698,6 +3153,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	e.Status.ReplicaModeMap = nil
 	e.Status.ReplicaTransitionTimeMap = nil
 	e.Status.RestoreStatus = nil
+	e.Status.EngineRestoreError = ""
 	e.Status.RebuildStatus = nil
 	return nil
 }
@@ -2875,6 +3331,21 @@ func removeInvalidEngineOpStatus(e *longhorn.Engine) {
 // shouldProceedToRebuild checks a variety of conditions that may cause us not to proceed with waiting for snapshot
 // purge and/or rebuilding a replica. We pass the logger to it so it can decide what level to log at depending on the
 // issue. We do not return any errors because shouldProceedToRebuild is called by startRebuilding in a goroutine.
+// isEngineOwner reports whether this node still owns the engine. A rebuild goroutine outlives the
+// engine sync that started it, so the engine can be owned by another node by the time it checks.
+func (ec *EngineController) isEngineOwner(log *logrus.Entry, engineName string) bool {
+	e, err := ec.ds.GetEngineRO(engineName)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get engine %v to check its owner", engineName)
+		return false
+	}
+	if e.Status.OwnerID != ec.controllerID {
+		log.Warnf("Engine %v is now owned by %v instead of %v", engineName, e.Status.OwnerID, ec.controllerID)
+		return false
+	}
+	return true
+}
+
 func shouldProceedToWaitAndRebuild(e *longhorn.Engine, replicaName, originalReplicaAddr string, log *logrus.Entry) bool {
 	// The engine is no longer running.
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
@@ -3135,6 +3606,11 @@ func isV2ReplicaAddAlreadyInProgressError(err error) bool {
 
 func isV2ReplicaAddRestoreInProgressError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "restore is in progress")
+}
+
+func isReplicaAddressExistError(err error) bool {
+	// If the replica address already exists when creating a replica, it will return an error as "replica already exists at address tcp://10.1.1.10:12345".
+	return err != nil && strings.Contains(err.Error(), etypes.ErrorStringReplicaAddressExist)
 }
 
 func isV2ExpansionIncomplete(engine *longhorn.Engine) bool {

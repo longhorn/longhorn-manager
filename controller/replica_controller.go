@@ -160,6 +160,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	rc.initReconcileMetrics(workers)
 	for i := 0; i < workers; i++ {
 		go wait.Until(rc.worker, time.Second, stopCh)
 	}
@@ -180,7 +181,7 @@ func (rc *ReplicaController) processNextWorkItem() bool {
 	}
 	defer rc.queue.Done(key)
 
-	err := rc.syncReplica(key.(string))
+	err := rc.syncWithMetrics(func() error { return rc.syncReplica(key.(string)) })
 	rc.handleErr(err, key)
 
 	return true
@@ -349,6 +350,22 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for replica instance creation: %v", obj)
+	}
+
+	// For linked-clone replicas, instance creation must wait until
+	// LinkedCloneSrcReplicaName is set by the volume controller.
+	// This gate is in CreateInstance (not syncReplica) so that
+	// ReconcileInstanceState always runs and keeps Status.CurrentState
+	// up to date with the instance manager.
+	if r.Spec.LinkedCloneSrcReplicaName == "" {
+		vol, err := rc.ds.GetVolumeRO(r.Spec.VolumeName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return nil, err
+			}
+		} else if vol.Spec.CloneMode == longhorn.CloneModeLinkedClone && !types.IsLegacyLinkedCloneVolume(vol) {
+			return nil, nil // gate: wait for volume controller to set the field
+		}
 	}
 
 	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
@@ -746,7 +763,7 @@ func engineStillHasReplica(e *longhorn.Engine, r *longhorn.Replica) bool {
 }
 
 func deleteUnixSocketFile(volumeName string) error {
-	return os.RemoveAll(filepath.Join(types.GetUnixDomainSocketDirectoryOnHost(), volumeName+filepath.Ext(".sock")))
+	return os.RemoveAll(filepath.Join(types.UnixDomainSocketDirectoryOnHost, volumeName+filepath.Ext(".sock")))
 }
 
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {

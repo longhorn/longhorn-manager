@@ -35,9 +35,10 @@ const (
 )
 
 const (
-	DiskConditionTypeSchedulable = "Schedulable"
-	DiskConditionTypeReady       = "Ready"
-	DiskConditionTypeError       = "Error"
+	DiskConditionTypeSchedulable         = "Schedulable"
+	DiskConditionTypeReady               = "Ready"
+	DiskConditionTypeError               = "Error"
+	DiskConditionTypeHealthDataCollected = "HealthDataCollected"
 )
 
 const (
@@ -47,17 +48,21 @@ const (
 	DiskConditionReasonDiskNotReady           = "DiskNotReady"
 	DiskConditionReasonDiskServiceUnreachable = "DiskServiceUnreachable"
 	DiskConditionReasonNodeNotReady           = "NodeNotReady"
+
+	DiskConditionReasonHealthDataCollectionFailed = "HealthDataCollectionFailed"
 )
 
 const (
 	ErrorReplicaScheduleInsufficientStorage               = "insufficient storage"
 	ErrorReplicaScheduleDiskNotFound                      = "disk not found"
 	ErrorReplicaScheduleDiskUnavailable                   = "disks are unavailable"
+	ErrorReplicaScheduleDiskUnhealthy                     = "disks are reported as failed by disk health monitoring"
 	ErrorReplicaScheduleTagsNotFulfilled                  = "tags not fulfilled"
 	ErrorReplicaScheduleNodeNotFound                      = "node not found"
 	ErrorReplicaScheduleNodeUnavailable                   = "nodes are unavailable"
 	ErrorReplicaScheduleEngineImageNotReady               = "none of the node candidates contains a ready engine image"
 	ErrorReplicaScheduleHardNodeAffinityNotSatisfied      = "hard affinity cannot be satisfied"
+	ErrorReplicaScheduleTopologyNotSatisfied              = "topology requirement cannot be satisfied"
 	ErrorReplicaScheduleLinkedCloneNotSatisfied           = "linked clone replica cannot be satisfied"
 	ErrorReplicaScheduleSchedulingFailed                  = "replica scheduling failed"
 	ErrorReplicaScheduleUnusedFailedReplicaIsNotSupported = "unused failed replica is not supported"

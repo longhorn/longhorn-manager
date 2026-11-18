@@ -44,7 +44,7 @@ func newSystemBackupJob(job *Job) (*SystemBackupJob, error) {
 		// job-specific fields
 		"job":            job.name,
 		"task":           job.task,
-		"retain":         job.retain,
+		"retainCount":    job.retainCount,
 		"parameters":     job.parameters,
 		"executionCount": job.executionCount,
 		// system-backup-specific fields
@@ -117,7 +117,7 @@ func (job *SystemBackupJob) cleanup() {
 		}
 	}
 
-	expiredSystemBackups := filterExpiredItems(systemBackupsToNameWithTimestamps(retainableSystemBackups), job.retain)
+	expiredSystemBackups := filterExpiredItems(systemBackupsToNameWithTimestamps(retainableSystemBackups), job.retainCount, job.retainAge, job.retentionPolicy, time.Now())
 	for _, systemBackupName := range expiredSystemBackups {
 		job.logger.Infof("Deleting system backup %v", systemBackupName)
 		err = job.DeleteSystemBackup(systemBackupName)
