@@ -375,28 +375,47 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		}
 	}
 
-	// case 2: this volume is source of a clone (initial clone in progress)
+	// case 2: this volume is the source of a clone that is copying data, or of a failed clone
+	// whose retry is due. The retry cannot start until the source is attached.
 	vols, err := vcc.ds.ListVolumesRO()
 	if err != nil {
 		return err
 	}
+	now := time.Now()
 	var srcNodeID string
 	for _, v := range vols {
-		if isCloneTargetCopyInProgress(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
-			cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-			if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
+		if types.GetVolumeName(v.Spec.DataSource) != vol.Name {
+			continue
+		}
+		if !isCloneTargetCopyInProgress(v) {
+			retryPending, delay, retryErr := getCloneRetryDelay(v, now)
+			if retryErr != nil {
+				log.WithError(retryErr).Warnf("Failed to check the clone retry of volume %v", v.Name)
+				continue
+			}
+			if !retryPending {
+				continue
+			}
+			if delay > 0 {
+				// Nothing else may wake this source when the retry becomes due.
+				vcc.enqueueVolumeAfter(vol, delay)
+				continue
+			}
+		}
+
+		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+		if longhorn.IsAttachmentTicketSatisfied(cloningAttachmentTicketID, va) {
+			expectedAttachmentTickets[cloningAttachmentTicketID] = true
+		} else {
+			if srcNodeID == "" {
+				srcNodeID, err = pickCloneSourceNodeID(vol, va)
+				if err != nil {
+					return err
+				}
+			}
+			if srcNodeID != "" {
+				createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
 				expectedAttachmentTickets[cloningAttachmentTicketID] = true
-			} else {
-				if srcNodeID == "" {
-					srcNodeID, err = pickCloneSourceNodeID(vol, va)
-					if err != nil {
-						return err
-					}
-				}
-				if srcNodeID != "" {
-					createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, srcNodeID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
-					expectedAttachmentTickets[cloningAttachmentTicketID] = true
-				}
 			}
 		}
 	}
