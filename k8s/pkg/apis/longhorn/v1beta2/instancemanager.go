@@ -102,7 +102,7 @@ type InstanceSpec struct {
 	LogRequested bool `json:"logRequested"`
 	// +optional
 	SalvageRequested bool `json:"salvageRequested"`
-	// +kubebuilder:validation:Enum=v1;v2
+	// +kubebuilder:validation:Enum=v1;v2;local
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
 }
