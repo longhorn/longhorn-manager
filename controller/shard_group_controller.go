@@ -79,7 +79,11 @@ type sgReconcileCtx struct {
 	shards     map[string]*longhorn.Shard // re-fetched after scheduling so the loop sees fresh placements
 	engine     *longhorn.Engine           // nil when detached or engine not yet started
 	spdkClient spdkrpc.SPDKServiceClient  // nil when engine is nil or SPDK unreachable
-	log        *logrus.Entry
+	// failedSlots holds the EC slots SPDK reported as failed in this pass. It is
+	// empty when syncECHealth did not get slot states, for example before the
+	// ShardGroup process exists.
+	failedSlots map[int]struct{}
+	log         *logrus.Entry
 }
 
 func NewShardGroupController(
@@ -808,9 +812,9 @@ func (c *ShardGroupController) syncShardInstance(rctx *sgReconcileCtx, shard *lo
 		fresh.Status.Port = livePort
 		needsUpdate = true
 	}
-	if fresh.Status.State != longhorn.ShardStateNormal && fresh.Status.State != longhorn.ShardStateReplacing {
-		// First Running observation, or recovery from a prior Failed state.
-		fresh.Status.State = longhorn.ShardStateNormal
+	_, slotFailed := rctx.failedSlots[shard.Spec.SlotIndex]
+	if state := shardStateForRunningInstance(fresh.Status.State, slotFailed); state != fresh.Status.State {
+		fresh.Status.State = state
 		needsUpdate = true
 	}
 	if !needsUpdate {
@@ -864,6 +868,17 @@ func (c *ShardGroupController) markShardInstanceNotRunning(rctx *sgReconcileCtx,
 	// instead of a tick later.
 	*shard = *updated
 	return nil
+}
+
+// shardStateForRunningInstance returns the state for a shard whose instance is
+// Running. The shard becomes Normal unless SPDK reports its slot as failed. A
+// failed slot needs a replace first, and marking the shard Normal early would
+// delay that replace. syncECHealth sets the shard to Normal once the slot recovers.
+func shardStateForRunningInstance(current longhorn.ShardState, slotFailed bool) longhorn.ShardState {
+	if slotFailed || current == longhorn.ShardStateReplacing {
+		return current
+	}
+	return longhorn.ShardStateNormal
 }
 
 // reconcileFailedShard runs the two-step recovery (replace, then rebuild) for a
@@ -1575,8 +1590,12 @@ func (c *ShardGroupController) syncECHealth(rctx *sgReconcileCtx) error {
 	ecStatus := protoShardGroup.GetEcStatus()
 
 	slotMap := make(map[uint32]*spdkrpc.EcSlot, len(ecStatus.GetSlots()))
+	rctx.failedSlots = make(map[int]struct{})
 	for _, slot := range ecStatus.GetSlots() {
 		slotMap[slot.GetSlotIndex()] = slot
+		if ecSlotStateToShardState(slot.GetState()) == longhorn.ShardStateFailed {
+			rctx.failedSlots[int(slot.GetSlotIndex())] = struct{}{}
+		}
 	}
 
 	shards, err := c.ds.ListShardsByShardGroup(shardGroup.Name)
