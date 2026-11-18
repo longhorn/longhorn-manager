@@ -5472,6 +5472,33 @@ func (c *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn
 	return nil
 }
 
+// getCloneRetryDelay reports whether the failed clone of v will be retried, and how long until
+// that retry is allowed. A zero delay means the retry is due now.
+func getCloneRetryDelay(v *longhorn.Volume, now time.Time) (retryPending bool, delay time.Duration, err error) {
+	if !types.IsDataFromVolume(v.Spec.DataSource) ||
+		v.Status.CloneStatus.State != longhorn.VolumeCloneStateFailed ||
+		v.Status.CloneStatus.AttemptCount >= maxCloneRetry {
+		return false, 0, nil
+	}
+	if v.Status.CloneStatus.NextAllowedAttemptAt == "" {
+		return true, 0, nil
+	}
+	nextAttemptAt, err := util.ParseTime(v.Status.CloneStatus.NextAllowedAttemptAt)
+	if err != nil {
+		return false, 0, errors.Wrapf(err, "failed to parse the next clone attempt time of volume %v", v.Name)
+	}
+	if now.Before(nextAttemptAt) {
+		return true, nextAttemptAt.Sub(now), nil
+	}
+	return true, 0, nil
+}
+
+// isCloneRetryDue returns true if the failed clone of v can be retried now.
+func isCloneRetryDue(v *longhorn.Volume) bool {
+	retryPending, delay, err := getCloneRetryDelay(v, time.Now())
+	return err == nil && retryPending && delay == 0
+}
+
 func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 	if !types.IsDataFromVolume(v.Spec.DataSource) {
 		return false
@@ -5479,19 +5506,12 @@ func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateEmpty {
 		return true
 	}
-	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed &&
-		v.Status.CloneStatus.AttemptCount < maxCloneRetry {
-		if v.Status.CloneStatus.NextAllowedAttemptAt == "" {
-			return true
-		}
-		t, err := util.ParseTime(v.Status.CloneStatus.NextAllowedAttemptAt)
-		if err != nil {
-			log.Warnf("Failed to check shouldInitVolumeClone %v", err)
-			return false
-		}
-		return time.Now().After(t)
+	retryPending, delay, err := getCloneRetryDelay(v, time.Now())
+	if err != nil {
+		log.Warnf("Failed to check shouldInitVolumeClone %v", err)
+		return false
 	}
-	return false
+	return retryPending && delay == 0
 }
 
 func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
@@ -6051,13 +6071,13 @@ func (c *VolumeController) enqueueVolumeChange(old, cur interface{}) {
 	}
 
 	// When a source volume becomes attached, enqueue its clone target volumes
-	// so they can immediately start the clone operation without waiting for
-	// their own periodic reconcile.
+	// so they can immediately start the clone operation, or a due clone retry,
+	// without waiting for their own periodic reconcile.
 	if oldV.Status.State != longhorn.VolumeStateAttached && curV.Status.State == longhorn.VolumeStateAttached {
 		cloneVolumes, err := c.ds.ListCloneVolumesBySourceVolumeRO(curV.Name)
 		if err == nil {
 			for _, v := range cloneVolumes {
-				if isCloneTargetCopyInProgress(v) {
+				if isCloneTargetCopyInProgress(v) || isCloneRetryDue(v) {
 					c.enqueueVolume(v)
 				}
 			}
