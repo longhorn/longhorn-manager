@@ -1254,7 +1254,8 @@ var (
 		DisplayName: "Concurrent Automatic Engine Upgrade Per Node Limit",
 		Description: "This setting controls how Longhorn automatically upgrades volumes' engines after upgrading Longhorn manager. " +
 			"The value of this setting specifies the maximum number of engines per node that are allowed to upgrade to the default engine image at the same time. " +
-			"If the value is 0, Longhorn will not automatically upgrade volumes' engines to default version.",
+			"If the value is 0, Longhorn will not automatically upgrade volumes' engines to default version. " +
+			"This setting applies only to the V1 Data Engine. V2 Data Engine volumes are upgraded per node through the instance manager upgrade.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,

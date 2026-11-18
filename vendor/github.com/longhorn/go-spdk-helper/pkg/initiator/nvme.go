@@ -92,8 +92,8 @@ func DisconnectUsableTargetPaths(nqn string, executor *commonns.Executor) error 
 			// Anything the kernel does not report as live is left alone. A state we
 			// cannot read is no evidence that the path is safe to delete.
 			if path.State != NvmeControllerStateLive {
-				logrus.Warnf("Leaving NVMe/TCP path %s at %s in %q state to ctrl_loss_tmo instead of disconnecting it",
-					path.Name, path.Address, path.State)
+				logrus.Warnf("Leaving NVMe/TCP path %s at %s of subsystem %s in %q state to ctrl_loss_tmo instead of disconnecting it",
+					path.Name, path.Address, nqn, path.State)
 				continue
 			}
 			if err := disconnectController(path.Name, executor); err != nil {

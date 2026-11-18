@@ -134,6 +134,9 @@ var (
 	ErrSwitchOverTargetEngineNotFound = errors.New("cannot find target engine for switchover")
 	// ErrSwitchOverTargetInternal indicates switchover execution failed due to runtime/internal reasons.
 	ErrSwitchOverTargetInternal = errors.New("failed to switch over target")
+	// ErrSwitchOverRestartRequired indicates a failed phase rolled back the switchover,
+	// so the caller must restart it from preparing instead of retrying the phase.
+	ErrSwitchOverRestartRequired = errors.New("switchover restart required")
 )
 
 var (

@@ -539,7 +539,9 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		if !efc.isMonitoring(ef) {
 			efc.startMonitoring(ef)
 		}
-	} else if efc.isMonitoring(ef) {
+	} else if efc.isMonitoring(ef) && ef.Status.CurrentState != longhorn.InstanceStateSuspended {
+		// A suspended frontend keeps its device, so keep its status and
+		// monitor. The monitor skips polling until it is running again.
 		efc.resetAndStopMonitoring(ef)
 	}
 
@@ -991,14 +993,24 @@ func (m *EngineFrontendMonitor) sync() bool {
 func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error) {
 	existingEF := ef.DeepCopy()
 
-	defer func() {
-		if err != nil {
-			return
+	// persistStatus writes the status changes made so far, so they are visible
+	// before the calls that can fail or block.
+	persistStatus := func() error {
+		if reflect.DeepEqual(existingEF.Status, ef.Status) {
+			return nil
 		}
-		if !reflect.DeepEqual(existingEF.Status, ef.Status) {
-			if _, updateErr := m.ds.UpdateEngineFrontendStatus(ef); updateErr != nil {
-				err = updateErr
-			}
+		updatedEF, err := m.ds.UpdateEngineFrontendStatus(ef)
+		if err != nil {
+			return err
+		}
+		ef = updatedEF
+		existingEF = ef.DeepCopy()
+		return nil
+	}
+
+	defer func() {
+		if err == nil {
+			err = persistStatus()
 		}
 	}()
 
@@ -1050,11 +1062,8 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 	// and EF are on different nodes, and the deferred update skips writes on
 	// error. Flushing here ensures the volume controller can see the endpoint
 	// and complete the attach flow.
-	if !reflect.DeepEqual(existingEF.Status, ef.Status) {
-		if _, err := m.ds.UpdateEngineFrontendStatus(ef); err != nil {
-			return err
-		}
-		existingEF = ef.DeepCopy()
+	if err := persistStatus(); err != nil {
+		return err
 	}
 
 	volume, err := m.ds.GetVolumeRO(ef.Spec.VolumeName)
@@ -1093,7 +1102,18 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get volume info for volume %v during engine frontend monitoring", ef.Spec.VolumeName)
 	}
-	ef.Status.CurrentSize = volumeInfo.Size
+
+	if types.IsVolumeV2EncryptedVolumeWithLuksHeaderLabelTrue(volume) {
+		// The frontend size includes the LUKS header. Convert it to the volume
+		// size, so the expansion check below compares it with the volume size
+		// and the API does not report the header as part of the volume size.
+		ef.Status.CurrentSize, err = util.GetVolumeSizeFromBackendSize(volumeInfo.Size, volume.Spec.Encrypted, lhtypes.CliAPIVersionExtraLUKS2HeaderReservation)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get volume size from backend size for engine frontend %v", ef.Name)
+		}
+	} else {
+		ef.Status.CurrentSize = volumeInfo.Size
+	}
 
 	if shouldExpandEngineFrontend(ef, volume, engineForFrontend) {
 		// Expand only when the volume is actually in expansion flow.
@@ -1112,6 +1132,13 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 				if err != nil {
 					return errors.Wrapf(err, "failed to get actual backend size for engine frontend %v", ef.Name)
 				}
+			}
+			// VolumeExpand blocks until the frontend device is resized, while the
+			// backend engine reports the new size earlier. Persist the current
+			// frontend size first so the API does not expose the new size in the
+			// meantime.
+			if err := persistStatus(); err != nil {
+				return err
 			}
 			if err := engineClientProxy.VolumeExpand(ef, expectedExpansionSize); err != nil {
 				if isV2ExpansionInProgressError(err) {
@@ -1137,8 +1164,9 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 
 		// An encrypted volume's frontend carries a LUKS header, so the size it reports is
 		// larger than the volume's logical size. Report the logical size once the header
-		// is there.
-		if volume.Spec.Encrypted && volumeInfo.Size > ef.Spec.VolumeSize {
+		// is there. Compare the size converted above, so a pending expansion smaller than
+		// the header is not reported as done.
+		if volume.Spec.Encrypted && ef.Status.CurrentSize > ef.Spec.VolumeSize {
 			ef.Status.CurrentSize = ef.Spec.VolumeSize
 		}
 	}
@@ -1162,7 +1190,15 @@ func shouldExpandEngineFrontend(ef *longhorn.EngineFrontend, v *longhorn.Volume,
 	if isReplicaRebuildingInProgress(e) {
 		return false
 	}
-	return ef.Status.CurrentSize < ef.Spec.Size
+	if ef.Status.CurrentSize < ef.Spec.Size {
+		return true
+	}
+	// The EF reports its own SpecSize, which can already match the target while the
+	// backend has not grown. This happens when replicas start at the old size and the
+	// engine is then created with the new size: SPDK clamps the engine SpecSize down to
+	// the RAID size and waits for an expand request. The engine status reports that
+	// clamped size, so it is used to trigger the expansion.
+	return e.Status.CurrentSize > 0 && e.Status.CurrentSize < e.Spec.VolumeSize
 }
 
 func isReplicaRebuildingInProgress(e *longhorn.Engine) bool {

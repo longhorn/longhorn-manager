@@ -157,6 +157,11 @@ func NewInitiator(name, hostProc string, nvmeTCPInfo *NVMeTCPInfo, ublkInfo *Ubl
 // gets its own lock file so that operations on different volumes can proceed
 // in parallel. The lock serializes operations within the same volume only
 // (e.g., preventing concurrent Start and Stop on the same NVMe subsystem).
+//
+// Never remove the lock file. Unlinking it while it is held lets two callers
+// hold the lock at once, one on the old inode and one on a fresh file at the
+// same path. Lock files are never reclaimed: one empty file per volume name
+// stays under LockFilePrefix until reboot.
 func (i *Initiator) lockFilePath() string {
 	return fmt.Sprintf("%s-%s.lock", LockFilePrefix, i.Name)
 }
@@ -1010,16 +1015,7 @@ func (i *Initiator) Stop(spdkClient *client.Client, dmDeviceAndEndpointCleanupRe
 		if err != nil {
 			return false, err
 		}
-		defer func() {
-			// Remove the lock file while still holding the lock to avoid
-			// an unlink race (where a waiter locks the unlinked inode while
-			// a new arrival creates and locks a fresh file at the same path).
-			errRemove := os.Remove(i.lockFilePath())
-			if errRemove != nil && !os.IsNotExist(errRemove) {
-				i.logger.WithError(errRemove).Warnf("Failed to remove lock file %s after stopping initiator %s", i.lockFilePath(), i.Name)
-			}
-			lock.Unlock()
-		}()
+		defer lock.Unlock()
 	}
 
 	return i.stopWithoutLock(spdkClient, dmDeviceAndEndpointCleanupRequired, deferDmDeviceCleanup, returnErrorForBusyDevice)
@@ -1055,15 +1051,9 @@ func (i *Initiator) stopWithoutLock(spdkClient *client.Client, dmDeviceAndEndpoi
 
 	// stopping NvmeTcp initiator
 	if i.NVMeTCPInfo != nil {
-		err = DisconnectUsableTargetPaths(i.NVMeTCPInfo.SubsystemNQN, i.executor)
-		if err != nil {
-			return dmDeviceIsBusy, errors.Wrapf(err, "failed to disconnect target for NVMe/TCP initiator %s", i.Name)
+		if err := i.disconnectNVMeTCPTarget(); err != nil {
+			return dmDeviceIsBusy, err
 		}
-
-		i.NVMeTCPInfo.ControllerName = ""
-		i.NVMeTCPInfo.NamespaceName = ""
-		i.NVMeTCPInfo.TransportAddress = ""
-		i.NVMeTCPInfo.TransportServiceID = ""
 		return dmDeviceIsBusy, nil
 	}
 
@@ -1081,6 +1071,75 @@ func (i *Initiator) stopWithoutLock(spdkClient *client.Client, dmDeviceAndEndpoi
 		return dmDeviceIsBusy, err
 	}
 	return dmDeviceIsBusy, nil
+}
+
+// StopDisconnectFirst stops the NVMe/TCP initiator by disconnecting the
+// target before removing the dm device and the endpoint. Use it when I/O may
+// be stuck on a dead qpair: the stuck writer keeps the dm device busy, so Stop
+// cannot remove it, while a disconnect fails that I/O and frees the device.
+//
+// The disconnect tears down every live path of the subsystem, including any
+// path added for a switchover.
+//
+// If the disconnect returns an error, nothing else runs. A disconnect that
+// finds no live path returns nil, so cleanup still runs and may report the dm
+// device as busy. After the disconnect returns nil, every cleanup step runs
+// and their errors are returned together. A retry disconnects again, which is
+// a no-op once no live path is left. The lock does not cover a retry against a
+// later Start of the same volume: cleanup goes by volume name, so finish
+// stopping a volume before starting it again.
+func (i *Initiator) StopDisconnectFirst() error {
+	if i.NVMeTCPInfo == nil {
+		return fmt.Errorf("failed to StopDisconnectFirst because nvmeTCPInfo is nil")
+	}
+
+	i.logger.WithFields(logrus.Fields{
+		"subsystemNQN":       i.NVMeTCPInfo.SubsystemNQN,
+		"controllerName":     i.NVMeTCPInfo.ControllerName,
+		"transportAddress":   i.NVMeTCPInfo.TransportAddress,
+		"transportServiceID": i.NVMeTCPInfo.TransportServiceID,
+	}).Info("Stopping NVMe/TCP initiator, disconnecting the target first")
+
+	if i.hostProc != "" {
+		lock, err := i.newLock("StopDisconnectFirst")
+		if err != nil {
+			return err
+		}
+		defer lock.Unlock()
+	}
+
+	if err := i.disconnectNVMeTCPTarget(); err != nil {
+		return err
+	}
+
+	var cleanupErr error
+	if err := i.removeLinearDmDevice(false, false); err != nil && !os.IsNotExist(err) {
+		cleanupErr = errors.Join(cleanupErr, errors.Wrap(err, "failed to remove linear dm device"))
+	}
+	if err := i.removeEndpoint(); err != nil {
+		cleanupErr = errors.Join(cleanupErr, errors.Wrap(err, "failed to remove endpoint"))
+	}
+	return cleanupErr
+}
+
+// disconnectNVMeTCPTarget disconnects the NVMe/TCP target. On success it
+// clears the recorded connection state.
+func (i *Initiator) disconnectNVMeTCPTarget() error {
+	if err := DisconnectUsableTargetPaths(i.NVMeTCPInfo.SubsystemNQN, i.executor); err != nil {
+		return errors.Wrapf(err, "failed to disconnect target for NVMe/TCP initiator %s", i.Name)
+	}
+
+	i.clearNVMeTCPConnectionState()
+	return nil
+}
+
+// clearNVMeTCPConnectionState clears the recorded connection state.
+// SubsystemNQN is kept so a retry can still find the subsystem.
+func (i *Initiator) clearNVMeTCPConnectionState() {
+	i.NVMeTCPInfo.ControllerName = ""
+	i.NVMeTCPInfo.NamespaceName = ""
+	i.NVMeTCPInfo.TransportAddress = ""
+	i.NVMeTCPInfo.TransportServiceID = ""
 }
 
 // GetControllerName returns the controller name

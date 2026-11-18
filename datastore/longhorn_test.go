@@ -3,6 +3,7 @@ package datastore
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -444,4 +445,21 @@ func TestGetSettingValueExistedByDataEngineAllowsEmptyValue(t *testing.T) {
 	value, err := ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineLogFlags, longhorn.DataEngineTypeV2)
 	require.NoError(t, err)
 	assert.Empty(t, value)
+}
+
+func TestIsSameImageReference(t *testing.T) {
+	tests := map[string]struct {
+		running string
+		target  string
+		expect  bool
+	}{
+		"same reference":        {"longhornio/im:v1", "longhornio/im:v1", true},
+		"normalized repository": {"docker.io/longhornio/im:v1", "longhornio/im:v1", true},
+		"another tag":           {"longhornio/im:v1-head", "longhornio/im:v1", false},
+		"another repository":    {"registry.example.com/longhornio/im:v1", "longhornio/im:v1", false},
+		"image ID":              {"sha256:" + strings.Repeat("a", 64), "longhornio/im:v1", false},
+	}
+	for name, tt := range tests {
+		assert.Equal(t, tt.expect, isSameImageReference(tt.running, tt.target), name)
+	}
 }

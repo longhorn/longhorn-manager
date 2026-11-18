@@ -529,6 +529,58 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	testCases["newly restored volume is waiting for restoration completed"] = tc
 
+	// Newly restored volume keeps retrying after an engine-level restore error
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Spec.FromBackup = testBackupURL
+	tc.volume.Spec.Standby = false
+	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.OwnerID = TestNode1
+	tc.volume.Status.State = longhorn.VolumeStateAttached
+	tc.volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+	tc.volume.Status.CurrentImage = TestEngineImage
+	tc.volume.Status.FrontendDisabled = true
+	tc.volume.Status.RestoreRequired = true
+	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.LastBackup = TestBackupName
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = longhorn.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Spec.DisableFrontend = true
+		e.Status.OwnerID = TestNode1
+		e.Status.CurrentState = longhorn.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.StorageIP = e.Status.IP
+		e.Status.Port = randomPort()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+		e.Status.LastRestoredBackup = ""
+		e.Status.EngineRestoreError = "failed to sync the volume device"
+	}
+	for name, r := range tc.replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.LastHealthyAt = r.Spec.HealthyAt
+		r.Status.IP = randomIP()
+		r.Status.StorageIP = r.Status.IP
+		r.Status.Port = randomPort()
+		r.Spec.DesireState = longhorn.InstanceStateRunning
+		r.Status.CurrentState = longhorn.InstanceStateRunning
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+			e.Status.ReplicaModeMap[name] = longhorn.ReplicaModeRW
+		}
+	}
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress,
+		"Restore is being retried after an engine-level error: failed to sync the volume device")
+	testCases["newly restored volume keeps retrying after an engine-level restore error"] = tc
+
 	// try to detach newly restored volume after restoration completed
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
@@ -4280,6 +4332,293 @@ func (s *TestSuite) TestReplicaAutoBalanceWithUnavailableManager(c *C) {
 	}
 }
 
+func (s *TestSuite) TestReplicaAutoBalanceBestEffortZone(c *C) {
+	const (
+		zone1 = "zone-1"
+		zone2 = "zone-2"
+		zone3 = "zone-3"
+	)
+	zone1Nodes := []string{"zone-1-node-1", "zone-1-node-2", "zone-1-node-3", "zone-1-node-4"}
+	zone2Nodes := []string{"zone-2-node-1", "zone-2-node-2", "zone-2-node-3", "zone-2-node-4"}
+	zone3Nodes := []string{"zone-3-node-1", "zone-3-node-2"}
+	engineNode := zone1Nodes[0]
+
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	testCases := []struct {
+		name                  string
+		numberOfReplicas      int
+		replicaNodes          []string
+		failedReplicaNodes    []string
+		downNodes             []string
+		nodeSelector          []string
+		taggedNodes           []string
+		diskSelector          []string
+		diskTaggedNodes       []string
+		secondDiskTaggedNodes []string
+		withZone3             bool
+		softAntiAffinity      bool
+		topologyRegion        string
+		nodeRegions           map[string]string
+		expectedCount         int
+		expectedAffinityIn    []string
+	}{
+		{
+			name:               "3+1 adds a replica in the zone with fewer replicas",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			expectedCount:      1,
+			expectedAffinityIn: zone2Nodes[1:],
+		},
+		{
+			name:               "1+3 adds a replica in the engine zone when it has fewer replicas",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone2Nodes[0], zone2Nodes[1], zone2Nodes[2]},
+			expectedCount:      1,
+			expectedAffinityIn: zone1Nodes[1:],
+		},
+		{
+			name:             "2+2 is balanced",
+			numberOfReplicas: 4,
+			replicaNodes:     []string{zone1Nodes[0], zone1Nodes[1], zone2Nodes[0], zone2Nodes[1]},
+			expectedCount:    0,
+		},
+		{
+			name:             "2+1 is balanced",
+			numberOfReplicas: 3,
+			replicaNodes:     []string{zone1Nodes[0], zone1Nodes[1], zone2Nodes[0]},
+			expectedCount:    0,
+		},
+		{
+			name:               "3+1 reuses a failed replica when the target zone has no free node",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: zone2Nodes[1:],
+			expectedCount:      1,
+			expectedAffinityIn: zone2Nodes[1:],
+		},
+		{
+			name:               "3+1 waits while the failed replicas in the target zone are not reusable",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: zone2Nodes[1:],
+			downNodes:          zone2Nodes[1:],
+			expectedCount:      0,
+		},
+		{
+			name:               "3+1 only picks a target-zone node that matches the volume node selector",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			nodeSelector:       []string{"ssd"},
+			taggedNodes:        []string{zone2Nodes[2]},
+			expectedCount:      1,
+			expectedAffinityIn: []string{zone2Nodes[2]},
+		},
+		{
+			name:               "3+1+1 adds a replica in either of the tied smaller zones",
+			numberOfReplicas:   5,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0], zone3Nodes[0]},
+			withZone3:          true,
+			expectedCount:      1,
+			expectedAffinityIn: []string{zone2Nodes[1], zone2Nodes[2], zone2Nodes[3], zone3Nodes[1]},
+		},
+		{
+			name:               "3+1 does not reuse a failed replica on the node that already runs one",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: []string{zone2Nodes[0]},
+			downNodes:          zone2Nodes[1:],
+			softAntiAffinity:   true,
+			expectedCount:      0,
+		},
+		{
+			name:               "3+1 does not reuse a failed replica outside the topology requirement",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: []string{zone2Nodes[1]},
+			downNodes:          zone2Nodes[2:],
+			topologyRegion:     "region-a",
+			nodeRegions:        map[string]string{zone2Nodes[1]: "region-b"},
+			expectedCount:      0,
+		},
+		{
+			name:               "3+1 reuses a failed replica when the free target-zone nodes have no disk matching the disk selector",
+			numberOfReplicas:   4,
+			replicaNodes:       []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes: []string{zone2Nodes[1]},
+			diskSelector:       []string{"ssd"},
+			diskTaggedNodes:    append(append([]string{}, zone1Nodes...), zone2Nodes[0], zone2Nodes[1]),
+			expectedCount:      1,
+			expectedAffinityIn: []string{zone2Nodes[1]},
+		},
+		{
+			name:                  "3+1 places a new replica on another disk of a node whose failed replica sits on a disk not matching the disk selector",
+			numberOfReplicas:      4,
+			replicaNodes:          []string{zone1Nodes[0], zone1Nodes[1], zone1Nodes[2], zone2Nodes[0]},
+			failedReplicaNodes:    []string{zone2Nodes[1]},
+			downNodes:             zone2Nodes[2:],
+			softAntiAffinity:      true,
+			diskSelector:          []string{"ssd"},
+			diskTaggedNodes:       append(append([]string{}, zone1Nodes...), zone2Nodes[0]),
+			secondDiskTaggedNodes: []string{zone2Nodes[1]},
+			expectedCount:         1,
+			expectedAffinityIn:    []string{zone2Nodes[1]},
+		},
+	}
+
+	for _, tc := range testCases {
+		fmt.Printf("testing %v\n", tc.name)
+
+		volume := newVolume(TestVolumeName, tc.numberOfReplicas)
+		volume.Spec.ReplicaAutoBalance = longhorn.ReplicaAutoBalanceBestEffort
+		volume.Status.State = longhorn.VolumeStateAttached
+		volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+		volume.Status.CurrentImage = TestEngineImage
+		volume.Spec.NodeSelector = tc.nodeSelector
+		volume.Spec.DiskSelector = tc.diskSelector
+		if tc.topologyRegion != "" {
+			volume.Spec.TopologyRequirement = []longhorn.VolumeTopologyTerm{{Zone: zone2, Region: tc.topologyRegion}}
+		}
+
+		engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+		engineImage.Status.NodeDeploymentMap = map[string]bool{}
+
+		engine := newEngineForVolume(volume)
+		engine.Spec.NodeID = engineNode
+		engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+
+		replicas := map[string]*longhorn.Replica{}
+		for _, nodeID := range tc.replicaNodes {
+			replica := newReplicaForVolume(volume, engine, nodeID, TestDiskID1)
+			replica.Spec.HealthyAt = TestTimeNow
+			replica.Status.CurrentState = longhorn.InstanceStateRunning
+			replicas[replica.Name] = replica
+			engine.Status.ReplicaModeMap[replica.Name] = longhorn.ReplicaModeRW
+		}
+		for _, nodeID := range tc.failedReplicaNodes {
+			replica := newReplicaForVolume(volume, engine, nodeID, TestDiskID1)
+			replica.Spec.HealthyAt = TestTimeNow
+			replica.Spec.FailedAt = TestTimeNow
+			replica.Status.CurrentState = longhorn.InstanceStateStopped
+			replicas[replica.Name] = replica
+		}
+
+		longhornNodes := []*longhorn.Node{}
+		kubeNodes := []*corev1.Node{}
+		instanceManagers := []*longhorn.InstanceManager{}
+		zoneNodes := map[string][]string{zone1: zone1Nodes, zone2: zone2Nodes}
+		if tc.withZone3 {
+			zoneNodes[zone3] = zone3Nodes
+		}
+		for zone, nodeNames := range zoneNodes {
+			for _, nodeName := range nodeNames {
+				status := longhorn.ConditionStatusTrue
+				if util.Contains(tc.downNodes, nodeName) {
+					status = longhorn.ConditionStatusFalse
+				}
+				node := newNode(nodeName, TestNamespace, true, status, "")
+				node.Status.Zone = zone
+				node.Status.Region = tc.topologyRegion
+				if region, ok := tc.nodeRegions[nodeName]; ok {
+					node.Status.Region = region
+				}
+				if util.Contains(tc.taggedNodes, nodeName) {
+					node.Spec.Tags = tc.nodeSelector
+				}
+				if util.Contains(tc.diskTaggedNodes, nodeName) {
+					disk := node.Spec.Disks[TestDiskID1]
+					disk.Tags = tc.diskSelector
+					node.Spec.Disks[TestDiskID1] = disk
+				}
+				if util.Contains(tc.secondDiskTaggedNodes, nodeName) {
+					disk := node.Spec.Disks[TestDiskID1]
+					disk.Tags = tc.diskSelector
+					node.Spec.Disks[TestDiskID2] = disk
+					diskStatus := node.Status.DiskStatus[TestDiskID1].DeepCopy()
+					diskStatus.DiskUUID = TestDiskID2
+					node.Status.DiskStatus[TestDiskID2] = diskStatus
+				}
+				longhornNodes = append(longhornNodes, node)
+				kubeNodes = append(kubeNodes, newKubernetesNode(nodeName, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue))
+				engineImage.Status.NodeDeploymentMap[nodeName] = true
+				instanceManagers = append(instanceManagers, newInstanceManager(TestInstanceManagerName+"-"+nodeName,
+					longhorn.InstanceManagerStateRunning, nodeName, nodeName, TestIP1,
+					map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{}, map[string]longhorn.InstanceProcess{},
+					longhorn.DataEngineTypeV1, TestInstanceManagerImage, false))
+			}
+		}
+		settings := []*longhorn.Setting{
+			initSettingsNameValue(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage),
+		}
+		if tc.softAntiAffinity {
+			settings = append(settings, initSettingsNameValue(string(types.SettingNameReplicaSoftAntiAffinity), "true"))
+		}
+		for _, setting := range settings {
+			setting.Namespace = TestNamespace
+		}
+
+		lhObjects := []runtime.Object{volume, engine, engineImage}
+		for _, node := range longhornNodes {
+			lhObjects = append(lhObjects, node)
+		}
+		for _, replica := range replicas {
+			lhObjects = append(lhObjects, replica)
+		}
+		for _, im := range instanceManagers {
+			lhObjects = append(lhObjects, im)
+		}
+		for _, setting := range settings {
+			lhObjects = append(lhObjects, setting)
+		}
+		kubeObjects := []runtime.Object{}
+		for _, node := range kubeNodes {
+			kubeObjects = append(kubeObjects, node)
+		}
+
+		lhClient := lhfake.NewSimpleClientset(lhObjects...) // nolint: staticcheck
+		kubeClient := fake.NewSimpleClientset(kubeObjects...)
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		for _, node := range longhornNodes {
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+		}
+		for _, node := range kubeNodes {
+			c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
+		}
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer().Add(engineImage), IsNil)
+		for _, im := range instanceManagers {
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
+		}
+		for _, setting := range settings {
+			c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer().Add(setting), IsNil)
+		}
+
+		ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+		vc := &VolumeController{
+			baseController: newBaseController("test-volume", logrus.StandardLogger()),
+			ds:             ds,
+			eventRecorder:  record.NewFakeRecorder(10),
+			scheduler:      scheduler.NewReplicaScheduler(ds),
+			nowHandler:     getTestNow,
+		}
+
+		// Map iteration order inside the counting code is random, so run the
+		// same case several times to catch order-dependent results.
+		for i := 0; i < 20; i++ {
+			count, affinity := vc.getReplenishReplicasCount(volume, replicas, engine)
+			c.Assert(count, Equals, tc.expectedCount, Commentf("%v", tc.name))
+			if len(tc.expectedAffinityIn) == 0 {
+				c.Assert(affinity, Equals, "", Commentf("%v", tc.name))
+			} else {
+				c.Assert(util.Contains(tc.expectedAffinityIn, affinity), Equals, true, Commentf("%v: affinity %v", tc.name, affinity))
+			}
+		}
+	}
+}
+
 func (s *TestSuite) TestCleanupAutoBalancedReplicasWithUnavailableManager(c *C) {
 	const (
 		testNode3   = "test-node-name-3"
@@ -4395,4 +4734,236 @@ func (s *TestSuite) TestCleanupAutoBalancedReplicasWithUnavailableManager(c *C) 
 	c.Assert(counts[TestNode1], Equals, 2)
 	c.Assert(counts[TestNode2], Equals, 2)
 	c.Assert(counts[testNode3], Equals, 1)
+}
+
+// v2ImageSyncTest is an attached V2 volume with an engine, an engine frontend and
+// three replicas, all on TestInstanceManagerImage. The default instance manager
+// image and the instance manager are already TestExtraInstanceManagerImage, and
+// instance manager automatic upgrade is enabled.
+type v2ImageSyncTest struct {
+	vc               *VolumeController
+	allowAutoUpgrade bool
+	client           *lhfake.Clientset
+	informers        *util.InformerFactories
+	volume           *longhorn.Volume
+	engine           *longhorn.Engine
+	engineFrontend   *longhorn.EngineFrontend
+	replicas         []*longhorn.Replica
+	im               *longhorn.InstanceManager
+	pod              *corev1.Pod
+}
+
+func newV2ImageSyncTest(c *C) *v2ImageSyncTest {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informers := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informers, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 3)
+	v.Namespace = TestNamespace
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Image = TestInstanceManagerImage
+	v.Status.CurrentImage = TestInstanceManagerImage
+	v.Status.State = longhorn.VolumeStateAttached
+
+	im := newInstanceManager("im", longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1,
+		nil, nil, nil, longhorn.DataEngineTypeV2, TestExtraInstanceManagerImage, false)
+	pod := newPod(&corev1.PodStatus{Phase: corev1.PodRunning, PodIP: TestIP1}, im.Name, TestNamespace, TestNode1)
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name: "instance-manager", Image: im.Spec.Image, Ready: true,
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	}}
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = v.Spec.DataEngine
+	e.Spec.Image = TestInstanceManagerImage
+	e.Status.CurrentImage = TestInstanceManagerImage
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "")
+	ef.Spec.Image = TestInstanceManagerImage
+	ef.Status.CurrentImage = TestInstanceManagerImage
+	ef.Status.CurrentState = longhorn.InstanceStateRunning
+
+	f := &v2ImageSyncTest{vc: vc, allowAutoUpgrade: true, client: lhClient, informers: informers, volume: v, engine: e, engineFrontend: ef, im: im, pod: pod}
+	for _, node := range []string{TestNode1, TestNode2, "test-node-3"} {
+		r := newReplicaForVolume(v, e, node, TestDiskID1)
+		r.Spec.DataEngine = v.Spec.DataEngine
+		r.Spec.Image = TestInstanceManagerImage
+		r.Status.CurrentImage = TestInstanceManagerImage
+		r.Status.CurrentState = longhorn.InstanceStateRunning
+		f.replicas = append(f.replicas, r)
+	}
+	return f
+}
+
+// seed stores the instance manager settings, the volume, the instance manager and
+// its Pod for the controller to read.
+func (f *v2ImageSyncTest) seed(c *C) {
+	lh := f.informers.LhInformerFactory.Longhorn().V1beta2()
+	setting := newSetting(string(types.SettingNameDefaultInstanceManagerImage), TestExtraInstanceManagerImage)
+	c.Assert(lh.Settings().Informer().GetIndexer().Add(setting), IsNil)
+	setting = newSetting(string(types.SettingNameAllowInstanceManagerAutomaticUpgrade),
+		fmt.Sprintf(`{"%v":"%v"}`, longhorn.DataEngineTypeV2, f.allowAutoUpgrade))
+	c.Assert(lh.Settings().Informer().GetIndexer().Add(setting), IsNil)
+	c.Assert(f.client.Tracker().Add(f.volume.DeepCopy()), IsNil)
+	c.Assert(lh.Volumes().Informer().GetIndexer().Add(f.volume.DeepCopy()), IsNil)
+	c.Assert(lh.InstanceManagers().Informer().GetIndexer().Add(f.im), IsNil)
+	c.Assert(f.informers.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer().Add(f.pod), IsNil)
+}
+
+func (f *v2ImageSyncTest) sync(c *C) bool {
+	es := map[string]*longhorn.Engine{f.engine.Name: f.engine}
+	efs := map[string]*longhorn.EngineFrontend{f.engineFrontend.Name: f.engineFrontend}
+	rs := map[string]*longhorn.Replica{}
+	for _, r := range f.replicas {
+		rs[r.Name] = r
+	}
+	updated, err := f.vc.syncV2VolumeImage(f.volume, es, rs, efs)
+	c.Assert(err, IsNil)
+	return updated
+}
+
+func (s *TestSuite) TestSyncV2VolumeImageUpdatesSpecFirst(c *C) {
+	for name, isEC := range map[string]bool{"V2 volume": false, "EC volume is excluded": true} {
+		c.Log(name)
+		f := newV2ImageSyncTest(c)
+		if isEC {
+			f.volume.Spec.DataLayout.Type = longhorn.VolumeDataLayoutTypeSharded
+		}
+		f.seed(c)
+		c.Assert(f.sync(c), Equals, !isEC)
+
+		// Only volume.spec.image is persisted first, and the rest follows on the next reconciliation.
+		stored, err := f.client.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), f.volume.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		expectedImage := TestExtraInstanceManagerImage
+		if isEC {
+			expectedImage = TestInstanceManagerImage
+		}
+		c.Assert(stored.Spec.Image, Equals, expectedImage)
+		c.Assert(stored.Status.CurrentImage, Equals, TestInstanceManagerImage)
+		c.Assert(f.engine.Spec.Image, Equals, TestInstanceManagerImage)
+	}
+}
+
+func (s *TestSuite) TestSyncV2VolumeImageWithoutAutomaticUpgrade(c *C) {
+	tests := map[string]struct {
+		mutate      func(f *v2ImageSyncTest)
+		expectSpec  string
+		expectStore bool
+	}{
+		"instances still run the old image": {
+			expectSpec: TestInstanceManagerImage,
+		},
+		"instances run the default image after the offline upgrade": {
+			mutate: func(f *v2ImageSyncTest) {
+				f.engine.Status.CurrentImage = TestExtraInstanceManagerImage
+				f.engineFrontend.Status.CurrentImage = TestExtraInstanceManagerImage
+				for _, r := range f.replicas {
+					r.Status.CurrentImage = TestExtraInstanceManagerImage
+				}
+			},
+			expectSpec:  TestExtraInstanceManagerImage,
+			expectStore: true,
+		},
+		"disabled in the middle of an upgrade": {
+			mutate: func(f *v2ImageSyncTest) {
+				f.volume.Spec.Image = TestExtraInstanceManagerImage
+				f.replicas[0].Status.CurrentImage = TestExtraInstanceManagerImage
+			},
+			expectSpec:  TestInstanceManagerImage,
+			expectStore: true,
+		},
+	}
+	for name, tt := range tests {
+		c.Log(name)
+		f := newV2ImageSyncTest(c)
+		f.allowAutoUpgrade = false
+		if tt.mutate != nil {
+			tt.mutate(f)
+		}
+		f.seed(c)
+		c.Assert(f.sync(c), Equals, tt.expectStore)
+
+		stored, err := f.client.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), f.volume.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(stored.Spec.Image, Equals, tt.expectSpec)
+	}
+}
+
+func (s *TestSuite) TestSyncV2VolumeImageFollowsRunningImage(c *C) {
+	tests := map[string]struct {
+		mutate       func(f *v2ImageSyncTest)
+		expectStatus string
+	}{
+		"all serving instances run the new image": {
+			expectStatus: TestExtraInstanceManagerImage,
+		},
+		"replica still runs the old image": {
+			mutate:       func(f *v2ImageSyncTest) { f.replicas[2].Status.CurrentImage = TestInstanceManagerImage },
+			expectStatus: TestInstanceManagerImage,
+		},
+		"deleting replica still runs the old image": {
+			mutate: func(f *v2ImageSyncTest) {
+				f.replicas[2].DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				f.replicas[2].Status.CurrentImage = TestInstanceManagerImage
+			},
+			expectStatus: TestInstanceManagerImage,
+		},
+		"stopped deleting replica is ignored": {
+			mutate: func(f *v2ImageSyncTest) {
+				f.replicas[2].DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				f.replicas[2].Status.CurrentImage = ""
+				f.replicas[2].Status.CurrentState = longhorn.InstanceStateStopped
+			},
+			expectStatus: TestExtraInstanceManagerImage,
+		},
+		"deleting engine frontend still runs the old image": {
+			mutate: func(f *v2ImageSyncTest) {
+				f.engineFrontend.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				f.engineFrontend.Status.CurrentImage = TestInstanceManagerImage
+			},
+			expectStatus: TestInstanceManagerImage,
+		},
+		"newly started replica without a confirmed image": {
+			mutate:       func(f *v2ImageSyncTest) { f.replicas[2].Status.CurrentImage = "" },
+			expectStatus: TestInstanceManagerImage,
+		},
+		"detached volume keeps the last running image": {
+			mutate: func(f *v2ImageSyncTest) {
+				f.engine.Status.CurrentState = longhorn.InstanceStateStopped
+				f.engineFrontend.Status.CurrentState = longhorn.InstanceStateStopped
+				for _, r := range f.replicas {
+					r.Status.CurrentState = longhorn.InstanceStateStopped
+				}
+			},
+			expectStatus: TestInstanceManagerImage,
+		},
+	}
+	for name, tt := range tests {
+		c.Log(name)
+		f := newV2ImageSyncTest(c)
+		f.volume.Spec.Image = TestExtraInstanceManagerImage
+		f.engine.Status.CurrentImage = TestExtraInstanceManagerImage
+		f.engineFrontend.Status.CurrentImage = TestExtraInstanceManagerImage
+		for _, r := range f.replicas {
+			r.Status.CurrentImage = TestExtraInstanceManagerImage
+		}
+		if tt.mutate != nil {
+			tt.mutate(f)
+		}
+		f.seed(c)
+		c.Assert(f.sync(c), Equals, false)
+
+		// Instance specs follow volume.spec.image, and volume.status.currentImage follows the instances.
+		c.Assert(f.engine.Spec.Image, Equals, TestExtraInstanceManagerImage)
+		c.Assert(f.engineFrontend.Spec.Image, Equals, TestExtraInstanceManagerImage)
+		for _, r := range f.replicas {
+			c.Assert(r.Spec.Image, Equals, TestExtraInstanceManagerImage)
+		}
+		c.Assert(f.volume.Status.CurrentImage, Equals, tt.expectStatus)
+		c.Assert(isV1VolumeUpgrading(f.volume), Equals, false)
+	}
 }

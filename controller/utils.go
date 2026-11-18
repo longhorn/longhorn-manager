@@ -81,12 +81,15 @@ func hasShardEvictionRequested(shards map[string]*longhorn.Shard) bool {
 	return false
 }
 
-func isVolumeUpgrading(v *longhorn.Volume) bool {
-	return v.Status.CurrentImage != v.Spec.Image
+// isV1VolumeUpgrading returns true during a V1 engine image upgrade, which spec.Image
+// drives. A V2 image does not drive an upgrade, see syncV2VolumeImage.
+func isV1VolumeUpgrading(v *longhorn.Volume) bool {
+	return types.IsDataEngineV1(v.Spec.DataEngine) && v.Status.CurrentImage != v.Spec.Image
 }
 
-func isEngineUpgrading(e *longhorn.Engine) bool {
-	return e.Status.CurrentImage != e.Spec.Image
+// isV1EngineUpgrading returns true during a V1 engine image upgrade. See isV1VolumeUpgrading.
+func isV1EngineUpgrading(e *longhorn.Engine) bool {
+	return types.IsDataEngineV1(e.Spec.DataEngine) && e.Status.CurrentImage != e.Spec.Image
 }
 
 // The flow is: VolumeCloneStateEmpty => VolumeCloneStateInitiated => VolumeCloneStateCopyCompletedAwaitingHealthy => VolumeCloneStateFailed or VolumeCloneStateCompleted

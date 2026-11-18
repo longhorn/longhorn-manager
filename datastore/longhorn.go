@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/kubernetes/pkg/util/parsers"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -4909,6 +4910,7 @@ func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.E
 	e.Status.ReplicaModeMap = nil
 	e.Status.ReplicaTransitionTimeMap = nil
 	e.Status.RestoreStatus = nil
+	e.Status.EngineRestoreError = ""
 	e.Status.PurgeStatus = nil
 	e.Status.RebuildStatus = nil
 	e.Status.LastExpansionFailedAt = ""
@@ -5295,6 +5297,44 @@ func isActiveNodeV2InstanceManagerPod(pod *corev1.Pod, node string) bool {
 		pod.Status.PodIP != ""
 }
 
+// GetInstanceManagerRunningImage returns im.Spec.Image when the instance manager is
+// running and its ready instance-manager container reports running that image;
+// otherwise it returns an empty string. The spec image alone is not enough because
+// an in-place upgrade updates it before the container restarts.
+func (s *DataStore) GetInstanceManagerRunningImage(im *longhorn.InstanceManager) (string, error) {
+	if im == nil || im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return "", nil
+	}
+	pod, err := s.GetPodRO(s.namespace, im.Name)
+	if err != nil || pod == nil || pod.DeletionTimestamp != nil {
+		return "", err
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == "instance-manager" && status.Ready && status.State.Running != nil &&
+			isSameImageReference(status.Image, im.Spec.Image) {
+			return im.Spec.Image, nil
+		}
+	}
+	return "", nil
+}
+
+// isSameImageReference returns true when the runtime-reported image and the target
+// are the same image reference after normalization, such as adding docker.io/.
+//
+// This compares references, not image content. Equivalent images reported under
+// another tag, repository, or an image ID do not match.
+func isSameImageReference(running, target string) bool {
+	targetRepo, targetTag, targetDigest, err := parsers.ParseImageName(target)
+	if err != nil {
+		return false
+	}
+	runningRepo, runningTag, runningDigest, err := parsers.ParseImageName(running)
+	if err != nil {
+		return false
+	}
+	return runningRepo == targetRepo && runningTag == targetTag && runningDigest == targetDigest
+}
+
 // ListInstanceManagers gets a list of InstanceManagers for the given namespace.
 // Returns a new InstanceManager object
 func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager, error) {
@@ -5438,12 +5478,13 @@ func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
 
 // GetDataEngineImageCLIAPIVersion get engine or instance manager image for the given name and returns the CLIAPIVersion
 func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, dataEngine longhorn.DataEngineType) (int, error) {
-	if imageName == "" {
-		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
-	}
-
+	// A V2 instance may not report an image before its instance manager image is confirmed.
 	if types.IsDataEngineV2(dataEngine) {
 		return 0, nil
+	}
+
+	if imageName == "" {
+		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
 
 	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(imageName))
@@ -8006,6 +8047,18 @@ func (s *DataStore) ListLinkedCloneReplicasBySrcReplicaRO(srcReplicaName string)
 // IsSnapshotLinkedCloneEntrypoint returns (true, cloneVolumeNames, nil) when
 // snapshotName is the entrypoint snapshot for one or more linked-clone volumes.
 func (s *DataStore) IsSnapshotLinkedCloneEntrypoint(snapshotName string) (bool, []string, error) {
+	// Snapshot names may be up to 253 bytes, but label values are limited to
+	// 63. The linked-clone source snapshot label is the only record of the
+	// entrypoint, and CreateVolume and the volume mutator stamp it with the raw
+	// snapshot name before the apiserver validates labels. A linked clone from a
+	// snapshot whose name is not a valid label value is therefore rejected at
+	// creation, so such a snapshot can never be an entrypoint. Building a selector
+	// from the name would fail and block the deletion instead. Revisit this if
+	// the label stops storing the raw snapshot name.
+	if len(validation.IsValidLabelValue(snapshotName)) > 0 {
+		return false, nil, nil
+	}
+
 	matchLabels := types.GetLinkedCloneSourceSnapshotLabel(snapshotName)
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: matchLabels,

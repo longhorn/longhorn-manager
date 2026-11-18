@@ -98,6 +98,7 @@ type Scheduler interface {
 	StopJobsWithContext(context.Context) error
 	// Update replaces the existing Job's JobDefinition with the provided
 	// JobDefinition. The Job's Job.ID() remains the same.
+	// If validation fails, the existing Job is left unchanged.
 	Update(uuid.UUID, JobDefinition, Task, ...JobOption) (Job, error)
 	// JobsWaitingInQueue number of jobs waiting in Queue in case of LimitModeWait
 	// In case of LimitModeReschedule or no limit it will be always zero
@@ -304,11 +305,14 @@ func (s *scheduler) stopScheduler() {
 	}
 	var err error
 	if s.started.Load() {
-		t := time.NewTimer(s.exec.stopTimeout + 1*time.Second)
+		// Use the executor's clock so fake clocks in tests behave
+		// consistently with the rest of the shutdown path (executor.stop
+		// already times out on e.clock).
+		t := s.exec.clock.NewTimer(s.exec.stopTimeout + 1*time.Second)
 		select {
 		case err = <-s.exec.done:
 			t.Stop()
-		case <-t.C:
+		case <-t.Chan():
 			err = ErrStopExecutorTimedOut
 		}
 	}
@@ -418,6 +422,69 @@ func (s *scheduler) advancePastNow(j internalJob, next time.Time) (time.Time, bo
 	return next, true
 }
 
+// advanceNextPastDuplicates advances next past any values already present in
+// j.nextScheduled (e.g. when a job is being rescheduled off the same next-run
+// value as before). It returns ok=false if j.next ever produces the zero time
+// or fails to make forward progress, which would otherwise either loop forever
+// or fall through with a zero next that arms AfterFunc with a large negative
+// duration and busy-loops the scheduler goroutine. This mirrors the guard in
+// advancePastNow; callers should treat ok=false as an exhausted schedule and
+// remove the job. See issue #943 for the failure class.
+func (s *scheduler) advanceNextPastDuplicates(j internalJob, next time.Time) (time.Time, bool) {
+	for nextScheduledContains(j.nextScheduled, next) {
+		n := j.next(next)
+		if n.IsZero() || !n.After(next) {
+			return time.Time{}, false
+		}
+		next = n
+	}
+	return next, true
+}
+
+// firstRunAction communicates how the scheduler should handle a
+// newly-dispatched job's first scheduled run after firstRunOrGrace has
+// resolved any past-time drift.
+type firstRunAction uint8
+
+const (
+	// firstRunSchedule means the caller should schedule a timer for the
+	// returned time as normal.
+	firstRunSchedule firstRunAction = iota
+	// firstRunFireNow means the returned time is the current wall time
+	// (grace-triggered) and the caller should dispatch on jobsIn
+	// immediately rather than arming a zero-duration timer. This
+	// matches the semantics of startImmediately.
+	firstRunFireNow
+	// firstRunDrop means the schedule is exhausted (or past its stop
+	// time) and the caller should remove the job.
+	firstRunDrop
+)
+
+// firstRunOrGrace resolves the first-run time for a newly-dispatched
+// job. Behavior:
+//
+//   - If next is not before now, it is returned with firstRunSchedule.
+//   - If next is before now and the job's startAtGrace tolerates the
+//     drift (now.Sub(next) <= j.startAtGrace), now is returned with
+//     firstRunFireNow so the caller can dispatch immediately.
+//   - Otherwise advancePastNow is consulted; if it too fails to find a
+//     future run the schedule is exhausted and firstRunDrop is returned.
+//
+// See WithStartAtGrace.
+func (s *scheduler) firstRunOrGrace(j internalJob, next time.Time) (time.Time, firstRunAction) {
+	now := s.now()
+	if !next.Before(now) {
+		return next, firstRunSchedule
+	}
+	if j.startAtGrace > 0 && now.Sub(next) <= j.startAtGrace {
+		return now, firstRunFireNow
+	}
+	if advanced, ok := s.advancePastNow(j, next); ok {
+		return advanced, firstRunSchedule
+	}
+	return time.Time{}, firstRunDrop
+}
+
 // selectExecJobsOutForRescheduling handles the executor's post-run
 // notification for a job that just started. Advances j.nextRun past
 // now, updates the timer, and appends to nextScheduled. No-op if the
@@ -494,8 +561,11 @@ func (s *scheduler) selectExecJobsOutForRescheduling(id uuid.UUID) {
 		// if the next value is a duplicate of what's already in the nextScheduled slice, for example:
 		// - the job is being rescheduled off the same next run value as before
 		// increment to the next, next value
-		for nextScheduledContains(j.nextScheduled, next) {
-			next = j.next(next)
+		var ok bool
+		next, ok = s.advanceNextPastDuplicates(j, next)
+		if !ok {
+			s.selectRemoveJob(id)
+			return
 		}
 	}
 
@@ -624,6 +694,75 @@ func (s *scheduler) selectJobOutRequest(out *jobOutRequest) {
 	close(out.outChan)
 }
 
+// dispatchJobRun sends an immediate run request for id to the executor,
+// respecting scheduler shutdown. Used for both start-immediately jobs and
+// grace-triggered fires.
+func (s *scheduler) dispatchJobRun(id uuid.UUID) {
+	select {
+	case <-s.shutdownCtx.Done():
+	case s.exec.jobsIn <- jobIn{
+		id:            id,
+		shouldSendOut: true,
+	}:
+	}
+}
+
+// prepareFirstRun resolves a job's initial run when the scheduler is
+// already running. It computes the first next-run time, applies
+// grace/drift handling (firstRunOrGrace), and then either dispatches an
+// immediate fire, arms the run timer, or reports that the job should be
+// dropped. On a non-drop result the returned job carries the updated
+// startTime/nextScheduled and must be stored by the caller. Returns
+// drop=true when the schedule is exhausted or is past its stop time, in
+// which case the caller should remove the job.
+//
+// This is the single source of truth shared by selectNewJob (adding a job
+// while running) and selectStart (starting the scheduler); the callers
+// differ only in their store/remove bookkeeping.
+func (s *scheduler) prepareFirstRun(j internalJob) (internalJob, bool) {
+	next := j.startTime
+	if j.startImmediately {
+		next = s.now()
+		s.dispatchJobRun(j.id)
+	} else {
+		if next.IsZero() {
+			next = j.next(s.now())
+			if next.IsZero() {
+				return j, true
+			}
+		}
+
+		if next.Before(s.now()) {
+			var action firstRunAction
+			next, action = s.firstRunOrGrace(j, next)
+			switch action {
+			case firstRunDrop:
+				return j, true
+			case firstRunFireNow:
+				if !j.stopTime.IsZero() && !next.Before(j.stopTime) {
+					return j, true
+				}
+				s.dispatchJobRun(j.id)
+				j.startTime = next
+				j.nextScheduled = insertNextScheduled(j.nextScheduled, next)
+				return j, false
+			}
+		}
+
+		if !j.stopTime.IsZero() && !next.Before(j.stopTime) {
+			return j, true
+		}
+
+		id := j.id
+		j.timer = s.exec.clock.AfterFunc(next.Sub(s.now()), func() {
+			s.dispatchJobRun(id)
+		})
+	}
+	j.startTime = next
+	j.nextScheduled = insertNextScheduled(j.nextScheduled, next)
+	return j, false
+}
+
 // selectNewJob installs a job produced by addOrUpdateJob into s.jobs.
 // Runs the job's initial nextRun computation and, if the scheduler is
 // already started, wires it into the executor immediately. Signals
@@ -631,52 +770,16 @@ func (s *scheduler) selectJobOutRequest(out *jobOutRequest) {
 func (s *scheduler) selectNewJob(in newJobIn) {
 	j := in.job
 	if s.started.Load() {
-		next := j.startTime
-		if j.startImmediately {
-			next = s.now()
-			select {
-			case <-s.shutdownCtx.Done():
-			case s.exec.jobsIn <- jobIn{
-				id:            j.id,
-				shouldSendOut: true,
-			}:
-			}
-		} else {
-			if next.IsZero() {
-				next = j.next(s.now())
-			}
-
-			if next.Before(s.now()) {
-				var ok bool
-				next, ok = s.advancePastNow(j, next)
-				if !ok {
-					s.jobs[j.id] = j
-					in.cancel()
-					s.selectRemoveJob(j.id)
-					return
-				}
-			}
-
-			if !j.stopTime.IsZero() && !next.Before(j.stopTime) {
-				s.jobs[j.id] = j
-				in.cancel()
-				s.selectRemoveJob(j.id)
-				return
-			}
-
-			id := j.id
-			j.timer = s.exec.clock.AfterFunc(next.Sub(s.now()), func() {
-				select {
-				case <-s.shutdownCtx.Done():
-				case s.exec.jobsIn <- jobIn{
-					id:            id,
-					shouldSendOut: true,
-				}:
-				}
-			})
+		updated, drop := s.prepareFirstRun(j)
+		j = updated
+		if drop {
+			// Store before removing so selectRemoveJob can find the
+			// brand-new job to cancel its context and notify monitors.
+			s.jobs[j.id] = j
+			in.cancel()
+			s.selectRemoveJob(j.id)
+			return
 		}
-		j.startTime = next
-		j.nextScheduled = insertNextScheduled(j.nextScheduled, next)
 	}
 
 	s.jobs[j.id] = j
@@ -707,48 +810,14 @@ func (s *scheduler) selectStart() {
 
 	s.started.Store(true)
 	for id, j := range s.jobs {
-		next := j.startTime
-		if j.startImmediately {
-			next = s.now()
-			select {
-			case <-s.shutdownCtx.Done():
-			case s.exec.jobsIn <- jobIn{
-				id:            id,
-				shouldSendOut: true,
-			}:
-			}
-		} else {
-			if next.IsZero() {
-				next = j.next(s.now())
-			}
-			if next.Before(s.now()) {
-				var ok bool
-				next, ok = s.advancePastNow(j, next)
-				if !ok {
-					s.selectRemoveJob(id)
-					continue
-				}
-			}
-
-			if !j.stopTime.IsZero() && !next.Before(j.stopTime) {
-				s.selectRemoveJob(id)
-				continue
-			}
-
-			jobID := id
-			j.timer = s.exec.clock.AfterFunc(next.Sub(s.now()), func() {
-				select {
-				case <-s.shutdownCtx.Done():
-				case s.exec.jobsIn <- jobIn{
-					id:            jobID,
-					shouldSendOut: true,
-				}:
-				}
-			})
+		// runs scheduled before a StopJobs no longer apply
+		j.nextScheduled = nil
+		updated, drop := s.prepareFirstRun(j)
+		if drop {
+			s.selectRemoveJob(id)
+			continue
 		}
-		j.startTime = next
-		j.nextScheduled = insertNextScheduled(j.nextScheduled, next)
-		s.jobs[id] = j
+		s.jobs[id] = updated
 	}
 	select {
 	case <-s.shutdownCtx.Done():
@@ -877,7 +946,7 @@ func (s *scheduler) verifyVariadic(taskFunc reflect.Value, tsk task, variadicSta
 }
 
 func (s *scheduler) verifyNonVariadic(taskFunc reflect.Value, tsk task, length int) error {
-	for i := 0; i < length; i++ {
+	for i := range length {
 		argumentType := reflect.TypeOf(tsk.parameters[i])
 		t1 := argumentType.Kind()
 		if t1 == reflect.Interface || t1 == reflect.Pointer {
@@ -900,6 +969,9 @@ func (s *scheduler) verifyParameterType(taskFunc reflect.Value, tsk task) error 
 	isVariadic := taskFuncType.IsVariadic()
 	if isVariadic {
 		variadicStart := taskFuncType.NumIn() - 1
+		if len(tsk.parameters) < variadicStart {
+			return ErrNewJobWrongNumberOfParameters
+		}
 		return s.verifyVariadic(taskFunc, tsk, variadicStart)
 	}
 	expectedParameterLength := taskFuncType.NumIn()
@@ -909,23 +981,13 @@ func (s *scheduler) verifyParameterType(taskFunc reflect.Value, tsk task) error 
 	return s.verifyNonVariadic(taskFunc, tsk, expectedParameterLength)
 }
 
-var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+var contextType = reflect.TypeFor[context.Context]()
 
 func (s *scheduler) addOrUpdateJob(id uuid.UUID, definition JobDefinition, taskWrapper Task, options []JobOption) (Job, error) {
 	j := internalJob{}
 	if id == uuid.Nil {
 		j.id = uuid.New()
 	} else {
-		currentJob := requestJobCtx(s.shutdownCtx, id, s.jobOutRequestCh)
-		if currentJob != nil && currentJob.id != uuid.Nil {
-			select {
-			case <-s.shutdownCtx.Done():
-				return nil, nil
-			case s.removeJobCh <- id:
-				<-currentJob.ctx.Done()
-			}
-		}
-
 		j.id = id
 	}
 
@@ -999,6 +1061,19 @@ func (s *scheduler) addOrUpdateJob(id uuid.UUID, definition JobDefinition, taskW
 	if err := definition.setup(&j, s.location, s.exec.clock.Now()); err != nil {
 		j.cancel()
 		return nil, err
+	}
+
+	if id != uuid.Nil {
+		currentJob := requestJobCtx(s.shutdownCtx, id, s.jobOutRequestCh)
+		if currentJob != nil && currentJob.id != uuid.Nil {
+			select {
+			case <-s.shutdownCtx.Done():
+				j.cancel()
+				return nil, nil
+			case s.removeJobCh <- id:
+				<-currentJob.ctx.Done()
+			}
+		}
 	}
 
 	newJobCtx, newJobCancel := context.WithCancel(context.Background())

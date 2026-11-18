@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	. "gopkg.in/check.v1"
 
@@ -1410,4 +1413,62 @@ func (s *TestSuite) TestShouldDeferPodRecreationForStaleCryptoCleanup(c *C) {
 	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, false), Equals, false)
 	c.Assert(imc.staleCryptoCleanupPendingSince, HasLen, 0)
 	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
+}
+func (s *TestSuite) TestHandleErrRetriesNotServingInstanceManager(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	syncAPIVersion := func(versionErr error) error {
+		im := &longhorn.InstanceManager{
+			Status: longhorn.InstanceManagerStatus{
+				CurrentState:    longhorn.InstanceManagerStateRunning,
+				APIVersion:      engineapi.UnknownInstanceManagerAPIVersion,
+				ProxyAPIVersion: engineapi.UnknownInstanceManagerProxyAPIVersion,
+			},
+		}
+		imc.versionUpdater = func(*longhorn.InstanceManager) error { return versionErr }
+		return errors.Wrapf(imc.syncInstanceManagerAPIVersion(im), "failed to sync instance manager for %v", "im")
+	}
+
+	testCases := map[string]struct {
+		versionErr error
+		retried    bool
+	}{
+		"services not listening yet": {
+			versionErr: errors.Wrap(status.Error(codes.Unavailable, "connection refused"), "failed to check client connection"),
+			retried:    true,
+		},
+		"services too slow to answer": {
+			versionErr: status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
+			retried:    true,
+		},
+		"permanent gRPC failure": {
+			versionErr: status.Error(codes.Unimplemented, "unknown service"),
+			retried:    false,
+		},
+		"non-gRPC failure": {
+			versionErr: fmt.Errorf("invalid instance manager"),
+			retried:    false,
+		},
+	}
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+		syncErr := syncAPIVersion(tc.versionErr)
+		c.Assert(errors.Is(syncErr, errInstanceManagerNotServing), Equals, tc.retried, Commentf(name))
+
+		// A transient error keeps the key queued with backoff, others are dropped after maxRetries.
+		key := TestNamespace + "/" + name
+		for i := 0; i < maxRetries+1; i++ {
+			imc.handleErr(syncErr, key)
+		}
+		if tc.retried {
+			c.Assert(imc.queue.NumRequeues(key), Equals, maxRetries+1, Commentf(name))
+		} else {
+			c.Assert(imc.queue.NumRequeues(key), Equals, 0, Commentf(name))
+		}
+	}
 }

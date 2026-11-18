@@ -339,9 +339,7 @@ func (e *executor) limitModeRunner(name string, in chan jobIn, wg *waitGroupWith
 						if jIn.shouldSendOut {
 							select {
 							case <-e.ctx.Done():
-								return
 							case <-j.ctx.Done():
-								return
 							case e.jobsOutForRescheduling <- j.id:
 							}
 						}
@@ -444,6 +442,7 @@ func (e *executor) runJob(j internalJob, jIn jobIn) {
 		if err := e.elector.IsLeader(j.ctx); err != nil {
 			e.sendOutForRescheduling(&jIn)
 			e.incrementJobCounter(j, Skip)
+			e.sendOutForNextRunUpdate(&jIn)
 			return
 		}
 	} else if !j.disabledLocker && j.locker != nil {
@@ -476,13 +475,14 @@ func (e *executor) runJob(j internalJob, jIn jobIn) {
 	_ = callJobFuncWithParams(j.beforeJobRuns, j.id, j.name)
 
 	//  Notify job started
-	actualStartTime := time.Now()
+	actualStartTime := e.clock.Now()
 	if e.scheduler != nil && e.scheduler.schedulerMonitor != nil {
 		jobObj := e.scheduler.jobFromInternalJob(j)
 		e.scheduler.notifyJobStarted(jobObj)
 		// Notify scheduling delay if job had a scheduled time
 		if len(j.nextScheduled) > 0 {
-			e.scheduler.notifyJobSchedulingDelay(jobObj, j.nextScheduled[0], actualStartTime)
+			scheduled := scheduledTimeForRun(j.nextScheduled, actualStartTime)
+			e.scheduler.notifyJobSchedulingDelay(jobObj, scheduled, actualStartTime)
 		}
 	}
 
@@ -515,7 +515,7 @@ func (e *executor) runJob(j internalJob, jIn jobIn) {
 		}
 	}
 
-	startTime := time.Now()
+	startTime := e.clock.Now()
 	select {
 	case e.jobTimingUpdateCh <- jobTimingUpdate{id: j.id, startedAt: startTime}:
 	case <-e.ctx.Done():
@@ -525,11 +525,11 @@ func (e *executor) runJob(j internalJob, jIn jobIn) {
 	} else {
 		err = callJobFuncWithParams(j.function, j.parameters...)
 	}
-	e.recordJobTiming(startTime, time.Now(), j)
+	e.recordJobTiming(startTime, e.clock.Now(), j)
 	if err != nil {
 		_ = callJobFuncWithParams(j.afterJobRunsWithError, j.id, j.name, err)
 		e.incrementJobCounter(j, Fail)
-		endTime := time.Now()
+		endTime := e.clock.Now()
 		e.recordJobTimingWithStatus(startTime, endTime, j, Fail, err)
 		select {
 		case e.jobTimingUpdateCh <- jobTimingUpdate{id: j.id, completedAt: endTime}:
@@ -544,7 +544,7 @@ func (e *executor) runJob(j internalJob, jIn jobIn) {
 	} else {
 		_ = callJobFuncWithParams(j.afterJobRuns, j.id, j.name)
 		e.incrementJobCounter(j, Success)
-		endTime := time.Now()
+		endTime := e.clock.Now()
 		e.recordJobTimingWithStatus(startTime, endTime, j, Success, nil)
 		select {
 		case e.jobTimingUpdateCh <- jobTimingUpdate{id: j.id, completedAt: endTime}:

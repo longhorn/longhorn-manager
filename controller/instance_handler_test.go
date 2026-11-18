@@ -671,6 +671,62 @@ func newTestInstanceHandler(lhClient *lhfake.Clientset, kubeClient *fake.Clients
 	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
 }
 
+func (s *TestSuite) TestSyncInstanceCurrentImage(c *C) {
+	tests := map[string]struct {
+		dataEngine     longhorn.DataEngineType
+		currentImage   string
+		containerImage string
+		expectImage    string
+		expectUpgrade  bool
+	}{
+		"V1 keeps the started image for live upgrade": {
+			dataEngine:     longhorn.DataEngineTypeV1,
+			currentImage:   TestInstanceManagerImage,
+			containerImage: TestExtraInstanceManagerImage,
+			expectImage:    TestInstanceManagerImage,
+			expectUpgrade:  true,
+		},
+		"V2 records the instance manager running image": {
+			dataEngine:     longhorn.DataEngineTypeV2,
+			currentImage:   TestInstanceManagerImage,
+			containerImage: TestExtraInstanceManagerImage,
+			expectImage:    TestExtraInstanceManagerImage,
+		},
+		"V2 keeps the last image until the container runs the new image": {
+			dataEngine:     longhorn.DataEngineTypeV2,
+			currentImage:   TestInstanceManagerImage,
+			containerImage: TestInstanceManagerImage,
+			expectImage:    TestInstanceManagerImage,
+		},
+		"V2 does not record an unconfirmed image when newly started": {
+			dataEngine:     longhorn.DataEngineTypeV2,
+			containerImage: TestInstanceManagerImage,
+			expectImage:    "",
+		},
+	}
+	for name, tt := range tests {
+		for _, state := range []longhorn.InstanceState{longhorn.InstanceStateRunning, longhorn.InstanceStateSuspended} {
+			c.Logf("%s: %s", name, state)
+			f := newV2ImageSyncTest(c)
+			f.pod.Status.ContainerStatuses[0].Image = tt.containerImage
+			f.seed(c)
+			e := f.engine
+			e.Spec.DataEngine = tt.dataEngine
+			e.Spec.Image = TestEngineImage
+			e.Status.CurrentImage = tt.currentImage
+			h := NewInstanceHandler(f.vc.ds, &MockInstanceManagerHandler{}, record.NewFakeRecorder(100))
+			instances := map[string]longhorn.InstanceProcess{
+				e.Name: {Status: longhorn.InstanceProcessStatus{State: state}},
+			}
+			h.syncStatusWithInstanceManager(getLoggerForEngine(f.vc.logger, e), f.im, e.Name,
+				&e.Spec.InstanceSpec, &e.Status.InstanceStatus, instances)
+			c.Assert(e.Status.CurrentState, Equals, state)
+			c.Assert(e.Status.CurrentImage, Equals, tt.expectImage)
+			c.Assert(isV1EngineUpgrading(e), Equals, tt.expectUpgrade)
+		}
+	}
+}
+
 func (s *TestSuite) TestReconcileInstanceStateClearsStaleV2InstanceManager(c *C) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
