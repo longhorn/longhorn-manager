@@ -3,8 +3,11 @@ package datastore
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +18,8 @@ import (
 
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lhns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -461,5 +466,167 @@ func TestIsSameImageReference(t *testing.T) {
 	}
 	for name, tt := range tests {
 		assert.Equal(t, tt.expect, isSameImageReference(tt.running, tt.target), name)
+	}
+}
+
+// hostlessJoiner runs host namespace functions in the test process, so the
+// filesystem-type default disk can be created under t.TempDir().
+type hostlessJoiner struct{}
+
+func (hostlessJoiner) Revert() error { return nil }
+
+func (hostlessJoiner) Run(fn func() (any, error)) (any, error) { return fn() }
+
+func TestCreateDefaultDisks(t *testing.T) {
+	origJoiner := lhns.NewJoiner
+	t.Cleanup(func() { lhns.NewJoiner = origJoiner })
+	lhns.NewJoiner = func(string, time.Duration) (lhns.JoinerInterface, error) {
+		return hostlessJoiner{}, nil
+	}
+
+	const bdfAddress = "0000:00:1e.0"
+	// Does not exist on the test host; IsPotentialBlockDisk falls back to the /dev/ prefix.
+	const missingDevice = "/dev/disk/by-id/longhorn-test-missing-device"
+
+	for _, tc := range []struct {
+		name string
+		// Setting values; an empty string leaves the setting unset so the default applies.
+		v2Enabled   string
+		v2DataPath  string
+		reservedPct string
+		// v1DataPath overrides the temp directory used as default-data-path.
+		v1DataPath func(t *testing.T, dir string) string
+		wantBlock  string // path of the expected block-type disk; empty means none
+		wantErr    string
+	}{
+		{name: "defaults create filesystem disk only"},
+		{name: "V2 path ignored when V2 disabled", v2Enabled: "false", v2DataPath: bdfAddress},
+		{name: "V2 enabled without V2 path", v2Enabled: "true"},
+		{name: "V2 enabled with BDF address", v2Enabled: "true", v2DataPath: bdfAddress, wantBlock: bdfAddress},
+		{name: "V2 enabled with device path", v2Enabled: "true", v2DataPath: missingDevice, wantBlock: missingDevice},
+		{name: "V2 path that is a directory on the node is skipped", v2Enabled: "true",
+			v2DataPath: "<dir>"},
+		{name: "zero storage reserved percentage", reservedPct: "0"},
+		{name: "filesystem disk creation failure", v2Enabled: "true", v2DataPath: bdfAddress,
+			v1DataPath: func(t *testing.T, dir string) string {
+				file := filepath.Join(dir, "not-a-directory")
+				require.NoError(t, os.WriteFile(file, nil, 0644))
+				return file
+			},
+			wantErr: "failed to create default disk for path"},
+		{name: "invalid storage reserved percentage", reservedPct: "invalid", wantErr: "invalid syntax"},
+		{name: "invalid V2 Data Engine setting", v2Enabled: "invalid", wantErr: "invalid syntax"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ds, _, indexer := newSettingTestDataStore(t, nil)
+			dir := t.TempDir()
+			v1DataPath := dir
+			if tc.v1DataPath != nil {
+				v1DataPath = tc.v1DataPath(t, dir)
+			}
+			v2DataPath := tc.v2DataPath
+			if v2DataPath == "<dir>" {
+				v2DataPath = t.TempDir()
+			}
+
+			for name, value := range map[types.SettingName]string{
+				types.SettingNameDefaultDataPath:                         v1DataPath,
+				types.SettingNameV2DataEngine:                            tc.v2Enabled,
+				types.SettingNameV2DefaultDataPath:                       v2DataPath,
+				types.SettingNameStorageReservedPercentageForDefaultDisk: tc.reservedPct,
+			} {
+				if value == "" {
+					continue
+				}
+				require.NoError(t, indexer.Add(&longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{Name: string(name), Namespace: ds.namespace},
+					Value:      value,
+				}))
+			}
+
+			disks, err := ds.CreateDefaultDisks()
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				require.Nil(t, disks)
+				return
+			}
+			require.NoError(t, err)
+
+			wantCount := 1
+			if tc.wantBlock != "" {
+				wantCount = 2
+			}
+			require.Len(t, disks, wantCount)
+
+			var fsDisks, blockDisks []longhorn.DiskSpec
+			for name, disk := range disks {
+				require.True(t, strings.HasPrefix(name, types.DefaultDiskPrefix), "disk name %v", name)
+				require.True(t, disk.AllowScheduling, "disk %v", name)
+				require.Equal(t, []string{}, disk.Tags, "disk %v", name)
+				switch disk.Type {
+				case longhorn.DiskTypeFilesystem:
+					fsDisks = append(fsDisks, disk)
+				case longhorn.DiskTypeBlock:
+					blockDisks = append(blockDisks, disk)
+				default:
+					t.Fatalf("unexpected disk type %v for disk %v", disk.Type, name)
+				}
+			}
+
+			// The V1 Data Engine is always enabled, so a filesystem disk always exists.
+			require.Len(t, fsDisks, 1)
+			require.Equal(t, v1DataPath, fsDisks[0].Path)
+			require.Equal(t, longhorn.DiskDriverNone, fsDisks[0].DiskDriver)
+			require.DirExists(t, filepath.Join(v1DataPath, util.ReplicaDirectory))
+			if tc.reservedPct == "0" {
+				require.Zero(t, fsDisks[0].StorageReserved)
+			} else {
+				// Default storage-reserved-percentage-for-default-disk is 30.
+				require.Positive(t, fsDisks[0].StorageReserved)
+			}
+
+			if tc.wantBlock == "" {
+				require.Empty(t, blockDisks)
+				return
+			}
+			require.Len(t, blockDisks, 1)
+			require.Equal(t, tc.wantBlock, blockDisks[0].Path)
+			require.Equal(t, longhorn.DiskDriverAuto, blockDisks[0].DiskDriver)
+			require.Zero(t, blockDisks[0].StorageReserved)
+		})
+	}
+}
+
+func TestValidateSettingDefaultDataPaths(t *testing.T) {
+	ds, _, _ := newSettingTestDataStore(t, nil)
+
+	for _, tc := range []struct {
+		name       string
+		setting    types.SettingName
+		value      string
+		wantErr    bool
+		wantErrMsg string
+	}{
+		{name: "V1 directory", setting: types.SettingNameDefaultDataPath, value: "/var/lib/longhorn/"},
+		{name: "V1 empty", setting: types.SettingNameDefaultDataPath, value: "",
+			wantErr: true, wantErrMsg: "shouldn't be empty"},
+		{name: "V1 device path", setting: types.SettingNameDefaultDataPath, value: "/dev/sdb",
+			wantErr: true, wantErrMsg: "block devices are not supported"},
+		{name: "V1 BDF address", setting: types.SettingNameDefaultDataPath, value: "0000:00:1e.0",
+			wantErr: true, wantErrMsg: "block devices are not supported"},
+		{name: "V2 empty", setting: types.SettingNameV2DefaultDataPath, value: ""},
+		{name: "V2 device path", setting: types.SettingNameV2DefaultDataPath, value: "/dev/sdb"},
+		{name: "V2 BDF address", setting: types.SettingNameV2DefaultDataPath, value: "0000:00:1e.0"},
+		{name: "V2 directory", setting: types.SettingNameV2DefaultDataPath, value: "/mnt/disk",
+			wantErr: true, wantErrMsg: "must be empty, a block device path under /dev/, or a PCI BDF address"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ds.ValidateSetting(string(tc.setting), tc.value)
+			if tc.wantErr {
+				require.ErrorContains(t, err, tc.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }
