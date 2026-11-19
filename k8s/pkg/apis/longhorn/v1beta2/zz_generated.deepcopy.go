@@ -721,6 +721,11 @@ func (in *BackupStatus) DeepCopyInto(out *BackupStatus) {
 		}
 	}
 	in.LastSyncedAt.DeepCopyInto(&out.LastSyncedAt)
+	if in.Owners != nil {
+		in, out := &in.Owners, &out.Owners
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
@@ -3321,6 +3326,11 @@ func (in *SnapshotStatus) DeepCopyInto(out *SnapshotStatus) {
 		for key, val := range *in {
 			(*out)[key] = val
 		}
+	}
+	if in.Owners != nil {
+		in, out := &in.Owners, &out.Owners
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 	return
 }
