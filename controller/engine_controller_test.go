@@ -825,8 +825,10 @@ func TestSyncSnapshotCRs(t *testing.T) {
 				},
 				Status: longhorn.EngineStatus{Snapshots: tc.snapshots},
 			}
+			eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+			assert.NoError(eIndexer.Add(engine))
 
-			assert.NoError(ec.syncSnapshotCRs(engine))
+			assert.NoError(ec.syncSnapshotCRs(engine.Name))
 
 			_, err = lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), snapName, metav1.GetOptions{})
 			if tc.expectCRDeleted {
@@ -836,4 +838,88 @@ func TestSyncSnapshotCRs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSyncSnapshotCRsAfterBlockingRebuildStart covers longhorn/longhorn#14596.
+// syncEngine fetches the engine once, then ReconcileEngineState -> startRebuilding blocks
+// for the pre-rebuild purge and ReplicaAdd (~15s) before syncSnapshotCRs runs. A user
+// snapshot created right before the rebuild is missing from the engine fetched before the
+// wait, while its CR got CreationTime during the wait. syncSnapshotCRs must use the latest
+// engine and keep the CR.
+func TestSyncSnapshotCRsAfterBlockingRebuildStart(t *testing.T) {
+	const (
+		userSnap    = "snapshot-user"
+		rebuildSnap = "rebuild-1"
+		dstReplica  = "replica-dst"
+	)
+
+	assert := require.New(t)
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+	lhInformers := informerFactories.LhInformerFactory.Longhorn().V1beta2()
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+	ec := &EngineController{
+		baseController: newBaseController("longhorn-engine", logger),
+		ds:             datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+	}
+
+	volume := &longhorn.Volume{ObjectMeta: metav1.ObjectMeta{Name: TestVolumeName, Namespace: TestNamespace}}
+	assert.NoError(lhInformers.Volumes().Informer().GetIndexer().Add(volume))
+
+	// The user snapshot was just requested; the monitor has not fetched it yet.
+	snapCR := &longhorn.Snapshot{
+		ObjectMeta: metav1.ObjectMeta{Name: userSnap, Namespace: TestNamespace, Labels: types.GetVolumeLabels(TestVolumeName)},
+		Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName, CreateSnapshot: true},
+	}
+	snapCR, err := lhClient.LonghornV1beta2().Snapshots(TestNamespace).Create(context.TODO(), snapCR, metav1.CreateOptions{})
+	assert.NoError(err)
+	sIndexer := lhInformers.Snapshots().Informer().GetIndexer()
+	assert.NoError(sIndexer.Add(snapCR))
+
+	engine := &longhorn.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+		Spec: longhorn.EngineSpec{
+			InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName, DataEngine: longhorn.DataEngineTypeV2},
+			Active:       true,
+		},
+		Status: longhorn.EngineStatus{
+			ReplicaModeMap: map[string]longhorn.ReplicaMode{TestReplicaName: longhorn.ReplicaModeRW},
+			Snapshots:      map[string]*longhorn.SnapshotInfo{etypes.VolumeHeadName: {Name: etypes.VolumeHeadName}},
+		},
+	}
+	eIndexer := lhInformers.Engines().Informer().GetIndexer()
+	assert.NoError(eIndexer.Add(engine))
+
+	// syncEngine: the engine object used for the whole reconcile.
+	staleEngine, err := ec.ds.GetEngine(TestEngineName)
+	assert.NoError(err)
+
+	// While startRebuilding blocks, the monitor refreshes the engine (user snapshot, rebuild
+	// snapshot and WO replica are all reported) and the snapshot controller fills CreationTime.
+	latestEngine := engine.DeepCopy()
+	latestEngine.Status.ReplicaModeMap[dstReplica] = longhorn.ReplicaModeWO
+	latestEngine.Status.Snapshots = map[string]*longhorn.SnapshotInfo{
+		userSnap:              {Name: userSnap, Children: map[string]bool{rebuildSnap: true}, UserCreated: true, Created: "2026-11-19T02:29:10Z"},
+		rebuildSnap:           {Name: rebuildSnap, Parent: userSnap, Children: map[string]bool{etypes.VolumeHeadName: true}, Created: "2026-11-19T02:29:21Z"},
+		etypes.VolumeHeadName: {Name: etypes.VolumeHeadName, Parent: rebuildSnap},
+	}
+	assert.NoError(eIndexer.Update(latestEngine))
+
+	snapCR = snapCR.DeepCopy()
+	snapCR.Status.CreationTime = "2026-11-19T02:29:10Z"
+	snapCR, err = lhClient.LonghornV1beta2().Snapshots(TestNamespace).UpdateStatus(context.TODO(), snapCR, metav1.UpdateOptions{})
+	assert.NoError(err)
+	assert.NoError(sIndexer.Update(snapCR))
+
+	// syncEngine: startRebuilding returns, then syncSnapshotCRs runs.
+	assert.NoError(ec.syncSnapshotCRs(staleEngine.Name))
+
+	_, err = lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), userSnap, metav1.GetOptions{})
+	assert.NoError(err, "snapshot CR %v is still reported by the latest engine status and must not be deleted", userSnap)
 }
