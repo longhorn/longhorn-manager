@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/rand"
 	"net"
 	"net/url"
@@ -810,6 +811,14 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			if err := s.ValidateDataEngineCoreNumber(coreNumber, dataEngine); err != nil {
 				return err
 			}
+		}
+	case types.SettingNameDefaultDataPath:
+		if types.IsBlockDevicePathFormat(value) {
+			return fmt.Errorf("block devices are not supported; use %v for V2 Data Engine disks", types.SettingNameV2DefaultDataPath)
+		}
+	case types.SettingNameV2DefaultDataPath:
+		if value != "" && !types.IsBlockDevicePathFormat(value) {
+			return fmt.Errorf("must be empty, a block device path under /dev/, or a PCI BDF address")
 		}
 	}
 	return nil
@@ -3612,20 +3621,11 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		// this will be done only once.
 		// If user remove all the disks on the node, the default disk
 		// will not be recreated automatically
-		dataPath, err := s.GetSettingValueExisted(types.SettingNameDefaultDataPath)
+		disks, err := s.CreateDefaultDisks()
 		if err != nil {
 			return nil, err
 		}
-		storageReservedPercentageForDefaultDisk, err := s.GetSettingAsInt(types.SettingNameStorageReservedPercentageForDefaultDisk)
-		if err != nil {
-			return nil, err
-		}
-
-		if s.needDefaultDiskCreation(dataPath) {
-			disks, err := types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
-			if err != nil {
-				return nil, err
-			}
+		if len(disks) > 0 {
 			node.Spec.Disks = disks
 		}
 	}
@@ -3633,19 +3633,51 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 	return s.CreateNode(node)
 }
 
-func (s *DataStore) needDefaultDiskCreation(dataPath string) bool {
-	v2DataEngineEnabled, err := s.GetSettingAsBool(types.SettingNameV2DataEngine)
+// CreateDefaultDisks builds the default disk specs for a node from default-data-path
+// and, when the V2 Data Engine is enabled, v2-default-data-path.
+func (s *DataStore) CreateDefaultDisks() (map[string]longhorn.DiskSpec, error) {
+	storageReservedPercentageForDefaultDisk, err := s.GetSettingAsInt(types.SettingNameStorageReservedPercentageForDefaultDisk)
 	if err != nil {
-		logrus.WithError(err).Errorf("Failed to get setting %v", types.SettingNameV2DataEngine)
-		return false
+		return nil, err
 	}
 
-	if v2DataEngineEnabled {
-		return true
+	v1DataPath, err := s.GetSettingValueExisted(types.SettingNameDefaultDataPath)
+	if err != nil {
+		return nil, err
 	}
 
-	// Do not create default block-type disk if v2 data engine is disabled
-	return !types.IsPotentialBlockDisk(dataPath)
+	v2Enabled, err := s.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		return nil, err
+	}
+
+	v2Setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DefaultDataPath)
+	if err != nil {
+		return nil, err
+	}
+	v2DataPath := v2Setting.Value
+
+	paths := []string{v1DataPath}
+
+	if v2Enabled && v2DataPath != "" {
+		if types.IsPotentialBlockDisk(v2DataPath) {
+			paths = append(paths, v2DataPath)
+		} else {
+			logrus.Warnf("Skipped creating default V2 disk: %v=%q is not a block device",
+				types.SettingNameV2DefaultDataPath, v2DataPath)
+		}
+	}
+
+	disks := make(map[string]longhorn.DiskSpec, len(paths))
+	for _, path := range paths {
+		disk, err := types.CreateDefaultDisk(path, storageReservedPercentageForDefaultDisk)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create default disk for path %v", path)
+		}
+		maps.Copy(disks, disk)
+	}
+
+	return disks, nil
 }
 
 func (s *DataStore) GetNodeRO(name string) (*longhorn.Node, error) {
