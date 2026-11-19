@@ -39,6 +39,8 @@ type SnapshotStatusApplyConfiguration struct {
 	// ChecksumCalculatedAt is the RFC3339 timestamp indicating when the checksum
 	// for this snapshot was last calculated or updated.
 	ChecksumCalculatedAt *string `json:"checksumCalculatedAt,omitempty"`
+	// The names of the SystemBackups that reference this snapshot. Only set on snapshots created by a SystemBackup.
+	Owners []string `json:"owners,omitempty"`
 }
 
 // SnapshotStatusApplyConfiguration constructs a declarative configuration of the SnapshotStatus type for use with
@@ -168,5 +170,15 @@ func (b *SnapshotStatusApplyConfiguration) WithChecksum(value string) *SnapshotS
 // If called multiple times, the ChecksumCalculatedAt field is set to the value of the last call.
 func (b *SnapshotStatusApplyConfiguration) WithChecksumCalculatedAt(value string) *SnapshotStatusApplyConfiguration {
 	b.ChecksumCalculatedAt = &value
+	return b
+}
+
+// WithOwners adds the given value to the Owners field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Owners field.
+func (b *SnapshotStatusApplyConfiguration) WithOwners(values ...string) *SnapshotStatusApplyConfiguration {
+	for i := range values {
+		b.Owners = append(b.Owners, values[i])
+	}
 	return b
 }

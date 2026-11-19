@@ -1260,6 +1260,10 @@ func (bc *BackupController) deleteSnapshotAfterBackupCompleted(backup *longhorn.
 		// leave the snapshot management for recurring jobs to the `SettingNameAutoCleanupRecurringJobBackupSnapshot` setting.
 		return nil
 	}
+	if types.IsCreatedBySystemBackup(backup.Labels) {
+		// leave the snapshot management for system backups to the system backup controller.
+		return nil
+	}
 
 	cleanupSnap, err := bc.ds.GetSettingAsBool(types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
 	if err != nil {

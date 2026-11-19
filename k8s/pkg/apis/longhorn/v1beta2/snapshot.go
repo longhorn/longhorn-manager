@@ -61,6 +61,10 @@ type SnapshotStatus struct {
 	// ChecksumCalculatedAt is the RFC3339 timestamp indicating when the checksum
 	// for this snapshot was last calculated or updated.
 	ChecksumCalculatedAt string `json:"checksumCalculatedAt,omitempty"`
+	// The names of the SystemBackups that reference this snapshot. Only set on snapshots created by a SystemBackup.
+	// +optional
+	// +nullable
+	Owners []string `json:"owners"`
 }
 
 // +genclient
