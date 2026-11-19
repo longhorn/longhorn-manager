@@ -81,6 +81,8 @@ const (
 
 	EventReasonStaleInstance = "StaleInstance"
 
+	EventReasonInsufficientCPURequest = "InsufficientCPURequest"
+
 	EventReasonShardFailed = "ShardFailed"
 
 	// EventReasonDegradedReadEIO means a read was failed with EIO because the

@@ -780,3 +780,25 @@ func (s *TestSuite) TestIsVolumeAffectedByInstanceManagerUpgrade(c *C) {
 		c.Assert(IsVolumeAffectedByInstanceManagerUpgrade(volume, tt.replicas, tt.frontends, imu), Equals, tt.want, Commentf("test case: %s", tt.name))
 	}
 }
+
+func (s *TestSuite) TestValidateGuaranteedInstanceManagerCPUPerDataEngine(c *C) {
+	testCases := map[string]struct {
+		value       string
+		expectError bool
+	}{
+		"v1 at max":             {value: `{"v1":"40","v2":"12"}`},
+		"v1 exceeds max":        {value: `{"v1":"41","v2":"12"}`, expectError: true},
+		"v2 at max":             {value: `{"v1":"12","v2":"50"}`},
+		"v2 exceeds max":        {value: `{"v1":"12","v2":"51"}`, expectError: true},
+		"single value above v1": {value: "50", expectError: true},
+	}
+
+	for name, tc := range testCases {
+		err := ValidateSetting(string(SettingNameGuaranteedInstanceManagerCPU), tc.value)
+		if tc.expectError {
+			c.Assert(err, NotNil, Commentf(TestErrResultFmt, name))
+		} else {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, name, err))
+		}
+	}
+}
