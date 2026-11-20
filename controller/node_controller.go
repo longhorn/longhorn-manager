@@ -2015,15 +2015,35 @@ func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err erro
 }
 
 func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node) error {
+	nodeSelector, err := nc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return errors.Wrap(err, "failed to get node selector for backing image eviction")
+	}
+
 	// preventing periodically list all backingimage.
-	if !isNodeOrDisksEvictionRequested(node) {
+	// When the system-managed-components-node-selector setting is configured, a Kubernetes node label change
+	// may make the node match or mismatch the selector, so the eviction requests need to be reconciled in both ways.
+	if !isNodeOrDisksEvictionRequested(node) && len(nodeSelector) == 0 {
 		return nil
 	}
 	log := getLoggerForNode(nc.logger, node)
 
+	selectorExcluded, err := nc.isNodeExcludedBySystemManagedComponentsNodeSelector(node, nodeSelector)
+	if err != nil {
+		return errors.Wrap(err, "failed to check node selector for backing image eviction")
+	}
+
 	diskBackingImageMap, err := nc.ds.GetCurrentDiskBackingImageMap()
 	if err != nil {
 		return err
+	}
+	allowEmptyNodeSelectorVolume, err := nc.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+	}
+	allowEmptyDiskSelectorVolume, err := nc.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
 	}
 
 	type backingImageToSync struct {
@@ -2035,11 +2055,27 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 
 	var diskFileSpecNotSync = false
 	for diskName, diskSpec := range node.Spec.Disks {
-		diskStatus := node.Status.DiskStatus[diskName]
+		diskStatus, exists := node.Status.DiskStatus[diskName]
+		if !exists || diskStatus == nil {
+			continue
+		}
 		diskUUID := diskStatus.DiskUUID
 
-		requireDiskFileEviction := diskSpec.EvictionRequested || node.Spec.EvictionRequested
 		for _, backingImage := range diskBackingImageMap[diskUUID] {
+			evictionReasons := getBackingImageCopyEvictionReasons(backingImage, node, diskSpec, selectorExcluded, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume)
+			requireDiskFileEviction := len(evictionReasons) > 0
+			// The selector-triggered eviction waits for the backing image data source to transfer the first file.
+			if requireDiskFileEviction && !diskSpec.EvictionRequested && !node.Spec.EvictionRequested {
+				bids, err := nc.ds.GetBackingImageDataSource(backingImage.Name)
+				if err != nil {
+					if !apierrors.IsNotFound(err) {
+						return errors.Wrapf(err, "failed to get backing image data source %v before selector eviction", backingImage.Name)
+					}
+					continue
+				} else if !bids.Spec.FileTransferred {
+					continue
+				}
+			}
 			// trigger or cancel the eviction request on disks
 			if diskFileSpec, ok := backingImage.Spec.DiskFileSpecMap[diskUUID]; ok && diskFileSpec.EvictionRequested != requireDiskFileEviction {
 				diskFileSpec.EvictionRequested = requireDiskFileEviction
@@ -2275,6 +2311,19 @@ func isNodeOrDisksEvictionRequested(node *longhorn.Node) bool {
 	}
 
 	return false
+}
+
+func (nc *NodeController) isNodeExcludedBySystemManagedComponentsNodeSelector(node *longhorn.Node, nodeSelector map[string]string) (bool, error) {
+	if len(nodeSelector) == 0 {
+		return false, nil
+	}
+
+	kubeNode, err := nc.ds.GetKubernetesNodeRO(node.Name)
+	if err != nil {
+		return false, err
+	}
+
+	return !labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
 }
 
 func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, kubeNode *corev1.Node, managerPods []*corev1.Pod) error {
