@@ -678,7 +678,7 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	// hugepageRequestedInMiB is integer
 	hugepageRequested, err := resource.ParseQuantity(fmt.Sprintf("%dMi", hugepageRequestedInMiB))
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
+		return nil, errors.Wrapf(err, "failed to parse hugepage value %dMi", hugepageRequestedInMiB)
 	}
 
 	lhNodes, err := s.ListNodes()
@@ -715,7 +715,7 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 
 			hugepageCapacity, err := resource.ParseQuantity(capacity.String())
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
+				return nil, errors.Wrapf(err, "failed to parse hugepage value %dMi", hugepageRequestedInMiB)
 			}
 
 			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
