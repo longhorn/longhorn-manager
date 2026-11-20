@@ -1,22 +1,30 @@
 package controller
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +36,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	kubernetesscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+
+	"github.com/longhorn/go-common-libs/multierr"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
 	bsutil "github.com/longhorn/backupstore/util"
@@ -90,6 +100,8 @@ type systemBackupRecord struct {
 	reason     string
 }
 
+var errSystemBackupOwnedObjectDeleting = errors.New("is being deleted")
+
 type SystemBackupController struct {
 	*baseController
 
@@ -109,6 +121,15 @@ type SystemBackupController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	// generatingSystemBackups holds the SystemBackups whose archive generation
+	// is running in this process.
+	generatingSystemBackups sync.Map
+
+	archiveBackupNamesLock sync.Mutex
+	// archiveBackupNames caches the volume backups referenced by the archives
+	// in the backup target, keyed by the archive URI.
+	archiveBackupNames map[string][]string
 }
 
 func NewSystemBackupController(
@@ -138,6 +159,8 @@ func NewSystemBackupController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: SystemBackupControllerName + "-controller"}),
+
+		archiveBackupNames: map[string][]string{},
 	}
 
 	var err error
@@ -161,6 +184,16 @@ func (c *SystemBackupController) enqueue(obj interface{}) {
 	}
 
 	c.queue.Add(key)
+}
+
+func (c *SystemBackupController) enqueueAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	c.queue.AddAfter(key, duration)
 }
 
 func (c *SystemBackupController) Run(workers int, stopCh <-chan struct{}) {
@@ -464,7 +497,9 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		go c.WaitForBackingImageBackupToComplete(backupBackingImages, systemBackup)
 
 	case longhorn.SystemBackupStateGenerating:
-		go c.GenerateSystemBackup(systemBackup, tempBackupArchivePath, tempBackupDir)
+		if _, running := c.generatingSystemBackups.LoadOrStore(systemBackup.Name, struct{}{}); !running {
+			go c.GenerateSystemBackup(systemBackup, tempBackupArchivePath, tempBackupDir)
+		}
 
 	case longhorn.SystemBackupStateUploading:
 		go c.UploadSystemBackup(systemBackup, tempBackupArchivePath, tempBackupDir, backupTargetClient)
@@ -473,6 +508,16 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		cleanupLocalSystemBackupFiles(tempBackupArchivePath, tempBackupDir, log)
 
 	case longhorn.SystemBackupStateDeleting:
+		// Generation adds the SystemBackup to the owners of the last backups it
+		// archives, so wait for it to stop before releasing them.
+		if _, running := c.generatingSystemBackups.Load(systemBackup.Name); running {
+			log.Info("Waiting for system backup generation to stop before releasing its volume backups and snapshots")
+			c.enqueueAfter(systemBackup, time.Second)
+			return nil
+		}
+		if err := c.cleanupAssociatedBackupAndSnapshotCRs(systemBackup, backupTargetClient, backupTarget); err != nil {
+			return err
+		}
 		cleanupRemoteSystemBackupFiles(systemBackup, backupTargetClient, backupTarget, log)
 
 		cleanupLocalSystemBackupFiles(tempBackupArchivePath, tempBackupDir, log)
@@ -484,6 +529,248 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 	}
 
 	return nil
+}
+
+// cleanupAssociatedBackupAndSnapshotCRs removes the SystemBackup from the owners
+// of the Backup and Snapshot CRs it references, and deletes the ones it was the
+// last owner of. A Backup reused by a newer SystemBackup with the if-not-present
+// policy is kept until that SystemBackup is deleted as well.
+func (c *SystemBackupController) cleanupAssociatedBackupAndSnapshotCRs(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface, backupTarget *longhorn.BackupTarget) error {
+	// A CR-only deletion leaves the system backup in the backup store, so the
+	// volume backups it references must stay restorable.
+	deleteCROnly, err := datastore.IsLabelLonghornDeleteCustomResourceOnlyExisting(systemBackup)
+	if err != nil {
+		return err
+	}
+	if deleteCROnly {
+		return nil
+	}
+
+	selector := labels.SelectorFromSet(types.GetSystemBackupLabels())
+	errs := multierr.NewMultiError()
+
+	// Delete backups before snapshots: a backup that is still in progress reads
+	// from its snapshot.
+	c.releaseAssociatedBackups(systemBackup.Name, selector, backupTargetClient, backupTarget, errs)
+	c.releaseAssociatedSnapshots(systemBackup.Name, selector, errs)
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to clean up backups and snapshots of system backup %v: %v", systemBackup.Name, errs.Error())
+	}
+	return nil
+}
+
+// releaseAssociatedBackups deletes a backup only when no system backup archive
+// in the backup target references it. Archives that this cluster does not track
+// with owners, such as those of another cluster sharing the backup target or
+// those kept by a CR-only deletion, become the owners of the backups they
+// reference, so the backups are released when those archives are deleted.
+func (c *SystemBackupController) releaseAssociatedBackups(systemBackupName string, selector labels.Selector, backupTargetClient engineapi.SystemBackupOperationInterface, backupTarget *longhorn.BackupTarget, errs multierr.MultiError) {
+	backups, err := c.ds.ListBackupsWithSelectorRO(selector)
+	if err != nil {
+		errs.Append("backups", err)
+		return
+	}
+
+	var archiveReferences map[string][]string
+	for _, backup := range backups {
+		currentOwners := getSystemBackupOwners(backup.Annotations, backup.Status.Owners)
+		if backup.DeletionTimestamp != nil || !slices.Contains(currentOwners, systemBackupName) {
+			continue
+		}
+
+		owners := removeOwner(currentOwners, systemBackupName)
+		if len(owners) == 0 {
+			if backupTarget == nil {
+				// The archives cannot be checked, so the backup is kept.
+				c.logger.Warnf("Keeping backup %v of system backup %v since the default backup target is not found", backup.Name, systemBackupName)
+				continue
+			}
+			if archiveReferences == nil {
+				archiveReferences, err = c.getUntrackedArchiveBackupReferences(backupTargetClient, systemBackupName)
+				if err != nil {
+					errs.Append("backups", err)
+					return
+				}
+			}
+			owners = archiveReferences[backup.Name]
+		}
+		if len(owners) == 0 {
+			err = c.ds.DeleteBackupWithResourceVersionPrecondition(backup.Name, backup.ResourceVersion)
+		} else {
+			backup = backup.DeepCopy()
+			backup.Status.Owners = owners
+			_, err = c.ds.UpdateBackupStatus(backup)
+		}
+		if err != nil && !apierrors.IsNotFound(err) {
+			errs.Append("backups", err)
+		}
+	}
+}
+
+func (c *SystemBackupController) releaseAssociatedSnapshots(systemBackupName string, selector labels.Selector, errs multierr.MultiError) {
+	snapshots, err := c.ds.ListSnapshotsRO(selector)
+	if err != nil {
+		errs.Append("snapshots", err)
+		return
+	}
+	for _, snapshot := range snapshots {
+		currentOwners := getSystemBackupOwners(snapshot.Annotations, snapshot.Status.Owners)
+		if snapshot.DeletionTimestamp != nil || !slices.Contains(currentOwners, systemBackupName) {
+			continue
+		}
+
+		owners := removeOwner(currentOwners, systemBackupName)
+		if len(owners) == 0 {
+			err = c.ds.DeleteSnapshotWithResourceVersionPrecondition(snapshot.Name, snapshot.ResourceVersion)
+		} else {
+			snapshot = snapshot.DeepCopy()
+			snapshot.Status.Owners = owners
+			_, err = c.ds.UpdateSnapshotStatus(snapshot)
+		}
+		if err != nil && !apierrors.IsNotFound(err) {
+			errs.Append("snapshots", err)
+		}
+	}
+}
+
+func removeOwner(owners []string, owner string) []string {
+	return slices.DeleteFunc(slices.Clone(owners), func(o string) bool { return o == owner })
+}
+
+// getUntrackedArchiveBackupReferences returns the archives in the backup target
+// that reference each backup, for the archives without a SystemBackup created by
+// this cluster. The given SystemBackup is excluded since it is being deleted.
+func (c *SystemBackupController) getUntrackedArchiveBackupReferences(backupTargetClient engineapi.SystemBackupOperationInterface, systemBackupName string) (map[string][]string, error) {
+	archives, err := backupTargetClient.ListSystemBackup()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list system backups in backup target")
+	}
+
+	references := map[string][]string{}
+	listedURIs := map[string]bool{}
+	for name, uri := range archives {
+		archiveName := string(name)
+		listedURIs[string(uri)] = true
+		if archiveName == systemBackupName {
+			continue
+		}
+		systemBackup, err := c.ds.GetSystemBackupRO(archiveName)
+		if err == nil && !isSystemBackupFromRemoteBackupTarget(systemBackup) {
+			continue
+		}
+		if err != nil && !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+
+		backupNames, err := c.getArchiveBackupNames(backupTargetClient, archiveName, string(uri))
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read the volume backups referenced by system backup %v in backup target", archiveName)
+		}
+		for _, backupName := range backupNames {
+			references[backupName] = append(references[backupName], archiveName)
+		}
+	}
+	for _, archiveNames := range references {
+		slices.Sort(archiveNames)
+	}
+
+	c.archiveBackupNamesLock.Lock()
+	defer c.archiveBackupNamesLock.Unlock()
+	for uri := range c.archiveBackupNames {
+		if !listedURIs[uri] {
+			delete(c.archiveBackupNames, uri)
+		}
+	}
+	return references, nil
+}
+
+// getArchiveBackupNames returns the last backups of the volumes in an archive,
+// which system restore restores the volumes from. An archive is immutable, so
+// the result is cached by its URI.
+func (c *SystemBackupController) getArchiveBackupNames(backupTargetClient engineapi.SystemBackupOperationInterface, archiveName, uri string) ([]string, error) {
+	c.archiveBackupNamesLock.Lock()
+	backupNames, cached := c.archiveBackupNames[uri]
+	c.archiveBackupNamesLock.Unlock()
+	if cached {
+		return backupNames, nil
+	}
+
+	version, _, err := parseSystemBackupURI(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	tempDir, err := os.MkdirTemp(SystemBackupTempDir, "system-backup-archive-")
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			c.logger.WithError(err).Warnf("Failed to remove %v", tempDir)
+		}
+	}()
+
+	archivePath := filepath.Join(tempDir, archiveName+types.SystemBackupExtension)
+	if err := backupTargetClient.DownloadSystemBackup(archiveName, version, archivePath); err != nil {
+		return nil, err
+	}
+	backupNames, err = readArchiveVolumeLastBackups(archivePath, archiveName)
+	if err != nil {
+		return nil, err
+	}
+
+	c.archiveBackupNamesLock.Lock()
+	c.archiveBackupNames[uri] = backupNames
+	c.archiveBackupNamesLock.Unlock()
+	return backupNames, nil
+}
+
+func readArchiveVolumeLastBackups(archivePath, archiveName string) ([]string, error) {
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = reader.Close()
+	}()
+
+	volumesPath := filepath.ToSlash(filepath.Join(archiveName, types.SystemBackupSubDirYaml, types.SystemBackupSubDirLonghorn, "volumes.yaml"))
+	file, err := reader.Open(volumesPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	scheme := runtime.NewScheme()
+	if err := longhorn.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
+	obj, _, err := serializer.NewCodecFactory(scheme).UniversalDeserializer().Decode(contents, nil, nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to decode %v", volumesPath)
+	}
+	volumeList, ok := obj.(*longhorn.VolumeList)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type %T in %v", obj, volumesPath)
+	}
+
+	backupNames := []string{}
+	for _, volume := range volumeList.Items {
+		if volume.Status.LastBackup != "" {
+			backupNames = append(backupNames, volume.Status.LastBackup)
+		}
+	}
+	return backupNames, nil
 }
 
 func systemBackupInFinalState(sb *longhorn.SystemBackup) bool {
@@ -695,6 +982,10 @@ func (c *SystemBackupController) GenerateSystemBackup(systemBackup *longhorn.Sys
 	var errMessage string
 	existingSystemBackup := systemBackup.DeepCopy()
 	defer func() {
+		// Mark generation as stopped before the status update, so the reconcile
+		// it triggers can start generation again or release the references.
+		c.generatingSystemBackups.Delete(systemBackup.Name)
+
 		record := &systemBackupRecord{}
 		if err != nil {
 			c.updateSystemBackupRecord(record,
@@ -722,7 +1013,7 @@ func (c *SystemBackupController) GenerateSystemBackup(systemBackup *longhorn.Sys
 		return
 	}
 
-	err = c.generateSystemBackup(systemBackupMeta, tempDir)
+	err = c.generateSystemBackup(systemBackup.Name, systemBackupMeta, tempDir)
 	if err != nil {
 		errMessage = fmt.Sprint(errors.Wrap(err, SystemBackupErrGenerate))
 		return
@@ -778,12 +1069,12 @@ func (c *SystemBackupController) backupVolumesAlways(systemBackup *longhorn.Syst
 
 		volumeBackupName := bsutil.GenerateName("system-backup")
 
-		snapshot, err := c.createVolumeSnapshot(ctx, volume, volumeBackupName)
+		snapshot, err := c.createVolumeSnapshot(ctx, volume, volumeBackupName, systemBackup.Name)
 		if err != nil {
 			return nil, err
 		}
 
-		backup, err := c.createVolumeBackupFromSnapshot(volume, snapshot)
+		backup, err := c.createVolumeBackupFromSnapshot(volume, snapshot, systemBackup.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -819,7 +1110,7 @@ func (c *SystemBackupController) backupVolumesIfNotPresent(systemBackup *longhor
 
 		volumeBackupName := bsutil.GenerateName("system-backup")
 
-		snapshot, err := c.createVolumeSnapshot(ctx, volume, volumeBackupName)
+		snapshot, err := c.createVolumeSnapshot(ctx, volume, volumeBackupName, systemBackup.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -830,10 +1121,21 @@ func (c *SystemBackupController) backupVolumesIfNotPresent(systemBackup *longhor
 		}
 
 		if isUpToDate {
+			if err := c.addOwnerToVolumeLastBackup(volume, systemBackup.Name); err != nil {
+				return nil, errors.Wrapf(err, "failed to add system backup %v to the owners of the last backup %v of volume %v", systemBackup.Name, volume.Status.LastBackup, volume.Name)
+			}
+
+			// When the setting is disabled, the snapshot is kept until this
+			// SystemBackup is deleted.
+			if c.isAutoCleanupSnapshotEnabled() {
+				if err := c.ds.DeleteSnapshot(snapshot.Name); err != nil && !apierrors.IsNotFound(err) {
+					c.logger.WithError(err).Warnf("Failed to clean up intermediate snapshot %v for volume %v", snapshot.Name, volume.Name)
+				}
+			}
 			continue
 		}
 
-		backup, err := c.createVolumeBackupFromSnapshot(volume, snapshot)
+		backup, err := c.createVolumeBackupFromSnapshot(volume, snapshot, systemBackup.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -887,6 +1189,11 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 				if !c.isVolumeLastBackupSynced(backup) {
 					continue
 				}
+
+				if c.isAutoCleanupSnapshotEnabled() {
+					c.deleteOutdatedSystemBackupSnapshots(backup, log)
+				}
+
 				delete(backups, name)
 			case longhorn.BackupStateError:
 				return errors.Wrapf(fmt.Errorf("%s", backup.Status.Error), "failed creating Volume backup %v", name)
@@ -904,6 +1211,74 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 	}
 	// This should never be reached, return this error just in case.
 	return fmt.Errorf("unexpected error: stopped waiting for Volume backups without completing, failing or timing out")
+}
+
+// isAutoCleanupSnapshotEnabled falls back to disabled, which keeps the
+// snapshots until the SystemBackups that own them are deleted.
+func (c *SystemBackupController) isAutoCleanupSnapshotEnabled() bool {
+	enabled, err := c.ds.GetSettingAsBool(types.SettingNameAutoCleanupRecurringJobBackupSnapshot)
+	if err != nil {
+		c.logger.WithError(err).Warnf("Failed to get setting %v, fallback to disabled", types.SettingNameAutoCleanupRecurringJobBackupSnapshot)
+		return false
+	}
+	return enabled
+}
+
+// deleteOutdatedSystemBackupSnapshots deletes the snapshots that SystemBackups
+// created for the volume before the snapshot of the completed backup. That
+// snapshot is kept because isVolumeBackupUpToDate compares the volume against
+// it to decide whether the if-not-present policy can reuse the backup.
+func (c *SystemBackupController) deleteOutdatedSystemBackupSnapshots(backup *longhorn.Backup, log logrus.FieldLogger) {
+	volumeName := getBackupVolumeName(backup)
+	snapshots, err := c.ds.ListVolumeSnapshotsRO(volumeName)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to list snapshots of volume %v", volumeName)
+		return
+	}
+
+	latestSnapshot, exists := snapshots[backup.Status.SnapshotName]
+	if !exists {
+		return
+	}
+	latestCreationTime, err := time.Parse(time.RFC3339, latestSnapshot.Status.CreationTime)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to parse creation time %q of snapshot %v", latestSnapshot.Status.CreationTime, latestSnapshot.Name)
+		return
+	}
+
+	for _, snapshot := range snapshots {
+		if snapshot.Name == latestSnapshot.Name || snapshot.DeletionTimestamp != nil || !types.IsCreatedBySystemBackup(snapshot.Labels) {
+			continue
+		}
+		creationTime, err := time.Parse(time.RFC3339, snapshot.Status.CreationTime)
+		if err != nil || !creationTime.Before(latestCreationTime) {
+			continue
+		}
+		// Delete only after the backup of this snapshot has finished. A missing
+		// backup may not be created yet, because another SystemBackup is waiting
+		// for the snapshot to become ready, or may not be observed by the cache
+		// yet. The snapshot is still owned and is deleted with its SystemBackups.
+		snapshotBackup, err := c.ds.GetBackupRO(snapshot.Name)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.WithError(err).Warnf("Failed to get backup of snapshot %v", snapshot.Name)
+			}
+			continue
+		}
+		if snapshotBackup.Status.State != longhorn.BackupStateCompleted && snapshotBackup.Status.State != longhorn.BackupStateError {
+			continue
+		}
+		if err := c.ds.DeleteSnapshot(snapshot.Name); err != nil && !apierrors.IsNotFound(err) {
+			log.WithError(err).Warnf("Failed to clean up snapshot %v of volume %v", snapshot.Name, volumeName)
+		}
+	}
+}
+
+func getBackupVolumeName(backup *longhorn.Backup) string {
+	if backup.Status.VolumeName != "" {
+		return backup.Status.VolumeName
+	}
+	return backup.Labels[types.LonghornLabelBackupVolume]
 }
 
 // isVolumeLastBackupSynced reports whether the volume status has caught up
@@ -929,10 +1304,7 @@ func (c *SystemBackupController) isVolumeLastBackupSynced(backup *longhorn.Backu
 // a missing volume or an unparsable timestamp. The caller logs it, treats the
 // backup as not synced, and checks again on the next tick.
 func (c *SystemBackupController) checkVolumeLastBackupSynced(backup *longhorn.Backup) (bool, error) {
-	volumeName := backup.Status.VolumeName
-	if volumeName == "" {
-		volumeName = backup.Labels[types.LonghornLabelBackupVolume]
-	}
+	volumeName := getBackupVolumeName(backup)
 	if volumeName == "" {
 		return false, fmt.Errorf("backup %v has no volume name in status or labels", backup.Name)
 	}
@@ -1028,6 +1400,10 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 		}
 		return false, err
 	}
+	if lastBackup.DeletionTimestamp != nil {
+		log.Infof("Last backup %v is being deleted; backup is not up-to-date", lastBackup.Name)
+		return false, nil
+	}
 
 	lastBackupSnapshot, err := c.ds.GetSnapshot(lastBackup.Status.SnapshotName)
 	if err != nil {
@@ -1036,6 +1412,10 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 			return false, nil
 		}
 		return false, err
+	}
+	if lastBackupSnapshot.DeletionTimestamp != nil {
+		log.Infof("Snapshot %v of last backup %v is being deleted; backup is not up-to-date", lastBackupSnapshot.Name, lastBackup.Name)
+		return false, nil
 	}
 
 	lastBackupTime, err := time.Parse(time.RFC3339, lastBackupSnapshot.Status.CreationTime)
@@ -1093,14 +1473,15 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 	return true, nil // Backup is up-to-date
 }
 
-func (c *SystemBackupController) createVolumeBackupFromSnapshot(volume *longhorn.Volume, snapshot *longhorn.Snapshot) (backup *longhorn.Backup, err error) {
+func (c *SystemBackupController) createVolumeBackupFromSnapshot(volume *longhorn.Volume, snapshot *longhorn.Snapshot, systemBackupName string) (backup *longhorn.Backup, err error) {
 	backupTargetName := volume.Spec.BackupTargetName
+	backupLabels := types.GetSystemBackupLabels()
+	backupLabels[types.LonghornLabelBackupTarget] = backupTargetName
 	backup = &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: snapshot.Name,
-			Labels: map[string]string{
-				types.LonghornLabelBackupTarget: backupTargetName,
-			},
+			Name:        snapshot.Name,
+			Labels:      backupLabels,
+			Annotations: map[string]string{types.SystemBackupAnnotationCreator: systemBackupName},
 		},
 		Spec: longhorn.BackupSpec{
 			SnapshotName: snapshot.Name,
@@ -1110,13 +1491,166 @@ func (c *SystemBackupController) createVolumeBackupFromSnapshot(volume *longhorn
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create Volume %v backup %s", volume.Name, snapshot.Name)
 	}
+
+	if err := c.addBackupOwner(backup.DeepCopy(), systemBackupName); err != nil {
+		return nil, errors.Wrapf(err, "failed to add system backup %v to the owners of backup %v", systemBackupName, backup.Name)
+	}
 	return backup, nil
 }
 
-func (c *SystemBackupController) createVolumeSnapshot(ctx context.Context, volume *longhorn.Volume, volumeSnapshotName string) (snapshot *longhorn.Snapshot, err error) {
+// addBackupOwner adds the SystemBackup to backup.Status.Owners. A backup that is
+// being deleted is rejected, since its remote data may already be removed.
+func (c *SystemBackupController) addBackupOwner(backup *longhorn.Backup, systemBackupName string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if backup.DeletionTimestamp != nil {
+			return fmt.Errorf("backup %v %w", backup.Name, errSystemBackupOwnedObjectDeleting)
+		}
+		if slices.Contains(backup.Status.Owners, systemBackupName) {
+			return nil
+		}
+		updated := backup.DeepCopy()
+		updated.Status.Owners = addOwner(getSystemBackupOwners(backup.Annotations, backup.Status.Owners), systemBackupName)
+		_, err := c.ds.UpdateBackupStatus(updated)
+		if !apierrors.IsConflict(err) {
+			return err
+		}
+		latest, getErr := c.getBackup(backup.Name)
+		if getErr != nil {
+			return getErr
+		}
+		backup = latest
+		return err
+	})
+}
+
+// addSnapshotOwner adds the SystemBackup to snapshot.Status.Owners. A snapshot
+// that is being deleted is rejected.
+func (c *SystemBackupController) addSnapshotOwner(snapshot *longhorn.Snapshot, systemBackupName string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if snapshot.DeletionTimestamp != nil {
+			return fmt.Errorf("snapshot %v %w", snapshot.Name, errSystemBackupOwnedObjectDeleting)
+		}
+		if slices.Contains(snapshot.Status.Owners, systemBackupName) {
+			return nil
+		}
+		updated := snapshot.DeepCopy()
+		updated.Status.Owners = addOwner(getSystemBackupOwners(snapshot.Annotations, snapshot.Status.Owners), systemBackupName)
+		_, err := c.ds.UpdateSnapshotStatus(updated)
+		if !apierrors.IsConflict(err) {
+			return err
+		}
+		latest, getErr := c.ds.GetSnapshot(snapshot.Name)
+		if getErr != nil {
+			return getErr
+		}
+		snapshot = latest
+		return err
+	})
+}
+
+// getSystemBackupOwners returns the SystemBackups that own a Snapshot or Backup
+// CR. Status.Owners is never written empty, because the CR is deleted when its
+// last owner is removed, so an empty list means the creator recorded in the
+// annotation has not been written to it yet.
+func getSystemBackupOwners(annotations map[string]string, statusOwners []string) []string {
+	if len(statusOwners) > 0 {
+		return statusOwners
+	}
+	if creator := annotations[types.SystemBackupAnnotationCreator]; creator != "" {
+		return []string{creator}
+	}
+	return nil
+}
+
+func addOwner(owners []string, owner string) []string {
+	if slices.Contains(owners, owner) {
+		return owners
+	}
+	return append(slices.Clone(owners), owner)
+}
+
+// getVolumesAndAddLastBackupOwners returns the volumes to archive. System
+// restore restores each volume from its Status.LastBackup, so the SystemBackup
+// is added to the owners of those backups, whatever the volume backup policy.
+func (c *SystemBackupController) getVolumesAndAddLastBackupOwners(systemBackupName string) (runtime.Object, error) {
+	obj, err := c.ds.GetAllLonghornVolumes()
+	if err != nil {
+		return nil, err
+	}
+	volumeList, ok := obj.(*longhorn.VolumeList)
+	if !ok {
+		return nil, fmt.Errorf("BUG: unexpected type %T for the volume list", obj)
+	}
+	for i := range volumeList.Items {
+		volume := &volumeList.Items[i]
+		if volume.Status.LastBackup == "" {
+			continue
+		}
+		systemBackup, err := c.ds.GetSystemBackupRO(systemBackupName)
+		if err != nil {
+			return nil, err
+		}
+		if systemBackup.DeletionTimestamp != nil {
+			return nil, fmt.Errorf("system backup %v is being deleted", systemBackupName)
+		}
+		if err := c.addOwnerToVolumeLastBackup(volume, systemBackupName); err != nil {
+			return nil, errors.Wrapf(err, "failed to add system backup %v to the owners of the last backup %v of volume %v", systemBackupName, volume.Status.LastBackup, volume.Name)
+		}
+	}
+	return obj, nil
+}
+
+// getBackup falls back to the API server when the cache has not observed the
+// backup yet, since the volume list being archived is read from the API server.
+func (c *SystemBackupController) getBackup(name string) (*longhorn.Backup, error) {
+	backup, err := c.ds.GetBackup(name)
+	if apierrors.IsNotFound(err) {
+		return c.ds.GetLonghornBackupUncached(name)
+	}
+	return backup, err
+}
+
+// addOwnerToVolumeLastBackup adds the SystemBackup to the owners of the
+// volume's last backup and its snapshot, so deleting the SystemBackup that
+// created them does not delete them while this SystemBackup references them.
+// A missing or deleting backup is an error. Restore reads only the backup, so
+// the snapshot is optional: it may already be removed, for example by
+// auto-cleanup-snapshot-after-on-demand-backup-completed.
+func (c *SystemBackupController) addOwnerToVolumeLastBackup(volume *longhorn.Volume, systemBackupName string) error {
+	backup, err := c.getBackup(volume.Status.LastBackup)
+	if err != nil {
+		return err
+	}
+	if !types.IsCreatedBySystemBackup(backup.Labels) {
+		return nil
+	}
+	if err := c.addBackupOwner(backup, systemBackupName); err != nil {
+		return err
+	}
+
+	snapshot, err := c.ds.GetSnapshot(backup.Status.SnapshotName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !types.IsCreatedBySystemBackup(snapshot.Labels) || snapshot.DeletionTimestamp != nil {
+		return nil
+	}
+	err = c.addSnapshotOwner(snapshot, systemBackupName)
+	if apierrors.IsNotFound(err) || errors.Is(err, errSystemBackupOwnedObjectDeleting) {
+		return nil
+	}
+	return err
+}
+
+func (c *SystemBackupController) createVolumeSnapshot(ctx context.Context, volume *longhorn.Volume, volumeSnapshotName string, systemBackupName string) (snapshot *longhorn.Snapshot, err error) {
 	snapshotCR := &longhorn.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: volumeSnapshotName,
+			Name:        volumeSnapshotName,
+			Labels:      types.GetSystemBackupLabels(),
+			Annotations: map[string]string{types.SystemBackupAnnotationCreator: systemBackupName},
 		},
 		Spec: longhorn.SnapshotSpec{
 			Volume:         volume.Name,
@@ -1127,6 +1661,10 @@ func (c *SystemBackupController) createVolumeSnapshot(ctx context.Context, volum
 	snapshot, err = c.ds.CreateSnapshot(snapshotCR)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create Volume %v snapshot %s", volume.Name, volumeSnapshotName)
+	}
+
+	if err := c.addSnapshotOwner(snapshot.DeepCopy(), systemBackupName); err != nil {
+		return nil, errors.Wrapf(err, "failed to add system backup %v to the owners of snapshot %v", systemBackupName, snapshot.Name)
 	}
 
 	if datastore.SkipListerCheck {
@@ -1272,17 +1810,17 @@ func (c *SystemBackupController) createBackingImageBackup(backingImage *longhorn
 	return backupBackingImage, nil
 }
 
-func (c *SystemBackupController) generateSystemBackup(systemBackupMeta *systemBackupMeta, tempDir string) (err error) {
+func (c *SystemBackupController) generateSystemBackup(systemBackupName string, systemBackupMeta *systemBackupMeta, tempDir string) (err error) {
 	metaFile := filepath.Join(tempDir, "metadata.yaml")
 	err = util.EncodeToYAMLFile(systemBackupMeta, metaFile)
 	if err != nil {
 		return err
 	}
 
-	return c.generateSystemBackupYAMLs(filepath.Join(tempDir, "yamls"))
+	return c.generateSystemBackupYAMLs(systemBackupName, filepath.Join(tempDir, "yamls"))
 }
 
-func (c *SystemBackupController) generateSystemBackupYAMLs(yamlsDir string) (err error) {
+func (c *SystemBackupController) generateSystemBackupYAMLs(systemBackupName, yamlsDir string) (err error) {
 	defer func() {
 		err = errors.Wrap(err, SystemBackupErrGenerateYAML)
 	}()
@@ -1290,7 +1828,9 @@ func (c *SystemBackupController) generateSystemBackupYAMLs(yamlsDir string) (err
 	schemeGenerateFns := map[string]func(string) error{
 		filepath.Join(yamlsDir, "apiextensions"): c.generateSystemBackupYAMLsForAPIExtensions,
 		filepath.Join(yamlsDir, "kubernetes"):    c.generateSystemBackupYAMLsForKubernetes,
-		filepath.Join(yamlsDir, "longhorn"):      c.generateSystemBackupYAMLsForLonghorn,
+		filepath.Join(yamlsDir, "longhorn"): func(dir string) error {
+			return c.generateSystemBackupYAMLsForLonghorn(systemBackupName, dir)
+		},
 	}
 	for scheme, fn := range schemeGenerateFns {
 		err = fn(scheme)
@@ -1301,7 +1841,7 @@ func (c *SystemBackupController) generateSystemBackupYAMLs(yamlsDir string) (err
 	return
 }
 
-func (c *SystemBackupController) generateSystemBackupYAMLsForLonghorn(dir string) (err error) {
+func (c *SystemBackupController) generateSystemBackupYAMLsForLonghorn(systemBackupName, dir string) (err error) {
 	scheme := runtime.NewScheme()
 	err = longhorn.AddToScheme(scheme)
 	if err != nil {
@@ -1310,9 +1850,11 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForLonghorn(dir string
 
 	// TODO: handle BackingImage in https://github.com/longhorn/longhorn/issues/4165
 	resourceGetFns := map[string]func() (runtime.Object, error){
-		"setting":       c.ds.GetAllLonghornSettings,
-		"engineimages":  c.ds.GetAllLonghornEngineImages,
-		"volumes":       c.ds.GetAllLonghornVolumes,
+		"setting":      c.ds.GetAllLonghornSettings,
+		"engineimages": c.ds.GetAllLonghornEngineImages,
+		"volumes": func() (runtime.Object, error) {
+			return c.getVolumesAndAddLastBackupOwners(systemBackupName)
+		},
 		"recurringjobs": c.ds.GetAllLonghornRecurringJobs,
 		"backingimages": c.ds.GetAllLonghornBackingImages,
 		"backuptargets": c.ds.GetAllLonghornBackupTargets,

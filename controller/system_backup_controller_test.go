@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
 	"maps"
@@ -14,6 +15,8 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -22,7 +25,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
+
+	systembackupstore "github.com/longhorn/backupstore/systembackup"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -915,5 +922,660 @@ func fakeSystemRolloutNamespace(c *C, informerFactory informers.SharedInformerFa
 	c.Assert(err, IsNil)
 
 	err = nsIndexer.Add(namespace)
+	c.Assert(err, IsNil)
+}
+
+type systemBackupChildrenTestEnv struct {
+	lhClient          *lhfake.Clientset
+	informerFactories *util.InformerFactories
+	controller        *SystemBackupController
+	volumes           map[SystemRolloutCRName]*longhorn.Volume
+}
+
+func newSystemBackupChildrenTestEnv(c *C, autoCleanupSnapshot string) *systemBackupChildrenTestEnv {
+	datastore.SkipListerCheck = true
+	datastore.SystemBackupTimeout = 10 * time.Second
+	datastore.VolumeBackupTimeout = 10 * time.Second
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	fakeSystemRolloutNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
+	fakeSystemRolloutSettingDefaultEngineImage(c, informerFactories.LhInformerFactory, lhClient)
+	fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
+	fakeSystemRolloutStorageClassesDefault(c, informerFactories.KubeInformerFactory, kubeClient)
+	fakeSystemRolloutSettings(map[SystemRolloutCRName]*longhorn.Setting{
+		SystemRolloutCRName(types.SettingNameAutoCleanupRecurringJobBackupSnapshot): {
+			Value: autoCleanupSnapshot,
+		},
+	}, c, informerFactories.LhInformerFactory, lhClient)
+
+	volumes := map[SystemRolloutCRName]*longhorn.Volume{
+		SystemRolloutCRName(TestVolumeName): {
+			Status: longhorn.VolumeStatus{},
+		},
+	}
+	fakeSystemRolloutVolumes(volumes, c, informerFactories.LhInformerFactory, lhClient)
+
+	systemBackupController, err := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	return &systemBackupChildrenTestEnv{
+		lhClient:          lhClient,
+		informerFactories: informerFactories,
+		controller:        systemBackupController,
+		volumes:           volumes,
+	}
+}
+
+func (env *systemBackupChildrenTestEnv) addSystemBackup(c *C, name string, policy longhorn.SystemBackupCreateVolumeBackupPolicy, state longhorn.SystemBackupState) *longhorn.SystemBackup {
+	return fakeSystemBackup(name, TestNode1, "", state == longhorn.SystemBackupStateDeleting, policy, state, c, env.informerFactories.LhInformerFactory, env.lhClient)
+}
+
+// addSnapshot adds a snapshot of TestVolumeName. A snapshot with owners is
+// labeled as created by a SystemBackup.
+func (env *systemBackupChildrenTestEnv) addSnapshot(c *C, name, creationTime string, owners ...string) {
+	snapshot := newSnapshot(name)
+	snapshot.Labels = types.GetVolumeLabels(TestVolumeName)
+	if len(owners) > 0 {
+		maps.Copy(snapshot.Labels, types.GetSystemBackupLabels())
+	}
+	snapshot.Spec.Volume = TestVolumeName
+	snapshot.Status.ReadyToUse = true
+	snapshot.Status.CreationTime = creationTime
+	snapshot.Status.Owners = owners
+	fakeSystemRolloutSnapshotWithMetadata(snapshot, c, env.informerFactories.LhInformerFactory, env.lhClient)
+}
+
+// addBackup adds a completed backup of TestVolumeName from the snapshot with
+// the same name. A backup with owners is labeled as created by a SystemBackup.
+func (env *systemBackupChildrenTestEnv) addBackup(c *C, name string, owners ...string) {
+	backup := newBackup(name)
+	backup.Labels = map[string]string{types.LonghornLabelBackupVolume: TestVolumeName}
+	if len(owners) > 0 {
+		maps.Copy(backup.Labels, types.GetSystemBackupLabels())
+	}
+	backup.Spec.SnapshotName = name
+	backup.Status.SnapshotName = name
+	backup.Status.VolumeName = TestVolumeName
+	backup.Status.State = longhorn.BackupStateCompleted
+	backup.Status.Owners = owners
+	fakeSystemRolloutBackupWithMetadata(backup, c, env.informerFactories.LhInformerFactory, env.lhClient)
+}
+
+// syncCache copies the Backup and Snapshot CRs from the client to the informer
+// cache, which no informer updates in these tests.
+func (env *systemBackupChildrenTestEnv) syncCache(c *C) {
+	backups, err := env.lhClient.LonghornV1beta2().Backups(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	backupIndexer := env.informerFactories.LhInformerFactory.Longhorn().V1beta2().Backups().Informer().GetIndexer()
+	for i := range backups.Items {
+		c.Assert(backupIndexer.Update(&backups.Items[i]), IsNil)
+	}
+
+	snapshots, err := env.lhClient.LonghornV1beta2().Snapshots(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	snapshotIndexer := env.informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+	for i := range snapshots.Items {
+		c.Assert(snapshotIndexer.Update(&snapshots.Items[i]), IsNil)
+	}
+}
+
+func (env *systemBackupChildrenTestEnv) getSnapshot(name string) (*longhorn.Snapshot, error) {
+	return env.lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func (env *systemBackupChildrenTestEnv) getBackup(name string) (*longhorn.Backup, error) {
+	return env.lhClient.LonghornV1beta2().Backups(TestNamespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func (s *TestSuite) TestSystemBackupCreatedChildrenHaveSystemBackupOwner(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	systemBackup := env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateVolumeBackup)
+
+	backups, err := env.controller.BackupVolumes(systemBackup)
+	c.Assert(err, IsNil)
+	c.Assert(len(backups), Equals, 1)
+
+	for _, created := range backups {
+		backup, err := env.getBackup(created.Name)
+		c.Assert(err, IsNil)
+		c.Assert(types.IsCreatedBySystemBackup(backup.Labels), Equals, true)
+		c.Assert(backup.Status.Owners, DeepEquals, []string{systemBackup.Name})
+
+		snapshot, err := env.getSnapshot(backup.Spec.SnapshotName)
+		c.Assert(err, IsNil)
+		c.Assert(types.IsCreatedBySystemBackup(snapshot.Labels), Equals, true)
+		c.Assert(snapshot.Status.Owners, DeepEquals, []string{systemBackup.Name})
+	}
+}
+
+func (s *TestSuite) TestSystemBackupNameLongerThanLabelValueLimit(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	longName := strings.Repeat("a", 100)
+	systemBackup := env.addSystemBackup(c, longName, longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateVolumeBackup)
+
+	backups, err := env.controller.BackupVolumes(systemBackup)
+	c.Assert(err, IsNil)
+	c.Assert(len(backups), Equals, 1)
+	for _, created := range backups {
+		backup, err := env.getBackup(created.Name)
+		c.Assert(err, IsNil)
+		c.Assert(backup.Status.Owners, DeepEquals, []string{longName})
+	}
+}
+
+func (s *TestSuite) TestSystemBackupWaitForVolumeBackupToCompleteAutoCleanup(c *C) {
+	testCases := map[string]struct {
+		autoCleanupSnapshot     string
+		expectOlderSnapshotKept bool
+	}{
+		"auto cleanup enabled": {
+			autoCleanupSnapshot:     "true",
+			expectOlderSnapshotKept: false,
+		},
+		"auto cleanup disabled": {
+			autoCleanupSnapshot:     "false",
+			expectOlderSnapshotKept: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		env := newSystemBackupChildrenTestEnv(c, tc.autoCleanupSnapshot)
+		systemBackup := env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateVolumeBackup)
+
+		env.addSnapshot(c, "system-backup-older", testEarlierTime, "older-system-backup")
+		env.addSnapshot(c, "user-snapshot", testEarlierTime)
+
+		backups, err := env.controller.BackupVolumes(systemBackup)
+		c.Assert(err, IsNil)
+		c.Assert(len(backups), Equals, 1)
+
+		var latestSnapshotName string
+		for _, backup := range backups {
+			latestSnapshotName = backup.Spec.SnapshotName
+			backup.Status.State = longhorn.BackupStateCompleted
+			backup.Status.SnapshotName = backup.Spec.SnapshotName
+			backup.Status.VolumeName = TestVolumeName
+			env.addSnapshot(c, latestSnapshotName, testBackupSnapshotTime, systemBackup.Name)
+			env.volumes[SystemRolloutCRName(TestVolumeName)].Status.LastBackup = backup.Name
+		}
+		fakeSystemRolloutVolumes(env.volumes, c, env.informerFactories.LhInformerFactory, env.lhClient)
+		fakeSystemRolloutBackups(backups, c, env.informerFactories.LhInformerFactory, env.lhClient)
+		env.addBackup(c, "system-backup-older", "older-system-backup")
+		// Another SystemBackup has not created the backup of this snapshot yet.
+		env.addSnapshot(c, "system-backup-pending", testEarlierTime, "pending-system-backup")
+
+		err = env.controller.WaitForVolumeBackupToComplete(backups, systemBackup)
+		c.Assert(err, IsNil)
+
+		_, err = env.getSnapshot(latestSnapshotName)
+		c.Assert(err, IsNil, Commentf("the snapshot of the latest backup is the if-not-present baseline"))
+
+		_, err = env.getSnapshot("user-snapshot")
+		c.Assert(err, IsNil)
+
+		_, err = env.getSnapshot("system-backup-pending")
+		c.Assert(err, IsNil, Commentf("a snapshot without a finished backup is kept"))
+
+		_, err = env.getSnapshot("system-backup-older")
+		if tc.expectOlderSnapshotKept {
+			c.Assert(err, IsNil)
+		} else {
+			c.Assert(apierrors.IsNotFound(err), Equals, true)
+		}
+	}
+}
+
+func (s *TestSuite) TestSystemBackupIfNotPresentReusesBackup(c *C) {
+	testCases := map[string]struct {
+		autoCleanupSnapshot  string
+		expectProbeSnapshots int
+	}{
+		"auto cleanup enabled": {
+			autoCleanupSnapshot:  "true",
+			expectProbeSnapshots: 0,
+		},
+		"auto cleanup disabled": {
+			autoCleanupSnapshot:  "false",
+			expectProbeSnapshots: 2,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		env := newSystemBackupChildrenTestEnv(c, tc.autoCleanupSnapshot)
+
+		creator := "creator-system-backup"
+		env.addSnapshot(c, "system-backup-reused", testBackupSnapshotTime, creator)
+		env.addBackup(c, "system-backup-reused", creator)
+		env.volumes[SystemRolloutCRName(TestVolumeName)].Status.LastBackup = "system-backup-reused"
+		fakeSystemRolloutVolumes(env.volumes, c, env.informerFactories.LhInformerFactory, env.lhClient)
+
+		// The second run checks that the volume is still detected as unchanged
+		// after the first run cleaned up its snapshot.
+		reusers := []string{"reuser-system-backup-1", "reuser-system-backup-2"}
+		for _, reuser := range reusers {
+			systemBackup := env.addSystemBackup(c, reuser, longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent, longhorn.SystemBackupStateVolumeBackup)
+			backups, err := env.controller.BackupVolumes(systemBackup)
+			c.Assert(err, IsNil)
+			c.Assert(len(backups), Equals, 0)
+			env.syncCache(c)
+		}
+
+		backup, err := env.getBackup("system-backup-reused")
+		c.Assert(err, IsNil)
+		c.Assert(backup.Status.Owners, DeepEquals, append([]string{creator}, reusers...))
+
+		snapshot, err := env.getSnapshot("system-backup-reused")
+		c.Assert(err, IsNil)
+		c.Assert(snapshot.Status.Owners, DeepEquals, append([]string{creator}, reusers...))
+
+		snapshots, err := env.lhClient.LonghornV1beta2().Snapshots(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(len(snapshots.Items), Equals, 1+tc.expectProbeSnapshots)
+	}
+}
+
+func (s *TestSuite) TestSystemBackupDeletingStateCleansAssociatedBackupAndSnapshotCRs(c *C) {
+	testCases := map[string]struct {
+		owners            []string
+		deleteCROnly      bool
+		expectDeleted     bool
+		expectOwnersAfter []string
+	}{
+		"last owner deletes the backup and snapshot": {
+			owners:        []string{TestSystemBackupName},
+			expectDeleted: true,
+		},
+		"shared owner keeps the backup and snapshot": {
+			owners:            []string{TestSystemBackupName, "newer-system-backup"},
+			expectOwnersAfter: []string{"newer-system-backup"},
+		},
+		"not an owner keeps the backup and snapshot": {
+			owners:            []string{"other-system-backup"},
+			expectOwnersAfter: []string{"other-system-backup"},
+		},
+		"custom resource only deletion keeps the backup and snapshot": {
+			owners:            []string{TestSystemBackupName},
+			deleteCROnly:      true,
+			expectOwnersAfter: []string{TestSystemBackupName},
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		env := newSystemBackupChildrenTestEnv(c, "true")
+		systemBackup := env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateDeleting)
+		if tc.deleteCROnly {
+			systemBackup.Labels = map[string]string{types.GetLonghornLabelKey(types.DeleteCustomResourceOnly): "true"}
+			var err error
+			systemBackup, err = env.lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Update(context.TODO(), systemBackup, metav1.UpdateOptions{})
+			c.Assert(err, IsNil)
+			err = env.informerFactories.LhInformerFactory.Longhorn().V1beta2().SystemBackups().Informer().GetIndexer().Update(systemBackup)
+			c.Assert(err, IsNil)
+		}
+
+		env.addSnapshot(c, "system-backup-child", testBackupSnapshotTime, tc.owners...)
+		env.addBackup(c, "system-backup-child", tc.owners...)
+
+		defaultBackupTarget, err := env.lhClient.LonghornV1beta2().BackupTargets(TestNamespace).Get(context.TODO(), types.DefaultBackupTargetName, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = env.controller.reconcile(systemBackup.Name, &FakeSystemBackupTargetClient{name: systemBackup.Name}, defaultBackupTarget)
+		c.Assert(err, IsNil)
+
+		systemBackup, err = env.lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Get(context.TODO(), systemBackup.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(util.FinalizerExists(longhornFinalizerKey, systemBackup), Equals, false)
+
+		backup, backupErr := env.getBackup("system-backup-child")
+		snapshot, snapshotErr := env.getSnapshot("system-backup-child")
+		if tc.expectDeleted {
+			c.Assert(apierrors.IsNotFound(backupErr), Equals, true)
+			c.Assert(apierrors.IsNotFound(snapshotErr), Equals, true)
+			continue
+		}
+		c.Assert(backupErr, IsNil)
+		c.Assert(snapshotErr, IsNil)
+		c.Assert(backup.Status.Owners, DeepEquals, tc.expectOwnersAfter)
+		c.Assert(snapshot.Status.Owners, DeepEquals, tc.expectOwnersAfter)
+	}
+}
+
+func (s *TestSuite) TestSystemBackupArchiveAddsLastBackupOwners(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+
+	creator := "creator-system-backup"
+	env.addSnapshot(c, "system-backup-last", testBackupSnapshotTime, creator)
+	env.addBackup(c, "system-backup-last", creator)
+	env.volumes[SystemRolloutCRName(TestVolumeName)].Status.LastBackup = "system-backup-last"
+	fakeSystemRolloutVolumes(env.volumes, c, env.informerFactories.LhInformerFactory, env.lhClient)
+
+	// The disabled policy creates no volume backup, but the archive still
+	// references the volume's last backup.
+	archiver := env.addSystemBackup(c, "archiver-system-backup", longhorn.SystemBackupCreateVolumeBackupPolicyDisabled, longhorn.SystemBackupStateGenerating)
+	_, err := env.controller.getVolumesAndAddLastBackupOwners(archiver.Name)
+	c.Assert(err, IsNil)
+
+	backup, err := env.getBackup("system-backup-last")
+	c.Assert(err, IsNil)
+	c.Assert(backup.Status.Owners, DeepEquals, []string{creator, archiver.Name})
+
+	snapshot, err := env.getSnapshot("system-backup-last")
+	c.Assert(err, IsNil)
+	c.Assert(snapshot.Status.Owners, DeepEquals, []string{creator, archiver.Name})
+}
+
+func (s *TestSuite) TestSystemBackupArchiveFailsOnMissingLastBackup(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyDisabled, longhorn.SystemBackupStateGenerating)
+
+	env.volumes[SystemRolloutCRName(TestVolumeName)].Status.LastBackup = "system-backup-missing"
+	fakeSystemRolloutVolumes(env.volumes, c, env.informerFactories.LhInformerFactory, env.lhClient)
+
+	_, err := env.controller.getVolumesAndAddLastBackupOwners(TestSystemBackupName)
+	c.Assert(err, NotNil)
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+}
+
+func (s *TestSuite) TestSystemBackupArchiveReadsLastBackupMissingFromCache(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyDisabled, longhorn.SystemBackupStateGenerating)
+
+	creator := "creator-system-backup"
+	backup := newBackup("system-backup-uncached")
+	backup.Labels = types.GetSystemBackupLabels()
+	backup.Status.Owners = []string{creator}
+	_, err := env.lhClient.LonghornV1beta2().Backups(TestNamespace).Create(context.TODO(), backup, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	env.volumes[SystemRolloutCRName(TestVolumeName)].Status.LastBackup = backup.Name
+	fakeSystemRolloutVolumes(env.volumes, c, env.informerFactories.LhInformerFactory, env.lhClient)
+
+	_, err = env.controller.getVolumesAndAddLastBackupOwners(TestSystemBackupName)
+	c.Assert(err, IsNil)
+
+	backup, err = env.getBackup(backup.Name)
+	c.Assert(err, IsNil)
+	c.Assert(backup.Status.Owners, DeepEquals, []string{creator, TestSystemBackupName})
+}
+
+func (s *TestSuite) TestSystemBackupArchiveSkipsDeletingLastBackupSnapshot(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyDisabled, longhorn.SystemBackupStateGenerating)
+
+	creator := "creator-system-backup"
+	env.addBackup(c, "system-backup-last", creator)
+	// The snapshot is being deleted, for example by
+	// auto-cleanup-snapshot-after-on-demand-backup-completed.
+	snapshot := newSnapshot("system-backup-last")
+	snapshot.Labels = types.GetSystemBackupLabels()
+	snapshot.Status.Owners = []string{creator}
+	now := metav1.Now()
+	snapshot.DeletionTimestamp = &now
+	snapshot, err := env.lhClient.LonghornV1beta2().Snapshots(TestNamespace).Create(context.TODO(), snapshot, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(env.informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer().Add(snapshot), IsNil)
+	env.volumes[SystemRolloutCRName(TestVolumeName)].Status.LastBackup = "system-backup-last"
+	fakeSystemRolloutVolumes(env.volumes, c, env.informerFactories.LhInformerFactory, env.lhClient)
+
+	_, err = env.controller.getVolumesAndAddLastBackupOwners(TestSystemBackupName)
+	c.Assert(err, IsNil)
+
+	backup, err := env.getBackup("system-backup-last")
+	c.Assert(err, IsNil)
+	c.Assert(backup.Status.Owners, DeepEquals, []string{creator, TestSystemBackupName})
+
+	snapshot, err = env.getSnapshot("system-backup-last")
+	c.Assert(err, IsNil)
+	c.Assert(snapshot.Status.Owners, DeepEquals, []string{creator})
+}
+
+func (s *TestSuite) TestSystemBackupAddOwnerRejectsDeletingBackup(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+
+	backup := newBackup("system-backup-deleting")
+	now := metav1.Now()
+	backup.DeletionTimestamp = &now
+	err := env.controller.addBackupOwner(backup, TestSystemBackupName)
+	c.Assert(err, NotNil)
+	c.Assert(strings.Contains(err.Error(), "is being deleted"), Equals, true)
+}
+
+func (s *TestSuite) TestSystemBackupAddOwnerReturnsReloadErrorAfterConflict(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+
+	backup := newBackup("system-backup-conflict")
+	env.lhClient.PrependReactor("update", "backups", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewConflict(longhorn.Resource("backups"), backup.Name, fmt.Errorf("conflict"))
+	})
+
+	// The backup is not in the cache, so the reload after the conflict fails.
+	err := env.controller.addBackupOwner(backup, TestSystemBackupName)
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+}
+
+func (s *TestSuite) TestSystemBackupDeletingStateUsesCreatorAnnotation(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	systemBackup := env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateDeleting)
+
+	// The creator was never written to Status.Owners, for example because the
+	// manager restarted right after creating the backup.
+	backup := newBackup("system-backup-unrecorded")
+	backup.Labels = types.GetSystemBackupLabels()
+	backup.Annotations = map[string]string{types.SystemBackupAnnotationCreator: systemBackup.Name}
+	backup.Status.State = longhorn.BackupStateCompleted
+	fakeSystemRolloutBackupWithMetadata(backup, c, env.informerFactories.LhInformerFactory, env.lhClient)
+
+	defaultBackupTarget, err := env.lhClient.LonghornV1beta2().BackupTargets(TestNamespace).Get(context.TODO(), types.DefaultBackupTargetName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	err = env.controller.reconcile(systemBackup.Name, &FakeSystemBackupTargetClient{name: systemBackup.Name}, defaultBackupTarget)
+	c.Assert(err, IsNil)
+
+	_, err = env.getBackup(backup.Name)
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+}
+
+func (s *TestSuite) TestSystemBackupArchiveStopsWhenSystemBackupIsDeleting(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	systemBackup := env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyDisabled, longhorn.SystemBackupStateDeleting)
+
+	creator := "creator-system-backup"
+	env.addBackup(c, "system-backup-last", creator)
+	env.volumes[SystemRolloutCRName(TestVolumeName)].Status.LastBackup = "system-backup-last"
+	fakeSystemRolloutVolumes(env.volumes, c, env.informerFactories.LhInformerFactory, env.lhClient)
+
+	_, err := env.controller.getVolumesAndAddLastBackupOwners(systemBackup.Name)
+	c.Assert(err, NotNil)
+
+	backup, err := env.getBackup("system-backup-last")
+	c.Assert(err, IsNil)
+	c.Assert(backup.Status.Owners, DeepEquals, []string{creator})
+}
+
+func (s *TestSuite) TestSystemBackupDeletingStateWaitsForGeneration(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	systemBackup := env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateDeleting)
+	env.addBackup(c, "system-backup-child", systemBackup.Name)
+
+	defaultBackupTarget, err := env.lhClient.LonghornV1beta2().BackupTargets(TestNamespace).Get(context.TODO(), types.DefaultBackupTargetName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	backupTargetClient := &FakeSystemBackupTargetClient{name: systemBackup.Name}
+
+	env.controller.generatingSystemBackups.Store(systemBackup.Name, struct{}{})
+	err = env.controller.reconcile(systemBackup.Name, backupTargetClient, defaultBackupTarget)
+	c.Assert(err, IsNil)
+
+	_, err = env.getBackup("system-backup-child")
+	c.Assert(err, IsNil, Commentf("the references are kept while generation is running"))
+	systemBackup, err = env.lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Get(context.TODO(), systemBackup.Name, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(util.FinalizerExists(longhornFinalizerKey, systemBackup), Equals, true)
+
+	env.controller.generatingSystemBackups.Delete(systemBackup.Name)
+	err = env.controller.reconcile(systemBackup.Name, backupTargetClient, defaultBackupTarget)
+	c.Assert(err, IsNil)
+
+	_, err = env.getBackup("system-backup-child")
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+}
+
+func (s *TestSuite) TestSystemBackupDeletingStateKeepsBackupReferencedByUntrackedArchive(c *C) {
+	env := newSystemBackupChildrenTestEnv(c, "true")
+	systemBackup := env.addSystemBackup(c, TestSystemBackupName, longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateDeleting)
+	// A SystemBackup created by this cluster tracks its references with owners,
+	// so its archive is not downloaded.
+	localSystemBackup := env.addSystemBackup(c, "local-system-backup", longhorn.SystemBackupCreateVolumeBackupPolicyAlways, longhorn.SystemBackupStateReady)
+
+	env.addSnapshot(c, "system-backup-referenced", testBackupSnapshotTime, systemBackup.Name)
+	env.addBackup(c, "system-backup-referenced", systemBackup.Name)
+	env.addBackup(c, "system-backup-unreferenced", systemBackup.Name)
+
+	defaultBackupTarget, err := env.lhClient.LonghornV1beta2().BackupTargets(TestNamespace).Get(context.TODO(), types.DefaultBackupTargetName, metav1.GetOptions{})
+	c.Assert(err, IsNil)
+	backupTargetClient := &fakeArchiveSystemBackupTargetClient{
+		archives: map[string][]string{
+			systemBackup.Name:      nil,
+			localSystemBackup.Name: nil,
+			// An archive of another cluster sharing the backup target, or
+			// one kept by a CR-only deletion.
+			"untracked-system-backup": {"system-backup-referenced"},
+		},
+	}
+	err = env.controller.reconcile(systemBackup.Name, backupTargetClient, defaultBackupTarget)
+	c.Assert(err, IsNil)
+
+	backup, err := env.getBackup("system-backup-referenced")
+	c.Assert(err, IsNil)
+	c.Assert(backup.Status.Owners, DeepEquals, []string{"untracked-system-backup"})
+
+	_, err = env.getBackup("system-backup-unreferenced")
+	c.Assert(apierrors.IsNotFound(err), Equals, true)
+
+	_, err = env.getSnapshot("system-backup-referenced")
+	c.Assert(apierrors.IsNotFound(err), Equals, true, Commentf("restore reads only the backup"))
+}
+
+// fakeArchiveSystemBackupTargetClient serves archives that reference the given
+// volume last backups. Downloading an archive without last backups fails.
+type fakeArchiveSystemBackupTargetClient struct {
+	FakeSystemBackupTargetClient
+	archives map[string][]string
+}
+
+func (c *fakeArchiveSystemBackupTargetClient) ListSystemBackup() (systembackupstore.SystemBackups, error) {
+	systemBackups := systembackupstore.SystemBackups{}
+	for name := range c.archives {
+		systemBackups[systembackupstore.Name(name)] = systembackupstore.URI(fmt.Sprintf(TestSystemBackupURIFmt, TestSystemBackupLonghornVersion, name))
+	}
+	return systemBackups, nil
+}
+
+func (c *fakeArchiveSystemBackupTargetClient) DownloadSystemBackup(name, version, downloadPath string) error {
+	lastBackups := c.archives[name]
+	if len(lastBackups) == 0 {
+		return fmt.Errorf("unexpected download of system backup %v", name)
+	}
+
+	volumeList := &longhorn.VolumeList{TypeMeta: metav1.TypeMeta{APIVersion: longhorn.SchemeGroupVersion.String(), Kind: types.LonghornKindVolumeList}}
+	for i, lastBackup := range lastBackups {
+		volume := longhorn.Volume{
+			TypeMeta:   metav1.TypeMeta{APIVersion: longhorn.SchemeGroupVersion.String(), Kind: types.LonghornKindVolume},
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("volume-%d", i)},
+		}
+		volume.Status.LastBackup = lastBackup
+		volumeList.Items = append(volumeList.Items, volume)
+	}
+
+	f, err := os.Create(downloadPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close() // nolint: errcheck
+	writer := zip.NewWriter(f)
+	entry, err := writer.Create(name + "/yamls/longhorn/volumes.yaml")
+	if err != nil {
+		return err
+	}
+	if err := (&printers.YAMLPrinter{}).PrintObj(volumeList, entry); err != nil {
+		return err
+	}
+	return writer.Close()
+}
+
+func fakeSystemRolloutBackupWithMetadata(fakeObj *longhorn.Backup, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) {
+	indexer := informerFactory.Longhorn().V1beta2().Backups().Informer().GetIndexer()
+	clientInterface := client.LonghornV1beta2().Backups(TestNamespace)
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		if exist.Name != fakeObj.Name {
+			continue
+		}
+
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	backup := newBackup(fakeObj.Name)
+	backup.Labels = fakeObj.Labels
+	backup.Annotations = fakeObj.Annotations
+	backup.Spec = fakeObj.Spec
+	backup.Status = fakeObj.Status
+
+	exist, err := clientInterface.Create(context.TODO(), backup, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	err = indexer.Add(exist)
+	c.Assert(err, IsNil)
+}
+
+func fakeSystemRolloutSnapshotWithMetadata(fakeObj *longhorn.Snapshot, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) {
+	indexer := informerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+	clientInterface := client.LonghornV1beta2().Snapshots(TestNamespace)
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		if exist.Name != fakeObj.Name {
+			continue
+		}
+
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	snapshot := newSnapshot(fakeObj.Name)
+	snapshot.Labels = fakeObj.Labels
+	snapshot.Annotations = fakeObj.Annotations
+	snapshot.Spec = fakeObj.Spec
+	snapshot.Status = fakeObj.Status
+
+	exist, err := clientInterface.Create(context.TODO(), snapshot, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	err = indexer.Add(exist)
 	c.Assert(err, IsNil)
 }

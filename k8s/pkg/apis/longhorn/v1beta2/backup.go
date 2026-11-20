@@ -126,6 +126,10 @@ type BackupStatus struct {
 	// The backup target name.
 	// +optional
 	BackupTargetName string `json:"backupTargetName"`
+	// The names of the SystemBackups that reference this backup. Only set on backups created by a SystemBackup.
+	// +optional
+	// +nullable
+	Owners []string `json:"owners"`
 }
 
 // +genclient
