@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -836,4 +838,300 @@ func TestSyncSnapshotCRs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// purgeMockProxy wraps EngineSimulator and emulates the engine's snapshot purge behavior:
+//   - The first failUntil SnapshotPurge calls fail (the first one optionally after firstCallDelay
+//     to simulate a slow RPC). A failed call leaves a replica purging for the next busyCalls
+//     calls, like a purge that started on replica A but failed on replica B.
+//   - competingPurgeOnCall simulates another purge (snapshot controller, manual/recurring purge)
+//     starting right before that call; it also keeps a replica purging for busyCalls calls.
+//   - Like longhorn-engine, while any replica is purging a call with skipIfInProgress returns nil
+//     without starting anything (counted in skippedCalls); a call without it returns an
+//     "already purging" error.
+type purgeMockProxy struct {
+	*engineapi.EngineSimulator
+	failUntil            int
+	firstCallDelay       time.Duration
+	busyCalls            int
+	busyRemaining        int // calls left that see a replica purging; set initially for an already-running purge
+	competingPurgeOnCall int
+
+	purgeCalls    int
+	skipModeCalls int
+	skippedCalls  int
+}
+
+var _ engineapi.EngineClientProxy = (*purgeMockProxy)(nil)
+
+func (p *purgeMockProxy) Close() {}
+
+func (p *purgeMockProxy) SnapshotPurge(_ engineapi.DataEngineObject, skipIfInProgress bool) error {
+	p.purgeCalls++
+	if skipIfInProgress {
+		p.skipModeCalls++
+	}
+	if p.purgeCalls == 1 && p.firstCallDelay > 0 {
+		time.Sleep(p.firstCallDelay)
+	}
+	if p.purgeCalls == p.competingPurgeOnCall {
+		p.busyRemaining = p.busyCalls
+	}
+	if p.busyRemaining > 0 {
+		p.busyRemaining--
+		if skipIfInProgress {
+			p.skippedCalls++
+			return nil
+		}
+		return errors.New("cannot purge snapshots because tcp://10.0.0.1:10000 is already purging snapshots")
+	}
+	if p.purgeCalls <= p.failUntil {
+		p.busyRemaining = p.busyCalls
+		return errors.Newf("transient failure starting purge (call %d)", p.purgeCalls)
+	}
+	return nil
+}
+
+func drainFakeEvents(r *record.FakeRecorder) []string {
+	var events []string
+	for {
+		select {
+		case e := <-r.Events:
+			events = append(events, e)
+		default:
+			return events
+		}
+	}
+}
+
+func newPostRebuildPurgeTestController(t *testing.T, recorder *record.FakeRecorder) (*EngineController, *util.InformerFactories) {
+	t.Helper()
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, 0)
+
+	ec := &EngineController{
+		baseController:               newBaseController("longhorn-engine", logrus.New()),
+		controllerID:                 TestNode1,
+		ds:                           datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories),
+		eventRecorder:                recorder,
+		snapshotConcurrentLimiter:    NewSnapshotConcurrentLimiter(),
+		postRebuildPurgeResults:      map[string]*postRebuildPurgeResult{},
+		postRebuildPurgeResultsMutex: &sync.Mutex{},
+	}
+	return ec, informerFactories
+}
+
+func TestStartPostRebuildPurge(t *testing.T) {
+	// Use short, test-controlled timings instead of production values.
+	origCount, origInterval := postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval
+	origPollInterval, origPollTimeout := EnginePollInterval, EnginePollTimeout
+	postRebuildPurgeRetryCount = 3
+	postRebuildPurgeRetryInterval = time.Millisecond
+	// Keep the engine poll deadline far shorter than a slow attempt so that a regression back
+	// to a deadline-bounded poll loop would skip the retry and fail the slow-attempt case.
+	EnginePollInterval = time.Millisecond
+	EnginePollTimeout = 10 * time.Millisecond
+	defer func() {
+		postRebuildPurgeRetryCount, postRebuildPurgeRetryInterval = origCount, origInterval
+		EnginePollInterval, EnginePollTimeout = origPollInterval, origPollTimeout
+	}()
+
+	tests := map[string]struct {
+		failUntil            int
+		firstCallDelay       time.Duration
+		busyCalls            int
+		initialBusyCalls     int
+		competingPurgeOnCall int
+		engineOwner          string
+		prevFailedCondition  bool // engine already has PostRebuildPurgeFailed=True
+		expectCalls          int
+		expectEvent          bool
+		expectErrorText      string // substring expected in the event and the True condition; "" means False
+		expectAttempts       int
+	}{
+		"succeeds on first attempt": {
+			engineOwner: TestNode1,
+			expectCalls: 1,
+		},
+		// A transient failure must be retried; once it succeeds, no further attempts are made.
+		"failures followed by success stop retrying": {
+			failUntil:   2,
+			engineOwner: TestNode1,
+			expectCalls: 3,
+		},
+		// Exhausting all attempts reports the last purge error in the event and the condition.
+		"persistent failure exhausts attempts and records condition": {
+			failUntil:       1000,
+			engineOwner:     TestNode1,
+			expectCalls:     3,
+			expectEvent:     true,
+			expectErrorText: "(call 3)",
+			expectAttempts:  3,
+		},
+		// A slow attempt that fails after a deadline-style budget has elapsed must still be
+		// followed by another attempt (the proxy RPC timeout is independent of any poll deadline).
+		"slow failing attempt is still retried": {
+			failUntil:      1,
+			firstCallDelay: 50 * time.Millisecond,
+			engineOwner:    TestNode1,
+			expectCalls:    2,
+		},
+		// Purge started on replica A but failed on replica B: the next attempt is rejected as busy
+		// (never silently skipped) and the one after succeeds once A is done.
+		"busy replica after a partial start is retried, not skipped": {
+			failUntil:   1,
+			busyCalls:   1,
+			engineOwner: TestNode1,
+			expectCalls: 3,
+		},
+		// A purge already running (e.g. a recurring snapshot-cleanup) makes the first attempt fail
+		// as busy instead of a silent no-op; the retry succeeds.
+		"purge already in progress before the first attempt is retried": {
+			initialBusyCalls: 1,
+			engineOwner:      TestNode1,
+			expectCalls:      2,
+		},
+		// Another purge starts right before the call: busy error, then retried.
+		"competing purge starting before the call is retried, not skipped": {
+			competingPurgeOnCall: 1,
+			busyCalls:            1,
+			engineOwner:          TestNode1,
+			expectCalls:          2,
+		},
+		// Replicas stay busy for the whole retry budget: the failure is recorded, not cleared.
+		"purge still in progress after all attempts records condition": {
+			failUntil:       1,
+			busyCalls:       1000,
+			engineOwner:     TestNode1,
+			expectCalls:     3,
+			expectEvent:     true,
+			expectErrorText: "already purging",
+			expectAttempts:  3,
+		},
+		// A node that no longer owns the engine must not purge or hand over a result.
+		"no attempt and no result when engine ownership is lost": {
+			failUntil:   1000,
+			engineOwner: TestNode2,
+			expectCalls: 0,
+		},
+		// A later successful purge start clears a previously recorded failure.
+		"success clears a previous failure condition": {
+			engineOwner:         TestNode1,
+			prevFailedCondition: true,
+			expectCalls:         1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert := require.New(t)
+
+			recorder := record.NewFakeRecorder(100)
+			ec, informerFactories := newPostRebuildPurgeTestController(t, recorder)
+
+			// Empty DataEngine means v1: GetDataEngineObject returns the engine itself.
+			engine := &longhorn.Engine{
+				ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace},
+				Spec: longhorn.EngineSpec{
+					InstanceSpec: longhorn.InstanceSpec{VolumeName: TestVolumeName},
+				},
+				Status: longhorn.EngineStatus{
+					InstanceStatus: longhorn.InstanceStatus{OwnerID: tc.engineOwner},
+				},
+			}
+			if tc.prevFailedCondition {
+				engine.Status.Conditions = types.SetCondition(engine.Status.Conditions,
+					longhorn.EngineConditionTypePostRebuildPurgeFailed, longhorn.ConditionStatusTrue,
+					longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, "previous failure")
+			}
+			eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+			assert.NoError(eIndexer.Add(engine))
+
+			proxy := &purgeMockProxy{
+				EngineSimulator:      &engineapi.EngineSimulator{},
+				failUntil:            tc.failUntil,
+				firstCallDelay:       tc.firstCallDelay,
+				busyCalls:            tc.busyCalls,
+				busyRemaining:        tc.initialBusyCalls,
+				competingPurgeOnCall: tc.competingPurgeOnCall,
+			}
+
+			logger := logrus.New()
+			logger.Out = io.Discard
+			ec.startPostRebuildPurge(logrus.NewEntry(logger), engine, proxy)
+
+			assert.Equal(tc.expectCalls, proxy.purgeCalls, "SnapshotPurge attempt count")
+			assert.Zero(proxy.skipModeCalls, "the post-rebuild purge must not use skipIfInProgress")
+			assert.Zero(proxy.skippedCalls, "no SnapshotPurge call may be silently skipped by the engine")
+
+			events := drainFakeEvents(recorder)
+			if tc.expectEvent {
+				assert.Len(events, 1, "expected exactly one failure event")
+				assert.Contains(events[0], constant.EventReasonFailedStartingSnapshotPurge)
+				assert.Contains(events[0], tc.expectErrorText, "event should report the last purge error")
+			} else {
+				assert.Empty(events, "no FailedStartingSnapshotPurge event expected")
+			}
+
+			if tc.engineOwner != TestNode1 {
+				assert.Empty(ec.postRebuildPurgeResults, "a non-owner must not record a result")
+				assert.Zero(ec.queue.Len(), "a non-owner must not enqueue the engine")
+				return
+			}
+
+			// The result is handed to syncEngine: kept in memory and the engine enqueued.
+			assert.Equal(1, ec.queue.Len(), "engine should be enqueued so syncEngine records the result")
+			applied := engine.DeepCopy()
+			assert.NotNil(ec.applyPostRebuildPurgeResult(applied), "a pending result is expected")
+
+			cond := types.GetCondition(applied.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed)
+			if tc.expectErrorText != "" {
+				assert.Equal(longhorn.ConditionStatusTrue, cond.Status)
+				assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStartFailed, cond.Reason)
+				assert.Contains(cond.Message, tc.expectErrorText, "condition should report the last purge error")
+				assert.Contains(cond.Message, "("+strconv.Itoa(tc.expectAttempts)+" attempts)")
+			} else {
+				assert.Equal(longhorn.ConditionStatusFalse, cond.Status)
+				assert.Equal(longhorn.EngineConditionReasonPostRebuildPurgeStarted, cond.Reason)
+			}
+			// PurgeStatus is engine-reported per replica and must never be written by this path.
+			assert.Empty(applied.Status.PurgeStatus, "PurgeStatus must not be touched")
+		})
+	}
+}
+
+// A result must survive until syncEngine persists it: a conflict leaves it in place for the next
+// sync, and clearing an older result must not drop a newer one recorded in the meantime.
+func TestPostRebuildPurgeResultIsKeptUntilPersisted(t *testing.T) {
+	assert := require.New(t)
+	ec, _ := newPostRebuildPurgeTestController(t, record.NewFakeRecorder(10))
+	engine := &longhorn.Engine{ObjectMeta: metav1.ObjectMeta{Name: TestEngineName, Namespace: TestNamespace}}
+
+	ec.recordPostRebuildPurgeResult(engine, 3, errors.New("injected purge failure"))
+
+	// First sync applies the result but its status update conflicts: the result is not cleared.
+	first := ec.applyPostRebuildPurgeResult(engine.DeepCopy())
+	assert.NotNil(first)
+
+	// A newer rebuild finishes before the retried sync: clearing the old result must keep the new one.
+	ec.recordPostRebuildPurgeResult(engine, 1, nil)
+	ec.clearPostRebuildPurgeResult(engine.Name, first)
+	assert.NotNil(ec.postRebuildPurgeResults[engine.Name], "a newer result must not be dropped")
+
+	// The retried sync applies the newer result and clears it after a successful update.
+	applied := engine.DeepCopy()
+	second := ec.applyPostRebuildPurgeResult(applied)
+	assert.Equal(longhorn.ConditionStatusFalse,
+		types.GetCondition(applied.Status.Conditions, longhorn.EngineConditionTypePostRebuildPurgeFailed).Status)
+	ec.clearPostRebuildPurgeResult(engine.Name, second)
+	assert.Empty(ec.postRebuildPurgeResults)
+
+	// An engine that is gone or no longer owned drops any pending result.
+	ec.recordPostRebuildPurgeResult(engine, 3, errors.New("injected purge failure"))
+	ec.deletePostRebuildPurgeResult(engine.Name)
+	assert.Empty(ec.postRebuildPurgeResults)
 }

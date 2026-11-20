@@ -190,7 +190,7 @@ func (e *EngineSimulator) SnapshotRevert(obj DataEngineObject, name string) erro
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotPurge(obj DataEngineObject) error {
+func (e *EngineSimulator) SnapshotPurge(obj DataEngineObject, skipIfInProgress bool) error {
 	return errors.New(ErrNotImplement)
 }
 
