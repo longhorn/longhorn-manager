@@ -38,6 +38,8 @@ type SnapshotCR struct {
 	UserCreated bool `json:"userCreated,omitempty" yaml:"user_created,omitempty"`
 
 	Volume string `json:"volume,omitempty" yaml:"volume,omitempty"`
+
+	SnapshotGroup string `json:"snapshotGroup,omitempty" yaml:"snapshot_group,omitempty"`
 }
 
 type SnapshotCRCollection struct {

@@ -6737,6 +6737,15 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 		if _, err := util.ValidateSnapshotLabels(job.Labels); err != nil {
 			return err
 		}
+		if err := util.VerifySnapshotLabels(job.Labels); err != nil {
+			return err
+		}
+		if job.Task == longhorn.RecurringJobTypeSnapshotGroup {
+			if _, exists := job.Labels[types.RecurringJobLabel]; exists {
+				return fmt.Errorf("invalid label key: %v is reserved and cannot be set on '%v' recurring jobs",
+					types.RecurringJobLabel, longhorn.RecurringJobTypeSnapshotGroup)
+			}
+		}
 	}
 	if job.Parameters != nil {
 		if err := ValidateRecurringJobParameters(job.Task, job.Parameters); err != nil {
@@ -6794,7 +6803,8 @@ func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
 		task == longhorn.RecurringJobTypeSnapshotForceCreate ||
 		task == longhorn.RecurringJobTypeSnapshotCleanup ||
 		task == longhorn.RecurringJobTypeSnapshotDelete ||
-		task == longhorn.RecurringJobTypeSystemBackup
+		task == longhorn.RecurringJobTypeSystemBackup ||
+		task == longhorn.RecurringJobTypeSnapshotGroup
 }
 
 func isValidRecurringJobRetainPolicy(retainPolicy longhorn.RecurringJobRetentionPolicy) bool {

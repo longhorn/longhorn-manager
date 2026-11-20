@@ -519,6 +519,14 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 												},
 											},
 										},
+										{
+											Name: types.EnvRecurringJobRunName,
+											ValueFrom: &corev1.EnvVarSource{
+												FieldRef: &corev1.ObjectFieldSelector{
+													FieldPath: "metadata.labels['job-name']",
+												},
+											},
+										},
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
