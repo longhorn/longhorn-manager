@@ -8,6 +8,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -190,5 +191,69 @@ func (s *TestSuite) TestBackupVolumeIsResponsibleFor(c *C) {
 		isResponsible, err := bvc.isResponsibleFor(backupVolume, TestEngineImage)
 		c.Assert(err, IsNil)
 		c.Assert(isResponsible, Equals, tc.expected)
+	}
+}
+
+// TestGetBackupsToPullAndDelete verifies that a backup in the backup target is not pulled again when
+// a Backup CR with the same name exists in the cluster, whatever its state, while in-flight local
+// backups are still kept from being deleted. Ref: https://github.com/longhorn/longhorn/issues/14354
+func (s *TestSuite) TestGetBackupsToPullAndDelete(c *C) {
+	newBackup := func(name, snapshotName string, state longhorn.BackupState) *longhorn.Backup {
+		return &longhorn.Backup{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       longhorn.BackupSpec{SnapshotName: snapshotName},
+			Status:     longhorn.BackupStatus{State: state},
+		}
+	}
+
+	testCases := map[string]struct {
+		clusterBackups     []*longhorn.Backup
+		backupStoreBackups []string
+		expectedToPull     []string
+		expectedToDelete   []string
+	}{
+		"backup only in the backup target is pulled": {
+			backupStoreBackups: []string{"backup-1"},
+			expectedToPull:     []string{"backup-1"},
+		},
+		"in-progress local backup in the backup target is not pulled": {
+			clusterBackups:     []*longhorn.Backup{newBackup("backup-1", "snap-1", longhorn.BackupStateInProgress)},
+			backupStoreBackups: []string{"backup-1"},
+		},
+		"failed local backup in the backup target is not pulled": {
+			clusterBackups: []*longhorn.Backup{
+				newBackup("backup-1", "snap-1", longhorn.BackupStateError),
+				newBackup("backup-2", "snap-2", longhorn.BackupStateUnknown),
+			},
+			backupStoreBackups: []string{"backup-1", "backup-2"},
+		},
+		"in-progress and failed local backups not in the backup target are not deleted": {
+			clusterBackups: []*longhorn.Backup{
+				newBackup("backup-1", "snap-1", longhorn.BackupStateInProgress),
+				newBackup("backup-2", "snap-2", longhorn.BackupStateError),
+			},
+		},
+		"completed or pulled backups not in the backup target are deleted": {
+			clusterBackups: []*longhorn.Backup{
+				newBackup("backup-1", "snap-1", longhorn.BackupStateCompleted),
+				newBackup("backup-2", "", ""),
+				newBackup("backup-3", "snap-3", longhorn.BackupStateCompleted),
+			},
+			backupStoreBackups: []string{"backup-3"},
+			expectedToDelete:   []string{"backup-1", "backup-2"},
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		clusterBackups := map[string]*longhorn.Backup{}
+		for _, b := range tc.clusterBackups {
+			clusterBackups[b.Name] = b
+		}
+
+		backupsToPull, backupsToDelete := getBackupsToPullAndDelete(clusterBackups, sets.NewString(tc.backupStoreBackups...))
+		c.Assert(backupsToPull.Equal(sets.NewString(tc.expectedToPull...)), Equals, true, Commentf("backupsToPull: %v", backupsToPull.List()))
+		c.Assert(backupsToDelete.Equal(sets.NewString(tc.expectedToDelete...)), Equals, true, Commentf("backupsToDelete: %v", backupsToDelete.List()))
 	}
 }
