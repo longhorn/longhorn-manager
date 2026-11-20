@@ -1217,9 +1217,10 @@ func (imc *InstanceManagerController) nodeHasEnoughHugepageTotalCapacity(im *lon
 }
 
 // isSettingIobufLargePoolSizeSynced checks whether the pod's --spdk-iobuf-large-pool-size
-// argument matches the current setting. A value not greater than SPDK's default
-// (types.SpdkDefaultIobufLargePoolSize) means the flag is omitted from the pod args, so an
-// absent flag is considered synced; this prevents recreating existing pods that predate the setting.
+// argument matches the current setting. A value not greater than SPDK's built-in default
+// (types.BuiltinIobufLargePoolSize) means the flag is omitted from the pod args, so an
+// absent flag is considered synced; this prevents recreating existing pods that predate the setting
+// when the setting is at SPDK's built-in default.
 func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return true, nil
@@ -1235,7 +1236,7 @@ func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *long
 	}
 
 	expected := ""
-	if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
+	if iobufLargePoolSize > types.BuiltinIobufLargePoolSize {
 		expected = fmt.Sprintf("%d", iobufLargePoolSize)
 	}
 	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-large-pool-size")
@@ -1243,7 +1244,8 @@ func (imc *InstanceManagerController) isSettingIobufLargePoolSizeSynced(im *long
 }
 
 // isSettingIobufSmallPoolSizeSynced checks the pod's --spdk-iobuf-small-pool-size against the
-// setting. At or below the SPDK default the flag is omitted, so an absent flag is synced.
+// setting. At or below SPDK's built-in default (types.BuiltinIobufSmallPoolSize) the flag
+// is omitted, so an absent flag is synced.
 func (imc *InstanceManagerController) isSettingIobufSmallPoolSizeSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return true, nil
@@ -1259,7 +1261,7 @@ func (imc *InstanceManagerController) isSettingIobufSmallPoolSizeSynced(im *long
 	}
 
 	expected := ""
-	if iobufSmallPoolSize > types.SpdkDefaultIobufSmallPoolSize {
+	if iobufSmallPoolSize > types.BuiltinIobufSmallPoolSize {
 		expected = fmt.Sprintf("%d", iobufSmallPoolSize)
 	}
 	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-small-pool-size")
@@ -2033,7 +2035,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 
 		// iobuf large pool size (large_pool_count) for the SPDK target. A value not
-		// greater than SPDK's built-in default (types.SpdkDefaultIobufLargePoolSize) is
+		// greater than SPDK's built-in default (types.BuiltinIobufLargePoolSize) is
 		// a no-op, so the flag is omitted and behavior is unchanged. A larger value is
 		// consumed by the instance-manager launch wrapper, which generates an SPDK
 		// startup JSON config (the iobuf pool can only be sized during spdk_tgt startup).
@@ -2056,10 +2058,10 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			"--spdk-memory-size", fmt.Sprintf("%d", memory),
 		}
 		// Must precede "daemon" so the launch wrapper consumes it as an SPDK option.
-		if iobufLargePoolSize > types.SpdkDefaultIobufLargePoolSize {
+		if iobufLargePoolSize > types.BuiltinIobufLargePoolSize {
 			args = append(args, "--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", iobufLargePoolSize))
 		}
-		if iobufSmallPoolSize > types.SpdkDefaultIobufSmallPoolSize {
+		if iobufSmallPoolSize > types.BuiltinIobufSmallPoolSize {
 			args = append(args, "--spdk-iobuf-small-pool-size", fmt.Sprintf("%d", iobufSmallPoolSize))
 		}
 		args = append(args,
