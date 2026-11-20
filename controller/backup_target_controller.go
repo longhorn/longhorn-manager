@@ -318,7 +318,8 @@ func newBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 
 	systemBackupTimeoutSeconds, err := ds.GetSettingAsInt(types.SettingNameSystemBackupTimeout)
 	if err != nil {
-		return nil, err
+		logrus.WithError(err).Warnf("Failed to get setting %v, falling back to the default value %v seconds", types.SettingNameSystemBackupTimeout, types.DefaultSystemBackupTimeout)
+		systemBackupTimeoutSeconds = types.DefaultSystemBackupTimeout
 	}
 	systemBackupTimeout := time.Duration(systemBackupTimeoutSeconds) * time.Second
 

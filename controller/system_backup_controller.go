@@ -551,13 +551,15 @@ func (c *SystemBackupController) InitSystemBackup(systemBackup *longhorn.SystemB
 
 // getSystemBackupTimeout returns the configured timeout for system backup
 // operations, covering volume snapshot creation and uploading the system
-// backup archive to the backup target.
-func (c *SystemBackupController) getSystemBackupTimeout() (time.Duration, error) {
+// backup archive to the backup target. It falls back to the default value if
+// the setting cannot be read.
+func (c *SystemBackupController) getSystemBackupTimeout() time.Duration {
 	systemBackupTimeoutSeconds, err := c.ds.GetSettingAsInt(types.SettingNameSystemBackupTimeout)
 	if err != nil {
-		return 0, err
+		c.logger.WithError(err).Warnf("Failed to get setting %v, falling back to the default value %v seconds", types.SettingNameSystemBackupTimeout, types.DefaultSystemBackupTimeout)
+		systemBackupTimeoutSeconds = types.DefaultSystemBackupTimeout
 	}
-	return time.Duration(systemBackupTimeoutSeconds) * time.Second, nil
+	return time.Duration(systemBackupTimeoutSeconds) * time.Second
 }
 
 func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.SystemBackup, archievePath, tempDir string, backupTargetClient engineapi.SystemBackupOperationInterface) {
@@ -592,13 +594,7 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 		return
 	}
 
-	systemBackupTimeout, err := c.getSystemBackupTimeout()
-	if err != nil {
-		recordErr = errors.Wrapf(err, SystemBackupErrGetFmt, "system backup timeout")
-		return
-	}
-
-	timer := time.NewTimer(systemBackupTimeout)
+	timer := time.NewTimer(c.getSystemBackupTimeout())
 	defer timer.Stop()
 
 	ticker := time.NewTicker(time.Second)
@@ -1154,13 +1150,8 @@ func (c *SystemBackupController) createVolumeSnapshot(ctx context.Context, volum
 		return snapshot, nil
 	}
 
-	systemBackupTimeout, err := c.getSystemBackupTimeout()
-	if err != nil {
-		return nil, err
-	}
-
 	// Poll until snapshot is ready or timeout exceeded.
-	timeout := time.After(systemBackupTimeout)
+	timeout := time.After(c.getSystemBackupTimeout())
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 

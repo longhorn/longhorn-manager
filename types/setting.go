@@ -36,6 +36,9 @@ const (
 
 	DefaultMinNumberOfCopies = 3
 
+	// DefaultSystemBackupTimeout is the default system backup timeout in seconds (1 hour)
+	DefaultSystemBackupTimeout = 3600
+
 	DefaultBackupstorePollInterval = 300 * time.Second
 
 	BackupBlockSizeMi      int64 = 1 * 1024 * 1024
@@ -563,7 +566,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            "3600",
+		Default:            strconv.Itoa(DefaultSystemBackupTimeout),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 604800,
