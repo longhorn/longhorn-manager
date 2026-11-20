@@ -1768,6 +1768,7 @@ func (ec *EngineController) syncSnapshotCRs(engineName string) error {
 	engine, err := ec.ds.GetEngineRO(engineName)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
+			log.WithError(err).Warn("Engine not found, skipping snapshot CR sync")
 			return nil
 		}
 		return err
