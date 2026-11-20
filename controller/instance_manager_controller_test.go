@@ -1083,7 +1083,12 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		podArgs := append([]string{"--spdk-memory-size", "1024"}, isolationArgs...)
+		// The default large pool size is above SPDK's built-in default, so a pod created
+		// with the default setting carries the flag and is considered synced.
+		podArgs := append([]string{
+			"--spdk-memory-size", "1024",
+			"--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", types.DefaultIobufLargePoolSize),
+		}, isolationArgs...)
 		pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
 		pod.Spec.Containers = []corev1.Container{{
 			Name:    "instance-manager",

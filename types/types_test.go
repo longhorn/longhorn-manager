@@ -780,3 +780,69 @@ func (s *TestSuite) TestIsVolumeAffectedByInstanceManagerUpgrade(c *C) {
 		c.Assert(IsVolumeAffectedByInstanceManagerUpgrade(volume, tt.replicas, tt.frontends, imu), Equals, tt.want, Commentf("test case: %s", tt.name))
 	}
 }
+
+func (s *TestSuite) TestValidateIobufPoolSizeSettings(c *C) {
+	type testCase struct {
+		name        string
+		settingName SettingName
+		value       string
+		expectError bool
+	}
+
+	testCases := []testCase{
+		{"large pool default", SettingNameDataEngineIobufLargePoolSize, fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufLargePoolSize), false},
+		{"large pool minimum", SettingNameDataEngineIobufLargePoolSize, fmt.Sprintf(`{"v2":"%d"}`, BuiltinIobufLargePoolSize), false},
+		{"large pool between minimum and default", SettingNameDataEngineIobufLargePoolSize, `{"v2":"4096"}`, false},
+		{"large pool above default", SettingNameDataEngineIobufLargePoolSize, `{"v2":"16384"}`, false},
+		{"large pool below minimum", SettingNameDataEngineIobufLargePoolSize, fmt.Sprintf(`{"v2":"%d"}`, BuiltinIobufLargePoolSize-1), true},
+		{"large pool single value", SettingNameDataEngineIobufLargePoolSize, "6144", false},
+		{"large pool not a number", SettingNameDataEngineIobufLargePoolSize, `{"v2":"abc"}`, true},
+		{"large pool unsupported data engine", SettingNameDataEngineIobufLargePoolSize, `{"v1":"6144"}`, true},
+		{"small pool default", SettingNameDataEngineIobufSmallPoolSize, fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufSmallPoolSize), false},
+		{"small pool above default", SettingNameDataEngineIobufSmallPoolSize, `{"v2":"16384"}`, false},
+		{"small pool below minimum", SettingNameDataEngineIobufSmallPoolSize, fmt.Sprintf(`{"v2":"%d"}`, BuiltinIobufSmallPoolSize-1), true},
+	}
+
+	for _, tc := range testCases {
+		err := ValidateSetting(string(tc.settingName), tc.value)
+		if tc.expectError {
+			c.Assert(err, NotNil, Commentf(TestErrResultFmt, tc.name))
+		} else {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, tc.name, err))
+		}
+	}
+}
+
+func (s *TestSuite) TestIobufPoolSizeSettingDefinitions(c *C) {
+	type testCase struct {
+		settingName     SettingName
+		expectedDefault string
+		expectedMin     int
+	}
+
+	testCases := map[string]testCase{
+		"large pool": {
+			settingName:     SettingNameDataEngineIobufLargePoolSize,
+			expectedDefault: fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufLargePoolSize),
+			expectedMin:     BuiltinIobufLargePoolSize,
+		},
+		"small pool": {
+			settingName:     SettingNameDataEngineIobufSmallPoolSize,
+			expectedDefault: fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufSmallPoolSize),
+			expectedMin:     BuiltinIobufSmallPoolSize,
+		},
+	}
+
+	for name, tc := range testCases {
+		definition, ok := GetSettingDefinition(tc.settingName)
+		c.Assert(ok, Equals, true, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.Default, Equals, tc.expectedDefault, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.ValueIntRange[ValueIntRangeMinimum], Equals, tc.expectedMin, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.Category, Equals, SettingCategoryDangerZone, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.DataEngineSpecific, Equals, true, Commentf(TestErrResultFmt, name))
+		c.Assert(ValidateSetting(string(tc.settingName), definition.Default), IsNil, Commentf(TestErrResultFmt, name))
+	}
+
+	// The default must stay above the SPDK built-in default so that new pods always carry the flag.
+	c.Assert(DefaultIobufLargePoolSize > BuiltinIobufLargePoolSize, Equals, true)
+}
