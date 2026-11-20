@@ -49,6 +49,7 @@ const (
 	EventReasonEvictionUserRequested = "EvictionUserRequested"
 	EventReasonEvictionCanceled      = "EvictionCanceled"
 	EventReasonEvictionFailed        = "EvictionFailed"
+	EventReasonEvictionSkipped       = "EvictionSkipped"
 
 	EventReasonDetachedUnexpectedly = "DetachedUnexpectedly"
 	EventReasonRemount              = "Remount"
