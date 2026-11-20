@@ -66,8 +66,22 @@ func (v *storageClassValidator) Create(request *admission.Request, newObj runtim
 		return nil
 	}
 
-	if errs := validateDataLayout(sc.Parameters); len(errs) > 0 {
+	errs := validateDataLayout(sc.Parameters)
+	errs = append(errs, validateDataEngineTransport(sc.Parameters)...)
+	if len(errs) > 0 {
 		return werror.NewInvalidError(errs.ToAggregate().Error(), "parameters")
+	}
+	return nil
+}
+
+func validateDataEngineTransport(params map[string]string) field.ErrorList {
+	transport, ok := params[longhorn.DataEngineTransportParameter]
+	if !ok {
+		return nil
+	}
+	supported := []string{string(longhorn.DataEngineTransportTCP), string(longhorn.DataEngineTransportRDMA)}
+	if transport != supported[0] && transport != supported[1] {
+		return field.ErrorList{field.NotSupported(field.NewPath("parameters").Key(longhorn.DataEngineTransportParameter), transport, supported)}
 	}
 	return nil
 }

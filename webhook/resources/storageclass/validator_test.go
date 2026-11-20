@@ -139,3 +139,13 @@ func TestValidateDataLayout(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDataEngineTransport(t *testing.T) {
+	assert.Empty(t, validateDataEngineTransport(map[string]string{"dataEngine": "v2"}))
+	assert.Empty(t, validateDataEngineTransport(map[string]string{"dataEngineTransport": "tcp"}))
+	assert.Empty(t, validateDataEngineTransport(map[string]string{"dataEngineTransport": "rdma"}))
+
+	errs := validateDataEngineTransport(map[string]string{"dataEngineTransport": "RDMA"})
+	require.Len(t, errs, 1)
+	assert.Equal(t, "parameters[dataEngineTransport]", errs[0].Field)
+}
