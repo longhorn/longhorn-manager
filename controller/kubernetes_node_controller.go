@@ -301,11 +301,7 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 	disks := map[string]longhorn.DiskSpec{} // nolint: ineffassign,staticcheck
 	switch val {
 	case types.NodeCreateDefaultDiskLabelValueTrue:
-		dataPath, err := knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
-		if err != nil {
-			return err
-		}
-		disks, err = types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
+		disks, err = knc.ds.CreateDefaultDisks()
 		if err != nil {
 			return err
 		}

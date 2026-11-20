@@ -29,6 +29,9 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	if err := upgradeBackingImageManager(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 		return err
 	}
+	if err := upgradeDefaultDataPathSetting(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -98,6 +101,43 @@ func upgradeBackingImageManager(namespace string, lhClient *lhclientset.Clientse
 		}
 	}
 
+	return nil
+}
+
+func upgradeDefaultDataPathSetting(namespace string, lhclient *lhclientset.Clientset, resourceMaps map[string]any) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade default data path setting failed")
+	}()
+
+	settingMap, err := upgradeutil.ListAndUpdateSettingsInProvidedCache(namespace, lhclient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to list Longhorn settings")
+	}
+
+	v1Setting, ok := settingMap[string(types.SettingNameDefaultDataPath)]
+	if !ok || !types.IsBlockDevicePathFormat(v1Setting.Value) {
+		// nothing to migrate; also makes re-runs a no-op
+		return nil
+	}
+	blockPath := v1Setting.Value
+	if v2Setting, ok := settingMap[string(types.SettingNameV2DefaultDataPath)]; ok {
+		if v2Setting.Value == "" {
+			v2Setting.Value = blockPath
+		}
+	} else {
+		newSetting := &longhorn.Setting{
+			ObjectMeta: metav1.ObjectMeta{Name: string(types.SettingNameV2DefaultDataPath)},
+			Value:      blockPath,
+		}
+		if _, err := lhclient.LonghornV1beta2().Settings(namespace).Create(context.TODO(), newSetting, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+			return errors.Wrapf(err, "failed to create setting %v", types.SettingNameV2DefaultDataPath)
+		}
+	}
+
+	v1Setting.Value = types.SettingDefinitionDefaultDataPath.Default
 	return nil
 }
 

@@ -84,6 +84,7 @@ const (
 	SettingNameAllowRecurringJobWhileVolumeDetached                     = SettingName("allow-recurring-job-while-volume-detached")
 	SettingNameCreateDefaultDiskLabeledNodes                            = SettingName("create-default-disk-labeled-nodes")
 	SettingNameDefaultDataPath                                          = SettingName("default-data-path")
+	SettingNameV2DefaultDataPath                                        = SettingName("v2-default-data-path")
 	SettingNameDefaultEngineImage                                       = SettingName("default-engine-image")
 	SettingNameDefaultInstanceManagerImage                              = SettingName("default-instance-manager-image")
 	SettingNameDefaultBackingImageManagerImage                          = SettingName("default-backing-image-manager-image")
@@ -220,6 +221,7 @@ var (
 		SettingNameAllowRecurringJobWhileVolumeDetached,
 		SettingNameCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath,
+		SettingNameV2DefaultDataPath,
 		SettingNameDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage,
@@ -392,6 +394,7 @@ var (
 		SettingNameAllowRecurringJobWhileVolumeDetached:                     SettingDefinitionAllowRecurringJobWhileVolumeDetached,
 		SettingNameCreateDefaultDiskLabeledNodes:                            SettingDefinitionCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath:                                          SettingDefinitionDefaultDataPath,
+		SettingNameV2DefaultDataPath:                                        SettingDefinitionV2DefaultDataPath,
 		SettingNameDefaultEngineImage:                                       SettingDefinitionDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage:                              SettingDefinitionDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage:                          SettingDefinitionDefaultBackingImageManagerImage,
@@ -585,13 +588,24 @@ var (
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
 		DisplayName:        "Default Data Path",
-		Description:        "Default path to use for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, while a path to a block device indicates a block-type disk used by the V2 Data Engine.",
+		Description:        "Default path to use for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "/var/lib/longhorn/",
+	}
+
+	SettingDefinitionV2DefaultDataPath = SettingDefinition{
+		DisplayName:        "V2 Default Data Path",
+		Description:        "Default path to use for storing data on a host. An absolute path to a block device indicates a block-type disk used by the V2 Data Engine.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
