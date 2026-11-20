@@ -14,6 +14,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -22,7 +23,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -857,6 +860,186 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		volumeBackups, err := lhClient.LonghornV1beta2().Backups(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(len(volumeBackups.Items), Equals, tc.expectNewVolumBackupCount)
+	}
+}
+
+func (s *TestSuite) TestBackupVolumesIfNotPresentDeletesProbeSnapshot(c *C) {
+	datastore.SkipListerCheck = true
+	datastore.SystemBackupTimeout = 10 * time.Second
+	datastore.VolumeBackupTimeout = 10 * time.Second
+
+	testCases := map[string]struct {
+		lastBackup                string
+		injectBackupCreateFailure bool
+		expectError               bool
+		expectNewBackupCount      int
+		expectProbeSnapshots      int
+	}{
+		"up-to-date volume keeps no probe snapshot": {
+			lastBackup:           "exists",
+			expectNewBackupCount: 0,
+			expectProbeSnapshots: 0,
+		},
+		"volume without backup keeps the snapshot for its new backup": {
+			lastBackup:           "",
+			expectNewBackupCount: 1,
+			expectProbeSnapshots: 1,
+		},
+		"backup creation failure deletes the probe snapshot": {
+			lastBackup:                "",
+			injectBackupCreateFailure: true,
+			expectError:               true,
+			expectNewBackupCount:      0,
+			expectProbeSnapshots:      0,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		fakeSystemRolloutNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutSettingDefaultEngineImage(c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutStorageClassesDefault(c, informerFactories.KubeInformerFactory, kubeClient)
+
+		volumes := map[SystemRolloutCRName]*longhorn.Volume{
+			SystemRolloutCRName(TestVolumeName): {
+				Status: longhorn.VolumeStatus{
+					LastBackup: tc.lastBackup,
+				},
+			},
+		}
+		fakeSystemRolloutVolumes(volumes, c, informerFactories.LhInformerFactory, lhClient)
+
+		if tc.lastBackup != "" {
+			existBackups := map[string]*longhorn.Backup{
+				"exists": {
+					Status: longhorn.BackupStatus{
+						State:        longhorn.BackupStateCompleted,
+						SnapshotName: "exists",
+						VolumeName:   TestVolumeName,
+					},
+				},
+			}
+			existSnapshots := map[string]*longhorn.Snapshot{
+				"exists": {
+					ObjectMeta: metav1.ObjectMeta{Name: "exists"},
+					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+					Status: longhorn.SnapshotStatus{
+						ReadyToUse:   true,
+						CreationTime: metav1.Now().Format(time.RFC3339),
+					},
+				},
+			}
+			fakeSystemRolloutBackups(existBackups, c, informerFactories.LhInformerFactory, lhClient)
+			fakeSystemRolloutSnapshot(existSnapshots["exists"], c, informerFactories.LhInformerFactory, lhClient)
+		}
+
+		systemBackupController, err := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		if tc.injectBackupCreateFailure {
+			lhClient.PrependReactor("create", "backups", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, fmt.Errorf("injected backup creation failure")
+			})
+		}
+
+		systemBackup := fakeSystemBackup(TestSystemBackupName, TestNode1, "", false,
+			longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent, longhorn.SystemBackupStateVolumeBackup,
+			c, informerFactories.LhInformerFactory, lhClient)
+
+		backups, err := systemBackupController.BackupVolumes(systemBackup)
+		if tc.expectError {
+			c.Assert(err, NotNil, Commentf("test case %v", name))
+		} else {
+			c.Assert(err, IsNil, Commentf("test case %v", name))
+		}
+		c.Assert(len(backups), Equals, tc.expectNewBackupCount, Commentf("test case %v", name))
+
+		snapshots, err := lhClient.LonghornV1beta2().Snapshots(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		probeSnapshotCount := 0
+		for _, snapshot := range snapshots.Items {
+			if strings.HasPrefix(snapshot.Name, "system-backup-") {
+				probeSnapshotCount++
+			}
+		}
+		c.Assert(probeSnapshotCount, Equals, tc.expectProbeSnapshots, Commentf("test case %v", name))
+	}
+}
+
+func (s *TestSuite) TestDeleteProbeSnapshotIfBackupAbsent(c *C) {
+	datastore.SkipListerCheck = true
+
+	testCases := map[string]struct {
+		backupExists      bool
+		expectSnapDeleted bool
+	}{
+		"existing backup CR keeps the snapshot": {
+			backupExists:      true,
+			expectSnapDeleted: false,
+		},
+		"absent backup CR deletes the snapshot": {
+			backupExists:      false,
+			expectSnapDeleted: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		fakeSystemRolloutNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutSettingDefaultEngineImage(c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
+
+		volumes := map[SystemRolloutCRName]*longhorn.Volume{
+			SystemRolloutCRName(TestVolumeName): {},
+		}
+		fakeSystemRolloutVolumes(volumes, c, informerFactories.LhInformerFactory, lhClient)
+
+		snapshot := &longhorn.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{Name: "probe-snapshot", Namespace: TestNamespace},
+			Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+			Status:     longhorn.SnapshotStatus{ReadyToUse: true},
+		}
+		fakeSystemRolloutSnapshot(snapshot, c, informerFactories.LhInformerFactory, lhClient)
+
+		if tc.backupExists {
+			backups := map[string]*longhorn.Backup{
+				"probe-backup": {
+					ObjectMeta: metav1.ObjectMeta{Name: "probe-backup", Namespace: TestNamespace},
+					Status: longhorn.BackupStatus{
+						VolumeName:   TestVolumeName,
+						SnapshotName: "probe-snapshot",
+					},
+				},
+			}
+			fakeSystemRolloutBackups(backups, c, informerFactories.LhInformerFactory, lhClient)
+		}
+
+		systemBackupController, err := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		systemBackupController.deleteProbeSnapshotIfBackupAbsent("probe-backup", snapshot, volumes[SystemRolloutCRName(TestVolumeName)])
+
+		_, err = lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), "probe-snapshot", metav1.GetOptions{})
+		if tc.expectSnapDeleted {
+			c.Assert(apierrors.IsNotFound(err), Equals, true, Commentf("test case %v", name))
+		} else {
+			c.Assert(err, IsNil, Commentf("test case %v", name))
+		}
 	}
 }
 
