@@ -608,3 +608,180 @@ func (s *TestSuite) TestCreateDisksFromAnnotationWithBlockDiskPath(c *C) {
 		}
 	}
 }
+<<<<<<< HEAD
+=======
+
+func (s *TestSuite) TestIsVolumeAffectedByInstanceManagerUpgrade(c *C) {
+	newVolume := func() *longhorn.Volume {
+		return &longhorn.Volume{
+			ObjectMeta: metav1.ObjectMeta{Name: "volume"},
+			Spec:       longhorn.VolumeSpec{NodeID: "node-a", EngineNodeID: "node-a"},
+			Status:     longhorn.VolumeStatus{CurrentNodeID: "node-a", CurrentEngineNodeID: "node-a"},
+		}
+	}
+	newUpgrade := func() *longhorn.InstanceManagerUpgrade {
+		return &longhorn.InstanceManagerUpgrade{Spec: longhorn.InstanceManagerUpgradeSpec{NodeID: "node-a"}}
+	}
+
+	tests := []struct {
+		name      string
+		volume    func(*longhorn.Volume)
+		replicas  map[string]*longhorn.Replica
+		frontends map[string]*longhorn.EngineFrontend
+		upgrade   func(*longhorn.InstanceManagerUpgrade)
+		want      bool
+	}{
+		{
+			name: "engine relocation plan",
+			upgrade: func(imu *longhorn.InstanceManagerUpgrade) {
+				imu.Status.Engines = map[string]longhorn.EngineRelocation{"volume": {}}
+			},
+			want: true,
+		},
+		{
+			name: "migration frontend",
+			volume: func(v *longhorn.Volume) {
+				v.Status.CurrentNodeID, v.Status.CurrentEngineNodeID = "node-b", "node-b"
+				v.Spec.NodeID, v.Spec.EngineNodeID = "node-b", "node-b"
+			},
+			frontends: map[string]*longhorn.EngineFrontend{
+				"frontend": {Spec: longhorn.EngineFrontendSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: "node-a"}}},
+			},
+			want: true,
+		},
+		{
+			name: "planned detached replica",
+			upgrade: func(imu *longhorn.InstanceManagerUpgrade) {
+				imu.Status.PlannedDetachedReplicas = map[string][]longhorn.PlannedDetachedReplica{"volume": nil}
+			},
+			want: true,
+		},
+		{
+			name: "current migration node",
+			volume: func(v *longhorn.Volume) {
+				v.Status.CurrentNodeID, v.Status.CurrentEngineNodeID, v.Status.CurrentMigrationNodeID = "node-b", "node-b", "node-a"
+				v.Spec.NodeID, v.Spec.EngineNodeID = "node-b", "node-b"
+			},
+			want: true,
+		},
+		{
+			name: "running source replica",
+			volume: func(v *longhorn.Volume) {
+				v.Status.CurrentNodeID, v.Status.CurrentEngineNodeID = "node-b", "node-b"
+				v.Spec.NodeID, v.Spec.EngineNodeID = "node-b", "node-b"
+			},
+			replicas: map[string]*longhorn.Replica{
+				"replica": {Spec: longhorn.ReplicaSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: "node-a"}}},
+			},
+			want: true,
+		},
+		{
+			name: "deleted source replica",
+			volume: func(v *longhorn.Volume) {
+				v.Status.CurrentNodeID, v.Status.CurrentEngineNodeID = "node-b", "node-b"
+				v.Spec.NodeID, v.Spec.EngineNodeID = "node-b", "node-b"
+			},
+			replicas: map[string]*longhorn.Replica{
+				"replica": {ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &metav1.Time{}}, Spec: longhorn.ReplicaSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: "node-a"}}},
+			},
+			want: false,
+		},
+		{
+			name: "unrelated upgrade",
+			volume: func(v *longhorn.Volume) {
+				v.Status.CurrentNodeID, v.Status.CurrentEngineNodeID = "node-b", "node-b"
+				v.Spec.NodeID, v.Spec.EngineNodeID = "node-b", "node-b"
+			},
+			want: false,
+		},
+		{
+			name: "upgrade without source node",
+			volume: func(v *longhorn.Volume) {
+				v.Status.CurrentNodeID, v.Status.CurrentEngineNodeID = "", ""
+				v.Spec.NodeID, v.Spec.EngineNodeID = "", ""
+			},
+			upgrade: func(imu *longhorn.InstanceManagerUpgrade) { imu.Spec.NodeID = "" },
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		volume := newVolume()
+		if tt.volume != nil {
+			tt.volume(volume)
+		}
+		imu := newUpgrade()
+		if tt.upgrade != nil {
+			tt.upgrade(imu)
+		}
+
+		c.Assert(IsVolumeAffectedByInstanceManagerUpgrade(volume, tt.replicas, tt.frontends, imu), Equals, tt.want, Commentf("test case: %s", tt.name))
+	}
+}
+
+func (s *TestSuite) TestValidateIobufPoolSizeSettings(c *C) {
+	type testCase struct {
+		name        string
+		settingName SettingName
+		value       string
+		expectError bool
+	}
+
+	testCases := []testCase{
+		{"large pool default", SettingNameDataEngineIobufLargePoolSize, fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufLargePoolSize), false},
+		{"large pool minimum", SettingNameDataEngineIobufLargePoolSize, fmt.Sprintf(`{"v2":"%d"}`, BuiltinIobufLargePoolSize), false},
+		{"large pool between minimum and default", SettingNameDataEngineIobufLargePoolSize, `{"v2":"4096"}`, false},
+		{"large pool above default", SettingNameDataEngineIobufLargePoolSize, `{"v2":"16384"}`, false},
+		{"large pool below minimum", SettingNameDataEngineIobufLargePoolSize, fmt.Sprintf(`{"v2":"%d"}`, BuiltinIobufLargePoolSize-1), true},
+		{"large pool single value", SettingNameDataEngineIobufLargePoolSize, "6144", false},
+		{"large pool not a number", SettingNameDataEngineIobufLargePoolSize, `{"v2":"abc"}`, true},
+		{"large pool unsupported data engine", SettingNameDataEngineIobufLargePoolSize, `{"v1":"6144"}`, true},
+		{"small pool default", SettingNameDataEngineIobufSmallPoolSize, fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufSmallPoolSize), false},
+		{"small pool above default", SettingNameDataEngineIobufSmallPoolSize, `{"v2":"16384"}`, false},
+		{"small pool below minimum", SettingNameDataEngineIobufSmallPoolSize, fmt.Sprintf(`{"v2":"%d"}`, BuiltinIobufSmallPoolSize-1), true},
+	}
+
+	for _, tc := range testCases {
+		err := ValidateSetting(string(tc.settingName), tc.value)
+		if tc.expectError {
+			c.Assert(err, NotNil, Commentf(TestErrResultFmt, tc.name))
+		} else {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, tc.name, err))
+		}
+	}
+}
+
+func (s *TestSuite) TestIobufPoolSizeSettingDefinitions(c *C) {
+	type testCase struct {
+		settingName     SettingName
+		expectedDefault string
+		expectedMin     int
+	}
+
+	testCases := map[string]testCase{
+		"large pool": {
+			settingName:     SettingNameDataEngineIobufLargePoolSize,
+			expectedDefault: fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufLargePoolSize),
+			expectedMin:     BuiltinIobufLargePoolSize,
+		},
+		"small pool": {
+			settingName:     SettingNameDataEngineIobufSmallPoolSize,
+			expectedDefault: fmt.Sprintf(`{"v2":"%d"}`, DefaultIobufSmallPoolSize),
+			expectedMin:     BuiltinIobufSmallPoolSize,
+		},
+	}
+
+	for name, tc := range testCases {
+		definition, ok := GetSettingDefinition(tc.settingName)
+		c.Assert(ok, Equals, true, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.Default, Equals, tc.expectedDefault, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.ValueIntRange[ValueIntRangeMinimum], Equals, tc.expectedMin, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.Category, Equals, SettingCategoryDangerZone, Commentf(TestErrResultFmt, name))
+		c.Assert(definition.DataEngineSpecific, Equals, true, Commentf(TestErrResultFmt, name))
+		c.Assert(ValidateSetting(string(tc.settingName), definition.Default), IsNil, Commentf(TestErrResultFmt, name))
+	}
+
+	// The default must stay above the SPDK built-in default so that new pods always carry the flag.
+	c.Assert(DefaultIobufLargePoolSize > BuiltinIobufLargePoolSize, Equals, true)
+}
+>>>>>>> a1ab85c (feat(setting): increase SpdkDefaultIobufLargePoolSize to 6144)

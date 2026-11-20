@@ -64,14 +64,18 @@ const (
 	ValueFloatRangeMinimum = "minimum"
 	ValueFloatRangeMaximum = "maximum"
 
-	// SpdkDefaultIobufLargePoolSize is SPDK's built-in default large_pool_count. A
-	// data-engine-iobuf-large-pool-size value not greater than this is a no-op (SPDK
-	// keeps its default), so only a larger value is passed through to override it.
-	SpdkDefaultIobufLargePoolSize = 1024
+	// DefaultIobufLargePoolSize is Longhorn's default data-engine-iobuf-large-pool-size.
+	// BuiltinIobufLargePoolSize is SPDK's built-in default large_pool_count; a
+	// value not greater than it is a no-op (SPDK keeps its default), so only a larger
+	// value is passed through to override it.
+	DefaultIobufLargePoolSize = 6144
+	BuiltinIobufLargePoolSize = 1024
 
-	// SpdkDefaultIobufSmallPoolSize is SPDK's built-in default small_pool_count. A
-	// data-engine-iobuf-small-pool-size value not greater than this is a no-op.
-	SpdkDefaultIobufSmallPoolSize = 8192
+	// DefaultIobufSmallPoolSize is Longhorn's default data-engine-iobuf-small-pool-size.
+	// BuiltinIobufSmallPoolSize is SPDK's built-in default small_pool_count; a
+	// value not greater than it is a no-op.
+	DefaultIobufSmallPoolSize = 8192
+	BuiltinIobufSmallPoolSize = 8192
 )
 
 type SettingName string
@@ -1823,18 +1827,18 @@ var (
 	SettingDefinitionDataEngineIobufLargePoolSize = SettingDefinition{
 		DisplayName: "Data Engine iobuf Large Pool Size",
 		Description: "Applies only to the V2 Data Engine. Sets the SPDK iobuf large buffer pool size (`large_pool_count`) on the Instance Manager's SPDK target. The Instance Manager passes the value to spdk_tgt at startup through a generated JSON configuration file (`--json`); the iobuf pool can only be sized at startup, not changed at runtime. \n\n" +
-			"  - `1024` (default): SPDK's built-in default `large_pool_count`; behavior is unchanged. \n\n" +
-			"  - A larger value relieves NVMe-oF TCP large-buffer exhaustion (the `large_pool` `retry` / `NEED_BUFFER` stalls) under heavy mixed read/write workloads whose I/O size exceeds the iobuf small buffer size (8 KiB), e.g. 16 KiB database pages. Values not greater than 1024 keep the SPDK default. \n\n" +
-			"  - Larger values consume more hugepage memory: each large buffer is 132 KiB, so the large pool uses `large_pool_count x 132 KiB` (1024 -> 132 MiB, 4096 -> 528 MiB, 16384 -> ~2 GiB). This comes out of the SPDK target's fixed `Data Engine Memory Size` budget, so raise that setting accordingly or fewer volumes will fit per node. \n\n" +
+			"  - `6144` (default): allocates 792 MiB (`6144 x 132 KiB`) from the default `2048` MiB `Data Engine Memory Size` budget, relieving NVMe-oF TCP large-buffer exhaustion (`large_pool` `retry` / `NEED_BUFFER` stalls) on 1-NUMA and 2-NUMA nodes under heavy workloads (> 8 KiB I/O) and concurrent replica rebuilds. \n\n" +
+			"  - `1024` (minimum): SPDK's built-in default `large_pool_count` (132 MiB). \n\n" +
+			"  - Each large buffer consumes 132 KiB (`1024` -> 132 MiB, `4096` -> 528 MiB, `6144` -> 792 MiB, `16384` -> ~2 GiB) from `Data Engine Memory Size`. Because SPDK allocates `large_pool` as one contiguous block within a single NUMA node while Linux divides system-wide huge pages evenly across NUMA nodes, hosts with 4 or more NUMA nodes (for example, `2048` MiB split into `512` MiB per NUMA node) or a reduced `Data Engine Memory Size` must either increase `Data Engine Memory Size` and host huge pages or lower this setting toward `1024` so `spdk_tgt` can start. \n\n" +
 			"  - Changing this setting recreates Instance Manager pods that have no running instances, so the new pool size takes effect.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufLargePoolSize),
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, DefaultIobufLargePoolSize),
 		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: SpdkDefaultIobufLargePoolSize,
+			ValueIntRangeMinimum: BuiltinIobufLargePoolSize,
 		},
 	}
 
@@ -1850,9 +1854,9 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, SpdkDefaultIobufSmallPoolSize),
+		Default:            fmt.Sprintf("{%q:\"%v\"}", longhorn.DataEngineTypeV2, DefaultIobufSmallPoolSize),
 		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: SpdkDefaultIobufSmallPoolSize,
+			ValueIntRangeMinimum: BuiltinIobufSmallPoolSize,
 		},
 	}
 
