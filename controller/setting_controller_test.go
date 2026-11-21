@@ -536,6 +536,8 @@ func TestUpdateInstanceManagerCPURequestForDataEngines(t *testing.T) {
 		v1PodCPU              string
 		v1PodAppliedCPU       string
 		v1RunningEngines      bool
+		v1PodTerminating      bool
+		v1PodAlreadyDeleted   bool
 		v2PodCPU              string
 		v2PodWithoutContainer bool
 
@@ -573,6 +575,19 @@ func TestUpdateInstanceManagerCPURequestForDataEngines(t *testing.T) {
 		},
 		"v1 pod without CPU request is recreated": {
 			kubeletVersion:      "v1.35.0",
+			expectedDeletedPods: []string{v1IMName},
+		},
+		"terminating v1 pod is not deleted again": {
+			kubeletVersion:   "v1.34.3",
+			v1PodCPU:         "200m",
+			v1PodAppliedCPU:  "200m",
+			v1PodTerminating: true,
+		},
+		"v1 pod already deleted by another manager is ignored": {
+			kubeletVersion:      "v1.34.3",
+			v1PodCPU:            "200m",
+			v1PodAppliedCPU:     "200m",
+			v1PodAlreadyDeleted: true,
 			expectedDeletedPods: []string{v1IMName},
 		},
 		"running v1 engines block recreating v1 pods": {
@@ -622,7 +637,7 @@ func TestUpdateInstanceManagerCPURequestForDataEngines(t *testing.T) {
 			mustAdd(kubeNodeIndexer, newKubernetesNodeWithKubeletVersion(TestNode1, tc.kubeletVersion))
 			mustAdd(lhNodeIndexer, newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""))
 
-			addInstanceManager := func(imName string, dataEngine longhorn.DataEngineType, cpu, appliedCPU string, runningEngines, withoutContainer bool) {
+			addInstanceManager := func(imName string, dataEngine longhorn.DataEngineType, cpu, appliedCPU string, runningEngines, withoutContainer, terminating, alreadyDeleted bool) {
 				t.Helper()
 				var engines map[string]longhorn.InstanceProcess
 				if runningEngines {
@@ -643,6 +658,14 @@ func TestUpdateInstanceManagerCPURequestForDataEngines(t *testing.T) {
 				if withoutContainer {
 					pod.Spec.Containers = nil
 				}
+				if terminating {
+					now := metav1.Now()
+					pod.DeletionTimestamp = &now
+				}
+				if alreadyDeleted {
+					mustAdd(podIndexer, pod)
+					return
+				}
 				pod, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 				if err != nil {
 					t.Fatalf("failed to create pod %v: %v", imName, err)
@@ -650,9 +673,9 @@ func TestUpdateInstanceManagerCPURequestForDataEngines(t *testing.T) {
 				mustAdd(podIndexer, pod)
 			}
 			hasV2 := tc.v2PodCPU != "" || tc.v2PodWithoutContainer
-			addInstanceManager(v1IMName, longhorn.DataEngineTypeV1, tc.v1PodCPU, tc.v1PodAppliedCPU, tc.v1RunningEngines, false)
+			addInstanceManager(v1IMName, longhorn.DataEngineTypeV1, tc.v1PodCPU, tc.v1PodAppliedCPU, tc.v1RunningEngines, false, tc.v1PodTerminating, tc.v1PodAlreadyDeleted)
 			if hasV2 {
-				addInstanceManager(v2IMName, longhorn.DataEngineTypeV2, tc.v2PodCPU, "", false, tc.v2PodWithoutContainer)
+				addInstanceManager(v2IMName, longhorn.DataEngineTypeV2, tc.v2PodCPU, "", false, tc.v2PodWithoutContainer, false, false)
 			}
 
 			err := sc.updateInstanceManagerCPURequestForDataEngines()

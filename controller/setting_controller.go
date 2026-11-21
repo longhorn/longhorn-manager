@@ -1537,6 +1537,10 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		if _, exists := imMap[imPod.Name]; !exists {
 			continue
 		}
+		// A terminating pod is recreated by the instance manager controller with the latest CPU request.
+		if imPod.DeletionTimestamp != nil {
+			continue
+		}
 		lhNode, err := sc.ds.GetNode(imPod.Spec.NodeName)
 		if err != nil {
 			return err
@@ -1584,8 +1588,9 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 
 		for _, pod := range podsToDelete {
 			sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
-			if err := sc.ds.DeletePod(pod.Name); err != nil {
-				return err
+			// The setting controllers of all managers race to delete the same pod.
+			if err := sc.ds.DeletePod(pod.Name); err != nil && !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to delete instance manager pod %v to refresh CPU request option", pod.Name)
 			}
 		}
 	}
