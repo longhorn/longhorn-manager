@@ -1,75 +1,23 @@
 package types
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/sirupsen/logrus"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhns "github.com/longhorn/go-common-libs/ns"
 )
 
 func GetDeviceTypeOf(mountPath string) (string, error) {
-	procMountPaths := []string{
-		"/proc/mounts",
-		filepath.Join(lhtypes.HostProcDirectory, "1", "mounts"),
-	}
-
-	var devicePath string
-	var err error
-	for _, procMountPath := range procMountPaths {
-		devicePath, err = getDevicePathOf(mountPath, procMountPath)
-		if err != nil && !ErrorIsNotFound(err) {
-			return "", err
-		}
-		if devicePath != "" {
-			break
-		}
-	}
-	if err != nil {
-		return "", errors.Wrapf(err, "failed to get device path in %v", procMountPaths)
-	}
-
-	return GetBlockDeviceType(devicePath)
-}
-
-func getDevicePathOf(mountPath, procMountPath string) (string, error) {
-	mountFile, err := os.Open(procMountPath)
+	devicePath, err := lhns.FindBlockDeviceForPath(mountPath)
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		if closeErr := mountFile.Close(); closeErr != nil {
-			logrus.WithError(closeErr).Warnf("Failed to close mount file %s", procMountPath)
-		}
-	}()
 
-	// Scan the file lines
-	mountPath = filepath.Clean(mountPath)
-	devicePath := ""
-	scanner := bufio.NewScanner(mountFile)
-	for scanner.Scan() {
-		// the lines contains the fields:
-		// device mountpoint filesystemtype options dump pass
-		line := scanner.Text()
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-
-		if fields[1] == mountPath {
-			devicePath = fields[0]
-			break
-		}
-	}
-	if devicePath == "" {
-		return "", fmt.Errorf("cannot find device path of %v", mountPath)
-	}
-	return devicePath, nil
+	return GetBlockDeviceType(devicePath)
 }
 
 func GetBlockDeviceType(devicePath string) (string, error) {
