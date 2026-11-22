@@ -243,8 +243,8 @@ github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b h1:so40GMVZOZ
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b/go.mod h1:7oQvGNiJsGvrUgB+7AH8bmdzuR0uhULfwKb43Ht0hUk=
 github.com/rancher/lasso v0.2.10 h1:8yz31RMjSDQkg0K4+2EuaO+FGorbNDgWDfdCVTNzElk=
 github.com/rancher/lasso v0.2.10/go.mod h1:O/+Qi1B0rDFsDuIbPecaUzvAdKNUFg9eZZFAuegnTh0=
-github.com/rancher/wrangler/v3 v3.8.0-rc.3 h1:9KJuSBroB7wgNRXLk8tJ05Lj2ZHd7jAxgA+5wzAWNfE=
-github.com/rancher/wrangler/v3 v3.8.0-rc.3/go.mod h1:IaBqAfzbG9qCwF9c3sCb17Z4TKiCEyO7JUx+4tMwrAo=
+github.com/rancher/wrangler/v3 v3.8.0 h1:t+tE6dquqD4VIc9PEm6SZMAt5VTuCqUyWWEWL2PzCO0=
+github.com/rancher/wrangler/v3 v3.8.0/go.mod h1:Q3uCyt5yvT99SeNbksrSwxlWn8P4lu4WHenWQDzUa9E=
 github.com/robfig/cron v1.2.0 h1:ZjScXvvxeQ63Dbyxy76Fj3AT3Ut0aKsyd2/tl3DTMuQ=
 github.com/robfig/cron v1.2.0/go.mod h1:JGuDeoQd7Z6yL4zQhZ3OPEVHB7fL6Ka6skscFHfmt2k=
 github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
