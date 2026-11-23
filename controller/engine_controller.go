@@ -407,7 +407,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}
 
-	if err := ec.syncSnapshotCRs(engine); err != nil {
+	if err := ec.syncSnapshotCRs(engine.Name); err != nil {
 		return errors.Wrapf(err, "failed to sync with snapshot CRs for engine %v", engine.Name)
 	}
 
@@ -1577,8 +1577,20 @@ func (m *EngineMonitor) acquireRestoringCounter(acquire bool) error {
 	return nil
 }
 
-func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
-	log := ec.logger.WithField("engine", engine.Name)
+func (ec *EngineController) syncSnapshotCRs(engineName string) error {
+	log := ec.logger.WithField("engine", engineName)
+
+	// Get the latest engine instead of using the one fetched at the beginning of syncEngine,
+	// which can be stale after startRebuilding blocks. A stale Status.Snapshots misses newly
+	// created snapshots and would delete their CRs.
+	engine, err := ec.ds.GetEngineRO(engineName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			log.WithError(err).Warn("Engine not found, skipping snapshot CR sync")
+			return nil
+		}
+		return err
+	}
 
 	vol, err := ec.ds.GetVolumeRO(engine.Spec.VolumeName)
 	if err != nil {
