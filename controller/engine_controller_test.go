@@ -780,6 +780,14 @@ func TestSyncSnapshotCRs(t *testing.T) {
 			snapshots:       map[string]*longhorn.SnapshotInfo{etypes.VolumeHeadName: {Name: etypes.VolumeHeadName}},
 			expectCRDeleted: true,
 		},
+		"active engine keeps CR of snapshot reported by engine": {
+			active: true,
+			snapshots: map[string]*longhorn.SnapshotInfo{
+				snapName:              {Name: snapName},
+				etypes.VolumeHeadName: {Name: etypes.VolumeHeadName},
+			},
+			expectCRDeleted: false,
+		},
 	}
 
 	for name, tc := range tests {
@@ -825,8 +833,10 @@ func TestSyncSnapshotCRs(t *testing.T) {
 				},
 				Status: longhorn.EngineStatus{Snapshots: tc.snapshots},
 			}
+			eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+			assert.NoError(eIndexer.Add(engine))
 
-			assert.NoError(ec.syncSnapshotCRs(engine))
+			assert.NoError(ec.syncSnapshotCRs(engine.Name))
 
 			_, err = lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), snapName, metav1.GetOptions{})
 			if tc.expectCRDeleted {
