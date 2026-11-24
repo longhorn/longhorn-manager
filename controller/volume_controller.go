@@ -169,6 +169,7 @@ func NewVolumeController(
 			curEF, ok2 := cur.(*longhorn.EngineFrontend)
 			if ok1 && ok2 &&
 				oldEF.Status.CurrentState == curEF.Status.CurrentState &&
+				oldEF.Status.Starting == curEF.Status.Starting &&
 				oldEF.Status.Endpoint == curEF.Status.Endpoint &&
 				oldEF.Status.TargetIP == curEF.Status.TargetIP &&
 				oldEF.Status.TargetPort == curEF.Status.TargetPort &&
@@ -5471,6 +5472,33 @@ func (c *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn
 	return nil
 }
 
+// getCloneRetryDelay reports whether the failed clone of v will be retried, and how long until
+// that retry is allowed. A zero delay means the retry is due now.
+func getCloneRetryDelay(v *longhorn.Volume, now time.Time) (retryPending bool, delay time.Duration, err error) {
+	if !types.IsDataFromVolume(v.Spec.DataSource) ||
+		v.Status.CloneStatus.State != longhorn.VolumeCloneStateFailed ||
+		v.Status.CloneStatus.AttemptCount >= maxCloneRetry {
+		return false, 0, nil
+	}
+	if v.Status.CloneStatus.NextAllowedAttemptAt == "" {
+		return true, 0, nil
+	}
+	nextAttemptAt, err := util.ParseTime(v.Status.CloneStatus.NextAllowedAttemptAt)
+	if err != nil {
+		return false, 0, errors.Wrapf(err, "failed to parse the next clone attempt time of volume %v", v.Name)
+	}
+	if now.Before(nextAttemptAt) {
+		return true, nextAttemptAt.Sub(now), nil
+	}
+	return true, 0, nil
+}
+
+// isCloneRetryDue returns true if the failed clone of v can be retried now.
+func isCloneRetryDue(v *longhorn.Volume) bool {
+	retryPending, delay, err := getCloneRetryDelay(v, time.Now())
+	return err == nil && retryPending && delay == 0
+}
+
 func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 	if !types.IsDataFromVolume(v.Spec.DataSource) {
 		return false
@@ -5478,19 +5506,12 @@ func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
 	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateEmpty {
 		return true
 	}
-	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed &&
-		v.Status.CloneStatus.AttemptCount < maxCloneRetry {
-		if v.Status.CloneStatus.NextAllowedAttemptAt == "" {
-			return true
-		}
-		t, err := util.ParseTime(v.Status.CloneStatus.NextAllowedAttemptAt)
-		if err != nil {
-			log.Warnf("Failed to check shouldInitVolumeClone %v", err)
-			return false
-		}
-		return time.Now().After(t)
+	retryPending, delay, err := getCloneRetryDelay(v, time.Now())
+	if err != nil {
+		log.Warnf("Failed to check shouldInitVolumeClone %v", err)
+		return false
 	}
-	return false
+	return retryPending && delay == 0
 }
 
 func (c *VolumeController) syncLinkedCloneReplicaSourceFields(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
@@ -6050,13 +6071,13 @@ func (c *VolumeController) enqueueVolumeChange(old, cur interface{}) {
 	}
 
 	// When a source volume becomes attached, enqueue its clone target volumes
-	// so they can immediately start the clone operation without waiting for
-	// their own periodic reconcile.
+	// so they can immediately start the clone operation, or a due clone retry,
+	// without waiting for their own periodic reconcile.
 	if oldV.Status.State != longhorn.VolumeStateAttached && curV.Status.State == longhorn.VolumeStateAttached {
 		cloneVolumes, err := c.ds.ListCloneVolumesBySourceVolumeRO(curV.Name)
 		if err == nil {
 			for _, v := range cloneVolumes {
-				if isCloneTargetCopyInProgress(v) {
+				if isCloneTargetCopyInProgress(v) || isCloneRetryDue(v) {
 					c.enqueueVolume(v)
 				}
 			}
@@ -6791,8 +6812,15 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 
 	log = log.WithField("migrationEngine", migrationEngine.Name)
 
+	var migrationEngineFrontend *longhorn.EngineFrontend
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		if migrationEngineFrontend, err = getEngineFrontendForNode(efs, v.Spec.MigrationNodeID); err != nil {
+			return err
+		}
+	}
+
 	ready := false
-	if ready, revertRequired, err = c.prepareReplicasAndEngineForTargetNode(v, v.Spec.MigrationNodeID, currentEngine, migrationEngine, rs); err != nil {
+	if ready, revertRequired, err = c.prepareReplicasAndEngineForTargetNode(v, v.Spec.MigrationNodeID, currentEngine, migrationEngine, migrationEngineFrontend, rs); err != nil {
 		return err
 	}
 	if !ready || revertRequired {
@@ -6800,10 +6828,6 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	}
 
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		migrationEngineFrontend, err := getEngineFrontendForNode(efs, v.Spec.MigrationNodeID)
-		if err != nil {
-			return err
-		}
 		if migrationEngineFrontend == nil {
 			currentEngineFrontend, err := pickCurrentEngineFrontend(v, efs)
 			if err != nil {
@@ -7019,7 +7043,7 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	migrationEngine.Spec.NodeID = targetNodeID
 
 	ready := false
-	if ready, revertRequired, err = c.prepareReplicasAndEngineForTargetNode(v, targetNodeID, currentEngine, migrationEngine, rs); err != nil {
+	if ready, revertRequired, err = c.prepareReplicasAndEngineForTargetNode(v, targetNodeID, currentEngine, migrationEngine, nil, rs); err != nil {
 		return err
 	}
 	if !ready || revertRequired {
@@ -7113,7 +7137,7 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	return nil
 }
 
-func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Volume, targetNodeID string, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
+func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Volume, targetNodeID string, currentEngine, migrationEngine *longhorn.Engine, migrationEngineFrontend *longhorn.EngineFrontend, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
 	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"migrationNodeID": targetNodeID, "migrationEngine": migrationEngine.Name})
 
 	// Check the migration engine current status
@@ -7226,6 +7250,25 @@ func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Vol
 		// If there are some migration replicas not ready yet or not in the engine, need to restart the engine so that
 		// the missed replicas can be added to the engine without rebuilding.
 		if !allMigrationReplicasReady || !reflect.DeepEqual(migrationEngine.Spec.ReplicaAddressMap, replicaAddressMap) {
+			// Stop the migration engine frontend before restarting the migration
+			// engine. The engine may come back on a different port, and the
+			// frontend would stay connected to the old one.
+			// Ref: https://github.com/longhorn/longhorn/issues/14578
+			if migrationEngineFrontend != nil {
+				// Stop the frontend in its own reconcile. Engines are persisted before
+				// engine frontends, so stopping both in one pass could commit the engine
+				// stop and lose the frontend stop on a write conflict.
+				if migrationEngineFrontend.Spec.DesireState != longhorn.InstanceStateStopped {
+					log.Warnf("Stopping the migration engine frontend %v before restarting the migration engine", migrationEngineFrontend.Name)
+					migrationEngineFrontend.Spec.DesireState = longhorn.InstanceStateStopped
+					return false, false, nil
+				}
+				// Wait until the frontend is fully stopped. A create request in flight could
+				// still report CurrentState Stopped, so check both.
+				if migrationEngineFrontend.Status.CurrentState != longhorn.InstanceStateStopped || migrationEngineFrontend.Status.Starting {
+					return false, false, nil
+				}
+			}
 			log.Warn("The current available migration replicas do not match the record in the migration engine status, will restart the migration engine then update the replica map")
 			migrationEngine.Spec.NodeID = ""
 			migrationEngine.Spec.ReplicaAddressMap = map[string]string{}

@@ -4,7 +4,8 @@ The current supported release lines are:
 
 | DynamicListener Branch | DynamicListener Minor version | Kubernetes Version Range | Wrangler Version |
 |------------------------|-------------------------------|--------------------------|------------------------------------------------|
-| main         | v0.9 | v1.27+        | v3 |
+| main         | v0.10 | v1.27 - v1.37 | v3 |
+| release/v0.9 | v0.9 | v1.27 - v1.36 | v3.7.x |
 | release/v0.8 | v0.8 | v1.27 - v1.35 | v3 |
 | release/v0.7 | v0.7 | v1.27 - v1.34 | v3 |
 | release/v0.6 | v0.6 | v1.27 - v1.32 | v3 |
