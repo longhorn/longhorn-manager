@@ -994,6 +994,9 @@ type FakeSystemBackupTargetClient struct {
 
 	name    string
 	version string
+
+	// deleted holds the system backups deleted from the fake backup target.
+	deleted map[string]bool
 }
 
 func (c *FakeSystemBackupTargetClient) UploadSystemBackup(name, localFile, longhornVersion, longhornGitCommit, managerImage, engineImage string) (string, error) {
@@ -1015,12 +1018,18 @@ func (c *FakeSystemBackupTargetClient) ListSystemBackup() (systembackupstore.Sys
 	if c.name == TestSystemBackupNameListFailed {
 		return nil, fmt.Errorf("failed to list")
 	}
+	if c.deleted[c.name] {
+		return systembackupstore.SystemBackups{}, nil
+	}
 	return systembackupstore.SystemBackups{
 		systembackupstore.Name(c.name): systembackupstore.URI(fmt.Sprintf(TestSystemBackupURIFmt, c.version, c.name)),
 	}, nil
 }
 
 func (c *FakeSystemBackupTargetClient) GetSystemBackupConfig(name, version string) (*systembackupstore.Config, error) {
+	if c.deleted[name] {
+		return nil, fmt.Errorf("cannot find %v", name)
+	}
 	switch name {
 	case TestSystemBackupNameUploadFailed, TestSystemBackupNameUploadExceedTimeout, TestSystemRestoreNameUploadFailed, TestSystemRestoreNameUploadExceedTimeout:
 		return nil, fmt.Errorf("cannot find %v", name)
@@ -1045,5 +1054,9 @@ func (c *FakeSystemBackupTargetClient) GetSystemBackupConfig(name, version strin
 }
 
 func (c *FakeSystemBackupTargetClient) DeleteSystemBackup(systemBackup *longhorn.SystemBackup) (string, error) {
+	if c.deleted == nil {
+		c.deleted = map[string]bool{}
+	}
+	c.deleted[systemBackup.Name] = true
 	return "", nil
 }
