@@ -298,10 +298,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	if err != nil {
 		log.WithError(err).Warnf("Failed to get %v setting, and it will skip the auto-deletion for the failed backups", types.SettingNameFailedBackupTTL)
 	}
-	clustersSet := sets.NewString()
 	for _, b := range clusterBackups {
-		// Skip the Backup CR which is created from the local cluster and
-		// the snapshot backup hasn't be completed or pulled from the remote backup target yet
 		if b.Spec.SnapshotName != "" && b.Status.State != longhorn.BackupStateCompleted {
 			if b.Status.State == longhorn.BackupStateError || b.Status.State == longhorn.BackupStateUnknown {
 				// Failed backup `LastSyncedAt` should not be updated after it was marked as `Error` or `Unknown`
@@ -311,14 +308,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 					}
 				}
 			}
-			continue
 		}
-		clustersSet.Insert(b.Name)
 	}
 
-	// Get a list of backups that *are* in the backup target and *aren't* in the cluster
-	// and create the Backup CR in the cluster
-	backupsToPull := backupStoreBackups.Difference(clustersSet)
+	backupsToPull, backupsToDelete := getBackupsToPullAndDelete(clusterBackups, backupStoreBackups)
+
+	// Create the Backup CRs for the backups that *are* in the backup target and *aren't* in the cluster
 	if count := backupsToPull.Len(); count > 0 {
 		log.Infof("Found %d backups in the backup target that do not exist in the cluster and need to be pulled", count)
 	}
@@ -375,9 +370,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		}
 	}
 
-	// Get a list of backups that *are* in the cluster and *aren't* in the backup target
-	// and delete the Backup CR in the cluster
-	backupsToDelete := clustersSet.Difference(backupStoreBackups)
+	// Delete the Backup CRs that *are* in the cluster and *aren't* in the backup target
 	if count := backupsToDelete.Len(); count > 0 {
 		log.Infof("Found %d backups in the backup target that do not exist in the cluster and need to be deleted from the cluster", count)
 	}
@@ -465,6 +458,28 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	return nil
+}
+
+// getBackupsToPullAndDelete returns the backups in the backup target that have no Backup CR in the cluster,
+// and the Backup CRs in the cluster whose backups are no longer in the backup target.
+//
+//nolint:staticcheck
+func getBackupsToPullAndDelete(clusterBackups map[string]*longhorn.Backup, backupStoreBackups sets.String) (backupsToPull, backupsToDelete sets.String) {
+	// Any existing Backup CR, whatever its state, blocks the pull. Otherwise an in-progress or failed local backup
+	// whose backup config is already in the backup target is pulled again on every poll and rejected as AlreadyExists.
+	backupsToPull = backupStoreBackups.Difference(sets.StringKeySet(clusterBackups))
+
+	syncedBackups := sets.NewString()
+	for _, b := range clusterBackups {
+		// Skip the Backup CR which is created from the local cluster and
+		// the snapshot backup hasn't be completed or pulled from the remote backup target yet
+		if b.Spec.SnapshotName != "" && b.Status.State != longhorn.BackupStateCompleted {
+			continue
+		}
+		syncedBackups.Insert(b.Name)
+	}
+	backupsToDelete = syncedBackups.Difference(backupStoreBackups)
+	return backupsToPull, backupsToDelete
 }
 
 // isLastBackupUpdateSafeToSkip checks if it's safe to skip updating the last backup related status of the backup volume

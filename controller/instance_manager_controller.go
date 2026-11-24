@@ -88,6 +88,11 @@ type InstanceManagerController struct {
 	staleCryptoCleanupPendingMutex sync.Mutex
 	staleCryptoCleanupPendingSince map[string]time.Time
 
+	// nodeCleanupMutexes serializes stale-crypto cleanup and IM pod recreation for
+	// all instance managers on the same node so one worker cannot remove a crypto
+	// mapping that another worker just allowed a replacement pod to open.
+	nodeCleanupMutexes sync.Map // map[string]*sync.Mutex
+
 	// for unit test
 	versionUpdater func(*longhorn.InstanceManager) error
 }
@@ -423,9 +428,11 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
+	unlockNodeCleanup := imc.lockNodeDeviceCleanup(im.Spec.NodeID)
 	cleanupPending, err := imc.cleanupStaleEngineFrontendCryptoDevices(im)
 	if err != nil {
 		if imc.queue.NumRequeues(key) < maxRetries {
+			unlockNodeCleanup()
 			return errors.Wrap(err, "failed to clean up stale engine frontend crypto devices")
 		}
 		log.WithError(err).Warn("Failed to clean up stale engine frontend crypto devices after retries, continuing to sync the instance manager")
@@ -439,28 +446,34 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	// pod is unable to managed by another pod. Therefore, if an instance manager pod is running on a node,
 	// an extra instance manager pod for v2 volume should not be created.
 	if types.IsDataEngineV2(im.Spec.DataEngine) {
-		syncable, err := imc.canProceedWithInstanceManagerSync(im)
-		if err != nil {
-			return err
+		syncable, syncErr := imc.canProceedWithInstanceManagerSync(im)
+		if syncErr != nil {
+			unlockNodeCleanup()
+			return syncErr
 		}
 		if !syncable {
+			unlockNodeCleanup()
 			return nil
 		}
 	}
 
 	if err := imc.syncStatusWithNode(im); err != nil {
+		unlockNodeCleanup()
 		return err
 	}
 
 	if err := imc.syncInstanceStatus(im); err != nil {
+		unlockNodeCleanup()
 		return err
 	}
 
 	if !deferPodRecreation {
 		if err := imc.handlePod(im); err != nil {
+			unlockNodeCleanup()
 			return err
 		}
 	}
+	unlockNodeCleanup()
 
 	if err := imc.syncInstanceManagerPDB(im); err != nil {
 		return err
@@ -1726,22 +1739,6 @@ func (imc *InstanceManagerController) cleanupStaleEngineFrontendCryptoDevices(im
 
 	log := getLoggerForInstanceManager(imc.logger, im)
 
-	pod, err := imc.ds.GetPodRO(imc.namespace, im.Name)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to get the instance manager pod")
-	}
-	if !shouldCleanupStaleEngineFrontendCryptoDevices(im, pod, imc.controllerID) {
-		return false, nil
-	}
-
-	stopped, err := imc.isNodeV2DataPlaneStopped(im)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to check the v2 instance managers on the node")
-	}
-	if !stopped {
-		return false, nil
-	}
-
 	volumes, err := imc.ds.ListVolumesRO()
 	if err != nil {
 		return false, errors.Wrap(err, "failed to list volumes")
@@ -1757,12 +1754,30 @@ func (imc *InstanceManagerController) cleanupStaleEngineFrontendCryptoDevices(im
 		return false, nil
 	}
 
+	// Revalidate under the node cleanup lock: another worker may have already
+	// cleaned up and recreated a replacement IM pod on this node.
+	pod, err := imc.ds.GetPodRO(imc.namespace, im.Name)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to revalidate the instance manager pod before crypto cleanup")
+	}
+	if !shouldCleanupStaleEngineFrontendCryptoDevices(im, pod, imc.controllerID) {
+		return false, nil
+	}
+
+	stopped, err := imc.isNodeV2DataPlaneStopped(im)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to revalidate the v2 instance managers on the node")
+	}
+	if !stopped {
+		return false, nil
+	}
+
 	// The API objects alone do not prove that the data plane is gone: a force-deleted pod is
 	// removed from the API server while its containers may still be running on this node.
 	// Confirm on the host that no spdk_tgt process is left before removing anything.
 	running, err := isSPDKTgtRunningOnHost(lhtypes.HostProcDirectory)
 	if err != nil {
-		return false, errors.Wrap(err, "failed to check for spdk_tgt processes on the host")
+		return false, errors.Wrap(err, "failed to recheck for spdk_tgt processes on the host")
 	}
 	if running {
 		log.Info("Stale crypto device cleanup is pending until the spdk_tgt process left on the host exits")
@@ -1771,11 +1786,15 @@ func (imc *InstanceManagerController) cleanupStaleEngineFrontendCryptoDevices(im
 
 	var errs []error
 	for _, volumeName := range volumeNames {
-		if err := imc.removeStaleCryptoDevice(log, volumeName); err != nil {
-			errs = append(errs, err)
+		devicePending, removeErr := imc.removeStaleCryptoDevice(log, volumeName)
+		if removeErr != nil {
+			errs = append(errs, removeErr)
+		}
+		if devicePending {
+			pending = true
 		}
 	}
-	return false, errors.Join(errs...)
+	return pending, errors.Join(errs...)
 }
 
 func (imc *InstanceManagerController) shouldDeferPodRecreationForStaleCryptoCleanup(log logrus.FieldLogger, imName string, pending bool) bool {
@@ -1848,13 +1867,13 @@ func (imc *InstanceManagerController) isNodeV2DataPlaneStopped(im *longhorn.Inst
 	return true, nil
 }
 
-func (imc *InstanceManagerController) removeStaleCryptoDevice(log logrus.FieldLogger, volumeName string) error {
+func (imc *InstanceManagerController) removeStaleCryptoDevice(log logrus.FieldLogger, volumeName string) (pending bool, err error) {
 	cryptoDevice := crypto.VolumeMapper(volumeName, string(longhorn.DataEngineTypeV2))
 	if _, err := lhns.Stat(cryptoDevice); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil
+			return false, nil
 		}
-		return errors.Wrapf(err, "failed to check crypto device %v of volume %v", cryptoDevice, volumeName)
+		return false, errors.Wrapf(err, "failed to check crypto device %v of volume %v", cryptoDevice, volumeName)
 	}
 
 	linearDevice := filepath.Join(crypto.MapperFilePathPrefix, volumeName)
@@ -1862,23 +1881,23 @@ func (imc *InstanceManagerController) removeStaleCryptoDevice(log logrus.FieldLo
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Infof("Skipping device %v since the linear dm device %v of v2 volume %v does not exist", cryptoDevice, linearDevice, volumeName)
-			return nil
+			return false, nil
 		}
-		return errors.Wrapf(err, "failed to check linear dm device %v of volume %v", linearDevice, volumeName)
+		return false, errors.Wrapf(err, "failed to check linear dm device %v of volume %v", linearDevice, volumeName)
 	}
 	linearDeviceNumber, ok := util.GetBlockDeviceNumber(linearDeviceInfo)
 	if !ok {
 		log.Infof("Skipping device %v since %v of v2 volume %v is not a block device", cryptoDevice, linearDevice, volumeName)
-		return nil
+		return false, nil
 	}
 
 	backingDeviceNumber, isCrypt, err := util.GetDMCryptBackingDevice(filepath.Base(cryptoDevice))
 	if err != nil {
-		return errors.Wrapf(err, "failed to inspect crypto device %v of volume %v", cryptoDevice, volumeName)
+		return false, errors.Wrapf(err, "failed to inspect crypto device %v of volume %v", cryptoDevice, volumeName)
 	}
 	if !isCrypt || backingDeviceNumber != linearDeviceNumber {
 		log.Infof("Skipping device %v since it is not a crypto device on %v (%v) of v2 volume %v", cryptoDevice, linearDevice, linearDeviceNumber, volumeName)
-		return nil
+		return false, nil
 	}
 
 	log.Warnf("Removing the stale crypto device %v of volume %v", cryptoDevice, volumeName)
@@ -1886,9 +1905,25 @@ func (imc *InstanceManagerController) removeStaleCryptoDevice(log logrus.FieldLo
 		log.WithError(err).Warnf("Failed to lazy unmount crypto device %v of volume %v", cryptoDevice, volumeName)
 	}
 	if err := util.RemoveDMDevice(cryptoDevice); err != nil {
-		return errors.Wrapf(err, "failed to remove crypto device %v of volume %v", cryptoDevice, volumeName)
+		return false, errors.Wrapf(err, "failed to remove crypto device %v of volume %v", cryptoDevice, volumeName)
 	}
-	return nil
+
+	// dmsetup remove --deferred can return success while open references keep the
+	// mapping alive. Stay pending so reconciliation retries before recreating the IM pod.
+	if _, err := lhns.Stat(cryptoDevice); err == nil {
+		log.Infof("Crypto device %v of volume %v is still present after deferred removal; cleanup remains pending", cryptoDevice, volumeName)
+		return true, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, errors.Wrapf(err, "failed to confirm removal of crypto device %v of volume %v", cryptoDevice, volumeName)
+	}
+	return false, nil
+}
+
+func (imc *InstanceManagerController) lockNodeDeviceCleanup(nodeID string) func() {
+	val, _ := imc.nodeCleanupMutexes.LoadOrStore(nodeID, &sync.Mutex{})
+	mu := val.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 func (imc *InstanceManagerController) syncOrphans(im *longhorn.InstanceManager) error {
