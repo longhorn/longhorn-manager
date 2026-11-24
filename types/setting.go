@@ -177,6 +177,7 @@ const (
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
 	SettingNameDataEngineInterruptModeEnabled                           = SettingName("data-engine-interrupt-mode-enabled")
 	SettingNameDataEngineCPUIsolationEnabled                            = SettingName("data-engine-cpu-isolation-enabled")
+	SettingNameDataEngineDedicatedMainCoreEnabled                       = SettingName("data-engine-dedicated-main-core-enabled")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -309,6 +310,7 @@ var (
 		SettingNameSnapshotDataIntegrity,
 		SettingNameDataEngineInterruptModeEnabled,
 		SettingNameDataEngineCPUIsolationEnabled,
+		SettingNameDataEngineDedicatedMainCoreEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -480,6 +482,7 @@ var (
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
 		SettingNameDataEngineInterruptModeEnabled:                           SettingDefinitionDataEngineInterruptModeEnabled,
 		SettingNameDataEngineCPUIsolationEnabled:                            SettingDefinitionDataEngineCPUIsolationEnabled,
+		SettingNameDataEngineDedicatedMainCoreEnabled:                       SettingDefinitionDataEngineDedicatedMainCoreEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -1982,6 +1985,21 @@ var (
 			"  - When applying the setting, Longhorn will try to restart all V2 instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n" +
 			"  - In polling mode, this value can be overridden per Instance Manager via `Spec.DataEngineSpec.V2.CPUIsolationEnabled` " +
 			"(set to `\"true\"` or `\"false\"` on a specific instance manager to force the value on that node; leave empty to inherit this setting). \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDataEngineDedicatedMainCoreEnabled = SettingDefinition{
+		DisplayName: "Enable Dedicated Main Core for Data Engine",
+		Description: "Applies only to the V2 Data Engine. Specifies whether the first (lowest-numbered) core of the Storage Performance Development Kit (SPDK) target daemon's CPU cores is dedicated to the admin (main) reactor, which handles management RPCs. \n\n" +
+			"  - `true` (default): The admin reactor runs alone on the first core, and the I/O pollers (the NVMe-oF target poll groups and the ublk target) run on the other cores. \n\n" +
+			"  - `false`: The I/O pollers run on every assigned core, and the admin reactor shares the first core with them. In polling mode, every assigned core spins at 100% regardless of load, so dedicating a core reserves a full CPU core that serves no I/O. Disabling this setting keeps that core available for I/O (for example, when 2 cores are assigned). \n\n" +
+			"  - With a single assigned core, the admin reactor always shares the core, regardless of this setting. \n\n" +
+			"  - Changing this setting recreates Instance Manager pods that have no running instances so the change can take effect.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
