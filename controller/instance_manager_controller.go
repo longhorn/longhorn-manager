@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -253,7 +254,8 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 		types.SettingName(setting.Name) == types.SettingNameDataEngineHugepageEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineMemorySize ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineInterruptModeEnabled ||
-		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUIsolationEnabled
+		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUIsolationEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineDedicatedMainCoreEnabled
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -1003,6 +1005,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingIobufSmallPoolSizeSynced(im, pod)
 		case types.SettingNameDataEngineCPUIsolationEnabled:
 			isSettingSynced, err = imc.isSettingCPUIsolationEnabledSynced(setting, im, pod)
+		case types.SettingNameDataEngineDedicatedMainCoreEnabled:
+			isSettingSynced, err = imc.isSettingDedicatedMainCoreEnabledSynced(im, pod)
 		}
 		if err != nil {
 			return false, nil, false, false, err
@@ -1428,6 +1432,24 @@ func (imc *InstanceManagerController) isSettingIobufSmallPoolSizeSynced(im *long
 	}
 	current := getContainerArgValue(pod.Spec.Containers[0].Args, "--spdk-iobuf-small-pool-size")
 	return current == expected, nil
+}
+
+func (imc *InstanceManagerController) isSettingDedicatedMainCoreEnabledSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	dedicatedMainCoreEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineDedicatedMainCoreEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	hasFlag := slices.Contains(pod.Spec.Containers[0].Args, "--spdk-no-dedicated-main-core")
+	return hasFlag == !dedicatedMainCoreEnabled, nil
 }
 
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {
@@ -2215,6 +2237,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineIobufSmallPoolSize)
 		}
 
+		dedicatedMainCoreEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineDedicatedMainCoreEnabled, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameDataEngineDedicatedMainCoreEnabled)
+		}
+
 		args := []string{
 			"start-spdk-tgt",
 			"--spdk-log", logFlags,
@@ -2228,6 +2255,9 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 		if iobufSmallPoolSize > types.BuiltinIobufSmallPoolSize {
 			args = append(args, "--spdk-iobuf-small-pool-size", fmt.Sprintf("%d", iobufSmallPoolSize))
+		}
+		if !dedicatedMainCoreEnabled {
+			args = append(args, "--spdk-no-dedicated-main-core")
 		}
 		args = append(args,
 			"--longhorn-control-path", types.DefaultControlPath,

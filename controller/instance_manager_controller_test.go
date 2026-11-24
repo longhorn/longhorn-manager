@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -1126,6 +1127,140 @@ func (s *TestSuite) TestInterruptModeSettingRecreatesPodWithoutCPUIsolation(c *C
 		for _, isolationArg := range isolationArgs {
 			c.Assert(hasArg(args, isolationArg), Equals, false, Commentf("test case: %v, args: %v", name, args))
 		}
+	}
+}
+
+func (s *TestSuite) TestDedicatedMainCoreSettingRecreatesPod(c *C) {
+	type testCase struct {
+		dedicatedMainCoreEnabled bool
+		podHasFlag               bool
+		expectRecreated          bool
+	}
+
+	testCases := map[string]testCase{
+		"default keeps a pod without the flag": {
+			dedicatedMainCoreEnabled: true,
+			podHasFlag:               false,
+			expectRecreated:          false,
+		},
+		"disabling recreates the pod with the flag": {
+			dedicatedMainCoreEnabled: false,
+			podHasFlag:               false,
+			expectRecreated:          true,
+		},
+		"disabled keeps a pod with the flag": {
+			dedicatedMainCoreEnabled: false,
+			podHasFlag:               true,
+			expectRecreated:          false,
+		},
+		"re-enabling recreates the pod without the flag": {
+			dedicatedMainCoreEnabled: true,
+			podHasFlag:               true,
+			expectRecreated:          true,
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		createDangerZoneSettingsForV2(c, lhClient, sIndexer)
+
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Get(context.TODO(), string(types.SettingNameDataEngineDedicatedMainCoreEnabled), metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		setting.Value = fmt.Sprintf(`{"v2":"%t"}`, tc.dedicatedMainCoreEnabled)
+		setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Update(context.TODO(), setting, metav1.UpdateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Update(setting)
+		c.Assert(err, IsNil)
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Status.Allocatable = corev1.ResourceList{
+			"cpu":                                resource.MustParse("4"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		}
+		kubeNode.Status.Capacity = corev1.ResourceList{
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		}
+		err = kubeNodeIndexer.Add(kubeNode)
+		c.Assert(err, IsNil)
+		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		err = lhNodeIndexer.Add(lhNode)
+		c.Assert(err, IsNil)
+		_, err = lhClient.LonghornV1beta2().Nodes(lhNode.Namespace).Create(context.TODO(), lhNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestNode1, TestNode1, TestIP1,
+			nil, nil, nil,
+			longhorn.DataEngineTypeV2,
+			TestInstanceManagerImage,
+			false,
+		)
+		im.Status.DataEngineStatus.V2.CPUMask = "0x1"
+		im.Status.DataEngineStatus.V2.InterruptModeEnabled = longhorn.FalseValue
+		err = imIndexer.Add(im)
+		c.Assert(err, IsNil)
+		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		// Every other danger zone setting is at its default, which these args match.
+		podArgs := []string{
+			"--spdk-memory-size", "1024",
+			"--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", types.DefaultIobufLargePoolSize),
+			"--enable-irq-affinity", "--enable-workqueue-affinity", "--enable-rps",
+		}
+		if tc.podHasFlag {
+			podArgs = append(podArgs, "--spdk-no-dedicated-main-core")
+		}
+		pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
+		pod.Spec.Containers = []corev1.Container{{
+			Name:    "instance-manager",
+			Command: []string{"instance-manager"},
+			Args:    podArgs,
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")},
+				Limits: corev1.ResourceList{
+					corev1.ResourceName("hugepages-2Mi"): resource.MustParse("1024Mi"),
+				},
+			},
+		}}
+		err = pIndexer.Add(pod)
+		c.Assert(err, IsNil)
+		_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		err = imc.syncInstanceManager(getKey(im, c))
+		c.Assert(err, IsNil)
+
+		podList, err := kubeClient.CoreV1().Pods(im.Namespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(podList.Items, HasLen, 1, Commentf("test case: %v", name))
+
+		args := podList.Items[0].Spec.Containers[0].Args
+		if !tc.expectRecreated {
+			c.Assert(args, DeepEquals, podArgs, Commentf("test case: %v", name))
+			continue
+		}
+		c.Assert(slices.Contains(args, "--spdk-no-dedicated-main-core"), Equals, !tc.dedicatedMainCoreEnabled, Commentf("test case: %v, args: %v", name, args))
 	}
 }
 
