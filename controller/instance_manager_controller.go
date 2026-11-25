@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -43,6 +44,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -204,6 +206,21 @@ func NewInstanceManagerController(
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc: imc.enqueueLonghornNode,
+		UpdateFunc: func(oldObj, cur any) {
+			oldNode, oldOK := oldObj.(*longhorn.Node)
+			curNode, curOK := cur.(*longhorn.Node)
+			if oldOK && curOK && oldNode.Spec.InstanceManagerCPURequest == curNode.Spec.InstanceManagerCPURequest {
+				return
+			}
+			imc.enqueueLonghornNode(cur)
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.NodeInformer.HasSynced)
+
 	if _, err = ds.OrphanInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc: imc.enqueueInstanceManagerOrphan,
 	}, 0); err != nil {
@@ -247,6 +264,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameAllowInstanceManagerAutomaticUpgrade ||
 		types.SettingName(setting.Name) == types.SettingNameInstanceManagerUpgradeStartTime ||
+		types.SettingName(setting.Name) == types.SettingNameGuaranteedInstanceManagerCPU ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufLargePoolSize ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufSmallPoolSize ||
@@ -813,6 +831,14 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return nil
 	}
 
+	cpuResizeRequested, err := imc.syncGuaranteedInstanceManagerCPU(im, pod)
+	if err != nil {
+		return err
+	}
+	if cpuResizeRequested {
+		return nil
+	}
+
 	err = imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
@@ -1067,6 +1093,88 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 	}
 	podResourceReq := pod.Spec.Containers[0].Resources
 	return IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq), nil
+}
+
+// syncGuaranteedInstanceManagerCPU resizes the CPU request of a running v1 instance manager pod in
+// place. It returns true after requesting a resize, because the cached pod still has the previous
+// request and the rest of the pod handling would treat it as unsynced in this sync. The kubelet
+// applies the resize asynchronously and reports failures through pod events. It returns false
+// otherwise; if the pod cannot be resized in place, the regular danger zone setting handling recreates
+// it once no instances are running on it.
+func (imc *InstanceManagerController) syncGuaranteedInstanceManagerCPU(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if im.Spec.DataEngine != longhorn.DataEngineTypeV1 || pod == nil || len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || pod.Status.Phase != corev1.PodRunning {
+		return false, nil
+	}
+
+	lhNode, err := imc.ds.GetNodeRO(im.Spec.NodeID)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to get node %v for instance manager %v", im.Spec.NodeID, im.Name)
+	}
+	if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+		return false, nil
+	}
+
+	resourceReq, err := GetInstanceManagerCPURequirement(imc.ds, im.Name)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get CPU request for instance manager %v", im.Name)
+	}
+	currentResourceReq := &pod.Spec.Containers[0].Resources
+	if IsSameGuaranteedCPURequirement(resourceReq, currentResourceReq) {
+		return false, nil
+	}
+
+	if !canResizeInstanceManagerCPUInPlace(currentResourceReq, resourceReq) {
+		return false, nil
+	}
+	resizeSupported, err := isInPlacePodResizeSupportedForNode(imc.ds, pod.Spec.NodeName)
+	if err != nil {
+		return false, err
+	}
+	if !resizeSupported {
+		return false, nil
+	}
+
+	currentCPU := currentResourceReq.Requests[corev1.ResourceCPU]
+	desiredCPU := resourceReq.Requests[corev1.ResourceCPU]
+	resizedPod := pod.DeepCopy()
+	resizedPod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = desiredCPU
+
+	if _, err := imc.ds.UpdatePodResize(resizedPod); err != nil {
+		if isPodResizeRejectedError(err) {
+			imc.eventRecorder.Eventf(im, corev1.EventTypeWarning, constant.EventReasonFailedResizing,
+				"Failed to resize CPU request of instance manager pod %v in place, the pod will be recreated once no instances are running on it: %v", pod.Name, err)
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to resize CPU request for instance manager pod %v", pod.Name)
+	}
+
+	getLoggerForInstanceManager(imc.logger, im).Infof("Requested in-place CPU request resize of instance manager pod %v from %v to %v", pod.Name, currentCPU.String(), desiredCPU.String())
+	imc.eventRecorder.Eventf(im, corev1.EventTypeNormal, constant.EventReasonResizing,
+		"Requested in-place CPU request resize of instance manager pod %v from %v to %v", pod.Name, currentCPU.String(), desiredCPU.String())
+	return true, nil
+}
+
+// isPodResizeRejectedError returns true if the API server rejected the resize request, e.g. because of
+// missing RBAC permission for the pods/resize subresource, an admission webhook or policy denial, a
+// resource quota or validation. Conflicts, throttling, timeouts, server and connection errors are
+// transient and return false, so the resize is retried.
+func isPodResizeRejectedError(err error) bool {
+	var statusErr *apierrors.StatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	switch code := statusErr.Status().Code; code {
+	case http.StatusConflict, http.StatusTooManyRequests, http.StatusRequestTimeout:
+		return false
+	default:
+		return code >= http.StatusBadRequest && code < http.StatusInternalServerError
+	}
 }
 
 func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -1903,6 +2011,14 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 	}
 
 	imc.enqueueInstanceManagersForNode(kubernetesNode.Name)
+}
+
+func (imc *InstanceManagerController) enqueueLonghornNode(obj any) {
+	node, ok := obj.(*longhorn.Node)
+	if !ok {
+		return
+	}
+	imc.enqueueInstanceManagersForNode(node.Name)
 }
 
 func (imc *InstanceManagerController) enqueueInstanceManagerOrphan(obj interface{}) {
