@@ -433,6 +433,21 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		status.SalvageExecuted = false
 	}
 
+	// The condition is reset to True here and may be set back to False below.
+	// Keep the original LastTransitionTime if it ends up unchanged. Otherwise
+	// every reconcile of an errored instance rewrites the status, requeues itself,
+	// and keeps other writers of the object failing with conflicts.
+	existingCreationCondition := types.GetCondition(status.Conditions, longhorn.InstanceConditionTypeInstanceCreation)
+	defer func() {
+		for i, condition := range status.Conditions {
+			if condition.Type == existingCreationCondition.Type &&
+				condition.Status == existingCreationCondition.Status &&
+				condition.Reason == existingCreationCondition.Reason &&
+				condition.Message == existingCreationCondition.Message {
+				status.Conditions[i].LastTransitionTime = existingCreationCondition.LastTransitionTime
+			}
+		}
+	}()
 	status.Conditions = types.SetCondition(status.Conditions,
 		longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusTrue,
 		"", "")

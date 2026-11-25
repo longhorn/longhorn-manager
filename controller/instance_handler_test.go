@@ -763,6 +763,49 @@ func (s *TestSuite) TestReconcileInstanceStateClearsStaleV2InstanceManager(c *C)
 	c.Assert(handler.instanceManagerNameWhenCreated, Equals, "")
 }
 
+func (s *TestSuite) TestReconcileInstanceStateKeepsInstanceCreationFailureTransitionTime(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	im := newInstanceManager(
+		TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1,
+		map[string]longhorn.InstanceProcess{
+			ExistingInstance: {
+				Spec:   longhorn.InstanceProcessSpec{Name: ExistingInstance, DataEngine: longhorn.DataEngineTypeV2},
+				Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateStopped},
+			},
+		}, nil, nil,
+		longhorn.DataEngineTypeV2, TestInstanceManagerImage, false,
+	)
+	c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer().Add(im), IsNil)
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+
+	h := newTestInstanceHandler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+	// A started instance that is stopped in the instance manager stays in error
+	// with the same InstanceCreation failure on every reconcile.
+	engine := newEngine(ExistingInstance, "", TestInstanceManagerName, TestNode1, "", 0, true, longhorn.InstanceStateError, longhorn.InstanceStateRunning)
+	engine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	lastTransitionTime := "2000-01-01T00:00:00Z"
+	for i := range engine.Status.Conditions {
+		if engine.Status.Conditions[i].Type == longhorn.InstanceConditionTypeInstanceCreation {
+			engine.Status.Conditions[i].Status = longhorn.ConditionStatusFalse
+			engine.Status.Conditions[i].Reason = longhorn.InstanceConditionReasonInstanceCreationFailure
+			engine.Status.Conditions[i].LastTransitionTime = lastTransitionTime
+		}
+	}
+	existingStatus := engine.Status.DeepCopy()
+
+	c.Assert(h.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus), IsNil)
+	// An unchanged status must not be rewritten, or the status update requeues
+	// the object and the loop keeps conflicting with other writers.
+	c.Assert(engine.Status, DeepEquals, *existingStatus)
+}
+
 func (s *TestSuite) TestCreateInstanceRecordsFailedStartingEvent(c *C) {
 	fakeRecorder := record.NewFakeRecorder(5)
 	h := &InstanceHandler{
