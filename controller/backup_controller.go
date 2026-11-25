@@ -91,6 +91,11 @@ type BackupController struct {
 
 	deletingBackoff      *flowcontrol.Backoff
 	creationRetryCounter *util.TimedCounter
+
+	// Bounds the retry rate against a backup target that is failing, so an
+	// unreachable target is not hit by every Backup reconcile.
+	// https://github.com/longhorn/longhorn/issues/14121
+	targetHealth *targetHealthGate
 }
 
 func NewBackupController(
@@ -101,6 +106,7 @@ func NewBackupController(
 	controllerID string,
 	namespace string,
 	proxyConnCounter util.Counter,
+	targetHealth *targetHealthGate,
 ) (*BackupController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -130,6 +136,8 @@ func NewBackupController(
 
 		deletingBackoff:      flowcontrol.NewBackOff(DeletionMinInterval, DeletionMaxInterval),
 		creationRetryCounter: util.NewTimedCounter(creationRetryCounterExpiredDuration),
+
+		targetHealth: targetHealth,
 	}
 
 	var err error
@@ -332,9 +340,19 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return errors.Wrap(err, "failed to check if it needs to delete remote backup data")
 		}
 		if needsCleanupRemoteData && backupVolume != nil && backupVolume.DeletionTimestamp == nil {
+			// The monitor and status bookkeeping above must still run, so only the
+			// backup store call is gated.
+			// https://github.com/longhorn/longhorn/issues/14121
+			if wait, ok := bc.targetHealth.WaitTime(backupTargetName, time.Now()); ok {
+				log.Debugf("Backup target %v is in backoff for %v, skipping the backup store check", backupTargetName, wait)
+				bc.queue.AddAfter(backupName, wait)
+				return nil
+			}
+
 			backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Warn("Failed to init backup target clients")
+				bc.targetHealth.RecordFailure(backupTargetName, time.Now())
 				return nil // Ignore error to prevent enqueue
 			}
 			backupURL := backupstore.EncodeBackupURL(backup.Name, canonicalBackupVolumeName, backupTargetClient.URL)
@@ -491,9 +509,20 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// The backup creation is complete, then the source of truth becomes the remote backup target
+	// A backup target that keeps failing is only retried once its backoff window
+	// has passed, so a target that is down is not contacted by every backup on
+	// every reconcile. https://github.com/longhorn/longhorn/issues/14121
+	if wait, ok := bc.targetHealth.WaitTime(backupTargetName, time.Now()); ok {
+		log.Debugf("Backup target %v is in backoff for %v, skipping the backup store check", backupTargetName, wait)
+		bc.queue.AddAfter(backupName, wait)
+		return nil
+	}
+
 	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 	if err != nil {
 		log.WithError(err).Error("Error init backup target clients")
+		window := bc.targetHealth.RecordFailure(backupTargetName, time.Now())
+		bc.queue.AddAfter(backupName, window)
 		return nil // Ignore error to prevent enqueue
 	}
 
@@ -502,9 +531,13 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	if err != nil && !types.ErrorIsNotFound(err) {
 		if !types.ErrorIsInProgress(err) {
 			log.WithError(err).Error("Error inspecting backup config")
+			bc.targetHealth.RecordFailure(backupTargetName, time.Now())
+		} else {
+			bc.targetHealth.RecordSuccess(backupTargetName)
 		}
 		return nil // Ignore error to prevent enqueue
 	}
+	bc.targetHealth.RecordSuccess(backupTargetName)
 	if backupInfo == nil {
 		log.Warn("Backup info is nil")
 		return nil
@@ -1197,7 +1230,14 @@ func (bc *BackupController) handleBackupDeletionInBackupStore(backup *longhorn.B
 	backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential)
 	if err != nil && !types.ErrorIsNotFound(err) && !types.ErrorIsInProgress(err) {
 		log.WithError(err).Debugf("Failed to check backup %v in the backupstore", backup.Name)
-		bc.enqueueBackup(backup)
+		// Requeue after the backoff window instead of immediately. An unreachable
+		// backup target otherwise turns this into a hot loop, which is what drove
+		// the memory growth in https://github.com/longhorn/longhorn/issues/14121.
+		bc.deletingBackoff.Next(backup.Name, time.Now())
+		key, keyErr := controller.KeyFunc(backup)
+		if keyErr == nil {
+			bc.queue.AddAfter(key, bc.deletingBackoff.Get(backup.Name))
+		}
 		return false
 	}
 	if backupInfo != nil || types.ErrorIsInProgress(err) {

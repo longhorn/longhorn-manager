@@ -34,7 +34,7 @@ func newTestBackupController(lhClient *lhfake.Clientset, kubeClient *fake.Client
 
 	logger := logrus.StandardLogger()
 	proxyConnCounter := util.NewAtomicCounter()
-	bc, err := NewBackupController(logger, ds, scheme.Scheme, kubeClient, controllerID, TestNamespace, proxyConnCounter)
+	bc, err := NewBackupController(logger, ds, scheme.Scheme, kubeClient, controllerID, TestNamespace, proxyConnCounter, newTargetHealthGate())
 	if err != nil {
 		return nil, err
 	}

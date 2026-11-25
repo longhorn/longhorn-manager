@@ -82,15 +82,20 @@ func StartNodeLocalControllers(logger logrus.FieldLogger, clients *client.Client
 	if err != nil {
 		return nil, err
 	}
-	backupTargetController, err := NewBackupTargetController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
+	// Shared across the backup controllers so a backup target that is failing is
+	// retried at a bounded rate by all of them, not by each one separately.
+	// https://github.com/longhorn/longhorn/issues/14121
+	targetHealth := newTargetHealthGate()
+
+	backupTargetController, err := NewBackupTargetController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter, targetHealth)
 	if err != nil {
 		return nil, err
 	}
-	backupVolumeController, err := NewBackupVolumeController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
+	backupVolumeController, err := NewBackupVolumeController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter, targetHealth)
 	if err != nil {
 		return nil, err
 	}
-	backupController, err := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
+	backupController, err := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter, targetHealth)
 	if err != nil {
 		return nil, err
 	}

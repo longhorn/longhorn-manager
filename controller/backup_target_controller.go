@@ -57,6 +57,11 @@ type BackupTargetController struct {
 	cacheSyncs []cache.InformerSynced
 
 	proxyConnCounter util.Counter
+
+	// Bounds the retry rate against a backup target that is failing, so an
+	// unreachable target is not retried on every reconcile.
+	// https://github.com/longhorn/longhorn/issues/13831, https://github.com/longhorn/longhorn/issues/14121
+	targetHealth *targetHealthGate
 }
 
 type BackupStoreTimer struct {
@@ -77,7 +82,8 @@ func NewBackupTargetController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-	proxyConnCounter util.Counter) (*BackupTargetController, error) {
+	proxyConnCounter util.Counter,
+	targetHealth *targetHealthGate) (*BackupTargetController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -100,6 +106,8 @@ func NewBackupTargetController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-backup-target-controller"}),
 
 		proxyConnCounter: proxyConnCounter,
+
+		targetHealth: targetHealth,
 	}
 
 	var err error
@@ -384,6 +392,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		defer btc.bsTimerMapLock.Unlock()
 
 		stopTimer(backupTarget.Name)
+		btc.targetHealth.Forget(name)
 
 		if err := btc.cleanUpAllBackupRelatedResources(backupTarget.Name); err != nil {
 			return err
@@ -473,8 +482,19 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	// Initialize a backup target client
 	// The request can be executed by any instance manager since it is to get info from backupstore regardless of data engine.
+	// A target that keeps failing is only retried once its backoff window has
+	// passed, instead of on every reconcile.
+	// https://github.com/longhorn/longhorn/issues/13831, https://github.com/longhorn/longhorn/issues/14121
+	if wait, ok := btc.targetHealth.WaitTime(name, time.Now()); ok {
+		log.Debugf("Backup target %v is in backoff for %v, skipping the backup store check", name, wait)
+		btc.queue.AddAfter(name, wait)
+		return nil
+	}
+
 	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter, longhorn.DataEngineTypeAll)
 	if err != nil {
+		window := btc.targetHealth.RecordFailure(name, time.Now())
+		btc.queue.AddAfter(name, window)
 		return errors.Wrap(err, "failed to init backup target clients")
 	}
 	defer engineClientProxy.Close()
@@ -490,8 +510,16 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 			longhorn.BackupTargetConditionReasonUnavailable,
 			util.SanitizeVolatileErrorContent(errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL).Error()))
 		log.WithError(err).Error("Failed to get info from backup store")
+
+		// Bound the retry rate for this target rather than relying on the poll
+		// timer alone: with "Backupstore Poll Interval" set to 0 no timer runs,
+		// and this is the only thing that would ever retry the target.
+		window := btc.targetHealth.RecordFailure(name, time.Now())
+		btc.queue.AddAfter(name, window)
+
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
+	btc.targetHealth.RecordSuccess(name)
 
 	if !backupTarget.Status.Available {
 		backupTarget.Status.Available = true

@@ -49,6 +49,11 @@ type BackupVolumeController struct {
 	cacheSyncs []cache.InformerSynced
 
 	proxyConnCounter util.Counter
+
+	// Bounds the retry rate against a backup target that is failing, so an
+	// unreachable target is not hit by every BackupVolume reconcile.
+	// https://github.com/longhorn/longhorn/issues/14121
+	targetHealth *targetHealthGate
 }
 
 func NewBackupVolumeController(
@@ -59,6 +64,7 @@ func NewBackupVolumeController(
 	controllerID string,
 	namespace string,
 	proxyConnCounter util.Counter,
+	targetHealth *targetHealthGate,
 ) (*BackupVolumeController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -79,6 +85,8 @@ func NewBackupVolumeController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-backup-volume-controller"}),
 
 		proxyConnCounter: proxyConnCounter,
+
+		targetHealth: targetHealth,
 	}
 
 	var err error
@@ -271,9 +279,17 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	// The request can be executed by any instance manager regardless of data engine.
+	if wait, ok := bvc.targetHealth.WaitTime(backupTarget.Name, time.Now()); ok {
+		log.Debugf("Backup target %v is in backoff for %v, skipping the backup store check", backupTarget.Name, wait)
+		bvc.queue.AddAfter(backupVolumeName, wait)
+		return nil
+	}
+
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter, longhorn.DataEngineTypeAll)
 	if err != nil {
 		log.WithError(err).Error("Failed to init backup target clients")
+		window := bvc.targetHealth.RecordFailure(backupTarget.Name, time.Now())
+		bvc.queue.AddAfter(backupVolumeName, window)
 		return nil // Ignore error to prevent enqueue
 	}
 	defer engineClientProxy.Close()
@@ -282,8 +298,11 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, canonicalBVName, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Failed to list backups from backup target")
+		window := bvc.targetHealth.RecordFailure(backupTarget.Name, time.Now())
+		bvc.queue.AddAfter(backupVolumeName, window)
 		return nil // Ignore error to prevent enqueue
 	}
+	bvc.targetHealth.RecordSuccess(backupTarget.Name)
 	backupStoreBackups := sets.NewString(res...)
 
 	// Get a list of all the backups that exist as custom resources in the cluster
