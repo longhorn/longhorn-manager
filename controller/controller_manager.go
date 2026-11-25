@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -27,6 +29,12 @@ var (
 	Workers              = 5
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
+
+// Kubernetes 1.35 is the first release where in-place pod resize is GA and its feature gate is
+// locked on, so it cannot be disabled on either the kubelet or the API server. The version skew
+// policy does not allow a kubelet newer than any kube-apiserver, so the kubelet version alone is
+// checked. If that policy is violated, the resize request is rejected and the pod is recreated.
+var minimumKubernetesVersionForInPlacePodResize = utilversion.MajorMinor(1, 35)
 
 // StartNodeLocalControllers runs the DaemonSet's node-local controllers. The
 // cluster-wide-Pod-informer controllers (KubernetesPV/Pod) run only in the
@@ -373,4 +381,38 @@ func IsSameGuaranteedCPURequirement(a, b *corev1.ResourceRequirements) bool {
 		bQ = b.Requests[corev1.ResourceCPU]
 	}
 	return (&aQ).Cmp(bQ) == 0
+}
+
+// isInPlacePodResizeSupportedForNode returns true if the kubelet on the node supports in-place
+// pod resize. An unknown or unparsable kubelet version is treated as unsupported so that
+// callers fall back to recreating the pod.
+func isInPlacePodResizeSupportedForNode(ds *datastore.DataStore, nodeName string) (bool, error) {
+	kubeNode, err := ds.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to get Kubernetes node %v for in-place pod resize support check", nodeName)
+	}
+	kubeletVersion, err := utilversion.ParseGeneric(kubeNode.Status.NodeInfo.KubeletVersion)
+	if err != nil {
+		return false, nil
+	}
+
+	return kubeletVersion.AtLeast(minimumKubernetesVersionForInPlacePodResize), nil
+}
+
+func hasCPURequest(resourceReq *corev1.ResourceRequirements) bool {
+	if resourceReq == nil || resourceReq.Requests == nil {
+		return false
+	}
+	cpuRequest, exists := resourceReq.Requests[corev1.ResourceCPU]
+	return exists && !cpuRequest.IsZero()
+}
+
+// canResizeInstanceManagerCPUInPlace returns true if the CPU request can be changed through the
+// pod resize subresource. Adding or removing the only resource request of an instance manager
+// pod changes its QoS class between BestEffort and Burstable, which Kubernetes rejects.
+func canResizeInstanceManagerCPUInPlace(current, desired *corev1.ResourceRequirements) bool {
+	return hasCPURequest(current) && hasCPURequest(desired)
 }

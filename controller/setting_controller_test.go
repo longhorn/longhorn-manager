@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/fake"
@@ -518,5 +519,169 @@ func createLonghornNode(t *testing.T, lhClient *lhfake.Clientset, name string) {
 	}
 	if err := lhClient.Tracker().Add(node); err != nil {
 		t.Fatalf("failed to add node %s: %v", name, err)
+	}
+}
+
+func TestCheckInstanceManagerCPURequest(t *testing.T) {
+	const (
+		v1IMName = "instance-manager-v1"
+		v2IMName = "instance-manager-v2"
+	)
+
+	// The guaranteed instance manager CPU setting of 12% on a 4-CPU node results in a 480m request.
+	testCases := map[string]struct {
+		nodeNotReady          bool
+		v1PodCPU              string
+		v1PodResizeDeferred   bool
+		v2PodCPU              string
+		v2PodWithoutContainer bool
+
+		expectedInvalidState bool
+		expectedErr          bool
+		expectedErrContains  []string
+	}{
+		"pod specs with the configured CPU request are applied": {
+			v1PodCPU: "480m",
+			v2PodCPU: "480m",
+		},
+		"pod spec with the resized request is applied while the kubelet defers the resize": {
+			v1PodCPU:            "480m",
+			v1PodResizeDeferred: true,
+		},
+		"outdated pod specs are reported without deleting the pods": {
+			v1PodCPU:             "200m",
+			v2PodCPU:             "100m",
+			expectedInvalidState: true,
+			expectedErrContains:  []string{v1IMName, v2IMName},
+		},
+		"pod without CPU request is reported": {
+			expectedInvalidState: true,
+			expectedErrContains:  []string{v1IMName},
+		},
+		"pods on a not ready node are skipped": {
+			nodeNotReady: true,
+			v1PodCPU:     "200m",
+		},
+		"real errors take precedence over outdated pod specs": {
+			v1PodCPU:              "200m",
+			v2PodWithoutContainer: true,
+			expectedErr:           true,
+			expectedErrContains:   []string{v2IMName, "has no containers"},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+			extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+			podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+			kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+			settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+			lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+			imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+
+			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories)
+			sc := &SettingController{
+				baseController: newBaseController("longhorn-setting", logrus.StandardLogger()),
+				ds:             ds,
+			}
+
+			mustAdd := func(indexer cache.Indexer, obj any) {
+				t.Helper()
+				if err := indexer.Add(obj); err != nil {
+					t.Fatalf("failed to index object: %v", err)
+				}
+			}
+			mustAdd(settingIndexer, newSetting(string(types.SettingNameGuaranteedInstanceManagerCPU), `{"v1":"12","v2":"12"}`))
+			mustAdd(kubeNodeIndexer, newKubernetesNodeWithKubeletVersion(TestNode1, "v1.35.0"))
+			nodeReady := longhorn.ConditionStatusTrue
+			if tc.nodeNotReady {
+				nodeReady = longhorn.ConditionStatusFalse
+			}
+			mustAdd(lhNodeIndexer, newNode(TestNode1, TestNamespace, true, nodeReady, ""))
+
+			addInstanceManager := func(imName string, dataEngine longhorn.DataEngineType, cpu string, resizeDeferred, withoutContainer bool) {
+				t.Helper()
+				mustAdd(imIndexer, newInstanceManager(imName, longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1,
+					nil, nil, nil, dataEngine, TestInstanceManagerImage, false))
+
+				pod := newInstanceManagerPodWithCPURequest(imName, TestNode1, cpu, corev1.PodRunning, dataEngine)
+				if resizeDeferred {
+					pod.Status.Conditions = []corev1.PodCondition{{
+						Type: corev1.PodResizePending, Status: corev1.ConditionTrue,
+						Reason: corev1.PodReasonDeferred, Message: "Node didn't have enough resource: cpu",
+					}}
+					pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+						Name: pod.Spec.Containers[0].Name,
+						Resources: &corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m")},
+						},
+					}}
+				}
+				if withoutContainer {
+					pod.Spec.Containers = nil
+				}
+				pod, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("failed to create pod %v: %v", imName, err)
+				}
+				mustAdd(podIndexer, pod)
+			}
+			addInstanceManager(v1IMName, longhorn.DataEngineTypeV1, tc.v1PodCPU, tc.v1PodResizeDeferred, false)
+			hasV2 := tc.v2PodCPU != "" || tc.v2PodWithoutContainer
+			if hasV2 {
+				addInstanceManager(v2IMName, longhorn.DataEngineTypeV2, tc.v2PodCPU, false, tc.v2PodWithoutContainer)
+			}
+
+			err := sc.checkInstanceManagerCPURequest()
+			switch {
+			case tc.expectedInvalidState:
+				if !types.ErrorIsInvalidState(err) {
+					t.Fatalf("expected an invalid state error, got %v", err)
+				}
+			case tc.expectedErr:
+				if err == nil || types.ErrorIsInvalidState(err) {
+					t.Fatalf("expected a non invalid state error, got %v", err)
+				}
+			default:
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			}
+			for _, substr := range tc.expectedErrContains {
+				if !strings.Contains(err.Error(), substr) {
+					t.Errorf("expected error %q to contain %q", err.Error(), substr)
+				}
+			}
+
+			for _, action := range kubeClient.Actions() {
+				if action.GetVerb() == "delete" {
+					t.Errorf("unexpected pod deletion: %v", action)
+				}
+			}
+		})
+	}
+}
+
+func TestHasInstanceManagerCPURequestChanged(t *testing.T) {
+	oldPod := newInstanceManagerPodWithCPURequest(TestInstanceManagerName, TestNode1, "200m", corev1.PodRunning, longhorn.DataEngineTypeV1)
+
+	specChanged := oldPod.DeepCopy()
+	specChanged.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = resource.MustParse("480m")
+	if !hasInstanceManagerCPURequestChanged(oldPod, specChanged) {
+		t.Errorf("expected a CPU request change in the pod spec to be detected")
+	}
+
+	statusChanged := oldPod.DeepCopy()
+	statusChanged.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodResizePending, Status: corev1.ConditionTrue, Reason: corev1.PodReasonDeferred}}
+	statusChanged.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name:      statusChanged.Spec.Containers[0].Name,
+		Resources: &corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("480m")}},
+	}}
+	if hasInstanceManagerCPURequestChanged(oldPod, statusChanged) {
+		t.Errorf("expected pod status changes to be ignored")
 	}
 }
