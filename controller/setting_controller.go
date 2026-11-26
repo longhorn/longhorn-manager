@@ -144,6 +144,18 @@ func NewSettingController(
 	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.NodeInformer.HasSynced)
 
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isInstanceManagerPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.enqueueGuaranteedInstanceManagerCPUForPod,
+			UpdateFunc: sc.enqueueGuaranteedInstanceManagerCPUForPodUpdate,
+			DeleteFunc: sc.enqueueGuaranteedInstanceManagerCPUForPod,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.PodInformer.HasSynced)
+
 	return sc, nil
 }
 
@@ -378,10 +390,8 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 					"It will be eventually applied", settingName)
 			}
 		case types.SettingNameGuaranteedInstanceManagerCPU:
-			for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
-				if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
-					return err
-				}
+			if err := sc.checkInstanceManagerCPURequest(); err != nil {
+				return err
 			}
 		}
 	}
@@ -1404,61 +1414,81 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
 }
 
-// updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
-func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
-	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	if err != nil {
-		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
+func (sc *SettingController) enqueueGuaranteedInstanceManagerCPUForPod(obj any) {
+	if !isInstanceManagerPod(obj) {
+		return
 	}
-	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	if err != nil {
-		return err
-	}
-	notUpdatedPods := []*corev1.Pod{}
+	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
+}
 
-	for _, imPod := range imPodList {
-		if _, exists := imMap[imPod.Name]; !exists {
-			continue
-		}
-		lhNode, err := sc.ds.GetNode(imPod.Spec.NodeName)
+func (sc *SettingController) enqueueGuaranteedInstanceManagerCPUForPodUpdate(oldObj, curObj any) {
+	oldPod, oldOK := oldObj.(*corev1.Pod)
+	curPod, curOK := curObj.(*corev1.Pod)
+	if !curOK || !isInstanceManagerPod(curPod) {
+		return
+	}
+	if oldOK && !hasInstanceManagerCPURequestChanged(oldPod, curPod) {
+		return
+	}
+	sc.enqueueGuaranteedInstanceManagerCPUForPod(curPod)
+}
+
+func hasInstanceManagerCPURequestChanged(oldPod, curPod *corev1.Pod) bool {
+	var oldResources, curResources *corev1.ResourceRequirements
+	if len(oldPod.Spec.Containers) > 0 {
+		oldResources = &oldPod.Spec.Containers[0].Resources
+	}
+	if len(curPod.Spec.Containers) > 0 {
+		curResources = &curPod.Spec.Containers[0].Resources
+	}
+	return !IsSameGuaranteedCPURequirement(oldResources, curResources)
+}
+
+// checkInstanceManagerCPURequest returns ErrorInvalidState until the pod spec of every instance
+// manager has the configured CPU request. The instance manager controller applies the request: it
+// resizes v1 instance manager pods in place on nodes supporting in-place pod resize, and otherwise
+// recreates the pod once no instances are running on it.
+func (sc *SettingController) checkInstanceManagerCPURequest() error {
+	pendingInstanceManagers := []string{}
+	for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+		imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to list instance manager pods of data engine %v for CPU request check", dataEngine)
 		}
-		if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
-			continue
-		}
-
-		resourceReq, err := GetInstanceManagerCPURequirement(sc.ds, imPod.Name)
+		imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 		if err != nil {
-			return err
-		}
-		podResourceReq := imPod.Spec.Containers[0].Resources
-		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
-			continue
+			return errors.Wrapf(err, "failed to list instance managers of data engine %v for CPU request check", dataEngine)
 		}
 
-		notUpdatedPods = append(notUpdatedPods, imPod)
-	}
+		for _, imPod := range imPodList {
+			if _, exists := imMap[imPod.Name]; !exists {
+				continue
+			}
+			lhNode, err := sc.ds.GetNode(imPod.Spec.NodeName)
+			if err != nil {
+				return err
+			}
+			if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+				continue
+			}
 
-	if len(notUpdatedPods) == 0 {
-		return nil
-	}
-
-	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
-	if err != nil {
-		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
-	}
-	if !stopped {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
-	}
-
-	for _, pod := range notUpdatedPods {
-		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
-		if err := sc.ds.DeletePod(pod.Name); err != nil {
-			return err
+			resourceReq, err := GetInstanceManagerCPURequirement(sc.ds, imPod.Name)
+			if err != nil {
+				return err
+			}
+			if len(imPod.Spec.Containers) == 0 {
+				return fmt.Errorf("instance manager pod %v has no containers", imPod.Name)
+			}
+			if !IsSameGuaranteedCPURequirement(resourceReq, &imPod.Spec.Containers[0].Resources) {
+				pendingInstanceManagers = append(pendingInstanceManagers, imPod.Name)
+			}
 		}
 	}
 
+	if len(pendingInstanceManagers) > 0 {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("waiting for the instance manager controller to update the CPU request of instance manager pods %v for %v setting. "+
+			"Pods that cannot be resized in place are recreated once no instances are running on them", strings.Join(pendingInstanceManagers, ", "), types.SettingNameGuaranteedInstanceManagerCPU)}
+	}
 	return nil
 }
 

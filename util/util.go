@@ -1028,8 +1028,56 @@ func isIgnorableDMRemoveError(err error) bool {
 
 	errMsg := strings.ToLower(err.Error())
 	return strings.Contains(errMsg, "no such device or address") ||
+		strings.Contains(errMsg, "no such device") ||
+		strings.Contains(errMsg, "does not exist") ||
 		strings.Contains(errMsg, "not found") ||
 		strings.Contains(errMsg, "no such file or directory")
+}
+
+func newDMSetupExecutor() (*lhns.Executor, error) {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	return lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+}
+
+// DMDeviceMapped reports whether device-mapper still has a kernel mapping for devicePath.
+// A leftover /dev/mapper node after dmsetup remove --noudevsync is not a live mapping.
+func DMDeviceMapped(devicePath string) (bool, error) {
+	nsexec, err := newDMSetupExecutor()
+	if err != nil {
+		return false, err
+	}
+
+	name := filepath.Base(devicePath)
+	infos, err := lhspdkutil.DmsetupInfo(name, nsexec)
+	if err != nil {
+		if isIgnorableDMRemoveError(err) {
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to query device-mapper info for %v", name)
+	}
+	for _, info := range infos {
+		if info != nil && info.Name == name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ReconcileDMDeviceNode drops a /dev/mapper node left behind after the kernel mapping is gone.
+func ReconcileDMDeviceNode(devicePath string) error {
+	nsexec, err := newDMSetupExecutor()
+	if err != nil {
+		return err
+	}
+
+	name := filepath.Base(devicePath)
+	if err := lhspdkutil.DmsetupMknodes(name, nsexec); err != nil {
+		if isIgnorableDMRemoveError(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to reconcile device-mapper node %v", devicePath)
+	}
+	return nil
 }
 
 func GetDMCryptBackingDevice(dmDeviceName string) (backingDevice string, isCrypt bool, err error) {

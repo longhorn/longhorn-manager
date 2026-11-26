@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -45,6 +46,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -92,6 +94,10 @@ type InstanceManagerController struct {
 	// all instance managers on the same node so one worker cannot remove a crypto
 	// mapping that another worker just allowed a replacement pod to open.
 	nodeCleanupMutexes sync.Map // map[string]*sync.Mutex
+
+	// v2CleanupIdentities remembers the node of a v2 instance manager so stale
+	// crypto cleanup still runs after the InstanceManager CR itself is gone.
+	v2CleanupIdentities sync.Map // map[string]v2CleanupIdentity
 
 	// for unit test
 	versionUpdater func(*longhorn.InstanceManager) error
@@ -219,6 +225,21 @@ func NewInstanceManagerController(
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc: imc.enqueueLonghornNode,
+		UpdateFunc: func(oldObj, cur any) {
+			oldNode, oldOK := oldObj.(*longhorn.Node)
+			curNode, curOK := cur.(*longhorn.Node)
+			if oldOK && curOK && oldNode.Spec.InstanceManagerCPURequest == curNode.Spec.InstanceManagerCPURequest {
+				return
+			}
+			imc.enqueueLonghornNode(cur)
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.NodeInformer.HasSynced)
+
 	if _, err = ds.OrphanInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc: imc.enqueueInstanceManagerOrphan,
 	}, 0); err != nil {
@@ -263,6 +284,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
 		types.SettingName(setting.Name) == types.SettingNameAllowInstanceManagerAutomaticUpgrade ||
 		types.SettingName(setting.Name) == types.SettingNameInstanceManagerUpgradeStartTime ||
+		types.SettingName(setting.Name) == types.SettingNameGuaranteedInstanceManagerCPU ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufLargePoolSize ||
 		types.SettingName(setting.Name) == types.SettingNameDataEngineIobufSmallPoolSize ||
@@ -382,12 +404,13 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			imc.logger.Warnf("Deleting instance manager pod %v since the instance manager is not found", name)
-			return imc.cleanupInstanceManagerPod(name)
+			return imc.cleanupDeletedInstanceManagerByName(key, name)
 		}
 		return errors.Wrap(err, "failed to get instance manager")
 	}
 
 	log := getLoggerForInstanceManager(imc.logger, im)
+	imc.rememberV2CleanupIdentity(im)
 
 	if !imc.isResponsibleFor(im) {
 		return nil
@@ -409,7 +432,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	if im.DeletionTimestamp != nil {
 		log.Warnf("Deleting instance manager pod %v since the instance manager is being deleted", name)
 		// the orphan instance CRs will be also deleted because of owner reference
-		return imc.cleanupInstanceManagerPod(im.Name)
+		return imc.cleanupDeletedInstanceManager(key, im)
 	}
 
 	existingIM := im.DeepCopy()
@@ -851,6 +874,14 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return nil
 	}
 
+	cpuResizeRequested, err := imc.syncGuaranteedInstanceManagerCPU(im, pod)
+	if err != nil {
+		return err
+	}
+	if cpuResizeRequested {
+		return nil
+	}
+
 	err = imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
@@ -1105,6 +1136,88 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 	}
 	podResourceReq := pod.Spec.Containers[0].Resources
 	return IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq), nil
+}
+
+// syncGuaranteedInstanceManagerCPU resizes the CPU request of a running v1 instance manager pod in
+// place. It returns true after requesting a resize, because the cached pod still has the previous
+// request and the rest of the pod handling would treat it as unsynced in this sync. The kubelet
+// applies the resize asynchronously and reports failures through pod events. It returns false
+// otherwise; if the pod cannot be resized in place, the regular danger zone setting handling recreates
+// it once no instances are running on it.
+func (imc *InstanceManagerController) syncGuaranteedInstanceManagerCPU(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
+	if im.Spec.DataEngine != longhorn.DataEngineTypeV1 || pod == nil || len(pod.Spec.Containers) == 0 {
+		return false, nil
+	}
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || pod.Status.Phase != corev1.PodRunning {
+		return false, nil
+	}
+
+	lhNode, err := imc.ds.GetNodeRO(im.Spec.NodeID)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to get node %v for instance manager %v", im.Spec.NodeID, im.Name)
+	}
+	if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+		return false, nil
+	}
+
+	resourceReq, err := GetInstanceManagerCPURequirement(imc.ds, im.Name)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get CPU request for instance manager %v", im.Name)
+	}
+	currentResourceReq := &pod.Spec.Containers[0].Resources
+	if IsSameGuaranteedCPURequirement(resourceReq, currentResourceReq) {
+		return false, nil
+	}
+
+	if !canResizeInstanceManagerCPUInPlace(currentResourceReq, resourceReq) {
+		return false, nil
+	}
+	resizeSupported, err := isInPlacePodResizeSupportedForNode(imc.ds, pod.Spec.NodeName)
+	if err != nil {
+		return false, err
+	}
+	if !resizeSupported {
+		return false, nil
+	}
+
+	currentCPU := currentResourceReq.Requests[corev1.ResourceCPU]
+	desiredCPU := resourceReq.Requests[corev1.ResourceCPU]
+	resizedPod := pod.DeepCopy()
+	resizedPod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = desiredCPU
+
+	if _, err := imc.ds.UpdatePodResize(resizedPod); err != nil {
+		if isPodResizeRejectedError(err) {
+			imc.eventRecorder.Eventf(im, corev1.EventTypeWarning, constant.EventReasonFailedResizing,
+				"Failed to resize CPU request of instance manager pod %v in place, the pod will be recreated once no instances are running on it: %v", pod.Name, err)
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to resize CPU request for instance manager pod %v", pod.Name)
+	}
+
+	getLoggerForInstanceManager(imc.logger, im).Infof("Requested in-place CPU request resize of instance manager pod %v from %v to %v", pod.Name, currentCPU.String(), desiredCPU.String())
+	imc.eventRecorder.Eventf(im, corev1.EventTypeNormal, constant.EventReasonResizing,
+		"Requested in-place CPU request resize of instance manager pod %v from %v to %v", pod.Name, currentCPU.String(), desiredCPU.String())
+	return true, nil
+}
+
+// isPodResizeRejectedError returns true if the API server rejected the resize request, e.g. because of
+// missing RBAC permission for the pods/resize subresource, an admission webhook or policy denial, a
+// resource quota or validation. Conflicts, throttling, timeouts, server and connection errors are
+// transient and return false, so the resize is retried.
+func isPodResizeRejectedError(err error) bool {
+	var statusErr *apierrors.StatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	switch code := statusErr.Status().Code; code {
+	case http.StatusConflict, http.StatusTooManyRequests, http.StatusRequestTimeout:
+		return false
+	default:
+		return code >= http.StatusBadRequest && code < http.StatusInternalServerError
+	}
 }
 
 func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -1754,9 +1867,9 @@ func (imc *InstanceManagerController) cleanupStaleEngineFrontendCryptoDevices(im
 		return false, nil
 	}
 
-	// Revalidate under the node cleanup lock: another worker may have already
-	// cleaned up and recreated a replacement IM pod on this node.
-	pod, err := imc.ds.GetPodRO(imc.namespace, im.Name)
+	// Revalidate under the node cleanup lock. Read the pod from the API server:
+	// the informer cache can still miss a replacement pod another worker just created.
+	pod, err := imc.getInstanceManagerPodLive(im.Name)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to revalidate the instance manager pod before crypto cleanup")
 	}
@@ -1856,7 +1969,7 @@ func (imc *InstanceManagerController) isNodeV2DataPlaneStopped(im *longhorn.Inst
 		if other.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
 			return false, nil
 		}
-		pod, err := imc.ds.GetPodRO(imc.namespace, other.Name)
+		pod, err := imc.getInstanceManagerPodLive(other.Name)
 		if err != nil {
 			return false, err
 		}
@@ -1874,6 +1987,18 @@ func (imc *InstanceManagerController) removeStaleCryptoDevice(log logrus.FieldLo
 			return false, nil
 		}
 		return false, errors.Wrapf(err, "failed to check crypto device %v of volume %v", cryptoDevice, volumeName)
+	}
+
+	mapped, err := util.DMDeviceMapped(cryptoDevice)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to query crypto device %v of volume %v", cryptoDevice, volumeName)
+	}
+	if !mapped {
+		log.Infof("Kernel mapping for %v of volume %v is already gone; reconciling the stale mapper node", cryptoDevice, volumeName)
+		if err := util.ReconcileDMDeviceNode(cryptoDevice); err != nil {
+			return false, err
+		}
+		return false, nil
 	}
 
 	linearDevice := filepath.Join(crypto.MapperFilePathPrefix, volumeName)
@@ -1909,14 +2034,123 @@ func (imc *InstanceManagerController) removeStaleCryptoDevice(log logrus.FieldLo
 	}
 
 	// dmsetup remove --deferred can return success while open references keep the
-	// mapping alive. Stay pending so reconciliation retries before recreating the IM pod.
-	if _, err := lhns.Stat(cryptoDevice); err == nil {
-		log.Infof("Crypto device %v of volume %v is still present after deferred removal; cleanup remains pending", cryptoDevice, volumeName)
-		return true, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+	// kernel mapping alive. A leftover /dev/mapper node (--noudevsync) is not that
+	// mapping: reconcile the node once device-mapper reports the device is gone.
+	mapped, err = util.DMDeviceMapped(cryptoDevice)
+	if err != nil {
 		return false, errors.Wrapf(err, "failed to confirm removal of crypto device %v of volume %v", cryptoDevice, volumeName)
 	}
+	if mapped {
+		log.Infof("Crypto device %v of volume %v is still mapped after deferred removal; cleanup remains pending", cryptoDevice, volumeName)
+		return true, nil
+	}
+	if err := util.ReconcileDMDeviceNode(cryptoDevice); err != nil {
+		return false, err
+	}
 	return false, nil
+}
+
+// v2CleanupIdentity is the node-local information required to remove stale crypto
+// devices after the InstanceManager object has already been deleted.
+type v2CleanupIdentity struct {
+	nodeID string
+	imType longhorn.InstanceManagerType
+}
+
+func (imc *InstanceManagerController) rememberV2CleanupIdentity(im *longhorn.InstanceManager) {
+	if im == nil || !types.IsDataEngineV2(im.Spec.DataEngine) || im.Spec.NodeID != imc.controllerID ||
+		im.Status.CurrentState == longhorn.InstanceManagerStateUpgrading {
+		if im != nil {
+			imc.v2CleanupIdentities.Delete(im.Name)
+		}
+		return
+	}
+	imc.v2CleanupIdentities.Store(im.Name, v2CleanupIdentity{
+		nodeID: im.Spec.NodeID,
+		imType: im.Spec.Type,
+	})
+}
+
+func (imc *InstanceManagerController) cleanupDeletedInstanceManagerByName(key, name string) error {
+	val, ok := imc.v2CleanupIdentities.Load(name)
+	if !ok {
+		return imc.cleanupInstanceManagerPod(name)
+	}
+	id := val.(v2CleanupIdentity)
+	im := &longhorn.InstanceManager{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: imc.namespace,
+		},
+		Spec: longhorn.InstanceManagerSpec{
+			NodeID:     id.nodeID,
+			Type:       id.imType,
+			DataEngine: longhorn.DataEngineTypeV2,
+		},
+	}
+	return imc.cleanupDeletedInstanceManager(key, im)
+}
+
+// cleanupDeletedInstanceManager removes the instance-manager pod and, for a v2
+// manager on this node, the stale crypto devices it left behind. Cleanup stays
+// pending until the data plane has stopped and deferred device-mapper removal finishes.
+func (imc *InstanceManagerController) cleanupDeletedInstanceManager(key string, im *longhorn.InstanceManager) error {
+	pending, err := imc.cleanupStaleCryptoDevicesForDeletedIM(im)
+	if err != nil {
+		return err
+	}
+	if pending {
+		imc.queue.AddAfter(key, staleCryptoCleanupRecheckInterval)
+		return nil
+	}
+	imc.v2CleanupIdentities.Delete(im.Name)
+	return nil
+}
+
+func (imc *InstanceManagerController) cleanupStaleCryptoDevicesForDeletedIM(im *longhorn.InstanceManager) (pending bool, err error) {
+	cleanupDevices := types.IsDataEngineV2(im.Spec.DataEngine) &&
+		im.Spec.NodeID == imc.controllerID &&
+		im.Status.CurrentState != longhorn.InstanceManagerStateUpgrading
+
+	if cleanupDevices {
+		unlock := imc.lockNodeDeviceCleanup(im.Spec.NodeID)
+		defer unlock()
+	}
+	if err := imc.cleanupInstanceManagerPod(im.Name); err != nil {
+		return false, err
+	}
+	if !cleanupDevices {
+		return false, nil
+	}
+
+	pending, err = imc.cleanupStaleEngineFrontendCryptoDevices(im)
+	if err != nil || pending {
+		return pending, err
+	}
+
+	// The cleanup predicate returns success without removing anything while the pod is
+	// still running. Keep the deletion reconcile pending until that pod is actually gone.
+	pod, err := imc.getInstanceManagerPodLive(im.Name)
+	if err != nil {
+		return false, err
+	}
+	if !isInstanceManagerDataPlaneStopped(pod) {
+		return true, nil
+	}
+	return false, nil
+}
+
+// getInstanceManagerPodLive reads the pod from the API server. The informer cache can
+// still report a just-created replacement pod as absent after the node cleanup lock is released.
+func (imc *InstanceManagerController) getInstanceManagerPodLive(name string) (*corev1.Pod, error) {
+	pod, err := imc.kubeClient.CoreV1().Pods(imc.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get instance manager pod %v from the API server", name)
+	}
+	return pod, nil
 }
 
 func (imc *InstanceManagerController) lockNodeDeviceCleanup(nodeID string) func() {
@@ -2192,6 +2426,14 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 	}
 
 	imc.enqueueInstanceManagersForNode(kubernetesNode.Name)
+}
+
+func (imc *InstanceManagerController) enqueueLonghornNode(obj any) {
+	node, ok := obj.(*longhorn.Node)
+	if !ok {
+		return
+	}
+	imc.enqueueInstanceManagersForNode(node.Name)
 }
 
 func (imc *InstanceManagerController) enqueueInstanceManagerOrphan(obj interface{}) {

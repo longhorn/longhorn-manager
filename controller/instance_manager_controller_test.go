@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -14,6 +15,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
@@ -22,8 +24,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -1265,6 +1270,106 @@ func (s *TestSuite) TestDedicatedMainCoreSettingRecreatesPod(c *C) {
 	}
 }
 
+// TestHandlePodRecreatesPodWithOutdatedCPURequest verifies that the instance manager controller,
+// not the setting controller, recreates a pod that cannot be resized in place once no instances
+// are running on it.
+func (s *TestSuite) TestHandlePodRecreatesPodWithOutdatedCPURequest(c *C) {
+	testCases := map[string]struct {
+		instanceRunning bool
+		expectedCPU     string
+	}{
+		"idle pod is recreated with the configured CPU request": {
+			expectedCPU: "480m",
+		},
+		"pod with running instances is kept": {
+			instanceRunning: true,
+			expectedCPU:     "200m",
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil)
+
+		createDangerZoneSettingsForV2(c, lhClient, sIndexer)
+
+		kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode.Status.NodeInfo.KubeletVersion = "v1.35.0"
+		kubeNode.Status.Allocatable = corev1.ResourceList{
+			"cpu":                                resource.MustParse("4"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		}
+		kubeNode.Status.Capacity = corev1.ResourceList{
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		}
+		c.Assert(kubeNodeIndexer.Add(kubeNode), IsNil)
+		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		c.Assert(lhNodeIndexer.Add(lhNode), IsNil)
+		_, err = lhClient.LonghornV1beta2().Nodes(lhNode.Namespace).Create(context.TODO(), lhNode, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		// V2 instance manager pods cannot be resized in place, so an outdated CPU request needs a new pod.
+		var replicas map[string]longhorn.InstanceProcess
+		if tc.instanceRunning {
+			replicas = map[string]longhorn.InstanceProcess{
+				TestReplicaName: {Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateRunning}},
+			}
+		}
+		im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1,
+			nil, nil, replicas, longhorn.DataEngineTypeV2, TestInstanceManagerImage, false)
+		im.Status.DataEngineStatus.V2.CPUMask = "0x1"
+		im.Status.DataEngineStatus.V2.InterruptModeEnabled = longhorn.FalseValue
+		c.Assert(imIndexer.Add(im), IsNil)
+		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
+		pod.Spec.Containers = []corev1.Container{{
+			Name:    "instance-manager",
+			Command: []string{"instance-manager"},
+			Args: []string{
+				"--spdk-memory-size", "1024",
+				"--spdk-iobuf-large-pool-size", fmt.Sprintf("%d", types.DefaultIobufLargePoolSize),
+				"--enable-irq-affinity", "--enable-workqueue-affinity", "--enable-rps",
+			},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{"cpu": resource.MustParse("200m")},
+				Limits: corev1.ResourceList{
+					corev1.ResourceName("hugepages-2Mi"): resource.MustParse("1024Mi"),
+				},
+			},
+		}}
+		c.Assert(pIndexer.Add(pod), IsNil)
+		_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		err = imc.handlePod(im)
+		c.Assert(err, IsNil, Commentf("test case: %v", name))
+
+		podList, err := kubeClient.CoreV1().Pods(im.Namespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(podList.Items, HasLen, 1, Commentf("test case: %v", name))
+		cpu := podList.Items[0].Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+		c.Assert(cpu.Cmp(resource.MustParse(tc.expectedCPU)), Equals, 0, Commentf("test case: %v, CPU request: %v", name, cpu.String()))
+	}
+}
+
 func (s *TestSuite) TestHandleErrRetriesNotServingInstanceManager(c *C) {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
@@ -1356,4 +1461,239 @@ func (s *TestSuite) TestShouldDeferPodRecreationForStaleCryptoCleanup(c *C) {
 	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, false), Equals, false)
 	c.Assert(imc.staleCryptoCleanupPendingSince, HasLen, 0)
 	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
+}
+
+func newInstanceManagerPodWithCPURequest(name, nodeID, cpuRequest string, phase corev1.PodPhase, dataEngine longhorn.DataEngineType) *corev1.Pod {
+	pod := newPod(&corev1.PodStatus{Phase: phase}, name, TestNamespace, nodeID)
+	pod.Labels = types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+	resources := corev1.ResourceRequirements{}
+	if cpuRequest != "" {
+		resources.Requests = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(cpuRequest)}
+	}
+	pod.Spec.Containers = []corev1.Container{{Name: "instance-manager", Resources: resources}}
+	return pod
+}
+
+func newKubernetesNodeWithKubeletVersion(name, kubeletVersion string) *corev1.Node {
+	node := newKubernetesNode(name, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	node.Status.NodeInfo.KubeletVersion = kubeletVersion
+	node.Status.Allocatable = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4")}
+	return node
+}
+
+func drainFakeRecorderEvents(recorder *record.FakeRecorder) []string {
+	events := []string{}
+	for {
+		select {
+		case event := <-recorder.Events:
+			events = append(events, event)
+		default:
+			return events
+		}
+	}
+}
+
+func (s *TestSuite) TestSyncGuaranteedInstanceManagerCPU(c *C) {
+	// The guaranteed instance manager CPU setting of 12% on a 4-CPU node results in a 480m request.
+	defaultSettingValue := `{"v1":"12","v2":"12"}`
+
+	testCases := map[string]struct {
+		kubeletVersion string
+		lhNodeMissing  bool
+		imState        longhorn.InstanceManagerState
+		settingValue   string
+		podCPU         string
+		podCondition   *corev1.PodCondition
+		resizeErr      error
+
+		expectedResult     bool
+		expectedErr        bool
+		expectedResizedCPU string
+		expectedEvent      string
+	}{
+		"resize the CPU request in place": {
+			kubeletVersion:     "v1.35.0",
+			podCPU:             "200m",
+			expectedResult:     true,
+			expectedResizedCPU: "480m",
+			expectedEvent:      "Normal " + constant.EventReasonResizing,
+		},
+		"kubelet version with distribution suffix supports resize": {
+			kubeletVersion:     "v1.35.2+k3s1",
+			podCPU:             "200m",
+			expectedResult:     true,
+			expectedResizedCPU: "480m",
+			expectedEvent:      "Normal " + constant.EventReasonResizing,
+		},
+		"kubelet version with pre-release suffix supports resize": {
+			kubeletVersion:     "v1.36.1-eks-1234567",
+			podCPU:             "200m",
+			expectedResult:     true,
+			expectedResizedCPU: "480m",
+			expectedEvent:      "Normal " + constant.EventReasonResizing,
+		},
+		"kubelet older than v1.35 does not support resize": {
+			kubeletVersion: "v1.34.3",
+			podCPU:         "200m",
+		},
+		"unknown kubelet version does not support resize": {
+			kubeletVersion: "",
+			podCPU:         "200m",
+		},
+		"pod without CPU request cannot change its QoS class in place": {
+			kubeletVersion: "v1.35.0",
+			podCPU:         "",
+		},
+		"removing the CPU request cannot change the QoS class in place": {
+			kubeletVersion: "v1.35.0",
+			settingValue:   `{"v1":"0","v2":"12"}`,
+			podCPU:         "200m",
+		},
+		"missing Longhorn node is skipped": {
+			kubeletVersion: "v1.35.0",
+			lhNodeMissing:  true,
+			podCPU:         "200m",
+		},
+		"instance manager not running is skipped": {
+			kubeletVersion: "v1.35.0",
+			imState:        longhorn.InstanceManagerStateStarting,
+			podCPU:         "200m",
+		},
+		"forbidden resize falls back to pod recreation": {
+			kubeletVersion:     "v1.35.0",
+			podCPU:             "200m",
+			resizeErr:          apierrors.NewForbidden(corev1.Resource("pods"), TestInstanceManagerName, fmt.Errorf("cannot update resource pods/resize")),
+			expectedResizedCPU: "480m",
+			expectedEvent:      "Warning " + constant.EventReasonFailedResizing,
+		},
+		"API server without the resize subresource falls back to pod recreation": {
+			kubeletVersion:     "v1.35.0",
+			podCPU:             "200m",
+			resizeErr:          apierrors.NewNotFound(corev1.Resource("pods/resize"), TestInstanceManagerName),
+			expectedResizedCPU: "480m",
+			expectedEvent:      "Warning " + constant.EventReasonFailedResizing,
+		},
+		"transient resize error is returned for retry": {
+			kubeletVersion:     "v1.35.0",
+			podCPU:             "200m",
+			resizeErr:          apierrors.NewConflict(corev1.Resource("pods"), TestInstanceManagerName, fmt.Errorf("conflict")),
+			expectedErr:        true,
+			expectedResizedCPU: "480m",
+		},
+		"admission webhook denial falls back to pod recreation": {
+			kubeletVersion:     "v1.35.0",
+			podCPU:             "200m",
+			resizeErr:          apierrors.NewBadRequest(`admission webhook "policy.example.com" denied the request`),
+			expectedResizedCPU: "480m",
+			expectedEvent:      "Warning " + constant.EventReasonFailedResizing,
+		},
+		"throttled resize is returned for retry": {
+			kubeletVersion:     "v1.35.0",
+			podCPU:             "200m",
+			resizeErr:          apierrors.NewTooManyRequests("too many requests", 1),
+			expectedErr:        true,
+			expectedResizedCPU: "480m",
+		},
+		"server error is returned for retry": {
+			kubeletVersion:     "v1.35.0",
+			podCPU:             "200m",
+			resizeErr:          apierrors.NewInternalError(fmt.Errorf("etcd unavailable")),
+			expectedErr:        true,
+			expectedResizedCPU: "480m",
+		},
+		"resize in progress does not block the pod handling": {
+			kubeletVersion: "v1.35.0",
+			podCPU:         "480m",
+			podCondition:   &corev1.PodCondition{Type: corev1.PodResizeInProgress, Status: corev1.ConditionTrue},
+		},
+		"deferred resize does not block the pod handling": {
+			kubeletVersion: "v1.35.0",
+			podCPU:         "480m",
+			podCondition: &corev1.PodCondition{Type: corev1.PodResizePending, Status: corev1.ConditionTrue,
+				Reason: corev1.PodReasonDeferred, Message: "Node didn't have enough capacity"},
+		},
+		"resized pod needs no action": {
+			kubeletVersion: "v1.35.0",
+			podCPU:         "480m",
+		},
+	}
+
+	for name, tc := range testCases {
+		comment := Commentf("test case: %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+
+		imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+		c.Assert(err, IsNil, comment)
+
+		settingValue := tc.settingValue
+		if settingValue == "" {
+			settingValue = defaultSettingValue
+		}
+		c.Assert(sIndexer.Add(newSetting(string(types.SettingNameGuaranteedInstanceManagerCPU), settingValue)), IsNil, comment)
+		c.Assert(kubeNodeIndexer.Add(newKubernetesNodeWithKubeletVersion(TestNode1, tc.kubeletVersion)), IsNil, comment)
+		if !tc.lhNodeMissing {
+			c.Assert(lhNodeIndexer.Add(newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")), IsNil, comment)
+		}
+
+		imState := tc.imState
+		if imState == "" {
+			imState = longhorn.InstanceManagerStateRunning
+		}
+		im := newInstanceManager(TestInstanceManagerName, imState, TestNode1, TestNode1, TestIP1, nil, nil, nil,
+			longhorn.DataEngineTypeV1, TestInstanceManagerImage, false)
+		c.Assert(imIndexer.Add(im), IsNil, comment)
+
+		pod := newInstanceManagerPodWithCPURequest(im.Name, TestNode1, tc.podCPU, corev1.PodRunning, longhorn.DataEngineTypeV1)
+		if tc.podCondition != nil {
+			pod.Status.Conditions = append(pod.Status.Conditions, *tc.podCondition)
+		}
+		pod, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		c.Assert(err, IsNil, comment)
+
+		resizedCPU := ""
+		kubeClient.PrependReactor("update", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			if action.GetSubresource() != "resize" {
+				return false, nil, nil
+			}
+			resizedPod := action.(k8stesting.UpdateAction).GetObject().(*corev1.Pod)
+			cpu := resizedPod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+			resizedCPU = cpu.String()
+			if tc.resizeErr != nil {
+				return true, nil, tc.resizeErr
+			}
+			return true, resizedPod, nil
+		})
+
+		result, err := imc.syncGuaranteedInstanceManagerCPU(im, pod)
+		if tc.expectedErr {
+			c.Assert(err, NotNil, comment)
+		} else {
+			c.Assert(err, IsNil, comment)
+		}
+		c.Assert(result, Equals, tc.expectedResult, comment)
+		c.Assert(resizedCPU, Equals, tc.expectedResizedCPU, comment)
+
+		// The cached pod must not be mutated by the resize request.
+		cachedCPU := pod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+		if tc.podCPU != "" {
+			c.Assert(cachedCPU.String(), Equals, tc.podCPU, comment)
+		}
+
+		events := drainFakeRecorderEvents(imc.eventRecorder.(*record.FakeRecorder))
+		if tc.expectedEvent == "" {
+			c.Assert(events, HasLen, 0, comment)
+		} else {
+			c.Assert(events, HasLen, 1, comment)
+			c.Assert(strings.HasPrefix(events[0], tc.expectedEvent+" "), Equals, true, Commentf("test case: %v, event: %v", name, events[0]))
+		}
+	}
 }
