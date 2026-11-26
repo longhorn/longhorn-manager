@@ -1282,10 +1282,11 @@ func getDataEngineIPFamilyContainerError(pod *corev1.Pod, containerName string) 
 // selection, the common network-preference resolver validates the primary Pod
 // IP.
 func (s *DataStore) GetDataEngineIPFromPodForContainer(pod *corev1.Pod, containerName string) (string, error) {
-	family, specified, valid, found := getDataEngineIPFamilyFromPod(pod, containerName)
-	if !found {
-		return "", getDataEngineIPFamilyContainerError(pod, containerName)
+	if pod == nil {
+		return "", getDataEngineIPFamilyContainerError(nil, containerName)
 	}
+	// A pod without the named container selects no family.
+	family, specified, valid, _ := getDataEngineIPFamilyFromPod(pod, containerName)
 	if !valid {
 		return "", getDataEngineIPFamilyArgsError(containerName)
 	}
@@ -1312,10 +1313,11 @@ func (s *DataStore) GetDataEngineIPFromPodForContainer(pod *corev1.Pod, containe
 // error. Without a family selection, the common network-preference resolver
 // selects from CNI addresses in their supplied order.
 func (s *DataStore) GetDataEngineIPFromPodByCNISettingForContainer(pod *corev1.Pod, settingName types.SettingName, containerName string) (string, error) {
-	family, specified, valid, found := getDataEngineIPFamilyFromPod(pod, containerName)
-	if !found {
-		return "", getDataEngineIPFamilyContainerError(pod, containerName)
+	if pod == nil {
+		return "", getDataEngineIPFamilyContainerError(nil, containerName)
 	}
+	// A pod without the named container selects no family.
+	family, specified, valid, _ := getDataEngineIPFamilyFromPod(pod, containerName)
 	if !valid {
 		return "", getDataEngineIPFamilyArgsError(containerName)
 	}

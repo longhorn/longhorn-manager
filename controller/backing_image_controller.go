@@ -64,24 +64,27 @@ func isBackingImagePodIPFamilySynced(pod *corev1.Pod, containerName, desiredFami
 		return false
 	}
 
+	// A pod without the named container carries no IP family option, so it
+	// is compared like a container started without one.
+	var args []string
 	for _, container := range pod.Spec.Containers {
 		if container.Name != containerName {
 			continue
 		}
 
-		args := make([]string, 0, len(container.Command)+len(container.Args))
+		args = make([]string, 0, len(container.Command)+len(container.Args))
 		args = append(args, container.Command...)
 		args = append(args, container.Args...)
-		family, specified, valid := types.ParseDataEngineIPFamilyArgs(args)
-		if !valid {
-			return false
-		}
-		if desiredFamily == types.DataEngineIPFamilyDefault {
-			return !specified
-		}
-		return specified && family == desiredFamily
+		break
 	}
-	return false
+	family, specified, valid := types.ParseDataEngineIPFamilyArgs(args)
+	if !valid {
+		return false
+	}
+	if desiredFamily == types.DataEngineIPFamilyDefault {
+		return !specified
+	}
+	return specified && family == desiredFamily
 }
 
 type BackingImageController struct {
