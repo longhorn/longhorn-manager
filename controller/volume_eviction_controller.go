@@ -18,6 +18,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/go-common-libs/multierr"
 
@@ -54,6 +55,7 @@ func NewVolumeEvictionController(
 ) (*VolumeEvictionController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	vec := &VolumeEvictionController{
 		baseController: newBaseController("longhorn-volume-eviction", logger),
@@ -247,6 +249,14 @@ func (vec *VolumeEvictionController) hasDiskCandidateForReplicaEviction(replicas
 			}
 
 			vec.logger.Warnf("No disk candidates for evicting replica %q: %v", replica.Name, errs.Error())
+			aaErr := errs.ErrorByReason(longhorn.ErrorReplicaScheduleVolumeAntiAffinityNotSatisfied)
+			if aaErr != "" && volume.Status.State == longhorn.VolumeStateDetached {
+				// No condition of a detached volume shows the block, and a
+				// related replica moving away does not requeue this volume.
+				vec.eventRecorder.Eventf(volume, corev1.EventTypeWarning, constant.EventReasonReplicaEvictionBlocked,
+					"Cannot evict replica %v: %v (%v)", replica.Name, errs.JoinReasons(), aaErr)
+				vec.enqueueVolumeAfter(volume, 30*time.Second)
+			}
 			return false
 		}
 	}

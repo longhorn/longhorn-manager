@@ -176,6 +176,50 @@ func TestValidateTopologyZonePin(t *testing.T) {
 	assert.NoError(t, validateTopologyZonePin(newVolume(nil, longhorn.ReplicaZoneSoftAntiAffinityDisabled)))
 }
 
+func TestValidateVolumeAntiAffinity(t *testing.T) {
+	newVolume := func(value longhorn.VolumeAntiAffinity, replicas int, fromPod *longhorn.VolumeAntiAffinityFromPod) *longhorn.Volume {
+		return &longhorn.Volume{
+			Spec: longhorn.VolumeSpec{
+				NumberOfReplicas:          replicas,
+				VolumeAntiAffinity:        value,
+				VolumeAntiAffinityFromPod: fromPod,
+			},
+		}
+	}
+	fromPod := func(operator metav1.LabelSelectorOperator) *longhorn.VolumeAntiAffinityFromPod {
+		return &longhorn.VolumeAntiAffinityFromPod{
+			Pod: "prod/kafka-0",
+			RequiredTerms: []longhorn.VolumeAntiAffinityTerm{{
+				Namespaces: []string{"prod"},
+				LabelSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+					{Key: "app", Operator: operator, Values: []string{"kafka"}},
+				}},
+			}},
+		}
+	}
+
+	assert.NoError(t, validateVolumeAntiAffinity(newVolume("", 3, nil)))
+	assert.NoError(t, validateVolumeAntiAffinity(newVolume(longhorn.VolumeAntiAffinityDisabled, 3, nil)))
+	assert.NoError(t, validateVolumeAntiAffinity(newVolume(longhorn.VolumeAntiAffinityEnabled, 1, fromPod(metav1.LabelSelectorOpIn))))
+
+	err := validateVolumeAntiAffinity(newVolume(longhorn.VolumeAntiAffinityEnabled, 3, nil))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "replica count should be 1")
+
+	assert.Error(t, validateVolumeAntiAffinity(newVolume("required", 1, nil)))
+	assert.Error(t, validateVolumeAntiAffinity(newVolume(longhorn.VolumeAntiAffinityEnabled, 1, fromPod("Between"))))
+
+	// EC volumes place shards instead of replicas.
+	ec := newVolume(longhorn.VolumeAntiAffinityEnabled, 1, nil)
+	ec.Spec.DataLayout.Type = longhorn.VolumeDataLayoutTypeSharded
+	ec.Spec.DataLocality = longhorn.DataLocalityDisabled
+	err = validateShardedConstraints(ec)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "spec.volumeAntiAffinity is not supported")
+	ec.Spec.VolumeAntiAffinity = longhorn.VolumeAntiAffinityDisabled
+	assert.NoError(t, validateShardedConstraints(ec))
+}
+
 const linkedCloneTestNamespace = "longhorn-system"
 
 // newLinkedCloneTestDataStore returns a datastore whose volume and snapshot

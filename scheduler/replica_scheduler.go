@@ -81,7 +81,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, errs
 	}
 
-	diskCandidates, errs := rcs.FindDiskCandidates(replica, replicas, volume)
+	diskCandidates, volumeAntiAffinity, errs := rcs.findDiskCandidatesWithVolumeAntiAffinity(replica, replicas, volume)
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
 		return nil, errs
@@ -95,6 +95,11 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	// Data locality is not best-effort, or a local replica already exists, or there are no valid disk candidates on the local node.
 	if replica.Spec.NodeID == "" {
 		rcs.scheduleReplicaToDisk(replica, diskCandidates)
+	}
+
+	if volumeAntiAffinity != nil && volumeAntiAffinity.preferredReplicas[replica.Spec.NodeID] > 0 {
+		logrus.Infof("Scheduled replica %v of volume %v to node %v, which holds %v replicas of volumes related through a preferred volume anti-affinity term",
+			replica.Name, volume.Name, replica.Spec.NodeID, volumeAntiAffinity.preferredReplicas[replica.Spec.NodeID])
 	}
 
 	return replica, nil
@@ -137,6 +142,31 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.
 // - Map of disk candidates (disk UUID to Disk).
 // - MultiError for non-fatal errors encountered.
 func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (map[string]*Disk, multierr.MultiError) {
+	diskCandidates, _, errs := rcs.findDiskCandidatesWithVolumeAntiAffinity(replica, replicas, volume)
+	return diskCandidates, errs
+}
+
+// findDiskCandidatesWithVolumeAntiAffinity also returns the volume
+// anti-affinity applied to the candidates, or nil when none was applied.
+func (rcs *ReplicaScheduler) findDiskCandidatesWithVolumeAntiAffinity(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (map[string]*Disk, *volumeAntiAffinity, multierr.MultiError) {
+	volumeAntiAffinity, err := rcs.getVolumeAntiAffinity(replica, volume)
+	if err != nil {
+		errs := multierr.NewMultiError()
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
+			errors.Wrapf(err, "failed to get volume anti-affinity for scheduling replica %v", replica.Name))
+		return nil, nil, errs
+	}
+	if volumeAntiAffinity != nil && isLocalReplicaWanted(replicas, volume) {
+		diskCandidates, errs := rcs.findDiskCandidates(replica, replicas, volume, nil)
+		if hasDiskOnNode(diskCandidates, volume.Spec.NodeID) {
+			return diskCandidates, nil, errs
+		}
+	}
+	diskCandidates, errs := rcs.findDiskCandidates(replica, replicas, volume, volumeAntiAffinity)
+	return diskCandidates, volumeAntiAffinity, errs
+}
+
+func (rcs *ReplicaScheduler) findDiskCandidates(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, volumeAntiAffinity *volumeAntiAffinity) (map[string]*Disk, multierr.MultiError) {
 	errs := multierr.NewMultiError()
 
 	nodes, err := rcs.ListSchedulableNodes(volume.Spec.DataEngine)
@@ -198,7 +228,7 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 		nodeDisksMap[node.Name] = disks
 	}
 
-	return rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true, false)
+	return rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true, false, volumeAntiAffinity)
 }
 
 // buildLinkedCloneSrcNodeDiskMap returns a map of nodeID → diskID for healthy
@@ -371,7 +401,8 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	nodeDisksMap map[string]map[string]struct{},
 	replicas map[string]*longhorn.Replica,
 	volume *longhorn.Volume,
-	requireSchedulingCheck, ignoreFailedReplicas bool) (map[string]*Disk, multierr.MultiError) {
+	requireSchedulingCheck, ignoreFailedReplicas bool,
+	volumeAntiAffinity *volumeAntiAffinity) (map[string]*Disk, multierr.MultiError) {
 
 	errs := multierr.NewMultiError()
 
@@ -437,6 +468,10 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		diskCandidates = map[string]*Disk{}
 		filterErrs := multierr.NewMultiError()
 
+		// Excluding the nodes of related volumes from each group, rather than
+		// from the result, keeps the later groups open, such as another disk of
+		// an evicting node.
+		nodes = volumeAntiAffinity.filterNodes(nodes)
 		for _, node := range nodes {
 			diskCandidatesFromNode, filterNodeDiskErrs := rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas,
 				volume, requireSchedulingCheck, biDiskSelector)
@@ -446,7 +481,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 			filterErrs.AppendMultiError(filterNodeDiskErrs)
 		}
 		diskCandidates = filterDisksWithMatchingReplicas(diskCandidates, replicas, diskSoftAntiAffinity, ignoreFailedReplicas)
-		return diskCandidates, filterErrs
+		return volumeAntiAffinity.rankDisks(diskCandidates), filterErrs
 	}
 
 	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo,
@@ -574,6 +609,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		errs.AppendMultiError(filterErrs)
 	}
 
+	if err := volumeAntiAffinity.notSatisfiedError(); err != nil {
+		errs.Append(longhorn.ErrorReplicaScheduleVolumeAntiAffinityNotSatisfied, err)
+	}
 	return map[string]*Disk{}, errs
 }
 
@@ -1058,7 +1096,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 
 	// Call getDiskCandidates with ignoreFailedReplicas == true since we want the list of candidates to include disks
 	// that already contain a failed replica.
-	diskCandidates, _ := rcs.getDiskCandidates(availableNodesInfo, availableNodeDisksMap, replicas, volume, false, true)
+	diskCandidates, _ := rcs.getDiskCandidates(availableNodesInfo, availableNodeDisksMap, replicas, volume, false, true, nil)
 
 	var reusedReplica *longhorn.Replica
 	for _, suggestDisk := range diskCandidates {

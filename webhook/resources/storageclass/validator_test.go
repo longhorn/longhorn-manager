@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	storagev1 "k8s.io/api/storage/v1"
 )
 
 func TestValidateDataLayout(t *testing.T) {
@@ -136,6 +138,82 @@ func TestValidateDataLayout(t *testing.T) {
 				_, found := gotErrorDetails[f]
 				assert.False(t, found, "did not expect an error for field %q", f)
 			}
+		})
+	}
+}
+
+func TestValidateVolumeAntiAffinity(t *testing.T) {
+	waitForFirstConsumer := storagev1.VolumeBindingWaitForFirstConsumer
+	immediate := storagev1.VolumeBindingImmediate
+
+	tests := []struct {
+		name          string
+		params        map[string]string
+		bindingMode   *storagev1.VolumeBindingMode
+		invalidFields []string
+	}{
+		{
+			name:        "parameter omitted",
+			params:      map[string]string{"numberOfReplicas": "3"},
+			bindingMode: &immediate,
+		},
+		{
+			name:        "disabled",
+			params:      map[string]string{"volumeAntiAffinity": "disabled", "numberOfReplicas": "3"},
+			bindingMode: &immediate,
+		},
+		{
+			name:        "enabled",
+			params:      map[string]string{"volumeAntiAffinity": "enabled", "numberOfReplicas": "1"},
+			bindingMode: &waitForFirstConsumer,
+		},
+		{
+			name:          "unknown value",
+			params:        map[string]string{"volumeAntiAffinity": "required", "numberOfReplicas": "1"},
+			bindingMode:   &waitForFirstConsumer,
+			invalidFields: []string{"parameters[volumeAntiAffinity]"},
+		},
+		{
+			name:          "enabled with immediate binding",
+			params:        map[string]string{"volumeAntiAffinity": "enabled", "numberOfReplicas": "1"},
+			bindingMode:   &immediate,
+			invalidFields: []string{"volumeBindingMode"},
+		},
+		{
+			name:          "enabled without replica count",
+			params:        map[string]string{"volumeAntiAffinity": "enabled"},
+			bindingMode:   &waitForFirstConsumer,
+			invalidFields: []string{"parameters[numberOfReplicas]"},
+		},
+		{
+			name:          "enabled with three replicas",
+			params:        map[string]string{"volumeAntiAffinity": "enabled", "numberOfReplicas": "3"},
+			bindingMode:   nil,
+			invalidFields: []string{"volumeBindingMode", "parameters[numberOfReplicas]"},
+		},
+		{
+			name:          "enabled with EC data layout",
+			params:        map[string]string{"volumeAntiAffinity": "enabled", "numberOfReplicas": "1", "dataLayout.type": "sharded"},
+			bindingMode:   &waitForFirstConsumer,
+			invalidFields: []string{"parameters[volumeAntiAffinity]"},
+		},
+		{
+			name:        "disabled with EC data layout",
+			params:      map[string]string{"volumeAntiAffinity": "disabled", "numberOfReplicas": "1", "dataLayout.type": "sharded"},
+			bindingMode: &waitForFirstConsumer,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := &storagev1.StorageClass{Parameters: tc.params, VolumeBindingMode: tc.bindingMode}
+			errs := validateVolumeAntiAffinity(sc)
+
+			gotFields := []string{}
+			for _, err := range errs {
+				gotFields = append(gotFields, err.Field)
+			}
+			assert.ElementsMatch(t, tc.invalidFields, gotFields, "errors: %v", errs)
 		})
 	}
 }
