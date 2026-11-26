@@ -1,16 +1,23 @@
 package snapshotgroup
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
+	appsv1 "k8s.io/api/apps/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -25,18 +32,106 @@ const testNamespace = "longhorn-system"
 // newTestDataStore returns a datastore whose volume lister serves the given
 // volumes, as if the informer had already delivered them.
 func newTestDataStore(t *testing.T, volumes ...*longhorn.Volume) *datastore.DataStore {
+	return newHookTestDataStore(t, testCache{volumes: volumes})
+}
+
+// membersFromPatchOps returns the members carried by the /spec/members patch
+// operation, letting tests compare structs instead of raw JSON.
+func membersFromPatchOps(t *testing.T, patchOps []string) []longhorn.SnapshotGroupMember {
+	t.Helper()
+	for _, op := range patchOps {
+		var patch struct {
+			Path  string          `json:"path"`
+			Value json.RawMessage `json:"value"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(op), &patch))
+		if patch.Path != "/spec/members" {
+			continue
+		}
+		var members []longhorn.SnapshotGroupMember
+		require.NoError(t, json.Unmarshal(patch.Value, &members))
+		return members
+	}
+	require.FailNow(t, "no /spec/members patch operation")
+	return nil
+}
+
+// testCache holds the objects to load into the informer caches: everything
+// a group with hooks is checked against on admission — the member volumes
+// and their PVCs, the hook policies in the PVC namespaces, the existing
+// groups that may already hold a member volume, and the manager DaemonSet
+// with its pods.
+type testCache struct {
+	volumes     []*longhorn.Volume
+	pvcs        []*corev1.PersistentVolumeClaim
+	policies    []*longhorn.VolumeHookPolicy
+	groups      []*longhorn.SnapshotGroup
+	managerDS   *appsv1.DaemonSet
+	managerPods []*corev1.Pod
+	// executorAccess answers the executor's SubjectAccessReviews; nil grants
+	// everything.
+	executorAccess func(attributes authorizationv1.ResourceAttributes) (allowed bool, err error)
+}
+
+func newHookTestDataStore(t *testing.T, seed testCache) *datastore.DataStore {
 	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
 	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
 
+	kubeClient.PrependReactor("create", "subjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		review := action.(k8stesting.CreateAction).GetObject().(*authorizationv1.SubjectAccessReview)
+		allowed := true
+		if seed.executorAccess != nil {
+			var err error
+			if allowed, err = seed.executorAccess(*review.Spec.ResourceAttributes); err != nil {
+				return true, nil, err
+			}
+		}
+		review.Status.Allowed = allowed
+		return true, review, nil
+	})
+
 	informerFactories := util.NewInformerFactories(testNamespace, kubeClient, lhClient, 0)
 	ds := datastore.NewDataStoreForGlobal(testNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
-	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
-	for _, volume := range volumes {
-		require.NoError(t, volumeIndexer.Add(volume))
+	lh := informerFactories.LhInformerFactory.Longhorn().V1beta2()
+	for _, volume := range seed.volumes {
+		require.NoError(t, lh.Volumes().Informer().GetIndexer().Add(volume))
+	}
+	for _, policy := range seed.policies {
+		require.NoError(t, lh.VolumeHookPolicies().Informer().GetIndexer().Add(policy))
+	}
+	for _, group := range seed.groups {
+		require.NoError(t, lh.SnapshotGroups().Informer().GetIndexer().Add(group))
+	}
+	pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+	for _, pvc := range seed.pvcs {
+		require.NoError(t, pvcIndexer.Add(pvc))
+	}
+	if seed.managerDS != nil {
+		require.NoError(t, informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer().Add(seed.managerDS))
+	}
+	podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	for _, pod := range seed.managerPods {
+		require.NoError(t, podIndexer.Add(pod))
 	}
 	return ds
+}
+
+// newTestManagerDaemonSet returns the manager DaemonSet on the given image.
+func newTestManagerDaemonSet(image string) *appsv1.DaemonSet {
+	ds := &appsv1.DaemonSet{ObjectMeta: metav1.ObjectMeta{Name: types.LonghornManagerDaemonSetName, Namespace: testNamespace}}
+	ds.Spec.Template.Spec.Containers = []corev1.Container{{Name: types.LonghornManagerContainerName, Image: image}}
+	return ds
+}
+
+// newTestManagerPod returns a Running manager pod on the given image.
+func newTestManagerPod(name, image string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: types.GetManagerLabels()},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: types.LonghornManagerContainerName, Image: image}}},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+	}
 }
 
 func newTestVolume(name string, labels map[string]string) *longhorn.Volume {
@@ -45,6 +140,36 @@ func newTestVolume(name string, labels map[string]string) *longhorn.Volume {
 			Name:      name,
 			Namespace: testNamespace,
 			Labels:    labels,
+		},
+	}
+}
+
+const testAppNamespace = "app"
+
+// newTestWorkloadVolume returns a volume bound to a PVC in the application
+// namespace with one Running pod, as the PV controller would report it.
+func newTestWorkloadVolume(name, pvcName string) *longhorn.Volume {
+	volume := newTestVolume(name, nil)
+	volume.Status.KubernetesStatus = longhorn.KubernetesStatus{
+		Namespace: testAppNamespace,
+		PVCName:   pvcName,
+		WorkloadsStatus: []longhorn.WorkloadStatus{
+			{PodName: pvcName + "-pod", PodStatus: string(corev1.PodRunning)},
+		},
+	}
+	return volume
+}
+
+func newTestPVC(name string, labels map[string]string) *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Namespace: testAppNamespace, Name: name, Labels: labels}}
+}
+
+func newTestPolicy(name string, generation int64, pvcLabels map[string]string) *longhorn.VolumeHookPolicy {
+	return &longhorn.VolumeHookPolicy{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testAppNamespace, Name: name, UID: k8stypes.UID("uid-" + name), Generation: generation},
+		Spec: longhorn.VolumeHookPolicySpec{
+			PVCSelector: &metav1.LabelSelector{MatchLabels: pvcLabels},
+			Hooks:       []longhorn.VolumeHookPolicyHook{{Exec: &longhorn.VolumeHookPolicyExec{PreCommand: []string{"true"}, PostCommand: []string{"true"}}}},
 		},
 	}
 }
@@ -193,6 +318,146 @@ func TestSnapshotGroupMutatorCreate(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "vol-standby")
 		assert.Contains(t, err.Error(), "standby")
+	})
+
+	t.Run("hooks command stamps the policy, its generation, the 60s deadline, and the snapshot operation", func(t *testing.T) {
+		ds := newHookTestDataStore(t, testCache{
+			volumes:  []*longhorn.Volume{newTestWorkloadVolume("vol-a", "mongo-data")},
+			pvcs:     []*corev1.PersistentVolumeClaim{newTestPVC("mongo-data", map[string]string{"app": "mongo"})},
+			policies: []*longhorn.VolumeHookPolicy{newTestPolicy("mongo", 4, map[string]string{"app": "mongo"})},
+		})
+		m := &snapshotGroupMutator{ds: ds}
+
+		patchOps, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes: []string{"vol-a"},
+			Hooks:   longhorn.SnapshotGroupHooksCommand,
+		}))
+		require.NoError(t, err)
+
+		joined := strings.Join(patchOps, "\n")
+		members := membersFromPatchOps(t, patchOps)
+		require.Len(t, members, 1)
+		assert.Equal(t, &longhorn.VolumeHookPolicyRef{Namespace: "app", Name: "mongo", UID: "uid-mongo", Generation: 4}, members[0].HookPolicyRef)
+		assert.Contains(t, joined, `"path": "/spec/deadlineSeconds", "value": 60}`)
+		assert.Contains(t, joined, `"path": "/spec/hookOperation", "value": "snapshot"}`)
+	})
+
+	t.Run("hooks command keeps an explicit hookOperation", func(t *testing.T) {
+		ds := newHookTestDataStore(t, testCache{
+			volumes:  []*longhorn.Volume{newTestWorkloadVolume("vol-a", "mongo-data")},
+			pvcs:     []*corev1.PersistentVolumeClaim{newTestPVC("mongo-data", map[string]string{"app": "mongo"})},
+			policies: []*longhorn.VolumeHookPolicy{newTestPolicy("mongo", 4, map[string]string{"app": "mongo"})},
+		})
+		m := &snapshotGroupMutator{ds: ds}
+
+		patchOps, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes:       []string{"vol-a"},
+			Hooks:         longhorn.SnapshotGroupHooksCommand,
+			HookOperation: longhorn.HookOperationBackup,
+		}))
+		require.NoError(t, err)
+		assert.NotContains(t, strings.Join(patchOps, "\n"), "/spec/hookOperation")
+	})
+
+	t.Run("hooks none stamps no policy and the 300s deadline", func(t *testing.T) {
+		ds := newHookTestDataStore(t, testCache{
+			volumes:  []*longhorn.Volume{newTestWorkloadVolume("vol-a", "mongo-data")},
+			pvcs:     []*corev1.PersistentVolumeClaim{newTestPVC("mongo-data", map[string]string{"app": "mongo"})},
+			policies: []*longhorn.VolumeHookPolicy{newTestPolicy("mongo", 4, map[string]string{"app": "mongo"})},
+		})
+		m := &snapshotGroupMutator{ds: ds}
+
+		patchOps, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes: []string{"vol-a"},
+		}))
+		require.NoError(t, err)
+
+		joined := strings.Join(patchOps, "\n")
+		assert.NotContains(t, joined, "hookPolicy")
+		assert.NotContains(t, joined, "/spec/hookOperation")
+		assert.Contains(t, joined, `"path": "/spec/deadlineSeconds", "value": 300}`)
+	})
+
+	t.Run("hooks command rejects a member with no matching policy, naming the PVC", func(t *testing.T) {
+		ds := newHookTestDataStore(t, testCache{
+			volumes: []*longhorn.Volume{newTestWorkloadVolume("vol-a", "plain-data")},
+			pvcs:    []*corev1.PersistentVolumeClaim{newTestPVC("plain-data", nil)},
+		})
+		m := &snapshotGroupMutator{ds: ds}
+
+		_, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes: []string{"vol-a"},
+			Hooks:   longhorn.SnapshotGroupHooksCommand,
+		}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "app/plain-data")
+		assert.Contains(t, err.Error(), "vol-a")
+	})
+
+	t.Run("hooks command rejects a member matched by two policies, naming both", func(t *testing.T) {
+		ds := newHookTestDataStore(t, testCache{
+			volumes: []*longhorn.Volume{newTestWorkloadVolume("vol-a", "mongo-data")},
+			pvcs:    []*corev1.PersistentVolumeClaim{newTestPVC("mongo-data", map[string]string{"app": "mongo"})},
+			policies: []*longhorn.VolumeHookPolicy{
+				newTestPolicy("mongo", 1, map[string]string{"app": "mongo"}),
+				newTestPolicy("mongo-too", 1, map[string]string{"app": "mongo"}),
+			},
+		})
+		m := &snapshotGroupMutator{ds: ds}
+
+		_, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes: []string{"vol-a"},
+			Hooks:   longhorn.SnapshotGroupHooksCommand,
+		}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "app/mongo")
+		assert.Contains(t, err.Error(), "app/mongo-too")
+	})
+
+	t.Run("hooks command rejects a member whose policy has no hook for the operation", func(t *testing.T) {
+		backupOnly := newTestPolicy("mongo", 1, map[string]string{"app": "mongo"})
+		backupOnly.Spec.Hooks[0].Operations = []longhorn.HookOperation{longhorn.HookOperationBackup}
+		ds := newHookTestDataStore(t, testCache{
+			volumes:  []*longhorn.Volume{newTestWorkloadVolume("vol-a", "mongo-data")},
+			pvcs:     []*corev1.PersistentVolumeClaim{newTestPVC("mongo-data", map[string]string{"app": "mongo"})},
+			policies: []*longhorn.VolumeHookPolicy{backupOnly},
+		})
+		m := &snapshotGroupMutator{ds: ds}
+
+		// hookOperation is left empty, so the check judges the defaulted
+		// snapshot operation, which the backup-only hook does not cover.
+		_, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes: []string{"vol-a"},
+			Hooks:   longhorn.SnapshotGroupHooksCommand,
+		}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "app/mongo has no hook that runs for operation snapshot")
+		assert.Contains(t, err.Error(), "vol-a")
+
+		// The same policy covers a backup group.
+		patchOps, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes:       []string{"vol-a"},
+			Hooks:         longhorn.SnapshotGroupHooksCommand,
+			HookOperation: longhorn.HookOperationBackup,
+		}))
+		require.NoError(t, err)
+		members := membersFromPatchOps(t, patchOps)
+		require.Len(t, members, 1)
+		assert.Equal(t, &longhorn.VolumeHookPolicyRef{Namespace: "app", Name: "mongo", UID: "uid-mongo", Generation: 1}, members[0].HookPolicyRef)
+	})
+
+	t.Run("hooks command rejects a member volume without a PVC", func(t *testing.T) {
+		ds := newHookTestDataStore(t, testCache{
+			volumes: []*longhorn.Volume{newTestVolume("vol-a", nil)},
+		})
+		m := &snapshotGroupMutator{ds: ds}
+
+		_, err := m.Create(nil, newGroup(longhorn.SnapshotGroupSpec{
+			Volumes: []string{"vol-a"},
+			Hooks:   longhorn.SnapshotGroupHooksCommand,
+		}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no bound PVC")
 	})
 }
 

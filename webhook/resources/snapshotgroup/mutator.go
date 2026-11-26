@@ -12,6 +12,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/common"
@@ -53,6 +54,8 @@ func (m *snapshotGroupMutator) Create(request *admission.Request, newObj runtime
 	}
 
 	var patchOps admission.PatchOps
+	hooked := snapshothook.IsHooked(snapshotGroup)
+	operation := snapshothook.EffectiveHookOperation(snapshotGroup.Spec.HookOperation)
 
 	if len(snapshotGroup.Spec.Members) > 0 {
 		// Pre-set members are only accepted from the restore of a finished
@@ -81,10 +84,27 @@ func (m *snapshotGroupMutator) Create(request *admission.Request, newObj runtime
 				snapshotName = types.GenerateSnapshotGroupMemberSnapshotName(snapshotGroup.Name)
 			}
 			usedSnapshotNames[snapshotName] = true
-			members = append(members, longhorn.SnapshotGroupMember{
+			member := longhorn.SnapshotGroupMember{
 				VolumeName:   candidate.VolumeName,
 				SnapshotName: snapshotName,
-			})
+			}
+			if hooked {
+				// The policy, its UID and its generation are fixed here, once.
+				// A policy edited or recreated after admission is detected as
+				// PolicyChanged instead of silently running commands the user
+				// never reviewed.
+				policy, err := m.resolveHookPolicy(candidate.VolumeName)
+				if err != nil {
+					rejectionReasons = append(rejectionReasons, err.Error())
+					continue
+				}
+				if !snapshothook.PolicyCoversOperation(policy, operation) {
+					rejectionReasons = append(rejectionReasons, snapshothook.NoHookForOperationMessage(policy, operation, candidate.VolumeName))
+					continue
+				}
+				member.HookPolicyRef = snapshothook.PolicyRef(policy)
+			}
+			members = append(members, member)
 		}
 		if len(rejectionReasons) > 0 {
 			return nil, werror.NewInvalidError(strings.Join(rejectionReasons, "; "), "spec")
@@ -99,7 +119,17 @@ func (m *snapshotGroupMutator) Create(request *admission.Request, newObj runtime
 	}
 
 	if snapshotGroup.Spec.DeadlineSeconds == 0 {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/deadlineSeconds", "value": %v}`, types.SnapshotGroupDefaultDeadlineSeconds))
+		deadlineSeconds := types.SnapshotGroupDefaultDeadlineSeconds
+		if hooked {
+			deadlineSeconds = types.SnapshotGroupHookedDefaultDeadlineSeconds
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/deadlineSeconds", "value": %v}`, deadlineSeconds))
+	}
+
+	// The operation has no CRD default because it only means something for a
+	// hooked group.
+	if hooked && snapshotGroup.Spec.HookOperation == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "add", "path": "/spec/hookOperation", "value": "%v"}`, operation))
 	}
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(snapshotGroup)
@@ -112,6 +142,17 @@ func (m *snapshotGroupMutator) Create(request *admission.Request, newObj runtime
 	}
 
 	return patchOps, nil
+}
+
+// resolveHookPolicy finds the one policy for a member volume. The volume was
+// just resolved from the same cache, so a miss here is a real error, not a
+// race.
+func (m *snapshotGroupMutator) resolveHookPolicy(volumeName string) (*longhorn.VolumeHookPolicy, error) {
+	volume, err := m.ds.GetVolumeRO(volumeName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get volume %v to resolve its volume hook policy", volumeName)
+	}
+	return m.ds.ResolveVolumeHookPolicyForVolume(volume)
 }
 
 // Update only maintains the finalizer: the spec is immutable after creation.

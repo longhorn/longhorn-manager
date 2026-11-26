@@ -96,6 +96,10 @@ func NewWebsocketController(
 		return nil, err
 	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.SnapshotGroupInformer.HasSynced)
+	if _, err = ds.VolumeHookPolicyInformer.AddEventHandler(wc.notifyWatchersHandler("volumeHookPolicy")); err != nil {
+		return nil, err
+	}
+	wc.cacheSyncs = append(wc.cacheSyncs, ds.VolumeHookPolicyInformer.HasSynced)
 	if _, err = ds.SystemBackupInformer.AddEventHandler(wc.notifyWatchersHandler("systemBackup")); err != nil {
 		return nil, err
 	}

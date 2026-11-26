@@ -68,6 +68,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SnapshotList{},
 		&SnapshotGroup{},
 		&SnapshotGroupList{},
+		&VolumeHookPolicy{},
+		&VolumeHookPolicyList{},
 		&SupportBundle{},
 		&SupportBundleList{},
 		&SystemBackup{},

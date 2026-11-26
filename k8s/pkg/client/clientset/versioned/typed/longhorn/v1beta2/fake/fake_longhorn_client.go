@@ -140,6 +140,10 @@ func (c *FakeLonghornV1beta2) VolumeAttachments(namespace string) v1beta2.Volume
 	return newFakeVolumeAttachments(c, namespace)
 }
 
+func (c *FakeLonghornV1beta2) VolumeHookPolicies(namespace string) v1beta2.VolumeHookPolicyInterface {
+	return newFakeVolumeHookPolicies(c, namespace)
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeLonghornV1beta2) RESTClient() rest.Interface {

@@ -2,14 +2,17 @@ package v1beta2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// SnapshotGroupPhase is the lifecycle phase of a SnapshotGroup. Empty until the
-// first reconcile; a group then moves InProgress -> Ready | Failed. Ready and
-// Failed are terminal: after either, the controller never creates another
-// member snapshot.
-// +kubebuilder:validation:Enum=InProgress;Ready;Failed;""
+// SnapshotGroupPhase is the lifecycle phase of a SnapshotGroup. It is empty
+// until the first reconcile, then moves InProgress -> Ready or Failed. A
+// hooked group passes through RunningPreHooks first. Ready and Failed are
+// terminal: the controller creates no more member snapshots after either.
+// +kubebuilder:validation:Enum=RunningPreHooks;InProgress;Ready;Failed;""
 type SnapshotGroupPhase string
 
 const (
+	// SnapshotGroupPhaseRunningPreHooks means the hook executor is running
+	// the members' pre-commands. No member snapshot is taken in this phase.
+	SnapshotGroupPhaseRunningPreHooks = SnapshotGroupPhase("RunningPreHooks")
 	// SnapshotGroupPhaseInProgress means member snapshots are being taken
 	// through the existing per-volume path.
 	SnapshotGroupPhaseInProgress = SnapshotGroupPhase("InProgress")
@@ -31,11 +34,31 @@ const (
 	SnapshotGroupConditionTypeDegraded = "Degraded"
 )
 
+// SnapshotGroupHooks selects whether VolumeHookPolicy commands run around
+// the member snapshots. Any value other than none means the group is hooked.
+// +kubebuilder:validation:Enum=none;command;""
+type SnapshotGroupHooks string
+
+const (
+	// SnapshotGroupHooksNone means no hook runs. The group takes plain
+	// snapshots.
+	SnapshotGroupHooksNone = SnapshotGroupHooks("none")
+	// SnapshotGroupHooksCommand means every member's pre-command must succeed
+	// before any member snapshot is taken, and every member's post-command
+	// runs afterwards. If any pre-command fails, the group ends Failed.
+	SnapshotGroupHooksCommand = SnapshotGroupHooks("command")
+)
+
 // SnapshotGroupMember identifies one member of the group: the volume and the
 // name of its member Snapshot CR, generated at admission.
 type SnapshotGroupMember struct {
 	VolumeName   string `json:"volumeName"`
 	SnapshotName string `json:"snapshotName"`
+	// HookPolicyRef is the VolumeHookPolicy that applies to this member. The
+	// mutating webhook sets it at admission for a hooked group. It is unset
+	// when Hooks is none.
+	// +optional
+	HookPolicyRef *VolumeHookPolicyRef `json:"hookPolicyRef,omitempty"`
 }
 
 // SnapshotGroupSpec defines the desired state of the Longhorn SnapshotGroup.
@@ -58,16 +81,25 @@ type SnapshotGroupSpec struct {
 	// +optional
 	// +nullable
 	Labels map[string]string `json:"labels"`
-	// DeadlineSeconds is the deadline for taking every member snapshot,
-	// measured from the group's metadata.creationTimestamp. When the field is
-	// omitted, the CRD default applies. Go clients cannot omit the field: an
-	// unset field arrives as 0, and the mutating webhook replaces the 0 with
-	// the default.
+	// DeadlineSeconds bounds how long the whole group may take, measured from
+	// metadata.creationTimestamp. When omitted or 0, admission sets 300, or 60
+	// for a hooked group because the deadline also bounds the time between the
+	// pre- and post-commands. The default is set by the webhook, not the
+	// schema, because it depends on Hooks.
 	// +optional
-	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=10
 	// +kubebuilder:validation:Maximum=3600
 	DeadlineSeconds int64 `json:"deadlineSeconds"`
+	// Hooks selects whether VolumeHookPolicy commands run around the member
+	// snapshots: none (default) or command.
+	// +optional
+	// +kubebuilder:default=none
+	Hooks SnapshotGroupHooks `json:"hooks,omitempty"`
+	// HookOperation is the operation the hooks run for: snapshot or backup.
+	// Set only for a hooked group; admission defaults it to snapshot.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="hookOperation is immutable"
+	HookOperation HookOperation `json:"hookOperation,omitempty"`
 	// Members is the fixed member set, resolved from Volumes or VolumeSelector
 	// and stamped by the mutating webhook at admission. It may not be set by
 	// the user.
@@ -103,8 +135,9 @@ type SnapshotGroupStatus struct {
 	// OwnerID is the ID of the node that owns this SnapshotGroup.
 	// +optional
 	OwnerID string `json:"ownerID"`
-	// Phase is the lifecycle phase: empty until the first reconcile, then
-	// InProgress -> Ready | Failed.
+	// Phase is the lifecycle phase. It is empty until the first reconcile,
+	// then moves InProgress -> Ready or Failed. A hooked group passes through
+	// RunningPreHooks first.
 	// +optional
 	Phase SnapshotGroupPhase `json:"phase"`
 	// Members is the observed state of every member, one entry per spec
@@ -134,6 +167,34 @@ type SnapshotGroupStatus struct {
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`
+	// PreHooksDone is set by the hook executor once every member's
+	// pre-command has succeeded. It is the controller's signal to leave
+	// RunningPreHooks.
+	// +optional
+	PreHooksDone bool `json:"preHooksDone,omitempty"`
+	// HooksStartedAt is when the executor started on the first member. The
+	// time between creationTimestamp and this is queue wait, not hook time.
+	// +optional
+	HooksStartedAt *metav1.Time `json:"hooksStartedAt,omitempty"`
+	// PreHooksDoneAt is when the last pre-command succeeded, set by the
+	// executor. The application is paused from here until PostHooksDoneAt.
+	// +optional
+	PreHooksDoneAt *metav1.Time `json:"preHooksDoneAt,omitempty"`
+	// PostHooksDoneAt is when every recorded pod reached PostDone or
+	// PostFailed. Unset when nothing was paused.
+	// +optional
+	PostHooksDoneAt *metav1.Time `json:"postHooksDoneAt,omitempty"`
+	// HookProgress summarizes hook progress for the HookProgress printer
+	// column, for example "pre 2/3" or "post done". The hook executor
+	// maintains it. Empty when Hooks is none.
+	// +optional
+	HookProgress string `json:"hookProgress,omitempty"`
+	// Hooks records the hook outcome of each member. An entry's snapshotName
+	// matches the member in spec.members. Only the hook executor writes it. It
+	// never includes the command itself or its output.
+	// +optional
+	// +nullable
+	Hooks []HookStatus `json:"hooks,omitempty"`
 }
 
 // +genclient
@@ -142,6 +203,7 @@ type SnapshotGroupStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`,description="The lifecycle phase of the group"
+// +kubebuilder:printcolumn:name="HookProgress",type=string,JSONPath=`.status.hookProgress`,description="Pre and post hook command progress; empty when spec.hooks is none"
 // +kubebuilder:printcolumn:name="ReadyToUse",type=boolean,JSONPath=`.status.readyToUse`,description="True when the group is Ready and every member is still usable"
 // +kubebuilder:printcolumn:name="CreationTime",type=string,JSONPath=`.status.creationTime`,description="The latest member creation time, set when the group becomes Ready"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`

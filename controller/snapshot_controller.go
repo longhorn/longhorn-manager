@@ -25,6 +25,7 @@ import (
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/hookexecutor/snapshothook"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -685,6 +686,7 @@ func (sc *SnapshotController) generatingEventsForSnapshot(existingSnapshot, snap
 	}
 	if snapshot.Spec.CreateSnapshot && existingSnapshot.Status.CreationTime == "" && snapshot.Status.CreationTime != "" {
 		sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonCreate, "successfully provisioned the snapshot")
+		sc.warnIfHookPolicyBypassed(snapshot)
 	}
 	if snapshot.Status.Error != "" && existingSnapshot.Status.Error != snapshot.Status.Error {
 		if snapshot.Status.Error == snapshotErrorLost {
@@ -710,6 +712,28 @@ func (sc *SnapshotController) generatingEventsForSnapshot(existingSnapshot, snap
 			}
 			sc.eventRecorder.Event(snapshot, eventType, constant.EventReasonUpdate, "snapshot becomes not ready to use")
 		}
+	}
+}
+
+// warnIfHookPolicyBypassed records a Warning when a VolumeHookPolicy covers
+// the volume but no SnapshotGroup ran hooks for this snapshot.
+func (sc *SnapshotController) warnIfHookPolicyBypassed(snapshot *longhorn.Snapshot) {
+	if snapshothook.IsSnapshotGroupMember(snapshot.Labels) {
+		return
+	}
+	volume, err := sc.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Failed to get volume %v to check whether snapshot %v bypassed a volume hook policy", snapshot.Spec.Volume, snapshot.Name)
+		return
+	}
+	policy, resolveErr := sc.ds.ResolveVolumeHookPolicyForVolume(volume)
+	message, err := snapshothook.BypassWarning(policy, resolveErr, volume.Name, longhorn.HookOperationSnapshot)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Failed to check whether snapshot %v bypassed a volume hook policy", snapshot.Name)
+		return
+	}
+	if message != "" {
+		sc.eventRecorder.Event(snapshot, corev1.EventTypeWarning, constant.EventReasonHookPolicyBypassed, message)
 	}
 }
 
