@@ -31,6 +31,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -828,6 +829,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 				e.Status.RestoreStatus = map[string]*longhorn.RestoreStatus{}
 			}
 			e.Status.RestoreStatus[name] = &longhorn.RestoreStatus{
+				State: engineapi.ProcessStateError,
 				Error: "Test restore error",
 			}
 		}
@@ -5080,5 +5082,42 @@ func (s *TestSuite) TestSyncV2VolumeImageFollowsRunningImage(c *C) {
 		}
 		c.Assert(f.volume.Status.CurrentImage, Equals, tt.expectStatus)
 		c.Assert(isV1VolumeUpgrading(f.volume), Equals, false)
+	}
+}
+
+func (s *TestSuite) TestIsProcessStatusError(c *C) {
+	testCases := []struct {
+		name     string
+		state    string
+		err      string
+		expected bool
+	}{
+		{
+			name:     "current process error",
+			state:    engineapi.ProcessStateError,
+			err:      "operation failed",
+			expected: true,
+		},
+		{
+			name:     "stale error from completed process",
+			state:    engineapi.ProcessStateComplete,
+			err:      "previous operation failed",
+			expected: false,
+		},
+		{
+			name:     "stale error while process is in progress",
+			state:    engineapi.ProcessStateInProgress,
+			err:      "previous operation failed",
+			expected: false,
+		},
+		{
+			name:     "error state without error message",
+			state:    engineapi.ProcessStateError,
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Assert(isProcessStatusError(tc.state, tc.err), Equals, tc.expected, Commentf(tc.name))
 	}
 }
