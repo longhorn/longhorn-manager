@@ -488,6 +488,65 @@ func (s *ShardGroupControllerSuite) TestClearCompletedIntentionalDeleteSlotsDrop
 	c.Assert(created.Status.IntentionalDeleteSlots, DeepEquals, []int{1, 2})
 }
 
+// TestShardStateForRunningInstance verifies that a shard with a Running
+// instance becomes Normal unless SPDK reports its slot as failed.
+func (s *ShardGroupControllerSuite) TestShardStateForRunningInstance(c *C) {
+	testCases := []struct {
+		name       string
+		current    longhorn.ShardState
+		slotFailed bool
+		expected   longhorn.ShardState
+	}{
+		{"new shard", "", false, longhorn.ShardStateNormal},
+		{"instance was slow to start", longhorn.ShardStateFailed, false, longhorn.ShardStateNormal},
+		{"replacement for a failed slot", longhorn.ShardStateFailed, true, longhorn.ShardStateFailed},
+		{"new replacement not yet marked failed", "", true, longhorn.ShardState("")},
+		{"replace in flight", longhorn.ShardStateReplacing, false, longhorn.ShardStateReplacing},
+		{"already normal", longhorn.ShardStateNormal, false, longhorn.ShardStateNormal},
+	}
+	for _, tc := range testCases {
+		c.Assert(shardStateForRunningInstance(tc.current, tc.slotFailed), Equals, tc.expected, Commentf(tc.name))
+	}
+}
+
+// TestSyncECHealthRecordsFailedSlots verifies that syncECHealth records the
+// slots SPDK reports as failed, and records none when the ShardGroup state
+// cannot be read.
+func (s *ShardGroupControllerSuite) TestSyncECHealthRecordsFailedSlots(c *C) {
+	sg := newTestShardGroup("vol-failed-slots", 2, 1, TestNode1)
+	created, err := s.lhClient.LonghornV1beta2().ShardGroups(TestNamespace).Create(
+		context.TODO(), sg, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	rctx := &sgReconcileCtx{
+		shardGroup: created,
+		engine:     &longhorn.Engine{},
+		spdkClient: &fakeECHealthClient{
+			shardGroupResp: &spdkrpc.ShardGroup{
+				EcStatus: &spdkrpc.EcStatus{
+					Slots: []*spdkrpc.EcSlot{
+						{SlotIndex: 0, State: spdkrpc.EcSlotState_EC_SLOT_STATE_NORMAL},
+						{SlotIndex: 1, State: spdkrpc.EcSlotState_EC_SLOT_STATE_REPLACING},
+						{SlotIndex: 2, State: spdkrpc.EcSlotState_EC_SLOT_STATE_FAILED},
+					},
+				},
+			},
+		},
+		log: logrus.NewEntry(logrus.StandardLogger()),
+	}
+	c.Assert(s.controller.syncECHealth(rctx), IsNil)
+	c.Assert(rctx.failedSlots, DeepEquals, map[int]struct{}{2: {}})
+
+	rctxNoShardGroup := &sgReconcileCtx{
+		shardGroup: created,
+		engine:     &longhorn.Engine{},
+		spdkClient: &fakeECHealthClient{err: fmt.Errorf("shard group not found")},
+		log:        logrus.NewEntry(logrus.StandardLogger()),
+	}
+	c.Assert(s.controller.syncECHealth(rctxNoShardGroup), IsNil)
+	c.Assert(len(rctxNoShardGroup.failedSlots), Equals, 0)
+}
+
 // fakeECHealthClient is a minimal SPDKServiceClient stub for syncECHealth tests.
 // Only ShardGroupGet is implemented; any other method call panics on the nil
 // embedded interface, which is the intended fail-loud behavior.
