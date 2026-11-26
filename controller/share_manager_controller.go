@@ -526,7 +526,7 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(sm *longhorn.Sh
 		return false
 	}
 
-	if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
+	if !util.IsRegularRWXVolume(volume) {
 		return false
 	}
 

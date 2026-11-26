@@ -1,9 +1,14 @@
 package spdk
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"net"
+	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,9 +21,6 @@ import (
 	retrygo "github.com/avast/retry-go/v5"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
-
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/retry"
 
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
@@ -115,6 +117,10 @@ func (m *MockReplicaAdder) ReplicaAddFinish(srcReplicaServiceCli, dstReplicaServ
 type Engine struct {
 	sync.RWMutex
 
+	// replicaAddLock serializes the replica add steps that suspend and resume the
+	// frontend outside the Engine lock. It must be acquired before the Engine lock.
+	replicaAddLock sync.Mutex
+
 	ctx       context.Context
 	cancelCtx context.CancelFunc
 
@@ -126,6 +132,14 @@ type Engine struct {
 	ActualSize uint64
 	Frontend   string
 
+	// SharedBlock allows engine frontends on multiple nodes to connect to the
+	// engine target at the same time (RWX block volume). The target then
+	// accepts a range of controller IDs and persists the NVMe reservation
+	// state.
+	SharedBlock bool
+	// sharedBlockState is only used by a shared block engine.
+	sharedBlockState sharedBlockEngineState
+
 	ctrlrLossTimeout     int
 	fastIOFailTimeoutSec int
 	// backends maps each peer's name to its Backend. Each one provides a base
@@ -135,8 +149,6 @@ type Engine struct {
 	// treats every entry the same and calls any backend a "replica" - for an
 	// EC engine, that one "replica" is the shardgroup.
 	backends map[string]Backend
-
-	RaidBdevUUID string
 
 	NvmeTcpTarget *NvmeTcpTarget
 
@@ -182,10 +194,12 @@ type Engine struct {
 	newServiceClient ServiceClientFactory
 }
 
-func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, snapshotMaxCount int32, newServiceClient ServiceClientFactory) *Engine {
+func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, snapshotMaxCount int32, newServiceClient ServiceClientFactory,
+	sharedBlock bool, metadataDir string) *Engine {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"engineName": engineName,
-		"volumeName": volumeName,
+		"engineName":  engineName,
+		"volumeName":  volumeName,
+		"sharedBlock": sharedBlock,
 	})
 
 	roundedSpecSize := util.RoundUp(specSize, helpertypes.MiB)
@@ -208,6 +222,9 @@ func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineU
 		VolumeName: volumeName,
 		Frontend:   frontend,
 		SpecSize:   specSize,
+
+		SharedBlock:      sharedBlock,
+		sharedBlockState: sharedBlockEngineState{metadataDir: metadataDir},
 
 		// TODO: support user-defined values
 		ctrlrLossTimeout:     replicaCtrlrLossTimeoutSec,
@@ -245,6 +262,7 @@ func (e *Engine) Create(spdkClient *spdkclient.Client, replicaAddressMap map[str
 		"replicaAddressMap": replicaAddressMap,
 		"salvageRequested":  salvageRequested,
 		"frontend":          e.Frontend,
+		"sharedBlock":       e.SharedBlock,
 	}).Info("Creating engine")
 
 	requireUpdate := true
@@ -260,6 +278,11 @@ func (e *Engine) Create(spdkClient *spdkclient.Client, replicaAddressMap map[str
 	if e.State != types.InstanceStatePending {
 		requireUpdate = false
 		return nil, fmt.Errorf("invalid state %s for engine %s creation", e.State, e.Name)
+	}
+
+	if e.SharedBlock && e.Frontend == types.FrontendUBLK {
+		requireUpdate = false
+		return nil, fmt.Errorf("frontend %s is not supported for shared block engine %s", e.Frontend, e.Name)
 	}
 
 	if err := e.validateReplicaSize(replicaAddressMap, backendFactory); err != nil {
@@ -304,7 +327,7 @@ func (e *Engine) Create(spdkClient *spdkclient.Client, replicaAddressMap map[str
 	e.checkAndUpdateInfoFromReplicasNoLock()
 
 	e.log.Infof("Connected all available replicas %+v, then launching raid during engine creation", e.backends)
-	if _, err := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, ""); err != nil {
+	if err := e.createRaidBdevNoLock(spdkClient, replicaBdevList, e.getRaidBdevCreateUUID()); err != nil {
 		return nil, err
 	}
 
@@ -362,8 +385,8 @@ func (e *Engine) createNVMeTCPTarget(spdkClient *spdkclient.Client, superiorPort
 		return errors.Wrapf(err, "failed to blindly stop exposing RAID bdev for engine target %v", e.Name)
 	}
 
-	cntlid := getTargetCntlid(e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port)
-	if err := e.startExposeNVMeTCPTarget(spdkClient, initialANAState, spdkANAState, cntlid); err != nil {
+	minCntlid, maxCntlid := getTargetCntlidRange(e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port, e.SharedBlock)
+	if err := e.startExposeNVMeTCPTarget(spdkClient, initialANAState, spdkANAState, minCntlid, maxCntlid); err != nil {
 		// No need to release ports here. The engine will be marked as ERR by
 		// Create's deferred error handler, and Delete will release the ports
 		// when the user cleans up this engine.
@@ -375,12 +398,25 @@ func (e *Engine) createNVMeTCPTarget(spdkClient *spdkclient.Client, superiorPort
 	return nil
 }
 
-func (e *Engine) startExposeNVMeTCPTarget(spdkClient *spdkclient.Client, anaState NvmeTCPANAState, spdkANAState spdktypes.NvmfSubsystemListenerAnaState, cntlid uint16) error {
+func (e *Engine) startExposeNVMeTCPTarget(spdkClient *spdkclient.Client, anaState NvmeTCPANAState, spdkANAState spdktypes.NvmfSubsystemListenerAnaState, minCntlid, maxCntlid uint16) error {
 	nsUUID := getStableVolumeNsUUID(e.VolumeName)
-	e.log.Infof("Starting to expose RAID bdev for engine target %v on %v:%v with ANA state %v, cntlid %v, nsUUID %v",
-		e.Name, e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port, anaState, cntlid, nsUUID)
-	return spdkClient.StartExposeBdevWithANAState(e.NvmeTcpTarget.Nqn, e.Name, e.NvmeTcpTarget.Nguid, nsUUID,
-		e.NvmeTcpTarget.IP, strconv.Itoa(int(e.NvmeTcpTarget.Port)), spdkANAState, cntlid, cntlid)
+
+	ptplFile := e.getReservationPtplFile()
+	if ptplFile != "" {
+		// SPDK writes the ptpl file but does not create its directory.
+		if err := os.MkdirAll(filepath.Dir(ptplFile), 0755); err != nil {
+			return errors.Wrapf(err, "failed to create reservation ptpl directory for engine target %v", e.Name)
+		}
+		if err := e.prepareReservationPtplFile(ptplFile); err != nil {
+			return err
+		}
+		e.sharedBlockState.reservationPrepared = true
+	}
+
+	e.log.Infof("Starting to expose RAID bdev for engine target %v on %v:%v with ANA state %v, cntlid range [%v, %v], nsUUID %v, ptpl file %q",
+		e.Name, e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port, anaState, minCntlid, maxCntlid, nsUUID, ptplFile)
+	return spdkClient.StartExposeBdevWithANAStateAndPtplFile(e.NvmeTcpTarget.Nqn, e.Name, e.NvmeTcpTarget.Nguid, nsUUID,
+		e.NvmeTcpTarget.IP, strconv.Itoa(int(e.NvmeTcpTarget.Port)), spdkANAState, minCntlid, maxCntlid, ptplFile)
 }
 
 // connectReplicas connects to each backend's NVMf bdev and populates
@@ -750,6 +786,11 @@ func (e *Engine) getWithoutLock() (res *spdkrpc.Engine) {
 		LastExpansionError:    e.lastExpansionError,
 		LastExpansionFailedAt: e.lastExpansionFailedAt,
 		SnapshotMaxCount:      e.SnapshotMaxCount,
+		SharedBlock:           e.SharedBlock,
+	}
+
+	if e.sharedBlockState.reservationPrepared {
+		res.Reservation = e.getReservationState()
 	}
 
 	if e.NvmeTcpTarget != nil {
@@ -789,15 +830,19 @@ type replicaAddFrontendSuspendResumeWrapper func(work func() error, suspendRequi
 
 // ReplicaAdd performs the full replica-add flow consisting of three phases:
 //
-// Phase 0 - Synchronous Setup (under Engine lock, returns on completion):
-//  1. Validate engine state is Running, dst replica doesn't exist, no other WO replica.
-//  2. Obtain replica gRPC clients for all existing replicas, plus src/dst rebuild clients.
-//  3. Pick an RW replica as the rebuild source.
-//  4. Call replicaAddStart (optionally wrapped by frontendSuspendResumeWrapper for EF suspend/resume).
+// Phase 0 - Synchronous Setup (returns on completion):
+//  0. Suspend the frontend via frontendSuspendResumeWrapper (if present) before taking
+//     the Engine lock, and resume it after Phase 0 releases the Engine lock. An engine
+//     frontend snapshot operation holds the frontend lock while it calls into the
+//     Engine, so the opposite lock order deadlocks.
 //     The suspension is required: an SPDK snapshot taken while writes allocate
 //     clusters in a replica head can abort spdk_tgt or corrupt the lvstore
 //     metadata (spdk/spdk#3113). If the frontend cannot be suspended, the replica
-//     add fails, and longhorn-manager retries it:
+//     add fails, and longhorn-manager retries it.
+//  1. Under the Engine lock, validate engine state is Running, dst replica doesn't exist, no other WO replica.
+//  2. Obtain replica gRPC clients for all existing replicas, plus src/dst rebuild clients.
+//  3. Pick an RW replica as the rebuild source.
+//  4. Call replicaAddStart:
 //     a. Create rebuild snapshot across all replicas.
 //     b. Get rebuilding snapshot list from src replica.
 //     c. ReplicaRebuildingSrcStart: src replica exposes snapshot as NVMe-oF target.
@@ -828,7 +873,23 @@ type replicaAddFrontendSuspendResumeWrapper func(work func() error, suspendRequi
 //	 11. If finish returns error: mark dst replica ERR. SPDK resource cleanup is NOT retried -
 //	     it is the responsibility of the ReplicaAdder (mock should call Real.ReplicaAddFinish()
 //	     before returning error) or r.Delete() when the replica is subsequently removed.
-func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstReplicaAddress string, fastSync bool, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string, frontendSuspendResumeWrapper replicaAddFrontendSuspendResumeWrapper) (err error) {
+func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstReplicaAddress string, fastSync bool, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string, frontendSuspendResumeWrapper replicaAddFrontendSuspendResumeWrapper) error {
+	// The frontend suspension is not reference counted: without this lock, a
+	// concurrent replica add or finish step could resume the frontend before
+	// this one takes the rebuild snapshot.
+	e.replicaAddLock.Lock()
+	defer e.replicaAddLock.Unlock()
+
+	addFn := func() error {
+		return e.replicaAdd(spdkClient, dstReplicaName, dstReplicaAddress, fastSync, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress, frontendSuspendResumeWrapper)
+	}
+	if frontendSuspendResumeWrapper == nil {
+		return addFn()
+	}
+	return frontendSuspendResumeWrapper(addFn, true)
+}
+
+func (e *Engine) replicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstReplicaAddress string, fastSync bool, linkedCloneSrcReplicaName, linkedCloneSrcEngineName, linkedCloneSrcEngineAddress string, frontendSuspendResumeWrapper replicaAddFrontendSuspendResumeWrapper) (err error) {
 	updateRequired := false
 
 	e.Lock()
@@ -938,7 +999,7 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 		return err
 	}
 
-	// Perform the synchronous setup phase (optionally wrapped for EF suspend/resume).
+	// Perform the synchronous setup phase. ReplicaAdd has suspended the frontend.
 	var rebuildingSnapshotList []*api.Lvol
 	var setupErr error
 	startFn := func() error {
@@ -956,19 +1017,15 @@ func (e *Engine) ReplicaAdd(spdkClient *spdkclient.Client, dstReplicaName, dstRe
 		return startEngineErr
 	}
 
-	if frontendSuspendResumeWrapper != nil {
-		if wrapErr := frontendSuspendResumeWrapper(startFn, true); wrapErr != nil {
-			// startFn captures fatal engine errors in engineErr. The wrapper
-			// returns the work error, so keep setup failures replica-scoped.
-			setupErr = wrapErr
-		}
-	} else {
-		if fnErr := startFn(); fnErr != nil {
-			setupErr = fnErr
-		}
+	// startFn captures fatal engine errors in engineErr, so keep setup
+	// failures replica-scoped.
+	if fnErr := startFn(); fnErr != nil {
+		setupErr = fnErr
 	}
 
 	// Launch the async phase: shallow copy followed by cleanup or finish.
+	// The finish step waits for ReplicaAdd to resume the frontend, as both
+	// hold replicaAddLock.
 	// Even on setup failure, the goroutine handles SPDK resource cleanup
 	// (exposed snapshot, NVMe connections) via replicaAddCleanupOrFinish.
 	go e.replicaAddAsync(srcReplicaServiceCli, dstReplicaServiceCli, srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress, rebuildingSnapshotList, fastSync, frontendSuspendResumeWrapper, setupErr)
@@ -1162,7 +1219,11 @@ func (e *Engine) replicaAddCleanupOrFinish(
 
 	var finishErr error
 	if frontendSuspendResumeWrapper != nil {
-		finishErr = frontendSuspendResumeWrapper(finishFn, false)
+		finishErr = func() error {
+			e.replicaAddLock.Lock()
+			defer e.replicaAddLock.Unlock()
+			return frontendSuspendResumeWrapper(finishFn, false)
+		}()
 	} else {
 		finishErr = finishFn()
 	}
@@ -1602,7 +1663,10 @@ const (
 	SnapshotOperationHash   = SnapshotOperationType("snapshot-hash")
 )
 
-func (e *Engine) SnapshotCreate(spdkClient *spdkclient.Client, inputSnapshotName string) (snapshotName string, err error) {
+// SnapshotCreate creates a snapshot. engineFrontendName is the engine frontend
+// requesting the snapshot, which has suspended itself. For a shared block
+// engine, the engine frontends on the other hosts are suspended as well.
+func (e *Engine) SnapshotCreate(spdkClient *spdkclient.Client, inputSnapshotName, engineFrontendName string) (snapshotName string, err error) {
 	e.log.Infof("Creating snapshot %s", inputSnapshotName)
 
 	opts := &api.SnapshotOptions{
@@ -1610,7 +1674,15 @@ func (e *Engine) SnapshotCreate(spdkClient *spdkclient.Client, inputSnapshotName
 		Timestamp:   util.Now(),
 	}
 
-	return e.snapshotOperation(spdkClient, inputSnapshotName, SnapshotOperationCreate, opts)
+	if !e.SharedBlock {
+		return e.snapshotOperation(spdkClient, inputSnapshotName, SnapshotOperationCreate, opts)
+	}
+
+	err = e.withSharedBlockFrontendsSuspended(spdkClient, engineFrontendName, false, false, func() (opErr error) {
+		snapshotName, opErr = e.snapshotOperation(spdkClient, inputSnapshotName, SnapshotOperationCreate, opts)
+		return opErr
+	})
+	return snapshotName, err
 }
 
 func (e *Engine) SnapshotDelete(spdkClient *spdkclient.Client, snapshotName string) (err error) {
@@ -1852,13 +1924,35 @@ func (e *Engine) snapshotOperationWithoutLock(spdkClient *spdkclient.Client, sna
 			retrygo.LastErrorOnly(true),
 		).Do(
 			func() error {
-				_, err := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, "")
-				return err
+				return e.createRaidBdevNoLock(spdkClient, replicaBdevList, e.getRaidBdevCreateUUID())
 			},
 		)
 	}
 
 	return updated, replicasErr, engineErr
+}
+
+// raidBdevCreateOptionsNoLock returns the bdev_raid_create options for the RAID bdev of the
+// engine. A RAID1-layout engine creates it with DisableAutoResize, so the RAID bdev grows only
+// when Expand asks for it with bdev_raid_resize. An EC-layout engine, inferred from the
+// backend types as isShardedEngine does, keeps the automatic resize that
+// ExpandViaBackendReset relies on.
+func (e *Engine) raidBdevCreateOptionsNoLock() spdktypes.BdevRaidCreateOptions {
+	for _, u := range e.backends {
+		if _, ok := u.(*shardGroupBackend); ok {
+			return spdktypes.BdevRaidCreateOptions{}
+		}
+	}
+	return spdktypes.BdevRaidCreateOptions{DisableAutoResize: true}
+}
+
+// createRaidBdevNoLock creates the RAID1 bdev of the engine on baseBdevs with the options of
+// its layout. SPDK applies the options before it adds the base bdevs, so no base bdev resize
+// event can grow the RAID bdev of a RAID1-layout engine on its own. Every RAID bdev creation
+// of an engine must go through this function.
+func (e *Engine) createRaidBdevNoLock(spdkClient *spdkclient.Client, baseBdevs []string, uuid string) error {
+	_, err := engineBdevRaidCreate(spdkClient, e.Name, baseBdevs, uuid, e.raidBdevCreateOptionsNoLock())
+	return err
 }
 
 // replicaSnapshotOperation forwards a single per-backend snapshot RPC
@@ -2856,7 +2950,7 @@ func (e *Engine) completeBackupRestore(spdkClient *spdkclient.Client, backupSnap
 	}
 
 	e.log.Infof("Creating snapshot %v for the restored volume", newSnapshotName)
-	if _, createErr := e.SnapshotCreate(spdkClient, newSnapshotName); createErr != nil {
+	if _, createErr := e.SnapshotCreate(spdkClient, newSnapshotName, ""); createErr != nil {
 		e.log.WithError(createErr).Warnf("Failed to create snapshot %v for the restored volume", newSnapshotName)
 	}
 
@@ -3182,115 +3276,108 @@ func (e *Engine) RestoreStatus() (*spdkrpc.RestoreStatusResponse, error) {
 	return resp, nil
 }
 
-// Expand performs an online volume expansion for the Longhorn Engine using SPDK.
-// It expands the underlying replica logical volumes (lvol), recreates the SPDK RAID bdev,
-// suspends and resumes frontend I/O as needed, and ensures cleanup and status updates on failure.
-func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64) (err error) {
-	// Add precheck
-	requireExpansion, err := e.ExpandPrecheck(spdkClient, size)
-	if err != nil {
+// Expand performs an online volume expansion of a RAID1-layout engine without tearing down
+// the RAID bdev or the engine NVMe/TCP target, and returns once the expansion is done.
+//
+// The RAID bdev is created with disable_auto_resize (createRaidBdevNoLock), so it keeps its
+// size until the expansion grows it:
+//  1. For one replica at a time, expand its lvol in place, while it stays exposed, and wait
+//     until its NVMe bdev, which stays attached to the RAID bdev, reports the new size.
+//  2. Like the V1 engine, mark the replicas that failed as ERR and remove them from the RAID
+//     bdev. The expansion fails only if every replica failed.
+//  3. Grow the RAID bdev with bdev_raid_resize.
+func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64) error {
+	expand, err := e.startExpansion(spdkClient, size)
+	if err != nil || expand == nil {
 		return err
 	}
+	return expand()
+}
 
-	e.Lock()
-	originalSize := e.SpecSize
-	if !requireExpansion {
-		if e.SpecSize < size {
-			e.SpecSize = size
+// StartExpand is Expand, but returns once the expansion has started, like the V1 engine
+// controller, since expanding the replicas one at a time can take longer than a request.
+// The caller waits until the engine no longer reports IsExpanding.
+func (e *Engine) StartExpand(spdkClient *spdkclient.Client, size uint64) error {
+	expand, err := e.startExpansion(spdkClient, size)
+	if err != nil || expand == nil {
+		return err
+	}
+	go func() {
+		if err := expand(); err != nil {
+			e.log.WithError(err).Errorf("Failed to expand engine to size %v", size)
 		}
-		// Clear stale expansion error from a previous partial failure,
-		// since there is nothing left to expand.
-		e.lastExpansionError = ""
-		e.lastExpansionFailedAt = ""
-		e.Unlock()
-		return nil
+		select {
+		case e.UpdateCh <- nil:
+		default:
+		}
+	}()
+	return nil
+}
+
+// startExpansion prechecks the expansion under the engine lock. If there is something to
+// expand, it marks the engine as expanding and returns expand, which keeps the engine lock
+// until the expansion is done. Otherwise it releases the lock and returns a nil expand.
+func (e *Engine) startExpansion(spdkClient *spdkclient.Client, size uint64) (expand func() error, err error) {
+	e.Lock()
+	defer func() {
+		if expand == nil {
+			e.Unlock()
+		}
+	}()
+
+	requireExpansion, err := e.expandPrecheckNoLock(size)
+	if err != nil {
+		return nil, err
 	}
-	defer e.Unlock()
-	if e.isExpanding {
-		return fmt.Errorf("%w", ErrExpansionInProgress)
+	if !requireExpansion {
+		raidSize, err := e.getRaidBdevSizeNoLock(spdkClient)
+		if err != nil {
+			return nil, err
+		}
+		// An engine in the error state takes the full path, which checks the RAID bdev
+		// members and moves it back to running.
+		if raidSize >= size && e.SpecSize >= size && e.State == types.InstanceStateRunning {
+			// Clear stale expansion error from a previous partial failure,
+			// since there is nothing left to expand.
+			e.lastExpansionError = ""
+			e.lastExpansionFailedAt = ""
+			return nil, nil
+		}
+		// An earlier expansion expanded the replicas but did not grow the RAID bdev.
+		e.log.Infof("Replicas are already at size %v, but raid bdev %s is at size %v, completing the expansion", size, e.Name, raidSize)
 	}
+
+	if e.Frontend == types.FrontendUBLK {
+		return nil, fmt.Errorf("not support ublk frontend for expansion for engine %s", e.Name)
+	}
+
+	originalSize := e.SpecSize
 	e.isExpanding = true
 	e.lastExpansionFailedAt = ""
 	e.lastExpansionError = ""
 
-	e.log.Info("Expanding engine frontend")
+	e.log.Infof("Expanding engine from size %v to %v without tearing down raid bdev", originalSize, size)
 
-	defer func() {
-		e.isExpanding = false
-		e.finishExpansion(originalSize, size, err)
-	}()
+	return func() (err error) {
+		defer e.Unlock()
+		defer func() {
+			e.isExpanding = false
+			e.finishExpansion(originalSize, size, err)
+		}()
 
-	var expandErr error
-
-	replicaClients, err := e.getReplicaClients()
-	if err != nil {
-		return err
-	}
-	defer e.closeReplicaClients(replicaClients)
-
-	e.log.Infof("Stopping to expose RAID bdev for engine %s", e.Name)
-	switch e.Frontend {
-	case types.FrontendUBLK:
-		return fmt.Errorf("not support ublk frontend for expansion for engine %s", e.Name)
-	case types.FrontendSPDKTCPBlockdev, types.FrontendSPDKTCPNvmf:
-		if err := spdkClient.StopExposeBdev(e.NvmeTcpTarget.Nqn); err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-			return errors.Wrapf(err, "failed to stop exposing bdev for engine %s", e.Name)
-		}
-	}
-
-	e.log.Infof("Tearing down RAID bdev for engine %s", e.Name)
-	raidBdevUUID, err := e.tearDownRaidBdev(spdkClient)
-	if err != nil {
-		return errors.Wrap(err, "failed to tear down expansion")
-	}
-	if e.RaidBdevUUID == "" {
-		e.RaidBdevUUID = raidBdevUUID
-	}
-
-	// Perform expansion
-	// We should always try to reconstruct the RAID bdev even if the expansion fails.
-	if err := e.expandReplicas(spdkClient, replicaClients, size); err != nil {
-		e.log.WithError(err).Errorf("Failed to expand replicas for engine %s", e.Name)
-		// If expansion failed, we should return the error to the caller,
-		// but we still need to Reconstruct the RAID bdev and Expose it
-		// to make sure volume is still usable (with old size).
-		// We will capture this error and return it at the end of the function.
-		// We don't return here because we need to reconstruct the RAID bdev.
-		// If we return here, the volume will be lost as we already tear down the RAID bdev.
-		// We will return this error after the deferred functions are executed.
-		// However, the err variable is named return variable, so we can just assign it.
-		// But we need to be careful not to overwrite it with nil if subsequent steps succeed.
-		// So we use a separate variable.
-		expandErr = err
-	}
-
-	e.log.Infof("Reconstructing RAID bdev for engine %s", e.Name)
-	if err := e.reconstructRaidBdev(spdkClient, e.RaidBdevUUID); err != nil {
-		return errors.Wrap(err, "failed to reconstruct RAID bdev")
-	}
-
-	switch e.Frontend {
-	case types.FrontendSPDKTCPBlockdev, types.FrontendSPDKTCPNvmf:
-		cntlid := getTargetCntlid(e.NvmeTcpTarget.IP, e.NvmeTcpTarget.Port)
-		// Preserve the current ANA state across the expand. If this engine
-		// was demoted to inaccessible during a switchover, re-exposing with
-		// optimized would create a dual-write window.
-		currentANAState := e.NvmeTcpTarget.ANAState
-		if currentANAState == "" {
-			currentANAState = NvmeTCPANAStateOptimized
-		}
-		spdkANAState, err := toSPDKListenerANAState(currentANAState)
+		replicaClients, err := e.getReplicaClients()
 		if err != nil {
-			return errors.Wrapf(err, "invalid ANA state %q for engine target %v during expand", currentANAState, e.Name)
+			return err
 		}
-		if err := e.startExposeNVMeTCPTarget(spdkClient, currentANAState, spdkANAState, cntlid); err != nil {
-			return errors.Wrapf(err, "failed to start exposing RAID bdev for engine target %v", e.Name)
-		}
-	case types.FrontendEmpty:
-		e.log.Infof("Skipping RAID bdev exposure for engine %s after expansion because frontend is empty", e.Name)
-	}
+		defer e.closeReplicaClients(replicaClients)
 
-	return expandErr
+		// Replica.Expand does nothing for a replica already at size, so this also completes
+		// an earlier expansion.
+		if err := e.expandReplicas(spdkClient, replicaClients, size); err != nil {
+			return err
+		}
+		return e.growRaidBdevNoLock(spdkClient, size)
+	}, nil
 }
 
 // ExpandViaBackendReset expands the engine by resetting each backend
@@ -3308,11 +3395,9 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64) (err error) 
 //
 // This is the path used for EC volumes: ShardGroupController already drove
 // ShardExpand + ShardGroupExpand against the ShardGroup process, so by the
-// time EngineExpand arrives the backend lvol has been resized. RAID1 still
-// uses the tear-down/expand-replicas/reconstruct cycle in Engine.Expand;
-// both layouts are expected to converge on this method once the
-// reset-refresh path is verified reliable on the SPDK build the branch
-// ships against.
+// time EngineExpand arrives the backend lvol has been resized. RAID1 uses
+// Engine.Expand, which expands the replicas itself and grows its RAID bdev,
+// created with disable_auto_resize, with an explicit bdev_raid_resize.
 func (e *Engine) ExpandViaBackendReset(spdkClient *spdkclient.Client, size uint64) (err error) {
 	const (
 		pollInterval = 500 * time.Millisecond
@@ -3397,6 +3482,10 @@ func (e *Engine) ExpandViaBackendReset(spdkClient *spdkclient.Client, size uint6
 	}
 }
 
+// finishExpansion records the result of an expansion. On success the engine moves to toSize,
+// even if some replicas failed: they were removed from the RAID bdev, which already serves
+// toSize, and their failure stays in lastExpansionError as a warning. On failure the engine
+// keeps fromSize.
 func (e *Engine) finishExpansion(fromSize, toSize uint64, err error) {
 	if err != nil {
 		e.SpecSize = fromSize
@@ -3412,123 +3501,59 @@ func (e *Engine) finishExpansion(fromSize, toSize uint64, err error) {
 
 	e.State = types.InstanceStateRunning
 	e.ErrorMsg = ""
+	e.SpecSize = toSize
 	if e.lastExpansionError != "" {
-		e.SpecSize = fromSize
 		if e.lastExpansionFailedAt == "" {
 			e.lastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		}
-		e.log.Warnf("Partially failed to expand from size %v to %v; keeping engine size at %v: %v",
-			fromSize, toSize, fromSize, e.lastExpansionError)
+		e.log.Warnf("Expanded from size %v to %v, but some replicas failed and were removed from the raid bdev: %v",
+			fromSize, toSize, e.lastExpansionError)
 		return
 	}
 
-	e.SpecSize = toSize
 	e.log.Infof("Succeeded to expand from size %v to %v", fromSize, toSize)
 }
 
-func (e *Engine) tearDownRaidBdev(spdkClient *spdkclient.Client) (bdevUUID string, err error) {
-	bdevRaid, err := spdkClient.BdevRaidGet(e.Name, 0)
-	if err != nil {
-		if jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-			// RAID bdev does not exist, do nothing
-			return "", nil
-		}
-		return "", errors.Wrapf(err, "failed to get RAID bdev %s", e.Name)
-	}
-	if len(bdevRaid) == 0 {
-		// RAID already deleted, do nothing
-		return "", nil
-	}
-
-	bdevUUID = bdevRaid[0].UUID
-
-	deleted, err := spdkClient.BdevRaidDelete(e.Name)
-	if err != nil {
-		if jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-			e.log.WithField("engineName", e.Name).Info("RAID bdev already deleted")
-			return bdevUUID, nil
-		}
-		return bdevUUID, err
-	}
-
-	if deleted {
-		return bdevUUID, nil
-	}
-
-	return bdevUUID, fmt.Errorf("failed to delete RAID bdev %s", e.Name)
-}
-
+// expandReplicas expands the replicas one at a time, and makes the NVMe bdev of each one,
+// which stays attached to the RAID bdev, report the new size. Like the V1 engine, it goes
+// through every replica: the replicas that failed are marked as ERR and removed from the RAID
+// bdev, and it fails only if every replica failed.
 func (e *Engine) expandReplicas(spdkClient *spdkclient.Client, replicaClients map[string]*client.SPDKClient, size uint64) error {
 	e.log.Info("Expanding replicas")
 
-	var (
-		wg     sync.WaitGroup
-		mu     sync.Mutex
-		failed = make(map[string]error)
-	)
-
-	recordFailure := func(replicaName string, err error) {
+	failed := make(map[string]error)
+	for _, replicaName := range slices.Sorted(maps.Keys(replicaClients)) {
+		err := expansionReplicaExpand(replicaClients[replicaName], replicaName, size)
 		if err == nil {
-			return
+			err = waitForNvmeBdevSize(spdkClient, e.backends[replicaName].BdevName(), size)
 		}
-		mu.Lock()
-		failed[replicaName] = err
-		mu.Unlock()
+		if err != nil {
+			e.log.WithError(err).WithField("replica", replicaName).Warn("Failed to expand replica")
+			failed[replicaName] = err
+		}
 	}
 
-	for replicaName, replicaClient := range replicaClients {
-		replicaName, replicaClient := replicaName, replicaClient
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					recordFailure(replicaName, fmt.Errorf("panic during replica expansion: %v", r))
-					e.log.WithField("replica", replicaName).Errorf("Panic during replica expansion: %v", r)
-				}
-			}()
-
-			if err := e.expandSingleReplica(spdkClient, replicaName, replicaClient, size); err != nil {
-				recordFailure(replicaName, err)
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	return e.handleReplicaExpandResult(replicaClients, failed)
+	return e.handleReplicaExpandResult(spdkClient, replicaClients, failed)
 }
 
-func (e *Engine) expandSingleReplica(spdkClient *spdkclient.Client, replicaName string, replicaClient *client.SPDKClient, size uint64) error {
-	replicaStatus, ok := e.backends[replicaName]
-	if !ok {
-		e.log.WithField("replica", replicaName).Warn("Replica not found in status map")
-		return nil
-	}
-
-	replica, err := replicaClient.ReplicaGet(replicaName)
+// handleReplicaExpandResult also fails the replicas that raid1 removed from the RAID bdev on
+// its own, for example after a write failed: they are out of sync, so they cannot serve the
+// new size even if they expanded.
+func (e *Engine) handleReplicaExpandResult(spdkClient *spdkclient.Client, replicaClients map[string]*client.SPDKClient, failed map[string]error) error {
+	members, err := e.getRaidBdevMembersNoLock(spdkClient)
 	if err != nil {
-		return errors.Wrap(err, "get replica failure")
-	}
-
-	if replica.SpecSize == size {
-		return nil
-	}
-
-	if err := disconnectNVMfBdev(spdkClient, replicaStatus.BdevName(), disconnectMaxRetries, disconnectRetryInterval); err != nil {
 		return err
 	}
-
-	if err := replicaClient.ReplicaExpand(replicaName, size); err != nil {
-		return err
+	evicted := map[string]error{}
+	for replicaName := range replicaClients {
+		if bdevName := e.backends[replicaName].BdevName(); !members[bdevName] {
+			evicted[replicaName] = fmt.Errorf("base bdev %s is no longer a member of raid bdev %s", bdevName, e.Name)
+			if _, ok := failed[replicaName]; !ok {
+				failed[replicaName] = evicted[replicaName]
+			}
+		}
 	}
 
-	_, err = connectNVMfBdev(spdkClient, replicaName, replicaStatus.Address(), e.ctrlrLossTimeout, e.fastIOFailTimeoutSec, maxRetries, retryInterval)
-	return err
-}
-
-func (e *Engine) handleReplicaExpandResult(replicaClients map[string]*client.SPDKClient, failed map[string]error) error {
 	if len(failed) == 0 {
 		e.log.Info("All replicas expand success")
 		return nil
@@ -3539,14 +3564,15 @@ func (e *Engine) handleReplicaExpandResult(replicaClients map[string]*client.SPD
 	if len(failed) == len(replicaClients) {
 		e.log.WithFields(logrus.Fields{"failedReplicas": aggregatedErr}).
 			Error("All replicas failed to expand")
-		return fmt.Errorf("all replicas failed to expand; aborting RAID recreation: %+v", aggregatedErr)
+		// Like the V1 engine, the replicas that are out of sync are marked as ERR although the
+		// expansion failed. The others still serve the current size.
+		e.markReplicasERR(evicted)
+		return fmt.Errorf("all replicas failed to expand; the raid bdev keeps its size: %+v", aggregatedErr)
 	}
 
-	e.markReplicasERR(failed)
-	e.lastExpansionError = fmt.Sprintf("%+v", aggregatedErr)
 	e.log.WithFields(logrus.Fields{"failedReplicas": aggregatedErr}).
-		Warn("Some replicas failed to expand and have been marked as ERR")
-	return nil
+		Warn("Some replicas failed to expand, marking them as ERR and removing them from the raid bdev")
+	return e.failReplicasForExpansionNoLock(spdkClient, failed)
 }
 
 func aggregateReplicaErrors(failed map[string]error) map[string]string {
@@ -3565,55 +3591,158 @@ func (e *Engine) markReplicasERR(failed map[string]error) {
 	}
 }
 
-func (e *Engine) reconstructRaidBdev(spdkClient *spdkclient.Client, bdevRaidUUID string) (err error) {
-	e.log.WithFields(logrus.Fields{
-		"engineName": e.Name,
-		"volumeName": e.VolumeName,
-		"frontend":   e.Frontend,
-	}).Info("Reconstructing RAID bdev")
+// failReplicasForExpansionNoLock marks the replicas that cannot serve the new size as ERR,
+// records the failure as a warning, and removes their base bdevs from the RAID bdev, which
+// is sized by its smallest base bdev.
+func (e *Engine) failReplicasForExpansionNoLock(spdkClient *spdkclient.Client, failed map[string]error) error {
+	e.markReplicasERR(failed)
+	e.lastExpansionError = fmt.Sprintf("%+v", aggregateReplicaErrors(failed))
 
-	// create the same name of raid bdev
-	replicaBdevList := []string{}
-	for _, replicaStatus := range e.backends {
-		if replicaStatus.Mode() != types.ModeRW {
+	for replicaName := range failed {
+		replicaStatus, ok := e.backends[replicaName]
+		if !ok || replicaStatus.BdevName() == "" {
 			continue
 		}
-		if replicaStatus.BdevName() == "" {
-			continue
+		e.log.Infof("Removing base bdev %s of replica %s from raid bdev %s for expansion", replicaStatus.BdevName(), replicaName, e.Name)
+		if _, err := expansionBdevRaidRemoveBaseBdev(spdkClient, replicaStatus.BdevName()); err != nil && !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+			return errors.Wrapf(err, "failed to remove base bdev %s of replica %s from raid bdev %s", replicaStatus.BdevName(), replicaName, e.Name)
 		}
-		replicaBdevList = append(replicaBdevList, replicaStatus.BdevName())
 	}
-	if len(replicaBdevList) == 0 {
-		return fmt.Errorf("no healthy replica bdevs available for RAID creation")
-	}
-
-	if _, err := spdkClient.BdevRaidCreate(e.Name, spdktypes.BdevRaidLevel1, 0, replicaBdevList, bdevRaidUUID); err != nil {
-		return err
-	}
-
-	// wait the raid bdev is created
-	backoff := wait.Backoff{
-		Steps:    10,
-		Duration: time.Second,
-		Factor:   1.5,
-		Jitter:   0.1,
-		Cap:      time.Second * 10,
-	}
-
-	if err := retry.RetryOnConflict(backoff, func() error {
-		_, err := spdkClient.BdevRaidGet(e.Name, 0)
-		return err
-	}); err != nil {
-		return err
-	}
-
 	return nil
+}
+
+// Retry bounds of the replica bdev size wait and the raid bdev resize, variables so that tests
+// can shorten them.
+var (
+	expansionRetryInterval = 500 * time.Millisecond
+	expansionRetryTimeout  = 20 * time.Second
+)
+
+// growRaidBdevNoLock grows the RAID bdev of the engine to size in place with
+// bdev_raid_resize. The NVMe bdevs of its members must already report size.
+func (e *Engine) growRaidBdevNoLock(spdkClient *spdkclient.Client, size uint64) error {
+	resp, err := e.resizeRaidBdevNoLock(spdkClient, size/helpertypes.MiB)
+	if err != nil {
+		return errors.Wrapf(err, "failed to resize raid bdev %s to size %v", e.Name, size)
+	}
+	e.log.Infof("Resized raid bdev %s from %v to %v blocks (resized: %v)", e.Name, resp.OldBlockcnt, resp.NewBlockcnt, resp.Resized)
+	return nil
+}
+
+// waitForNvmeBdevSize waits until the NVMe bdev bdevName, which stays attached to the RAID
+// bdev, reports at least size. The replica resizes its lvol while it stays exposed, so its
+// NVMe-oF target sends a namespace attribute changed notice, which makes the bdev read the new
+// size.
+func waitForNvmeBdevSize(spdkClient *spdkclient.Client, bdevName string, size uint64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), expansionRetryTimeout)
+	defer cancel()
+
+	err := retrygo.New(
+		retrygo.Context(ctx),
+		retrygo.UntilSucceeded(),
+		retrygo.Delay(expansionRetryInterval),
+		retrygo.DelayType(retrygo.FixedDelay),
+		retrygo.LastErrorOnly(true),
+		retrygo.WrapContextErrorWithLastError(true),
+	).Do(func() error {
+		bdevs, err := expansionBdevGetBdevs(spdkClient, bdevName)
+		if err != nil {
+			return err
+		}
+		if len(bdevs) != 1 {
+			return fmt.Errorf("found %d bdevs for %s", len(bdevs), bdevName)
+		}
+		if bdevSize := bdevs[0].NumBlocks * uint64(bdevs[0].BlockSize); bdevSize < size {
+			return fmt.Errorf("bdev %s reports size %v, smaller than %v", bdevName, bdevSize, size)
+		}
+		return nil
+	})
+	return errors.Wrapf(retryLastError(err), "timed out waiting for bdev %s to report size %v", bdevName, size)
+}
+
+// retryLastError returns the last error of the retried function from a retrygo error that
+// also wraps the context error, so that the error stays on a single line.
+func retryLastError(err error) error {
+	var retryErr retrygo.Error
+	if errors.As(err, &retryErr) && retryErr.LastError() != nil {
+		return retryErr.LastError()
+	}
+	return err
+}
+
+// getRaidBdevMembersNoLock returns the names of the configured base bdevs of the RAID bdev
+// that are not being removed. raid1 schedules the removal of a failed member, which stays
+// configured until the asynchronous removal completes, so it is not counted as a member.
+func (e *Engine) getRaidBdevMembersNoLock(spdkClient *spdkclient.Client) (map[string]bool, error) {
+	bdevRaid, err := e.getRaidBdevInfoNoLock(spdkClient)
+	if err != nil {
+		return nil, err
+	}
+	if bdevRaid.DriverSpecific == nil || bdevRaid.DriverSpecific.Raid == nil {
+		return nil, fmt.Errorf("cannot find the members of raid bdev %s", e.Name)
+	}
+
+	members := map[string]bool{}
+	for _, baseBdev := range bdevRaid.DriverSpecific.Raid.BaseBdevsList {
+		if baseBdev.IsConfigured && !baseBdev.RemoveScheduled && baseBdev.Name != "" {
+			members[baseBdev.Name] = true
+		}
+	}
+	return members, nil
+}
+
+// resizeRaidBdevNoLock grows the RAID bdev from its current members with bdev_raid_resize.
+// SPDK refuses the resize with ENOSPC, keeping the size, if a member is smaller than
+// expectedSizeInMib. It refuses with EBUSY while a base bdev is being removed or added,
+// for example a removal that SPDK started on its own, so a busy RAID bdev is retried.
+func (e *Engine) resizeRaidBdevNoLock(spdkClient *spdkclient.Client, expectedSizeInMib uint64) (spdktypes.BdevRaidResizeResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), expansionRetryTimeout)
+	defer cancel()
+
+	resp, err := retrygo.NewWithData[spdktypes.BdevRaidResizeResponse](
+		retrygo.Context(ctx),
+		retrygo.UntilSucceeded(),
+		retrygo.Delay(expansionRetryInterval),
+		retrygo.DelayType(retrygo.FixedDelay),
+		retrygo.LastErrorOnly(true),
+		retrygo.WrapContextErrorWithLastError(true),
+		retrygo.RetryIf(jsonrpc.IsJSONRPCRespErrorDeviceOrResourceBusy),
+		retrygo.OnRetry(func(_ uint, err error) {
+			e.log.WithError(err).Warnf("Raid bdev %s is busy, will retry resizing it", e.Name)
+		}),
+	).Do(func() (spdktypes.BdevRaidResizeResponse, error) {
+		return expansionBdevRaidResize(spdkClient, e.Name, expectedSizeInMib)
+	})
+	return resp, retryLastError(err)
+}
+
+func (e *Engine) getRaidBdevInfoNoLock(spdkClient *spdkclient.Client) (*spdktypes.BdevInfo, error) {
+	bdevRaid, err := expansionBdevRaidGet(spdkClient, e.Name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get raid bdev %s", e.Name)
+	}
+	if len(bdevRaid) == 0 {
+		return nil, fmt.Errorf("raid bdev %s not found", e.Name)
+	}
+	return &bdevRaid[0], nil
+}
+
+func (e *Engine) getRaidBdevSizeNoLock(spdkClient *spdkclient.Client) (uint64, error) {
+	bdevRaid, err := e.getRaidBdevInfoNoLock(spdkClient)
+	if err != nil {
+		return 0, err
+	}
+	return bdevRaid.NumBlocks * uint64(bdevRaid.BlockSize), nil
 }
 
 func (e *Engine) ExpandPrecheck(spdkClient *spdkclient.Client, size uint64) (requireExpansion bool, err error) {
 	e.Lock()
 	defer e.Unlock()
 
+	return e.expandPrecheckNoLock(size)
+}
+
+func (e *Engine) expandPrecheckNoLock(size uint64) (requireExpansion bool, err error) {
 	e.log.Info("Prechecking engine expansion")
 
 	if e.isExpanding {
@@ -4281,4 +4410,346 @@ func (e *Engine) ensureNvmeTcpTargetForRestore(spdkClient *spdkclient.Client, su
 		return errors.Wrap(err, "failed to create temporary NVMe-TCP target for backup restore")
 	}
 	return nil
+}
+
+// getRaidBdevCreateUUID returns the UUID for creating the RAID bdev. A shared
+// block engine uses a UUID derived from the volume name, since SPDK refuses to
+// restore a ptpl file that was saved for a bdev with a different UUID. Other
+// engines let SPDK generate one.
+func (e *Engine) getRaidBdevCreateUUID() string {
+	if !e.SharedBlock {
+		return ""
+	}
+	return getStableVolumeRaidUUID(e.VolumeName)
+}
+
+// getReservationPtplDir returns the directory holding the ptpl files of a
+// shared block engine target, or empty for other engines.
+func (e *Engine) getReservationPtplDir() string {
+	if !e.SharedBlock || e.sharedBlockState.metadataDir == "" {
+		return ""
+	}
+	return getVolumeReservationPtplDir(e.sharedBlockState.metadataDir, e.VolumeName)
+}
+
+func getVolumeReservationPtplDir(metadataDir, volumeName string) string {
+	return filepath.Join(metadataDir, reservationPtplSubDir, volumeName)
+}
+
+// getReservationPtplFile returns the file SPDK persists the NVMe reservation
+// state of a shared block engine target to, or empty for other engines. Each
+// lifetime of the volume and each epoch of the state has its own file.
+func (e *Engine) getReservationPtplFile() string {
+	dir := e.getReservationPtplDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, fmt.Sprintf("%s-%d.json", e.sharedBlockState.volumeUID, e.sharedBlockState.reservationEpoch))
+}
+
+// cleanupVolumeReservationPtplFiles removes the ptpl files of a shared block
+// volume. It is required only when the volume is deleted, as the files are the
+// latest reservation state when the engine is recreated, e.g., after an error.
+func cleanupVolumeReservationPtplFiles(metadataDir, volumeName string) error {
+	dir := getVolumeReservationPtplDir(metadataDir, volumeName)
+	if err := os.RemoveAll(dir); err != nil {
+		return errors.Wrapf(err, "failed to remove reservation ptpl files of volume %s", volumeName)
+	}
+	logrus.Infof("Removed reservation ptpl files of volume %s in %s", volumeName, dir)
+	return nil
+}
+
+// prepareReservationPtplFile gets the ptpl file of a shared block engine target
+// ready for SPDK to restore before the namespace is added.
+//
+// SPDK writes the file first and the state is synced to the cluster later, so a
+// valid local file of the current epoch is never older than the state the
+// manager passes, and is kept. It exists if the engine is recreated on the same
+// node, e.g., after an instance manager crash. Otherwise, the file is rebuilt
+// from the state the manager passes. Files of other epochs are stale and
+// removed.
+func (e *Engine) prepareReservationPtplFile(ptplFile string) error {
+	bdevUUID := getStableVolumeRaidUUID(e.VolumeName)
+
+	if err := e.removeStaleReservationPtplFiles(ptplFile); err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(ptplFile)
+	if err != nil && !os.IsNotExist(err) {
+		return errors.Wrapf(err, "failed to read reservation ptpl file %s for engine %s", ptplFile, e.Name)
+	}
+	if err == nil {
+		_, parseErr := parseReservationPtplData(data, bdevUUID)
+		if parseErr == nil {
+			e.log.Infof("Restoring reservation state of epoch %v from local ptpl file %s", e.sharedBlockState.reservationEpoch, ptplFile)
+			return nil
+		}
+		// A partial file left by a crash in the middle of a write is empty or
+		// invalid. Fall back to the synced state, which is better than
+		// discarding the state.
+		e.log.WithError(parseErr).Warnf("Replacing local reservation ptpl file %s that SPDK cannot restore with the synced state", ptplFile)
+	}
+
+	seed, err := reservationStateToPtplData(e.sharedBlockState.reservationSeed, bdevUUID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to encode reservation state for engine %s", e.Name)
+	}
+	if seed != nil {
+		if _, err := parseReservationPtplData(seed, bdevUUID); err != nil {
+			e.log.WithError(err).Warn("Discarding synced reservation state that SPDK cannot restore")
+			seed = nil
+		}
+	}
+	if seed == nil {
+		if err := os.Remove(ptplFile); err != nil && !os.IsNotExist(err) {
+			return errors.Wrapf(err, "failed to remove reservation ptpl file %s for engine %s", ptplFile, e.Name)
+		}
+		return nil
+	}
+
+	if err := writeFileAtomically(ptplFile, seed); err != nil {
+		return errors.Wrapf(err, "failed to write reservation ptpl file %s for engine %s", ptplFile, e.Name)
+	}
+	e.log.Infof("Restoring reservation state of epoch %v with %d registrants from the synced state", e.sharedBlockState.reservationEpoch, len(e.sharedBlockState.reservationSeed.Registrants))
+	return nil
+}
+
+// removeStaleReservationPtplFiles removes the files of the volume other than
+// the ptpl file of the current lifetime and epoch.
+func (e *Engine) removeStaleReservationPtplFiles(ptplFile string) error {
+	entries, err := os.ReadDir(filepath.Dir(ptplFile))
+	if err != nil {
+		return errors.Wrapf(err, "failed to list reservation ptpl files for engine %s", e.Name)
+	}
+	for _, entry := range entries {
+		file := filepath.Join(filepath.Dir(ptplFile), entry.Name())
+		if file == ptplFile {
+			continue
+		}
+		if err := os.RemoveAll(file); err != nil {
+			return errors.Wrapf(err, "failed to remove stale reservation ptpl file %s for engine %s", file, e.Name)
+		}
+		e.log.Infof("Removed stale reservation ptpl file %s", file)
+	}
+	return nil
+}
+
+// getReservationState returns the reservation state SPDK persists in the ptpl
+// file of a shared block engine target, or nil if it is unknown, e.g., the
+// engine is not a shared block engine or SPDK is writing the file.
+func (e *Engine) getReservationState() *spdkrpc.ReservationState {
+	ptplFile := e.getReservationPtplFile()
+	if ptplFile == "" {
+		return nil
+	}
+
+	info, err := os.Stat(ptplFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &spdkrpc.ReservationState{Epoch: e.sharedBlockState.reservationEpoch, Registrants: []*spdkrpc.ReservationRegistrant{}}
+		}
+		return nil
+	}
+	data, err := os.ReadFile(ptplFile)
+	if err != nil {
+		return nil
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		// SPDK empties the file when a host registers without persistence.
+		if time.Since(info.ModTime()) < reservationPtplEmptyFileMinAge {
+			return nil
+		}
+		return &spdkrpc.ReservationState{Epoch: e.sharedBlockState.reservationEpoch, Registrants: []*spdkrpc.ReservationRegistrant{}}
+	}
+	record, err := parseReservationPtplData(data, getStableVolumeRaidUUID(e.VolumeName))
+	if err != nil {
+		return nil
+	}
+	return reservationPtplRecordToState(record, e.sharedBlockState.reservationEpoch)
+}
+
+// RegisterFrontend records how to suspend an engine frontend of the shared
+// block engine. An engine frontend registers before it connects to the engine
+// target and periodically afterwards, so that the registration survives an
+// engine restart and follows an engine frontend address change. It is rejected
+// while the engine frontends are suspended, so that no host can connect then.
+func (e *Engine) RegisterFrontend(name, address, hostNQN string) error {
+	if !e.SharedBlock {
+		return errors.Errorf("engine %s is not a shared block engine", e.Name)
+	}
+
+	changed, err := e.sharedBlockState.frontends.register(name, address, hostNQN)
+	if err != nil {
+		return errors.Wrapf(err, "cannot register engine frontend %s to engine %s", name, e.Name)
+	}
+	if changed {
+		e.log.Infof("Registered engine frontend %s at %s with host NQN %s", name, address, hostNQN)
+	}
+	return nil
+}
+
+// withSharedBlockFrontendsSuspended runs work while the engine frontends on
+// all hosts are suspended, so that no host can write to the engine target.
+// callerName is the engine frontend requesting the work, which has suspended
+// itself, or empty if there is none. Before running work, it verifies that
+// every host connected to the engine target belongs to a suspended engine
+// frontend, and fails otherwise. work should acquire the engine lock by itself,
+// as it is not held while the engine frontends are called.
+func (e *Engine) withSharedBlockFrontendsSuspended(spdkClient *spdkclient.Client, callerName string, noFlush, noLockFS bool, work func() error) (err error) {
+	frontends, err := e.sharedBlockState.frontends.startFreezing()
+	if err != nil {
+		return errors.Wrapf(err, "engine %s", e.Name)
+	}
+	defer e.sharedBlockState.frontends.stopFreezing()
+
+	e.RLock()
+	nqn := ""
+	if e.NvmeTcpTarget != nil {
+		nqn = e.NvmeTcpTarget.Nqn
+	}
+	e.RUnlock()
+	if nqn == "" {
+		// No host can write without the engine target.
+		return work()
+	}
+
+	connectedHosts, err := getConnectedHostNQNs(spdkClient, nqn)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the hosts connected to engine %s before suspending engine frontends", e.Name)
+	}
+
+	frozenHosts := map[string]bool{}
+	if caller := frontends[callerName]; caller != nil {
+		frozenHosts[caller.hostNQN] = true
+	}
+	delete(frontends, callerName)
+
+	suspended, err := e.suspendFrontends(frontends, connectedHosts, noFlush, noLockFS)
+	defer e.resumeFrontends(suspended)
+	if err != nil {
+		return err
+	}
+	for _, frontend := range suspended {
+		frozenHosts[frontend.hostNQN] = true
+	}
+
+	// A host may have connected while the engine frontends were being suspended.
+	connectedHosts, err = getConnectedHostNQNs(spdkClient, nqn)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the hosts connected to engine %s after suspending engine frontends", e.Name)
+	}
+	for hostNQN := range connectedHosts {
+		if !frozenHosts[hostNQN] {
+			return errors.Errorf("host %s is connected to engine %s without a suspended engine frontend", hostNQN, e.Name)
+		}
+	}
+
+	return work()
+}
+
+// suspendFrontends suspends the engine frontends in parallel and returns the
+// suspended ones. An engine frontend that does not exist or cannot be reached
+// is skipped only if its host is not connected to the engine target, as it
+// cannot write then. Any other failure fails the suspension, and the caller
+// should resume the returned engine frontends.
+func (e *Engine) suspendFrontends(frontends map[string]*registeredFrontend, connectedHosts map[string]bool, noFlush, noLockFS bool) (map[string]*registeredFrontend, error) {
+	var (
+		lock      sync.Mutex
+		wg        sync.WaitGroup
+		suspended = map[string]*registeredFrontend{}
+		failures  []string
+	)
+	for name, frontend := range frontends {
+		wg.Add(1)
+		go func(name string, frontend *registeredFrontend) {
+			defer wg.Done()
+
+			err := e.callFrontend(frontend.address, func(c *client.SPDKClient) error {
+				return c.EngineFrontendSuspendWithOptions(name, noFlush, noLockFS)
+			})
+
+			lock.Lock()
+			defer lock.Unlock()
+			if err == nil {
+				suspended[name] = frontend
+				return
+			}
+			if isFrontendGoneError(err) && !connectedHosts[frontend.hostNQN] {
+				e.log.WithError(err).Warnf("Skipped suspending engine frontend %s at %s, as its host %s is not connected", name, frontend.address, frontend.hostNQN)
+				return
+			}
+			failures = append(failures, errors.Wrapf(err, "failed to suspend engine frontend %s at %s", name, frontend.address).Error())
+		}(name, frontend)
+	}
+	wg.Wait()
+
+	if len(failures) > 0 {
+		sort.Strings(failures)
+		return suspended, errors.Errorf("failed to suspend engine frontends of engine %s: %v", e.Name, failures)
+	}
+	return suspended, nil
+}
+
+// resumeFrontends resumes the engine frontends in parallel. A failure is only
+// logged, as the result of the work does not depend on it.
+func (e *Engine) resumeFrontends(frontends map[string]*registeredFrontend) {
+	var wg sync.WaitGroup
+	for name, frontend := range frontends {
+		wg.Add(1)
+		go func(name string, frontend *registeredFrontend) {
+			defer wg.Done()
+
+			if err := e.callFrontend(frontend.address, func(c *client.SPDKClient) error {
+				return c.EngineFrontendResume(name)
+			}); err != nil {
+				e.log.WithError(err).Errorf("Failed to resume engine frontend %s at %s", name, frontend.address)
+			}
+		}(name, frontend)
+	}
+	wg.Wait()
+}
+
+func (e *Engine) callFrontend(address string, call func(*client.SPDKClient) error) error {
+	newServiceClient := e.newServiceClient
+	if newServiceClient == nil {
+		newServiceClient = GetServiceClient
+	}
+	c, err := newServiceClient(address)
+	if err != nil {
+		return grpcstatus.Errorf(grpccodes.Unavailable, "failed to create SPDK client for %s: %v", address, err)
+	}
+	defer func() {
+		if errClose := c.Close(); errClose != nil {
+			e.log.WithError(errClose).Warnf("Failed to close SPDK client for %s", address)
+		}
+	}()
+	return call(c)
+}
+
+// buildSharedBlockReplicaAddFrontendSuspendResumeWrapper builds the
+// replicaAddFrontendSuspendResumeWrapper of a replica add of the shared block
+// engine. The caller suspends the engine frontends on all hosts during the
+// synchronous setup, so the snapshot step only runs the work. Like
+// buildGRPCReplicaAddFrontendSuspendResumeWrapper, the finish step suspends
+// them, and proceeds without the suspension if it fails. getSPDKClient returns
+// the current SPDK client, as the finish step runs after the shallow copy,
+// which may outlive the client of the request.
+func (e *Engine) buildSharedBlockReplicaAddFrontendSuspendResumeWrapper(getSPDKClient func() *spdkclient.Client) replicaAddFrontendSuspendResumeWrapper {
+	return func(work func() error, suspendRequired bool) error {
+		if suspendRequired {
+			return work()
+		}
+
+		workStarted := false
+		err := e.withSharedBlockFrontendsSuspended(getSPDKClient(), "", true, true, func() error {
+			workStarted = true
+			return work()
+		})
+		if workStarted {
+			return err
+		}
+		e.log.WithError(err).Warn("Failed to suspend engine frontends before replica add work, proceeding without suspension")
+		return work()
+	}
 }

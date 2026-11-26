@@ -271,6 +271,11 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 			continue
 		}
 
+		if util.IsSharedBlockVolume(volume) {
+			_log.Debugf("%s. Volume is shared block RWX volume", logSkip)
+			continue
+		}
+
 		filteredVolumes = append(filteredVolumes, volume)
 	}
 

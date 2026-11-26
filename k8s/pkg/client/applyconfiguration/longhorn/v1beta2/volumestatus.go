@@ -32,12 +32,19 @@ type VolumeStatusApplyConfiguration struct {
 	Robustness    *longhornv1beta2.VolumeRobustness `json:"robustness,omitempty"`
 	CurrentNodeID *string                           `json:"currentNodeID,omitempty"`
 	// the node that the engine (target) is currently running on.
-	CurrentEngineNodeID *string                             `json:"currentEngineNodeID,omitempty"`
-	CurrentImage        *string                             `json:"currentImage,omitempty"`
-	KubernetesStatus    *KubernetesStatusApplyConfiguration `json:"kubernetesStatus,omitempty"`
-	Conditions          []ConditionApplyConfiguration       `json:"conditions,omitempty"`
-	LastBackup          *string                             `json:"lastBackup,omitempty"`
-	LastBackupAt        *string                             `json:"lastBackupAt,omitempty"`
+	CurrentEngineNodeID *string `json:"currentEngineNodeID,omitempty"`
+	// frontendNodeIDs lists the nodes a shared block volume is currently
+	// available on, i.e., the nodes with a running engine frontend.
+	FrontendNodeIDs []string `json:"frontendNodeIDs,omitempty"`
+	// reservation is the NVMe reservation state of a shared block volume that
+	// persists through power loss. It is synced from the engine, and restored
+	// to the engine when the engine moves to another node.
+	Reservation      *VolumeReservationApplyConfiguration `json:"reservation,omitempty"`
+	CurrentImage     *string                              `json:"currentImage,omitempty"`
+	KubernetesStatus *KubernetesStatusApplyConfiguration  `json:"kubernetesStatus,omitempty"`
+	Conditions       []ConditionApplyConfiguration        `json:"conditions,omitempty"`
+	LastBackup       *string                              `json:"lastBackup,omitempty"`
+	LastBackupAt     *string                              `json:"lastBackupAt,omitempty"`
 	// the node that this volume is currently migrating to
 	CurrentMigrationNodeID *string                              `json:"currentMigrationNodeID,omitempty"`
 	FrontendDisabled       *bool                                `json:"frontendDisabled,omitempty"`
@@ -104,6 +111,24 @@ func (b *VolumeStatusApplyConfiguration) WithCurrentNodeID(value string) *Volume
 // If called multiple times, the CurrentEngineNodeID field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithCurrentEngineNodeID(value string) *VolumeStatusApplyConfiguration {
 	b.CurrentEngineNodeID = &value
+	return b
+}
+
+// WithFrontendNodeIDs adds the given value to the FrontendNodeIDs field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the FrontendNodeIDs field.
+func (b *VolumeStatusApplyConfiguration) WithFrontendNodeIDs(values ...string) *VolumeStatusApplyConfiguration {
+	for i := range values {
+		b.FrontendNodeIDs = append(b.FrontendNodeIDs, values[i])
+	}
+	return b
+}
+
+// WithReservation sets the Reservation field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Reservation field is set to the value of the last call.
+func (b *VolumeStatusApplyConfiguration) WithReservation(value *VolumeReservationApplyConfiguration) *VolumeStatusApplyConfiguration {
+	b.Reservation = value
 	return b
 }
 

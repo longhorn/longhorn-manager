@@ -31,6 +31,38 @@ func TestGetMaxAllowedEnginesForVolume(t *testing.T) {
 			expected:  2,
 		},
 		{
+			name: "shared block volume allows one even if migratable",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					Migratable:  true,
+					SharedBlock: true,
+					AccessMode:  longhorn.AccessModeReadWriteMany,
+					DataEngine:  longhorn.DataEngineTypeV2,
+				},
+			},
+			newEngine: &longhorn.Engine{},
+			expected:  1,
+		},
+		{
+			name: "shared block volume allows one on engine switchover",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					SharedBlock:  true,
+					AccessMode:   longhorn.AccessModeReadWriteMany,
+					DataEngine:   longhorn.DataEngineTypeV2,
+					EngineNodeID: "node-b",
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       "node-a",
+					CurrentEngineNodeID: "node-a",
+				},
+			},
+			newEngine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: "node-b"}},
+			},
+			expected: 1,
+		},
+		{
 			name: "v2 non-migratable switchover allows two on target node",
 			volume: &longhorn.Volume{
 				Spec: longhorn.VolumeSpec{

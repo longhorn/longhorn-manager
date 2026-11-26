@@ -36,6 +36,13 @@ func (s *Server) EngineFrontendSuspend(ctx context.Context, req *spdkrpc.EngineF
 	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
 	defer unlockVolumeHost()
 
+	// A caller whose suspend request times out resumes the frontend, and that resume
+	// also takes the volume host lock. Do not suspend once the request has expired, or
+	// the frontend would stay suspended after that resume.
+	if err := ctx.Err(); err != nil {
+		return nil, grpcstatus.FromContextError(err).Err()
+	}
+
 	s.RLock()
 	spdkClient := s.spdkClient
 	s.RUnlock()
@@ -102,12 +109,15 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 // the snapshot-creation step and the finish step. It then delegates to
 // Engine.ReplicaAdd(frontendSuspendResumeWrapper).
 //
-// Engine.ReplicaAdd runs the synchronous part under the Engine lock:
+// Engine.ReplicaAdd runs the synchronous part with the frontend suspended,
+// and only then takes the Engine lock. The opposite lock order deadlocks with an
+// engine frontend snapshot operation, which holds the frontend lock while it
+// calls into the Engine:
 //
-//  0. Snapshot + setup (sync, under frontendSuspendResumeWrapper): suspend frontend via
-//     frontendSuspendResumeWrapper -> create rebuild snapshot, connect to src/dst replica
+//  0. Snapshot + setup (sync): suspend frontend via frontendSuspendResumeWrapper
+//     -> under the Engine lock, create rebuild snapshot, connect to src/dst replica
 //     SPDK services, add dst replica head bdev to RAID, mark dst as ModeWO
-//     -> resume frontend.
+//     -> release the Engine lock -> resume frontend.
 //
 // On return (with lock released), a deferred goroutine runs the remaining
 // phases:
@@ -149,8 +159,9 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //     be suspended at all proceeds without suspension.
 //   - Finish step: proceed without suspension, as the data has already been
 //     copied and not running the step would leak SPDK resources.
-//   - Resume fails -> log error but do not override the operation result;
-//     longhorn-manager will detect the stuck-suspended EF and recover.
+//   - Suspend times out -> resume best-effort, as the suspend may still
+//     complete on the EF after the RPC failed.
+//   - Resume fails -> log error but do not override the operation result.
 func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.EngineFrontendReplicaAddRequest) (ret *emptypb.Empty, err error) {
 	if req.ReplicaName == "" || req.ReplicaAddress == "" {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name and address are required")
@@ -336,7 +347,7 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	}
 
 	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
-		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient, req.SharedBlock)
 	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
 	ef.metadataDir = s.metadataDir
 
@@ -378,6 +389,9 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	if createErr != nil &&
 		(errors.Is(createErr, ErrEngineFrontendCreateInvalidArgument) ||
 			errors.Is(createErr, ErrEngineFrontendCreatePrecondition)) {
+		// The frontend is dropped without Delete, so stop its background
+		// goroutines here.
+		close(ef.stopCh)
 		// Hard error - Create did not mutate anything.  Restore the
 		// evicted efs so valid ongoing recoveries are not permanently lost.
 		if len(evictedEfs) > 0 {

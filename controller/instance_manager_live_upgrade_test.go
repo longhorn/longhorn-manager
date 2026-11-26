@@ -2261,3 +2261,37 @@ func (s *TestSuite) TestValidateNodeSupportsLiveUpgradeDRReplicaTopology(c *C) {
 		}
 	}
 }
+
+func (s *TestSuite) TestValidateNodeSupportsLiveUpgradeRejectsSharedBlockSuspendedFrontend(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+	efIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+	imuc, err := newTestInstanceManagerUpgradeController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+
+	// The engine runs on another node, and the secondary engine frontend on
+	// the upgrade node is suspended, so it is not in FrontendNodeIDs.
+	volume := newSharedBlockVolume()
+	volume.Namespace = TestNamespace
+	volume.Spec.NodeID = TestNode2
+	volume.Status.CurrentNodeID = TestNode2
+	volume.Status.CurrentEngineNodeID = TestNode2
+	volume.Status.FrontendNodeIDs = []string{TestNode2}
+	c.Assert(volumeIndexer.Add(volume), IsNil)
+
+	err = imuc.validateNodeSupportsLiveUpgrade(TestNode1)
+	c.Assert(errors.Is(err, errUpgradeUnsupported), Equals, false)
+
+	ef := newEngineFrontendForVolume(volume, volume.Name+"-e-0", TestNode1, "secondary")
+	ef.Spec.DesireState = longhorn.InstanceStateRunning
+	ef.Status.CurrentState = longhorn.InstanceStateSuspended
+	c.Assert(efIndexer.Add(ef), IsNil)
+
+	err = imuc.validateNodeSupportsLiveUpgrade(TestNode1)
+	c.Assert(errors.Is(err, errUpgradeUnsupported), Equals, true)
+	c.Assert(err.Error(), Matches, ".*shared block volume.*not supported for live upgrade")
+}

@@ -24,6 +24,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -329,7 +330,7 @@ func isRegularRWXVolume(v *longhorn.Volume) bool {
 	if v == nil {
 		return false
 	}
-	return v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
+	return util.IsRegularRWXVolume(v)
 }
 
 func checkIfRemoteDataCleanupIsNeeded(obj runtime.Object, bt *longhorn.BackupTarget) (bool, error) {

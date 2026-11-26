@@ -121,7 +121,9 @@ func getV2VolumeEndpointForNode(volume *longhornclient.Volume, nodeID string) (s
 		}
 	}
 
-	if !volume.Migratable {
+	// The engine frontend of a migratable or shared block volume on another node
+	// cannot be used on this node.
+	if !volume.Migratable && !volume.SharedBlock {
 		for _, c := range volume.Controllers {
 			if c.Endpoint != "" {
 				return c.Endpoint, nil
@@ -174,6 +176,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// For mounting volumes, we don't want multiple controllers for a volume, since the filesystem could get messed up
 	if len(volume.Controllers) == 0 || (len(volume.Controllers) > 1 && volumeCapability.GetBlock() == nil) {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s has invalid controller count %v", volumeID, len(volume.Controllers))
+	}
+
+	if volume.SharedBlock && volumeCapability.GetBlock() == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "shared block volume %s only supports the block volume mode", volumeID)
 	}
 
 	if volume.DisableFrontend {
@@ -529,6 +535,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s has invalid controller count %v", volumeID, len(volume.Controllers))
 	}
 
+	if volume.SharedBlock && volumeCapability.GetBlock() == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "shared block volume %s only supports the block volume mode", volumeID)
+	}
+
 	if volume.DisableFrontend {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s frontend is disabled", volumeID)
 	}
@@ -563,7 +573,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
-	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
+	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable && !volume.SharedBlock {
 		if volume.AccessMode != string(longhorn.AccessModeReadWriteMany) {
 			return nil, status.Errorf(codes.FailedPrecondition, "volume %s requires shared access but is not marked for shared use", volumeID)
 		}
@@ -590,6 +600,13 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	devicePath := volume.Controllers[0].Endpoint
 	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
 		devicePath = v2DevicePath
+	}
+
+	if volume.SharedBlock && volume.Encrypted {
+		// Another node may have written the LUKS header; drop cached blocks so the probe reads the device.
+		if err := flushBlockDeviceBuffers(devicePath); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to flush buffers of device %v: %v", devicePath, err)
+		}
 	}
 
 	diskFormat, err := getDiskFormat(devicePath)
@@ -622,6 +639,11 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
+			// Concurrent stages of a shared block volume would write different LUKS headers,
+			// so only the primary engine frontend node formats it.
+			if !canFormatEncryptedVolume(volume, ns.nodeID) {
+				return nil, status.Errorf(codes.Unavailable, "waiting for the primary node to format encrypted shared block volume %v", volumeID)
+			}
 			if err := crypto.EncryptVolume(devicePath, passphrase, cryptoParams); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
@@ -746,7 +768,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		dataEngine = volume.DataEngine
 	}
 	sharedAccess := requiresSharedAccess(volume, nil)
-	cleanupCryptoDevice := !sharedAccess || (sharedAccess && volume.Migratable)
+	cleanupCryptoDevice := !sharedAccess || (sharedAccess && (volume.Migratable || volume.SharedBlock))
 	if cleanupCryptoDevice {
 		cryptoDevice := crypto.VolumeMapper(volumeID, dataEngine)
 		if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
@@ -902,14 +924,14 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	if volume == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s missing", volumeID)
 	}
-	if len(volume.Controllers) != 1 {
+	if len(volume.Controllers) == 0 || (len(volume.Controllers) > 1 && !volume.SharedBlock) {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid controller count %v for volume %v node expansion", len(volume.Controllers), volumeID)
 	}
 	if volume.State != string(longhorn.VolumeStateAttached) {
 		return nil, status.Errorf(codes.FailedPrecondition, "invalid state %v for volume %v node expansion", volume.State, volumeID)
 	}
 
-	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
+	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable && !volume.SharedBlock {
 		if volume.AccessMode != string(longhorn.AccessModeReadWriteMany) {
 			return nil, status.Errorf(codes.FailedPrecondition, "volume %s requires shared access but is not marked for shared use", volumeID)
 		}
@@ -1112,7 +1134,7 @@ func (ns *NodeServer) requireHostNamespaceMounter(volume *longhornclient.Volume,
 	if !requiresSharedAccess(volume, volumeCapability) {
 		return false, nil
 	}
-	if volume.Migratable {
+	if volume.Migratable || volume.SharedBlock {
 		return false, nil
 	}
 
@@ -1185,7 +1207,7 @@ func restageRequired(volume *longhornclient.Volume,
 	mounter mount.Interface,
 	isBlock, isStorageNetworkConfigured bool) (bool, error) {
 
-	if isStorageNetworkConfigured && volume.AccessMode == string(longhorn.AccessModeReadWriteMany) {
+	if isStorageNetworkConfigured && volume.AccessMode == string(longhorn.AccessModeReadWriteMany) && !volume.SharedBlock {
 		return true, fmt.Errorf("always unstage RWX volume %v when storage network is configured", volumeID)
 	}
 

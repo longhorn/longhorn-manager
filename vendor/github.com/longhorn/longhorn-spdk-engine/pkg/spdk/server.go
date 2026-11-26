@@ -261,6 +261,12 @@ func (s *Server) tryEnsureSPDKTgtConnectionHealthy() error {
 	return s.clientReconnect()
 }
 
+func (s *Server) getSPDKClient() *spdkclient.Client {
+	s.RLock()
+	defer s.RUnlock()
+	return s.spdkClient
+}
+
 func (s *Server) clientReconnect() error {
 	s.Lock()
 	defer func() {
@@ -861,7 +867,15 @@ func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, l
 		// timeout under heavy writes.
 		suspended := false
 		if err := efClient.EngineFrontendSuspendWithOptions(efName, true, true); err != nil {
-			if suspendRequired && grpcstatus.Code(errors.UnwrapAll(err)) != grpccodes.Unimplemented {
+			code := grpcstatus.Code(errors.UnwrapAll(err))
+			if code == grpccodes.DeadlineExceeded {
+				// The suspend may still complete on the frontend after the RPC
+				// timed out, and nothing else would resume it.
+				if resumeErr := efClient.EngineFrontendResume(efName); resumeErr != nil {
+					log.WithError(resumeErr).Warnf("Failed to resume engine frontend %s after the suspend timed out", efName)
+				}
+			}
+			if suspendRequired && code != grpccodes.Unimplemented {
 				return errors.Wrapf(err, "failed to suspend engine frontend %s before replica add work", efName)
 			}
 			log.WithError(err).Warnf("Failed to suspend engine frontend %s before replica add work, proceeding without suspension", efName)
@@ -874,8 +888,7 @@ func buildGRPCReplicaAddFrontendSuspendResumeWrapper(efName, efAddress string, l
 		// Resume the frontend after the work.
 		// If resume fails (EF disappeared during work, or internal error),
 		// log a warning but do not override workErr — the replica-add result
-		// is determined by work(), not by resume. longhorn-manager will
-		// detect the stuck-suspended EF and handle recovery.
+		// is determined by work(), not by resume.
 		if suspended {
 			if resumeErr := efClient.EngineFrontendResume(efName); resumeErr != nil {
 				log.WithError(resumeErr).Errorf("Failed to resume engine frontend %s after replica add work (work succeeded: %v)", efName, workErr == nil)
@@ -1185,7 +1198,7 @@ func (s *Server) recoverEngineFrontends(ctx context.Context) {
 		}
 
 		ef := NewEngineFrontend(record.Name, record.EngineName, record.VolumeName,
-			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
+			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient, record.SharedBlock)
 		ef.NvmeTcpFrontend.NrIoQueues = record.NrIoQueues
 		ef.metadataDir = s.metadataDir
 		ef.VolumeNQN = record.VolumeNQN

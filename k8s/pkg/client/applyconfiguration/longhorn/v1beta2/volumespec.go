@@ -73,10 +73,15 @@ type VolumeSpecApplyConfiguration struct {
 	AccessMode                  *longhornv1beta2.AccessMode                  `json:"accessMode,omitempty"`
 	Migratable                  *bool                                        `json:"migratable,omitempty"`
 	Encrypted                   *bool                                        `json:"encrypted,omitempty"`
-	NumberOfReplicas            *int                                         `json:"numberOfReplicas,omitempty"`
-	ReplicaAutoBalance          *longhornv1beta2.ReplicaAutoBalance          `json:"replicaAutoBalance,omitempty"`
-	SnapshotDataIntegrity       *longhornv1beta2.SnapshotDataIntegrity       `json:"snapshotDataIntegrity,omitempty"`
-	BackupCompressionMethod     *longhornv1beta2.BackupCompressionMethod     `json:"backupCompressionMethod,omitempty"`
+	// sharedBlock allows the RWX block volume to be attached to multiple nodes at
+	// the same time. A single engine serves the engine frontends on all attached
+	// nodes, so they share one NVMe reservation state. Only supported by the v2
+	// data engine.
+	SharedBlock             *bool                                    `json:"sharedBlock,omitempty"`
+	NumberOfReplicas        *int                                     `json:"numberOfReplicas,omitempty"`
+	ReplicaAutoBalance      *longhornv1beta2.ReplicaAutoBalance      `json:"replicaAutoBalance,omitempty"`
+	SnapshotDataIntegrity   *longhornv1beta2.SnapshotDataIntegrity   `json:"snapshotDataIntegrity,omitempty"`
+	BackupCompressionMethod *longhornv1beta2.BackupCompressionMethod `json:"backupCompressionMethod,omitempty"`
 	// BackupBlockSize indicate the block size to create backups. The block size is immutable.
 	BackupBlockSize  *int64                          `json:"backupBlockSize,omitempty"`
 	DataEngine       *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
@@ -361,6 +366,14 @@ func (b *VolumeSpecApplyConfiguration) WithMigratable(value bool) *VolumeSpecApp
 // If called multiple times, the Encrypted field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithEncrypted(value bool) *VolumeSpecApplyConfiguration {
 	b.Encrypted = &value
+	return b
+}
+
+// WithSharedBlock sets the SharedBlock field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SharedBlock field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithSharedBlock(value bool) *VolumeSpecApplyConfiguration {
+	b.SharedBlock = &value
 	return b
 }
 

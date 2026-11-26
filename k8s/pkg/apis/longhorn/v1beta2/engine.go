@@ -172,6 +172,11 @@ type EngineStatus struct {
 	// +optional
 	// +nullable
 	CurrentReplicaAddressMap map[string]string `json:"currentReplicaAddressMap"`
+	// reservation is the NVMe reservation state the target of a shared block
+	// engine persists through power loss, as last reported by the engine.
+	// +optional
+	// +nullable
+	Reservation *VolumeReservation `json:"reservation"`
 	// +optional
 	// +nullable
 	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`

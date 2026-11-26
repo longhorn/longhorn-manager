@@ -20,7 +20,7 @@ import (
 // DATA_LAYOUT_TYPE_SHARDED constructs a single shardGroupBackend (EC).
 // Without forwarding this field, callers would default to the proto3 zero
 // value (REPLICATED), and EC volumes would be silently miscreated as RAID1.
-func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize uint64, replicaAddressMap map[string]string, portCount int32, salvageRequested bool, snapshotMaxCount int32, dataLayoutType spdkrpc.DataLayoutType) (*api.Engine, error) {
+func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize uint64, replicaAddressMap map[string]string, portCount int32, salvageRequested bool, snapshotMaxCount int32, dataLayoutType spdkrpc.DataLayoutType, sharedBlock bool, reservation *spdkrpc.ReservationState) (*api.Engine, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to start engine: missing required parameter name")
 	}
@@ -45,6 +45,8 @@ func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize ui
 		SalvageRequested:  salvageRequested,
 		SnapshotMaxCount:  snapshotMaxCount,
 		DataLayoutType:    dataLayoutType,
+		SharedBlock:       sharedBlock,
+		Reservation:       reservation,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start engine")
@@ -127,6 +129,27 @@ func (c *SPDKClient) EngineDeleteTarget(name string) error {
 	return nil
 }
 
+// EngineReservationCleanup removes the persisted NVMe reservation state of a
+// shared block volume on the node. It is required only when the volume is
+// deleted, after its engine is deleted.
+func (c *SPDKClient) EngineReservationCleanup(volumeName string) error {
+	if volumeName == "" {
+		return fmt.Errorf("failed to clean up engine reservation: missing required parameter volume name")
+	}
+
+	client := c.getSPDKServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.EngineReservationCleanup(ctx, &spdkrpc.EngineReservationCleanupRequest{
+		VolumeName: volumeName,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to clean up reservation of volume %v", volumeName)
+	}
+	return nil
+}
+
 // EngineSetTargetListenerANAState updates the exported NVMe/TCP listener ANA state for an engine target.
 func (c *SPDKClient) EngineSetTargetListenerANAState(name, anaState string) error {
 	if name == "" {
@@ -148,6 +171,31 @@ func (c *SPDKClient) EngineSetTargetListenerANAState(name, anaState string) erro
 		return errors.Wrapf(err, "failed to set target listener ANA state %s for engine %v", anaState, name)
 	}
 
+	return nil
+}
+
+// EngineRegisterFrontend registers an engine frontend to a shared block engine,
+// so that the engine can suspend it. frontendAddress is the SPDK service
+// address of the engine frontend, and hostNQN is the host NQN it connects to the
+// engine target with.
+func (c *SPDKClient) EngineRegisterFrontend(name, frontendName, frontendAddress, hostNQN string) error {
+	if name == "" || frontendName == "" || frontendAddress == "" || hostNQN == "" {
+		return fmt.Errorf("failed to register engine frontend: missing required parameter")
+	}
+
+	client := c.getSPDKServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.EngineRegisterFrontend(ctx, &spdkrpc.EngineRegisterFrontendRequest{
+		Name:            name,
+		FrontendName:    frontendName,
+		FrontendAddress: frontendAddress,
+		HostNqn:         hostNQN,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to register engine frontend %v to engine %v", frontendName, name)
+	}
 	return nil
 }
 
@@ -221,7 +269,9 @@ func (c *SPDKClient) EngineExpandPrecheck(ctx context.Context, name string, size
 }
 
 // EngineSnapshotCreate creates a snapshot directly on the engine.
-func (c *SPDKClient) EngineSnapshotCreate(name, snapshotName string) (string, error) {
+// engineFrontendName is the engine frontend requesting the snapshot, which has
+// suspended itself, or empty if there is none.
+func (c *SPDKClient) EngineSnapshotCreate(name, snapshotName, engineFrontendName string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("failed to create engine snapshot: missing required parameter name")
 	}
@@ -231,8 +281,9 @@ func (c *SPDKClient) EngineSnapshotCreate(name, snapshotName string) (string, er
 	defer cancel()
 
 	resp, err := client.EngineSnapshotCreate(ctx, &spdkrpc.SnapshotRequest{
-		Name:         name,
-		SnapshotName: snapshotName,
+		Name:               name,
+		SnapshotName:       snapshotName,
+		EngineFrontendName: engineFrontendName,
 	})
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to create engine %s snapshot %s", name, snapshotName)

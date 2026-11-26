@@ -1632,6 +1632,10 @@ func isLiveUpgradeRelocatableVolume(volume *longhorn.Volume) bool {
 	if volume.Spec.Frontend == longhorn.VolumeFrontendEmpty || volume.Spec.DisableFrontend || volume.Status.FrontendDisabled {
 		return false
 	}
+	// The engine of a shared block volume is never relocated.
+	if util.IsSharedBlockVolume(volume) {
+		return false
+	}
 
 	return true
 }
@@ -1708,6 +1712,30 @@ func (imuc *InstanceManagerUpgradeController) validateNodeSupportsLiveUpgrade(no
 			if affected && !hasOtherReplica {
 				return fmt.Errorf("%w: DR volume %v has no replica outside upgrade node %v; single-replica or co-located DR volumes are not supported for live upgrade",
 					errUpgradeUnsupported, volume.Name, nodeID)
+			}
+		}
+		// The engine of a shared block volume cannot be relocated, and its engine
+		// frontends cannot switch over, so the instance manager restart would
+		// interrupt the IO of every attached node.
+		if util.IsSharedBlockVolume(volume) {
+			affected := volume.Status.CurrentNodeID == nodeID || volume.Status.CurrentEngineNodeID == nodeID
+			if !affected {
+				// A suspended or starting engine frontend is not in
+				// FrontendNodeIDs but still holds its device.
+				efs, err := imuc.ds.ListVolumeEngineFrontendsRO(volume.Name)
+				if err != nil {
+					return errors.Wrapf(err, "failed to list engine frontends for shared block volume %v", volume.Name)
+				}
+				for _, ef := range efs {
+					if ef.Spec.NodeID == nodeID {
+						affected = true
+						break
+					}
+				}
+			}
+			if affected {
+				return fmt.Errorf("%w: node %v has shared block volume %v, which is not supported for live upgrade",
+					errUpgradeUnsupported, nodeID, volume.Name)
 			}
 		}
 		_, hasShardOnNode := shardedVolumesOnNode[volume.Name]

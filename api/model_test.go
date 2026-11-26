@@ -58,6 +58,67 @@ func TestToVolumeResourceUsesEngineFrontendNodeForV2Controller(t *testing.T) {
 	}
 }
 
+func TestToVolumeResourceReportsEveryEngineFrontendOfSharedBlockVolume(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
+	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
+	if err != nil {
+		t.Fatalf("failed to create API url builder: %v", err)
+	}
+
+	volume := &longhorn.Volume{}
+	volume.Name = "test-volume"
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Spec.AccessMode = longhorn.AccessModeReadWriteMany
+	volume.Spec.SharedBlock = true
+	volume.Spec.Size = 10
+	volume.Spec.NumberOfReplicas = 1
+	volume.Status.CurrentNodeID = "node-a"
+
+	engine := &longhorn.Engine{}
+	engine.Name = "test-volume-e-0"
+	engine.Spec.VolumeName = volume.Name
+	engine.Spec.NodeID = "node-a"
+	engine.Status.CurrentState = longhorn.InstanceStateRunning
+	engine.Status.CurrentSize = 10
+
+	newFrontend := func(name, nodeID string, active bool) *longhorn.EngineFrontend {
+		ef := &longhorn.EngineFrontend{}
+		ef.Name = name
+		ef.Spec.EngineName = engine.Name
+		ef.Spec.NodeID = nodeID
+		ef.Spec.Active = active
+		ef.Status.Endpoint = "/dev/longhorn/test-volume"
+		return ef
+	}
+	// List the secondary EFs first to make sure the current EF still provides
+	// the first controller.
+	frontends := []*longhorn.EngineFrontend{
+		newFrontend("test-volume-ef-shared-c", "node-c", false),
+		newFrontend("test-volume-ef-shared-b", "node-b", false),
+		newFrontend("test-volume-ef-0", "node-a", true),
+	}
+
+	resource := toVolumeResource(volume, frontends, []*longhorn.Engine{engine}, nil, nil, nil, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+	if len(resource.Controllers) != 3 {
+		t.Fatalf("expected three controllers, got %d", len(resource.Controllers))
+	}
+	for i, nodeID := range []string{"node-a", "node-b", "node-c"} {
+		if resource.Controllers[i].NodeID != nodeID {
+			t.Fatalf("expected controller %d on node %q, got %q", i, nodeID, resource.Controllers[i].NodeID)
+		}
+		if resource.Controllers[i].Name != engine.Name || resource.Controllers[i].Endpoint == "" {
+			t.Fatalf("expected controller %d to report engine %q with an endpoint, got %+v", i, engine.Name, resource.Controllers[i])
+		}
+	}
+
+	// A volume that is not a shared block volume only reports its current EF.
+	volume.Spec.SharedBlock = false
+	resource = toVolumeResource(volume, frontends, []*longhorn.Engine{engine}, nil, nil, nil, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+	if len(resource.Controllers) != 1 || resource.Controllers[0].NodeID != "node-a" {
+		t.Fatalf("expected only the current engine frontend controller, got %+v", resource.Controllers)
+	}
+}
+
 func TestToVolumeResourceUsesOldSizeUntilLiveFrontendCatchesUp(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/volumes/test-volume", nil)
 	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})

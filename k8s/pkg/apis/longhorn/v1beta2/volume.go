@@ -201,6 +201,9 @@ const (
 	VolumeConditionTypeWaitForBackingImage      = "WaitForBackingImage"
 	VolumeConditionTypeBackingImageIncompatible = "BackingImageIncompatible"
 	VolumeConditionTypeOfflineRebuilding        = "OfflineRebuilding"
+	// VolumeConditionTypeUnreservedSharedAccess is true if a shared block
+	// volume is available on multiple nodes without an NVMe reservation held.
+	VolumeConditionTypeUnreservedSharedAccess = "UnreservedSharedAccess"
 )
 
 const (
@@ -214,6 +217,7 @@ const (
 	VolumeConditionReasonWaitForBackingImageWaiting      = "Waiting"
 	VolumeConditionReasonBackingImageVirtualSizeTooLarge = "BackingImageVirtualSizeTooLarge"
 	VolumeConditionReasonOfflineRebuildingInProgress     = "OfflineRebuildingInProgress"
+	VolumeConditionReasonNoReservation                   = "NoReservation"
 )
 
 type SnapshotDataIntegrity string
@@ -401,6 +405,13 @@ type VolumeSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Encrypted is immutable"
 	Encrypted bool `json:"encrypted"`
+	// sharedBlock allows the RWX block volume to be attached to multiple nodes at
+	// the same time. A single engine serves the engine frontends on all attached
+	// nodes, so they share one NVMe reservation state. Only supported by the v2
+	// data engine.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="SharedBlock is immutable"
+	SharedBlock bool `json:"sharedBlock"`
 	// +optional
 	NumberOfReplicas int `json:"numberOfReplicas"`
 	// +optional
@@ -478,6 +489,17 @@ type VolumeStatus struct {
 	// the node that the engine (target) is currently running on.
 	// +optional
 	CurrentEngineNodeID string `json:"currentEngineNodeID"`
+	// frontendNodeIDs lists the nodes a shared block volume is currently
+	// available on, i.e., the nodes with a running engine frontend.
+	// +optional
+	// +nullable
+	FrontendNodeIDs []string `json:"frontendNodeIDs"`
+	// reservation is the NVMe reservation state of a shared block volume that
+	// persists through power loss. It is synced from the engine, and restored
+	// to the engine when the engine moves to another node.
+	// +optional
+	// +nullable
+	Reservation *VolumeReservation `json:"reservation"`
 	// +optional
 	CurrentImage string `json:"currentImage"`
 	// +optional
@@ -562,3 +584,38 @@ type VolumeList struct {
 // Hub defines the current version (v1beta2) is the storage version
 // so mark this as Hub
 func (v *Volume) Hub() {}
+
+// VolumeReservation is the NVMe reservation state of a shared block volume that
+// persists through power loss.
+type VolumeReservation struct {
+	// epoch identifies the generation of the state. It increases when the
+	// engine moves to another node.
+	// +optional
+	Epoch int64 `json:"epoch"`
+	// nodeID is the node of the engine of this epoch.
+	// +optional
+	NodeID string `json:"nodeID"`
+	// type is the reservation type (1 to 6), or 0 if there is no reservation.
+	// +optional
+	Type int `json:"type"`
+	// holderKey is the reservation key of the holder in hexadecimal.
+	// +optional
+	HolderKey string `json:"holderKey"`
+	// holderHostID is the NVMe host identifier of the holder.
+	// +optional
+	HolderHostID string `json:"holderHostID"`
+	// registrants are the hosts registered to the reservation. It is empty if
+	// no host requested persistence.
+	// +optional
+	// +nullable
+	Registrants []VolumeReservationRegistrant `json:"registrants"`
+}
+
+type VolumeReservationRegistrant struct {
+	// key is the reservation key of the registrant in hexadecimal.
+	// +optional
+	Key string `json:"key"`
+	// hostID is the NVMe host identifier of the registrant.
+	// +optional
+	HostID string `json:"hostID"`
+}

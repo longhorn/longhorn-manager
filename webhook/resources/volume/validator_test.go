@@ -446,3 +446,85 @@ func TestValidateExpansionSizeV2EncryptedHeader(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSharedBlockConstraints(t *testing.T) {
+	validSpec := func() longhorn.VolumeSpec {
+		return longhorn.VolumeSpec{
+			SharedBlock:  true,
+			AccessMode:   longhorn.AccessModeReadWriteMany,
+			DataEngine:   longhorn.DataEngineTypeV2,
+			Frontend:     longhorn.VolumeFrontendBlockDev,
+			DataLocality: longhorn.DataLocalityDisabled,
+		}
+	}
+
+	testCases := []struct {
+		name        string
+		mutate      func(spec *longhorn.VolumeSpec)
+		expectedErr string
+	}{
+		{name: "valid shared block volume", mutate: func(spec *longhorn.VolumeSpec) {}},
+		{name: "migratable shared block volume", mutate: func(spec *longhorn.VolumeSpec) { spec.Migratable = true }},
+		{name: "not shared block", mutate: func(spec *longhorn.VolumeSpec) {
+			spec.SharedBlock = false
+			spec.DataEngine = longhorn.DataEngineTypeV1
+		}},
+		{name: "v1 data engine", mutate: func(spec *longhorn.VolumeSpec) { spec.DataEngine = longhorn.DataEngineTypeV1 }, expectedErr: "only supported by the v2 data engine"},
+		{name: "RWO access mode", mutate: func(spec *longhorn.VolumeSpec) { spec.AccessMode = longhorn.AccessModeReadWriteOnce }, expectedErr: "requires ReadWriteMany"},
+		{name: "ublk frontend", mutate: func(spec *longhorn.VolumeSpec) { spec.Frontend = longhorn.VolumeFrontendUblk }, expectedErr: "spec.frontend must be blockdev"},
+		{name: "nvmf frontend", mutate: func(spec *longhorn.VolumeSpec) { spec.Frontend = longhorn.VolumeFrontendNvmf }, expectedErr: "spec.frontend must be blockdev"},
+		{name: "encrypted", mutate: func(spec *longhorn.VolumeSpec) { spec.Encrypted = true }},
+		{name: "sharded", mutate: func(spec *longhorn.VolumeSpec) { spec.DataLayout.Type = longhorn.VolumeDataLayoutTypeSharded }, expectedErr: "EC (sharded) volumes cannot be shared block volumes"},
+		{name: "strict-local", mutate: func(spec *longhorn.VolumeSpec) { spec.DataLocality = longhorn.DataLocalityStrictLocal }, expectedErr: "spec.dataLocality strict-local is not supported"},
+		{name: "standby", mutate: func(spec *longhorn.VolumeSpec) { spec.Standby = true }},
+		{name: "standby without frontend", mutate: func(spec *longhorn.VolumeSpec) {
+			spec.Standby = true
+			spec.Frontend = ""
+		}},
+		{name: "no frontend", mutate: func(spec *longhorn.VolumeSpec) { spec.Frontend = "" }, expectedErr: "spec.frontend must be blockdev"},
+		{name: "from backup", mutate: func(spec *longhorn.VolumeSpec) {
+			spec.FromBackup = "s3://backupbucket@us-east-1/?backup=backup-1&volume=vol-1"
+		}},
+		{name: "data source", mutate: func(spec *longhorn.VolumeSpec) { spec.DataSource = "vol://vol-1" }},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := validSpec()
+			tc.mutate(&spec)
+
+			err := validateSharedBlockConstraints(&longhorn.Volume{Spec: spec})
+			if tc.expectedErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expectedErr)
+		})
+	}
+}
+
+func TestUpdateRejectsSharedBlockChange(t *testing.T) {
+	newVolume := func(sharedBlock bool) *longhorn.Volume {
+		return &longhorn.Volume{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-vol", Namespace: linkedCloneTestNamespace},
+			Spec: longhorn.VolumeSpec{
+				DataEngine:       longhorn.DataEngineTypeV2,
+				AccessMode:       longhorn.AccessModeReadWriteMany,
+				Frontend:         longhorn.VolumeFrontendBlockDev,
+				NumberOfReplicas: 3,
+				Size:             1 << 30,
+				DataLocality:     longhorn.DataLocalityDisabled,
+				SharedBlock:      sharedBlock,
+			},
+		}
+	}
+
+	v := &volumeValidator{ds: newLinkedCloneTestDataStore(t, nil, nil)}
+	// A volume created before the field exists has no stored value, which the
+	// CRD rule skips.
+	err := v.Update(nil, newVolume(false), newVolume(true))
+	assert.ErrorContains(t, err, ".spec.sharedBlock is immutable")
+	err = v.Update(nil, newVolume(true), newVolume(false))
+	assert.ErrorContains(t, err, ".spec.sharedBlock is immutable")
+}

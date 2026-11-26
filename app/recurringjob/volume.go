@@ -211,7 +211,9 @@ func (job *VolumeJob) run() (err error) {
 		return nil
 	}
 
-	if len(volume.Controllers) > 1 {
+	// A shared block volume reports a controller for the engine frontend on
+	// each attached node, but it still has one engine.
+	if len(volume.Controllers) > 1 && !volume.SharedBlock {
 		return fmt.Errorf("cannot run job for volume %v that is using %v engines", volume.Name, len(volume.Controllers))
 	}
 

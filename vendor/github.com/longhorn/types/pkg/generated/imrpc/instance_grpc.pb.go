@@ -20,22 +20,23 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	InstanceService_InstanceCreate_FullMethodName           = "/imrpc.InstanceService/InstanceCreate"
-	InstanceService_InstanceDelete_FullMethodName           = "/imrpc.InstanceService/InstanceDelete"
-	InstanceService_InstanceGet_FullMethodName              = "/imrpc.InstanceService/InstanceGet"
-	InstanceService_InstanceList_FullMethodName             = "/imrpc.InstanceService/InstanceList"
-	InstanceService_InstanceLog_FullMethodName              = "/imrpc.InstanceService/InstanceLog"
-	InstanceService_InstanceWatch_FullMethodName            = "/imrpc.InstanceService/InstanceWatch"
-	InstanceService_InstanceReplace_FullMethodName          = "/imrpc.InstanceService/InstanceReplace"
-	InstanceService_InstanceSuspend_FullMethodName          = "/imrpc.InstanceService/InstanceSuspend"
-	InstanceService_InstanceResume_FullMethodName           = "/imrpc.InstanceService/InstanceResume"
-	InstanceService_InstanceSwitchOverTarget_FullMethodName = "/imrpc.InstanceService/InstanceSwitchOverTarget"
-	InstanceService_InstanceDeleteTarget_FullMethodName     = "/imrpc.InstanceService/InstanceDeleteTarget"
-	InstanceService_LogSetLevel_FullMethodName              = "/imrpc.InstanceService/LogSetLevel"
-	InstanceService_LogSetFlags_FullMethodName              = "/imrpc.InstanceService/LogSetFlags"
-	InstanceService_LogGetLevel_FullMethodName              = "/imrpc.InstanceService/LogGetLevel"
-	InstanceService_LogGetFlags_FullMethodName              = "/imrpc.InstanceService/LogGetFlags"
-	InstanceService_VersionGet_FullMethodName               = "/imrpc.InstanceService/VersionGet"
+	InstanceService_InstanceCreate_FullMethodName             = "/imrpc.InstanceService/InstanceCreate"
+	InstanceService_InstanceDelete_FullMethodName             = "/imrpc.InstanceService/InstanceDelete"
+	InstanceService_InstanceGet_FullMethodName                = "/imrpc.InstanceService/InstanceGet"
+	InstanceService_InstanceList_FullMethodName               = "/imrpc.InstanceService/InstanceList"
+	InstanceService_InstanceLog_FullMethodName                = "/imrpc.InstanceService/InstanceLog"
+	InstanceService_InstanceWatch_FullMethodName              = "/imrpc.InstanceService/InstanceWatch"
+	InstanceService_InstanceReplace_FullMethodName            = "/imrpc.InstanceService/InstanceReplace"
+	InstanceService_InstanceSuspend_FullMethodName            = "/imrpc.InstanceService/InstanceSuspend"
+	InstanceService_InstanceResume_FullMethodName             = "/imrpc.InstanceService/InstanceResume"
+	InstanceService_InstanceSwitchOverTarget_FullMethodName   = "/imrpc.InstanceService/InstanceSwitchOverTarget"
+	InstanceService_InstanceDeleteTarget_FullMethodName       = "/imrpc.InstanceService/InstanceDeleteTarget"
+	InstanceService_InstanceReservationCleanup_FullMethodName = "/imrpc.InstanceService/InstanceReservationCleanup"
+	InstanceService_LogSetLevel_FullMethodName                = "/imrpc.InstanceService/LogSetLevel"
+	InstanceService_LogSetFlags_FullMethodName                = "/imrpc.InstanceService/LogSetFlags"
+	InstanceService_LogGetLevel_FullMethodName                = "/imrpc.InstanceService/LogGetLevel"
+	InstanceService_LogGetFlags_FullMethodName                = "/imrpc.InstanceService/LogGetFlags"
+	InstanceService_VersionGet_FullMethodName                 = "/imrpc.InstanceService/VersionGet"
 )
 
 // InstanceServiceClient is the client API for InstanceService service.
@@ -53,6 +54,7 @@ type InstanceServiceClient interface {
 	InstanceResume(ctx context.Context, in *InstanceResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	InstanceSwitchOverTarget(ctx context.Context, in *InstanceSwitchOverTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	InstanceDeleteTarget(ctx context.Context, in *InstanceDeleteTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	InstanceReservationCleanup(ctx context.Context, in *InstanceReservationCleanupRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogSetFlags(ctx context.Context, in *LogSetFlagsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogGetLevel(ctx context.Context, in *LogGetLevelRequest, opts ...grpc.CallOption) (*LogGetLevelResponse, error)
@@ -213,6 +215,15 @@ func (c *instanceServiceClient) InstanceDeleteTarget(ctx context.Context, in *In
 	return out, nil
 }
 
+func (c *instanceServiceClient) InstanceReservationCleanup(ctx context.Context, in *InstanceReservationCleanupRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, InstanceService_InstanceReservationCleanup_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *instanceServiceClient) LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, InstanceService_LogSetLevel_FullMethodName, in, out, opts...)
@@ -273,6 +284,7 @@ type InstanceServiceServer interface {
 	InstanceResume(context.Context, *InstanceResumeRequest) (*emptypb.Empty, error)
 	InstanceSwitchOverTarget(context.Context, *InstanceSwitchOverTargetRequest) (*emptypb.Empty, error)
 	InstanceDeleteTarget(context.Context, *InstanceDeleteTargetRequest) (*emptypb.Empty, error)
+	InstanceReservationCleanup(context.Context, *InstanceReservationCleanupRequest) (*emptypb.Empty, error)
 	LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error)
 	LogSetFlags(context.Context, *LogSetFlagsRequest) (*emptypb.Empty, error)
 	LogGetLevel(context.Context, *LogGetLevelRequest) (*LogGetLevelResponse, error)
@@ -317,6 +329,9 @@ func (UnimplementedInstanceServiceServer) InstanceSwitchOverTarget(context.Conte
 }
 func (UnimplementedInstanceServiceServer) InstanceDeleteTarget(context.Context, *InstanceDeleteTargetRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method InstanceDeleteTarget not implemented")
+}
+func (UnimplementedInstanceServiceServer) InstanceReservationCleanup(context.Context, *InstanceReservationCleanupRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InstanceReservationCleanup not implemented")
 }
 func (UnimplementedInstanceServiceServer) LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LogSetLevel not implemented")
@@ -550,6 +565,24 @@ func _InstanceService_InstanceDeleteTarget_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InstanceService_InstanceReservationCleanup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstanceReservationCleanupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).InstanceReservationCleanup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InstanceService_InstanceReservationCleanup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).InstanceReservationCleanup(ctx, req.(*InstanceReservationCleanupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InstanceService_LogSetLevel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LogSetLevelRequest)
 	if err := dec(in); err != nil {
@@ -682,6 +715,10 @@ var InstanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InstanceDeleteTarget",
 			Handler:    _InstanceService_InstanceDeleteTarget_Handler,
+		},
+		{
+			MethodName: "InstanceReservationCleanup",
+			Handler:    _InstanceService_InstanceReservationCleanup_Handler,
 		},
 		{
 			MethodName: "LogSetLevel",

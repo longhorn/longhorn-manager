@@ -51,6 +51,8 @@ type Volume struct {
 
 	Frontend string `json:"frontend,omitempty" yaml:"frontend,omitempty"`
 
+	FrontendNodeIDs []string `json:"frontendNodeIDs,omitempty" yaml:"frontend_node_ids,omitempty"`
+
 	Image string `json:"image,omitempty" yaml:"image,omitempty"`
 
 	KubernetesStatus KubernetesStatus `json:"kubernetesStatus,omitempty" yaml:"kubernetes_status,omitempty"`
@@ -112,6 +114,8 @@ type Volume struct {
 	ShareEndpoint string `json:"shareEndpoint,omitempty" yaml:"share_endpoint,omitempty"`
 
 	ShareState string `json:"shareState,omitempty" yaml:"share_state,omitempty"`
+
+	SharedBlock bool `json:"sharedBlock,omitempty" yaml:"shared_block,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 

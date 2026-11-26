@@ -346,6 +346,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol.TopologyRequirement = topologyTerms
 
+	if vol.SharedBlock {
+		for _, cap := range volumeCaps {
+			if cap.GetBlock() == nil {
+				return nil, status.Errorf(codes.InvalidArgument, "shared block volume %s only supports the block volume mode", volumeID)
+			}
+		}
+	}
+
 	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters, vol.DataEngine); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -616,7 +624,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return cs.publishVolume(volume, nodeID, attachmentID, func() error {
 		checkVolumePublished := func(vol *longhornclient.Volume) bool {
-			isRegularRWXVolume := vol.AccessMode == string(longhorn.AccessModeReadWriteMany) && !vol.Migratable
+			isRegularRWXVolume := vol.AccessMode == string(longhorn.AccessModeReadWriteMany) && !vol.Migratable && !vol.SharedBlock
 			attachment, ok := vol.VolumeAttachment.Attachments[attachmentID]
 			if isRegularRWXVolume {
 				return ok && attachment.Satisfied
@@ -1423,7 +1431,8 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	if existVol == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s missing", volumeID)
 	}
-	if len(existVol.Controllers) != 1 {
+	// A shared block volume has one controller per attached node.
+	if len(existVol.Controllers) == 0 || (len(existVol.Controllers) > 1 && !existVol.SharedBlock) {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(existVol.Controllers))
 	}
 	if existVol.State != string(longhorn.VolumeStateDetached) && existVol.State != string(longhorn.VolumeStateAttached) {
@@ -1450,15 +1459,20 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	// kubernetes doesn't support volume shrinking and the csi spec specifies to return true
 	// in the case where the current capacity is bigger or equal to the requested capacity
 	// that's why we return the volumeSize below instead of the requested capacity
+	// Wait for all controllers, so that NodeExpandVolume on each node of a
+	// shared block volume sees the expanded device.
 	volumeExpansionComplete := func(vol *longhornclient.Volume) bool {
-		engineReady := false
-		if len(vol.Controllers) > 0 {
-			engine := vol.Controllers[0]
+		if len(vol.Controllers) == 0 {
+			return false
+		}
+		for _, engine := range vol.Controllers {
 			engineSize, _ := strconv.ParseInt(engine.Size, 10, 64)
-			engineReady = engineSize >= requestedSize && !engine.IsExpanding
+			if engineSize < requestedSize || engine.IsExpanding {
+				return false
+			}
 		}
 		size, _ := strconv.ParseInt(vol.Size, 10, 64)
-		return size >= requestedSize && engineReady
+		return size >= requestedSize
 	}
 
 	// we wait for completion of the expansion, to ensure that longhorn and kubernetes state are in sync

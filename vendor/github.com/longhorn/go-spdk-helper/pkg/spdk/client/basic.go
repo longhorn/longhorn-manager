@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
+
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 )
 
@@ -40,6 +41,15 @@ func (c *Client) BdevGetBdevs(name string, timeout uint64) (bdevInfoList []spdkt
 	}
 
 	return bdevInfoList, json.Unmarshal(cmdOutput, &bdevInfoList)
+}
+
+// BdevWaitForExamine waits until all the bdev modules finish examining the
+// registered bdevs, e.g., until the lvstore on a newly attached bdev is loaded.
+func (c *Client) BdevWaitForExamine() (err error) {
+	// Loading an lvstore during the examination may need a long blob recovery
+	// if the spdk_tgt is not shutdown gracefully.
+	_, err = c.jsonCli.SendCommandWithLongTimeout("bdev_wait_for_examine", nil)
+	return err
 }
 
 // BdevAioCreate constructs Linux AIO bdev.
@@ -812,14 +822,26 @@ func (c *Client) BdevLvolRename(oldName, newName string) (renamed bool, err erro
 //
 //	 	"uuid": Optional. Create the raid bdev with specific uuid
 func (c *Client) BdevRaidCreate(name string, raidLevel spdktypes.BdevRaidLevel, stripSizeKb uint32, baseBdevs []string, uuid string) (created bool, err error) {
+	return c.BdevRaidCreateWithOptions(name, raidLevel, stripSizeKb, baseBdevs, uuid, spdktypes.BdevRaidCreateOptions{})
+}
+
+// BdevRaidCreateWithOptions constructs a new RAID bdev like BdevRaidCreate, with the optional
+// parameters of the Longhorn SPDK.
+//
+//	"opts.DisableAutoResize": Optional. If true, the RAID bdev does not resize when a base bdev
+//	is resized, and grows only through BdevRaidResize. SPDK applies it before adding the base
+//	bdevs, so no base bdev resize event can grow the RAID bdev. An SPDK without this parameter
+//	fails the creation instead of ignoring it.
+func (c *Client) BdevRaidCreateWithOptions(name string, raidLevel spdktypes.BdevRaidLevel, stripSizeKb uint32, baseBdevs []string, uuid string, opts spdktypes.BdevRaidCreateOptions) (created bool, err error) {
 	if raidLevel != spdktypes.BdevRaidLevel0 && raidLevel != spdktypes.BdevRaidLevelRaid0 && raidLevel != spdktypes.BdevRaidLevel5f && raidLevel != spdktypes.BdevRaidLevelRaid5f {
 		stripSizeKb = 0
 	}
 	req := spdktypes.BdevRaidCreateRequest{
-		Name:        name,
-		RaidLevel:   raidLevel,
-		StripSizeKb: stripSizeKb,
-		BaseBdevs:   baseBdevs,
+		Name:              name,
+		RaidLevel:         raidLevel,
+		StripSizeKb:       stripSizeKb,
+		BaseBdevs:         baseBdevs,
+		DisableAutoResize: opts.DisableAutoResize,
 	}
 
 	if uuid != "" {
@@ -968,6 +990,34 @@ func (c *Client) BdevRaidGrowBaseBdev(raidName, baseBdevName string) (growed boo
 	}
 
 	return growed, json.Unmarshal(cmdOutput, &growed)
+}
+
+// BdevRaidResize recalculates the size of a raid bdev from its current base bdevs.
+// A raid bdev created with DisableAutoResize (BdevRaidCreateWithOptions) does not resize when
+// a base bdev is resized; like EC bdevs with BdevEcResize, it grows only through this call.
+// The call also works for other raid bdevs, for example after a smaller base bdev was removed.
+// When nothing changes, the call succeeds with Resized false and the current block count.
+// It fails with -EBUSY while a base bdev is being removed or added, a background process
+// runs, or a base bdev is faulty; the caller can retry later.
+//
+//	"name": Required. The RAID bdev name.
+//
+//	"expectedSizeInMib": Optional. The minimum size in MiB that the RAID bdev must reach
+//	(raid1 only). SPDK checks it before resizing: if a base bdev is smaller, the call fails
+//	with -ENOSPC and the RAID bdev keeps its size. 0 omits it, and the RAID bdev then takes
+//	the size of its base bdevs.
+func (c *Client) BdevRaidResize(name string, expectedSizeInMib uint64) (resp spdktypes.BdevRaidResizeResponse, err error) {
+	req := spdktypes.BdevRaidResizeRequest{
+		Name:              name,
+		ExpectedSizeInMib: expectedSizeInMib,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("bdev_raid_resize", req)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, json.Unmarshal(cmdOutput, &resp)
 }
 
 // BdevNvmeAttachController constructs NVMe bdev.
@@ -1344,12 +1394,23 @@ func (c *Client) NvmfSubsystemAddNs(nqn, bdevName, nguid string) (nsid uint32, e
 // NvmfSubsystemAddNsWithUUID adds a namespace with an optional stable UUID for
 // NVMe multipath aggregation.
 func (c *Client) NvmfSubsystemAddNsWithUUID(nqn, bdevName, nguid, nsUUID string) (nsid uint32, err error) {
+	return c.NvmfSubsystemAddNsWithPtplFile(nqn, bdevName, nguid, nsUUID, "")
+}
+
+// NvmfSubsystemAddNsWithPtplFile adds a namespace with an optional stable UUID
+// and an optional ptpl file.
+//
+//	"ptplFile": Optional. File path for NVMe reservation Persist Through Power
+//	  Loss. SPDK stores the reservation state in this file and restores it when
+//	  the namespace is added again. Empty disables persistence.
+func (c *Client) NvmfSubsystemAddNsWithPtplFile(nqn, bdevName, nguid, nsUUID, ptplFile string) (nsid uint32, err error) {
 	req := spdktypes.NvmfSubsystemAddNsRequest{
 		Nqn: nqn,
 		Namespace: spdktypes.NvmfSubsystemNamespace{
 			BdevName: bdevName,
 			Nguid:    nguid,
 			UUID:     nsUUID,
+			PtplFile: ptplFile,
 		},
 	}
 
@@ -1540,6 +1601,29 @@ func (c *Client) NvmfSubsystemGetListeners(nqn, tgtName string) (listenerList []
 	}
 
 	return listenerList, json.Unmarshal(cmdOutput, &listenerList)
+}
+
+// NvmfSubsystemGetControllers lists all controllers, i.e., the connected hosts, of the specified NVMe-oF target subsystem.
+//
+//	"nqn": Required. Subsystem NQN.
+//
+//	"tgtName": Optional. Parent NVMe-oF target name.
+//
+// Note:
+//
+//  1. Trying to get controllers of a non-existing subsystem will return error: {"code": -32602, "message": "Invalid parameters"}
+func (c *Client) NvmfSubsystemGetControllers(nqn, tgtName string) (controllerList []spdktypes.NvmfSubsystemController, err error) {
+	req := spdktypes.NvmfSubsystemGetControllersRequest{
+		Nqn:     nqn,
+		TgtName: tgtName,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("nvmf_subsystem_get_controllers", req)
+	if err != nil {
+		return nil, err
+	}
+
+	return controllerList, json.Unmarshal(cmdOutput, &controllerList)
 }
 
 // LogSetFlag sets the log flag.

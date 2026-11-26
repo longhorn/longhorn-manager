@@ -97,6 +97,8 @@ type EngineCreateRequest struct {
 	UpgradeRequired   bool
 	SalvageRequested  bool
 	SnapshotMaxCount  int
+	SharedBlock       bool
+	Reservation       *api.ReservationState
 }
 
 type EngineFrontendCreateRequest struct {
@@ -106,6 +108,7 @@ type EngineFrontendCreateRequest struct {
 	NvmeTcpNrIoQueues int
 	TargetAddress     string
 	EngineName        string
+	SharedBlock       bool
 }
 
 type ReplicaCreateRequest struct {
@@ -186,6 +189,8 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				SnapshotMaxCount:  int32(req.Engine.SnapshotMaxCount),
 				UblkQueueDepth:    int32(req.Engine.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.Engine.UblkNumberOfQueue),
+				SharedBlock:       req.Engine.SharedBlock,
+				Reservation:       api.ReservationStateToRPC(req.Engine.Reservation),
 			}
 		case types.InstanceTypeEngineFrontend:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
@@ -194,6 +199,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				UblkQueueDepth:    int32(req.EngineFrontend.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.EngineFrontend.UblkNumberOfQueue),
 				NvmeTcpNrIoQueues: int32(req.EngineFrontend.NvmeTcpNrIoQueues),
+				SharedBlock:       req.EngineFrontend.SharedBlock,
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
@@ -524,6 +530,33 @@ func (c *InstanceServiceClient) InstanceDeleteTarget(dataEngine, name, instanceT
 		return errors.Wrapf(err, "failed to delete target for instance %v", name)
 	}
 
+	return nil
+}
+
+// InstanceReservationCleanup removes the persisted NVMe reservation state of a
+// shared block volume on the node. It is required only when the volume is
+// deleted, after its engine is deleted.
+func (c *InstanceServiceClient) InstanceReservationCleanup(dataEngine, volumeName string) error {
+	if volumeName == "" {
+		return fmt.Errorf("failed to clean up reservation: missing required parameter volume name")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to clean up reservation: invalid data engine %v", dataEngine)
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.InstanceReservationCleanup(ctx, &rpc.InstanceReservationCleanupRequest{
+		DataEngine: rpc.DataEngine(driver),
+		VolumeName: volumeName,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to clean up reservation of volume %v", volumeName)
+	}
 	return nil
 }
 
