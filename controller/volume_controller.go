@@ -3875,6 +3875,19 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		}
 
 		if reusableFailedReplica != nil {
+			reuseDelay, err := c.getFailedReplicaReuseDelay(reusableFailedReplica)
+			if err != nil {
+				return err
+			}
+			if reuseDelay > 0 {
+				log.WithFields(logrus.Fields{
+					"replica": reusableFailedReplica.Name,
+					"delay":   reuseDelay,
+				}).Info("Delaying failed replica reuse to preserve its last known healthy data for salvage")
+				c.enqueueVolumeAfter(v, reuseDelay)
+				continue
+			}
+
 			if !c.backoff.IsInBackOffSinceUpdate(reusableFailedReplica.Name, time.Now()) {
 				log.Infof("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
 				setReplicaFailedAt(reusableFailedReplica, "")
