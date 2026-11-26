@@ -721,10 +721,33 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
+	// optionally try to retrieve the volume and check if it's an RWX volume
+	// if it is we let the share-manager clean up the crypto device
+	volume, _ := ns.apiClient.Volume.ById(volumeID)
+
 	mounter := mount.New("")
 
+	// Unmount in the mount namespace that NodeStageVolume mounted in, see getMounter
+	stagingMounter := mounter
+	requireHostNamespaceMounter, err := ns.requireHostNamespaceMounter(volume, nil, nil)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to check if volume %s was mounted in the host mount namespace", volumeID)
+	}
+	// The volume or the setting can be gone or changed since staging, so also trust the host's utab
+	if !requireHostNamespaceMounter {
+		if found, err := hostUtabHasTarget(stagingTargetPath); err != nil {
+			log.WithError(err).Debugf("Failed to check the host utab for %v", stagingTargetPath)
+		} else if found {
+			log.Infof("Found %v in the host utab, unmounting in the host mount namespace", stagingTargetPath)
+			requireHostNamespaceMounter = true
+		}
+	}
+	if requireHostNamespaceMounter {
+		stagingMounter = newHostNamespaceMounter()
+	}
+
 	// CO owns the staging_path so we only unmount but not remove the path
-	if err := unmount(stagingTargetPath, mounter); err != nil {
+	if err := unmount(stagingTargetPath, stagingMounter); err != nil {
 		return nil, status.Error(codes.Internal, errors.Wrapf(err, "failed to unmount volume %s mount point %v", volumeID, stagingTargetPath).Error())
 	}
 
@@ -738,9 +761,6 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Error(codes.Internal, errors.Wrapf(err, "failed to clean up volume %s device mount point %v", volumeID, deviceFilePath).Error())
 	}
 
-	// optionally try to retrieve the volume and check if it's an RWX volume
-	// if it is we let the share-manager clean up the crypto device
-	volume, _ := ns.apiClient.Volume.ById(volumeID)
 	dataEngine := string(longhorn.DataEngineTypeV1)
 	if volume != nil {
 		dataEngine = volume.DataEngine
@@ -1136,7 +1156,7 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 		return nil, err
 	}
 	if requireHostNamespaceMounter {
-		return mount.New("/usr/local/sbin/nsmounter"), nil
+		return newHostNamespaceMounter(), nil
 	}
 
 	// mounter that can format and use hard coded filesystem params

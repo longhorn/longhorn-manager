@@ -32,4 +32,4 @@ ns_mnt="$ns_dir/mnt"
 ns_net="$ns_dir/net"
 ns_uts="$ns_dir/uts"
 
-nsenter --mount="$ns_mnt" --net="$ns_net" --uts="$ns_uts" -- "$@"
+exec nsenter --mount="$ns_mnt" --net="$ns_net" --uts="$ns_uts" -- "$@"

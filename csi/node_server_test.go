@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 func TestNodeRequestLogsStripSecrets(t *testing.T) {
@@ -335,6 +336,119 @@ func TestCheckStagedMount(t *testing.T) {
 			mountPoints, _ := mounter.List()
 			if unmounted := len(mountPoints) == 0; unmounted != tc.unmounted {
 				t.Errorf("unmounted = %v, want %v", unmounted, tc.unmounted)
+			}
+		})
+	}
+}
+
+type fakeVolumeOperations struct {
+	longhornclient.VolumeOperations
+	volume *longhornclient.Volume
+}
+
+func (f *fakeVolumeOperations) ById(string) (*longhornclient.Volume, error) {
+	return f.volume, nil
+}
+
+type fakeSettingOperations struct {
+	longhornclient.SettingOperations
+	value string
+}
+
+func (f *fakeSettingOperations) ById(id string) (*longhornclient.Setting, error) {
+	return &longhornclient.Setting{Name: id, Value: f.value}, nil
+}
+
+func TestNodeUnstageVolumeUnmountsInStageMountNamespace(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		volume                *longhornclient.Volume
+		endpointNetwork       string
+		hostUtabTargets       bool // the host's utab lists the staging path
+		wantNsmounterUnmounts bool
+	}{
+		{
+			name:                  "volume not found but the host utab lists the staging path",
+			hostUtabTargets:       true,
+			wantNsmounterUnmounts: true,
+		},
+		{
+			name:                  "RWX volume staged in the plugin container but the host utab lists the staging path",
+			volume:                &longhornclient.Volume{AccessMode: string(longhorn.AccessModeReadWriteMany)},
+			endpointNetwork:       "kube-system/rwx-net",
+			hostUtabTargets:       true,
+			wantNsmounterUnmounts: true,
+		},
+		{
+			name:                  "RWX volume staged through nsmounter",
+			volume:                &longhornclient.Volume{AccessMode: string(longhorn.AccessModeReadWriteMany)},
+			wantNsmounterUnmounts: true,
+		},
+		{
+			name:            "RWX volume staged in the plugin container with endpoint network set",
+			volume:          &longhornclient.Volume{AccessMode: string(longhorn.AccessModeReadWriteMany)},
+			endpointNetwork: "kube-system/rwx-net",
+		},
+		{
+			name:   "RWO volume",
+			volume: &longhornclient.Volume{AccessMode: string(longhorn.AccessModeReadWriteOnce)},
+		},
+		{
+			name:   "migratable volume",
+			volume: &longhornclient.Volume{AccessMode: string(longhorn.AccessModeReadWriteMany), Migratable: true},
+		},
+		{
+			name: "volume not found",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			stagingTargetPath := filepath.Join(dir, "globalmount")
+			if err := os.Mkdir(stagingTargetPath, 0755); err != nil {
+				t.Fatal(err)
+			}
+			calls := filepath.Join(dir, "nsmounter-calls")
+			fakeNsmounter := filepath.Join(dir, "nsmounter")
+			utab := ""
+			if tc.hostUtabTargets {
+				utab = "SRC=10.0.0.1:/vol TARGET=" + stagingTargetPath + " ROOT=/ OPTS=rw\n"
+			}
+			utabFile := filepath.Join(dir, "utab")
+			if err := os.WriteFile(utabFile, []byte(utab), 0644); err != nil {
+				t.Fatal(err)
+			}
+			script := "#!/bin/sh\n[ \"$1\" = \"cat\" ] && exec cat " + utabFile + "\necho \"$@\" >> " + calls + "\n"
+			if err := os.WriteFile(fakeNsmounter, []byte(script), 0755); err != nil {
+				t.Fatal(err)
+			}
+			oldNsmounterPath := nsmounterPath
+			nsmounterPath = fakeNsmounter
+			t.Cleanup(func() { nsmounterPath = oldNsmounterPath })
+
+			ns := &NodeServer{
+				log: logrus.NewEntry(logrus.New()),
+				apiClient: &longhornclient.RancherClient{
+					Volume:  &fakeVolumeOperations{volume: tc.volume},
+					Setting: &fakeSettingOperations{value: tc.endpointNetwork},
+				},
+			}
+
+			// The result depends on whether the test may run umount, so only the nsmounter calls are checked.
+			_, _ = ns.NodeUnstageVolume(context.Background(), &csipb.NodeUnstageVolumeRequest{
+				VolumeId:          "vol",
+				StagingTargetPath: stagingTargetPath,
+			})
+
+			got, err := os.ReadFile(calls)
+			if err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			want := ""
+			if tc.wantNsmounterUnmounts {
+				want = "umount " + stagingTargetPath + "\n"
+			}
+			if string(got) != want {
+				t.Errorf("nsmounter calls = %q, want %q", got, want)
 			}
 		})
 	}
