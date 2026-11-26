@@ -1096,6 +1096,63 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
 		e.Status.SalvageExecuted = false
 		e.Spec.DesireState = longhorn.InstanceStateStopped
+		e.Spec.SalvageRequested = true
+	}
+	for _, r := range tc.replicas {
+		r.Status.CurrentState = longhorn.InstanceStateStopped
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.LastHealthyAt = r.Spec.HealthyAt
+		r.Spec.FailedAt = getTestNow()
+		if r.Spec.NodeID == TestNode1 {
+			r.Spec.FailedAt = "2015-01-01T23:58:00Z"
+		}
+		r.Spec.LastFailedAt = r.Spec.FailedAt
+		r.Spec.DesireState = longhorn.InstanceStateStopped
+	}
+
+	tc.copyCurrentToExpect()
+
+	expectEngines = map[string]*longhorn.Engine{}
+	for _, e := range tc.expectEngines {
+		e.Spec.SalvageRequested = true
+		expectEngines[e.Name] = e
+	}
+	tc.expectEngines = expectEngines
+
+	expectRs = map[string]*longhorn.Replica{}
+	for _, r := range tc.expectReplicas {
+		r.Spec.DesireState = longhorn.InstanceStateStopped
+		if r.Spec.NodeID != TestNode1 {
+			r.Spec.FailedAt = ""
+		}
+		// r.Spec.LastFailedAt will NOT be "".
+		expectRs[r.Name] = r
+	}
+	tc.expectReplicas = expectRs
+
+	tc.expectVolume.Status.State = longhorn.VolumeStateDetached
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
+	tc.expectVolume.Status.CurrentNodeID = ""
+	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
+	tc.expectVolume.Status.LastAutoSalvagedAt = getTestNow()
+	tc.expectVolume.Status.RemountRequestedAt = getTestNow()
+
+	testCases["volume salvage requested - all replica failed"] = tc
+
+	// Persist the engine salvage intent before clearing any replica failure metadata.
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = ""
+	tc.volume.Spec.RevisionCounterDisabled = true
+	tc.volume.Status.State = longhorn.VolumeStateDetached
+	tc.volume.Status.Robustness = longhorn.VolumeRobustnessFaulted
+	tc.volume.Status.CurrentNodeID = ""
+	tc.volumeAutoSalvage = "true"
+
+	for _, e := range tc.engines {
+		e.Status.CurrentState = longhorn.InstanceStateStopped
+		e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+		e.Status.SalvageExecuted = false
+		e.Spec.DesireState = longhorn.InstanceStateStopped
 	}
 	for _, r := range tc.replicas {
 		r.Status.CurrentState = longhorn.InstanceStateStopped
@@ -1115,23 +1172,14 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.expectEngines = expectEngines
 
-	expectRs = map[string]*longhorn.Replica{}
-	for _, r := range tc.expectReplicas {
-		r.Spec.DesireState = longhorn.InstanceStateStopped
-		r.Spec.FailedAt = ""
-		// r.Spec.LastFailedAt will NOT be "".
-		expectRs[r.Name] = r
-	}
-	tc.expectReplicas = expectRs
-
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetached
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.CurrentNodeID = ""
-	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
-	tc.expectVolume.Status.LastAutoSalvagedAt = getTestNow()
-	tc.expectVolume.Status.RemountRequestedAt = getTestNow()
+	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessFaulted
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
+		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 
-	testCases["volume salvage requested - all replica failed"] = tc
+	testCases["volume salvage persists engine intent before clearing failed replicas"] = tc
 
 	// volume attaching, start replicas, manager restart
 	tc = generateVolumeTestCaseTemplate()
