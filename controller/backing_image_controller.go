@@ -7,11 +7,13 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -140,6 +142,17 @@ func NewBackingImageController(
 		return nil, err
 	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: isBackingImageSelectorSetting,
+			Handler: cache.ResourceEventHandlerFuncs{
+				UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImagesForSettingChange(cur) },
+			},
+		}, 0); err != nil {
+		return nil, err
+	}
+	bic.cacheSyncs = append(bic.cacheSyncs, ds.SettingInformer.HasSynced)
 
 	return bic, nil
 }
@@ -339,6 +352,10 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	}
 
 	if err := bic.updateDiskLastReferenceMap(backingImage); err != nil {
+		return err
+	}
+
+	if err := bic.syncBackingImageCopyEvictionRequested(backingImage); err != nil {
 		return err
 	}
 
@@ -850,12 +867,23 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 		}
 
 		if nonEvictingCount < bi.Spec.MinNumberOfCopies {
-			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, biDataEngine, nil)
-			logrus.Infof("replicate the copy to node: %v, disk: %v", readyNode, readyDiskName)
+			selectedNodes, err := bic.getNodesMatchingNodeSelector()
+			if err != nil {
+				return err
+			}
+			// Soft node-level anti-affinity: prefer nodes that do not hold an active copy yet,
+			// and fall back to all selected nodes only when no such node has a ready disk.
+			preferredNodes := filterNodesWithoutActiveBackingImageCopy(bi, selectedNodes)
+			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, biDataEngine, preferredNodes)
+			if err != nil && len(preferredNodes) < len(selectedNodes) {
+				logrus.WithError(err).Debugf("No ready disk on nodes without a copy of backing image %v, falling back to nodes already holding a copy", bi.Name)
+				readyNode, readyDiskName, err = bic.ds.GetReadyNodeDiskForBackingImage(bi, biDataEngine, selectedNodes)
+			}
 			if err != nil {
 				logrus.WithError(err).Warnf("failed to create the backing image copy")
 				return nil
 			}
+			logrus.Infof("replicate the copy to node: %v, disk: %v", readyNode.Name, readyDiskName)
 			// BackingImageManager will then sync the BackingImage to the disk
 			bi.Spec.DiskFileSpecMap[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = &longhorn.BackingImageDiskFileSpec{
 				DataEngine: biDataEngine,
@@ -866,8 +894,113 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 	return nil
 }
 
+// syncBackingImageCopyEvictionRequested sets or clears EvictionRequested of every copy on a known disk,
+// so that a copy is evicted exactly when its node or disk is being evicted or no longer satisfies the
+// system-managed-components-node-selector setting or the node/disk selectors of the backing image.
+// Copies on unknown disks are left untouched, since their eviction is handled by the backing image manager controller.
+func (bic *BackingImageController) syncBackingImageCopyEvictionRequested(bi *longhorn.BackingImage) error {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to get the backing image data source")
+	}
+	if !bids.Spec.FileTransferred {
+		return nil
+	}
+
+	nodeSelector, err := bic.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return err
+	}
+	allowEmptyNodeSelectorVolume, err := bic.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+	}
+	allowEmptyDiskSelectorVolume, err := bic.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+	}
+
+	nodes, err := bic.ds.ListNodesRO()
+	if err != nil {
+		return err
+	}
+	type diskLocation struct {
+		node     *longhorn.Node
+		diskSpec longhorn.DiskSpec
+	}
+	diskLocationByDiskUUID := map[string]diskLocation{}
+	for _, node := range nodes {
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskName]
+			if !exists {
+				continue
+			}
+			diskLocationByDiskUUID[diskStatus.DiskUUID] = diskLocation{
+				node:     node,
+				diskSpec: diskSpec,
+			}
+		}
+	}
+
+	systemSelectorExcludedByNode := map[string]bool{}
+	for diskUUID, fileSpec := range bi.Spec.DiskFileSpecMap {
+		if fileSpec == nil {
+			continue
+		}
+		location, exists := diskLocationByDiskUUID[diskUUID]
+		if !exists {
+			continue
+		}
+		nodeName := location.node.Name
+		systemSelectorExcluded, checked := systemSelectorExcludedByNode[nodeName]
+		if !checked {
+			nodeSelected, err := bic.isNodeSelectedByNodeSelector(nodeName, nodeSelector)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return errors.Wrapf(err, "failed to check node %v against %v setting", nodeName, types.SettingNameSystemManagedComponentsNodeSelector)
+				}
+				log.WithError(err).Warnf("Skipped syncing eviction request of backing image copy on disk %v since the Kubernetes node %v is not found", diskUUID, nodeName)
+				continue
+			}
+			systemSelectorExcluded = !nodeSelected
+			systemSelectorExcludedByNode[nodeName] = systemSelectorExcluded
+		}
+
+		reasons := getBackingImageCopyEvictionReasons(bi, location.node, location.diskSpec, systemSelectorExcluded, allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume)
+		evictionRequested := len(reasons) > 0
+		if fileSpec.EvictionRequested == evictionRequested {
+			continue
+		}
+		fileSpec.EvictionRequested = evictionRequested
+		if evictionRequested {
+			msg := fmt.Sprintf("Requesting backing image copy eviction from node %v and disk %v because %s", nodeName, diskUUID, strings.Join(reasons, " and "))
+			log.Info(msg)
+			bic.eventRecorder.Event(bi, corev1.EventTypeNormal, constant.EventReasonEvictionUserRequested, msg)
+		} else {
+			msg := fmt.Sprintf("Cancelling backing image copy eviction from node %v and disk %v since no eviction reason remains", nodeName, diskUUID)
+			log.Info(msg)
+			bic.eventRecorder.Event(bi, corev1.EventTypeNormal, constant.EventReasonEvictionCanceled, msg)
+		}
+	}
+
+	return nil
+}
+
 func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi *longhorn.BackingImage) error {
 	log := getLoggerForBackingImage(bic.logger, bi)
+	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrap(err, "failed to get the backing image data source")
+		}
+	} else if !bids.Spec.FileTransferred {
+		return nil
+	}
 
 	// If there is no non-evicting healthy backing image copy,
 	// Longhorn should retain one evicting healthy backing image copy for replenishing.
@@ -1012,13 +1145,32 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		var readyDiskUUID, readyDiskPath, readyNodeID string
 		isReadyFile := false
 		foundReadyDisk := false
-		if bi.Spec.DiskFileSpecMap != nil {
+		selectedNodes, err := bic.getNodesMatchingNodeSelector()
+		if err != nil {
+			return err
+		}
+		allowEmptyNodeSelectorVolume, err := bic.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+		}
+		allowEmptyDiskSelectorVolume, err := bic.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+		}
+		if bi.Spec.SourceType != longhorn.BackingImageDataSourceTypeClone && bi.Spec.DiskFileSpecMap != nil {
+			selectedNodeNames := getNodeNameSet(selectedNodes)
 			for diskUUID := range bi.Spec.DiskFileSpecMap {
 				node, diskName, err := bic.ds.GetReadyDiskNode(diskUUID)
 				if err != nil {
 					if !types.ErrorIsNotFound(err) {
 						return err
 					}
+					continue
+				}
+				if !selectedNodeNames[node.Name] {
+					continue
+				}
+				if !isNodeDiskSelectedForBackingImage(bi, node, node.Spec.Disks[diskName], allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume) {
 					continue
 				}
 				foundReadyDisk = true
@@ -1036,17 +1188,9 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		if !foundReadyDisk {
 			// Backing image data source is only used for v1 backing image.
 			// For v2, we will wait until the first v1 backing image file is ready in the backing image manager then download from it.
-			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV1, nil)
+			readyNode, readyDiskName, err := bic.findReadyNodeAndDiskForBackingImageDataSource(bi, selectedNodes)
 			if err != nil {
 				return err
-			}
-
-			// For clone, we choose the same node and disk as the source backing image
-			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
-				readyNode, readyDiskName, err = bic.findReadyNodeAndDiskForClone(bi)
-				if err != nil {
-					return err
-				}
 			}
 
 			foundReadyDisk = true
@@ -1179,20 +1323,17 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	if !bids.Spec.FileTransferred {
 		node, diskName, err := bic.ds.GetReadyDiskNode(bids.Spec.DiskUUID)
 		// If the disk is still ready, no matter file fetching is in progress or failed, we don't need to re-schedule the BackingImageDataSource.
+		// The assignment is kept even if the node or disk no longer matches the selectors, so an ongoing file preparation is not interrupted.
 		changeNodeDisk := err != nil || node.Name != bids.Spec.NodeID || node.Spec.Disks[diskName].Path != bids.Spec.DiskPath || node.Status.DiskStatus[diskName].DiskUUID != bids.Spec.DiskUUID
 		if changeNodeDisk {
 			log.Warn("Backing image data source current node and disk is not ready, need to switch to another ready node and disk")
-			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV1, nil)
+			selectedNodes, err := bic.getNodesMatchingNodeSelector()
 			if err != nil {
 				return err
 			}
-
-			// For clone, we choose the same node and disk as the source backing image
-			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
-				readyNode, readyDiskName, err = bic.findReadyNodeAndDiskForClone(bi)
-				if err != nil {
-					return nil
-				}
+			readyNode, readyDiskName, err := bic.findReadyNodeAndDiskForBackingImageDataSource(bi, selectedNodes)
+			if err != nil {
+				return err
 			}
 
 			bids.Spec.NodeID = readyNode.Name
@@ -1492,6 +1633,42 @@ func (bic *BackingImageController) enqueueBackingImage(obj interface{}) {
 	bic.queue.Add(key)
 }
 
+func isBackingImageSelectorSetting(obj interface{}) bool {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			return false
+		}
+	}
+
+	settingName := types.SettingName(setting.Name)
+	return settingName == types.SettingNameSystemManagedComponentsNodeSelector ||
+		settingName == types.SettingNameAllowEmptyNodeSelectorVolume ||
+		settingName == types.SettingNameAllowEmptyDiskSelectorVolume
+}
+
+func (bic *BackingImageController) enqueueBackingImagesForSettingChange(obj interface{}) {
+	if !isBackingImageSelectorSetting(obj) {
+		return
+	}
+
+	backingImages, err := bic.ds.ListBackingImagesRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list backing images when handling setting update: %v", err))
+		return
+	}
+
+	for _, bi := range backingImages {
+		bic.enqueueBackingImage(bi)
+	}
+}
+
 func (bic *BackingImageController) enqueueBackingImageForBackingImageManager(obj interface{}) {
 	bim, isBIM := obj.(*longhorn.BackingImageManager)
 	if !isBIM {
@@ -1565,12 +1742,14 @@ func (bic *BackingImageController) enqueueBackingImageForNodeUpdate(oldObj, curr
 		return
 	}
 
-	// if a node or disk changes its EvictionRequested, enqueue all backing image copies on that node/disk
+	// if a node or disk changes its EvictionRequested, or node or disk tags change, enqueue all backing image copies on that node/disk
 	evictionRequestedChangeOnNodeLevel := currNode.Spec.EvictionRequested != oldNode.Spec.EvictionRequested
+	nodeTagsChanged := !reflect.DeepEqual(currNode.Spec.Tags, oldNode.Spec.Tags)
 	for diskName, newDiskSpec := range currNode.Spec.Disks {
 		oldDiskSpec, ok := oldNode.Spec.Disks[diskName]
 		evictionRequestedChangeOnDiskLevel := !ok || (newDiskSpec.EvictionRequested != oldDiskSpec.EvictionRequested)
-		if diskStatus, existed := currNode.Status.DiskStatus[diskName]; existed && (evictionRequestedChangeOnNodeLevel || evictionRequestedChangeOnDiskLevel) {
+		diskTagsChanged := !ok || !reflect.DeepEqual(newDiskSpec.Tags, oldDiskSpec.Tags)
+		if diskStatus, existed := currNode.Status.DiskStatus[diskName]; existed && (evictionRequestedChangeOnNodeLevel || nodeTagsChanged || evictionRequestedChangeOnDiskLevel || diskTagsChanged) {
 			diskUUID := diskStatus.DiskUUID
 			for _, backingImage := range diskBackingImageMap[diskUUID] {
 				bic.enqueueBackingImage(backingImage)
@@ -1609,13 +1788,41 @@ func (bic *BackingImageController) isResponsibleFor(bi *longhorn.BackingImage) b
 }
 
 // For cloning, we choose the same node and disk as the source backing image
-func (bic *BackingImageController) findReadyNodeAndDiskForClone(bi *longhorn.BackingImage) (*longhorn.Node, string, error) {
+func (bic *BackingImageController) findReadyNodeAndDiskForClone(bi *longhorn.BackingImage, selectedNodes []*longhorn.Node) (*longhorn.Node, string, error) {
 	sourceBackingImageName := bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterBackingImage]
 	sourceBackingImage, err := bic.ds.GetBackingImageRO(sourceBackingImageName)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get source backing image %v during cloning", sourceBackingImageName)
 	}
-	readyNode, readyDiskName, err := bic.ds.GetOneBackingImageReadyNodeDisk(sourceBackingImage)
+	allowEmptyNodeSelectorVolume, err := bic.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return nil, "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+	}
+	allowEmptyDiskSelectorVolume, err := bic.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return nil, "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+	}
+	filteredSourceBackingImage := sourceBackingImage.DeepCopy()
+	selectedNodeNames := getNodeNameSet(selectedNodes)
+	filteredDiskFileSpecMap := map[string]*longhorn.BackingImageDiskFileSpec{}
+	for diskUUID, fileSpec := range filteredSourceBackingImage.Spec.DiskFileSpecMap {
+		node, diskName, err := bic.ds.GetReadyDiskNodeRO(diskUUID)
+		if err != nil {
+			if types.ErrorIsNotFound(err) {
+				continue
+			}
+			return nil, "", err
+		}
+		if !selectedNodeNames[node.Name] {
+			continue
+		}
+		if !isNodeDiskSelectedForBackingImage(bi, node, node.Spec.Disks[diskName], allowEmptyNodeSelectorVolume, allowEmptyDiskSelectorVolume) {
+			continue
+		}
+		filteredDiskFileSpecMap[diskUUID] = fileSpec
+	}
+	filteredSourceBackingImage.Spec.DiskFileSpecMap = filteredDiskFileSpecMap
+	readyNode, readyDiskName, err := bic.ds.GetOneBackingImageReadyNodeDisk(filteredSourceBackingImage)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to find one ready source backing image %v during cloning", sourceBackingImageName)
 	}
@@ -1623,26 +1830,28 @@ func (bic *BackingImageController) findReadyNodeAndDiskForClone(bi *longhorn.Bac
 }
 
 // For first v2 copy, we choose the same node and disk as the v1 file first to reduce the network overhead.
-// If not found, we will fallback to use random v2 disk
+// If not found, we will fallback to use random v2 disk on the nodes matching the system-managed-components-node-selector setting
 func (bic *BackingImageController) findReadyNodeAndDiskForFirstV2Copy(bi *longhorn.BackingImage, firstV1FileDiskUUID string, log logrus.FieldLogger) (*longhorn.Node, string, error) {
+	selectedNodes, err := bic.getNodesMatchingNodeSelector()
+	if err != nil {
+		return nil, "", err
+	}
 	node, _, err := bic.ds.GetReadyDiskNodeRO(firstV1FileDiskUUID)
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to get the ready disk node for first v2 file disk %v", firstV1FileDiskUUID)
 	}
-	nodeList := []*longhorn.Node{node}
-	firstV2CopyNode, firstV2CopyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nodeList)
-	if err == nil {
-		return firstV2CopyNode, firstV2CopyDiskName, nil
+	if getNodeNameSet(selectedNodes)[node.Name] {
+		nodeList := []*longhorn.Node{node}
+		firstV2CopyNode, firstV2CopyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nodeList)
+		if err == nil {
+			return firstV2CopyNode, firstV2CopyDiskName, nil
+		}
+		log.WithError(err).Warnf("Failed to find a ready v2 disk on the same node %v as v1 file for the first v2 copy, will fallback to use random v2 disk", node.Name)
+	} else {
+		log.Warnf("The node %v of v1 file does not match %v setting, will use random v2 disk for the first v2 copy", node.Name, types.SettingNameSystemManagedComponentsNodeSelector)
 	}
 
-	log.WithError(err).Warnf("Failed to find a ready v2 disk on the same node %v as v1 file for the first v2 copy, will fallback to use random v2 disk", node.Name)
-
-	firstV2CopyNode, firstV2CopyDiskName, err = bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nil)
-	if err != nil {
-		return nil, "", err
-	}
-
-	return firstV2CopyNode, firstV2CopyDiskName, nil
+	return bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, selectedNodes)
 }
 
 func (bic *BackingImageController) getEngineClientProxy(nodeName string, dataEngineType longhorn.DataEngineType, log logrus.FieldLogger) (engineapi.EngineClientProxy, error) {
@@ -1810,4 +2019,140 @@ func (bic *BackingImageController) deleteUnknownV2Copy(bi *longhorn.BackingImage
 		return false, errors.Wrapf(err, "failed to delete the v2 copy on diskUUID %v", v2DiskUUID)
 	}
 	return true, nil
+}
+
+// findReadyNodeAndDiskForBackingImageDataSource picks the node and disk to prepare the first file of the backing image
+// among the given nodes. The backing image data source is only used for v1 backing image file.
+func (bic *BackingImageController) findReadyNodeAndDiskForBackingImageDataSource(bi *longhorn.BackingImage, selectedNodes []*longhorn.Node) (*longhorn.Node, string, error) {
+	if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
+		// For clone, we choose the same node and disk as the source backing image.
+		return bic.findReadyNodeAndDiskForClone(bi, selectedNodes)
+	}
+	return bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV1, selectedNodes)
+}
+
+func isBackingImageDiskSelectedByDiskSelector(bi *longhorn.BackingImage, diskSpec longhorn.DiskSpec, allowEmptyDiskSelector bool) bool {
+	diskTags := append([]string(nil), diskSpec.Tags...)
+	return types.IsSelectorsInTags(diskTags, bi.Spec.DiskSelector, allowEmptyDiskSelector)
+}
+
+func isBackingImageNodeSelectedByNodeSelector(bi *longhorn.BackingImage, node *longhorn.Node, allowEmptyNodeSelector bool) bool {
+	nodeTags := append([]string(nil), node.Spec.Tags...)
+	return types.IsSelectorsInTags(nodeTags, bi.Spec.NodeSelector, allowEmptyNodeSelector)
+}
+
+// isNodeDiskSelectedForBackingImage reports whether the node tags and the disk tags satisfy
+// the node selector and the disk selector of the backing image.
+func isNodeDiskSelectedForBackingImage(bi *longhorn.BackingImage, node *longhorn.Node, diskSpec longhorn.DiskSpec, allowEmptyNodeSelector, allowEmptyDiskSelector bool) bool {
+	return isBackingImageNodeSelectedByNodeSelector(bi, node, allowEmptyNodeSelector) &&
+		isBackingImageDiskSelectedByDiskSelector(bi, diskSpec, allowEmptyDiskSelector)
+}
+
+// getBackingImageCopyEvictionReasons returns the reasons to evict the backing image copy on the disk of the node.
+// An empty result means the copy can stay. Both the backing image controller and the node controller use it,
+// so they always agree on the eviction request of a copy.
+func getBackingImageCopyEvictionReasons(bi *longhorn.BackingImage, node *longhorn.Node, diskSpec longhorn.DiskSpec, systemSelectorExcluded, allowEmptyNodeSelector, allowEmptyDiskSelector bool) []string {
+	reasons := []string{}
+	if node.Spec.EvictionRequested {
+		reasons = append(reasons, "eviction is requested on the node")
+	}
+	if diskSpec.EvictionRequested {
+		reasons = append(reasons, "eviction is requested on the disk")
+	}
+	if systemSelectorExcluded {
+		reasons = append(reasons, "the node does not match system-managed-components-node-selector")
+	}
+	if !isBackingImageNodeSelectedByNodeSelector(bi, node, allowEmptyNodeSelector) {
+		reasons = append(reasons, "the node does not match backing image node selector")
+	}
+	if !isBackingImageDiskSelectedByDiskSelector(bi, diskSpec, allowEmptyDiskSelector) {
+		reasons = append(reasons, "the disk does not match backing image disk selector")
+	}
+	return reasons
+}
+
+// isActiveBackingImageCopy reports whether the copy on the disk is counted as a non-failed and non-evicting copy.
+func isActiveBackingImageCopy(bi *longhorn.BackingImage, diskUUID string) bool {
+	fileSpec, exists := bi.Spec.DiskFileSpecMap[diskUUID]
+	if !exists || fileSpec == nil || fileSpec.EvictionRequested {
+		return false
+	}
+	fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
+	if !exists || fileStatus == nil {
+		// The newly created copy is not synced from backing image manager yet.
+		return true
+	}
+	return fileStatus.State != longhorn.BackingImageStateFailed &&
+		fileStatus.State != longhorn.BackingImageStateFailedAndCleanUp &&
+		fileStatus.State != longhorn.BackingImageStateUnknown
+}
+
+// filterNodesWithoutActiveBackingImageCopy returns the nodes that do not hold an active copy of the backing image.
+// The result is never nil, so that an empty result does not mean all nodes for GetReadyNodeDiskForBackingImage.
+func filterNodesWithoutActiveBackingImageCopy(bi *longhorn.BackingImage, nodes []*longhorn.Node) []*longhorn.Node {
+	filtered := make([]*longhorn.Node, 0, len(nodes))
+	for _, node := range nodes {
+		hasActiveCopy := false
+		for _, diskStatus := range node.Status.DiskStatus {
+			if isActiveBackingImageCopy(bi, diskStatus.DiskUUID) {
+				hasActiveCopy = true
+				break
+			}
+		}
+		if !hasActiveCopy {
+			filtered = append(filtered, node)
+		}
+	}
+	return filtered
+}
+
+func getNodeNameSet(nodes []*longhorn.Node) map[string]bool {
+	nodeNames := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		nodeNames[node.Name] = true
+	}
+	return nodeNames
+}
+
+// getNodesMatchingNodeSelector returns Longhorn nodes whose corresponding
+// Kubernetes node labels satisfy the system-managed-components-node-selector
+// setting. When the setting is empty, all Longhorn nodes are returned. When the
+// selector is set but no nodes match, an empty slice is returned.
+func (bic *BackingImageController) getNodesMatchingNodeSelector() ([]*longhorn.Node, error) {
+	nodeSelector, err := bic.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return nil, err
+	}
+	allNodes, err := bic.ds.ListNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(nodeSelector) == 0 {
+		return allNodes, nil
+	}
+
+	sel := labels.SelectorFromSet(nodeSelector)
+	matched := make([]*longhorn.Node, 0, len(allNodes))
+	for _, node := range allNodes {
+		kubeNode, err := bic.ds.GetKubernetesNodeRO(node.Name)
+		if err != nil {
+			continue
+		}
+		if sel.Matches(labels.Set(kubeNode.Labels)) {
+			matched = append(matched, node)
+		}
+	}
+	return matched, nil
+}
+
+func (bic *BackingImageController) isNodeSelectedByNodeSelector(nodeID string, nodeSelector map[string]string) (bool, error) {
+	if len(nodeSelector) == 0 {
+		return true, nil
+	}
+	kubeNode, err := bic.ds.GetKubernetesNodeRO(nodeID)
+	if err != nil {
+		return false, err
+	}
+	return labels.SelectorFromSet(nodeSelector).Matches(labels.Set(kubeNode.Labels)), nil
 }
