@@ -242,6 +242,7 @@ const (
 	LonghornLabelRecurringJob                    = "job"
 	LonghornLabelRecurringJobGroup               = "job-group"
 	LonghornLabelRecurringJobSource              = "source"
+	LonghornLabelRecurringJobRunName             = "run-name"
 	LonghornLabelOrphan                          = "orphan"
 	LonghornLabelOrphanType                      = "orphan-type"
 	LonghornLabelRecoveryBackend                 = "recovery-backend"
@@ -373,15 +374,16 @@ const (
 )
 
 const (
-	EnvNodeName       = "NODE_NAME"
-	EnvPodName        = "POD_NAME"
-	EnvPodNamespace   = "POD_NAMESPACE"
-	EnvPodIP          = "POD_IP"
-	EnvServiceAccount = "SERVICE_ACCOUNT"
-	EnvDataEngine     = "DATA_ENGINE"
-	EnvTZ             = "TZ"
-	EnvDistro         = "LONGHORN_DISTRO"
-	EnvKubeletRootDir = "KUBELET_ROOT_DIR"
+	EnvNodeName            = "NODE_NAME"
+	EnvPodName             = "POD_NAME"
+	EnvPodNamespace        = "POD_NAMESPACE"
+	EnvPodIP               = "POD_IP"
+	EnvServiceAccount      = "SERVICE_ACCOUNT"
+	EnvDataEngine          = "DATA_ENGINE"
+	EnvTZ                  = "TZ"
+	EnvDistro              = "LONGHORN_DISTRO"
+	EnvKubeletRootDir      = "KUBELET_ROOT_DIR"
+	EnvRecurringJobRunName = "JOB_NAME"
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
@@ -828,6 +830,12 @@ func GetRecurringJobLabelValueMap(labelType, recurringJobName string) map[string
 	return map[string]string{
 		GetRecurringJobLabelKey(labelType, recurringJobName): LonghornLabelValueEnabled,
 	}
+}
+
+// GetRecurringJobRunNameLabelKey returns "recurring-job.longhorn.io/run-name"
+func GetRecurringJobRunNameLabelKey() string {
+	prefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJob)
+	return fmt.Sprintf("%s/%s", prefix, LonghornLabelRecurringJobRunName)
 }
 
 // IsRecurringJobLabel checks if the given key is a recurring job label.
