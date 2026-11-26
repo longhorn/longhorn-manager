@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -1426,6 +1427,40 @@ func (s *TestSuite) TestHandleErrRetriesNotServingInstanceManager(c *C) {
 			c.Assert(imc.queue.NumRequeues(key), Equals, 0, Commentf(name))
 		}
 	}
+}
+
+func (s *TestSuite) TestShouldDeferPodRecreationForStaleCryptoCleanup(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	imc, err := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+	c.Assert(err, IsNil)
+	log := logrus.StandardLogger()
+
+	// Nothing pending: the pod is recreated and nothing is recorded.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, false), Equals, false)
+	c.Assert(imc.staleCryptoCleanupPendingSince, HasLen, 0)
+
+	// Pending for the first time: defer and start the clock.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
+	since, ok := imc.staleCryptoCleanupPendingSince[TestInstanceManagerName]
+	c.Assert(ok, Equals, true)
+
+	// Still pending within the bound: keep deferring without restarting the clock.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
+	c.Assert(imc.staleCryptoCleanupPendingSince[TestInstanceManagerName], Equals, since)
+
+	// Pending past the bound: stop deferring, and do not start a new deferral while still pending.
+	imc.staleCryptoCleanupPendingSince[TestInstanceManagerName] = time.Now().Add(-staleCryptoCleanupMaxPendingDuration - time.Second)
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, false)
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, false)
+
+	// No longer pending: the record is cleared, so a later pending cleanup is deferred again.
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, false), Equals, false)
+	c.Assert(imc.staleCryptoCleanupPendingSince, HasLen, 0)
+	c.Assert(imc.shouldDeferPodRecreationForStaleCryptoCleanup(log, TestInstanceManagerName, true), Equals, true)
 }
 
 func newInstanceManagerPodWithCPURequest(name, nodeID, cpuRequest string, phase corev1.PodPhase, dataEngine longhorn.DataEngineType) *corev1.Pod {
