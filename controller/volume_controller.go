@@ -776,6 +776,10 @@ func (c *VolumeController) handleVolumeAttachmentCreation(v *longhorn.Volume) er
 	return nil
 }
 
+func isProcessStatusError(state, err string) bool {
+	return state == engineapi.ProcessStateError && err != ""
+}
+
 // ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, e.Status.RestoreStatus,
 // e.Status.purgeStatus, and e.Status.SnapshotCloneStatus then update v and rs accordingly.
 func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
@@ -902,16 +906,17 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 		restoreStatus := restoreStatusMap[rName]
 		purgeStatus := purgeStatusMap[rName]
+		restoreFailed := restoreStatus != nil && isProcessStatusError(restoreStatus.State, restoreStatus.Error)
+		purgeFailed := purgeStatus != nil && isProcessStatusError(purgeStatus.State, purgeStatus.Error)
 		if mode == longhorn.ReplicaModeERR ||
-			(restoreStatus != nil && restoreStatus.Error != "") ||
-			(purgeStatus != nil && purgeStatus.Error != "") {
+			restoreFailed || purgeFailed {
 			if _, ok := plannedDetachedReplicas[rName]; ok {
 				continue
 			}
-			if restoreStatus != nil && restoreStatus.Error != "" {
+			if restoreFailed {
 				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailedRestore, "replica %v failed the restore: %s", r.Name, restoreStatus.Error)
 			}
-			if purgeStatus != nil && purgeStatus.Error != "" {
+			if purgeFailed {
 				c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailedSnapshotPurge, "replica %v failed the snapshot purge: %s", r.Name, purgeStatus.Error)
 			}
 			if r.Spec.FailedAt == "" {
