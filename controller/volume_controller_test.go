@@ -5256,3 +5256,26 @@ func (s *TestSuite) TestSyncV2VolumeImageFollowsRunningImage(c *C) {
 		c.Assert(isV1VolumeUpgrading(f.volume), Equals, false)
 	}
 }
+
+// A local volume is excluded: the automatic-upgrade setting it would read has
+// no local key, so syncing a new local volume used to fail.
+func (s *TestSuite) TestLocalVolumeSyncV2Image(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	setting := newSetting(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
+	setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer().Add(setting), IsNil)
+
+	// A new volume: the mutator set spec.image, status.currentImage is still empty.
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeLocal
+	v.Spec.Image = TestInstanceManagerImage
+	_, err = vc.syncV2VolumeImage(v, nil, nil, nil)
+	c.Assert(err, IsNil)
+}

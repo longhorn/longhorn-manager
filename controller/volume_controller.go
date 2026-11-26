@@ -4975,8 +4975,10 @@ func (c *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[stri
 // rest of this reconciliation because the cached volume is stale.
 func (c *VolumeController) syncV2VolumeImage(v *longhorn.Volume, es map[string]*longhorn.Engine,
 	rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (bool, error) {
-	// EC volumes require the ShardGroup and Shard instances to be synced as well.
-	if types.IsDataEngineV1(v.Spec.DataEngine) || isECVolume(v) {
+	// EC volumes require the ShardGroup and Shard instances to be synced as
+	// well. Local volumes have no v2 upgrade flow, and the automatic-upgrade
+	// setting supports only the v2 data engine.
+	if types.IsDataEngineV1(v.Spec.DataEngine) || types.IsDataEngineLocal(v.Spec.DataEngine) || isECVolume(v) {
 		return false, nil
 	}
 
