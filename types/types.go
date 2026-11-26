@@ -343,6 +343,12 @@ const (
 	// owner until the creator is written to Status.Owners.
 	SystemBackupAnnotationCreator = "longhorn.io/system-backup-creator"
 
+	// SystemBackupAnnotationUploading records the manager that is uploading a
+	// SystemBackup archive, and when it last confirmed the upload was still
+	// running. Deletion on another manager waits for it so an in-flight upload
+	// cannot republish an archive after its volume backups were released.
+	SystemBackupAnnotationUploading = "longhorn.io/system-backup-uploading"
+
 	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
 	// also keeps the auto-attach of detached member volumes bounded.
 	SnapshotGroupMaxMemberCount = 64

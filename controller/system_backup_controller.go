@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -534,6 +535,19 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 			c.enqueueAfter(systemBackup, time.Second)
 			return nil
 		}
+		// An upload can still be running on the manager that owned this
+		// SystemBackup before ownership moved. Wait for that upload to stop
+		// so it cannot publish the archive after its backups are released.
+		uploading, err := c.systemBackupUploadInProgress(systemBackup.Name)
+		if err != nil || uploading {
+			if err != nil {
+				log.WithError(err).Warn("Failed to check the system backup upload")
+			} else {
+				log.Info("Waiting for system backup upload on another manager to stop before releasing its volume backups and snapshots")
+			}
+			c.enqueueAfter(systemBackup, time.Second)
+			return err
+		}
 		// Delete the archive before releasing the volume backups it references,
 		// so a surviving archive never references deleted backups.
 		if err := cleanupRemoteSystemBackupFiles(systemBackup, backupTargetClient, backupTarget, log); err != nil {
@@ -569,13 +583,13 @@ func (c *SystemBackupController) cleanupAssociatedBackupAndSnapshotCRs(systemBac
 	if err != nil {
 		return err
 	}
+	if !isBackupTargetConfigured(backupTarget) {
+		// The archives cannot be checked. Keep the children and remove the
+		// finalizer; waiting for them would block deletion forever.
+		c.logger.Warnf("Keeping the backups and snapshots of system backup %v since the default backup target is not configured", systemBackup.Name)
+		return nil
+	}
 	if deleteCROnly {
-		if !isBackupTargetConfigured(backupTarget) {
-			// The archive cannot be reached anymore, so it is not known
-			// whether it still references the children.
-			c.logger.Warnf("Keeping the backups and snapshots of system backup %v since the default backup target is not configured", systemBackup.Name)
-			return nil
-		}
 		// A listing failure is returned so the presence check is retried
 		// before the finalizer is removed.
 		archiveExists, err := isSystemBackupArchivePresent(systemBackup.Name, backupTargetClient)
@@ -698,24 +712,17 @@ func (c *SystemBackupController) releaseAssociatedSnapshots(systemBackupName str
 }
 
 // hasLastOwnerBackups reports whether a Backup that has this SystemBackup as its
-// sole remaining owner still exists. The live object is read from the API
-// server because an accepted DELETE can leave it, a status update may not be
-// in the cache yet, and the cache may still hold a fully removed object.
-// Shared children are deliberately retained and ignored here.
+// sole remaining owner still exists. One uncached list is used so a deletion
+// pass does not read every Backup individually. Shared children are
+// deliberately retained and ignored here.
 func (c *SystemBackupController) hasLastOwnerBackups(systemBackupName string, selector labels.Selector) (bool, error) {
-	backups, err := c.ds.ListBackupsWithSelectorRO(selector)
+	backups, err := c.ds.ListLonghornBackupsWithSelectorUncached(selector)
 	if err != nil {
 		return false, err
 	}
-	for _, backup := range backups {
-		live, err := c.ds.GetLonghornBackupUncached(backup.Name)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return false, err
-		}
-		if isLastOwner(getSystemBackupOwners(live.Annotations, live.Status.Owners), systemBackupName) {
+	for i := range backups {
+		backup := &backups[i]
+		if isLastOwner(getSystemBackupOwners(backup.Annotations, backup.Status.Owners), systemBackupName) {
 			return true, nil
 		}
 	}
@@ -723,22 +730,22 @@ func (c *SystemBackupController) hasLastOwnerBackups(systemBackupName string, se
 }
 
 // hasLastOwnerSnapshots reports whether a Snapshot that has this SystemBackup
-// as its sole remaining owner still exists. The live object is read from the
-// API server. Shared children are deliberately retained and ignored here.
+// as its sole remaining owner is still in use. One uncached list is used.
+// Snapshots that are already being deleted are ignored: SnapshotController can
+// retain them while purge is disabled or the snapshot is the parent of
+// volume-head, and that finalization is independent of this SystemBackup.
+// Shared children are deliberately retained and ignored here.
 func (c *SystemBackupController) hasLastOwnerSnapshots(systemBackupName string, selector labels.Selector) (bool, error) {
-	snapshots, err := c.ds.ListSnapshotsRO(selector)
+	snapshots, err := c.ds.ListLonghornSnapshotsWithSelectorUncached(selector)
 	if err != nil {
 		return false, err
 	}
-	for _, snapshot := range snapshots {
-		live, err := c.ds.GetLonghornSnapshotUncached(snapshot.Name)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return false, err
+	for i := range snapshots {
+		snapshot := &snapshots[i]
+		if snapshot.DeletionTimestamp != nil {
+			continue
 		}
-		if isLastOwner(getSystemBackupOwners(live.Annotations, live.Status.Owners), systemBackupName) {
+		if isLastOwner(getSystemBackupOwners(snapshot.Annotations, snapshot.Status.Owners), systemBackupName) {
 			return true, nil
 		}
 	}
@@ -1011,6 +1018,9 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 		// Mark upload as stopped before the status update, so the reconcile
 		// it triggers can start upload again or release the references.
 		c.uploadingSystemBackups.Delete(systemBackup.Name)
+		if clearErr := c.clearSystemBackupUploading(systemBackup.Name); clearErr != nil {
+			log.WithError(clearErr).Warn("Failed to clear the system backup uploading annotation")
+		}
 
 		if deleting {
 			// The SystemBackup is in the Deleting state now.
@@ -1055,23 +1065,36 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 			recordErr = errors.Wrap(err, SystemBackupErrTimeoutUpload)
 			return
 		case <-ticker.C:
+			// Do not publish the archive once deletion begins, and remove an
+			// archive published by an upload that raced with deletion.
+			current, getErr := c.ds.GetLonghornSystemBackupUncached(systemBackup.Name)
+			if apierrors.IsNotFound(getErr) || (getErr == nil && current.DeletionTimestamp != nil) {
+				if _, delErr := backupTargetClient.DeleteSystemBackup(systemBackup); delErr != nil && !types.ErrorIsNotFound(delErr) {
+					log.WithError(delErr).Warn("Failed to delete the system backup published while it was being deleted")
+				}
+				log.Info("Stopping system backup upload since the system backup is being deleted")
+				deleting = true
+				return
+			}
+			if getErr != nil {
+				log.WithError(getErr).Warn("Failed to confirm the system backup is not being deleted")
+				continue
+			}
+
 			systemBackupCfg, err = backupTargetClient.GetSystemBackupConfig(systemBackup.Name, systemBackup.Status.Version)
 			if err != nil && !types.ErrorIsNotFound(err) {
 				err = errors.Wrap(err, SystemBackupErrGetConfig)
 				continue
 			}
-
 			if systemBackupCfg != nil {
 				return
 			}
 
-			// Do not publish the archive once deletion begins, since the
-			// deletion releases the volume backups it references.
-			current, getErr := c.ds.GetSystemBackupRO(systemBackup.Name)
-			if apierrors.IsNotFound(getErr) || (getErr == nil && current.DeletionTimestamp != nil) {
-				log.Info("Stopping system backup upload since the system backup is being deleted")
-				deleting = true
-				return
+			// Refresh the uploading annotation before the upload so another
+			// manager keeps waiting until this attempt finishes.
+			if err := c.markSystemBackupUploading(systemBackup.Name); err != nil {
+				log.WithError(err).Warn("Failed to record the system backup upload")
+				continue
 			}
 
 			_, err = backupTargetClient.UploadSystemBackup(systemBackup.Name, archievePath, systemBackup.Status.Version, systemBackup.Status.GitCommit, c.managerImage, defaultEngineImage)
@@ -1084,6 +1107,84 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 			}
 		}
 	}
+}
+
+// markSystemBackupUploading records that this manager is uploading the
+// SystemBackup. The annotation is cleared when the upload stops.
+func (c *SystemBackupController) markSystemBackupUploading(name string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		systemBackup, err := c.ds.GetLonghornSystemBackupUncached(name)
+		if err != nil {
+			return err
+		}
+		if systemBackup.Annotations == nil {
+			systemBackup.Annotations = map[string]string{}
+		}
+		systemBackup.Annotations[types.SystemBackupAnnotationUploading] = systemBackupUploadingAnnotationValue(c.controllerID, time.Now())
+		_, err = c.ds.UpdateSystemBackup(systemBackup)
+		return err
+	})
+}
+
+// clearSystemBackupUploading removes this manager's uploading annotation.
+func (c *SystemBackupController) clearSystemBackupUploading(name string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		systemBackup, err := c.ds.GetLonghornSystemBackupUncached(name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		owner, _, ok := parseSystemBackupUploadingAnnotation(systemBackup.Annotations)
+		if !ok || owner != c.controllerID {
+			return nil
+		}
+		delete(systemBackup.Annotations, types.SystemBackupAnnotationUploading)
+		_, err = c.ds.UpdateSystemBackup(systemBackup)
+		return err
+	})
+}
+
+// systemBackupUploadInProgress reports whether an upload is still running on
+// this or another manager. A record older than the upload timeout is stale:
+// that manager's upload loop has exited or its process is gone.
+func (c *SystemBackupController) systemBackupUploadInProgress(name string) (bool, error) {
+	systemBackup, err := c.ds.GetLonghornSystemBackupUncached(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	owner, at, ok := parseSystemBackupUploadingAnnotation(systemBackup.Annotations)
+	if !ok {
+		return false, nil
+	}
+	if time.Since(at) > datastore.SystemBackupTimeout {
+		return false, nil
+	}
+	if owner == c.controllerID {
+		_, running := c.uploadingSystemBackups.Load(name)
+		return running, nil
+	}
+	return true, nil
+}
+
+func systemBackupUploadingAnnotationValue(controllerID string, at time.Time) string {
+	return controllerID + "|" + at.UTC().Format(time.RFC3339Nano)
+}
+
+func parseSystemBackupUploadingAnnotation(annotations map[string]string) (controllerID string, at time.Time, ok bool) {
+	owner, stamp, found := strings.Cut(annotations[types.SystemBackupAnnotationUploading], "|")
+	if !found || owner == "" {
+		return "", time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339Nano, stamp)
+	if err != nil {
+		return "", time.Time{}, false
+	}
+	return owner, at, true
 }
 
 // cleanupRemoteSystemBackupFiles deletes the archive in the backup target and
@@ -1099,6 +1200,16 @@ func cleanupRemoteSystemBackupFiles(systemBackup *longhorn.SystemBackup, backupT
 		return errors.Wrap(err, "failed to check if it needs to delete remote system backup data")
 	}
 	if !needsCleanupRemoteData {
+		deleteCROnly, err := datastore.IsLabelLonghornDeleteCustomResourceOnlyExisting(systemBackup)
+		if err != nil {
+			return errors.Wrap(err, "failed to check if it needs to delete remote system backup data")
+		}
+		// A configured but unavailable target cannot be listed reliably. Normal
+		// deletion retries instead of releasing backups that the surviving
+		// archive still references. A CR-only deletion keeps the remote data.
+		if !deleteCROnly && isBackupTargetConfigured(backupTarget) {
+			return fmt.Errorf("waiting for the default backup target to become available before deleting system backup %v", systemBackup.Name)
+		}
 		return nil
 	}
 
