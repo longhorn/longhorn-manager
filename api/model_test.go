@@ -347,3 +347,42 @@ func TestToRecurringJobResourceIncludesRetentionPolicy(t *testing.T) {
 		t.Fatalf("expected retentionPolicy %v, got %v", longhorn.RecurringJobRetentionPolicyAgeBased, resource.RetentionPolicy)
 	}
 }
+
+func TestToBackingImageResourceExposesConditions(t *testing.T) {
+	schemas := NewSchema()
+	backingImage, ok := schemas.CheckSchema("backingImage")
+	if !ok {
+		t.Fatalf("expected backingImage schema to be registered")
+	}
+	conditions, ok := backingImage.CheckField("conditions")
+	if !ok {
+		t.Fatalf("expected backingImage schema to have a conditions field")
+	}
+	if conditions.Type != "map[longhornCondition]" {
+		t.Fatalf("expected conditions schema type map[longhornCondition], got %q", conditions.Type)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/v1/backingimages/bi", nil)
+	urlBuilder, err := rancherapi.NewUrlBuilder(req, &client.Schemas{})
+	if err != nil {
+		t.Fatalf("failed to create API url builder: %v", err)
+	}
+
+	bi := &longhorn.BackingImage{}
+	bi.Name = "bi"
+	bi.Status.Conditions = []longhorn.Condition{{
+		Type:    longhorn.BackingImageConditionTypeFailed,
+		Status:  longhorn.ConditionStatusTrue,
+		Reason:  longhorn.BackingImageConditionReasonDataSource,
+		Message: "download failed",
+	}}
+
+	resource := toBackingImageResource(bi, &rancherapi.ApiContext{UrlBuilder: urlBuilder})
+	failed, ok := resource.Conditions[longhorn.BackingImageConditionTypeFailed]
+	if !ok {
+		t.Fatalf("expected the Failed condition to be exposed, got %v", resource.Conditions)
+	}
+	if failed.Status != longhorn.ConditionStatusTrue || failed.Message != "download failed" {
+		t.Fatalf("unexpected Failed condition %+v", failed)
+	}
+}

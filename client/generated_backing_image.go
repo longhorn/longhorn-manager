@@ -7,6 +7,8 @@ const (
 type BackingImage struct {
 	Resource `yaml:"-"`
 
+	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+
 	CurrentChecksum string `json:"currentChecksum,omitempty" yaml:"current_checksum,omitempty"`
 
 	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`

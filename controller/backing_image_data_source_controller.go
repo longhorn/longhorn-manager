@@ -103,7 +103,7 @@ func NewBackingImageDataSourceController(
 
 		ds: ds,
 
-		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
+		backoff: flowcontrol.NewBackOff(time.Minute, 15*time.Minute),
 
 		lock:       &sync.RWMutex{},
 		monitorMap: map[string]chan struct{}{},
@@ -175,6 +175,7 @@ func (c *BackingImageDataSourceController) Run(workers int, stopCh <-chan struct
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
+	go wait.Until(c.backoff.GC, 15*time.Minute, stopCh)
 
 	<-stopCh
 }
@@ -258,6 +259,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 	bids, err := c.ds.GetBackingImageDataSource(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
+			c.backoff.DeleteEntry(name)
 			return nil
 		}
 		return errors.Wrap(err, "failed to get backing image data source")
@@ -291,6 +293,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 		// if it is not transferred, we need to wait until it is failed-and-cleanup
 		if !bids.Spec.FileTransferred {
 			if bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp {
+				c.backoff.DeleteEntry(bids.Name)
 				return c.ds.RemoveFinalizerForBackingImageDataSource(bids)
 			}
 
@@ -306,6 +309,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 		}
 
 		// if it is transferred, we don't need to clean up
+		c.backoff.DeleteEntry(bids.Name)
 		return c.ds.RemoveFinalizerForBackingImageDataSource(bids)
 	}
 
@@ -562,11 +566,14 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 			bids.Status.Message = ""
 			bids.Status.Progress = 0
 			bids.Status.Checksum = ""
-			if err := c.createBackingImageDataSourcePod(bids); err != nil {
+			created, err := c.createBackingImageDataSourcePod(bids)
+			if err != nil {
 				return err
 			}
 			// The backoff entry will be cleaned up when the monitor finds the file becoming ready.
-			c.backoff.Next(bids.Name, time.Now())
+			if created {
+				c.backoff.Next(bids.Name, time.Now())
+			}
 		}
 	}
 
@@ -637,7 +644,8 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 	return nil
 }
 
-func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (err error) {
+// createBackingImageDataSourcePod returns created=false when the pod already exists, e.g. the pod informer cache has not observed it yet.
+func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (created bool, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to create backing image data source pod")
 	}()
@@ -648,13 +656,16 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 
 	podManifest, err := c.generateBackingImageDataSourcePodManifest(bids)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if _, err := c.ds.CreatePod(podManifest); err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
+	if _, err := c.ds.CreatePod(podManifest); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return false, nil
+		}
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*corev1.Pod, error) {

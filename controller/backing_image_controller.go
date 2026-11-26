@@ -1201,6 +1201,10 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		}
 	}
 
+	unrecoverable := bids.Spec.FileTransferred && allFilesUnavailable &&
+		bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeDownload
+	syncBackingImageDataSourceCondition(bi, bids, unrecoverable)
+
 	if !reflect.DeepEqual(bids, existingBIDS) {
 		if _, err := bic.ds.UpdateBackingImageDataSource(bids); err != nil {
 			return err
@@ -1810,4 +1814,39 @@ func (bic *BackingImageController) deleteUnknownV2Copy(bi *longhorn.BackingImage
 		return false, errors.Wrapf(err, "failed to delete the v2 copy on diskUUID %v", v2DiskUUID)
 	}
 	return true, nil
+}
+
+func syncBackingImageDataSourceCondition(bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, unrecoverable bool) {
+	if bids == nil {
+		bi.Status.Conditions = types.SetCondition(bi.Status.Conditions,
+			longhorn.BackingImageConditionTypeFailed, longhorn.ConditionStatusFalse, "", "")
+		return
+	}
+	// Non-download sources cannot restart after FileTransferred. Once every copy is
+	// unavailable past the recovery wait, surface Failed instead of looking healthy.
+	if unrecoverable {
+		msg := fmt.Sprintf("all existing files became unavailable and data source type %v does not support restarting", bids.Spec.SourceType)
+		bi.Status.Conditions = types.SetCondition(bi.Status.Conditions,
+			longhorn.BackingImageConditionTypeFailed, longhorn.ConditionStatusTrue,
+			longhorn.BackingImageConditionReasonDataSource, msg)
+		return
+	}
+	if bids.Spec.FileTransferred ||
+		bids.Status.CurrentState == longhorn.BackingImageStateReady ||
+		bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer ||
+		bids.Status.CurrentState == longhorn.BackingImageStateStarting ||
+		bids.Status.CurrentState == longhorn.BackingImageStatePending ||
+		bids.Status.CurrentState == "" ||
+		bids.Status.CurrentState == longhorn.BackingImageStateInProgress {
+		bi.Status.Conditions = types.SetCondition(bi.Status.Conditions,
+			longhorn.BackingImageConditionTypeFailed, longhorn.ConditionStatusFalse, "", "")
+		return
+	}
+	msg := bids.Status.Message
+	if msg == "" {
+		msg = fmt.Sprintf("backing image data source is %v", bids.Status.CurrentState)
+	}
+	bi.Status.Conditions = types.SetCondition(bi.Status.Conditions,
+		longhorn.BackingImageConditionTypeFailed, longhorn.ConditionStatusTrue,
+		longhorn.BackingImageConditionReasonDataSource, msg)
 }
