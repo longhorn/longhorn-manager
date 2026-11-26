@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/client-go/util/retry"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -24,6 +26,17 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+// allReplicaExpansionFailedError prefixes the expansion error the v1 engine
+// records when the expansion failed on every replica. See Controller.Expand in
+// longhorn-engine.
+const allReplicaExpansionFailedError = "the expansion failed since all replica expansion failed"
+
+// replicaExpansionSnapshotLabel labels the snapshot the v1 replica creates
+// when it is expanded, with the expanded size as the value. A replica rolls the
+// snapshot back if its expansion fails. See GenerateExpansionSnapshotLabels in
+// longhorn-engine.
+const replicaExpansionSnapshotLabel = "replica-expansion"
 
 type VolumeManager struct {
 	ds                        *datastore.DataStore
@@ -702,6 +715,11 @@ func (m *VolumeManager) checkAndExpandPVC(namespace string, pvcName string, size
 	return false, size, nil
 }
 
+// CancelExpansion rolls back an expansion request. Only a v1 expansion that
+// failed on every replica, with every replica rolled back, can be canceled: the
+// engine and the replicas still have the original size. Any other expansion may
+// already have grown the engine or some replicas, and rolling it back would
+// leave them larger than the volume.
 func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to cancel expansion for volume %v", volumeName)
@@ -711,41 +729,195 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	if err != nil {
 		return nil, err
 	}
-	if !v.Status.ExpansionRequired {
-		return nil, fmt.Errorf("volume expansion is not started")
-	}
-	if v.Status.IsStandby {
-		return nil, fmt.Errorf("canceling expansion for standby volume is not supported")
-	}
 
-	var engine *longhorn.Engine
-	es, err := m.ds.ListVolumeEngines(v.Name)
+	// Read the engine from the API server rather than the cache, so the spec
+	// matches what the engine monitor acts on.
+	es, err := m.ds.ListVolumeEnginesUncached(v.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list engines for volume %v: %v", v.Name, err)
 	}
 	if len(es) != 1 {
-		return nil, fmt.Errorf("found more than 1 engines for volume %v", v.Name)
+		return nil, fmt.Errorf("found %v engines for volume %v, expected 1", len(es), v.Name)
 	}
-	for _, e := range es {
-		engine = e
+	engine := &es[0]
+
+	if err := checkExpansionCancelable(v, engine); err != nil {
+		return nil, err
 	}
 
-	if engine.Status.IsExpanding {
-		return nil, fmt.Errorf("the engine expansion is in progress")
+	// The engine status in the CR can lag behind by a poll interval, so query
+	// the engine directly to make sure no retry is in progress.
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, v.Name, m.currentNodeID)
+	if err != nil {
+		return nil, err
 	}
-	if engine.Status.CurrentSize == v.Spec.Size {
-		return nil, fmt.Errorf("the engine expansion is already complete")
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, nil, m.proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	defer engineClientProxy.Close()
+
+	volumeInfo, err := engineClientProxy.VolumeGet(engine)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get engine %v volume info", engine.Name)
+	}
+	replicas, err := engineClientProxy.ReplicaList(engine)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list engine %v replicas", engine.Name)
+	}
+	snapshots, err := engineClientProxy.SnapshotList(engine)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list engine %v snapshots", engine.Name)
 	}
 
+	return m.cancelFailedExpansion(v, engine, volumeInfo, replicas, snapshots)
+}
+
+// cancelFailedExpansion cancels the expansion with the live engine state
+// queried after the engine CR was read.
+func (m *VolumeManager) cancelFailedExpansion(v *longhorn.Volume, engine *longhorn.Engine, volumeInfo *engineapi.Volume, replicas map[string]*engineapi.Replica, snapshots map[string]*longhorn.SnapshotInfo) (*longhorn.Volume, error) {
+	if err := checkEngineExpansionFailed(v, volumeInfo, replicas, snapshots); err != nil {
+		return nil, err
+	}
+
+	// Record the cancellation on the engine CR read above before rolling back
+	// the volume. If the engine monitor has claimed a retry since then, the
+	// update fails with a conflict. Once it succeeds, the engine monitor does
+	// not retry the expansion until a newer volume spec requests the size
+	// again. The cancellation is never removed here: a failed rollback may
+	// still have been applied.
+	if _, err := m.ds.RecordEngineExpansionCancellation(engine, v.Generation); err != nil {
+		return nil, errors.Wrapf(err, "failed to record the expansion cancellation on engine %v", engine.Name)
+	}
+
+	// Roll back to the size the engine still serves.
 	previousSize := v.Spec.Size
-	v.Spec.Size = engine.Status.CurrentSize
-	v, err = m.ds.UpdateVolume(v)
+	v, err := m.rollBackVolumeSize(v, volumeInfo.Size)
 	if err != nil {
 		return nil, err
 	}
 
 	logrus.Infof("Canceling volume %v expansion from %v to %v requested", v.Name, previousSize, v.Spec.Size)
 	return v, nil
+}
+
+// rollBackVolumeSize sets the volume size for a cancellation recorded with the
+// volume generation. A conflict means the update was not applied, so it is
+// retried while the volume spec is unchanged. Once the volume spec changes, by
+// another cancellation or a new request, the recorded cancellation resolves
+// itself and the rollback stops.
+func (m *VolumeManager) rollBackVolumeSize(v *longhorn.Volume, size int64) (*longhorn.Volume, error) {
+	generation := v.Generation
+	var updated *longhorn.Volume
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		v.Spec.Size = size
+		var err error
+		if updated, err = m.ds.UpdateVolume(v); err == nil || !apierrors.IsConflict(err) {
+			return err
+		}
+		latest, getErr := m.ds.GetVolumeUncached(v.Name)
+		if getErr != nil {
+			return getErr
+		}
+		if latest.Generation != generation {
+			return fmt.Errorf("the volume spec changed during the cancellation")
+		}
+		v = latest
+		return err
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to roll back the volume size to %v", size)
+	}
+	return updated, nil
+}
+
+// checkExpansionCancelable checks the volume and engine CRs before querying the
+// engine.
+func checkExpansionCancelable(v *longhorn.Volume, engine *longhorn.Engine) error {
+	if !v.Status.ExpansionRequired {
+		return fmt.Errorf("volume expansion is not started")
+	}
+	if v.Status.IsStandby {
+		return fmt.Errorf("canceling expansion for standby volume is not supported")
+	}
+	// V2 does not support rolling back the size of a failed expansion yet: a
+	// replica counted as failed may already have a larger lvol, and the engine
+	// enters the error state once all replicas fail. So a v2 expansion cannot
+	// be canceled once it starts.
+	if !types.IsDataEngineV1(v.Spec.DataEngine) {
+		return fmt.Errorf("the expansion has already started")
+	}
+	// The engine of an encrypted volume reports a backend size that includes
+	// the LUKS header while the expansion is pending, so the original volume
+	// size cannot be derived from it.
+	if v.Spec.Encrypted {
+		return fmt.Errorf("canceling expansion of encrypted volume is not supported")
+	}
+	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+		return fmt.Errorf("cannot cancel expansion of volume in robustness %v", v.Status.Robustness)
+	}
+	// The failed expansion must be for the current request. Otherwise a larger
+	// size was requested afterwards and may be propagating to the engine.
+	if engine.Spec.VolumeSize != v.Spec.Size {
+		return fmt.Errorf("cannot cancel expansion since the engine spec size %v does not match the requested size %v", engine.Spec.VolumeSize, v.Spec.Size)
+	}
+	if engine.Status.CurrentSize <= 0 || engine.Status.CurrentSize >= v.Spec.Size {
+		return fmt.Errorf("cannot cancel expansion since the engine current size is %v", engine.Status.CurrentSize)
+	}
+	// The engine monitor clears the recorded failure before it retries the
+	// expansion. If only some replicas failed, the others have grown and stay
+	// RW, even when the frontend expansion then failed and the engine still
+	// reports the original size.
+	if !strings.HasPrefix(engine.Status.LastExpansionError, allReplicaExpansionFailedError) {
+		return fmt.Errorf("only an expansion that failed on every replica can be canceled")
+	}
+	return nil
+}
+
+// checkEngineExpansionFailed checks the live engine state: no retry is in
+// progress, the engine has not grown, and every replica is still RW, so the
+// failure rolled back every replica. The failure on every replica is checked on
+// the engine CR, which the engine monitor clears before it retries.
+// The replicas may still be larger than the engine: an earlier expansion can
+// grow every replica but fail on the frontend without recording an error. The
+// snapshot of that replica expansion is checked, since rolling the volume back
+// below the replica size makes a later smaller expansion fail every replica.
+func checkEngineExpansionFailed(v *longhorn.Volume, volumeInfo *engineapi.Volume, replicas map[string]*engineapi.Replica, snapshots map[string]*longhorn.SnapshotInfo) error {
+	if volumeInfo.IsExpanding {
+		return fmt.Errorf("the engine expansion is in progress")
+	}
+	if volumeInfo.Size <= 0 || volumeInfo.Size >= v.Spec.Size {
+		return fmt.Errorf("the engine has already been expanded to %v", volumeInfo.Size)
+	}
+	if len(replicas) == 0 {
+		return fmt.Errorf("the engine has no replicas")
+	}
+	for url, r := range replicas {
+		if r.Mode != longhorn.ReplicaModeRW {
+			return fmt.Errorf("replica %v is in mode %v after the failed expansion", url, r.Mode)
+		}
+	}
+	// Only the v1 replica creates a snapshot when it is expanded. This check is
+	// best effort: once the expansion snapshot is deleted or purged, its label
+	// is lost and replicas larger than the engine are not detected. The
+	// cancellation then leaves the volume smaller than the replicas, and a
+	// later expansion to a size between them fails on every replica.
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
+		for name, snapshot := range snapshots {
+			value, exists := snapshot.Labels[replicaExpansionSnapshotLabel]
+			if !exists {
+				continue
+			}
+			size, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return errors.Wrapf(err, "invalid replica expansion size %q of snapshot %v", value, name)
+			}
+			if size > volumeInfo.Size {
+				return fmt.Errorf("the replicas have been expanded to %v by snapshot %v", size, name)
+			}
+		}
+	}
+	return nil
 }
 
 func (m *VolumeManager) UpdateOfflineRebuilding(volumeName string, offlineRebuildMode longhorn.VolumeOfflineRebuilding) (v *longhorn.Volume, err error) {
