@@ -61,7 +61,8 @@ const salvageConnectMaxRetries = 3
 type ShardGroup struct {
 	sync.RWMutex
 
-	ctx context.Context
+	ctx      context.Context
+	ipFamily commonnet.IPFamily
 
 	Name       string // typically equals VolumeName
 	VolumeName string
@@ -145,7 +146,13 @@ func GetShardGroupLvsName(volumeName string) string {
 func NewShardGroup(ctx context.Context, name, volumeName string, specSize uint64,
 	dataChunks, parityChunks, stripSizeKb uint32, shards map[string]*ShardEndpoint,
 	salvageRequested bool, updateCh chan interface{}) *ShardGroup {
+	return newShardGroup(ctx, name, volumeName, specSize, dataChunks, parityChunks, stripSizeKb, shards,
+		salvageRequested, commonnet.IPFamilyUnspecified, updateCh)
+}
 
+func newShardGroup(ctx context.Context, name, volumeName string, specSize uint64,
+	dataChunks, parityChunks, stripSizeKb uint32, shards map[string]*ShardEndpoint,
+	salvageRequested bool, ipFamily commonnet.IPFamily, updateCh chan interface{}) *ShardGroup {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"shardGroupName": name,
 		"volumeName":     volumeName,
@@ -164,8 +171,8 @@ func NewShardGroup(ctx context.Context, name, volumeName string, specSize uint64
 	headLvolName := volumeName
 
 	return &ShardGroup{
-		ctx: ctx,
-
+		ctx:        ctx,
+		ipFamily:   ipFamily,
 		Name:       name,
 		VolumeName: volumeName,
 
@@ -1575,8 +1582,7 @@ func (sg *ShardGroup) tryDiscoverExistingLvstore(spdkClient *spdkclient.Client) 
 // (for the head lvol). A ShardGroup serves one target, so it always uses one port
 // and does not use the request's port_count.
 func (sg *ShardGroup) prepareIPAndPort(superiorPortAllocator *commonbitmap.Bitmap) error {
-	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
-	podIP, err := commonnet.GetIPForPod()
+	podIP, err := commonnet.GetIPForPodByNetworkAndFamily(sg.ipFamily)
 	if err != nil {
 		return err
 	}

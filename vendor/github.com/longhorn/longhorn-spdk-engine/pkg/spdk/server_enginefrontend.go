@@ -36,6 +36,13 @@ func (s *Server) EngineFrontendSuspend(ctx context.Context, req *spdkrpc.EngineF
 	unlockVolumeHost := s.acquireVolumeHostLock(ef.VolumeName)
 	defer unlockVolumeHost()
 
+	// A caller whose suspend request times out resumes the frontend, and that resume
+	// also takes the volume host lock. Do not suspend once the request has expired, or
+	// the frontend would stay suspended after that resume.
+	if err := ctx.Err(); err != nil {
+		return nil, grpcstatus.FromContextError(err).Err()
+	}
+
 	s.RLock()
 	spdkClient := s.spdkClient
 	s.RUnlock()
@@ -102,12 +109,15 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 // the snapshot-creation step and the finish step. It then delegates to
 // Engine.ReplicaAdd(frontendSuspendResumeWrapper).
 //
-// Engine.ReplicaAdd runs the synchronous part under the Engine lock:
+// Engine.ReplicaAdd runs the synchronous part with the frontend suspended,
+// and only then takes the Engine lock. The opposite lock order deadlocks with an
+// engine frontend snapshot operation, which holds the frontend lock while it
+// calls into the Engine:
 //
-//  0. Snapshot + setup (sync, under frontendSuspendResumeWrapper): suspend frontend via
-//     frontendSuspendResumeWrapper -> create rebuild snapshot, connect to src/dst replica
+//  0. Snapshot + setup (sync): suspend frontend via frontendSuspendResumeWrapper
+//     -> under the Engine lock, create rebuild snapshot, connect to src/dst replica
 //     SPDK services, add dst replica head bdev to RAID, mark dst as ModeWO
-//     -> resume frontend.
+//     -> release the Engine lock -> resume frontend.
 //
 // On return (with lock released), a deferred goroutine runs the remaining
 // phases:
@@ -149,8 +159,9 @@ func (s *Server) EngineFrontendResume(ctx context.Context, req *spdkrpc.EngineFr
 //     be suspended at all proceeds without suspension.
 //   - Finish step: proceed without suspension, as the data has already been
 //     copied and not running the step would leak SPDK resources.
-//   - Resume fails -> log error but do not override the operation result;
-//     longhorn-manager will detect the stuck-suspended EF and recover.
+//   - Suspend times out -> resume best-effort, as the suspend may still
+//     complete on the EF after the RPC failed.
+//   - Resume fails -> log error but do not override the operation result.
 func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.EngineFrontendReplicaAddRequest) (ret *emptypb.Empty, err error) {
 	if req.ReplicaName == "" || req.ReplicaAddress == "" {
 		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "replica name and address are required")
@@ -192,8 +203,7 @@ func (s *Server) EngineFrontendReplicaAdd(ctx context.Context, req *spdkrpc.Engi
 
 	// Resolve the local node IP so Engine can call back to this EF
 	// for suspend/resume during the finish step.
-	// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
-	localIP, err := commonnet.GetIPForPod()
+	localIP, err := commonnet.GetIPForPodByNetworkAndFamily(s.ipFamily)
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to get local IP for engine frontend %s: %v", ef.Name, err)
 	}
@@ -280,9 +290,17 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	// co-located on the same instance-manager pod, derive the address from
 	// the pod IP.
 	if targetAddress == "" {
-		// nolint: staticcheck // Keep legacy IP selection until callers migrate to the new helpers.
-		if podIP, ipErr := commonnet.GetIPForPod(); ipErr == nil && podIP != "" {
+		podIP, ipErr := commonnet.GetIPForPodByNetworkAndFamily(s.ipFamily)
+		if ipErr != nil && s.ipFamily != commonnet.IPFamilyUnspecified {
+			return nil, grpcstatus.Errorf(grpccodes.Internal, "failed to resolve local IP for engine frontend %s: %v", req.Name, ipErr)
+		}
+		if podIP != "" {
 			targetAddress = net.JoinHostPort(podIP, strconv.Itoa(types.SPDKServicePort))
+		}
+	}
+	if s.ipFamily != commonnet.IPFamilyUnspecified {
+		if familyErr := validatePersistedAddressFamily(targetAddress, s.ipFamily); familyErr != nil {
+			return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid target address %v: %v", targetAddress, familyErr)
 		}
 	}
 	// Validate the address format. ef.Create() would reject this with a hard
@@ -335,10 +353,11 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		}
 	}
 
-	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
-		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
-	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
+	ef := newEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
+		req.UblkQueueDepth, req.UblkNumberOfQueue, s.ipFamily,
+		s.updateChs[types.InstanceTypeEngineFrontend], s.newServiceClient)
 	ef.metadataDir = s.metadataDir
+	ef.NvmeTcpFrontend.NrIoQueues = req.NvmeTcpNrIoQueues
 
 	s.Unlock()
 

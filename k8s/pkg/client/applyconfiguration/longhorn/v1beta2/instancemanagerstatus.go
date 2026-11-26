@@ -37,6 +37,7 @@ type InstanceManagerStatusApplyConfiguration struct {
 	InstanceShardGroups     map[string]InstanceProcessApplyConfiguration        `json:"instanceShardGroups,omitempty"`
 	BackingImages           map[string]BackingImageV2CopyInfoApplyConfiguration `json:"backingImages,omitempty"`
 	IP                      *string                                             `json:"ip,omitempty"`
+	IPFamily                *string                                             `json:"ipFamily,omitempty"`
 	APIMinVersion           *int                                                `json:"apiMinVersion,omitempty"`
 	APIVersion              *int                                                `json:"apiVersion,omitempty"`
 	ProxyAPIMinVersion      *int                                                `json:"proxyApiMinVersion,omitempty"`
@@ -168,6 +169,14 @@ func (b *InstanceManagerStatusApplyConfiguration) WithBackingImages(entries map[
 // If called multiple times, the IP field is set to the value of the last call.
 func (b *InstanceManagerStatusApplyConfiguration) WithIP(value string) *InstanceManagerStatusApplyConfiguration {
 	b.IP = &value
+	return b
+}
+
+// WithIPFamily sets the IPFamily field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the IPFamily field is set to the value of the last call.
+func (b *InstanceManagerStatusApplyConfiguration) WithIPFamily(value string) *InstanceManagerStatusApplyConfiguration {
+	b.IPFamily = &value
 	return b
 }
 
