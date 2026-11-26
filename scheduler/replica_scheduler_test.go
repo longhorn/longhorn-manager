@@ -1309,6 +1309,18 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc = generateUnhealthyDiskTestCase()
 	testCases["skip unhealthy disk"] = tc
 
+	// Test the data locality replica of a best-effort volume, which has a hard node affinity to the attach node.
+	// longhorn/longhorn#14324
+	tc = generateDataLocalityReplicaTestCase(TestZone1, "false")
+	tc.firstNilReplica = 0
+	testCases["data locality replica is not scheduled to a zone that already has a replica"] = tc
+
+	tc = generateDataLocalityReplicaTestCase(TestZone1, "true")
+	testCases["data locality replica is scheduled to a used zone with replica zone soft anti-affinity"] = tc
+
+	tc = generateDataLocalityReplicaTestCase("test-zone-3", "false")
+	testCases["data locality replica is scheduled to an unused zone"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 
@@ -1639,6 +1651,65 @@ func generateBestEffortAutoBalanceScheduleTestCase() *ReplicaSchedulerTestCase {
 	return tc
 }
 
+// generateDataLocalityReplicaTestCase creates a volume with replicas on node1 (zone 1) and node3 (zone 2) that is
+// attached to node2, and tries to schedule the data locality replica for node2.
+func generateDataLocalityReplicaTestCase(node2Zone, replicaZoneSoftAntiAffinity string) *ReplicaSchedulerTestCase {
+	tc := &ReplicaSchedulerTestCase{
+		engineImage:        newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed),
+		allReplicas:        map[string]*longhorn.Replica{},
+		replicasToSchedule: map[string]struct{}{},
+		firstNilReplica:    -1,
+	}
+	tc.daemons = []*corev1.Pod{
+		newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1),
+		newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2),
+		newDaemonPod(corev1.PodRunning, TestDaemon3, TestNamespace, TestNode3, TestIP3),
+	}
+
+	tc.volume = newVolume(TestVolumeName, 2)
+	tc.volume.Spec.DataLocality = longhorn.DataLocalityBestEffort
+	tc.volume.Spec.NodeID = TestNode2
+
+	tc.nodes = map[string]*longhorn.Node{}
+	for nodeName, zone := range map[string]string{TestNode1: TestZone1, TestNode2: node2Zone, TestNode3: TestZone2} {
+		node := newNode(nodeName, TestNamespace, zone, true, longhorn.ConditionStatusTrue)
+		diskID := getDiskID(nodeName, "1")
+		node.Spec.Disks = map[string]longhorn.DiskSpec{diskID: newDisk(TestDefaultDataPath, true, 0)}
+		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+			diskID: {
+				StorageAvailable: TestDiskAvailableSize,
+				StorageScheduled: 0,
+				StorageMaximum:   TestDiskSize,
+				Conditions:       []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)},
+				DiskUUID:         diskID,
+				Type:             longhorn.DiskTypeFilesystem,
+			},
+		}
+		tc.engineImage.Status.NodeDeploymentMap[nodeName] = true
+		tc.nodes[nodeName] = node
+
+		if nodeName != TestNode2 {
+			replica := newReplicaForVolume(tc.volume)
+			replica.Spec.NodeID = nodeName
+			replica.Spec.DiskID = diskID
+			tc.allReplicas[replica.Name] = replica
+		}
+	}
+
+	localReplica := newReplicaForVolume(tc.volume)
+	localReplica.Spec.HardNodeAffinity = TestNode2
+	tc.allReplicas[localReplica.Name] = localReplica
+	tc.replicasToSchedule[localReplica.Name] = struct{}{}
+
+	tc.replicaNodeSoftAntiAffinity = "false"
+	tc.replicaZoneSoftAntiAffinity = replicaZoneSoftAntiAffinity
+	tc.expectedNodes = map[string]*longhorn.Node{}
+	if replicaZoneSoftAntiAffinity == "true" || node2Zone != TestZone1 {
+		tc.expectedNodes[TestNode2] = tc.nodes[TestNode2]
+	}
+	return tc
+}
+
 func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sIndexer cache.Indexer, c *C) {
 	// Set default-instance-manager-image setting
 	s := initSettings(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
@@ -1847,6 +1918,13 @@ func (s *TestSuite) TestGetCurrentNodesAndZones(c *C) {
 		}
 	}
 
+	generatePotentiallyReusableReplica := func(replicaName, nodeName string) *longhorn.Replica {
+		r := generateReplica(replicaName, nodeName, false)
+		r.Spec.DiskID = TestDisk1ID
+		r.Spec.FailedAt = TestTimeNow
+		return r
+	}
+
 	generateReplicaMap := func(replicas ...*longhorn.Replica) map[string]*longhorn.Replica {
 		replicaMap := map[string]*longhorn.Replica{}
 		for _, replica := range replicas {
@@ -1903,8 +1981,10 @@ func (s *TestSuite) TestGetCurrentNodesAndZones(c *C) {
 	}
 
 	testCases := map[string]struct {
-		replicas                    map[string]*longhorn.Replica
-		nodeInfo                    map[string]*longhorn.Node
+		replicas map[string]*longhorn.Replica
+		nodeInfo map[string]*longhorn.Node
+		// allNodeInfo defaults to nodeInfo.
+		allNodeInfo                 map[string]*longhorn.Node
 		expectUsedNodeNames         []string
 		expectUsedZoneNames         []string
 		expectOnlyEvictingNodeNames []string
@@ -1934,12 +2014,58 @@ func (s *TestSuite) TestGetCurrentNodesAndZones(c *C) {
 			expectOnlyEvictingNodeNames: []string{},
 			expectOnlyEvictingZoneNames: []string{},
 		},
+		"healthy replica on a node outside the candidates occupies its zone": {
+			// For example, a data locality replica with a hard node affinity only has the attach node as candidate.
+			nodeInfo: generateNodeMap(generateNodeInZone(TestNode2, TestZone1)),
+			allNodeInfo: generateNodeMap(generateNodeInZone(TestNode1, TestZone1),
+				generateNodeInZone(TestNode2, TestZone1)),
+			replicas:                    generateReplicaMap(generateReplica(TestReplica1, TestNode1, false)),
+			expectUsedNodeNames:         []string{},
+			expectUsedZoneNames:         []string{TestZone1},
+			expectOnlyEvictingNodeNames: []string{},
+			expectOnlyEvictingZoneNames: []string{},
+		},
+		"evicting replica on a node outside the candidates does not occupy its zone": {
+			nodeInfo: generateNodeMap(generateNodeInZone(TestNode2, TestZone1)),
+			allNodeInfo: generateNodeMap(generateNodeInZone(TestNode1, TestZone1),
+				generateNodeInZone(TestNode2, TestZone1)),
+			replicas:                    generateReplicaMap(generateReplica(TestReplica1, TestNode1, true)),
+			expectUsedNodeNames:         []string{},
+			expectUsedZoneNames:         []string{},
+			expectOnlyEvictingNodeNames: []string{},
+			expectOnlyEvictingZoneNames: []string{},
+		},
+		"failed replica on a node outside the candidates does not occupy its zone": {
+			nodeInfo: generateNodeMap(generateNodeInZone(TestNode2, TestZone1)),
+			allNodeInfo: generateNodeMap(generateNodeInZone(TestNode1, TestZone1),
+				generateNodeInZone(TestNode2, TestZone1)),
+			replicas:                    generateReplicaMap(generatePotentiallyReusableReplica(TestReplica1, TestNode1)),
+			expectUsedNodeNames:         []string{},
+			expectUsedZoneNames:         []string{},
+			expectOnlyEvictingNodeNames: []string{},
+			expectOnlyEvictingZoneNames: []string{},
+		},
+		"healthy replica on a node outside the candidates clears an only evicting zone": {
+			nodeInfo: generateNodeMap(generateNodeInZone(TestNode2, TestZone1)),
+			allNodeInfo: generateNodeMap(generateNodeInZone(TestNode1, TestZone1),
+				generateNodeInZone(TestNode2, TestZone1)),
+			replicas: generateReplicaMap(generateReplica(TestReplica1, TestNode1, false),
+				generateReplica(TestReplica2, TestNode2, true)),
+			expectUsedNodeNames:         []string{TestNode2},
+			expectUsedZoneNames:         []string{TestZone1},
+			expectOnlyEvictingNodeNames: []string{TestNode2},
+			expectOnlyEvictingZoneNames: []string{},
+		},
 	}
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
+		allNodeInfo := tc.allNodeInfo
+		if allNodeInfo == nil {
+			allNodeInfo = tc.nodeInfo
+		}
 		usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(tc.replicas, tc.nodeInfo,
-			false, false)
+			allNodeInfo, false, false)
 		verifyNodeNames(tc.expectUsedNodeNames, usedNodes)
 		verifyZoneNames(tc.expectUsedZoneNames, usedZones)
 		verifyOnlyEvictingNodeNames(tc.expectOnlyEvictingNodeNames, onlyEvictingNodes)
@@ -2698,6 +2824,119 @@ func (s *TestSuite) TestCheckAndReuseFailedReplicaSkipUnhealthyDisk(c *C) {
 		// The replenishment wait interval still applies, since the disk health may recover within it.
 		checkBackDuration := rcs.RequireNewReplica(replicas, volume, "")
 		c.Assert(checkBackDuration > 0, Equals, true, Commentf("scenario: %s", name))
+	}
+}
+
+// TestCheckAndReuseFailedReplicaZoneAntiAffinity verifies that a failed replica is not reused in a zone that already
+// holds a healthy replica on another node when replica zone soft anti-affinity is disabled. longhorn/longhorn#14324
+func (s *TestSuite) TestCheckAndReuseFailedReplicaZoneAntiAffinity(c *C) {
+	type testCase struct {
+		replicaZoneSoftAntiAffinity string
+		expectReused                bool
+	}
+	testCases := map[string]testCase{
+		"do not reuse failed replica in a zone used by a healthy replica": {
+			replicaZoneSoftAntiAffinity: "false",
+			expectReused:                false,
+		},
+		"reuse failed replica in a used zone with replica zone soft anti-affinity": {
+			replicaZoneSoftAntiAffinity: "true",
+			expectReused:                true,
+		},
+	}
+
+	for name, tc := range testCases {
+		c.Logf("testing %v", name)
+
+		kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+		lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+		extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		rcs := newReplicaScheduler(lhClient, kubeClient, extensionsClient, informerFactories)
+
+		engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+		for nodeName, daemon := range map[string]*corev1.Pod{
+			TestNode1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1),
+			TestNode2: newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2),
+		} {
+			err := pIndexer.Add(daemon)
+			c.Assert(err, IsNil)
+			err = imIndexer.Add(newInstanceManager(nodeName))
+			c.Assert(err, IsNil)
+			engineImage.Status.NodeDeploymentMap[nodeName] = true
+
+			node := newNode(nodeName, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+			node.Spec.Disks = map[string]longhorn.DiskSpec{
+				getDiskID(nodeName, "1"): newDisk(TestDefaultDataPath, true, 0),
+			}
+			node.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+				getDiskID(nodeName, "1"): {
+					StorageAvailable: TestDiskAvailableSize,
+					StorageMaximum:   TestDiskSize,
+					Conditions: []longhorn.Condition{
+						newCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue),
+						newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+					},
+					DiskUUID: getDiskID(nodeName, "1"),
+					Type:     longhorn.DiskTypeFilesystem,
+				},
+			}
+			err = nIndexer.Add(node)
+			c.Assert(err, IsNil)
+		}
+		err := eiIndexer.Add(engineImage)
+		c.Assert(err, IsNil)
+
+		for name, value := range map[types.SettingName]string{
+			types.SettingNameDefaultInstanceManagerImage:      TestInstanceManagerImage,
+			types.SettingNameReplicaReplenishmentWaitInterval: "600",
+			types.SettingNameReplicaSoftAntiAffinity:          "false",
+			types.SettingNameReplicaZoneSoftAntiAffinity:      tc.replicaZoneSoftAntiAffinity,
+		} {
+			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), initSettings(string(name), value), metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
+
+		volume := newVolume(TestVolumeName, 2)
+		volume.Status.Robustness = longhorn.VolumeRobustnessDegraded
+		volume.Status.LastDegradedAt = TestTimeOneMinuteAgo
+
+		healthyReplica := newReplicaForVolume(volume)
+		healthyReplica.Spec.Active = true
+		healthyReplica.Spec.DataEngine = longhorn.DataEngineTypeV1
+		healthyReplica.Spec.NodeID = TestNode1
+		healthyReplica.Spec.DiskID = getDiskID(TestNode1, "1")
+		healthyReplica.Spec.HealthyAt = TestTimeOneMinuteAgo
+
+		failedReplica := newReplicaForVolume(volume)
+		failedReplica.Spec.Active = true
+		failedReplica.Spec.DataEngine = longhorn.DataEngineTypeV1
+		failedReplica.Spec.NodeID = TestNode2
+		failedReplica.Spec.DiskID = getDiskID(TestNode2, "1")
+		failedReplica.Spec.FailedAt = TestTimeNow
+		replicas := map[string]*longhorn.Replica{
+			healthyReplica.Name: healthyReplica,
+			failedReplica.Name:  failedReplica,
+		}
+
+		reusedReplica, err := rcs.CheckAndReuseFailedReplica(replicas, volume, "")
+		c.Assert(err, IsNil, Commentf("scenario: %s", name))
+		if tc.expectReused {
+			c.Assert(reusedReplica, NotNil, Commentf("scenario: %s", name))
+			c.Assert(reusedReplica.Name, Equals, failedReplica.Name, Commentf("scenario: %s", name))
+		} else {
+			c.Assert(reusedReplica, IsNil, Commentf("scenario: %s", name))
+		}
 	}
 }
 

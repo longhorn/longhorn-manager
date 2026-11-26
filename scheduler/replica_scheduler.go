@@ -449,8 +449,19 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		return diskCandidates, filterErrs
 	}
 
+	allNodes, err := rcs.ds.ListNodesRO()
+	if err != nil {
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
+			errors.Wrap(err, "failed to list nodes"))
+		return map[string]*Disk{}, errs
+	}
+	allNodeInfo := make(map[string]*longhorn.Node, len(allNodes))
+	for _, node := range allNodes {
+		allNodeInfo[node.Name] = node
+	}
+
 	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo,
-		ignoreFailedReplicas, creatingNewReplicasForReplenishment)
+		allNodeInfo, ignoreFailedReplicas, creatingNewReplicasForReplenishment)
 
 	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
@@ -1736,7 +1747,11 @@ func findDiskSpecAndDiskStatusInNode(diskUUID string, node *longhorn.Node) (long
 //   - Otherwise, getCurrentNodesAndZones does not consider a node or zone to be occupied by a failed replica that can
 //     no longer be used or is likely actively being replaced. This makes nodes and zones with useless replicas
 //     available for scheduling.
-func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node,
+//   - A healthy replica on a node outside nodeInfo (e.g. the candidates were narrowed by a hard node affinity, or the
+//     node is cordoned or not ready) still occupies its zone. allNodeInfo resolves the zone of such replicas.
+//     Failed and evicting replicas on such nodes are not counted, so that a replica evicted from an unschedulable
+//     node can still move to another node in the same zone.
+func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo, allNodeInfo map[string]*longhorn.Node,
 	ignoreFailedReplicas, creatingNewReplicasForReplenishment bool) (map[string]*longhorn.Node,
 	map[string]bool, map[string]bool, map[string]bool) {
 	usedNodes := map[string]*longhorn.Node{}
@@ -1783,6 +1798,15 @@ func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map
 
 			usedNodes[node.Name] = node
 			// For empty zone label, we treat them as one zone.
+			usedZones[node.Status.Zone] = true
+			continue
+		}
+
+		if r.Spec.FailedAt != "" || r.Spec.EvictionRequested {
+			continue
+		}
+		if node, ok := allNodeInfo[r.Spec.NodeID]; ok {
+			onlyEvictingZones[node.Status.Zone] = false
 			usedZones[node.Status.Zone] = true
 		}
 	}
