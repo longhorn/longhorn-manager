@@ -1269,6 +1269,27 @@ func (s *TestSuite) TestDedicatedMainCoreSettingRecreatesPod(c *C) {
 	}
 }
 
+// TestDedicatedMainCoreSettingSyncedForNonV2 verifies that the dedicated main core setting,
+// whose value is defined only for the v2 data engine, is treated as synced for the other
+// data engines instead of failing their instance manager sync.
+func (s *TestSuite) TestDedicatedMainCoreSettingSyncedForNonV2(c *C) {
+	imc := &InstanceManagerController{}
+	for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeLocal} {
+		im := newInstanceManager(
+			TestInstanceManagerName,
+			longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			nil, nil, nil,
+			dataEngine,
+			TestInstanceManagerImage,
+			false,
+		)
+		synced, err := imc.isSettingDedicatedMainCoreEnabledSynced(im, &corev1.Pod{})
+		c.Assert(err, IsNil, Commentf("data engine: %v", dataEngine))
+		c.Assert(synced, Equals, true, Commentf("data engine: %v", dataEngine))
+	}
+}
+
 // TestHandlePodRecreatesPodWithOutdatedCPURequest verifies that the instance manager controller,
 // not the setting controller, recreates a pod that cannot be resized in place once no instances
 // are running on it.

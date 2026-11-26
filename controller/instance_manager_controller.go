@@ -1545,7 +1545,7 @@ func (imc *InstanceManagerController) isSettingIobufSmallPoolSizeSynced(im *long
 }
 
 func (imc *InstanceManagerController) isSettingDedicatedMainCoreEnabledSynced(im *longhorn.InstanceManager, pod *corev1.Pod) (bool, error) {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
+	if !types.IsDataEngineV2(im.Spec.DataEngine) {
 		return true, nil
 	}
 
