@@ -248,6 +248,7 @@ const (
 	LonghornLabelCRDAPIVersion                   = "crd-api-version"
 	LonghornLabelVolumeAccessMode                = "volume-access-mode"
 	LonghornLabelFollowGlobalSetting             = "follow-global-setting"
+	LonghornLabelSystemBackup                    = "system-backup"
 	LonghornLabelSystemRestore                   = "system-restore"
 	LonghornLabelLastSkippedSystemRestore        = "last-skipped-system-restored"
 	LonghornLabelLastSkippedSystemRestoreAt      = "last-skipped-system-restored-at"
@@ -336,6 +337,17 @@ const (
 	// name compares against it and rejects different parameters, as the CSI
 	// spec requires.
 	SnapshotGroupAnnotationCSIParameters = "longhorn.io/snapshot-group-csi-parameters"
+
+	// SystemBackupAnnotationCreator records the SystemBackup that created a
+	// Snapshot or Backup CR. Status cannot be set on creation, so this is the
+	// owner until the creator is written to Status.Owners.
+	SystemBackupAnnotationCreator = "longhorn.io/system-backup-creator"
+
+	// SystemBackupAnnotationUploading records the manager that is uploading a
+	// SystemBackup archive, and when it last confirmed the upload was still
+	// running. Deletion on another manager waits for it so an in-flight upload
+	// cannot republish an archive after its volume backups were released.
+	SystemBackupAnnotationUploading = "longhorn.io/system-backup-uploading"
 
 	// SnapshotGroupMaxMemberCount caps the members of one SnapshotGroup, which
 	// also keeps the auto-attach of detached member volumes bounded.
@@ -898,6 +910,23 @@ func GetRecoveryBackendConfigMapLabels() map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelRecoveryBackend
 	return labels
+}
+
+func GetSystemBackupLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelSystemBackup)
+}
+
+// GetSystemBackupLabels returns the label of Snapshot and Backup CRs created by
+// a SystemBackup. The owning SystemBackups are tracked in Status.Owners instead
+// of the label value, which is limited to 63 characters.
+func GetSystemBackupLabels() map[string]string {
+	return map[string]string{
+		GetSystemBackupLabelKey(): "true",
+	}
+}
+
+func IsCreatedBySystemBackup(labels map[string]string) bool {
+	return labels[GetSystemBackupLabelKey()] == "true"
 }
 
 func GetSystemRestoreInProgressLabel() map[string]string {

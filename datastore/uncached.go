@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -401,6 +402,48 @@ func (s *DataStore) GetConfigMapWithoutCache(namespace, name string) (*corev1.Co
 // situations in which it is necessary.
 func (s *DataStore) GetLonghornSnapshotUncached(name string) (*longhorn.Snapshot, error) {
 	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// GetLonghornBackupUncached returns the uncached Backup in the Longhorn namespace directly from the API server.
+// Direct retrieval from the API server should ideally only be used for one-shot tasks, but there may be other limited
+// situations in which it is necessary.
+func (s *DataStore) GetLonghornBackupUncached(name string) (*longhorn.Backup, error) {
+	return s.lhClient.LonghornV1beta2().Backups(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// ListLonghornBackupsWithSelectorUncached returns Backups matching the selector
+// directly from the API server.
+func (s *DataStore) ListLonghornBackupsWithSelectorUncached(selector labels.Selector) ([]longhorn.Backup, error) {
+	if selector == nil {
+		selector = labels.Everything()
+	}
+	list, err := s.lhClient.LonghornV1beta2().Backups(s.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// ListLonghornSnapshotsWithSelectorUncached returns Snapshots matching the selector
+// directly from the API server.
+func (s *DataStore) ListLonghornSnapshotsWithSelectorUncached(selector labels.Selector) ([]longhorn.Snapshot, error) {
+	if selector == nil {
+		selector = labels.Everything()
+	}
+	list, err := s.lhClient.LonghornV1beta2().Snapshots(s.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// GetLonghornSystemBackupUncached returns the SystemBackup directly from the API server.
+func (s *DataStore) GetLonghornSystemBackupUncached(name string) (*longhorn.SystemBackup, error) {
+	return s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 // GetAllBackingImages returns an uncached list of BackingImage in Longhorn

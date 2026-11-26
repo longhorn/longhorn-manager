@@ -71,6 +71,8 @@ type BackupStatusApplyConfiguration struct {
 	ReUploadedDataSize *string `json:"reUploadedDataSize,omitempty"`
 	// The backup target name.
 	BackupTargetName *string `json:"backupTargetName,omitempty"`
+	// The names of the SystemBackups that reference this backup. Only set on backups created by a SystemBackup.
+	Owners []string `json:"owners,omitempty"`
 }
 
 // BackupStatusApplyConfiguration constructs a declarative configuration of the BackupStatus type for use with
@@ -256,5 +258,15 @@ func (b *BackupStatusApplyConfiguration) WithReUploadedDataSize(value string) *B
 // If called multiple times, the BackupTargetName field is set to the value of the last call.
 func (b *BackupStatusApplyConfiguration) WithBackupTargetName(value string) *BackupStatusApplyConfiguration {
 	b.BackupTargetName = &value
+	return b
+}
+
+// WithOwners adds the given value to the Owners field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Owners field.
+func (b *BackupStatusApplyConfiguration) WithOwners(values ...string) *BackupStatusApplyConfiguration {
+	for i := range values {
+		b.Owners = append(b.Owners, values[i])
+	}
 	return b
 }

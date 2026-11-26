@@ -6189,6 +6189,14 @@ func (s *DataStore) ListBackupsWithBackupVolumeName(backupTargetName, volumeName
 	return itemMap, nil
 }
 
+// ListBackupsWithSelectorRO returns a list of Backups matching the selector.
+func (s *DataStore) ListBackupsWithSelectorRO(selector labels.Selector) ([]*longhorn.Backup, error) {
+	if selector == nil {
+		selector = labels.Everything()
+	}
+	return s.backupLister.Backups(s.namespace).List(selector)
+}
+
 // ListBackupsRO returns a list of all Backups for the given namespace
 func (s *DataStore) ListBackupsRO() ([]*longhorn.Backup, error) {
 	return s.backupLister.Backups(s.namespace).List(labels.Everything())
@@ -6250,6 +6258,15 @@ func (s *DataStore) UpdateBackupStatus(backup *longhorn.Backup) (*longhorn.Backu
 // DeleteBackup won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteBackup(backupName string) error {
 	return s.lhClient.LonghornV1beta2().Backups(s.namespace).Delete(context.TODO(), backupName, metav1.DeleteOptions{})
+}
+
+// DeleteBackupWithResourceVersionPrecondition deletes the backup only while it
+// still has the given resource version: the API server rejects the deletion
+// with a Conflict once the backup has been updated.
+func (s *DataStore) DeleteBackupWithResourceVersionPrecondition(backupName, resourceVersion string) error {
+	return s.lhClient.LonghornV1beta2().Backups(s.namespace).Delete(context.TODO(), backupName, metav1.DeleteOptions{
+		Preconditions: &metav1.Preconditions{ResourceVersion: &resourceVersion},
+	})
 }
 
 // DeleteAllBackupsForBackupVolumeWithBackupTarget won't result in immediately deletion since finalizer was set by default
@@ -6392,6 +6409,15 @@ func (s *DataStore) DeleteSnapshot(snapshotName string) error {
 func (s *DataStore) DeleteSnapshotWithUIDPrecondition(snapshotName string, uid k8stypes.UID) error {
 	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Delete(context.TODO(), snapshotName, metav1.DeleteOptions{
 		Preconditions: &metav1.Preconditions{UID: &uid},
+	})
+}
+
+// DeleteSnapshotWithResourceVersionPrecondition deletes the snapshot only while
+// it still has the given resource version: the API server rejects the deletion
+// with a Conflict once the snapshot has been updated.
+func (s *DataStore) DeleteSnapshotWithResourceVersionPrecondition(snapshotName, resourceVersion string) error {
+	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Delete(context.TODO(), snapshotName, metav1.DeleteOptions{
+		Preconditions: &metav1.Preconditions{ResourceVersion: &resourceVersion},
 	})
 }
 

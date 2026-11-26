@@ -756,6 +756,13 @@ spec:
                 description: The node ID on which the controller is responsible to
                   reconcile this backup CR.
                 type: string
+              owners:
+                description: The names of the SystemBackups that reference this backup.
+                  Only set on backups created by a SystemBackup.
+                items:
+                  type: string
+                nullable: true
+                type: array
               progress:
                 description: The snapshot backup progress.
                 type: integer
@@ -4572,6 +4579,13 @@ spec:
                 type: boolean
               ownerID:
                 type: string
+              owners:
+                description: The names of the SystemBackups that reference this snapshot.
+                  Only set on snapshots created by a SystemBackup.
+                items:
+                  type: string
+                nullable: true
+                type: array
               parent:
                 type: string
               readyToUse:
