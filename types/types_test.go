@@ -846,3 +846,27 @@ func (s *TestSuite) TestIobufPoolSizeSettingDefinitions(c *C) {
 	// The default must stay above the SPDK built-in default so that new pods always carry the flag.
 	c.Assert(DefaultIobufLargePoolSize > BuiltinIobufLargePoolSize, Equals, true)
 }
+
+func (s *TestSuite) TestGetManagerLabels(c *C) {
+	labels := GetManagerLabels()
+	c.Assert(labels, DeepEquals, map[string]string{
+		"app": LonghornManagerDaemonSetName,
+	})
+}
+
+// TestGetCSIPodLabels covers the two GetCSIPodLabels behaviors: CSI plugin
+// maps longhorn-csi-plugin → csi-plugin, and sidecars use appName as the
+// component value (one sidecar case is enough for that path).
+func (s *TestSuite) TestGetCSIPodLabels(c *C) {
+	pluginLabels := GetCSIPodLabels(CSIPluginName)
+	c.Assert(pluginLabels, DeepEquals, map[string]string{
+		"app":                          CSIPluginName,
+		GetLonghornLabelComponentKey(): LonghornLabelCSIPlugin,
+	})
+
+	sidecarLabels := GetCSIPodLabels(CSIAttacherName)
+	c.Assert(sidecarLabels, DeepEquals, map[string]string{
+		"app":                          CSIAttacherName,
+		GetLonghornLabelComponentKey(): CSIAttacherName,
+	})
+}
