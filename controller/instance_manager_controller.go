@@ -1635,7 +1635,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 			return nil
 		}
 
-		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im, unschedulable)
 		if err != nil {
 			return err
 		}
@@ -1646,7 +1646,11 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 		}
 
 		imc.logger.Infof("Removing %v PDB since Node %v is marked unschedulable", im.Name, imc.controllerID)
-		return imc.deleteInstanceManagerPDB(im)
+		if err := imc.deleteInstanceManagerPDB(im); err != nil {
+			return err
+		}
+		imc.recordStrictLocalEvictionSkipped(im)
+		return nil
 	}
 	im.Status.Conditions = types.SetCondition(im.Status.Conditions, longhorn.InstanceManagerConditionTypeNodeReady,
 		longhorn.ConditionStatusTrue, "", "")
@@ -1666,7 +1670,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 	}
 
 	if clusterAutoscalerEnabled {
-		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im, unschedulable)
 		if err != nil {
 			return err
 		}
@@ -1802,7 +1806,61 @@ func formatReplicaMessage(rep []*longhorn.Replica) string {
 	return msg
 }
 
-func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.InstanceManager) (bool, string, error) {
+func (imc *InstanceManagerController) shouldSkipStrictLocalEviction(nodeDrainingPolicy string) (bool, error) {
+	if !isStrictLocalEvictionSkipPolicy(nodeDrainingPolicy) {
+		return false, nil
+	}
+	return imc.ds.GetSettingAsBool(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain)
+}
+
+// Best effort: the PDB is already deleted, so failures are logged and not retried.
+func (imc *InstanceManagerController) recordStrictLocalEvictionSkipped(im *longhorn.InstanceManager) {
+	if im.Spec.Type != longhorn.InstanceManagerTypeReplica && im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
+		return
+	}
+
+	log := getLoggerForInstanceManager(imc.logger, im)
+
+	nodeDrainingPolicy, err := imc.ds.GetSettingValueExisted(types.SettingNameNodeDrainPolicy)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting", types.SettingNameNodeDrainPolicy)
+		return
+	}
+	skipStrictLocal, err := imc.shouldSkipStrictLocalEviction(nodeDrainingPolicy)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain)
+		return
+	}
+	if !skipStrictLocal {
+		return
+	}
+
+	replicas, err := imc.ds.ListReplicasByNodeRO(im.Spec.NodeID)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			log.WithError(err).Warn("Failed to list replicas on node")
+		}
+		return
+	}
+
+	for _, replica := range replicas {
+		volume, err := imc.ds.GetVolumeRO(replica.Spec.VolumeName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				log.WithError(err).Warnf("Failed to get volume %v of replica %v", replica.Spec.VolumeName, replica.Name)
+			}
+			continue
+		}
+		if !isDataLocalityStrictLocal(volume) {
+			continue
+		}
+		imc.eventRecorder.Eventf(volume, corev1.EventTypeWarning, constant.EventReasonEvictionSkipped,
+			"Replica %v of strict-local volume %v was not evicted from drained node %v, removing the node will lose the volume data",
+			replica.Name, volume.Name, im.Spec.NodeID)
+	}
+}
+
+func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.InstanceManager, nodeUnschedulable bool) (bool, string, error) {
 	// If there is no engine instance process inside the engine instance manager,
 	// it means that all volumes are detached.
 	// We can delete the PodDisruptionBudget for the engine instance manager.
@@ -1845,6 +1903,21 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return false, "", err
 	}
 
+	// Only on a cordoned node: on a schedulable one the PDB is what stops Cluster Autoscaler
+	// from removing the node that holds the only copy.
+	if nodeUnschedulable {
+		skipStrictLocal, err := imc.shouldSkipStrictLocalEviction(nodeDrainingPolicy)
+		if err != nil {
+			return false, "", err
+		}
+		if skipStrictLocal {
+			replicasOnCurrentNode, err = removeStoppedStrictLocalReplicas(imc.ds, replicasOnCurrentNode)
+			if err != nil {
+				return false, "", err
+			}
+		}
+	}
+
 	if nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEviction) && len(replicasOnCurrentNode) > 0 {
 		// We must wait for ALL replicas to be evicted before removing the PDB.
 		return false, fmt.Sprintf("some replicas block eviction %v", formatReplicaMessage(replicasOnCurrentNode)), nil
@@ -1853,7 +1926,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	targetReplicas := []*longhorn.Replica{}
 	if nodeDrainingPolicy == string(types.NodeDrainPolicyAllowIfReplicaIsStopped) {
 		for _, replica := range replicasOnCurrentNode {
-			if replica.Spec.DesireState != longhorn.InstanceStateStopped || replica.Status.CurrentState != longhorn.InstanceStateStopped {
+			if !isReplicaStopped(replica) {
 				targetReplicas = append(targetReplicas, replica)
 			}
 		}

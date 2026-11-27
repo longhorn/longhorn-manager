@@ -117,6 +117,7 @@ const (
 	SettingNameReplicaZoneSoftAntiAffinity                              = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameNodeDownPodDeletionPolicy                                = SettingName("node-down-pod-deletion-policy")
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
+	SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain                 = SettingName("skip-strict-local-volume-eviction-on-node-drain")
 	SettingNameDetachManuallyAttachedVolumesWhenCordoned                = SettingName("detach-manually-attached-volumes-when-cordoned")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
@@ -254,6 +255,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy,
 		SettingNameNodeDrainPolicy,
+		SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain,
 		SettingNameDetachManuallyAttachedVolumesWhenCordoned,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
@@ -427,6 +429,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity:                              SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy:                                SettingDefinitionNodeDownPodDeletionPolicy,
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
+		SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain:                 SettingDefinitionSkipStrictLocalVolumeEvictionOnNodeDrain,
 		SettingNameDetachManuallyAttachedVolumesWhenCordoned:                SettingDefinitionDetachManuallyAttachedVolumesWhenCordoned,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
@@ -1076,7 +1079,8 @@ var (
 			"- **block-for-eviction-if-contains-last-replica** Longhorn will automatically evict any replicas that don't have a healthy counterpart and block the drain until eviction is complete.\n" +
 			"- **block-if-contains-last-replica** Longhorn will block the drain when the node contains the last healthy replica of a volume.\n" +
 			"- **allow-if-replica-is-stopped** Longhorn will allow the drain when the node contains the last healthy replica of a volume but the replica is stopped. WARNING: possible data loss if the node is removed after draining. Select this option if you want to drain the node and do in-place upgrade/maintenance.\n" +
-			"- **always-allow** Longhorn will allow the drain even though the node contains the last healthy replica of a volume. WARNING: possible data loss if the node is removed after draining. Also possible data corruption if the last replica was running during the draining.\n",
+			"- **always-allow** Longhorn will allow the drain even though the node contains the last healthy replica of a volume. WARNING: possible data loss if the node is removed after draining. Also possible data corruption if the last replica was running during the draining.\n" +
+			"\nReplicas of strict-local volumes cannot be evicted. See the **Skip Strict-Local Volume Eviction on Node Drain** setting for how the blocking policies handle them.\n",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1090,6 +1094,21 @@ var (
 			string(NodeDrainPolicyAllowIfReplicaIsStopped),
 			string(NodeDrainPolicyAlwaysAllow),
 		},
+	}
+
+	SettingDefinitionSkipStrictLocalVolumeEvictionOnNodeDrain = SettingDefinition{
+		DisplayName: "Skip Strict-Local Volume Eviction on Node Drain",
+		Description: "Only takes effect when the **Node Drain Policy** is **block-for-eviction**, **block-for-eviction-if-contains-last-replica** or **block-if-contains-last-replica**. " +
+			"The replica of a strict-local volume is pinned to its node and cannot be evicted, so these policies block the drain for as long as the volume exists.\n" +
+			"When enabled, Longhorn does not request eviction for replicas of strict-local volumes on a draining node, and allows the drain once every volume on the node is detached and these replicas are stopped. " +
+			"A warning event is recorded on each strict-local volume left on the drained node.\n" +
+			"WARNING: The drained node holds the only copy of the data of these volumes. Removing the node after the drain results in data loss.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionDetachManuallyAttachedVolumesWhenCordoned = SettingDefinition{

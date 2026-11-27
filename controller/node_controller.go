@@ -214,6 +214,7 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy ||
+		types.SettingName(setting.Name) == types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain ||
 		types.SettingName(setting.Name) == types.SettingNameSystemManagedComponentsNodeSelector ||
 		types.SettingName(setting.Name) == types.SettingNameNodeDiskHealthMonitoring
 }
@@ -2084,6 +2085,10 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 	if err != nil {
 		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameNodeDrainPolicy)
 	}
+	skipStrictLocal, err := nc.ds.GetSettingAsBool(types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameSkipStrictLocalVolumeEvictionOnNodeDrain)
+	}
 
 	type replicaToSync struct {
 		*longhorn.Replica
@@ -2099,7 +2104,7 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 				return err
 			}
 			shouldEvictReplica, reason, err := nc.shouldEvictReplica(node, kubeNode, &diskSpec, replica,
-				nodeDrainPolicy)
+				nodeDrainPolicy, skipStrictLocal)
 			if err != nil {
 				return err
 			}
@@ -2219,7 +2224,7 @@ func (nc *NodeController) shouldEvictShard(node *longhorn.Node, kubeNode *corev1
 }
 
 func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *corev1.Node, diskSpec *longhorn.DiskSpec,
-	replica *longhorn.Replica, nodeDrainPolicy string) (bool, string, error) {
+	replica *longhorn.Replica, nodeDrainPolicy string, skipStrictLocal bool) (bool, string, error) {
 	// Replica eviction was cancelled on down or deleted nodes in previous implementations. It seems safest to continue
 	// this behavior unless we find a reason to change it.
 	if isDownOrDeleted, err := nc.ds.IsNodeDownOrDeleted(node.Spec.Name); err != nil {
@@ -2238,6 +2243,16 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 		// Node drain policy only takes effect on cordoned nodes.
 		return false, constant.EventReasonEvictionCanceled, nil
 	}
+	// A strict-local replica cannot move, so requesting its eviction only keeps the volume
+	// attached and the drain blocked. See longhorn/longhorn#8753.
+	if skipStrictLocal && isStrictLocalEvictionSkipPolicy(nodeDrainPolicy) {
+		if isStrictLocal, err := isStrictLocalReplica(nc.ds, replica); err != nil {
+			return false, "", err
+		} else if isStrictLocal {
+			return false, constant.EventReasonEvictionSkipped, nil
+		}
+	}
+
 	if nodeDrainPolicy == string(types.NodeDrainPolicyBlockForEviction) {
 		return true, constant.EventReasonEvictionAutomatic, nil
 	}
