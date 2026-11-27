@@ -1998,6 +1998,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	}
 
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
+	salvageRequestedPersisted := e.Spec.SalvageRequested
 
 	// Clear SalvageRequested flag if SalvageExecuted flag has been set.
 	// SalvageRequested is RAID1-only (the engine uses it to filter replicas at
@@ -2024,21 +2025,19 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		if err != nil {
 			return err
 		}
-		// To make sure that we don't miss the `isAutoSalvageNeeded` event, This IF statement makes sure the `e.Spec.SalvageRequested=true`
-		// persist in ETCD before Longhorn salvages the failed replicas in the IF statement below it.
-		// More explanation: when all replicas fails, Longhorn tries to set `e.Spec.SalvageRequested=true`
-		// and try to detach the volume by setting `v.Status.CurrentNodeID = ""`.
-		// Because at the end of volume syncVolume(), Longhorn updates CRs in the order: replicas, engine, volume,
-		// when volume changes from v.Status.State == longhorn.VolumeStateAttached to v.Status.State == longhorn.VolumeStateDetached,
-		// we know that volume RS has been updated and therefore the engine RS also has been updated and persisted in ETCD.
-		// At this moment, Longhorn goes into the IF statement below this IF statement and salvage all replicas.
+		// Persist the engine salvage intent before clearing any replica failure metadata.
+		// syncVolume updates replicas before the engine, so doing both in one reconciliation
+		// could clear replica metadata even if the engine update fails.
+		// Only a salvage intent observed from an earlier reconciliation is safe to act on.
 		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// Since all replica failed and autoSalvage is enable, mark engine controller salvage requested
 			e.Spec.SalvageRequested = true
 			log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
 		}
-		// make sure the volume is detached before automatically salvage replicas
-		if autoSalvage && v.Status.State == longhorn.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
+		// Make sure the volume is detached and the engine salvage intent was persisted
+		// before automatically salvaging replicas.
+		if autoSalvage && salvageRequestedPersisted && v.Status.State == longhorn.VolumeStateDetached &&
+			!v.Status.IsStandby && !v.Status.RestoreRequired {
 			log.Info("All replicas are failed, auto-salvaging volume")
 
 			lastFailedAt := time.Time{}
