@@ -102,7 +102,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": commonName},
+					Labels: types.GetCSIPodLabels(commonName),
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccount,
