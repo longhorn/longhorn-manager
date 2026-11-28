@@ -126,6 +126,11 @@ func (sc *SnapshotConcurrentLimiter) canStartHeavyIOTask(engineClientProxy engin
 }
 
 func (sc *SnapshotConcurrentLimiter) checkEngineBusy(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy, ds *datastore.DataStore) bool {
+	// A stopped engine cannot have a purge or clone in progress.
+	if engine.Status.CurrentState == longhorn.InstanceStateStopped {
+		return false
+	}
+
 	isPurging := sc.checkEnginePurging(engine, engineClientProxy)
 	if isPurging {
 		return true
